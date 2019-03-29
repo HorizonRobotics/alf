@@ -23,7 +23,7 @@ class TestMemory(unittest.TestCase):
         self.assertLess(tf.reduce_max(abs(x - y)), epsilon)
 
     def test_memory(self):
-        mem = memory.MemoryWithUsage(2, 3, scale=20)
+        mem = memory.MemoryWithUsage(2, 3, usage_decay=1., scale=20)
         self.assertEqual(mem.dim, 2)
         self.assertEqual(mem.size, 3)
         self._test_memory(mem)
@@ -31,7 +31,8 @@ class TestMemory(unittest.TestCase):
         self._test_memory(mem)
 
     def test_snapshot_memory(self):
-        mem = memory.MemoryWithUsage(2, 3, snapshot_only=True, scale=20)
+        mem = memory.MemoryWithUsage(
+            2, 3, snapshot_only=True, usage_decay=1., scale=20)
         self.assertEqual(mem.dim, 2)
         self.assertEqual(mem.size, 3)
         self._test_memory(mem)

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import abc
+import math
 
 import tensorflow as tf
 import tensorflow.keras.layers as layers
@@ -73,7 +74,8 @@ class MemoryWithUsage(Memory):
                  size,
                  snapshot_only=False,
                  normalize=True,
-                 scale=None):
+                 scale=None,
+                 usage_decay=None):
         """Creat an instance of `MemoryWithUsage`
         See Methods 2.3 of "Unsupervised Predictive Memory in a Goal-Directed
         Agent"
@@ -82,17 +84,30 @@ class MemoryWithUsage(Memory):
             dim (int): dimension of memory content
             size (int): number of memory slots
             snapshot_only (bool): If True, only keeps the last snapshot of the
-               memory instead of keeping all the memory snapshot at every steps.
-               If True, gradient cannot be propagated to the writer.
+              memory instead of keeping all the memory snapshot at every steps.
+              If True, gradient cannot be propagated to the writer.
             normalize (bool): If True, use cosine similarity, otherwise use dot
-                product
-            scale (float): scale the similarity by this
+              product.
+            scale (None|float): Scale the similarity by this. If scale is None,
+              a default value is used based `normalize`. If `normalize` is True,
+              `scale` is default to 5.0. If `normalize` is False, `scale` is
+              default to `1/sqrt(dim)`.
+            usage_decay (None|float): The usage will be scaled by this factor
+              at every `write` call. If None, it is default to `1 - 1 / size`
         """
         super(MemoryWithUsage, self).__init__(dim, size)
         self._normalize = normalize
+        if scale is None:
+            if normalize:
+                scale = 5.0
+            else:
+                scale = 1. / math.sqrt(dim)
         self._scale = scale
         self._built = False
         self._snapshot_only = snapshot_only
+        if usage_decay is None:
+            usage_decay = 1. - 1. / size
+        self._usage_decay = usage_decay
 
     def build(self, batch_size):
         """Build the memory for batch_size.
@@ -127,7 +142,7 @@ class MemoryWithUsage(Memory):
               For multiple key read, the shape is (batch_szie, k, dim), where
               k is the number of keys.
             scale (None|float|Tensor): shape is () or keys.shape[:-1]. The
-              cosine similarities are multiplied with temperature before softmax
+              cosine similarities are multiplied with `scale` before softmax
               is applied. If None, use the scale provided at constructor.
         Returns:
             resutl Tensor: shape is same as keys. result[..., i] is the read
@@ -155,8 +170,7 @@ class MemoryWithUsage(Memory):
         sim = layers.dot([keys, self._memory],
                          axes=-1,
                          normalize=self._normalize)
-        if scale is not None:
-            sim = sim * scale
+        sim = sim * scale
 
         attention = activations.softmax(sim)
         result = layers.dot([attention, self._memory], axes=(-1, 1))
@@ -196,8 +210,8 @@ class MemoryWithUsage(Memory):
 
         # update content at the new location
         loc_weight = tf.expand_dims(loc_weight, 2)
-        memory = self._memory * (1 - loc_weight) \
-            +  loc_weight * tf.expand_dims(content, 1)
+        memory = self._usage_decay * (1 - loc_weight) * self._memory \
+            + loc_weight * tf.expand_dims(content, 1)
         if self._snapshot_only:
             self._usage.assign(usage)
             self._memory.assign(memory)
