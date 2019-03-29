@@ -101,6 +101,10 @@ class TestMemory(unittest.TestCase):
         self.assertArrayEqual(mem.usage,
                               tf.constant([[6.5, 2, 4], [4.5, 8, 1.5]]))
 
+        # test for scale
+        r = mem.read(w1, scale=tf.constant([1., 0.]))
+        self.assertArrayEqual(r, tf.stack([v00, 2. / 3 * v10 + 1. / 3 * v11]))
+
 
 if __name__ == '__main__':
     unittest.main()

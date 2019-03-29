@@ -162,10 +162,8 @@ class MemoryWithUsage(Memory):
             else:  # assuming it's Tensor
                 assert len(scale.shape) < len(keys.shape)
                 assert scale.shape == keys.shape[:len(scale.shape)]
-                k = len(keys.shape) - len(scale.shape) - 1
-                if k > 0:
-                    scale = tf.reshape(scale, keys.shape.concatenate(
-                        (1, ) * k))
+                k = len(keys.shape) - len(scale.shape)
+                scale = tf.reshape(scale, scale.shape.concatenate((1, ) * k))
 
         sim = layers.dot([keys, self._memory],
                          axes=-1,
