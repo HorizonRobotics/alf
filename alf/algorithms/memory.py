@@ -42,14 +42,15 @@ class Memory(network.Network):
 
     @abc.abstractmethod
     def read(self, keys):
-        """Read out memory vectors given keys
+        """Read out memory vectors for the given keys.
 
         Args:
             keys (Tensor): shape is (b, dim) or (b, k, dim) where b is batch
               size, k is the number of read keys, and dim is memory content
               dimension
         Returns:
-            result (Tensor): shape is same as `keys`.
+            resutl (Tensor): shape is same as keys. result[..., i] is the read
+              result for the corresponding key.
         """
         pass
 
@@ -61,6 +62,12 @@ class Memory(network.Network):
 
 
 class MemoryWithUsage(Memory):
+    """
+    MemoryWithUsage stores memory in a matrix. During memory `write`, the memory
+    slot with the smallest usage is replaced by the new memory content. The
+    memory content can be retrived thrugh attention mechanism using `read`.
+    """
+
     def __init__(self,
                  dim,
                  size,
@@ -86,19 +93,29 @@ class MemoryWithUsage(Memory):
         self._scale = scale
         self._built = False
         self._snapshot_only = snapshot_only
-        if snapshot_only:
-            # TODO: support this by using variables for _memory and _usage
-            raise ValueError("Not supported yet")
 
     def build(self, batch_size):
+        """Build the memory for batch_size.
+        User does not need to call this explictly. `read` and `write` will
+        automatically call this if the memory has not been built yet.
+
+        Note: Subsequent `write` and `read` must match this `batch_size`
+
+        """
         self._batch_size = batch_size
-        self._memory = tf.zeros((batch_size, self.size, self.dim))
-        self._usage = tf.zeros((batch_size, self.size))
+        self._initial_memory = tf.zeros((batch_size, self.size, self.dim))
+        self._initial_usage = tf.zeros((batch_size, self.size))
+        if self._snapshot_only:
+            self._memory = tf.Variable(self._initial_memory, trainable=False)
+            self._usage = tf.Variable(self._initial_usage, trainable=False)
+        else:
+            self._memory = self._initial_memory
+            self._usage = self._initial_usage
         self._built = True
 
     def read(self, keys, scale=None):
         """
-        Read the memory given the keys. For each key in keys we will get one
+        Read the memory for given the keys. For each key in keys we will get one
         result as `r = sum_i M[i] a[i]` where `M[i]` is the memory content
         at location i and `a[i]` is the attention weight for key at location i.
         `a` is calculated as softmax of a scaled similarity between key and
@@ -107,8 +124,8 @@ class MemoryWithUsage(Memory):
         Args:
             keys (Tensor): shape[-1] is d
             scale (None|float|Tensor): shape is () or keys.shape[:-1]. The
-             cosine similarities are multiplied with temperature before softmax
-             is applied. If None, use the scale provided at constructor.
+              cosine similarities are multiplied with temperature before softmax
+              is applied. If None, use the scale provided at constructor.
         Returns:
             resutl Tensor: shape is same as keys. result[..., i] is the read
               result for the corresponding key.
@@ -145,15 +162,19 @@ class MemoryWithUsage(Memory):
             usage = tf.reduce_sum(attention, 1)
         else:
             usage = attention
-        self._usage = self._usage + usage
+
+        if self._snapshot_only:
+            self._usage.assign_add(usage)
+        else:
+            self._usage = self._usage + usage
 
         return result
 
     def write(self, content):
         """
-        Append the content into memory. If the memory is full, the slot with
-        the smallest usage will be overriden. The usage is calculated during
-        read as the sum of past attentions.
+        Append the content to memory. If the memory is full, the slot with the
+        smallest usage will be overriden. The usage is calculated during read as
+        the sum of past attentions.
         
         Args:
             content (Tensor): shape should be (b, dim)
@@ -168,18 +189,35 @@ class MemoryWithUsage(Memory):
         loc_weight = tf.one_hot(location, depth=self._size)
 
         # reset usage for at the new location
-        self._usage = self._usage * (1 - loc_weight) + loc_weight
+        usage = self._usage * (1 - loc_weight) + loc_weight
 
         # update content at the new location
         loc_weight = tf.expand_dims(loc_weight, 2)
-        self._memory = self._memory * (1 - loc_weight) \
+        memory = self._memory * (1 - loc_weight) \
             +  loc_weight * tf.expand_dims(content, 1)
+        if self._snapshot_only:
+            self._usage.assign(usage)
+            self._memory.assign(memory)
+        else:
+            self._usage = usage
+            self._memory = memory
+
+    def reset(self):
+        """Reset the the memory to the initial state.
+        Both memory and uage are set to zeros.
+        """
+        if self._snapshot_only:
+            self._usage.assign(self._initial_usage)
+            self._memory.assign(self._initial_memory)
+        else:
+            self._usage = self._initial_usage
+            self._memory = self._initial_memory
 
     @property
     def usage(self):
         """Get the usage for each memory slots
         Returns:
-            usage (tf.Tensor) of shape (batch_size, size)
+            usage (Tensor) of shape (batch_size, size)
         """
         return self._usage
 

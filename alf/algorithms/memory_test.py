@@ -26,7 +26,19 @@ class TestMemory(unittest.TestCase):
         mem = memory.MemoryWithUsage(2, 3, scale=20)
         self.assertEqual(mem.dim, 2)
         self.assertEqual(mem.size, 3)
+        self._test_memory(mem)
+        mem.reset()
+        self._test_memory(mem)
 
+    def test_snapshot_memory(self):
+        mem = memory.MemoryWithUsage(2, 3, snapshot_only=True, scale=20)
+        self.assertEqual(mem.dim, 2)
+        self.assertEqual(mem.size, 3)
+        self._test_memory(mem)
+        mem.reset()
+        self._test_memory(mem)
+
+    def _test_memory(self, mem):
         v00 = tf.constant([1., 0])
         v10 = tf.constant([1., 2])
         v01 = tf.constant([0., 1])
