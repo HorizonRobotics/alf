@@ -89,6 +89,16 @@ class TestMemory(unittest.TestCase):
                                                                     1]]))
         mem.read(w1)
         self.assertArrayEqual(r, tf.stack([v00, v11]))
+        self.assertArrayEqual(
+            mem.usage,
+            tf.constant([[5.5 + 1 / 3, 1 + 1 / 3, 3 + 1 / 3], [4., 7, 1]]))
+
+        # test for multiple read keys
+        r = mem.read(tf.stack([w0, w1], axis=1))
+        self.assertArrayEqual(r[:, 0, :], tf.stack([v00, v10]))
+        self.assertArrayEqual(r[:, 1, :], tf.stack([v00, v11]))
+        self.assertArrayEqual(mem.usage,
+                              tf.constant([[6.5, 2, 4], [4.5, 8, 1.5]]))
 
 
 if __name__ == '__main__':

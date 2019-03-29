@@ -122,7 +122,10 @@ class MemoryWithUsage(Memory):
         each memory content: `a[i] = exp(scale*sim[i])/(sum_i scale*sim[i])`
 
         Args:
-            keys (Tensor): shape[-1] is d
+            keys (Tensor): shape[-1] is dim.
+              For single key read, the shape is (batch_size, dim).
+              For multiple key read, the shape is (batch_szie, k, dim), where
+              k is the number of keys.
             scale (None|float|Tensor): shape is () or keys.shape[:-1]. The
               cosine similarities are multiplied with temperature before softmax
               is applied. If None, use the scale provided at constructor.
