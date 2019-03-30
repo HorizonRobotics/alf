@@ -140,7 +140,8 @@ class MemoryWithUsage(Memory):
             keys (Tensor): shape[-1] is dim.
               For single key read, the shape is (batch_size, dim).
               For multiple key read, the shape is (batch_szie, k, dim), where
-              k is the number of keys.
+              k is the number of keys. Multi-dimensional read keys are also
+              allowed. In this case, the shape of `keys` is (b, k1,..,kn, dim)
             scale (None|float|Tensor): shape is () or keys.shape[:-1]. The
               cosine similarities are multiplied with `scale` before softmax
               is applied. If None, use the scale provided at constructor.
@@ -174,7 +175,7 @@ class MemoryWithUsage(Memory):
         result = layers.dot([attention, self._memory], axes=(-1, 1))
 
         if len(sim.shape) > 2:  # multiple read keys
-            usage = tf.reduce_sum(attention, 1)
+            usage = tf.reduce_sum(attention, axis=range(1, len(sim.shape) - 1))
         else:
             usage = attention
 
