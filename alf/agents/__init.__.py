@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .train_eval import train_eval
+from .simple_agent import SimpleAgent
