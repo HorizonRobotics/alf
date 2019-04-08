@@ -27,3 +27,24 @@ Make change to your code and test
 ```bash
 git push origin PR_change_name
 ```
+
+## Coding stardard
+
+We follow the coding style http://google.github.io/styleguide/pyguide.html. 
+And please comment all the public functions with the following style:
+```python
+def func(a, b):
+    """Short summary of the function
+
+    Detailed explanation of the function. Including math equations and
+    references. The explanation should be detail enough for the user to have a
+    clear understanding of its function without reading its implementation.
+
+    Args:
+        a (type of a): purpose
+        b (type of b): purpose
+    Returns:
+        return value1 (type 1): purpose
+        return value2 (type 1): purpose
+    """
+```
