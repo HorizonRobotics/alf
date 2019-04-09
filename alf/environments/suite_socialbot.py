@@ -117,7 +117,7 @@ def _get_unused_port(start, end=65536):
                     if process_lock.acquire(blocking=False):
                         unused_port = port
                         break
-            except:
+            except socket.error:
                 continue
         if unused_port is None:
             raise socket.error("No unused port in [{}, {})".format(start, end))
