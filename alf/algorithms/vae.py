@@ -1,10 +1,22 @@
 import tensorflow as tf
 from tf_agents.networks import network
 
-class VariationalAutoEncoder(network.Network):
+class VariationalAutoEncoder:
     """
     VariationalAutoEncoder encodes data into diagonal multivariate gaussian, do sampling with
     reparametrization trick, and return kl divergence between posterior and prior.
+
+    mathematically:
+
+    log p(x) >= E_z log P(x|z) - KL(q(z|x) || prior(z))
+
+    sampling_forward method return sampled z and KL, it is up to user of this class to use returned z to
+    decode and compute reconstructive loss to combine with kl loss returned here to optimize the whole network.
+
+    See vae_test.py for example usages to train vanilla vae, conditional vae and vae with prior network
+    on mnist dataset.
+
+    comments: this class is not subclass of tf_agents.network, thus not copible.
     """
     def __init__(self,
                  hidden_dim,
@@ -15,11 +27,10 @@ class VariationalAutoEncoder(network.Network):
 
         Args:
              hidden_dim (int): dimension of latent vector
-             prior_network:     network to compute the priors (mean, log_var)
-             preprocess_layers: layers to preprocess input data before project into (mean, log_var)
+             prior_network (keras.Model):   network to compute the priors (mean, log_var)
+             preprocess_layers (keras.Layer): layers to preprocess input data before project into (mean, log_var)
 
         """
-        super(VariationalAutoEncoder, self).__init__(dim, size)
         if preprocess_layers is None:
             # according to appendix 2.4-2.5 in paper: https://arxiv.org/pdf/1803.10760.pdf
             self._preprocess_layers = tf.keras.Sequential([
@@ -39,7 +50,7 @@ class VariationalAutoEncoder(network.Network):
             inputs (Tensor or Tuple of Tensor): data to be encoded. If it has a prior network, then the argument
             is a tuple of (prior_input, new_observation).
         Returns:
-            Tuple of z and kl_loss. z is tensor of shape (N, hidden_dim), kl_loss is tensor of shape (N, 1)
+            Tuple of z and kl_loss. z is tensor of shape (N, hidden_dim), kl_loss is tensor of shape (N,)
         """
         if self._prior_network:
             prior_input, new_obs = inputs
@@ -63,5 +74,5 @@ class VariationalAutoEncoder(network.Network):
         kl_div_loss = 0.5 * tf.reduce_sum(kl_div_loss, axis=-1)
         # reparameterization sampling: z = u + var ** 0.5 * eps
         eps = tf.random.normal(tf.shape(z_mean), dtype=tf.float32, mean=0., stddev=1.0)
-        z = z_mean + tf.exp(z_log_var / 2) * eps
+        z = z_mean + tf.exp(z_log_var * 0.5) * eps
         return z, kl_div_loss
