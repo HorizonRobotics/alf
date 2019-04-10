@@ -13,8 +13,9 @@
 # limitations under the License.
 
 import tensorflow as tf
-
+import numpy as np
 from tf_agents.networks import network
+from tf_agents import specs
 import gin.tf
 
 
@@ -29,14 +30,25 @@ class TextEncodeNetwork(network.Network):
             vocab_size (int): vocabulary size
             seq_len (int): sequence length
             embed_size (int): embedding size
-            lstm_size (int): lstm size for both encoding
+            lstm_size (int): lstm size for encoding
         """
+        super(TextEncodeNetwork, self).__init__(
+            input_tensor_spec=specs.ArraySpec(shape=(None, seq_len), dtype=np.int),
+            state_spec=(),
+            name='TextEncodeNetwork')
         self._vocab_size = vocab_size
         self._seq_len = seq_len
         self._embed_size = embed_size
         self._lstm_size = lstm_size
 
-    def __call__(self, inputs, step_type=None, network_state=()):
+        model = tf.keras.Sequential()
+        model.add(
+            tf.keras.layers.Embedding(
+                self._vocab_size, self._embed_size, mask_zero=True))
+        model.add(tf.keras.layers.LSTM(self._lstm_size))
+        self._model = model
+
+    def call(self, inputs, step_type=None, network_state=()):
         """Encode sequences.
 
                 Args:
@@ -45,41 +57,31 @@ class TextEncodeNetwork(network.Network):
                 Returns:
                     result Tensor: shape is (b, lstm_size).
         """
-        model = tf.keras.Sequential()
-        model.add(
-            tf.keras.layers.Embedding(
-                self._vocab_size, self._embed_size, mask_zero=True))
-        model.add(tf.keras.layers.LSTM(self._lstm_size))
-        return model(inputs), network_state
+        return self._model(inputs), network_state
 
 
 @gin.configurable
 class TextDecodeNetwork(network.Network):
-    def __init__(self, vocab_size, seq_len, lstm_size):
+    def __init__(self, vocab_size, code_len, seq_len, lstm_size):
         """Create an instance of `TextDecodeNetwork`
         See Methods 2.2.3 of "Unsupervised Predictive Memory in a Goal-Directed
         Agent"
 
         Args:
             vocab_size (int): vocabulary size
-            seq_len (int): sequence length
-            lstm_size (int): lstm size for both decoding
+            code_len (int): encoded length
+            seq_len (int): output sequence length
+            lstm_size (int): lstm size for decoding
         """
+        super(TextDecodeNetwork, self).__init__(
+            input_tensor_spec=specs.ArraySpec(shape=(None, code_len), dtype=np.float),
+            state_spec=(),
+            name='TextDecodeNetwork')
         self._vocab_size = vocab_size
         self._seq_len = seq_len
         self._lstm_size = lstm_size
-
-    def __call__(self, inputs, step_type=None, network_state=()):
-        """Decode to sequences
-
-                Args:
-                    inputs (Tensor): shape is (b, dim)  where b is batch
-                     and dim is dimension of coding
-                Returns:
-                    result Tensor: word probabilities, shape is (b, seq_len, vocab_size).
-
-        """
         model = tf.keras.Sequential()
+
         model.add(tf.keras.layers.RepeatVector(self._seq_len))
         model.add(tf.keras.layers.LSTM(self._lstm_size, return_sequences=True))
         model.add(
@@ -87,4 +89,16 @@ class TextDecodeNetwork(network.Network):
                 tf.keras.layers.Dense(
                     units=self._vocab_size, activation="linear")))
         model.add(tf.keras.layers.Softmax())
-        return model(inputs), network_state
+        self._model = model
+
+    def call(self, inputs, step_type=None, network_state=()):
+        """Decode to sequences
+
+                Args:
+                    inputs (Tensor): shape is (b, dim)  where b is batch
+                    and dim is dimension of coding
+                Returns:
+                    result Tensor: word probabilities, shape is (b, seq_len, vocab_size).
+
+        """
+        return self._model(inputs), network_state

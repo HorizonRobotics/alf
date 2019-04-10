@@ -23,11 +23,16 @@ class TestTextEncodeDecodeNetwork(unittest.TestCase):
         vocab_size = 1000
         seq_len = 5
         embed_size = 50
-        lstm_size = 100
+        encoder_lstm_size = 100
+        code_len = encoder_lstm_size
+        decoder_lstm_size = 100
 
-        encoder = text_codec.TextEncodeNetwork(vocab_size, seq_len, embed_size,
-                                               lstm_size)
-        decoder = text_codec.TextDecodeNetwork(vocab_size, seq_len, lstm_size)
+        encoder = text_codec.TextEncodeNetwork(
+            vocab_size, seq_len, embed_size,
+            encoder_lstm_size)
+        decoder = text_codec.TextDecodeNetwork(
+            vocab_size, code_len, seq_len,
+            decoder_lstm_size)
 
         s0 = tf.constant([1, 3, 2])
         s1 = tf.constant([4])
@@ -39,7 +44,7 @@ class TestTextEncodeDecodeNetwork(unittest.TestCase):
             batch, padding='post', maxlen=seq_len)
 
         encoded, _ = encoder(input)
-        self.assertEqual((batch_size, lstm_size), encoded.shape)
+        self.assertEqual((batch_size, encoder_lstm_size), encoded.shape)
 
         decoded, _ = decoder(encoded)
         self.assertEqual((batch_size, seq_len, vocab_size), decoded.shape)
