@@ -12,12 +12,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from setuptools import setup, find_packages
-
-setup(
-    name='alf',
-    version='0.0.1',
-    install_requires=['gym', 'numpy',
-                      'matplotlib', 'fasteners'],  # And any other dependencies foo needs
-    packages=find_packages(),
-)
