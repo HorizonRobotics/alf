@@ -1,0 +1,3 @@
+[submodule "tf_agents"]
+	path = tf_agents
+	url = https://github.com/tensorflow/agents.git
