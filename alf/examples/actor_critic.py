@@ -13,16 +13,28 @@
 # limitations under the License.
 r"""Train using ActorCriticPolicy
 
-To run actor_critic on CartPole:
-
+To run actor_critic on gym CartPole:
 ```bash
 pythond actor_critic.py \
   --root_dir=~/tmp/ac \
-  --gin_param='train_eval.debug_summaries=1'
+  --gin_param='train_eval.debug_summaries=1' \
+  --alsologtostderr
+```
+
+To run on SocialBot CartPole:
+```bash
+pythond actor_critic.py \
+  --root_dir=~/tmp/ac/SocialBot-CartPole \
+  --env_name=SocialBot-CartPole-v0 \
+  --num_parallel_environments=16 \
+  --gin_param='train_eval.debug_summaries=1' \
+  --gin_param='train_eval.env_load_fn=@suite_socialbot.load' \
+  --alsologtostderr
 ```
 """
 
 import os
+import time
 
 from absl import app
 from absl import flags
@@ -43,8 +55,10 @@ from tf_agents.networks.actor_distribution_network import ActorDistributionNetwo
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
+from tf_agents.utils import common as tfa_common
 
 from alf.policies.actor_critic_policy import ActorCriticPolicy
+from alf.environments import suite_socialbot
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -76,9 +90,8 @@ def train_eval(
         num_steps_per_iter=100,
         num_iterations=1000,
         learning_rate=5e-5,
-        # Params for eval
-        num_eval_episodes=30,
-        eval_interval=500,
+        # Params for checkpoints
+        checkpoint_interval=10000,
         # Params for summaries and logging
         log_interval=50,
         summary_interval=50,
@@ -137,6 +150,11 @@ def train_eval(
             debug_summaries=debug_summaries,
             train_step_counter=global_step)
 
+        checkpointer = tfa_common.Checkpointer(
+            ckpt_dir=os.path.join(train_dir, 'policy'),
+            policy=policy,
+            global_step=global_step)
+
         train_metrics = [
             tf_metrics.NumberOfEpisodes(),
             tf_metrics.EnvironmentSteps(),
@@ -149,13 +167,29 @@ def train_eval(
             observers=train_metrics,
             max_steps=num_steps_per_iter)
 
+        start_time = time.time()
+        start_iter = 0
+
         time_step = tf_env.reset()
         policy_state = policy.get_initial_state(py_env.batch_size)
-        for _ in range(num_iterations):
+        for iter in range(num_iterations):
             time_step, policy_state = driver.run(time_step, policy_state)
+
+            if iter % log_interval == 0:
+                time_acc = time.time() - start_time
+                iters_per_sec = (iter - start_iter) / time_acc
+                logging.info('%.3f iters/sec', iters_per_sec)
+                tf.summary.scalar(
+                    name='iters_per_sec', data=iters_per_sec, step=global_step)
+                start_iter = iter
+                start_time = time.time()
+
             for train_metric in train_metrics:
                 train_metric.tf_summaries(
                     train_step=global_step, step_metrics=train_metrics[:2])
+
+            if iter % checkpoint_interval == 0:
+                checkpointer.save(global_step=global_step.numpy())
 
 
 def main(_):
