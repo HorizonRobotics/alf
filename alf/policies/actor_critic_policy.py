@@ -14,6 +14,8 @@
 
 from collections import namedtuple
 
+import gin.tf
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -34,13 +36,16 @@ from alf.utils.losses import element_wise_squared_loss
 ActorCriticState = namedtuple("ActorCriticPolicyState",
                               ["actor_state", "value_state"])
 
-ActorCriticLossInfo = namedtuple("ActorCriticLossInfo", ["pg_loss", "td_loss"])
+ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
+                                 ["pg_loss", "td_loss", "entropy_loss"])
 
 TrainingInfo = namedtuple("TrainingInfo", [
-    "action_distribution", "action", "value", "reward", "discount", "is_last"
+    "action_distribution_param", "action", "value", "reward", "discount",
+    "is_last"
 ])
 
 
+@gin.configurable
 class ActorCriticPolicy(tf_policy.Base):
     def __init__(self,
                  actor_network: Network,
@@ -52,6 +57,9 @@ class ActorCriticPolicy(tf_policy.Base):
                  optimizer=None,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
+                 use_gae=False,
+                 td_lambda=0.95,
+                 entropy_regularization=None,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
@@ -72,6 +80,13 @@ class ActorCriticPolicy(tf_policy.Base):
           td_errors_loss_fn: A function for computing the TD errors loss. This
             function takes as input the target and the estimated values and
             returns the loss for each element of the batch.
+          use_gae: If True (default False), uses generalized advantage
+            estimation for computing per-timestep advantage. Else, just
+            subtracts value predictions from empirical return.
+          td_lambda: Lambda parameter for generalized advantage estimation
+            computation.
+          entropy_regularization: Coefficient for entropy regularization loss
+            term.
           debug_summaries: A bool to gather debug summaries.
           summarize_grads_and_vars: If True, gradient and network variable
             summaries will be written during training.
@@ -92,6 +107,9 @@ class ActorCriticPolicy(tf_policy.Base):
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = False
         self._td_error_loss_fn = td_error_loss_fn
+        self._use_gae = use_gae
+        self._lambda = td_lambda
+        self._entropy_regularization = entropy_regularization
 
         if train_step_counter is None:
             train_step_counter = tf.Variable(0, trainable=False)
@@ -130,10 +148,6 @@ class ActorCriticPolicy(tf_policy.Base):
     def _new_iter(self):
         """Start a new training iteration"""
         self._tape = tf.GradientTape()
-        self._loss_info = LossInfo(
-            loss=tf.constant(0.0),
-            extra=ActorCriticLossInfo(
-                td_loss=tf.constant(0.0), pg_loss=tf.constant(0.0)))
         self._train_step_counter.assign_add(1)
         self._training_info = []
 
@@ -143,7 +157,7 @@ class ActorCriticPolicy(tf_policy.Base):
 
         self._steps += 1
 
-        if self._steps > 1 and self._steps % self._train_interval == 0:
+        if len(self._training_info) == self._train_interval:
             with self._tape:
                 loss_info = self._calc_loss(time_step, policy_state)
             self._update(loss_info)
@@ -160,14 +174,17 @@ class ActorCriticPolicy(tf_policy.Base):
                 network_state=policy_state.actor_state)
 
         action = self._sample_action_distribution(action_distribution, seed)
+        action_distribution_param = get_distribution_params(
+            action_distribution)
 
+        self._fill_reward_and_discount(time_step)
         self._training_info.append(
             TrainingInfo(
-                action_distribution=action_distribution,
+                action_distribution_param=action_distribution_param,
                 action=action,
                 value=value,
-                reward=time_step.reward,
-                discount=time_step.discount,
+                reward=None,
+                discount=None,
                 is_last=is_last))
 
         policy_state = ActorCriticState(
@@ -175,46 +192,67 @@ class ActorCriticPolicy(tf_policy.Base):
 
         return PolicyStep(action=action, state=policy_state, info=())
 
+    def _fill_reward_and_discount(self, time_step):
+        if self._training_info:
+            info = self._training_info[-1]
+            self._training_info[-1] = info._replace(
+                discount=time_step.discount, reward=time_step.reward)
+
     def _calc_loss(self, final_time_step, policy_state):
+        # TODO: refactor to allow reuse of this function
+
         final_value, _ = self._value_network(
             final_time_step.observation,
             step_type=final_time_step.step_type,
             network_state=policy_state.value_state)
 
-        rewards = [x.reward for x in self._training_info[1:]]
-        rewards.append(final_time_step.reward)
-        rewards = tf.stack(rewards, axis=0)
+        self._fill_reward_and_discount(final_time_step)
 
-        discounts = [x.discount for x in self._training_info[1:]]
-        discounts.append(final_time_step.discount)
-        discounts = self._gamma * tf.stack(discounts, axis=0)
+        training_info = tf.nest.map_structure(lambda *args: tf.stack(args),
+                                              *self._training_info)
 
-        returns = value_ops.discounted_return(rewards, discounts, final_value)
+        action_distribution = nested_distributions_from_specs(
+            self._actor_network.output_spec,
+            training_info.action_distribution_param)
 
-        is_lasts = [x.is_last for x in self._training_info]
-        is_lasts = tf.stack(is_lasts, axis=0)
-        valid_masks = 1 - is_lasts
+        returns = value_ops.discounted_return(
+            training_info.reward, training_info.discount, final_value)
 
-        values = [x.value for x in self._training_info]
-        values = tf.stack(values, axis=0)
+        valid_masks = 1 - training_info.is_last
 
-        action_log_prob = [
-            tfa_common.log_probability(x.action_distribution, x.action,
-                                       self.action_spec)
-            for x in self._training_info
-        ]
-        action_log_prob = tf.stack(action_log_prob, axis=0)
+        action_log_prob = tfa_common.log_probability(
+            action_distribution, training_info.action, self.action_spec)
 
-        pg_loss = -tf.stop_gradient(returns - values) * action_log_prob
+        if not self._use_gae:
+            advantages = returns - training_info.value
+        else:
+            advantages = value_ops.generalized_advantage_estimation(
+                values=training_info.value,
+                final_value=final_value,
+                rewards=training_info.reward,
+                discounts=training_info.discount,
+                td_lambda=self._lambda)
+
+        pg_loss = -tf.stop_gradient(advantages) * action_log_prob
         pg_loss = tf.reduce_mean(pg_loss * valid_masks)
 
-        td_loss = self._td_error_loss_fn(tf.stop_gradient(returns), values)
+        td_loss = self._td_error_loss_fn(
+            tf.stop_gradient(returns), training_info.value)
         td_loss = tf.reduce_mean(td_loss * valid_masks)
 
         loss = pg_loss + self._td_loss_weight * td_loss
 
-        return LossInfo(loss,
-                        ActorCriticLossInfo(td_loss=td_loss, pg_loss=pg_loss))
+        entropy_loss = 0
+        if self._entropy_regularization is not None:
+            entropies = tfa_common.entropy(action_distribution,
+                                           self.action_spec)
+            entropy_loss = -tf.reduce_mean(input_tensor=entropies)
+            loss += self._entropy_regularization * entropy_loss
+
+        return LossInfo(
+            loss,
+            ActorCriticLossInfo(
+                td_loss=td_loss, pg_loss=pg_loss, entropy_loss=entropy_loss))
 
     def _update(self, loss_info):
         vars = self._actor_network.variables + self._value_network.variables

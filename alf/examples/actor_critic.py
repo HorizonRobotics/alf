@@ -172,7 +172,7 @@ def train_eval(
 
         time_step = tf_env.reset()
         policy_state = policy.get_initial_state(py_env.batch_size)
-        for iter in range(num_iterations):
+        for iter in range(1, num_iterations + 1):
             time_step, policy_state = driver.run(time_step, policy_state)
 
             if iter % log_interval == 0:

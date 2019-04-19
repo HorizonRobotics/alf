@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+import numpy as np
 
 import unittest
 import tensorflow as tf
@@ -48,7 +49,7 @@ class GradientTypeTest(unittest.TestCase):
 
 
 class ActorCriticPolicyTest(unittest.TestCase):
-    def test_actor_critic_policy(self):
+    def _create_policy(self):
         observation_spec = TensorSpec(shape=(1, ), dtype=tf.float32)
         action_spec = BoundedTensorSpec(
             shape=(1, ), dtype=tf.int64, minimum=0, maximum=1)
@@ -61,9 +62,7 @@ class ActorCriticPolicyTest(unittest.TestCase):
         learning_rate = 1e-1
         global_step = tf.Variable(
             0, dtype=tf.int64, trainable=False, name="global_step")
-        batch_size = 1
         train_interval = 1
-        steps_per_episode = 13
 
         actor_net = ActorDistributionNetwork(
             observation_spec, action_spec, fc_layer_params=())
@@ -80,10 +79,17 @@ class ActorCriticPolicyTest(unittest.TestCase):
             train_interval=train_interval,
             gamma=1.,
             train_step_counter=global_step)
+        return policy
 
+    def test_actor_critic_value(self):
+        batch_size = 1
+        steps_per_episode = 13
+
+        policy = self._create_policy()
         policy_state = policy.get_initial_state(batch_size)
-        for i in range(200):
+        for i in range(100):
             for s in range(steps_per_episode):
+                # The agents receive reward at every step until epsode ends
                 step_type = StepType.MID
                 discount = 1.0
                 if s == 0:
@@ -105,13 +111,57 @@ class ActorCriticPolicyTest(unittest.TestCase):
                 print('value=%s' % float(
                     tf.reduce_mean(policy._training_info[-1].value)))
 
-        # It is a surprising that although the expected discounted reward
+        # It is surprising that although the expected discounted reward
         # should be steps_per_episode/2, using one step actor critic will
         # converge to a different value, which is steps_per_episode-1
         self.assertAlmostEqual(
             steps_per_episode - 1,
             float(tf.reduce_mean(policy._training_info[-1].value)),
             delta=0.1)
+
+    def test_actor_critic_policy(self):
+        batch_size = 100
+        steps_per_episode = 13
+
+        policy = self._create_policy()
+        policy_state = policy.get_initial_state(batch_size)
+        for i in range(100):
+            for s in range(steps_per_episode):
+                # The agent receives reward 1 if its action matches the
+                # observation
+
+                step_type = StepType.MID
+                discount = 1.0
+                if s == 0:
+                    step_type = StepType.FIRST
+                elif s == steps_per_episode - 1:
+                    step_type = StepType.LAST
+                    discount = 0.0
+
+                if s == 0:
+                    reward = tf.constant([0.] * batch_size)
+                else:
+                    reward = tf.cast(
+                        tf.equal(policy_step.action,
+                                 tf.cast(observation, tf.int64)), tf.float32)
+                    reward = tf.reshape(reward, shape=(batch_size, ))
+
+                observation = tf.constant(
+                    np.random.randint(2, size=(batch_size, 1)))
+
+                time_step = TimeStep(
+                    step_type=tf.constant([step_type] * batch_size),
+                    reward=reward,
+                    discount=tf.constant([discount] * batch_size),
+                    observation=observation)
+
+                policy_step = policy.action(time_step, policy_state)
+                policy_state = policy_step.state
+
+            if (i + 1) % 10 == 0:
+                print('reward=%s' % float(tf.reduce_mean(reward)))
+
+        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-3)
 
 
 if __name__ == '__main__':
