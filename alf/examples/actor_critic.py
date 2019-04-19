@@ -57,8 +57,9 @@ from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from tf_agents.utils import common as tfa_common
 
-from alf.policies.actor_critic_policy import ActorCriticPolicy
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.environments import suite_socialbot
+from alf.policies.training_policy import TrainingPolicy
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -140,13 +141,16 @@ def train_eval(
             value_net = ValueNetwork(
                 tf_env.observation_spec(), fc_layer_params=value_fc_layers)
 
-        policy = ActorCriticPolicy(
+        algorithm = ActorCriticAlgorithm(
+            action_spec=tf_env.action_spec(),
             actor_network=actor_net,
             value_network=value_net,
-            optimizer=optimizer,
+            optimizer=optimizer)
+
+        policy = TrainingPolicy(
+            algorithm=algorithm,
             time_step_spec=tf_env.time_step_spec(),
             action_spec=tf_env.action_spec(),
-            train_interval=train_interval,
             debug_summaries=debug_summaries,
             train_step_counter=global_step)
 

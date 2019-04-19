@@ -23,7 +23,9 @@ from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.specs.tensor_spec import TensorSpec, BoundedTensorSpec
 from tf_agents.trajectories.time_step import TimeStep, StepType
 
-from alf.policies.actor_critic_policy import ActorCriticPolicy
+from alf.policies.training_policy import TrainingPolicy
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
+from alf.algorithms.actor_critic_loss import ActorCriticLoss
 
 
 class GradientTypeTest(unittest.TestCase):
@@ -48,7 +50,7 @@ class GradientTypeTest(unittest.TestCase):
         self.assertEqual(float(dldx), 18.0)
 
 
-class ActorCriticPolicyTest(unittest.TestCase):
+class ActorCriticAlgorithmTest(unittest.TestCase):
     def _create_policy(self):
         observation_spec = TensorSpec(shape=(1, ), dtype=tf.float32)
         action_spec = BoundedTensorSpec(
@@ -70,14 +72,18 @@ class ActorCriticPolicyTest(unittest.TestCase):
 
         optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
-        policy = ActorCriticPolicy(
+        algorithm = ActorCriticAlgorithm(
+            action_spec=action_spec,
             actor_network=actor_net,
             value_network=value_net,
-            optimizer=optimizer,
+            loss=ActorCriticLoss(action_spec=action_spec, gamma=1.0),
+            optimizer=optimizer)
+
+        policy = TrainingPolicy(
+            algorithm=algorithm,
             time_step_spec=time_step_spec,
             action_spec=action_spec,
             train_interval=train_interval,
-            gamma=1.,
             train_step_counter=global_step)
         return policy
 
@@ -109,14 +115,14 @@ class ActorCriticPolicyTest(unittest.TestCase):
 
             if (i + 1) % 10 == 0:
                 print('value=%s' % float(
-                    tf.reduce_mean(policy._training_info[-1].value)))
+                    tf.reduce_mean(policy._training_info[-1].info)))
 
         # It is surprising that although the expected discounted reward
         # should be steps_per_episode/2, using one step actor critic will
         # converge to a different value, which is steps_per_episode-1
         self.assertAlmostEqual(
             steps_per_episode - 1,
-            float(tf.reduce_mean(policy._training_info[-1].value)),
+            float(tf.reduce_mean(policy._training_info[-1].info)),
             delta=0.1)
 
     def test_actor_critic_policy(self):
@@ -166,4 +172,6 @@ class ActorCriticPolicyTest(unittest.TestCase):
 
 if __name__ == '__main__':
     tf.config.gpu.set_per_process_memory_growth(True)
-    unittest.main()
+    ActorCriticAlgorithmTest().test_actor_critic_value()
+    ActorCriticAlgorithmTest().test_actor_critic_policy()
+    #unittest.main()
