@@ -12,6 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+r"""Train using A2cAgent
+To run a2c on gym CartPole:
+```bash
+python train_eval.py \
+  --root_dir=~/tmp/a2c/CartPole
+```
+To run on gym Pendulum:
+```bash
+python train_eval.py \
+  --root_dir=~/tmp/a2c/Pendulum \
+  --gin_param='train_eval.env_name="Pendulum"'
+```
+"""
+
 import os
 from absl import app
 from absl import flags
@@ -48,7 +63,7 @@ def train_eval(root_dir,
                value_fc_layers=(100,),
                use_tf_functions=True,
                num_parallel_environments=8,
-               collect_steps_per_iteration=64,  # env_num * td_steps
+               td_steps=8,
                replay_buffer_capacity=2000,
                learning_rate=1e-3,
                gamma=0.98,
@@ -125,6 +140,7 @@ def train_eval(root_dir,
 
         eval_policy = tf_agent.policy
         collect_policy = tf_agent.collect_policy
+        collect_steps_per_iteration = num_parallel_environments * td_steps
         collect_driver = dynamic_step_driver.DynamicStepDriver(
             tf_env,
             collect_policy,

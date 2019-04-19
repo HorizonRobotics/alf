@@ -14,11 +14,11 @@
 
 import gin
 import tensorflow as tf
-from tf_agents.environments import trajectory
 from tf_agents.agents import tf_agent
 from tf_agents.policies import actor_policy
 from tf_agents.utils import eager_utils, common
-from tf_agents.utils import value_ops
+from tf_agents.environments import time_step as ts
+from alf.utils import value_ops
 
 
 @gin.configurable
@@ -92,48 +92,36 @@ class A2CAgent(tf_agent.TFAgent):
         pass
 
     def _train(self, experience, weights=None):
-        # [BxTxD] -> [BxTxD]
-        transitions = trajectory.to_transition(experience)
-        time_steps, policy_steps, next_time_steps = transitions
-        actions = policy_steps.action
+        time_steps = ts.TimeStep(experience.step_type,
+                                 experience.reward,
+                                 experience.discount,
+                                 experience.observation)
 
         with tf.GradientTape() as tape:
-            loss_info = self._loss(
-                time_steps, actions, next_time_steps, weights)
+            loss_info = self._loss(time_steps, experience.action, weights)
         grad_variables = self._value_net.variables + self._actor_net.variables
         grads = tape.gradient(loss_info.loss, grad_variables)
         self._apply_gradients(grads, grad_variables, self._optimizer)
         self.train_step_counter.assign_add(1)
         return tf.nest.map_structure(tf.identity, loss_info)
 
-    def _calculate_values_and_returns(self, time_steps, next_time_steps):
+    def _cal_values_and_returns(self, time_steps):
         values = self._value_net(time_steps.observation)[0]
-        final_values = self._value_net(next_time_steps.observation[:, -1])[0]
-        # Make discount 0.0 at end of each episode to restart cumulative sum
-        #   end of each episode.
-        episode_mask = common.get_episode_mask(next_time_steps)
-        discounts = next_time_steps.discount * self._gamma
-        discounts *= episode_mask
+        discounts = time_steps.discount * self._gamma
         returns = value_ops.discounted_return(
-            next_time_steps.reward,
+            time_steps.reward,
+            values,
+            time_steps.is_last(),
             discounts=discounts,
-            final_value=final_values,
             time_major=False)
         if self._debug_summaries:
-            with tf.name_scope('Metrics/'):
-                tf.compat.v2.summary.scalar(
-                    name='values',
-                    data=tf.reduce_mean(values),
-                    step=self.train_step_counter)
-                tf.compat.v2.summary.scalar(
-                    name='returns',
-                    data=tf.reduce_mean(returns),
-                    step=self.train_step_counter)
+            self._summary('Infos', [
+                ('values', values),
+                ('returns', returns)])
         return values, returns
 
-    def _loss(self, time_steps, actions, next_time_steps, weights):
-        values, returns = self._calculate_values_and_returns(
-            time_steps, next_time_steps)
+    def _loss(self, time_steps, actions, weights):
+        values, returns = self._cal_values_and_returns(time_steps)
         batch_size = (tf.compat.dimension_at_index(time_steps.discount.shape, 0) or
                       tf.shape(time_steps.discount)[0])
         policy_state = self._collect_policy.get_initial_state(batch_size=batch_size)
@@ -148,7 +136,7 @@ class A2CAgent(tf_agent.TFAgent):
         policy_loss = -tf.reduce_sum(action_log_prob * advantage)
 
         td_error = self._td_errors_loss_fn(values, returns)
-        value_loss = tf.reduce_mean(td_error)
+        td_loss = tf.reduce_mean(td_error)
 
         entropy_loss = tf.constant(0.0, dtype=tf.float32)
         if self._entropy_regularization:
@@ -156,28 +144,15 @@ class A2CAgent(tf_agent.TFAgent):
             entropy = tf.reduce_mean(-tf.cast(entropy, tf.float32))
             entropy_loss = self._entropy_regularization * entropy
 
-        loss = policy_loss + value_loss + entropy_loss
+        loss = policy_loss + td_loss + entropy_loss
 
         if self._debug_summaries:
-            with tf.name_scope('Metrics/'):
-                tf.compat.v2.summary.scalar(
-                    name='advantage',
-                    data=tf.reduce_mean(advantage),
-                    step=self.train_step_counter)
+            self._summary('Infos', ('advantage', advantage))
 
-        with tf.name_scope('Losses/'):
-            tf.compat.v2.summary.scalar(
-                name='policy_loss',
-                data=policy_loss,
-                step=self.train_step_counter)
-            tf.compat.v2.summary.scalar(
-                name='value_loss',
-                data=value_loss,
-                step=self.train_step_counter)
-            tf.compat.v2.summary.scalar(
-                name='entropy_loss',
-                data=entropy_loss,
-                step=self.train_step_counter)
+        self._summary('Losses', [
+            ('policy_loss', policy_loss),
+            ('td_loss', td_loss),
+            ('entropy_loss', entropy_loss)])
         return tf_agent.LossInfo(loss, ())
 
     def _apply_gradients(self, gradients, variables, optimizer):
@@ -195,3 +170,12 @@ class A2CAgent(tf_agent.TFAgent):
                 self.train_step_counter)
 
         optimizer.apply_gradients(grads_and_vars)
+
+    def _summary(self, name_scope, key_values):
+        if not isinstance(key_values, list):
+            key_values = [key_values]
+        with tf.name_scope(name_scope + '/'):
+            for (name, data) in key_values:
+                tf.compat.v2.summary.scalar(
+                    name=name, data=tf.reduce_mean(data),
+                    step=self.train_step_counter)
