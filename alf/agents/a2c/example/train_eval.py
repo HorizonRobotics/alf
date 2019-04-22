@@ -41,7 +41,7 @@ from tf_agents.networks import value_network
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.utils import common
-from alf.algorithms.a2c import a2c_agent
+from alf.agents.a2c import a2c_agent
 
 import gin
 

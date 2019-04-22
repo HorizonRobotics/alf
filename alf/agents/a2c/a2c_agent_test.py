@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for alf.algorithms.a2c.a2c_agent."""
+"""Tests for alf.agents.a2c.a2c_agent."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,7 +29,7 @@ from tf_agents.networks import utils as network_utils
 from tf_agents.utils import common
 from tf_agents.environments import trajectory
 
-from alf.algorithms.a2c import a2c_agent
+from alf.agents.a2c import a2c_agent
 
 
 class DummyActorNet(network.Network):

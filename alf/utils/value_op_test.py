@@ -36,7 +36,7 @@ class DiscountedReturnTest(tf.test.TestCase, parameterized.TestCase):
             rewards, values, is_lasts, discounts,
             time_major=False), expected)
 
-        # two episodes ,but last value not zero (discount not zero)
+        # two episodes, and exceed by time limit
         is_lasts = tf.constant([[False, False, True, False, False]], tf.bool)
         expected = tf.constant([[
             (1 * 0.9 + 2) * 0.9 + 2,
@@ -48,12 +48,12 @@ class DiscountedReturnTest(tf.test.TestCase, parameterized.TestCase):
             rewards, values, is_lasts, discounts,
             time_major=False), expected)
 
-        # two episodes and last value is zero (discount is zero)
-        discounts = tf.constant([[0.9, 0.9, 0.0, 0.9, 0.9]])
+        # tow episodes, and end normal
+        discounts = tf.constant([[0.9, 0.0, 0.9, 0.9, 0.9]])
         expected = tf.constant([[
             (0 * 0.9 + 2) * 0.9 + 2,
             0 * 0.9 + 2,
-            0,
+            1,
             1 * 0.9 + 2,
             1]], dtype=tf.float32)
 

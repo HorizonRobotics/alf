@@ -51,13 +51,6 @@ def discounted_return(
         Shape is [B, T] when time_major is false.
     """
 
-    is_terminated = tf.cast(tf.math.equal(discounts, 0.0), tf.float32)
-    # For Not TimeLimit environments such as CartPole-v0, TimeStep.discount = 0.0
-    # when TimeStep.step_type== StepType.LAST, its value should be zero.
-    # And for TimeLimit environments such as Pendulum, TimeStep.discount !=0
-    # when TimeStep.step_type == StepType.LAST, its estimated value should stay
-    values = values * (1. - is_terminated)
-
     final_value = values[-1]
 
     def discounted_return_fn(acc_discounted_reward, args):

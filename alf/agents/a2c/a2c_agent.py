@@ -32,6 +32,7 @@ class A2CAgent(tf_agent.TFAgent):
                  gamma=1.0,
                  gradient_clipping=None,
                  td_errors_loss_fn=None,
+                 td_loss_weight=1.0,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  entropy_regularization=None,
@@ -52,6 +53,7 @@ class A2CAgent(tf_agent.TFAgent):
                 debug_summaries: A bool to gather debug summaries.
                 td_errors_loss_fn: A function for computing the TD errors loss. If None,
                     a default value of elementwise huber_loss is used.
+                td_loss_weight: Coefficient for td_error loss term.
                 debug_summaries:  A bool to gather debug summaries.
                 summarize_grads_and_vars: If True, gradient and network variable summaries
                     will be written during training.
@@ -69,6 +71,7 @@ class A2CAgent(tf_agent.TFAgent):
         self._gradient_clipping = gradient_clipping
         self._td_errors_loss_fn = td_errors_loss_fn or common.element_wise_huber_loss
         self._gamma = gamma
+        self._td_loss_weight = td_loss_weight
         self._debug_summaries = debug_summaries
         self._entropy_regularization = entropy_regularization
 
@@ -133,21 +136,25 @@ class A2CAgent(tf_agent.TFAgent):
         valid_mask = tf.cast(~time_steps.is_last(), tf.float32)
         action_log_prob *= valid_mask
         advantage = tf.stop_gradient(returns - values)
-        policy_loss = -tf.reduce_sum(action_log_prob * advantage)
+        advantage *= valid_mask
+        policy_loss = -tf.reduce_sum(action_log_prob * advantage, axis=-1)
+        policy_loss = tf.reduce_mean(policy_loss)
 
         td_error = self._td_errors_loss_fn(values, returns)
-        td_loss = tf.reduce_mean(td_error)
+        td_loss = self._td_loss_weight * tf.reduce_mean(td_error)
 
+        entropy = common.entropy(actions_distribution, self.action_spec)
         entropy_loss = tf.constant(0.0, dtype=tf.float32)
         if self._entropy_regularization:
-            entropy = common.entropy(actions_distribution, self.action_spec)
-            entropy = tf.reduce_mean(-tf.cast(entropy, tf.float32))
-            entropy_loss = self._entropy_regularization * entropy
+            entropy_loss = tf.reduce_mean(-tf.cast(entropy, tf.float32))
+            entropy_loss = self._entropy_regularization * entropy_loss
 
         loss = policy_loss + td_loss + entropy_loss
 
         if self._debug_summaries:
-            self._summary('Infos', ('advantage', advantage))
+            self._summary('Infos', [
+                ('advantage', advantage),
+                ('entropy', entropy)])
 
         self._summary('Losses', [
             ('policy_loss', policy_loss),
