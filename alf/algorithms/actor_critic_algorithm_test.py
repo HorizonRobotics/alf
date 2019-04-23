@@ -82,7 +82,6 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         policy = TrainingPolicy(
             algorithm=algorithm,
             time_step_spec=time_step_spec,
-            action_spec=action_spec,
             train_interval=train_interval,
             train_step_counter=global_step)
         return policy

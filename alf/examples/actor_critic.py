@@ -150,7 +150,6 @@ def train_eval(
         policy = TrainingPolicy(
             algorithm=algorithm,
             time_step_spec=tf_env.time_step_spec(),
-            action_spec=tf_env.action_spec(),
             debug_summaries=debug_summaries,
             train_step_counter=global_step)
 

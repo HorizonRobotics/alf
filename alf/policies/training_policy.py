@@ -31,21 +31,44 @@ from alf.utils.common import add_loss_summaries, get_distribution_params
 
 @gin.configurable
 class TrainingPolicy(tf_policy.Base):
+    """A policy which also does training.
+
+    To use it, you need to implement an OnPolicyAlgorithm and pass as argument
+    to the constructor.
+
+    See example/actor_critic.py for example.
+    """
+
     def __init__(self,
                  algorithm: OnPolicyAlgorithm,
                  time_step_spec: TimeStep,
-                 action_spec,
                  training=True,
                  train_interval=4,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
+        """Create a TrainingPolicy
+
+        Args:
+          algorithm (OnPolicyAlgorithm): the algorithm this policy will use.
+          time_step_spec: A `TimeStep` spec of the expected time_steps.
+          training (bool): If True, will perform training by calling
+            algorithm.train_step() at every step, otherwise it will call
+            algorithm.predict() at every step.
+          train_interval (int): number of steps for each iteration. It will call
+            algorithm.train_complete() every so many steps.
+          debug_summaries: A bool to gather debug summaries.
+          summarize_grads_and_vars: If True, gradient and network variable
+            summaries will be written during training.
+          train_step_counter: An optional counter to increment every time the
+            a new iteration is started.
+        """
         self._algorithm = algorithm
         self._training = training
         self._steps = 0
         self._train_interval = train_interval
         self._debug_summaries = debug_summaries
-        self._summarize_grads_and_vars = False
+        self._summarize_grads_and_vars = summarize_grads_and_vars
 
         if train_step_counter is None:
             train_step_counter = tf.Variable(0, trainable=False)
@@ -55,24 +78,24 @@ class TrainingPolicy(tf_policy.Base):
 
         if self._training:
             policy_state_spec = algorithm.train_state_spec
+            self._tape = tf.GradientTape()
             self._new_iter()
         else:
             policy_state_spec = algorithm.predict_state_spec
 
         super(TrainingPolicy, self).__init__(
             time_step_spec=time_step_spec,
-            action_spec=action_spec,
+            action_spec=algorithm.action_spec,
             policy_state_spec=policy_state_spec)
 
     def _action(self, time_step: TimeStep, policy_state, seed):
         if self._training:
             return self._train(time_step, policy_state, seed)
-
-        policy_step = self._algorithm.predict(time_step, state=policy_state)
-
-        action = self._sample_action_distribution(policy_step.action, seed)
-
-        return policy_step._replace(action=action)
+        else:
+            policy_step = self._algorithm.predict(
+                time_step, state=policy_state)
+            action = self._sample_action_distribution(policy_step.action, seed)
+            return policy_step._replace(action=action)
 
     def _sample_action_distribution(self, action_distribution, seed):
         seed_stream = tfp.distributions.SeedStream(seed=seed, salt='ac_policy')
@@ -81,7 +104,6 @@ class TrainingPolicy(tf_policy.Base):
 
     def _new_iter(self):
         """Start a new training iteration"""
-        self._tape = tf.GradientTape()
         self._train_step_counter.assign_add(1)
         self._training_info = []
 
@@ -89,14 +111,19 @@ class TrainingPolicy(tf_policy.Base):
         is_last = tf.cast(time_step.is_last(), tf.float32)
 
         self._steps += 1
+        finish_train = len(self._training_info) == self._train_interval
 
-        if len(self._training_info) == self._train_interval:
-            self._train_complete(time_step, policy_state)
-            self._new_iter()
+        if finish_train:
+            tape = self._tape
+            self._tape = tf.GradientTape()
 
         with self._tape:
             policy_step = self._algorithm.train_step(
                 time_step, state=policy_state)
+
+        if finish_train:
+            self._train_complete(tape, time_step, policy_step)
+            self._new_iter()
 
         action_distribution = policy_step.action
         action = self._sample_action_distribution(action_distribution, seed)
@@ -118,15 +145,19 @@ class TrainingPolicy(tf_policy.Base):
         return policy_step._replace(action=action, info=())
 
     def _fill_reward_and_discount(self, time_step):
+        """Fill the reward and discount of the last training_info
+        """
         if self._training_info:
             info = self._training_info[-1]
+            discount = time_step.discount
+            discount *= 1 - tf.cast(time_step.is_last(), tf.float32)
             self._training_info[-1] = info._replace(
-                discount=time_step.discount, reward=time_step.reward)
+                discount=discount, reward=time_step.reward)
 
-    def _train_complete(self, final_time_step, policy_state):
+    def _train_complete(self, tape, final_time_step, final_policy_step):
         self._fill_reward_and_discount(final_time_step)
 
-        with self._tape:
+        with tape:
             training_info = tf.nest.map_structure(lambda *args: tf.stack(args),
                                                   *self._training_info)
 
@@ -138,7 +169,7 @@ class TrainingPolicy(tf_policy.Base):
                 action_distribution=action_distribution)
 
         loss_info, grads_and_vars = self._algorithm.train_complete(
-            self._tape, training_info, final_time_step, policy_state)
+            tape, training_info, final_time_step, final_policy_step)
 
         if self._summarize_grads_and_vars:
             eager_utils.add_variables_summaries(grads_and_vars,

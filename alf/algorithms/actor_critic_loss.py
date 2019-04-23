@@ -22,6 +22,7 @@ from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 from tf_agents.utils import value_ops
 
+from alf.policies.policy_training_info import TrainingInfo
 from alf.utils.losses import element_wise_squared_loss
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
@@ -36,17 +37,53 @@ class ActorCriticLoss(object):
                  td_error_loss_fn=element_wise_squared_loss,
                  use_gae=False,
                  td_lambda=0.95,
-                 entropy_regularization=None):
+                 entropy_regularization=None,
+                 td_loss_weight=1.0):
+        """Create a ActorCriticLoss object
+
+        The total loss equals to 
+        (policy_gradient_loss
+         + td_loss_weight * td_loss + entropy_regularization
+         - entropy_regulartion * entropy)
+
+        Args:
+          action_spec: A nest of BoundedTensorSpec representing the actions.
+          gamma: A discount factor for future rewards.
+          td_errors_loss_fn: A function for computing the TD errors loss. This
+            function takes as input the target and the estimated Q values and
+            returns the loss for each element of the batch.
+          use_gae: If True, uses generalized advantage estimation for computing
+            per-timestep advantage. Else, just subtracts value predictions from
+            empirical return.
+          td_lambda: Lambda parameter for TD-lambda computation.
+          entropy_regularization: Coefficient for entropy regularization loss
+            term.
+          td_loss_weight: the weigt for the loss of td error.
+        """
 
         self._action_spec = action_spec
-        self._td_loss_weight = 1.0
+        self._td_loss_weight = td_loss_weight
         self._gamma = gamma
         self._td_error_loss_fn = td_error_loss_fn
         self._use_gae = use_gae
         self._lambda = td_lambda
         self._entropy_regularization = entropy_regularization
 
-    def __call__(self, training_info, value, final_value):
+    def __call__(self, training_info: TrainingInfo, value, final_value):
+        """Cacluate actor critic loss
+
+        Except final_value, the first dimension of all the tensors is time
+        dimension and the second dimesion is the batch dimension.
+
+        Args:
+          training_info (TrainingInfo): training_info collected by
+            TrainingPolicy. All tensors in training_info are time-major
+          value (tf.Tensor): the time-major tensor for the value at each time
+            step
+          final_value (tf.Tensor): the value at one step ahead.
+        Returns:
+          loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
+        """
         returns = value_ops.discounted_return(
             training_info.reward, training_info.discount, final_value)
 

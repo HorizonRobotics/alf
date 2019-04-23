@@ -24,7 +24,7 @@ from tf_agents.networks.network import Network, DistributionNetwork
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.policies.training_policy import TrainingInfo
+from alf.policies.policy_training_info import TrainingInfo
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
                               ["actor_state", "value_state"])
@@ -37,10 +37,22 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  value_network: Network,
                  loss=None,
                  optimizer=None):
+        """Create an ActorCriticAlgorithm
+
+        Args:
+          action_spec: A nest of BoundedTensorSpec representing the actions.
+          actor_network (DistributionNetwork): A network that returns nested
+            tensor of action distribution for each observation given observation
+            and network state.
+          value_net (Network): A function that returns value tensor from neural
+            net predictions for each observation given observation and nwtwork
+            state.
+          loss (None|ActorCriticLoss): an object for calculating loss. If None,
+            a default ActorCriticLoss will be used.
+        """
         self._actor_network = actor_network
         self._value_network = value_network
         self._optimizer = optimizer
-        self._steps = 0
         self._loss = ActorCriticLoss(action_spec) if loss is None else loss
 
         super(ActorCriticAlgorithm, self).__init__(
@@ -50,19 +62,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 actor_state=actor_network.state_spec,
                 value_state=value_network.state_spec),
             action_distribution_spec=actor_network.output_spec)
-
-    def predict(self, time_step: TimeStep, state=None):
-        """Predict for one step of observation
-        Returns:
-            policy_step (PolicyStep):
-               distribution (nested tf.distribution): action distribution
-               state (None | nested tf.Tensor): RNN state
-        """
-        action_distribution, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state)
-        return PolicyStep(action=action_distribution, state=actor_state)
 
     def train_step(self, time_step: TimeStep, state=None):
         value, value_state = self._value_network(
@@ -82,19 +81,16 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def train_complete(self, tape: tf.GradientTape,
                        training_info: TrainingInfo, final_time_step: TimeStep,
-                       policy_state):
+                       final_policy_step: PolicyStep):
         with tape:
             loss_info = self._calc_loss(training_info, final_time_step,
-                                        policy_state)
+                                        final_policy_step)
         vars = self._actor_network.variables + self._value_network.variables
         grads = tape.gradient(loss_info.loss, vars)
         grads_and_vars = tuple(zip(grads, vars))
         self._optimizer.apply_gradients(grads_and_vars)
         return loss_info, grads_and_vars
 
-    def _calc_loss(self, training_info, final_time_step, policy_state):
-        final_value, _ = self._value_network(
-            final_time_step.observation,
-            step_type=final_time_step.step_type,
-            network_state=policy_state.value_state)
+    def _calc_loss(self, training_info, final_time_step, final_policy_step):
+        final_value = final_policy_step.info
         return self._loss(training_info, training_info.info, final_value)
