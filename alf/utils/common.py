@@ -82,3 +82,17 @@ def get_distribution_params(nested_distribution):
     return tf.nest.map_structure(
         lambda single_dist: _tensor_parameters_only(single_dist.parameters),
         nested_distribution)
+
+
+def reset_state_if_necessary(state, initial_state, reset_mask):
+    """Reset state to initial state according to reset_mask
+    
+    Args:
+      state: nested Tensor
+      initial_state: nested Tensor
+      reset_mask: nested Tensor with shape=(batch_size,), dtype=tf.bool
+    Returns:
+      nested Tensor
+    """
+    return tf.nest.map_structure(lambda i_s, s: tf.where(reset_mask, i_s, s),
+                                 initial_state, state)

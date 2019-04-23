@@ -49,10 +49,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state.
           loss (None|ActorCriticLoss): an object for calculating loss. If None,
             a default ActorCriticLoss will be used.
+          optimizer (tf.optimizers.Optimizer): The optimizer for training.
         """
+
         self._actor_network = actor_network
         self._value_network = value_network
-        self._optimizer = optimizer
         self._loss = ActorCriticLoss(action_spec) if loss is None else loss
 
         super(ActorCriticAlgorithm, self).__init__(
@@ -61,7 +62,19 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             train_state_spec=ActorCriticState(
                 actor_state=actor_network.state_spec,
                 value_state=value_network.state_spec),
-            action_distribution_spec=actor_network.output_spec)
+            action_distribution_spec=actor_network.output_spec,
+            optimizer=optimizer)
+
+    def _variables(self):
+        return self._actor_network.variables + self._value_network.variables
+
+    def predict(self, time_step: TimeStep, state=None):
+        action_distribution, actor_state = self._actor_network(
+            time_step.observation,
+            step_type=time_step.step_type,
+            network_state=state.actor_state)
+        return PolicyStep(
+            action=action_distribution, state=actor_state, info=())
 
     def train_step(self, time_step: TimeStep, state=None):
         value, value_state = self._value_network(
@@ -79,18 +92,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         return PolicyStep(action=action_distribution, state=state, info=value)
 
-    def train_complete(self, tape: tf.GradientTape,
-                       training_info: TrainingInfo, final_time_step: TimeStep,
-                       final_policy_step: PolicyStep):
-        with tape:
-            loss_info = self._calc_loss(training_info, final_time_step,
-                                        final_policy_step)
-        vars = self._actor_network.variables + self._value_network.variables
-        grads = tape.gradient(loss_info.loss, vars)
-        grads_and_vars = tuple(zip(grads, vars))
-        self._optimizer.apply_gradients(grads_and_vars)
-        return loss_info, grads_and_vars
-
-    def _calc_loss(self, training_info, final_time_step, final_policy_step):
+    def calc_loss(self, training_info, final_time_step, final_policy_step):
         final_value = final_policy_step.info
         return self._loss(training_info, training_info.info, final_value)

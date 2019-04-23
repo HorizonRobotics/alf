@@ -16,7 +16,7 @@ from abc import abstractmethod
 
 import tensorflow as tf
 from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import TimeStep
+from tf_agents.trajectories.time_step import TimeStep, StepType
 from alf.policies.policy_training_info import TrainingInfo
 
 
@@ -66,7 +66,8 @@ class OnPolicyAlgorithm(object):
                  action_spec,
                  train_state_spec,
                  action_distribution_spec,
-                 predict_state_spec=None):
+                 predict_state_spec=None,
+                 optimizer=None):
         """Create an OnPolicyAlgorithm
 
         Args:
@@ -77,6 +78,7 @@ class OnPolicyAlgorithm(object):
             distributions.
           predict_state_spec: nested TensorSpec for the network state of 
             `train_step()`. If None, it's assume to be same as train_state_spec
+          optimizer (tf.optimizers.Optimizer): The optimizer for training.
         """
 
         self._action_spec = action_spec
@@ -85,6 +87,7 @@ class OnPolicyAlgorithm(object):
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
+        self._optimizer = optimizer
 
     @property
     def action_spec(self):
@@ -110,19 +113,29 @@ class OnPolicyAlgorithm(object):
         """
         return self._action_distribution_spec
 
-    # Use may override predict() to allow more efficient implementation
+    # Subclass may override predict() to allow more efficient implementation
     def predict(self, time_step: TimeStep, state=None):
         """Predict for one step of observation
         Returns:
             policy_step (PolicyStep):
               policy_step.action is nested tf.distribution which consistent with 
-                action_distribution_spec
-              policy_step.state should be consistent with (None | nested tf.Tensor): RNN state
+                `action_distribution_spec`
+              policy_step.state should be consistent with `predict_state_spec`
         """
         policy_step = self.train_step(time_step, state)
         return policy_step._replace(info=())
 
     #------------- User need to implement the following functions -------
+    @property
+    def variables(self):
+        """Returns the list of Variables that belong to the policy."""
+        return self._variables()
+
+    @abstractmethod
+    def _variables(self):
+        """Returns an iterable of `tf.Variable` objects used by this policy."""
+        pass
+
     @abstractmethod
     def train_step(self, time_step: TimeStep, state=None):
         """Perform one step of action and training computation.
@@ -142,7 +155,7 @@ class OnPolicyAlgorithm(object):
         """
         pass
 
-    @abstractmethod
+    # Subclass may override train_complete() to allow customized training
     def train_complete(self, tape: tf.GradientTape,
                        training_info: TrainingInfo, final_time_step: TimeStep,
                        final_policy_step: PolicyStep):
@@ -165,5 +178,37 @@ class OnPolicyAlgorithm(object):
         Returns:
           loss_info (LossInfo): loss information
           grads_and_vars (list[tuple]): list of gradient and variable tuples
+        """
+
+        valid_masks = tf.cast(
+            tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
+        with tape:
+            loss_info = self.calc_loss(training_info, final_time_step,
+                                       final_policy_step)
+            loss_info = tf.nest.map_structure(
+                lambda l: tf.reduce_mean(l * valid_masks), loss_info)
+
+        vars = self.variables
+        grads = tape.gradient(loss_info.loss, vars)
+        grads_and_vars = tuple(zip(grads, vars))
+        self._optimizer.apply_gradients(grads_and_vars)
+        return loss_info, grads_and_vars
+
+    @abstractmethod
+    def calc_loss(self, training_info: TrainingInfo, final_time_step: TimeStep,
+                  final_policy_step: PolicyStep):
+        """Calculate the loss for each step
+
+        Args:
+          training_info (TrainingInfo): information collected for training.
+            training_info.info are the batched from each policy_step.info
+            returned by train_step()
+          final_time_step (TimeStep): the additional time_step
+          final_policy_step (PolicyStep): the additional policy_step evaluated
+            from final_time_step. This final_policy_step is NOT calculated under
+            the context of `tape`
+        Returns:
+          loss_info (LossInfo): loss at each time step for each sample in the
+            batch. The shapes of the tensors in loss_info should be (T, B)
         """
         pass

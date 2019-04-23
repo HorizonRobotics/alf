@@ -27,6 +27,7 @@ from tf_agents.utils import eager_utils
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.policies.policy_training_info import TrainingInfo
 from alf.utils.common import add_loss_summaries, get_distribution_params
+from alf.utils.common import reset_state_if_necessary
 
 
 @gin.configurable
@@ -76,6 +77,9 @@ class TrainingPolicy(tf_policy.Base):
 
         self._action_distribution_spec = algorithm.action_distribution_spec
 
+        self._batch_size = None
+        self._initial_state = None
+
         if self._training:
             policy_state_spec = algorithm.train_state_spec
             self._tape = tf.GradientTape()
@@ -87,6 +91,14 @@ class TrainingPolicy(tf_policy.Base):
             time_step_spec=time_step_spec,
             action_spec=algorithm.action_spec,
             policy_state_spec=policy_state_spec)
+
+    def _get_initial_state(self, batch_size):
+        if batch_size == self._batch_size and self._initial_state is not None:
+            return self._initial_state
+        self._initial_state = super(TrainingPolicy,
+                                    self)._get_initial_state(batch_size)
+        self._batch_size = batch_size
+        return self._initial_state
 
     def _action(self, time_step: TimeStep, policy_state, seed):
         if self._training:
@@ -108,10 +120,13 @@ class TrainingPolicy(tf_policy.Base):
         self._training_info = []
 
     def _train(self, time_step: TimeStep, policy_state, seed):
-        is_last = tf.cast(time_step.is_last(), tf.float32)
-
         self._steps += 1
         finish_train = len(self._training_info) == self._train_interval
+        batch_size = time_step.reward.shape[0]
+
+        policy_state = reset_state_if_necessary(
+            policy_state, self.get_initial_state(batch_size),
+            time_step.is_first())
 
         if finish_train:
             tape = self._tape
@@ -137,9 +152,9 @@ class TrainingPolicy(tf_policy.Base):
             TrainingInfo(
                 action_distribution=action_distribution_param,
                 action=action,
-                reward=None,
-                discount=None,
-                is_last=is_last,
+                next_reward=None,
+                next_discount=None,
+                step_type=time_step.step_type,
                 info=policy_step.info))
 
         return policy_step._replace(action=action, info=())
@@ -152,7 +167,7 @@ class TrainingPolicy(tf_policy.Base):
             discount = time_step.discount
             discount *= 1 - tf.cast(time_step.is_last(), tf.float32)
             self._training_info[-1] = info._replace(
-                discount=discount, reward=time_step.reward)
+                next_discount=discount, next_reward=time_step.reward)
 
     def _train_complete(self, tape, final_time_step, final_policy_step):
         self._fill_reward_and_discount(final_time_step)

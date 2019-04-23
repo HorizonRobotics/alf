@@ -84,10 +84,9 @@ class ActorCriticLoss(object):
         Returns:
           loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
         """
-        returns = value_ops.discounted_return(
-            training_info.reward, training_info.discount, final_value)
-
-        valid_masks = 1 - training_info.is_last
+        returns = value_ops.discounted_return(training_info.next_reward,
+                                              training_info.next_discount,
+                                              final_value)
 
         action_log_prob = tfa_common.log_probability(
             training_info.action_distribution, training_info.action,
@@ -104,10 +103,8 @@ class ActorCriticLoss(object):
                 td_lambda=self._lambda)
 
         pg_loss = -tf.stop_gradient(advantages) * action_log_prob
-        pg_loss = tf.reduce_mean(pg_loss * valid_masks)
 
         td_loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
-        td_loss = tf.reduce_mean(td_loss * valid_masks)
 
         loss = pg_loss + self._td_loss_weight * td_loss
 

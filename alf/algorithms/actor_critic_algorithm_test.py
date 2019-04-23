@@ -19,7 +19,9 @@ import unittest
 import tensorflow as tf
 
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.value_network import ValueNetwork
+from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from tf_agents.specs.tensor_spec import TensorSpec, BoundedTensorSpec
 from tf_agents.trajectories.time_step import TimeStep, StepType
 
@@ -51,7 +53,7 @@ class GradientTypeTest(unittest.TestCase):
 
 
 class ActorCriticAlgorithmTest(unittest.TestCase):
-    def _create_policy(self):
+    def _create_policy(self, train_interval=1, use_rnn=False):
         observation_spec = TensorSpec(shape=(1, ), dtype=tf.float32)
         action_spec = BoundedTensorSpec(
             shape=(1, ), dtype=tf.int64, minimum=0, maximum=1)
@@ -64,11 +66,23 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         learning_rate = 1e-1
         global_step = tf.Variable(
             0, dtype=tf.int64, trainable=False, name="global_step")
-        train_interval = 1
 
-        actor_net = ActorDistributionNetwork(
-            observation_spec, action_spec, fc_layer_params=())
-        value_net = ValueNetwork(observation_spec, fc_layer_params=())
+        if use_rnn:
+            actor_net = ActorDistributionRnnNetwork(
+                observation_spec,
+                action_spec,
+                input_fc_layer_params=(),
+                output_fc_layer_params=(),
+                lstm_size=(10, ))
+            value_net = ValueRnnNetwork(
+                observation_spec,
+                input_fc_layer_params=(),
+                output_fc_layer_params=(),
+                lstm_size=(10, ))
+        else:
+            actor_net = ActorDistributionNetwork(
+                observation_spec, action_spec, fc_layer_params=())
+            value_net = ValueNetwork(observation_spec, fc_layer_params=())
 
         optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
@@ -94,6 +108,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         policy_state = policy.get_initial_state(batch_size)
         for i in range(100):
             for s in range(steps_per_episode):
+                # TODO: Implement an environment for this
                 # The agents receive reward at every step until epsode ends
                 step_type = StepType.MID
                 discount = 1.0
@@ -132,6 +147,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         policy_state = policy.get_initial_state(batch_size)
         for i in range(100):
             for s in range(steps_per_episode):
+                # TODO: Implement an environment for this
                 # The agent receives reward 1 if its action matches the
                 # observation
 
@@ -152,7 +168,59 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
                     reward = tf.reshape(reward, shape=(batch_size, ))
 
                 observation = tf.constant(
-                    np.random.randint(2, size=(batch_size, 1)))
+                    np.random.randint(2, size=(batch_size, 1)),
+                    dtype=tf.float32)
+
+                time_step = TimeStep(
+                    step_type=tf.constant([step_type] * batch_size),
+                    reward=reward,
+                    discount=tf.constant([discount] * batch_size),
+                    observation=observation)
+
+                policy_step = policy.action(time_step, policy_state)
+                policy_state = policy_step.state
+
+            if (i + 1) % 10 == 0:
+                print('reward=%s' % float(tf.reduce_mean(reward)))
+
+        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-3)
+
+    def test_actor_critic_rnn_policy(self):
+        batch_size = 100
+        steps_per_episode = 5
+        gap = 3
+
+        policy = self._create_policy(train_interval=8, use_rnn=True)
+        policy_state = policy.get_initial_state(batch_size)
+        for i in range(200):
+            observation0 = tf.constant(
+                2 * np.random.randint(2, size=(batch_size, 1)) - 1,
+                dtype=tf.float32)
+            for s in range(steps_per_episode):
+                # TODO: Implement an environment for this
+                # The agent receives reward 1 after initial gap steps if its
+                # actions action match the observation given at the first step.
+
+                step_type = StepType.MID
+                discount = 1.0
+                if s == 0:
+                    step_type = StepType.FIRST
+                elif s == steps_per_episode - 1:
+                    step_type = StepType.LAST
+                    discount = 0.0
+
+                if s <= gap:
+                    reward = tf.constant([0.] * batch_size)
+                else:
+                    reward = tf.cast(
+                        tf.equal(policy_step.action * 2 - 1,
+                                 tf.cast(observation0, tf.int64)), tf.float32)
+                    reward = tf.reshape(reward, shape=(batch_size, ))
+
+                if s == 0:
+                    observation = observation0
+                else:
+                    observation = tf.zeros((batch_size, 1))
 
                 time_step = TimeStep(
                     step_type=tf.constant([step_type] * batch_size),
@@ -171,6 +239,4 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
 if __name__ == '__main__':
     tf.config.gpu.set_per_process_memory_growth(True)
-    ActorCriticAlgorithmTest().test_actor_critic_value()
-    ActorCriticAlgorithmTest().test_actor_critic_policy()
-    #unittest.main()
+    unittest.main()

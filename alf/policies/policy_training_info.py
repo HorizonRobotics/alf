@@ -14,6 +14,7 @@
 
 from collections import namedtuple
 
-TrainingInfo = namedtuple(
-    "TrainingInfo",
-    ["action_distribution", "action", "reward", "discount", "is_last", "info"])
+TrainingInfo = namedtuple("TrainingInfo", [
+    "action_distribution", "action", "step_type", "next_reward",
+    "next_discount", "info"
+])
