@@ -30,7 +30,7 @@ class OnPolicyAlgorithm(object):
     train_step() is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
-    train_complete() is called every train_interval steps (specified in
+    train_complete() is called every `train_interval` steps (specified in
     TrainingPolicy). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
@@ -38,27 +38,23 @@ class OnPolicyAlgorithm(object):
     by TrainingPolicy:
 
     ```python
-    new_tape = tf.GradientTape()
+    tape = tf.GradientTape()
+    training_info = []
     
     while training not ends:
-        tape = new_tape
-        training_info = []
-        
-        for i in range(train_interval):
-            with tape:
-                policy_step = train_step(time_step, policy_step.state)
-            action = sample action from policy_step.action
-            collect training_info into training_info
-            time_step = env.step(action)
-        
-        new_tape = tf.GradientTape()
-        with new_tape:        
-            policy_step = train_step(time_step, policy_step.state)
-        
+        if len(training_info) == train_intervel:
+            old_tape = tape
+            tape = tf.GradientTape()
         with tape:
-            get batched_training_info from training_info
-        
-        train_complete(tape, batched_training_info, time_step, policy_step)
+            policy_step = train_step(time_step, policy_step.state)
+        if len(training_info) == train_intervel:
+            with old_tape:
+                get batched_training_info from training_info
+            train_complete(tape, batched_training_info, time_step, policy_step)
+            training_inf = []
+        action = sample action from policy_step.action
+        collect necessary information and policy_step.info into training_info
+        time_step = env.step(action)
     ```
     """
 
@@ -197,12 +193,15 @@ class OnPolicyAlgorithm(object):
     @abstractmethod
     def calc_loss(self, training_info: TrainingInfo, final_time_step: TimeStep,
                   final_policy_step: PolicyStep):
-        """Calculate the loss for each step
+        """Calculate the loss for each step.
+        `calc_loss()` does not need to mask out the loss at invalid steps as
+        train_complete() will apply the mask automatically.
 
         Args:
           training_info (TrainingInfo): information collected for training.
             training_info.info are the batched from each policy_step.info
-            returned by train_step()
+            returned by train_step(). Note that training_info.next_discount is
+            0 if the next step is the last step in an episode.
           final_time_step (TimeStep): the additional time_step
           final_policy_step (PolicyStep): the additional policy_step evaluated
             from final_time_step. This final_policy_step is NOT calculated under

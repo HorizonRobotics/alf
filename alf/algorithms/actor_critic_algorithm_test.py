@@ -63,7 +63,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
             discount=TensorSpec(shape=(), dtype=tf.float32),
             observation=TensorSpec(shape=(1, ), dtype=tf.float32))
 
-        learning_rate = 1e-1
+        learning_rate = 2e-2
         global_step = tf.Variable(
             0, dtype=tf.int64, trainable=False, name="global_step")
 
@@ -73,12 +73,12 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
                 action_spec,
                 input_fc_layer_params=(),
                 output_fc_layer_params=(),
-                lstm_size=(10, ))
+                lstm_size=(4, ))
             value_net = ValueRnnNetwork(
                 observation_spec,
                 input_fc_layer_params=(),
                 output_fc_layer_params=(),
-                lstm_size=(10, ))
+                lstm_size=(4, ))
         else:
             actor_net = ActorDistributionNetwork(
                 observation_spec, action_spec, fc_layer_params=())

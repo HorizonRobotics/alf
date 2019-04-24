@@ -43,8 +43,8 @@ class ActorCriticLoss(object):
 
         The total loss equals to 
         (policy_gradient_loss
-         + td_loss_weight * td_loss + entropy_regularization
-         - entropy_regulartion * entropy)
+         + td_loss_weight * td_loss
+         - entropy_regularization * entropy)
 
         Args:
           action_spec: A nest of BoundedTensorSpec representing the actions.
