@@ -79,18 +79,18 @@ def train_eval(root_dir,
     train_dir = os.path.join(root_dir, 'train')
     eval_dir = os.path.join(root_dir, 'eval')
 
-    train_summary_writer = tf.compat.v2.summary.create_file_writer(
+    train_summary_writer = tf.summary.create_file_writer(
         train_dir, flush_millis=summaries_flush_secs * 1000)
     train_summary_writer.set_as_default()
 
-    eval_summary_writer = tf.compat.v2.summary.create_file_writer(
+    eval_summary_writer = tf.summary.create_file_writer(
         eval_dir, flush_millis=summaries_flush_secs * 1000)
     eval_metrics = [
         tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
         tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes)
     ]
 
-    with tf.compat.v2.summary.record_if(
+    with tf.summary.record_if(
             lambda: tf.math.equal(global_step % summary_interval, 0)):
         if num_parallel_environments > 1:
             tf_env = tf_py_environment.TFPyEnvironment(
@@ -109,14 +109,15 @@ def train_eval(root_dir,
             tf_env.time_step_spec().observation,
             fc_layer_params=value_fc_layers)
 
-        global_step = tf.compat.v1.train.get_or_create_global_step()
+        global_step = tf.Variable(
+            0, dtype=tf.int64, trainable=False, name="global_step")
 
         tf_agent = a2c_agent.A2CAgent(
             tf_env.time_step_spec(),
             tf_env.action_spec(),
             actor_net=actor_net,
             value_net=value_net,
-            optimizer=tf.compat.v1.train.AdamOptimizer(
+            optimizer=tf.optimizers.Adam(
                 learning_rate=learning_rate),
             gradient_clipping=gradient_clipping,
             gamma=gamma,
@@ -182,9 +183,6 @@ def train_eval(root_dir,
 
 
 def main(_):
-    tf.compat.v1.enable_eager_execution(
-        config=tf.compat.v1.ConfigProto(allow_soft_placement=True))
-    tf.compat.v1.enable_v2_behavior()
     gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
     train_eval(FLAGS.root_dir, num_iterations=FLAGS.num_iterations)
 

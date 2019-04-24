@@ -52,9 +52,9 @@ class DummyActorNet(network.Network):
             tf.keras.layers.Dense(
                 single_action_spec.shape.num_elements() * 2,
                 activation=activation_fn,
-                kernel_initializer=tf.compat.v1.initializers.constant(
+                kernel_initializer=tf.keras.initializers.constant(
                     [[2, 1], [1, 1]]),
-                bias_initializer=tf.compat.v1.initializers.constant(5),
+                bias_initializer=tf.keras.initializers.constant(5),
             ), ]
 
     def call(self, observations, step_type=None, network_state=()):
@@ -82,8 +82,8 @@ class DummyValueNet(network.Network):
         self._layers.append(
             tf.keras.layers.Dense(
                 1,
-                kernel_initializer=tf.compat.v1.initializers.constant([2, 1]),
-                bias_initializer=tf.compat.v1.initializers.constant([5])))
+                kernel_initializer=tf.keras.initializers.constant([2, 1]),
+                bias_initializer=tf.keras.initializers.constant([5])))
 
     def call(self, inputs, unused_step_type=None, network_state=()):
         hidden_state = tf.cast(tf.nest.flatten(inputs), tf.float32)[0]
@@ -98,7 +98,6 @@ class DummyValueNet(network.Network):
 class A2cAgentTest(tf.test.TestCase, parameterized.TestCase):
     def setUp(self):
         super(A2cAgentTest, self).setUp()
-        tf.compat.v1.enable_resource_variables()
         self._obs_spec = tensor_spec.TensorSpec([2], tf.float32)
         self._time_step_spec = ts.time_step_spec(self._obs_spec)
         self._action_spec = tensor_spec.BoundedTensorSpec([1], tf.float32, -1, 1)
@@ -124,14 +123,13 @@ class A2cAgentTest(tf.test.TestCase, parameterized.TestCase):
         time_steps = ts.restart(observations, batch_size=2)
         actions = agent.policy.action(time_steps).action
         self.assertEqual(actions.shape.as_list(), [1, 1])
-        self.evaluate(tf.compat.v1.global_variables_initializer())
         action_values = self.evaluate(actions)
         tf.nest.map_structure(
             lambda v, s: self.assertAllInRange(v, s.minimum, s.maximum),
             action_values, self._action_spec)
 
     def test_train(self):
-        with tf.compat.v2.summary.record_if(False):
+        with tf.summary.record_if(False):
             actor_net = actor_distribution_network.ActorDistributionNetwork(
                 self._obs_spec,
                 self._action_spec)
@@ -143,7 +141,7 @@ class A2cAgentTest(tf.test.TestCase, parameterized.TestCase):
                 self._action_spec,
                 actor_net=actor_net,
                 value_net=value_net,
-                optimizer=tf.compat.v1.train.AdamOptimizer(0.001),
+                optimizer=tf.optimizers.Adam(learning_rate=0.001),
                 train_step_counter=counter)
 
             batch_size = 5
@@ -165,7 +163,6 @@ class A2cAgentTest(tf.test.TestCase, parameterized.TestCase):
                 loss = lambda: agent.train(experience)
             else:
                 loss = agent.train(experience)
-            self.evaluate(tf.compat.v1.initialize_all_variables())
             self.assertEqual(self.evaluate(counter), 0)
             self.evaluate(loss)
             self.assertEqual(self.evaluate(counter), 1)

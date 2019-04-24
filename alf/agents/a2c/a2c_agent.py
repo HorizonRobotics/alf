@@ -16,9 +16,8 @@ import gin
 import tensorflow as tf
 from tf_agents.agents import tf_agent
 from tf_agents.policies import actor_policy
-from tf_agents.utils import eager_utils, common
+from tf_agents.utils import eager_utils, common, value_ops
 from tf_agents.environments import time_step as ts
-from alf.utils import value_ops
 
 
 @gin.configurable
@@ -108,15 +107,23 @@ class A2CAgent(tf_agent.TFAgent):
         self.train_step_counter.assign_add(1)
         return tf.nest.map_structure(tf.identity, loss_info)
 
-    def _cal_values_and_returns(self, time_steps):
+    def _calc_values_and_returns(self, time_steps):
         values = self._value_net(time_steps.observation)[0]
-        discounts = time_steps.discount * self._gamma
+        final_value = values[:, -1]
+        final_is_last = time_steps.is_last()[:, -1]
+        final_value = final_value * tf.cast(~final_is_last, tf.float32)
+        discounts = time_steps.discount[:, :-1]
+        discounts *= tf.cast(~time_steps.is_last(), tf.float32)[:, 1:]
+        discounts *= self._gamma
+        rewards = time_steps.reward[:, :-1]
         returns = value_ops.discounted_return(
-            time_steps.reward,
-            values,
-            time_steps.is_last(),
+            rewards,
             discounts=discounts,
+            final_value=final_value,
             time_major=False)
+        if len(returns.shape) != len(final_value.shape):
+            final_value = tf.reshape(final_value, (-1, 1))
+        returns = tf.concat((returns, final_value), axis=1)
         if self._debug_summaries:
             self._summary('Infos', [
                 ('values', values),
@@ -124,9 +131,8 @@ class A2CAgent(tf_agent.TFAgent):
         return values, returns
 
     def _loss(self, time_steps, actions, weights):
-        values, returns = self._cal_values_and_returns(time_steps)
-        batch_size = (tf.compat.dimension_at_index(time_steps.discount.shape, 0) or
-                      tf.shape(time_steps.discount)[0])
+        values, returns = self._calc_values_and_returns(time_steps)
+        batch_size = time_steps.discount.shape.dims[0]
         policy_state = self._collect_policy.get_initial_state(batch_size=batch_size)
         actions_distribution = self.collect_policy.distribution(
             time_steps, policy_state).action
@@ -183,6 +189,6 @@ class A2CAgent(tf_agent.TFAgent):
             key_values = [key_values]
         with tf.name_scope(name_scope + '/'):
             for (name, data) in key_values:
-                tf.compat.v2.summary.scalar(
+                tf.summary.scalar(
                     name=name, data=tf.reduce_mean(data),
                     step=self.train_step_counter)
