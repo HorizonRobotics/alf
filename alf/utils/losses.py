@@ -11,14 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Various function/classes related to loss computation."""
 
 import tensorflow as tf
 import gin
 from tf_agents.utils import common as tfa_common
 
+
 @gin.configurable
 def element_wise_huber_loss(x, y):
-    """Elementwise Huber loss
+    """Elementwise Huber loss.
+
     Args:
         x (tf.Tensor): label
         y (tf.Tensor): prediction
@@ -28,9 +31,11 @@ def element_wise_huber_loss(x, y):
     return tf.compat.v1.losses.huber_loss(
         x, y, reduction=tf.compat.v1.losses.Reduction.NONE)
 
+
 @gin.configurable
 def element_wise_squared_loss(x, y):
-    """Elementwise squared loss
+    """Elementwise squared loss.
+
     Args:
         x (tf.Tensor): label
         y (tf.Tensor): prediction

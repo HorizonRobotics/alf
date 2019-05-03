@@ -17,7 +17,7 @@ from setuptools import setup, find_packages
 setup(
     name='alf',
     version='0.0.1',
-    install_requires=['gym', 'numpy',
-                      'matplotlib', 'fasteners'],  # And any other dependencies foo needs
+    install_requires=['gym', 'numpy', 'psutil', 'matplotlib',
+                      'fasteners'],  # And any other dependencies foo needs
     packages=find_packages(),
 )

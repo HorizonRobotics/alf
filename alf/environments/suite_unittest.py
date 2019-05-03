@@ -28,12 +28,13 @@ class UnittestEnv(TFEnvironment):
     The observation is one dimensional. The action is binary {0, 1}.
     """
 
-    def __init__(self, batch_size, episode_length):
-        """Initializes the environment
+    def __init__(self, batch_size, episode_length, obs_dim=1):
+        """Initializes the environment.
+
         Args:
-          batch_size (int): The batch size expected for the actions and
-             observations.
-          episode_length (int): length of each episode
+            batch_size (int): The batch size expected for the actions and
+                observations.
+            episode_length (int): length of each episode
         """
         self._steps = 0
         self._episode_length = episode_length
@@ -44,7 +45,7 @@ class UnittestEnv(TFEnvironment):
                 step_type=TensorSpec(shape=(), dtype=tf.int32),
                 reward=TensorSpec(shape=(), dtype=tf.float32),
                 discount=TensorSpec(shape=(), dtype=tf.float32),
-                observation=TensorSpec(shape=(1, ), dtype=tf.float32)),
+                observation=TensorSpec(shape=(obs_dim, ), dtype=tf.float32)),
             batch_size=batch_size)
 
     def _current_time_step(self):
@@ -64,25 +65,27 @@ class UnittestEnv(TFEnvironment):
     @abstractmethod
     def _gen_time_step(self, s, action):
         """Generate time step.
+
         Args:
-          s (int): step count in current episode. It ranges from 0 to
-            `episode_length` - 1.
-          action: action from agent.
+            s (int): step count in current episode. It ranges from 0 to
+                `episode_length` - 1.
+            action: action from agent.
         
         Returns:
-          time_step (TimeStep)
+            time_step (TimeStep)
         """
         pass
 
 
 class ValueUnittestEnv(UnittestEnv):
-    """
+    """Environment for testing value estimation.
+
     Every episode ends in `episode_length` steps. It always give reward
     1 at each step.
     """
 
     def _gen_time_step(self, s, action):
-        """Returns the current `TimeStep`."""
+        """Return the current `TimeStep`."""
         step_type = StepType.MID
         discount = 1.0
 
@@ -100,7 +103,8 @@ class ValueUnittestEnv(UnittestEnv):
 
 
 class PolicyUnittestEnv(UnittestEnv):
-    """
+    """Environment for testing policy.
+
     The agent receives reward 1 if its action matches the observation.
     """
 
@@ -134,23 +138,33 @@ class PolicyUnittestEnv(UnittestEnv):
 
 
 class RNNPolicyUnittestEnv(UnittestEnv):
-    """
+    """Environment for testing RNN policy.
+
     The agent receives reward 1 after initial `gap` steps if its
     actions action match the observation given at the first step.
     """
 
-    def __init__(self, batch_size, episode_length, gap):
+    def __init__(self, batch_size, episode_length, gap, obs_dim=1):
         self._gap = gap
-        super(RNNPolicyUnittestEnv, self).__init__(batch_size, episode_length)
+        self._obs_dim = obs_dim
+        super(RNNPolicyUnittestEnv, self).__init__(
+            batch_size, episode_length, obs_dim=obs_dim)
 
     def _gen_time_step(self, s, action):
         step_type = StepType.MID
         discount = 1.0
+        obs_dim = self._obs_dim
 
         if s == 0:
             self._observation0 = tf.constant(
                 2 * np.random.randint(2, size=(self.batch_size, 1)) - 1,
                 dtype=tf.float32)
+            if obs_dim > 1:
+                self._observation0 = tf.concat([
+                    self._observation0,
+                    tf.ones((self.batch_size, obs_dim - 1))
+                ],
+                                               axis=-1)
             step_type = StepType.FIRST
         elif s == self._episode_length - 1:
             step_type = StepType.LAST
@@ -159,15 +173,16 @@ class RNNPolicyUnittestEnv(UnittestEnv):
         if s <= self._gap:
             reward = tf.constant([0.] * self.batch_size)
         else:
-            reward = tf.cast(
-                tf.equal(action * 2 - 1, tf.cast(self._observation0,
-                                                 tf.int64)), tf.float32)
+            obs0 = tf.reshape(
+                tf.cast(self._observation0[:, 0], tf.int64),
+                shape=(self.batch_size, 1))
+            reward = tf.cast(tf.equal(action * 2 - 1, obs0), tf.float32)
             reward = tf.reshape(reward, shape=(self.batch_size, ))
 
         if s == 0:
             observation = self._observation0
         else:
-            observation = tf.zeros((self.batch_size, 1))
+            observation = tf.zeros((self.batch_size, obs_dim))
 
         return TimeStep(
             step_type=tf.constant([step_type] * self.batch_size),

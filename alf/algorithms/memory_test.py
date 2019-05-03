@@ -105,6 +105,25 @@ class TestMemory(unittest.TestCase):
         r = mem.read(w1, scale=tf.constant([1., 0.]))
         self.assertArrayEqual(r, tf.stack([v00, 2. / 3 * v10 + 1. / 3 * v11]))
 
+    def test_genkey_and_read(self):
+        mem = memory.MemoryWithUsage(2, 3, usage_decay=1., scale=20)
+        v00 = tf.constant([1., 0])
+        v10 = tf.constant([1., 2])
+        w0 = tf.stack([v00, v10])
+        mem.write(w0)
+
+        def keynet(x):
+            s = tf.ones((x.shape[0], 3), dtype=tf.float32) * 20.
+            return tf.concat([x, x, x, s], axis=-1)
+
+        r = mem.genkey_and_read(keynet, w0)
+        self.assertEqual(list(r.shape), [2, 3, 2])
+        self.assertArrayEqual(r[:, 0, :], w0)
+        self.assertArrayEqual(r[:, 1, :], w0)
+        self.assertArrayEqual(r[:, 2, :], w0)
+
 
 if __name__ == '__main__':
-    unittest.main()
+    tf.config.gpu.set_per_process_memory_growth(True)
+    TestMemory().test_genkey_and_read()
+    #unittest.main()
