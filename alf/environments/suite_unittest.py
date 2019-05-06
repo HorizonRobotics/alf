@@ -63,10 +63,14 @@ class UnittestEnv(TFEnvironment):
 
     @abstractmethod
     def _gen_time_step(self, s, action):
-        """
+        """Generate time step.
         Args:
-          s (int): step count in current episode. It is range from 0 to
-            `episode_length` - 1
+          s (int): step count in current episode. It ranges from 0 to
+            `episode_length` - 1.
+          action: action from agent.
+        
+        Returns:
+          time_step (TimeStep)
         """
         pass
 

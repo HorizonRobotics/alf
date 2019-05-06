@@ -11,16 +11,46 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Base class for on-policy RL algorithms."""
 
 from abc import abstractmethod
+from collections import namedtuple
 
+import numpy as np
 import tensorflow as tf
+
 from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import TimeStep, StepType
-from alf.policies.policy_training_info import TrainingInfo
+from tf_agents.trajectories.time_step import StepType
+from tf_agents.utils import eager_utils
+
+TrainingInfo = namedtuple("TrainingInfo", [
+    "action_distribution", "action", "step_type", "reward", "discount", "info"
+])
 
 
-class OnPolicyAlgorithm(object):
+class ActionTimeStep(
+        namedtuple(
+            'ActionTimeStep',
+            ['step_type', 'reward', 'discount', 'observation', 'action'])):
+    """TimeStep with action."""
+
+    def is_first(self):
+        if tf.is_tensor(self.step_type):
+            return tf.equal(self.step_type, StepType.FIRST)
+        return np.equal(self.step_type, StepType.FIRST)
+
+    def is_mid(self):
+        if tf.is_tensor(self.step_type):
+            return tf.equal(self.step_type, StepType.MID)
+        return np.equal(self.step_type, StepType.MID)
+
+    def is_last(self):
+        if tf.is_tensor(self.step_type):
+            return tf.equal(self.step_type, StepType.LAST)
+        return np.equal(self.step_type, StepType.LAST)
+
+
+class OnPolicyAlgorithm(tf.Module):
     """
     OnPolicyAlgorithm works with alf.policies.TrainingPolicy to do training
     at the time of policy rollout.
@@ -51,7 +81,7 @@ class OnPolicyAlgorithm(object):
             with old_tape:
                 get batched_training_info from training_info
             train_complete(tape, batched_training_info, time_step, policy_step)
-            training_inf = []
+            training_info = []
         action = sample action from policy_step.action
         collect necessary information and policy_step.info into training_info
         time_step = env.step(action)
@@ -63,19 +93,27 @@ class OnPolicyAlgorithm(object):
                  train_state_spec,
                  action_distribution_spec,
                  predict_state_spec=None,
-                 optimizer=None):
+                 optimizer=None,
+                 gradient_clipping=None,
+                 train_step_counter=None,
+                 debug_summaries=False,
+                 name="OnPolicyAlgorithm"):
         """Create an OnPolicyAlgorithm
 
         Args:
-          action_spec: A nest of BoundedTensorSpec representing the actions.
-          train_state_spec: nested TensorSpec for the network state of 
-            `train_step()`
-          action_distribution_spec: nested DistributionSpec for the action
-            distributions.
-          predict_state_spec: nested TensorSpec for the network state of 
-            `train_step()`. If None, it's assume to be same as train_state_spec
-          optimizer (tf.optimizers.Optimizer): The optimizer for training.
+            action_spec (nested BoundedTensorSpec): representing the actions.
+            train_state_spec (nested TensorSpec): for the network state of 
+                `train_step()`
+            action_distribution_spec (nested DistributionSpec): for the action
+                distributions.
+            predict_state_spec (nested TensorSpec): for the network state of 
+                `train_step()`. If None, it's assume to be same as
+                 train_state_spec
+            optimizer (tf.optimizers.Optimizer): The optimizer for training.
+            debug_summaries (bool): True if debug summaries should be created.
         """
+
+        super(OnPolicyAlgorithm, self).__init__(name=name)
 
         self._action_spec = action_spec
         self._train_state_spec = train_state_spec
@@ -84,34 +122,43 @@ class OnPolicyAlgorithm(object):
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
         self._optimizer = optimizer
+        self._gradient_clipping = gradient_clipping
+        if train_step_counter is None:
+            train_step_counter = tf.Variable(0, trainable=False)
+        self._train_step_counter = train_step_counter
+        self._debug_summaries = debug_summaries
+        self._trainable_variables = None
+
+    def add_reward_summary(self, name, rewards):
+        if self._debug_summaries:
+            step = self._train_step_counter
+            tf.summary.histogram(name + "/value", rewards, step)
+            tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards), step)
 
     @property
     def action_spec(self):
-        """Returns the action spec
-        """
+        """Return the action spec."""
         return self._action_spec
 
     @property
     def predict_state_spec(self):
-        """Returns the RNN state spec for predict()
-        """
+        """Return the RNN state spec for predict()."""
         return self._predict_state_spec
 
     @property
     def train_state_spec(self):
-        """Returns the RNN state spec for train_step()
-        """
+        """Return the RNN state spec for train_step()."""
         return self._train_state_spec
 
     @property
     def action_distribution_spec(self):
-        """Returns the action distribution spec for the action distributions
-        """
+        """Return the action distribution spec for the action distributions."""
         return self._action_distribution_spec
 
     # Subclass may override predict() to allow more efficient implementation
-    def predict(self, time_step: TimeStep, state=None):
-        """Predict for one step of observation
+    def predict(self, time_step: ActionTimeStep, state=None):
+        """Predict for one step of observation.
+
         Returns:
             policy_step (PolicyStep):
               policy_step.action is nested tf.distribution which consistent with 
@@ -121,59 +168,66 @@ class OnPolicyAlgorithm(object):
         policy_step = self.train_step(time_step, state)
         return policy_step._replace(info=())
 
-    #------------- User need to implement the following functions -------
+    # TODO: removing variables() and _variables()
+    # We should be able to use self.trainable_variables to collect the variables
+    # after this commit is merged to tf 2.0.
+    # https://github.com/tensorflow/tensorflow/commit/23c8fd4ca3452865ac9ef1359f74cd0039908b59
     @property
     def variables(self):
-        """Returns the list of Variables that belong to the policy."""
+        """Return the list of Variables that belong to the policy."""
         return self._variables()
 
+    #------------- User need to implement the following functions -------
     @abstractmethod
     def _variables(self):
-        """Returns an iterable of `tf.Variable` objects used by this policy."""
+        """Return an iterable of `tf.Variable` objects used by this policy."""
         pass
 
     @abstractmethod
-    def train_step(self, time_step: TimeStep, state=None):
+    def train_step(self, time_step: ActionTimeStep, state=None):
         """Perform one step of action and training computation.
         
         It is called to generate actions for every environment step.
         It also needs to generate necessary information for training.
 
         Args:
-          time_step (TimeStep):
-          state: nested tensors consistent train_state_spec
-        Returns:
-          policy_step (PolicyStep): everything necessary for training should be
-            put into policy_step.info. Note that ("action_distribution",
-            "action", "reward", "discount", "is_last") are automatically
-            collected by TrainingPolicy. So the user only need to put other
-            stuff (e.g. value estimation) into `policy_step.info`
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistant with train_state_spec
+
+        Returns (PolicyStep):
+            info: everything necessary for training. Note that 
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by TrainingPolicy. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
         """
         pass
 
     # Subclass may override train_complete() to allow customized training
-    def train_complete(self, tape: tf.GradientTape,
-                       training_info: TrainingInfo, final_time_step: TimeStep,
-                       final_policy_step: PolicyStep):
-        """Complte one iteration of training
+    def train_complete(
+            self, tape: tf.GradientTape, training_info: TrainingInfo,
+            final_time_step: ActionTimeStep, final_policy_step: PolicyStep):
+        """Complete one iteration of training.
 
         `train_complete` should calcuate gradients and update parameters using
         those gradients.
 
         Args:
-          tape (tf.GradientTape): the tape which are used for calculating 
-            gradient. All the previous `train_interval` `train_step()` for
-            are called under the context of this tape.
-          training_info (TrainingInfo): information collected for training.
-            training_info.info are the batched from each policy_step.info
-            returned by train_step()
-          final_time_step (TimeStep): the additional time_step
-          final_policy_step (PolicyStep): the additional policy_step evaluated
-            from final_time_step. This final_policy_step is NOT calculated under
-            the context of `tape`
+            tape (tf.GradientTape): the tape which are used for calculating 
+                gradient. All the previous `train_interval` `train_step()` for
+                are called under the context of this tape.
+            training_info (TrainingInfo): information collected for training.
+                training_info.info are the batched from each policy_step.info
+                returned by train_step()
+            final_time_step (ActionTimeStep): the additional time_step
+            final_policy_step (PolicyStep): the additional policy_step evaluated
+                from final_time_step. This final_policy_step is NOT calculated
+                under the context of `tape`
+
         Returns:
-          loss_info (LossInfo): loss information
-          grads_and_vars (list[tuple]): list of gradient and variable tuples
+            a tuple of the following:
+            loss_info (LossInfo): loss information
+            grads_and_vars (list[tuple]): list of gradient and variable tuples
         """
 
         valid_masks = tf.cast(
@@ -187,27 +241,33 @@ class OnPolicyAlgorithm(object):
         vars = self.variables
         grads = tape.gradient(loss_info.loss, vars)
         grads_and_vars = tuple(zip(grads, vars))
+        if self._gradient_clipping is not None:
+            grads_and_vars = eager_utils.clip_gradient_norms(
+                grads_and_vars, self._gradient_clipping)
         self._optimizer.apply_gradients(grads_and_vars)
         return loss_info, grads_and_vars
 
     @abstractmethod
-    def calc_loss(self, training_info: TrainingInfo, final_time_step: TimeStep,
+    def calc_loss(self, training_info: TrainingInfo,
+                  final_time_step: ActionTimeStep,
                   final_policy_step: PolicyStep):
         """Calculate the loss for each step.
+
         `calc_loss()` does not need to mask out the loss at invalid steps as
         train_complete() will apply the mask automatically.
 
         Args:
-          training_info (TrainingInfo): information collected for training.
-            training_info.info are the batched from each policy_step.info
-            returned by train_step(). Note that training_info.next_discount is
-            0 if the next step is the last step in an episode.
-          final_time_step (TimeStep): the additional time_step
-          final_policy_step (PolicyStep): the additional policy_step evaluated
-            from final_time_step. This final_policy_step is NOT calculated under
-            the context of `tape`
-        Returns:
-          loss_info (LossInfo): loss at each time step for each sample in the
-            batch. The shapes of the tensors in loss_info should be (T, B)
+            training_info (TrainingInfo): information collected for training.
+                training_info.info are the batched from each policy_step.info
+                returned by train_step(). Note that training_info.next_discount
+                is 0 if the next step is the last step in an episode.
+            final_time_step (ActionTimeStep): the additional time_step
+                final_policy_step (PolicyStep): the additional policy_step
+                evaluated from final_time_step. This final_policy_step is NOT
+                calculated under the context of `tape`
+
+        Returns (LossInfo):
+            loss at each time step for each sample in the batch. The shapes of
+            the tensors in loss_info should be (T, B)
         """
         pass

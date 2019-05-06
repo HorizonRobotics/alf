@@ -115,14 +115,14 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
             if (i + 1) % 10 == 0:
                 print('value=%s' % float(
-                    tf.reduce_mean(policy._training_info[-1].info)))
+                    tf.reduce_mean(policy._training_info[-1].info.value)))
 
         # It is surprising that although the expected discounted reward
         # should be steps_per_episode/2, using one step actor critic will
         # converge to a different value, which is steps_per_episode-1
         self.assertAlmostEqual(
             steps_per_episode - 1,
-            float(tf.reduce_mean(policy._training_info[-1].info)),
+            float(tf.reduce_mean(policy._training_info[-1].info.value)),
             delta=0.1)
 
     def test_actor_critic_policy(self):

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gin.tf
+import gin.tf.external_configurables
 
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -24,10 +25,35 @@ from tf_agents.trajectories.time_step import TimeStep
 from tf_agents.policies import tf_policy
 from tf_agents.utils import eager_utils
 
+from alf.algorithms.on_policy_algorithm import ActionTimeStep
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.policies.policy_training_info import TrainingInfo
-from alf.utils.common import add_loss_summaries, get_distribution_params
+from alf.algorithms.on_policy_algorithm import TrainingInfo
+from alf.utils.common import add_action_summaries
+from alf.utils.common import add_loss_summaries
+from alf.utils.common import get_distribution_params
 from alf.utils.common import reset_state_if_necessary
+
+
+def make_action_time_step(time_step, action):
+    return ActionTimeStep(
+        step_type=time_step.step_type,
+        reward=time_step.reward,
+        discount=time_step.discount,
+        observation=time_step.observation,
+        action=action)
+
+
+def zero_tensor_from_nested_spec(nested_spec, batch_size):
+    def _zero_tensor(spec):
+        if batch_size is None:
+            shape = spec.shape
+        else:
+            spec_shape = tf.convert_to_tensor(value=spec.shape, dtype=tf.int32)
+            shape = tf.concat(([batch_size], spec_shape), axis=0)
+        dtype = spec.dtype
+        return tf.zeros(shape, dtype)
+
+    return tf.nest.map_structure(_zero_tensor, nested_spec)
 
 
 @gin.configurable
@@ -43,6 +69,7 @@ class TrainingPolicy(tf_policy.Base):
     def __init__(self,
                  algorithm: OnPolicyAlgorithm,
                  time_step_spec: TimeStep,
+                 augment_observation_with_action=False,
                  training=True,
                  train_interval=4,
                  debug_summaries=False,
@@ -53,6 +80,8 @@ class TrainingPolicy(tf_policy.Base):
         Args:
           algorithm (OnPolicyAlgorithm): the algorithm this policy will use.
           time_step_spec: A `TimeStep` spec of the expected time_steps.
+          augment_observation_with_action (bool): If True, time_step.observation
+            will be changed to ActionObservation(observation, prev_action)
           training (bool): If True, will perform training by calling
             algorithm.train_step() at every step, otherwise it will call
             algorithm.predict() at every step.
@@ -64,12 +93,23 @@ class TrainingPolicy(tf_policy.Base):
           train_step_counter: An optional counter to increment every time the
             a new iteration is started.
         """
+        if training:
+            policy_state_spec = algorithm.train_state_spec
+        else:
+            policy_state_spec = algorithm.predict_state_spec
+
+        super(TrainingPolicy, self).__init__(
+            time_step_spec=time_step_spec,
+            action_spec=algorithm.action_spec,
+            policy_state_spec=policy_state_spec)
+
         self._algorithm = algorithm
         self._training = training
         self._steps = 0
         self._train_interval = train_interval
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
+        self._augment_observation_with_action = augment_observation_with_action
 
         if train_step_counter is None:
             train_step_counter = tf.Variable(0, trainable=False)
@@ -79,18 +119,12 @@ class TrainingPolicy(tf_policy.Base):
 
         self._batch_size = None
         self._initial_state = None
+        self._initial_prev_action = None
+        self._prev_action = None
 
         if self._training:
-            policy_state_spec = algorithm.train_state_spec
             self._tape = tf.GradientTape()
             self._new_iter()
-        else:
-            policy_state_spec = algorithm.predict_state_spec
-
-        super(TrainingPolicy, self).__init__(
-            time_step_spec=time_step_spec,
-            action_spec=algorithm.action_spec,
-            policy_state_spec=policy_state_spec)
 
     def _get_initial_state(self, batch_size):
         if batch_size == self._batch_size and self._initial_state is not None:
@@ -100,14 +134,32 @@ class TrainingPolicy(tf_policy.Base):
         self._batch_size = batch_size
         return self._initial_state
 
+    def _get_initial_prev_action(self, batch_size):
+        if (batch_size == self._batch_size
+                and self._initial_prev_action is not None):
+            return self._initial_prev_action
+        self._initial_prev_action = zero_tensor_from_nested_spec(
+            self.action_spec, batch_size)
+        return self._initial_prev_action
+
     def _action(self, time_step: TimeStep, policy_state, seed):
+        if self._prev_action is None:
+            batch_size = time_step.reward.shape[0]
+            self._prev_action = self._get_initial_prev_action(batch_size)
+
+        time_step = make_action_time_step(time_step, self._prev_action)
+
         if self._training:
-            return self._train(time_step, policy_state, seed)
+            policy_step = self._train(time_step, policy_state, seed)
         else:
             policy_step = self._algorithm.predict(
                 time_step, state=policy_state)
             action = self._sample_action_distribution(policy_step.action, seed)
-            return policy_step._replace(action=action)
+            policy_step = policy_step._replace(action=action)
+
+        self._prev_action = policy_step.action
+
+        return policy_step
 
     def _sample_action_distribution(self, action_distribution, seed):
         seed_stream = tfp.distributions.SeedStream(seed=seed, salt='ac_policy')
@@ -119,7 +171,7 @@ class TrainingPolicy(tf_policy.Base):
         self._train_step_counter.assign_add(1)
         self._training_info = []
 
-    def _train(self, time_step: TimeStep, policy_state, seed):
+    def _train(self, time_step: ActionTimeStep, policy_state, seed):
         self._steps += 1
         finish_train = len(self._training_info) == self._train_interval
         batch_size = time_step.reward.shape[0]
@@ -146,32 +198,18 @@ class TrainingPolicy(tf_policy.Base):
         action_distribution_param = get_distribution_params(
             action_distribution)
 
-        self._fill_reward_and_discount(time_step)
-
         self._training_info.append(
             TrainingInfo(
                 action_distribution=action_distribution_param,
                 action=action,
-                next_reward=None,
-                next_discount=None,
+                reward=time_step.reward,
+                discount=time_step.discount,
                 step_type=time_step.step_type,
                 info=policy_step.info))
 
         return policy_step._replace(action=action, info=())
 
-    def _fill_reward_and_discount(self, time_step):
-        """Fill the reward and discount of the last training_info
-        """
-        if self._training_info:
-            info = self._training_info[-1]
-            discount = time_step.discount
-            discount *= 1 - tf.cast(time_step.is_last(), tf.float32)
-            self._training_info[-1] = info._replace(
-                next_discount=discount, next_reward=time_step.reward)
-
     def _train_complete(self, tape, final_time_step, final_policy_step):
-        self._fill_reward_and_discount(final_time_step)
-
         with tape:
             training_info = tf.nest.map_structure(lambda *args: tf.stack(args),
                                                   *self._training_info)
@@ -192,4 +230,7 @@ class TrainingPolicy(tf_policy.Base):
             eager_utils.add_gradients_summaries(grads_and_vars,
                                                 self._train_step_counter)
         if self._debug_summaries:
-            add_loss_summaries(loss_info, self._train_step_counter)
+            add_loss_summaries(loss_info)
+            add_action_summaries(training_info.action, self._action_spec)
+
+        del tape

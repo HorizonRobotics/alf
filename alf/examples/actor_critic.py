@@ -31,6 +31,7 @@ pythond actor_critic.py \
   --gin_param='train_eval.env_load_fn=@suite_socialbot.load' \
   --alsologtostderr
 ```
+
 """
 
 import os
@@ -39,6 +40,7 @@ import time
 from absl import app
 from absl import flags
 from absl import logging
+import random
 
 import gin.tf
 import tensorflow as tf
@@ -53,11 +55,13 @@ from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
+from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
+from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.environments import suite_socialbot
 from alf.policies.training_policy import TrainingPolicy
 
@@ -77,6 +81,15 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
+def load_with_random_max_episode_steps(env_name,
+                                       env_load_fn=suite_gym.load,
+                                       min_steps=200,
+                                       max_steps=250):
+    return suite_gym.load(
+        env_name, max_episode_steps=random.randint(min_steps, max_steps))
+
+
+@gin.configurable
 def train_eval(
         root_dir,
         env_name='CartPole-v0',
@@ -84,7 +97,9 @@ def train_eval(
         random_seed=0,
         actor_fc_layers=(200, 100),
         value_fc_layers=(200, 100),
+        encoding_fc_layers=(),
         use_rnns=False,
+        use_icm=False,
         num_parallel_environments=30,
         # Params for train
         train_interval=20,
@@ -114,12 +129,16 @@ def train_eval(
 
     global_step = tf.Variable(
         0, dtype=tf.int64, trainable=False, name="global_step")
+    tf.summary.experimental.set_step(global_step)
 
     with tf.summary.record_if(
             lambda: tf.math.equal(global_step % summary_interval, 0)):
         tf.random.set_seed(random_seed)
-        py_env = parallel_py_environment.ParallelPyEnvironment(
-            [lambda: env_load_fn(env_name)] * num_parallel_environments)
+        if num_parallel_environments == 1:
+            py_env = env_load_fn(env_name)
+        else:
+            py_env = parallel_py_environment.ParallelPyEnvironment(
+                [lambda: env_load_fn(env_name)] * num_parallel_environments)
         tf_env = tf_py_environment.TFPyEnvironment(py_env)
         optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
@@ -141,28 +160,49 @@ def train_eval(
             value_net = ValueNetwork(
                 tf_env.observation_spec(), fc_layer_params=value_fc_layers)
 
+        encoding_net = None
+        if encoding_fc_layers:
+            encoding_net = EncodingNetwork(
+                tf_env.observation_spec(), fc_layer_params=encoding_fc_layers)
+
+        icm = None
+        if use_icm:
+            feature_spec = tf_env.observation_spec()
+            if encoding_net:
+                feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
+                                             dtype=tf.float32)
+            icm = ICMAlgorithm(
+                tf_env.action_spec(), feature_spec, encoding_net=encoding_net)
+
         algorithm = ActorCriticAlgorithm(
             action_spec=tf_env.action_spec(),
             actor_network=actor_net,
             value_network=value_net,
-            optimizer=optimizer)
+            intrinsic_curiosity_module=icm,
+            optimizer=optimizer,
+            train_step_counter=global_step,
+            debug_summaries=debug_summaries)
 
         policy = TrainingPolicy(
             algorithm=algorithm,
+            train_interval=train_interval,
             time_step_spec=tf_env.time_step_spec(),
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=global_step)
 
         checkpointer = tfa_common.Checkpointer(
             ckpt_dir=os.path.join(train_dir, 'policy'),
             policy=policy,
             global_step=global_step)
+        checkpointer.initialize_or_restore()
 
+        metric_buf_size = max(10, num_parallel_environments)
         train_metrics = [
             tf_metrics.NumberOfEpisodes(),
             tf_metrics.EnvironmentSteps(),
-            tf_metrics.AverageReturnMetric(),
-            tf_metrics.AverageEpisodeLengthMetric(),
+            tf_metrics.AverageReturnMetric(buffer_size=metric_buf_size),
+            tf_metrics.AverageEpisodeLengthMetric(buffer_size=metric_buf_size),
         ]
         driver = PyDriver(
             tf_env,
@@ -174,7 +214,7 @@ def train_eval(
         start_iter = 0
 
         time_step = tf_env.reset()
-        policy_state = policy.get_initial_state(py_env.batch_size)
+        policy_state = policy.get_initial_state(tf_env.batch_size)
         for iter in range(1, num_iterations + 1):
             time_step, policy_state = driver.run(time_step, policy_state)
 
