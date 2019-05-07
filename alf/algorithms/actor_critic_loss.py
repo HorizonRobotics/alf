@@ -104,7 +104,7 @@ class ActorCriticLoss(object):
         else:
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=training_info.reward,
-                values=training_info.value,
+                values=value,
                 step_types=training_info.step_type,
                 discounts=training_info.discount,
                 final_value=final_value,

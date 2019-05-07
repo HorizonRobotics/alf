@@ -78,7 +78,7 @@ class ICMAlgorithm(Algorithm):
             self._num_actions = action_spec.shape[-1]
 
         self._action_spec = action_spec
-        self._reward_scale = 1.0
+        self._reward_scale = reward_scale
 
         feature_dim = tf.nest.flatten(feature_spec)[0].shape[-1]
 
