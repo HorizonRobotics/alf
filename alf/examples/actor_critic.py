@@ -16,8 +16,18 @@ r"""Train using ActorCriticPolicy
 To run actor_critic on gym CartPole:
 ```bash
 pythond actor_critic.py \
-  --root_dir=~/tmp/ac \
-  --gin_param='train_eval.debug_summaries=1' \
+  --env_name=CartPole-v0 \
+  --root_dir=~/tmp/ac/CartPole \
+  --num_parallel_environments=8 \
+  --num_iterations=1000000 \
+  --gin_param='train_eval.train_interval=8' \
+  --gin_param='train_eval.actor_fc_layers=(100,)' \
+  --gin_param='train_eval.value_fc_layers=(100,)' \
+  --gin_param='train_eval.learning_rate=0.001' \
+  --gin_param='ActorCriticLoss.gamma=0.98' \
+  --gin_param='ActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss' \
+  --gin_param='ActorCriticLoss.entropy_regularization=0.001' \
+  --gin_param='ActorCriticAlgorithm.gradient_clipping=10.0' \
   --alsologtostderr
 ```
 
@@ -169,7 +179,7 @@ def train_eval(
         if use_icm:
             feature_spec = tf_env.observation_spec()
             if encoding_net:
-                feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
+                feature_spec = tf.TensorSpec((encoding_fc_layers[-1],),
                                              dtype=tf.float32)
             icm = ICMAlgorithm(
                 tf_env.action_spec(), feature_spec, encoding_net=encoding_net)
