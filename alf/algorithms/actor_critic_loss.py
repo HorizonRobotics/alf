@@ -22,7 +22,7 @@ from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.on_policy_algorithm import TrainingInfo
-from alf.utils.losses import element_wise_squared_loss
+from alf.utils.losses import element_wise_squared_loss, element_wise_huber_loss
 from alf.utils import value_ops
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
@@ -91,7 +91,7 @@ class ActorCriticLoss(object):
             rewards=training_info.reward,
             values=value,
             step_types=training_info.step_type,
-            discounts=training_info.discount,
+            discounts=training_info.discount * self._gamma,
             final_value=final_value,
             final_time_step=final_time_step)
 
@@ -106,7 +106,7 @@ class ActorCriticLoss(object):
                 rewards=training_info.reward,
                 values=value,
                 step_types=training_info.step_type,
-                discounts=training_info.discount,
+                discounts=training_info.discount * self._gamma,
                 final_value=final_value,
                 final_time_step=final_time_step,
                 td_lambda=self._lambda)
@@ -121,7 +121,7 @@ class ActorCriticLoss(object):
         if self._entropy_regularization is not None:
             entropies = tfa_common.entropy(training_info.action_distribution,
                                            self._action_spec)
-            entropy_loss = -tf.reduce_mean(input_tensor=entropies)
+            entropy_loss = -entropies
             loss += self._entropy_regularization * entropy_loss
 
         if self._debug_summaries:
