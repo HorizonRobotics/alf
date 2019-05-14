@@ -28,6 +28,7 @@ from alf.utils import value_ops
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "entropy_loss"])
 
+
 @gin.configurable
 class ActorCriticLoss(object):
     def __init__(self,
@@ -120,8 +121,8 @@ class ActorCriticLoss(object):
         if self._entropy_regularization is not None:
             entropies = tfa_common.entropy(training_info.action_distribution,
                                            self._action_spec)
-            entropy_loss = -self._entropy_regularization * entropies
-            loss += entropy_loss
+            entropy_loss = -entropies
+            loss += self._entropy_regularization * entropy_loss
 
         if self._debug_summaries:
             with tf.name_scope('ActorCriticLoss'):
