@@ -98,14 +98,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._loss = loss
         self._icm = intrinsic_curiosity_module
 
-    def _variables(self):
-        vars = self._actor_network.variables + self._value_network.variables
-        if self._icm:
-            vars += self._icm.variables
-        if self._encoding_network:
-            vars += self._encoding_network.variables
-        return vars
-
     def _encode(self, time_step: ActionTimeStep):
         observation = time_step.observation
         if self._encoding_network is not None:

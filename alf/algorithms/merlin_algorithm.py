@@ -143,10 +143,6 @@ class MemoryBasedPredictor(Algorithm):
         self._vae = VariationalAutoEncoder(
             latent_dim, prior_network, name=name + "/vae")
 
-    def _variables(self):
-        return _collect_variables(self._encoders, self._decoders, self._rnn,
-                                  self._key_net, self._vae)
-
     @property
     def memory(self):
         """Return the external memory of this module."""
@@ -158,6 +154,8 @@ class MemoryBasedPredictor(Algorithm):
         Args:
             inputs (tuple): a tuple of (observation, prev_action)
             state (MBPState)
+        Returns:
+            tuple of (latent_vector, kl_divengence, next_state)
         """
         observation, prev_action = inputs
         self._memory.from_states(state.memory)
@@ -291,9 +289,6 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
         # TODO: add qvalue_net for predicting Q-value
 
-    def _variables(self):
-        return _collect_variables(self._rnn, self._value_net, self._actor_net)
-
     def train_step(self, time_step: ActionTimeStep, state):
         """Train one step.
         
@@ -402,9 +397,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
 
         self._mbp = mbp
         self._mba = mba
-
-    def _variables(self):
-        return _collect_variables(self._mbp, self._mba)
 
     def train_step(self, time_step: ActionTimeStep, state):
         """Train one step."""

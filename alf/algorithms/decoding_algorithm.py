@@ -44,9 +44,6 @@ class DecodingAlgorithm(Algorithm):
         self._loss = loss
         self._loss_weight = loss_weight
 
-    def _variables(self):
-        return self._decoder.variables
-
     def train_step(self, inputs, state=None):
         """Train one step.
 

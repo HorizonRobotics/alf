@@ -114,12 +114,6 @@ class ICMAlgorithm(Algorithm):
         else:
             return action
 
-    def _variables(self):
-        vars = self._forward_net.variables + self._inverse_net.variables
-        if self._encoding_net:
-            vars += self._encoding_net.variables
-        return vars
-
     def train_step(self, inputs, state):
         """
         Args:

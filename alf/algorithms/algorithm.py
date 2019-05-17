@@ -21,6 +21,8 @@ from tf_agents.trajectories.time_step import StepType
 
 import tensorflow as tf
 
+from .base import Base
+
 AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
 
 
@@ -91,11 +93,6 @@ class Algorithm(tf.Module):
         """Returns the RNN state spec for train_step()."""
         return self._train_state_spec
 
-    @property
-    def variables(self):
-        """Returns the list of Variables that belong to the policy."""
-        return self._variables()
-
     #------------- User need to implement the following functions -------
 
     # Subclass may override predict() to allow more efficient implementation
@@ -113,11 +110,6 @@ class Algorithm(tf.Module):
         """
         algorithm_step = self.train_step(inputs, state)
         return algorithm_step._replace(info=None)
-
-    @abstractmethod
-    def _variables(self):
-        """Return an iterable of `tf.Variable` objects used by this policy."""
-        pass
 
     @abstractmethod
     def train_step(self, inputs, state=None):
