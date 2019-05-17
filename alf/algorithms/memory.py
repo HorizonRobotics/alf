@@ -171,6 +171,7 @@ class MemoryWithUsage(Memory):
             resutl Tensor: If flatten_result is True,
               its shape is (batch_size, num_keys * dim), otherwise it is
               (batch_size, num_keys, dim)
+
         """
         batch_size = query.shape[0]
         keys_and_scales = keynet(query)
@@ -294,10 +295,11 @@ class MemoryWithUsage(Memory):
 
     @property
     def usage(self):
-        """Get the usage for each memory slots
+        """Get the usage for each memory slots.
 
         Returns:
             usage (Tensor) of shape (batch_size, size)
+
         """
         return self._usage
 
@@ -309,16 +311,24 @@ class MemoryWithUsage(Memory):
 
     @property
     def states(self):
-        """Get the states of the memory
+        """Get the states of the memory.
+        
+        Returns:
+            memory states: tuple of memory content and usage tensor.
+            
         """
+        assert not self._snapshot_only, (
+            "states() is not supported for snapshot_only memory")
         return (self._memory, self._usage)
 
     def from_states(self, states):
-        """Restore the memory from states
+        """Restore the memory from states.
 
         Args:
             states (tuple of Tensor): It is should be obtained from states().
         """
+        assert not self._snapshot_only, (
+            "from_states() is not supported for snapshot_only memory")
         if states is None:
             self._memory = None
             self._usage = None
