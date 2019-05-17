@@ -179,7 +179,7 @@ def train_eval(
         if use_icm:
             feature_spec = tf_env.observation_spec()
             if encoding_net:
-                feature_spec = tf.TensorSpec((encoding_fc_layers[-1],),
+                feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
                                              dtype=tf.float32)
             icm = ICMAlgorithm(
                 tf_env.action_spec(), feature_spec, encoding_net=encoding_net)
@@ -257,6 +257,7 @@ def main(_):
 
 
 if __name__ == '__main__':
-    tf.config.gpu.set_per_process_memory_growth(True)
+    from alf.utils.common import set_per_process_memory_growth
+    set_per_process_memory_growth()
     flags.mark_flag_as_required('root_dir')
     app.run(main)

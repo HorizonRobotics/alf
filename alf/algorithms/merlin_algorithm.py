@@ -15,6 +15,7 @@
 
 from collections import namedtuple
 import functools
+import gin
 
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -83,6 +84,7 @@ def _collect_variables(*modules):
     return sum([mod.variables for mod in modules], [])
 
 
+@gin.configurable
 class MemoryBasedPredictor(Algorithm):
     """The Memroy Based Predictor.
     
@@ -99,12 +101,20 @@ class MemoryBasedPredictor(Algorithm):
             lstm_size=(100, 100),  # not sure what Merlin uses
             latent_dim=20,
             memory_size=100,
+            loss_weight=1.0,
             name="mbp"):
         """Create a MemoryBasedPredictor.
 
         Args:
+            action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
             decoders (nested Algorithm): the nest should match observation_spec
+            num_read_keys (int): number of keys for reading memory.
+            lstm_size (list[int]): size of lstm layers for MBP and MBA
+            latent_dim (int): the dimension of the hidden represenation of VAE.
+            memroy_size (int): number of memory slots
+            loss_weight (float): weight for the loss
+            name (str): name of the algorithm.
         """
         rnn = make_lstm_cell(lstm_size, name=name + "/lstm")
         memory = MemoryWithUsage(
@@ -117,7 +127,8 @@ class MemoryBasedPredictor(Algorithm):
             rnn_state=get_rnn_cell_state_spec(rnn),
             memory=memory.state_spec)
 
-        super(MemoryBasedPredictor, self).__init__(train_state_spec=state_spec)
+        super(MemoryBasedPredictor, self).__init__(
+            train_state_spec=state_spec, name=name)
 
         self._encoders = encoders
         self._decoders = decoders
@@ -143,6 +154,8 @@ class MemoryBasedPredictor(Algorithm):
         self._vae = VariationalAutoEncoder(
             latent_dim, prior_network, name=name + "/vae")
 
+        self._loss_weight = loss_weight
+
     @property
     def memory(self):
         """Return the external memory of this module."""
@@ -156,6 +169,7 @@ class MemoryBasedPredictor(Algorithm):
             state (MBPState)
         Returns:
             tuple of (latent_vector, kl_divengence, next_state)
+
         """
         observation, prev_action = inputs
         self._memory.from_states(state.memory)
@@ -219,10 +233,11 @@ class MemoryBasedPredictor(Algorithm):
             outputs=latent_vector,
             state=next_state,
             info=LossInfo(
-                loss=decoder_loss.loss + kld,
+                loss=self._loss_weight * (decoder_loss.loss + kld),
                 extra=MBPLossInfo(decoder=decoder_loss, vae=kld)))
 
 
+@gin.configurable
 class MemoryBasedActor(OnPolicyAlgorithm):
     """The policy module for MERLIN model."""
 
@@ -234,6 +249,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             lstm_size=(100, 100),  # not sure what Merlin uses
             latent_dim=20,
             loss=None,
+            loss_weight=1.0,
             name="mba"):
         """Create the policy module of MERLIN.
 
@@ -267,9 +283,11 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         super(MemoryBasedActor, self).__init__(
             action_spec=action_spec,
             train_state_spec=get_rnn_cell_state_spec(rnn),
-            action_distribution_spec=actor_net.output_spec)
+            action_distribution_spec=actor_net.output_spec,
+            name=name)
 
         self._loss = ActorCriticLoss(action_spec) if loss is None else loss
+        self._loss_weight = loss_weight
         self._memory = memory
 
         self._key_net = tf.keras.layers.Dense(
@@ -317,8 +335,9 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                   final_policy_step: PolicyStep):
         """Calculate loss."""
         final_value = final_policy_step.info.value
-        return self._loss(training_info, training_info.info.value,
+        loss = self._loss(training_info, training_info.info.value,
                           final_time_step, final_value)
+        return loss._replace(loss=self._loss_weight * loss.loss)
 
 
 MerlinState = namedtuple("MerlinState", ["mbp_state", "mba_state"])
@@ -326,6 +345,7 @@ MerlinLossInfo = namedtuple("MerlinLossInfo", ["mba", "mbp"])
 MerlinInfo = namedtuple("MerlinInfo", ["mbp_info", "mba_info"])
 
 
+@gin.configurable
 class MerlinAlgorithm(OnPolicyAlgorithm):
     """MERLIN model.
     
@@ -351,7 +371,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  optimizer=None,
                  train_step_counter=None,
                  debug_summaries=False,
-                 name="MerlinNetwork"):
+                 name="Merlin"):
         """Create MerlinAlgorithm.
 
         Args:

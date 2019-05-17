@@ -13,10 +13,13 @@
 # limitations under the License.
 """Variational auto encoder."""
 
+import gin
+
 import tensorflow as tf
 from tf_agents.networks import network
 
 
+@gin.configurable
 class VariationalAutoEncoder(tf.keras.Model):
     """
     VariationalAutoEncoder encodes data into diagonal multivariate gaussian, do sampling with

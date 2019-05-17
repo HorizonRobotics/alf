@@ -119,7 +119,7 @@ if __name__ == '__main__':
     set_per_process_memory_growth()
 
     run_under_summary_context(
-        unittest.main,
+        MerlinAlgorithmTest().test_merlin_algorithm,  # unittest.main,
         summary_dir="~/tmp/debug",
         record_cond=lambda: True,
         flush_millis=1000)

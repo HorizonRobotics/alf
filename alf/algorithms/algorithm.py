@@ -21,8 +21,6 @@ from tf_agents.trajectories.time_step import StepType
 
 import tensorflow as tf
 
-from .base import Base
-
 AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
 
 

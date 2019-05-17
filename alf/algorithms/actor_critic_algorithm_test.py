@@ -169,5 +169,6 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    tf.config.gpu.set_per_process_memory_growth(True)
+    from alf.utils.common import set_per_process_memory_growth
+    set_per_process_memory_growth()
     unittest.main()
