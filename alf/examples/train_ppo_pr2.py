@@ -31,10 +31,11 @@ from __future__ import print_function
 
 import os
 import time
+import logging
 
 from absl import app
 from absl import flags
-from absl import logging
+from absl import logging as absl_logging
 
 import tensorflow as tf
 from tf_agents.agents.ppo import ppo_agent
@@ -42,6 +43,7 @@ from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import suite_mujoco
 from tf_agents.environments import tf_py_environment
+from alf.environments import suite_socialbot
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.networks import actor_distribution_network
@@ -52,7 +54,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
 import gin.tf
-
+import gin
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -74,18 +76,21 @@ flags.DEFINE_integer('num_eval_episodes', 30,
                      'The number of episodes to run eval on.')
 flags.DEFINE_boolean('use_rnns', False,
                      'If true, use RNN for policy and value function.')
+flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
+flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 FLAGS = flags.FLAGS
 
 
 @gin.configurable
 def train_eval(
     root_dir,
-    env_name='HalfCheetah-v2',
-    env_load_fn=suite_mujoco.load,
+    env_name='SocialBot-Pr2Gripper-v0',
+    env_load_fn=suite_socialbot.load,
     random_seed=0,
     # TODO(b/127576522): rename to policy_fc_layers.
-    actor_fc_layers=(200, 100),
-    value_fc_layers=(200, 100),
+    actor_fc_layers=(100, 50, 25),
+    value_fc_layers=(100, 50, 25),
+    conv_layer_params=None, #[(32,8,4),(64,4,2),(64,3,1)],
     use_rnns=False,
     # Params for collect
     num_environment_steps=10000000,
@@ -95,16 +100,21 @@ def train_eval(
     # Params for train
     num_epochs=25,
     learning_rate=1e-4,
+    entropy_regularization=0.002,
     # Params for eval
     num_eval_episodes=30,
-    eval_interval=500,
-    # Params for summaries and logging
+    eval_interval=1000,
+
+    train_checkpoint_interval=1000,
+    policy_checkpoint_interval=1000,
+
+    # Params for summaries and absl_logging
     log_interval=50,
     summary_interval=50,
     summaries_flush_secs=1,
     use_tf_functions=True,
-    debug_summaries=False,
-    summarize_grads_and_vars=False):
+    debug_summaries=True,
+    summarize_grads_and_vars=True):
   """A simple train and eval for PPO."""
   if root_dir is None:
     raise AttributeError('train_eval requires a root_dir.')
@@ -128,29 +138,42 @@ def train_eval(
   with tf.compat.v2.summary.record_if(
       lambda: tf.math.equal(global_step % summary_interval, 0)):
     tf.compat.v1.set_random_seed(random_seed)
-    eval_tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
-    tf_env = tf_py_environment.TFPyEnvironment(
+
+    if num_parallel_environments > 1:
+      tf_env = tf_py_environment.TFPyEnvironment(
         parallel_py_environment.ParallelPyEnvironment(
-            [lambda: env_load_fn(env_name)] * num_parallel_environments))
+          [lambda: env_load_fn(env_name)] * num_parallel_environments))
+    else:
+      tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
+
+    eval_tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
+
+
     optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 
     if use_rnns:
       actor_net = actor_distribution_rnn_network.ActorDistributionRnnNetwork(
-          tf_env.observation_spec(),
-          tf_env.action_spec(),
-          input_fc_layer_params=actor_fc_layers,
-          output_fc_layer_params=None)
+        tf_env.observation_spec(),
+        tf_env.action_spec(),
+        input_fc_layer_params=actor_fc_layers,
+        output_fc_layer_params=None,
+        conv_layer_params=conv_layer_params,
+        activation_fn=tf.keras.activations.softsign)
       value_net = value_rnn_network.ValueRnnNetwork(
-          tf_env.observation_spec(),
-          input_fc_layer_params=value_fc_layers,
-          output_fc_layer_params=None)
+        tf_env.observation_spec(),
+        input_fc_layer_params=value_fc_layers,
+        output_fc_layer_params=None,
+        conv_layer_params=conv_layer_params,
+        activation_fn=tf.keras.activations.softsign)
     else:
       actor_net = actor_distribution_network.ActorDistributionNetwork(
           tf_env.observation_spec(),
           tf_env.action_spec(),
-          fc_layer_params=actor_fc_layers)
+          fc_layer_params=actor_fc_layers,
+          activation_fn=tf.keras.activations.softsign)
       value_net = value_network.ValueNetwork(
-          tf_env.observation_spec(), fc_layer_params=value_fc_layers)
+          tf_env.observation_spec(), fc_layer_params=value_fc_layers,
+          activation_fn=tf.keras.activations.softsign)
 
     tf_agent = ppo_agent.PPOAgent(
         tf_env.time_step_spec(),
@@ -158,7 +181,9 @@ def train_eval(
         optimizer,
         actor_net=actor_net,
         value_net=value_net,
+        entropy_regularization=entropy_regularization,
         num_epochs=num_epochs,
+
         debug_summaries=debug_summaries,
         summarize_grads_and_vars=summarize_grads_and_vars,
         train_step_counter=global_step)
@@ -189,6 +214,19 @@ def train_eval(
         observers=[replay_buffer.add_batch] + train_metrics,
         num_episodes=collect_episodes_per_iteration)
 
+    train_checkpointer = common.Checkpointer(
+        ckpt_dir=train_dir,
+        agent=tf_agent,
+        global_step=global_step,
+        metrics=metric_utils.MetricsGroup(train_metrics, 'train_metrics'))
+    policy_checkpointer = common.Checkpointer(
+        ckpt_dir=os.path.join(train_dir, 'policy'),
+        policy=tf_agent.policy,
+        global_step=global_step)
+
+    train_checkpointer.initialize_or_restore()
+    #policy_checkpointer.initialize_or_restore()
+
     if use_tf_functions:
       # TODO(b/123828980): Enable once the cause for slowdown was identified.
       collect_driver.run = common.function(collect_driver.run, autograph=False)
@@ -200,7 +238,7 @@ def train_eval(
 
     while environment_steps_metric.result() < num_environment_steps:
       global_step_val = global_step.numpy()
-      if global_step_val % eval_interval == 0:
+      if global_step_val % eval_interval == 0 and global_step_val > 0:
         metric_utils.eager_compute(
             eval_metrics,
             eval_tf_env,
@@ -226,11 +264,11 @@ def train_eval(
             train_step=global_step, step_metrics=step_metrics)
 
       if global_step_val % log_interval == 0:
-        logging.info('step = %d, loss = %f', global_step_val, total_loss)
+        absl_logging.info('step = %d, loss = %f', global_step_val, total_loss)
         steps_per_sec = (
             (global_step_val - timed_at_step) / (collect_time + train_time))
-        logging.info('%.3f steps/sec', steps_per_sec)
-        logging.info('collect_time = {}, train_time = {}'.format(
+        absl_logging.info('%.3f steps/sec', steps_per_sec)
+        absl_logging.info('collect_time = {}, train_time = {}'.format(
             collect_time, train_time))
         with tf.compat.v2.summary.record_if(True):
           tf.compat.v2.summary.scalar(
@@ -239,6 +277,12 @@ def train_eval(
         timed_at_step = global_step_val
         collect_time = 0
         train_time = 0
+
+      if global_step_val % train_checkpoint_interval == 0:
+        train_checkpointer.save(global_step=global_step_val)
+
+      if global_step_val % policy_checkpoint_interval == 0:
+        policy_checkpointer.save(global_step=global_step_val)
 
     # One final eval before exiting.
     metric_utils.eager_compute(
@@ -253,7 +297,12 @@ def train_eval(
 
 
 def main(_):
-  logging.set_verbosity(logging.INFO)
+  logging.basicConfig(level=logging.INFO)
+  logging.getLogger().addHandler(
+    logging.FileHandler(filename=FLAGS.root_dir + '/social_bot.log'))
+
+  absl_logging.set_verbosity(absl_logging.INFO)
+  gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
   tf.compat.v1.enable_v2_behavior()
   train_eval(
       FLAGS.root_dir,
@@ -268,5 +317,11 @@ def main(_):
 
 
 if __name__ == '__main__':
+  physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
+  for device in physical_devices:
+    tf.config.experimental.set_memory_growth(device, True)
+  #tf.config.gpu.set_per_process_memory_growth(True)
   flags.mark_flag_as_required('root_dir')
+
   app.run(main)
