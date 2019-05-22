@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import psutil
+
 import gin.tf
 import gin.tf.external_configurables
 
@@ -75,7 +78,7 @@ class TrainingPolicy(tf_policy.Base):
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
-        """Create a TrainingPolicy
+        """Create a TrainingPolicy.
 
         Args:
           algorithm (OnPolicyAlgorithm): the algorithm this policy will use.
@@ -114,6 +117,8 @@ class TrainingPolicy(tf_policy.Base):
         if train_step_counter is None:
             train_step_counter = tf.Variable(0, trainable=False)
         self._train_step_counter = train_step_counter
+
+        self._proc = psutil.Process(os.getpid())
 
         self._action_distribution_spec = algorithm.action_distribution_spec
 
@@ -234,3 +239,5 @@ class TrainingPolicy(tf_policy.Base):
             add_action_summaries(training_info.action, self._action_spec)
 
         del tape
+        mem = self._proc.memory_info().rss // 1e6
+        tf.summary.scalar(name='memory_usage', data=mem)

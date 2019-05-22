@@ -18,6 +18,25 @@ from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 
 
+def set_per_process_memory_growth(flag=True):
+    """Set if memory growth should be enabled for a PhysicalDevice.
+
+    With memory growth set to True, tf will not allocate all memory on the 
+    device upfront.
+
+    Args:
+        flag (bool): True if do not allocate memory upfront.
+    """
+    gpus = tf.config.experimental.list_physical_devices('GPU')
+    if gpus:
+        for gpu in gpus:
+            try:
+                tf.config.experimental.set_memory_growth(gpu, flag)
+            except RuntimeError as e:
+                # Memory growth must be set at program startup
+                print(e)
+
+
 def get_target_updater(model, target_model, tau=1.0, period=1):
     """Performs a soft update of the target model parameters.
 

@@ -13,7 +13,7 @@ python actor_critic.py \
   --gin_param='EncodingNetwork.activation_fn=@tf.nn.elu' \
   --gin_param='ActorDistributionNetwork.activation_fn=@tf.nn.elu' \
   --gin_param='ValueNetwork.activation_fn=@tf.nn.elu' \
-  --gin_param='ActorCriticLoss.entropy_regularization=0.1' \
+  --gin_param='ActorCriticLoss.entropy_regularization=1.' \
   --gin_param='ActorCriticAlgorithm.gradient_clipping=10.0' \
   --gin_param='train_eval.debug_summaries=1' \
   --gin_param='train_eval.summarize_grads_and_vars=1' \

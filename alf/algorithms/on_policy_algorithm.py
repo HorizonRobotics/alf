@@ -128,6 +128,7 @@ class OnPolicyAlgorithm(tf.Module):
         self._train_step_counter = train_step_counter
         self._debug_summaries = debug_summaries
         self._trainable_variables = None
+        self._cached_vars = None
 
     def add_reward_summary(self, name, rewards):
         if self._debug_summaries:
@@ -164,24 +165,10 @@ class OnPolicyAlgorithm(tf.Module):
               policy_step.action is nested tf.distribution which consistent with 
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
+
         """
         policy_step = self.train_step(time_step, state)
         return policy_step._replace(info=())
-
-    # TODO: removing variables() and _variables()
-    # We should be able to use self.trainable_variables to collect the variables
-    # after this commit is merged to tf 2.0.
-    # https://github.com/tensorflow/tensorflow/commit/23c8fd4ca3452865ac9ef1359f74cd0039908b59
-    @property
-    def variables(self):
-        """Return the list of Variables that belong to the policy."""
-        return self._variables()
-
-    #------------- User need to implement the following functions -------
-    @abstractmethod
-    def _variables(self):
-        """Return an iterable of `tf.Variable` objects used by this policy."""
-        pass
 
     @abstractmethod
     def train_step(self, time_step: ActionTimeStep, state=None):
@@ -228,8 +215,8 @@ class OnPolicyAlgorithm(tf.Module):
             a tuple of the following:
             loss_info (LossInfo): loss information
             grads_and_vars (list[tuple]): list of gradient and variable tuples
+            
         """
-
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
         with tape:
@@ -238,7 +225,11 @@ class OnPolicyAlgorithm(tf.Module):
             loss_info = tf.nest.map_structure(
                 lambda l: tf.reduce_mean(l * valid_masks), loss_info)
 
-        vars = self.variables
+        if self._cached_vars is None:
+            # Cache it because trainable_variables is an expensive operation
+            # according to the documentation.
+            self._cached_vars = self.trainable_variables
+        vars = self._cached_vars
         grads = tape.gradient(loss_info.loss, vars)
         grads_and_vars = tuple(zip(grads, vars))
         if self._gradient_clipping is not None:
