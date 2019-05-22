@@ -237,7 +237,9 @@ class MemoryWithUsage(Memory):
         result = layers.dot([attention, self._memory], axes=(-1, 1))
 
         if len(sim.shape) > 2:  # multiple read keys
-            usage = tf.reduce_sum(attention, axis=range(1, len(sim.shape) - 1))
+            usage = tf.reduce_sum(
+                attention, axis=tf.range(1,
+                                         len(sim.shape) - 1))
         else:
             usage = attention
 

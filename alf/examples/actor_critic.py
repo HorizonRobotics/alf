@@ -28,6 +28,7 @@ pythond actor_critic.py \
   --gin_param='ActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss' \
   --gin_param='ActorCriticLoss.entropy_regularization=0.001' \
   --gin_param='ActorCriticAlgorithm.gradient_clipping=10.0' \
+  --gin_param='train_eval.debug_summaries=1' \
   --alsologtostderr
 ```
 
@@ -62,7 +63,6 @@ from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.eval import metric_utils
-from tf_agents.metrics import tf_metrics
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.encoding_network import EncodingNetwork
@@ -74,6 +74,7 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.environments import suite_socialbot
 from alf.policies.training_policy import TrainingPolicy
+from alf.drivers.on_policy_driver import OnPolicyDriver
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -113,16 +114,15 @@ def train_eval(
         num_parallel_environments=30,
         # Params for train
         train_interval=20,
-        num_steps_per_iter=100,
+        num_steps_per_iter=10000,
         num_iterations=1000,
         learning_rate=5e-5,
+        use_tf_functions=True,
         # Params for checkpoints
-        checkpoint_interval=10000,
+        checkpoint_interval=100,
         # Params for summaries and logging
-        log_interval=50,
         summary_interval=50,
         summaries_flush_secs=1,
-        use_tf_functions=True,
         debug_summaries=False,
         summarize_grads_and_vars=False):
     """A simple train and eval for ActorCriticPolicy."""
@@ -193,55 +193,36 @@ def train_eval(
             train_step_counter=global_step,
             debug_summaries=debug_summaries)
 
-        policy = TrainingPolicy(
+        driver = OnPolicyDriver(
+            env=tf_env,
             algorithm=algorithm,
             train_interval=train_interval,
-            time_step_spec=tf_env.time_step_spec(),
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=global_step)
 
         checkpointer = tfa_common.Checkpointer(
-            ckpt_dir=os.path.join(train_dir, 'policy'),
-            policy=policy,
+            ckpt_dir=os.path.join(train_dir, 'algorithm'),
+            algorithm=algorithm,
             global_step=global_step)
         checkpointer.initialize_or_restore()
 
-        metric_buf_size = max(10, num_parallel_environments)
-        train_metrics = [
-            tf_metrics.NumberOfEpisodes(),
-            tf_metrics.EnvironmentSteps(),
-            tf_metrics.AverageReturnMetric(buffer_size=metric_buf_size),
-            tf_metrics.AverageEpisodeLengthMetric(buffer_size=metric_buf_size),
-        ]
-        driver = PyDriver(
-            tf_env,
-            policy,
-            observers=train_metrics,
-            max_steps=num_steps_per_iter)
+        if use_tf_functions:
+            driver.run = tf.function(driver.run)
 
-        start_time = time.time()
-        start_iter = 0
+        tf_env.reset()
+        time_step = driver.get_initial_time_step()
+        policy_state = driver.get_initial_state()
+        for iter in range(num_iterations):
+            t0 = time.time()
+            time_step, policy_state = driver.run(
+                max_num_steps=num_steps_per_iter,
+                time_step=time_step,
+                policy_state=policy_state)
 
-        time_step = tf_env.reset()
-        policy_state = policy.get_initial_state(tf_env.batch_size)
-        for iter in range(1, num_iterations + 1):
-            time_step, policy_state = driver.run(time_step, policy_state)
+            logging.info('%s time=%.3f' % (iter, time.time() - t0))
 
-            if iter % log_interval == 0:
-                time_acc = time.time() - start_time
-                iters_per_sec = (iter - start_iter) / time_acc
-                logging.info('%.3f iters/sec', iters_per_sec)
-                tf.summary.scalar(
-                    name='iters_per_sec', data=iters_per_sec, step=global_step)
-                start_iter = iter
-                start_time = time.time()
-
-            for train_metric in train_metrics:
-                train_metric.tf_summaries(
-                    train_step=global_step, step_metrics=train_metrics[:2])
-
-            if iter % checkpoint_interval == 0:
+            if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())
 
 

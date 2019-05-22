@@ -50,6 +50,15 @@ class ActionTimeStep(
         return np.equal(self.step_type, StepType.LAST)
 
 
+def make_action_time_step(time_step, action):
+    return ActionTimeStep(
+        step_type=time_step.step_type,
+        reward=time_step.reward,
+        discount=time_step.discount,
+        observation=time_step.observation,
+        action=action)
+
+
 class OnPolicyAlgorithm(tf.Module):
     """
     OnPolicyAlgorithm works with alf.policies.TrainingPolicy to do training

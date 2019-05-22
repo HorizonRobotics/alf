@@ -17,6 +17,21 @@ import tensorflow as tf
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 
+scalar_spec = tf.TensorSpec(shape=(), dtype=tf.float32)
+
+
+def zero_tensor_from_nested_spec(nested_spec, batch_size):
+    def _zero_tensor(spec):
+        if batch_size is None:
+            shape = spec.shape
+        else:
+            spec_shape = tf.convert_to_tensor(value=spec.shape, dtype=tf.int32)
+            shape = tf.concat(([batch_size], spec_shape), axis=0)
+        dtype = spec.dtype
+        return tf.zeros(shape, dtype)
+
+    return tf.nest.map_structure(_zero_tensor, nested_spec)
+
 
 def set_per_process_memory_growth(flag=True):
     """Set if memory growth should be enabled for a PhysicalDevice.

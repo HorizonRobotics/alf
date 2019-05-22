@@ -25,6 +25,7 @@ from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
+from alf.utils.common import scalar_spec
 
 ICMLossInfo = namedtuple("ICMLossInfo", ["forward_loss", "inverse_loss"])
 

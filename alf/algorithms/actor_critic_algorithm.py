@@ -27,6 +27,7 @@ from alf.algorithms.on_policy_algorithm import ActionTimeStep
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.algorithms.algorithm import Algorithm
+from alf.utils.common import scalar_spec
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
                               ["actor_state", "value_state", "icm_state"])
@@ -107,9 +108,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def predict(self, time_step: ActionTimeStep, state=None):
         observation = self._encode(time_step)
         action_distribution, actor_state = self._actor_network(
-            observation,
-            step_type=time_step.step_type,
-            network_state=state.actor_state)
+            observation, step_type=time_step.step_type, network_state=state)
         return PolicyStep(
             action=action_distribution, state=actor_state, info=())
 

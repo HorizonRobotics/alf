@@ -16,12 +16,12 @@ from abc import abstractmethod
 import numpy as np
 
 import tensorflow as tf
-from tf_agents.environments.tf_environment import TFEnvironment
+from tf_agents.environments.py_environment import PyEnvironment
 from tf_agents.specs.tensor_spec import TensorSpec, BoundedTensorSpec
 from tf_agents.trajectories.time_step import TimeStep, StepType
 
 
-class UnittestEnv(TFEnvironment):
+class UnittestEnv(PyEnvironment):
     """Abstract base for unittest environment.
 
     Every episode ends in `episode_length` steps (including LAST step).
@@ -38,29 +38,39 @@ class UnittestEnv(TFEnvironment):
         """
         self._steps = 0
         self._episode_length = episode_length
-        super(UnittestEnv, self).__init__(
-            action_spec=BoundedTensorSpec(
-                shape=(1, ), dtype=tf.int64, minimum=0, maximum=1),
-            time_step_spec=TimeStep(
-                step_type=TensorSpec(shape=(), dtype=tf.int32),
-                reward=TensorSpec(shape=(), dtype=tf.float32),
-                discount=TensorSpec(shape=(), dtype=tf.float32),
-                observation=TensorSpec(shape=(obs_dim, ), dtype=tf.float32)),
-            batch_size=batch_size)
+        super(UnittestEnv, self).__init__()
 
-    def _current_time_step(self):
-        return self.__current_time_step
+        self._action_spec = BoundedTensorSpec(
+            shape=(1, ), dtype=tf.int64, minimum=0, maximum=1)
+        self._observation_spec = TensorSpec(
+            shape=(obs_dim, ), dtype=tf.float32)
+        self._batch_size = batch_size
+        self.reset()
+
+    @property
+    def batched(self):
+        return True
+
+    @property
+    def batch_size(self):
+        return self._batch_size
+
+    def action_spec(self):
+        return self._action_spec
+
+    def observation_spec(self):
+        return self._observation_spec
 
     def _reset(self):
         self._steps = 0
-        self.__current_time_step = self._gen_time_step(0, None)
-        return self.__current_time_step
+        self._current_time_step = self._gen_time_step(0, None)
+        return self._current_time_step
 
     def _step(self, action):
         self._steps += 1
-        self.__current_time_step = self._gen_time_step(
+        self._current_time_step = self._gen_time_step(
             self._steps % self._episode_length, action)
-        return self.__current_time_step
+        return self._current_time_step
 
     @abstractmethod
     def _gen_time_step(self, s, action):
@@ -121,7 +131,7 @@ class PolicyUnittestEnv(UnittestEnv):
         if s == 0:
             reward = tf.constant([0.] * self.batch_size)
         else:
-            prev_observation = self._current_time_step().observation
+            prev_observation = self._current_time_step.observation
             reward = tf.cast(
                 tf.equal(action, tf.cast(prev_observation, tf.int64)),
                 tf.float32)
