@@ -15,66 +15,61 @@ r"""Train using ActorCriticPolicy
 
 To run actor_critic on gym CartPole:
 ```bash
-pythond actor_critic.py \
+python actor_critic.py \
+  --alsologtostderr \
   --env_name=CartPole-v0 \
-  --root_dir=~/tmp/ac/CartPole \
   --num_parallel_environments=8 \
   --num_iterations=1000000 \
-  --gin_param='train_eval.train_interval=8' \
-  --gin_param='train_eval.actor_fc_layers=(100,)' \
-  --gin_param='train_eval.value_fc_layers=(100,)' \
-  --gin_param='train_eval.learning_rate=0.001' \
+  --root_dir=~/tmp/ac/CartPole \
   --gin_param='ActorCriticLoss.gamma=0.98' \
   --gin_param='ActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss' \
   --gin_param='ActorCriticLoss.entropy_regularization=0.001' \
   --gin_param='ActorCriticAlgorithm.gradient_clipping=10.0' \
-  --gin_param='train_eval.debug_summaries=1' \
-  --alsologtostderr
+  --gin_param='create_algorithm.actor_fc_layers=(100,)' \
+  --gin_param='create_algorithm.value_fc_layers=(100,)' \
+  --gin_param='create_algorithm.learning_rate=0.001' \
+  --gin_param='on_policy_trainer.train.train_interval=8' \
+  --gin_param='train_eval.debug_summaries=1'
 ```
 
 To run on SocialBot CartPole:
 ```bash
-pythond actor_critic.py \
-  --root_dir=~/tmp/ac/SocialBot-CartPole \
+python actor_critic.py \
+  --alsologtostderr \
   --env_name=SocialBot-CartPole-v0 \
   --num_parallel_environments=16 \
-  --gin_param='train_eval.debug_summaries=1' \
-  --gin_param='train_eval.env_load_fn=@suite_socialbot.load' \
-  --alsologtostderr
+  --root_dir=~/tmp/ac/SocialBot-CartPole \
+  --gin_param='create_environment.env_load_fn=@suite_socialbot.load' \
+  --gin_param='train_eval.debug_summaries=1'
 ```
 
 """
 
 import os
+import random
 import time
 
 from absl import app
 from absl import flags
 from absl import logging
-import random
 
-import gin.tf
+import gin.tf.external_configurables
 import tensorflow as tf
 
-from tf_agents.drivers.dynamic_step_driver import DynamicStepDriver
-from tf_agents.drivers.py_driver import PyDriver
 from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
-from tf_agents.eval import metric_utils
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
-from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.environments import suite_socialbot
-from alf.policies.training_policy import TrainingPolicy
-from alf.drivers.on_policy_driver import OnPolicyDriver
+from alf.trainers import on_policy_trainer
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -101,136 +96,99 @@ def load_with_random_max_episode_steps(env_name,
 
 
 @gin.configurable
-def train_eval(
-        root_dir,
-        env_name='CartPole-v0',
-        env_load_fn=suite_gym.load,
-        random_seed=0,
-        actor_fc_layers=(200, 100),
-        value_fc_layers=(200, 100),
-        encoding_fc_layers=(),
-        use_rnns=False,
-        use_icm=False,
-        num_parallel_environments=30,
-        # Params for train
-        train_interval=20,
-        num_steps_per_iter=10000,
-        num_iterations=1000,
-        learning_rate=5e-5,
-        use_tf_functions=True,
-        # Params for checkpoints
-        checkpoint_interval=100,
-        # Params for summaries and logging
-        summary_interval=50,
-        summaries_flush_secs=1,
-        debug_summaries=False,
-        summarize_grads_and_vars=False):
-    """A simple train and eval for ActorCriticPolicy."""
+def create_algorithm(env,
+                     actor_fc_layers=(200, 100),
+                     value_fc_layers=(200, 100),
+                     encoding_fc_layers=(),
+                     use_rnns=False,
+                     use_icm=False,
+                     num_steps_per_iter=10000,
+                     num_iterations=1000,
+                     learning_rate=5e-5,
+                     debug_summaries=False):
+    """Create a simple ActorCriticAlgorithm."""
+    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
-    if root_dir is None:
-        raise AttributeError('train_eval requires a root_dir.')
+    if use_rnns:
+        actor_net = ActorDistributionRnnNetwork(
+            env.observation_spec(),
+            env.action_spec(),
+            input_fc_layer_params=actor_fc_layers,
+            output_fc_layer_params=None)
+        value_net = ValueRnnNetwork(
+            env.observation_spec(),
+            input_fc_layer_params=value_fc_layers,
+            output_fc_layer_params=None)
+    else:
+        actor_net = ActorDistributionNetwork(
+            env.observation_spec(),
+            env.action_spec(),
+            fc_layer_params=actor_fc_layers)
+        value_net = ValueNetwork(
+            env.observation_spec(), fc_layer_params=value_fc_layers)
 
-    root_dir = os.path.expanduser(root_dir)
-    train_dir = os.path.join(root_dir, 'train')
+    encoding_net = None
+    if encoding_fc_layers:
+        encoding_net = EncodingNetwork(
+            env.observation_spec(), fc_layer_params=encoding_fc_layers)
 
-    train_summary_writer = tf.summary.create_file_writer(
-        train_dir, flush_millis=summaries_flush_secs * 1000)
-    train_summary_writer.set_as_default()
+    icm = None
+    if use_icm:
+        feature_spec = env.observation_spec()
+        if encoding_net:
+            feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
+                                         dtype=tf.float32)
+        icm = ICMAlgorithm(
+            env.action_spec(), feature_spec, encoding_net=encoding_net)
 
-    global_step = tf.Variable(
-        0, dtype=tf.int64, trainable=False, name="global_step")
-    tf.summary.experimental.set_step(global_step)
+    return ActorCriticAlgorithm(
+        action_spec=env.action_spec(),
+        actor_network=actor_net,
+        value_network=value_net,
+        intrinsic_curiosity_module=icm,
+        optimizer=optimizer,
+        debug_summaries=debug_summaries)
 
-    with tf.summary.record_if(
-            lambda: tf.math.equal(global_step % summary_interval, 0)):
-        tf.random.set_seed(random_seed)
-        if num_parallel_environments == 1:
-            py_env = env_load_fn(env_name)
-        else:
-            py_env = parallel_py_environment.ParallelPyEnvironment(
-                [lambda: env_load_fn(env_name)] * num_parallel_environments)
-        tf_env = tf_py_environment.TFPyEnvironment(py_env)
-        optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
-        if use_rnns:
-            actor_net = ActorDistributionRnnNetwork(
-                tf_env.observation_spec(),
-                tf_env.action_spec(),
-                input_fc_layer_params=actor_fc_layers,
-                output_fc_layer_params=None)
-            value_net = ValueRnnNetwork(
-                tf_env.observation_spec(),
-                input_fc_layer_params=value_fc_layers,
-                output_fc_layer_params=None)
-        else:
-            actor_net = ActorDistributionNetwork(
-                tf_env.observation_spec(),
-                tf_env.action_spec(),
-                fc_layer_params=actor_fc_layers)
-            value_net = ValueNetwork(
-                tf_env.observation_spec(), fc_layer_params=value_fc_layers)
+@gin.configurable
+def create_environment(env_name='CartPole-v0',
+                       env_load_fn=suite_gym.load,
+                       random_seed=0,
+                       num_parallel_environments=30):
+    """Create environment."""
+    if num_parallel_environments == 1:
+        py_env = env_load_fn(env_name)
+    else:
+        py_env = parallel_py_environment.ParallelPyEnvironment(
+            [lambda: env_load_fn(env_name)] * num_parallel_environments)
+    return tf_py_environment.TFPyEnvironment(py_env)
 
-        encoding_net = None
-        if encoding_fc_layers:
-            encoding_net = EncodingNetwork(
-                tf_env.observation_spec(), fc_layer_params=encoding_fc_layers)
 
-        icm = None
-        if use_icm:
-            feature_spec = tf_env.observation_spec()
-            if encoding_net:
-                feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
-                                             dtype=tf.float32)
-            icm = ICMAlgorithm(
-                tf_env.action_spec(), feature_spec, encoding_net=encoding_net)
-
-        algorithm = ActorCriticAlgorithm(
-            action_spec=tf_env.action_spec(),
-            actor_network=actor_net,
-            value_network=value_net,
-            intrinsic_curiosity_module=icm,
-            optimizer=optimizer,
-            train_step_counter=global_step,
-            debug_summaries=debug_summaries)
-
-        driver = OnPolicyDriver(
-            env=tf_env,
-            algorithm=algorithm,
-            train_interval=train_interval,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
-            train_step_counter=global_step)
-
-        checkpointer = tfa_common.Checkpointer(
-            ckpt_dir=os.path.join(train_dir, 'algorithm'),
-            algorithm=algorithm,
-            global_step=global_step)
-        checkpointer.initialize_or_restore()
-
-        if use_tf_functions:
-            driver.run = tf.function(driver.run)
-
-        tf_env.reset()
-        time_step = driver.get_initial_time_step()
-        policy_state = driver.get_initial_state()
-        for iter in range(num_iterations):
-            t0 = time.time()
-            time_step, policy_state = driver.run(
-                max_num_steps=num_steps_per_iter,
-                time_step=time_step,
-                policy_state=policy_state)
-
-            logging.info('%s time=%.3f' % (iter, time.time() - t0))
-
-            if (iter + 1) % checkpoint_interval == 0:
-                checkpointer.save(global_step=global_step.numpy())
+@gin.configurable
+def train_eval(train_dir,
+               env_name='CartPole-v0',
+               num_parallel_environments=30,
+               num_iterations=1000,
+               use_rnns=False,
+               debug_summaries=False):
+    """A simple train and eval for ActorCriticAlgorithm."""
+    env = create_environment(
+        env_name, num_parallel_environments=num_parallel_environments)
+    algorithm = create_algorithm(
+        env, use_rnns=use_rnns, debug_summaries=debug_summaries)
+    on_policy_trainer.train(
+        train_dir,
+        env,
+        algorithm,
+        num_iterations=num_iterations,
+        debug_summaries=debug_summaries)
 
 
 def main(_):
     logging.set_verbosity(logging.INFO)
     gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
     train_eval(
-        FLAGS.root_dir,
+        FLAGS.root_dir + "/train",
         env_name=FLAGS.env_name,
         use_rnns=FLAGS.use_rnns,
         num_parallel_environments=FLAGS.num_parallel_environments,

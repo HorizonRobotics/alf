@@ -28,9 +28,10 @@ from tf_agents.specs.tensor_spec import TensorSpec
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.algorithms.merlin_algorithm import MerlinAlgorithm
+from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.policies.training_policy import TrainingPolicy
-from alf.drivers.on_policy_driver import OnPolicyDriver
+from alf.utils.common import run_under_record_context
 
 
 class MerlinAlgorithmTest(unittest.TestCase):
@@ -155,27 +156,13 @@ class MerlinAlgorithmTest(unittest.TestCase):
             1.0, float(tf.reduce_mean(time_step.reward)), delta=1e-2)
 
 
-def run_under_summary_context(func, summary_dir, record_cond, flush_millis):
-    import os
-    summary_dir = os.path.expanduser(summary_dir)
-    summary_writer = tf.summary.create_file_writer(
-        summary_dir, flush_millis=flush_millis)
-    summary_writer.set_as_default()
-    global_step = tf.Variable(
-        0, dtype=tf.int64, trainable=False, name="global_step")
-    tf.summary.experimental.set_step(global_step)
-    with tf.summary.record_if(record_cond):
-        func()
-
-
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
 
-    run_under_summary_context(
-        MerlinAlgorithmTest().
-        test_merlin_algorithm_on_policy_driver,  # unittest.main,
+    run_under_record_context(
+        unittest.main,
         summary_dir="~/tmp/debug",
-        record_cond=lambda: True,
+        summary_interval=1,
         flush_millis=1000)

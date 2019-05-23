@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Various functions used by different alf modules"""
+
+import os
 
 import tensorflow as tf
 
@@ -190,3 +193,45 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     return tf.nest.map_structure(
         lambda i_s, s: tf.where(expand_dims_as(reset_mask, i_s), i_s, s),
         initial_state, state)
+
+
+def run_under_record_context(func, summary_dir, summary_interval,
+                             flush_millis):
+    """Run `func` under summary record context.
+
+    Args:
+        summary_dir (str): directory to store summary. A directory starting with
+            "~/" will be expanded to "$HOME/"
+        summary_interval (int): how often to generate summary based on the
+            global counter
+        flush_millis (int): flush summary to disk every so many milliseconds
+    """
+    summary_dir = os.path.expanduser(summary_dir)
+    summary_writer = tf.summary.create_file_writer(
+        summary_dir, flush_millis=flush_millis)
+    summary_writer.set_as_default()
+    global_step = get_global_counter()
+    with tf.summary.record_if(
+            lambda: tf.equal((global_step + 1) % summary_interval, 0)):
+        func()
+
+
+def get_global_counter(default_counter=None):
+    """Get the global counter.
+
+    Args:
+        default_counter (Variable): If not None, this counter will be returned.
+    Returns:
+        If default_counter is not None, it will be returned. Otherwise, 
+        If tf.summary.experimental.get_step() is not None, it will be returned.
+        Othewise, a counter will be created and returned.
+        tf.summary.experimental.set_step() will be set to the created counter.
+
+    """
+    if default_counter is None:
+        default_counter = tf.summary.experimental.get_step()
+        if default_counter is None:
+            default_counter = tf.Variable(
+                0, dtype=tf.int64, trainable=False, name="global_counter")
+            tf.summary.experimental.set_step(default_counter)
+    return default_counter

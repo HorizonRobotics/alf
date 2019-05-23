@@ -33,12 +33,7 @@ from tf_agents.trajectories.time_step import StepType
 from tf_agents.trajectories.trajectory import from_transition
 from tf_agents.utils import eager_utils
 
-from alf.utils.common import add_action_summaries
-from alf.utils.common import add_loss_summaries
-from alf.utils.common import get_distribution_params
-from alf.utils.common import reset_state_if_necessary
-from alf.utils.common import zero_tensor_from_nested_spec
-
+import alf.utils.common as common
 from alf.algorithms.on_policy_algorithm import ActionTimeStep
 from alf.algorithms.on_policy_algorithm import make_action_time_step
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
@@ -101,11 +96,13 @@ class OnPolicyDriver(driver.Driver):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for
                 training. See the class comment for explanation.
-            debug_summaries: A bool to gather debug summaries.
-            summarize_grads_and_vars: If True, gradient and network variable
-                summaries will be written during training.
-            train_step_counter: An optional counter to increment every time the
-                a new iteration is started.
+            debug_summaries (bool): A bool to gather debug summaries.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time the a new iteration is started. If None, it will use 
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
         """
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
@@ -153,12 +150,8 @@ class OnPolicyDriver(driver.Driver):
             self._policy_state_spec = algorithm.predict_state_spec
             self._algorithm_step = algorithm.predict
 
-        if train_step_counter is None:
-            train_step_counter = tf.summary.experimental.get_step()
-            if train_step_counter is None:
-                train_step_counter = tf.Variable(0, trainable=False)
-
-        self._train_step_counter = train_step_counter
+        self._train_step_counter = common.get_global_counter(
+            train_step_counter)
 
         self._initial_state = self.get_initial_state()
         self._proc = psutil.Process(os.getpid())
@@ -198,8 +191,8 @@ class OnPolicyDriver(driver.Driver):
     def get_initial_time_step(self):
         """Returns the initial action_time_step."""
         time_step = self.env.current_time_step()
-        action = zero_tensor_from_nested_spec(self.env.action_spec(),
-                                              self.env.batch_size)
+        action = common.zero_tensor_from_nested_spec(self.env.action_spec(),
+                                                     self.env.batch_size)
         return make_action_time_step(time_step, action)
 
     def get_initial_state(self):
@@ -209,8 +202,16 @@ class OnPolicyDriver(driver.Driver):
             A nested object of type `policy_state` containing properly
             initialized Tensors.
         """
-        return zero_tensor_from_nested_spec(self._policy_state_spec,
-                                            self.env.batch_size)
+        return common.zero_tensor_from_nested_spec(self._policy_state_spec,
+                                                   self.env.batch_size)
+
+    def get_metrics(self):
+        """Returns the metrics monitored by this driver.
+
+        Returns:
+            list[TFStepMetric]
+        """
+        return self._metrics
 
     def _run(self, time_step, policy_state, max_num_steps):
         if self._training:
@@ -249,9 +250,9 @@ class OnPolicyDriver(driver.Driver):
         return make_action_time_step(time_step, action)
 
     def _step(self, time_step, policy_state):
-        policy_state = reset_state_if_necessary(policy_state,
-                                                self._initial_state,
-                                                time_step.is_first())
+        policy_state = common.reset_state_if_necessary(policy_state,
+                                                       self._initial_state,
+                                                       time_step.is_first())
 
         policy_step = self._algorithm_step(time_step, state=policy_state)
 
@@ -273,7 +274,8 @@ class OnPolicyDriver(driver.Driver):
 
         next_time_step, policy_step, action = self._step(
             time_step, policy_state)
-        action_distribution_param = get_distribution_params(policy_step.action)
+        action_distribution_param = common.get_distribution_params(
+            policy_step.action)
 
         training_info = TrainingInfo(
             action_distribution=action_distribution_param,
@@ -348,9 +350,9 @@ class OnPolicyDriver(driver.Driver):
             eager_utils.add_gradients_summaries(grads_and_vars,
                                                 self._train_step_counter)
         if self._debug_summaries:
-            add_loss_summaries(loss_info)
-            add_action_summaries(training_info.action,
-                                 self._training_info_spec.action)
+            common.add_loss_summaries(loss_info)
+            common.add_action_summaries(training_info.action,
+                                        self._training_info_spec.action)
 
         for metric in self._metrics:
             metric.tf_summaries(

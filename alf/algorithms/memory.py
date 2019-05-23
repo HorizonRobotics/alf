@@ -226,7 +226,7 @@ class MemoryWithUsage(Memory):
             if isinstance(scale, (int, float)):
                 pass
             else:  # assuming it's Tensor
-                scalar = expand_dims_as(scalar, keys)
+                scale = expand_dims_as(scale, keys)
         sim = layers.dot([keys, self._memory],
                          axes=-1,
                          normalize=self._normalize)

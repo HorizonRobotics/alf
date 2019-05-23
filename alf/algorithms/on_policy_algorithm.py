@@ -23,6 +23,8 @@ from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import eager_utils
 
+import alf.utils.common as common
+
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info"
 ])
@@ -119,7 +121,12 @@ class OnPolicyAlgorithm(tf.Module):
                 `train_step()`. If None, it's assume to be same as
                  train_state_spec
             optimizer (tf.optimizers.Optimizer): The optimizer for training.
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time the a new iteration is started. If None, it will use 
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
+            name (str): Name of this algorithm.
         """
 
         super(OnPolicyAlgorithm, self).__init__(name=name)
@@ -132,9 +139,8 @@ class OnPolicyAlgorithm(tf.Module):
         self._action_distribution_spec = action_distribution_spec
         self._optimizer = optimizer
         self._gradient_clipping = gradient_clipping
-        if train_step_counter is None:
-            train_step_counter = tf.Variable(0, trainable=False)
-        self._train_step_counter = train_step_counter
+        self._train_step_counter = common.get_global_counter(
+            train_step_counter)
         self._debug_summaries = debug_summaries
         self._trainable_variables = None
         self._cached_vars = None
