@@ -17,4 +17,5 @@ python actor_critic.py \
   --gin_param='ActorCriticAlgorithm.gradient_clipping=10.0' \
   --gin_param='train_eval.debug_summaries=1' \
   --gin_param='train_eval.summarize_grads_and_vars=1' \
+  --gin_param='train_eval.use_tf_functions=1' \
   --alsologtostderr

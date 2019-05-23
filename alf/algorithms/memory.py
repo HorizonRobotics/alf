@@ -23,6 +23,8 @@ import tensorflow.keras.activations as activations
 
 from tf_agents.networks import network
 
+from alf.utils.common import expand_dims_as
+
 
 class Memory(object):
     """Abstract base class for Memory."""
@@ -224,10 +226,7 @@ class MemoryWithUsage(Memory):
             if isinstance(scale, (int, float)):
                 pass
             else:  # assuming it's Tensor
-                assert len(scale.shape) < len(keys.shape)
-                assert scale.shape == keys.shape[:len(scale.shape)]
-                k = len(keys.shape) - len(scale.shape)
-                scale = tf.reshape(scale, scale.shape.concatenate((1, ) * k))
+                scalar = expand_dims_as(scalar, keys)
         sim = layers.dot([keys, self._memory],
                          axes=-1,
                          normalize=self._normalize)

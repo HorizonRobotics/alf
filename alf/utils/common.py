@@ -158,15 +158,35 @@ def get_distribution_params(nested_distribution):
         nested_distribution)
 
 
+def expand_dims_as(x, y):
+    """Expand the shape of `x` with extra singular dimensions.
+     
+    The result is broadcastable to the shape of `y`
+    Args:
+        x (Tensor): source tensor
+        y (Tensor): target tensor. Only its shape will be used.
+    Returns
+        x with extra singular dimensions.
+    """
+    assert len(x.shape) <= len(y.shape)
+    assert x.shape == y.shape[:len(x.shape)]
+    k = len(y.shape) - len(x.shape)
+    if k == 0:
+        return x
+    else:
+        return tf.reshape(x, x.shape.concatenate((1, ) * k))
+
+
 def reset_state_if_necessary(state, initial_state, reset_mask):
     """Reset state to initial state according to reset_mask
     
     Args:
       state (nested Tensor): the current batched states
       initial_state (nested Tensor): batched intitial states
-      reset_mask: nested Tensor with shape=(batch_size,), dtype=tf.bool
+      reset_mask (nested Tensor): with shape=(batch_size,), dtype=tf.bool
     Returns:
       nested Tensor
     """
-    return tf.nest.map_structure(lambda i_s, s: tf.where(reset_mask, i_s, s),
-                                 initial_state, state)
+    return tf.nest.map_structure(
+        lambda i_s, s: tf.where(expand_dims_as(reset_mask, i_s), i_s, s),
+        initial_state, state)
