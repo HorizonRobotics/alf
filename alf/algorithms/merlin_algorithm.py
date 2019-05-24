@@ -37,7 +37,6 @@ from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.algorithms.on_policy_algorithm import ActionTimeStep
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.utils.action_encoder import SimpleActionEncoder
-from alf.utils.common import scalar_spec
 
 MBPState = namedtuple(
     "MBPState",

@@ -27,7 +27,6 @@ from alf.algorithms.on_policy_algorithm import ActionTimeStep
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.algorithms.algorithm import Algorithm
-from alf.utils.common import scalar_spec
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
                               ["actor_state", "value_state", "icm_state"])
@@ -152,6 +151,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
             training_info = training_info._replace(
                 reward=training_info.reward + training_info.info.icm_reward)
+            final_time_step = final_time_step._replace(
+                reward=final_policy_step.info.icm_reward)
 
         final_value = final_policy_step.info.value
         ac_loss = self._loss(training_info, training_info.info.value,

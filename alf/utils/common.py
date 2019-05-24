@@ -20,8 +20,6 @@ import tensorflow as tf
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 
-scalar_spec = tf.TensorSpec(shape=(), dtype=tf.float32)
-
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
     def _zero_tensor(spec):
