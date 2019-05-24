@@ -152,7 +152,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             training_info = training_info._replace(
                 reward=training_info.reward + training_info.info.icm_reward)
             final_time_step = final_time_step._replace(
-                reward=final_policy_step.info.icm_reward)
+                reward=final_time_step.reward +
+                final_policy_step.info.icm_reward)
 
         final_value = final_policy_step.info.value
         ac_loss = self._loss(training_info, training_info.info.value,
