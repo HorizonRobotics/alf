@@ -29,34 +29,14 @@ from tf_agents.policies import tf_policy
 from tf_agents.utils import eager_utils
 
 from alf.algorithms.on_policy_algorithm import ActionTimeStep
+from alf.algorithms.on_policy_algorithm import make_action_time_step
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.utils.common import add_action_summaries
 from alf.utils.common import add_loss_summaries
 from alf.utils.common import get_distribution_params
 from alf.utils.common import reset_state_if_necessary
-
-
-def make_action_time_step(time_step, action):
-    return ActionTimeStep(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        action=action)
-
-
-def zero_tensor_from_nested_spec(nested_spec, batch_size):
-    def _zero_tensor(spec):
-        if batch_size is None:
-            shape = spec.shape
-        else:
-            spec_shape = tf.convert_to_tensor(value=spec.shape, dtype=tf.int32)
-            shape = tf.concat(([batch_size], spec_shape), axis=0)
-        dtype = spec.dtype
-        return tf.zeros(shape, dtype)
-
-    return tf.nest.map_structure(_zero_tensor, nested_spec)
+from alf.utils.common import zero_tensor_from_nested_spec
 
 
 @gin.configurable
@@ -72,7 +52,6 @@ class TrainingPolicy(tf_policy.Base):
     def __init__(self,
                  algorithm: OnPolicyAlgorithm,
                  time_step_spec: TimeStep,
-                 augment_observation_with_action=False,
                  training=True,
                  train_interval=4,
                  debug_summaries=False,
@@ -83,8 +62,6 @@ class TrainingPolicy(tf_policy.Base):
         Args:
           algorithm (OnPolicyAlgorithm): the algorithm this policy will use.
           time_step_spec: A `TimeStep` spec of the expected time_steps.
-          augment_observation_with_action (bool): If True, time_step.observation
-            will be changed to ActionObservation(observation, prev_action)
           training (bool): If True, will perform training by calling
             algorithm.train_step() at every step, otherwise it will call
             algorithm.predict() at every step.
@@ -112,7 +89,6 @@ class TrainingPolicy(tf_policy.Base):
         self._train_interval = train_interval
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
-        self._augment_observation_with_action = augment_observation_with_action
 
         if train_step_counter is None:
             train_step_counter = tf.Variable(0, trainable=False)

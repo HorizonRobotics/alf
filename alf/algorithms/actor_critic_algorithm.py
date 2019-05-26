@@ -107,9 +107,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def predict(self, time_step: ActionTimeStep, state=None):
         observation = self._encode(time_step)
         action_distribution, actor_state = self._actor_network(
-            observation,
-            step_type=time_step.step_type,
-            network_state=state.actor_state)
+            observation, step_type=time_step.step_type, network_state=state)
         return PolicyStep(
             action=action_distribution, state=actor_state, info=())
 
@@ -153,6 +151,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
             training_info = training_info._replace(
                 reward=training_info.reward + training_info.info.icm_reward)
+            final_time_step = final_time_step._replace(
+                reward=final_time_step.reward +
+                final_policy_step.info.icm_reward)
 
         final_value = final_policy_step.info.value
         ac_loss = self._loss(training_info, training_info.info.value,

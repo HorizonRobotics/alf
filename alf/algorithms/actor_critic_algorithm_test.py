@@ -14,6 +14,7 @@
 
 from absl import logging
 import numpy as np
+import time
 
 import unittest
 import tensorflow as tf
@@ -133,6 +134,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         policy = self._create_policy(env)
         policy_state = policy.get_initial_state(batch_size)
         time_step = env.reset()
+        t0 = time.time()
         for i in range(100):
             for _ in range(steps_per_episode):
                 reward = time_step.reward
@@ -143,7 +145,8 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
             if (i + 1) % 10 == 0:
                 print('reward=%s' % float(tf.reduce_mean(reward)))
 
-        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-3)
+        logging.info("time=%s" % (time.time() - t0))
+        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-2)
 
     def test_actor_critic_rnn_policy(self):
         batch_size = 100
@@ -155,6 +158,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
             env, train_interval=8, use_rnn=True, learning_rate=2e-2)
         policy_state = policy.get_initial_state(batch_size)
         time_step = env.reset()
+        t0 = time.time()
         for i in range(200):
             for _ in range(steps_per_episode):
                 reward = time_step.reward
@@ -163,12 +167,14 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
                 time_step = env.step(policy_step.action)
 
             if (i + 1) % 10 == 0:
-                print('reward=%s' % float(tf.reduce_mean(reward)))
+                logging.info('reward=%s' % float(tf.reduce_mean(reward)))
 
-        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-3)
+        logging.info("time=%s" % (time.time() - t0))
+        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-2)
 
 
 if __name__ == '__main__':
+    logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
     unittest.main()

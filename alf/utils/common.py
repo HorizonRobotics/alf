@@ -11,11 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Various functions used by different alf modules"""
+
+import os
 
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
+
+
+def zero_tensor_from_nested_spec(nested_spec, batch_size):
+    def _zero_tensor(spec):
+        if batch_size is None:
+            shape = spec.shape
+        else:
+            spec_shape = tf.convert_to_tensor(value=spec.shape, dtype=tf.int32)
+            shape = tf.concat(([batch_size], spec_shape), axis=0)
+        dtype = spec.dtype
+        return tf.zeros(shape, dtype)
+
+    return tf.nest.map_structure(_zero_tensor, nested_spec)
 
 
 def set_per_process_memory_growth(flag=True):
@@ -143,15 +159,77 @@ def get_distribution_params(nested_distribution):
         nested_distribution)
 
 
+def expand_dims_as(x, y):
+    """Expand the shape of `x` with extra singular dimensions.
+     
+    The result is broadcastable to the shape of `y`
+    Args:
+        x (Tensor): source tensor
+        y (Tensor): target tensor. Only its shape will be used.
+    Returns
+        x with extra singular dimensions.
+    """
+    assert len(x.shape) <= len(y.shape)
+    assert x.shape == y.shape[:len(x.shape)]
+    k = len(y.shape) - len(x.shape)
+    if k == 0:
+        return x
+    else:
+        return tf.reshape(x, x.shape.concatenate((1, ) * k))
+
+
 def reset_state_if_necessary(state, initial_state, reset_mask):
     """Reset state to initial state according to reset_mask
     
     Args:
       state (nested Tensor): the current batched states
       initial_state (nested Tensor): batched intitial states
-      reset_mask: nested Tensor with shape=(batch_size,), dtype=tf.bool
+      reset_mask (nested Tensor): with shape=(batch_size,), dtype=tf.bool
     Returns:
       nested Tensor
     """
-    return tf.nest.map_structure(lambda i_s, s: tf.where(reset_mask, i_s, s),
-                                 initial_state, state)
+    return tf.nest.map_structure(
+        lambda i_s, s: tf.where(expand_dims_as(reset_mask, i_s), i_s, s),
+        initial_state, state)
+
+
+def run_under_record_context(func, summary_dir, summary_interval,
+                             flush_millis):
+    """Run `func` under summary record context.
+
+    Args:
+        summary_dir (str): directory to store summary. A directory starting with
+            "~/" will be expanded to "$HOME/"
+        summary_interval (int): how often to generate summary based on the
+            global counter
+        flush_millis (int): flush summary to disk every so many milliseconds
+    """
+    summary_dir = os.path.expanduser(summary_dir)
+    summary_writer = tf.summary.create_file_writer(
+        summary_dir, flush_millis=flush_millis)
+    summary_writer.set_as_default()
+    global_step = get_global_counter()
+    with tf.summary.record_if(
+            lambda: tf.equal((global_step + 1) % summary_interval, 0)):
+        func()
+
+
+def get_global_counter(default_counter=None):
+    """Get the global counter.
+
+    Args:
+        default_counter (Variable): If not None, this counter will be returned.
+    Returns:
+        If default_counter is not None, it will be returned. Otherwise, 
+        If tf.summary.experimental.get_step() is not None, it will be returned.
+        Othewise, a counter will be created and returned.
+        tf.summary.experimental.set_step() will be set to the created counter.
+
+    """
+    if default_counter is None:
+        default_counter = tf.summary.experimental.get_step()
+        if default_counter is None:
+            default_counter = tf.Variable(
+                0, dtype=tf.int64, trainable=False, name="global_counter")
+            tf.summary.experimental.set_step(default_counter)
+    return default_counter
