@@ -34,7 +34,7 @@ from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 from alf.algorithms.actor_critic_algorithm import ActorCriticInfo
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.on_policy_algorithm import TrainingInfo
-from alf.algorithms.on_policy_algorithm import ActionTimeStep
+from alf.drivers.policy_driver import ActionTimeStep
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.utils.action_encoder import SimpleActionEncoder
 

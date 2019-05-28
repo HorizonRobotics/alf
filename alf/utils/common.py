@@ -19,6 +19,7 @@ import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
+from tf_agents.trajectories import trajectory
 
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
@@ -71,7 +72,6 @@ def get_target_updater(model, target_model, tau=1.0, period=1):
         A callable that performs a soft update of the target model parameters.
     """
     with tf.name_scope('update_targets'):
-
         def update():
             return tfa_common.soft_variables_update(
                 model.variables, target_model.variables, tau)
@@ -175,7 +175,7 @@ def expand_dims_as(x, y):
     if k == 0:
         return x
     else:
-        return tf.reshape(x, x.shape.concatenate((1, ) * k))
+        return tf.reshape(x, x.shape.concatenate((1,) * k))
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
@@ -233,3 +233,15 @@ def get_global_counter(default_counter=None):
                 0, dtype=tf.int64, trainable=False, name="global_counter")
             tf.summary.experimental.set_step(default_counter)
     return default_counter
+
+
+def to_transitions(experience, state_spec=()):
+    transitions = trajectory.to_transition(experience)
+    if not state_spec:
+        # Sequence empty time dimension if critic network is stateless.
+        transitions = tf.nest.map_structure(
+            lambda t: tf.squeeze(t, axis=1),
+            transitions)
+    time_steps, policy_steps, next_time_steps = transitions
+    actions = policy_steps.action
+    return time_steps, actions, next_time_steps

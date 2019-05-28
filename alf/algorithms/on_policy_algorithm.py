@@ -16,52 +16,20 @@
 from abc import abstractmethod
 from collections import namedtuple
 
-import numpy as np
 import tensorflow as tf
 
 from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import eager_utils
-
-import alf.utils.common as common
+from alf.algorithms import policy_algorithm
+from alf.drivers.policy_driver import ActionTimeStep
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info"
 ])
 
 
-class ActionTimeStep(
-        namedtuple(
-            'ActionTimeStep',
-            ['step_type', 'reward', 'discount', 'observation', 'action'])):
-    """TimeStep with action."""
-
-    def is_first(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.FIRST)
-        return np.equal(self.step_type, StepType.FIRST)
-
-    def is_mid(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.MID)
-        return np.equal(self.step_type, StepType.MID)
-
-    def is_last(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.LAST)
-        return np.equal(self.step_type, StepType.LAST)
-
-
-def make_action_time_step(time_step, action):
-    return ActionTimeStep(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        action=action)
-
-
-class OnPolicyAlgorithm(tf.Module):
+class OnPolicyAlgorithm(policy_algorithm.PolicyAlgorithm):
     """
     OnPolicyAlgorithm works with alf.policies.TrainingPolicy to do training
     at the time of policy rollout.
@@ -129,64 +97,19 @@ class OnPolicyAlgorithm(tf.Module):
             name (str): Name of this algorithm.
         """
 
-        super(OnPolicyAlgorithm, self).__init__(name=name)
-
-        self._action_spec = action_spec
-        self._train_state_spec = train_state_spec
-        if predict_state_spec is None:
-            predict_state_spec = train_state_spec
-        self._predict_state_spec = predict_state_spec
-        self._action_distribution_spec = action_distribution_spec
-        self._optimizer = optimizer
-        self._gradient_clipping = gradient_clipping
-        self._train_step_counter = common.get_global_counter(
-            train_step_counter)
-        self._debug_summaries = debug_summaries
-        self._trainable_variables = None
-        self._cached_vars = None
-
-    def add_reward_summary(self, name, rewards):
-        if self._debug_summaries:
-            step = self._train_step_counter
-            tf.summary.histogram(name + "/value", rewards, step)
-            tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards), step)
-
-    @property
-    def action_spec(self):
-        """Return the action spec."""
-        return self._action_spec
-
-    @property
-    def predict_state_spec(self):
-        """Return the RNN state spec for predict()."""
-        return self._predict_state_spec
-
-    @property
-    def train_state_spec(self):
-        """Return the RNN state spec for train_step()."""
-        return self._train_state_spec
-
-    @property
-    def action_distribution_spec(self):
-        """Return the action distribution spec for the action distributions."""
-        return self._action_distribution_spec
-
-    # Subclass may override predict() to allow more efficient implementation
-    def predict(self, time_step: ActionTimeStep, state=None):
-        """Predict for one step of observation.
-
-        Returns:
-            policy_step (PolicyStep):
-              policy_step.action is nested tf.distribution which consistent with 
-                `action_distribution_spec`
-              policy_step.state should be consistent with `predict_state_spec`
-
-        """
-        policy_step = self.train_step(time_step, state)
-        return policy_step._replace(info=())
+        super(OnPolicyAlgorithm, self).__init__(
+            action_spec,
+            train_state_spec,
+            action_distribution_spec,
+            predict_state_spec,
+            optimizer,
+            gradient_clipping,
+            train_step_counter,
+            debug_summaries,
+            name=name)
 
     @abstractmethod
-    def train_step(self, time_step: ActionTimeStep, state=None):
+    def train_step(self, time_step: ActionTimeStep =None, state=None):
         """Perform one step of action and training computation.
         
         It is called to generate actions for every environment step.
@@ -207,8 +130,8 @@ class OnPolicyAlgorithm(tf.Module):
 
     # Subclass may override train_complete() to allow customized training
     def train_complete(
-            self, tape: tf.GradientTape, training_info: TrainingInfo,
-            final_time_step: ActionTimeStep, final_policy_step: PolicyStep):
+            self, tape: tf.GradientTape=None, training_info: TrainingInfo=None,
+            final_time_step: ActionTimeStep =None, final_policy_step: PolicyStep=None):
         """Complete one iteration of training.
 
         `train_complete` should calcuate gradients and update parameters using

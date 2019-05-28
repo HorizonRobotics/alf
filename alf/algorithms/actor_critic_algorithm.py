@@ -23,7 +23,7 @@ from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.on_policy_algorithm import ActionTimeStep
+from alf.drivers.policy_driver import ActionTimeStep
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.algorithms.algorithm import Algorithm

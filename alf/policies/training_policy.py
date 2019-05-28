@@ -28,8 +28,7 @@ from tf_agents.trajectories.time_step import TimeStep
 from tf_agents.policies import tf_policy
 from tf_agents.utils import eager_utils
 
-from alf.algorithms.on_policy_algorithm import ActionTimeStep
-from alf.algorithms.on_policy_algorithm import make_action_time_step
+from alf.drivers.policy_driver import ActionTimeStep, make_action_time_step
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.utils.common import add_action_summaries

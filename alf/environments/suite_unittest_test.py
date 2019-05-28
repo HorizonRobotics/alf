@@ -16,23 +16,30 @@ from absl import logging
 import numpy as np
 
 import unittest
+from absl.testing import parameterized
 import tensorflow as tf
 
+from alf.environments.suite_unittest import ActionType
 from alf.environments.suite_unittest import ValueUnittestEnv
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from tf_agents.trajectories.time_step import TimeStep, StepType
 
 
-class SuiteUnittestEnvTest(unittest.TestCase):
+class SuiteUnittestEnvTest(parameterized.TestCase, unittest.TestCase):
     def assertArrayEqual(self, x, y):
         self.assertEqual(x.shape, y.shape)
         self.assertEqual(float(tf.reduce_max(abs(x - y))), 0.)
 
-    def test_value_unittest_env(self):
+    @parameterized.parameters(False, True)
+    def test_value_unittest_env(self, env_is_discrete):
         batch_size = 1
         steps_per_episode = 13
-        env = ValueUnittestEnv(batch_size, steps_per_episode)
+
+        action_type = ActionType.Discrete if env_is_discrete else ActionType.Continuous
+        env = ValueUnittestEnv(
+            batch_size, steps_per_episode,
+            action_type=action_type)
 
         time_step = env.reset()
         for _ in range(10):
@@ -60,10 +67,13 @@ class SuiteUnittestEnvTest(unittest.TestCase):
                                            dtype=tf.int64)
                 time_step = env.step(action)
 
-    def test_policy_unittest_env(self):
+    @parameterized.parameters(False, True)
+    def test_policy_unittest_env(self, env_is_discrete):
         batch_size = 100
         steps_per_episode = 13
-        env = PolicyUnittestEnv(batch_size, steps_per_episode)
+
+        action_type = ActionType.Discrete if env_is_discrete else ActionType.Continuous
+        env = PolicyUnittestEnv(batch_size, steps_per_episode, action_type=action_type)
 
         time_step = env.reset()
         for _ in range(10):
