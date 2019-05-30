@@ -47,7 +47,6 @@ import tensorflow as tf
 from tf_agents.agents.ppo import ppo_agent
 from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.environments import parallel_py_environment
-from tf_agents.environments import suite_mujoco
 from tf_agents.environments import tf_py_environment
 from alf.environments import suite_socialbot
 from tf_agents.eval import metric_utils

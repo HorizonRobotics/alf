@@ -44,7 +44,6 @@ import tensorflow as tf
 from tf_agents.agents.ppo import ppo_agent
 from tf_agents.drivers import dynamic_episode_driver
 from tf_agents.environments import parallel_py_environment
-from tf_agents.environments import suite_mujoco
 from tf_agents.environments import tf_py_environment
 from alf.environments import suite_socialbot
 from tf_agents.eval import metric_utils
@@ -145,7 +144,7 @@ def train_eval(
     if num_parallel_environments > 1:
       tf_env = tf_py_environment.TFPyEnvironment(
         parallel_py_environment.ParallelPyEnvironment(
-          [lambda: env_load_fn(env_name)] * num_parallel_environments))
+          [lambda: env_load_fn(env_name, wrap_with_process=False)] * num_parallel_environments))
     else:
       tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
 
