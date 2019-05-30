@@ -13,20 +13,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-r"""Train PR2-Gripper Env with PPO using internal states
+r"""Train PR2-Gripper Env with PPO using image observations
+it is based on train_ppo_pr2.py
 
-An example for the social-bot PR2-Gripper env using TF-Agents
-The original file is from the PPO example of TF-Agents:
-https://github.com/tensorflow/agents
+additional modifications include:
+1. modify actor_network and value_network to support multiple observations with encoder network
+2. split collect_episodes_per_iteration into minibatch to avoid out-of-memory
 
-modifications include:
-1. gin configure support
-2. checkpoint support
-3. use softsign activation as in other robotics RL paper
-4. enable logging for both SocialBot/TF2.0
-5. memory increase setting
+to train just
+./ppo_pr2_img.sh ~/model_path (with an empty social_bot.log file)
+
+also be sure to set use_internal_states_only to False in pr2.py
+
+The current status: after 12 hours (1.6M environment steps), avg episode reward is about 1.0.
+roughly could touch the object a couple of times within each episode.
 
 """
+
 
 from __future__ import absolute_import
 from __future__ import division
@@ -49,10 +52,14 @@ from tf_agents.environments import tf_py_environment
 from alf.environments import suite_socialbot
 from tf_agents.eval import metric_utils
 from tf_agents.metrics import tf_metrics
-from tf_agents.networks import actor_distribution_network
+#from tf_agents.networks import actor_distribution_network
+import actor_distribution_network
 from tf_agents.networks import actor_distribution_rnn_network
-from tf_agents.networks import value_network
+#from tf_agents.networks import value_network
+import value_network
+from tf_agents.networks import encoding_network
 from tf_agents.networks import value_rnn_network
+
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.utils import common
 
@@ -83,6 +90,31 @@ flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 FLAGS = flags.FLAGS
 
+def get_encoder(conv_layer_params, tf_env, fc_layers, name):
+  layers = []
+  for (filters, kernel_size, strides) in conv_layer_params:
+    layers.append(
+      tf.keras.layers.Conv2D(
+        filters=filters,
+        kernel_size=kernel_size,
+        strides=strides,
+        activation=tf.keras.activations.softsign,
+        kernel_initializer=tf.compat.v1.keras.initializers.glorot_uniform(),
+        dtype=tf.float32,
+        name=name))
+  layers.append(tf.keras.layers.Flatten())
+  image_processing_layers = tf.keras.Sequential(layers)
+  encoder = encoding_network.EncodingNetwork(
+    tf_env.observation_spec(),
+    preprocessing_layers=(image_processing_layers, tf.keras.layers.Lambda(lambda x: x)),
+    preprocessing_combiner=tf.keras.layers.Concatenate(axis=-1),
+    fc_layer_params=fc_layers,
+    activation_fn=tf.keras.activations.softsign,
+    kernel_initializer=tf.compat.v1.keras.initializers.glorot_uniform(),
+    batch_squash=True,
+    dtype=tf.float32)
+  return encoder
+
 
 @gin.configurable
 def train_eval(
@@ -93,7 +125,7 @@ def train_eval(
     # TODO(b/127576522): rename to policy_fc_layers.
     actor_fc_layers=(100, 50, 25),
     value_fc_layers=(100, 50, 25),
-    conv_layer_params=None, #[(32,8,4),(64,4,2),(64,3,1)],
+    conv_layer_params= [(32,8,4),(64,4,2),(64,3,2)],
     use_rnns=False,
     # Params for collect
     num_environment_steps=10000000,
@@ -116,8 +148,10 @@ def train_eval(
     summary_interval=50,
     summaries_flush_secs=1,
     use_tf_functions=True,
-    debug_summaries=True,
-    summarize_grads_and_vars=True):
+    debug_summaries=False,
+    summarize_grads_and_vars=False,
+    steps_per_episode=101,
+    mini_batches = 4):
   """A simple train and eval for PPO."""
   if root_dir is None:
     raise AttributeError('train_eval requires a root_dir.')
@@ -145,7 +179,7 @@ def train_eval(
     if num_parallel_environments > 1:
       tf_env = tf_py_environment.TFPyEnvironment(
         parallel_py_environment.ParallelPyEnvironment(
-          [lambda: env_load_fn(env_name)] * num_parallel_environments))
+          [lambda: env_load_fn(env_name, wrap_with_process=False)] * num_parallel_environments))
     else:
       tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
 
@@ -169,14 +203,18 @@ def train_eval(
         conv_layer_params=conv_layer_params,
         activation_fn=tf.keras.activations.softsign)
     else:
+      actor_encoder = get_encoder(conv_layer_params, tf_env, actor_fc_layers, 'actor/encoder')
+      critic_encoder = get_encoder(conv_layer_params, tf_env, value_fc_layers, 'value/encoder')
+      #import ipdb; ipdb.set_trace()
+
       actor_net = actor_distribution_network.ActorDistributionNetwork(
           tf_env.observation_spec(),
           tf_env.action_spec(),
-          fc_layer_params=actor_fc_layers,
-          activation_fn=tf.keras.activations.softsign)
+          encoder=actor_encoder)
+
       value_net = value_network.ValueNetwork(
-          tf_env.observation_spec(), fc_layer_params=value_fc_layers,
-          activation_fn=tf.keras.activations.softsign)
+          tf_env.observation_spec(),
+          encoder=critic_encoder)
 
     tf_agent = ppo_agent.PPOAgent(
         tf_env.time_step_spec(),
@@ -257,8 +295,16 @@ def train_eval(
       collect_time += time.time() - start_time
 
       start_time = time.time()
-      trajectories = replay_buffer.gather_all()
-      total_loss, _ = tf_agent.train(experience=trajectories)
+      #import ipdb;ipdb.set_trace()
+
+      for i in range(2 * mini_batches):
+        trajectories, _ = replay_buffer.get_next(
+          sample_batch_size=collect_episodes_per_iteration // mini_batches,
+          num_steps=steps_per_episode
+        )
+        total_loss, _ = tf_agent.train(experience=trajectories)
+      #trajectories = replay_buffer.gather_all()
+      #total_loss, _ = tf_agent.train(experience=trajectories)
       replay_buffer.clear()
       train_time += time.time() - start_time
 
