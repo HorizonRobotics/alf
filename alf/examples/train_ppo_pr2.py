@@ -116,7 +116,8 @@ def train_eval(
     summaries_flush_secs=1,
     use_tf_functions=True,
     debug_summaries=True,
-    summarize_grads_and_vars=True):
+    summarize_grads_and_vars=True,
+    eval_only=False):
   """A simple train and eval for PPO."""
   if root_dir is None:
     raise AttributeError('train_eval requires a root_dir.')
@@ -141,15 +142,16 @@ def train_eval(
       lambda: tf.math.equal(global_step % summary_interval, 0)):
     tf.compat.v1.set_random_seed(random_seed)
 
-    if num_parallel_environments > 1:
-      tf_env = tf_py_environment.TFPyEnvironment(
-        parallel_py_environment.ParallelPyEnvironment(
-          [lambda: env_load_fn(env_name, wrap_with_process=False)] * num_parallel_environments))
+    if eval_only:
+      eval_tf_env = tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
     else:
-      tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
-
-    eval_tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
-
+      if num_parallel_environments > 1:
+        tf_env = tf_py_environment.TFPyEnvironment(
+          parallel_py_environment.ParallelPyEnvironment(
+            [lambda: env_load_fn(env_name, wrap_with_process=False)] * num_parallel_environments))
+      else:
+        tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
+      eval_tf_env = tf_py_environment.TFPyEnvironment(env_load_fn(env_name))
 
     optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 
@@ -238,7 +240,7 @@ def train_eval(
     train_time = 0
     timed_at_step = global_step.numpy()
 
-    while environment_steps_metric.result() < num_environment_steps:
+    while not eval_only and environment_steps_metric.result() < num_environment_steps:
       global_step_val = global_step.numpy()
       if global_step_val % eval_interval == 0 and global_step_val > 0:
         metric_utils.eager_compute(
