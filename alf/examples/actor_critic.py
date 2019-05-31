@@ -16,37 +16,43 @@ r"""Train using ActorCriticPolicy
 To run actor_critic on gym CartPole:
 ```bash
 python actor_critic.py \
+  --root_dir=~/tmp/ac-gae/CartPole \
   --alsologtostderr \
-  --env_name=CartPole-v0 \
-  --num_parallel_environments=8 \
-  --num_iterations=1000000 \
-  --root_dir=~/tmp/ac/CartPole \
-  --gin_param='ActorCriticLoss.gamma=0.98' \
-  --gin_param='ActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss' \
-  --gin_param='ActorCriticLoss.entropy_regularization=0.001' \
-  --gin_param='ActorCriticAlgorithm.gradient_clipping=10.0' \
-  --gin_param='create_algorithm.actor_fc_layers=(100,)' \
-  --gin_param='create_algorithm.value_fc_layers=(100,)' \
-  --gin_param='create_algorithm.learning_rate=0.001' \
-  --gin_param='on_policy_trainer.train.train_interval=8' \
-  --gin_param='train_eval.debug_summaries=1'
+  --gin_file=ac_cart_pole.gin
 ```
 
 To run on SocialBot CartPole:
 ```bash
 python actor_critic.py \
-  --alsologtostderr \
-  --env_name=SocialBot-CartPole-v0 \
-  --num_parallel_environments=16 \
   --root_dir=~/tmp/ac/SocialBot-CartPole \
+  --alsologtostderr \
+  --gin_param='create_environment.env_name="SocialBot-CartPole-v0"' \
+  --gin_param='create_environment.num_parallel_environments=16' \
   --gin_param='create_environment.env_load_fn=@suite_socialbot.load' \
-  --gin_param='train_eval.debug_summaries=1'
+  --gin_file=ac_cart_pole.gin
+```
+
+To Run on SocailBot SimpleNavigation
+```bash
+python actor_critic.py \
+    --root_dir=~/tmp/simple_navigation/ac \
+    --alsologtostderr \
+    --gin_file=ac_simple_navigation.gin
+```
+
+To Run on MountainCar using intrinsic curiosity module:
+```bash
+python actor_critic.py \
+    --root_dir=~/tmp/simple_navigation/ac \
+    --alsologtostderr \
+    --gin_file=icm_mountain_car.gin
 ```
 
 """
 
 import os
 import random
+import shutil
 import time
 
 from absl import app
@@ -73,17 +79,15 @@ from alf.trainers import on_policy_trainer
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_string('env_name', 'CartPole-v0', 'Name of an environment')
-flags.DEFINE_integer('num_parallel_environments', 30,
-                     'Number of environments to run in parallel')
-flags.DEFINE_integer('num_iterations', 100000,
-                     'Total number train/eval iterations to perform.')
-flags.DEFINE_boolean('use_rnns', False,
-                     'If true, use RNN for policy and value function.')
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 
 FLAGS = flags.FLAGS
+
+tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
+                                                   'tf.keras.layers.Conv2D')
+tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
+                                               'tf.optimizers.Adam')
 
 
 @gin.configurable
@@ -153,49 +157,54 @@ def create_algorithm(env,
 @gin.configurable
 def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
-                       random_seed=0,
                        num_parallel_environments=30):
     """Create environment."""
     if num_parallel_environments == 1:
         py_env = env_load_fn(env_name)
     else:
+        if env_load_fn == suite_socialbot.load:
+            logging.info("suite_socialbot environment")
+            # No need to wrap with process since ParllelPyEnvironment will do it
+            env_load_fn = lambda env_name: suite_socialbot.load(
+                env_name, wrap_with_process=False)
         py_env = parallel_py_environment.ParallelPyEnvironment(
             [lambda: env_load_fn(env_name)] * num_parallel_environments)
     return tf_py_environment.TFPyEnvironment(py_env)
 
 
 @gin.configurable
-def train_eval(train_dir,
-               env_name='CartPole-v0',
-               num_parallel_environments=30,
-               num_iterations=1000,
-               use_rnns=False,
-               debug_summaries=False):
+def train_eval(train_dir, debug_summaries=False):
     """A simple train and eval for ActorCriticAlgorithm."""
-    env = create_environment(
-        env_name, num_parallel_environments=num_parallel_environments)
-    algorithm = create_algorithm(
-        env, use_rnns=use_rnns, debug_summaries=debug_summaries)
+    env = create_environment()
+    algorithm = create_algorithm(env, debug_summaries=debug_summaries)
     on_policy_trainer.train(
-        train_dir,
-        env,
-        algorithm,
-        num_iterations=num_iterations,
-        debug_summaries=debug_summaries)
+        train_dir, env, algorithm, debug_summaries=debug_summaries)
+
+
+def copy_gin_configs(root_dir, gin_files):
+    """Copy gin config files to root_dir
+
+    Args:
+        root_dir (str): directory path
+        gin_files (None|list[str]): list of file paths
+    """
+    if gin_files is None:
+        return
+    root_dir = os.path.expanduser(root_dir)
+    os.makedirs(root_dir, exist_ok=True)
+    for f in gin_files:
+        shutil.copyfile(f, os.path.join(root_dir, os.path.basename(f)))
 
 
 def main(_):
     logging.set_verbosity(logging.INFO)
+    copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
     gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
-    train_eval(
-        FLAGS.root_dir + "/train",
-        env_name=FLAGS.env_name,
-        use_rnns=FLAGS.use_rnns,
-        num_parallel_environments=FLAGS.num_parallel_environments,
-        num_iterations=FLAGS.num_iterations)
+    train_eval(FLAGS.root_dir + "/train")
 
 
 if __name__ == '__main__':
+    logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
     flags.mark_flag_as_required('root_dir')

@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 try:
     import social_bot
+    # The following import is to allow gin config of environments take effects
+    import social_bot.envs
 except ImportError:
     social_bot = None
 
