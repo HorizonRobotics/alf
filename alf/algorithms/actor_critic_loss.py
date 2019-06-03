@@ -69,6 +69,9 @@ class ActorCriticLoss(object):
                 If True, uses td_lambda_return for training value function.
                 (td_lambda_return = gae_advantage + value_predictions)
             td_lambda (float): Lambda parameter for TD-lambda computation.
+            normalize_advantages (bool): If True, normalize advantage to zero
+                mean and unit variance within batch for caculating policy
+                gradient. This is commonly used for PPO.
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
