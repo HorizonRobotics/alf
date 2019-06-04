@@ -15,9 +15,11 @@
 
 import os
 
+import gin
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
+from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 
 
@@ -233,3 +235,25 @@ def get_global_counter(default_counter=None):
                 0, dtype=tf.int64, trainable=False, name="global_counter")
             tf.summary.experimental.set_step(default_counter)
     return default_counter
+
+
+@gin.configurable
+def image_scale_transformer(observation):
+    """Scale image by 2/255 and substract 1.
+
+    Note: it treats an observation with len(shape)==4 as image
+    Args:
+        observation (nested Tensor): observations
+    Returns:
+        Transfromed observation
+    """
+
+    def _transform_image(obs):
+        # tf_agent changes all gym.spaces.Box observation to tf.float32.
+        # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
+        if len(obs.shape) == 4:
+            return (2. / 255.) * obs - 1.
+        else:
+            return obs
+
+    return tf.nest.map_structure(_transform_image, observation)

@@ -1,0 +1,28 @@
+# environment config
+create_environment.num_parallel_environments=30
+create_environment.env_name='MountainCar-v0'
+create_environment.env_load_fn=@load_with_random_max_episode_steps
+load_with_random_max_episode_steps.min_steps=1000
+load_with_random_max_episode_steps.max_steps=1200
+suite_gym.load.max_episode_steps=1000
+
+# algorithm config
+ActorCriticLoss.entropy_regularization=0.1
+ActorDistributionNetwork.activation_fn=@tf.nn.elu
+ValueNetwork.activation_fn=@tf.nn.elu
+
+create_algorithm.use_icm=1
+create_algorithm.actor_fc_layers=(256,)
+create_algorithm.value_fc_layers=(256,)
+create_algorithm.encoding_fc_layers=(200,)
+
+ICMAlgorithm.hidden_size=200
+EncodingNetwork.activation_fn=@tf.nn.elu
+
+# training config
+on_policy_trainer.train.num_iterations=1000000
+on_policy_trainer.train.summarize_grads_and_vars=1
+on_policy_trainer.train.train_interval=100
+on_policy_trainer.train.use_tf_functions=1
+
+train_eval.debug_summaries=1

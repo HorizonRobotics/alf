@@ -20,6 +20,7 @@ from __future__ import print_function
 import math
 import os
 import psutil
+from typing import Callable
 
 import gin.tf
 import tensorflow as tf
@@ -74,6 +75,7 @@ class OnPolicyDriver(driver.Driver):
     def __init__(self,
                  env: TFEnvironment,
                  algorithm: OnPolicyAlgorithm,
+                 observation_transformer: Callable = None,
                  observers=[],
                  metrics=[],
                  training=True,
@@ -122,11 +124,10 @@ class OnPolicyDriver(driver.Driver):
         self._summarize_grads_and_vars = summarize_grads_and_vars
         self._final_step_mode = final_step_mode
         self._metrics = metrics
+        self._observation_transformer = observation_transformer
 
         if training:
             self._policy_state_spec = algorithm.train_state_spec
-            self._algorithm_step = algorithm.train_step
-
             time_step_spec = env.time_step_spec()
             action_distribution_param_spec = tf.nest.map_structure(
                 lambda spec: spec.input_params_spec,
@@ -148,7 +149,6 @@ class OnPolicyDriver(driver.Driver):
             self._trainable_variables = algorithm.trainable_variables
         else:
             self._policy_state_spec = algorithm.predict_state_spec
-            self._algorithm_step = algorithm.predict
 
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
@@ -212,6 +212,17 @@ class OnPolicyDriver(driver.Driver):
             list[TFStepMetric]
         """
         return self._metrics
+
+    def _algorithm_step(self, time_step, state):
+        if self._observation_transformer is not None:
+            time_step = time_step._replace(
+                observation=self._observation_transformer(time_step.
+                                                          observation))
+
+        if self._training:
+            return self._algorithm.train_step(time_step, state)
+        else:
+            return self._algorithm.predict(time_step, state)
 
     def _run(self, time_step, policy_state, max_num_steps):
         if self._training:
@@ -337,7 +348,7 @@ class OnPolicyDriver(driver.Driver):
                 time_step, policy_state)
             next_state = policy_step.state
         else:
-            policy_step = self._algorithm.train_step(time_step, policy_state)
+            policy_step = self._algorithm_step(time_step, policy_state)
             next_time_step = time_step
             next_state = policy_state
 
