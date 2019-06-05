@@ -108,3 +108,38 @@ def train(train_dir,
         summary_dir=train_dir,
         summary_interval=summary_interval,
         flush_millis=summaries_flush_secs * 1000)
+
+
+@gin.configurable
+def play(train_dir,
+         env,
+         algorithm,
+         random_seed=0,
+         num_steps=10000,
+         use_tf_functions=True):
+    train_dir = os.path.expanduser(train_dir)
+
+    tf.random.set_seed(random_seed)
+    global_step = tf.summary.experimental.get_step()
+
+    driver = OnPolicyDriver(
+        env=env, algorithm=algorithm, training=False, greedy_predict=True)
+
+    checkpointer = tfa_common.Checkpointer(
+        ckpt_dir=os.path.join(train_dir, 'algorithm'),
+        algorithm=algorithm,
+        metrics=metric_utils.MetricsGroup(driver.get_metrics(), 'metrics'),
+        global_step=global_step)
+    checkpointer.initialize_or_restore()
+
+    if use_tf_functions:
+        driver.run = tf.function(driver.run)
+
+    env.reset()
+    time_step = driver.get_initial_time_step()
+    policy_state = driver.get_initial_state()
+    for _ in range(num_steps):
+        time_step, policy_state = driver.run(
+            max_num_steps=1, time_step=time_step, policy_state=policy_state)
+        env.pyenv.envs[0].render(mode='human')
+        time.sleep(0.01)

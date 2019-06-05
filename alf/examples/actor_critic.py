@@ -16,15 +16,24 @@ r"""Train using ActorCriticPolicy
 To run actor_critic on gym CartPole:
 ```bash
 python actor_critic.py \
-  --root_dir=~/tmp/ac-gae/CartPole \
+  --root_dir=~/tmp/cart_pole \
   --alsologtostderr \
   --gin_file=ac_cart_pole.gin
+```
+
+You can visualize playing of the trained model by running:
+```bash
+python actor_critic.py \
+  --root_dir=~/tmp/cart_pole \
+  --alsologtostderr \
+  --gin_file=ac_cart_pole.gin \
+  --play
 ```
 
 To run on SocialBot CartPole:
 ```bash
 python actor_critic.py \
-  --root_dir=~/tmp/ac/SocialBot-CartPole \
+  --root_dir=~/tmp/socialbot-cartpole \
   --alsologtostderr \
   --gin_param='create_environment.env_name="SocialBot-CartPole-v0"' \
   --gin_param='create_environment.num_parallel_environments=16' \
@@ -35,7 +44,7 @@ python actor_critic.py \
 To Run on SocailBot SimpleNavigation
 ```bash
 python actor_critic.py \
-    --root_dir=~/tmp/simple_navigation/ac \
+    --root_dir=~/tmp/simple_navigation \
     --alsologtostderr \
     --gin_file=ac_simple_navigation.gin
 ```
@@ -43,7 +52,7 @@ python actor_critic.py \
 To Run on MountainCar using intrinsic curiosity module:
 ```bash
 python actor_critic.py \
-    --root_dir=~/tmp/simple_navigation/ac \
+    --root_dir=~/tmp/mountain_car \
     --alsologtostderr \
     --gin_file=icm_mountain_car.gin
 ```
@@ -71,9 +80,11 @@ from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionR
 from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
+from tf_agents.environments import atari_wrappers
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
+from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments import suite_socialbot
 from alf.trainers import on_policy_trainer
 
@@ -81,6 +92,7 @@ flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+flags.DEFINE_bool('play', False, 'Visualize the playing')
 
 FLAGS = flags.FLAGS
 
@@ -88,6 +100,7 @@ tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
                                                    'tf.keras.layers.Conv2D')
 tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
                                                'tf.optimizers.Adam')
+gin.external_configurable(atari_wrappers.FrameStack4)
 
 
 @gin.configurable
@@ -181,6 +194,13 @@ def train_eval(train_dir, debug_summaries=False):
         train_dir, env, algorithm, debug_summaries=debug_summaries)
 
 
+def play(train_dir):
+    """A simple train and eval for ActorCriticAlgorithm."""
+    env = create_environment(num_parallel_environments=1)
+    algorithm = create_algorithm(env)
+    on_policy_trainer.play(train_dir, env, algorithm)
+
+
 def copy_gin_configs(root_dir, gin_files):
     """Copy gin config files to root_dir
 
@@ -200,7 +220,10 @@ def main(_):
     logging.set_verbosity(logging.INFO)
     copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
     gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
-    train_eval(FLAGS.root_dir + "/train")
+    if FLAGS.play:
+        play(FLAGS.root_dir + "/train")
+    else:
+        train_eval(FLAGS.root_dir + "/train")
 
 
 if __name__ == '__main__':
