@@ -33,6 +33,29 @@ def is_available():
     return social_bot is not None
 
 
+class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
+    """tf_agetns ProcessPyEnvironment with render()."""
+
+    def __init__(self, env_constructor, flatten=False):
+        super(ProcessPyEnvironment, self).__init__(
+            env_constructor, flatten=flatten)
+
+    def render(self, mode='human'):
+        """Render the environment.
+
+        Args:
+            mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
+                up a window where the environment can be visualized.
+        Returns:
+            An ndarray of shape [width, height, 3] denoting an RGB image if mode is
+            `rgb_array`. Otherwise return nothing and render directly to a display
+            window.
+        Raises:
+            NotImplementedError: If the environment does not support rendering.
+        """
+        return self.call('render', mode)()
+
+
 @gin.configurable
 def load(environment_name,
          port=None,
@@ -89,8 +112,7 @@ def load(environment_name,
     port_range = [port, port + 1] if port else [DEFAULT_SOCIALBOT_PORT]
     with _get_unused_port(*port_range) as port:
         if wrap_with_process:
-            process_env = parallel_py_environment.ProcessPyEnvironment(
-                lambda: env_ctor(port))
+            process_env = ProcessPyEnvironment(lambda: env_ctor(port))
             process_env.start()
             py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
         else:
