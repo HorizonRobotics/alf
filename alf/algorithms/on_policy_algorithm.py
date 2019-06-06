@@ -18,6 +18,7 @@ from collections import namedtuple
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
@@ -175,6 +176,28 @@ class OnPolicyAlgorithm(tf.Module):
     def predict(self, time_step: ActionTimeStep, state=None):
         """Predict for one step of observation.
 
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+
+        Returns:
+            policy_step (PolicyStep):
+              policy_step.action is nested tf.distribution which consistent with 
+                `action_distribution_spec`
+              policy_step.state should be consistent with `predict_state_spec`
+        """
+        policy_step = self.train_step(time_step, state)
+        return policy_step._replace(info=())
+
+    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+        """Predict for one step of observation.
+
+        Generate greedy action that maximizes the action probablity).
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+
         Returns:
             policy_step (PolicyStep):
               policy_step.action is nested tf.distribution which consistent with 
@@ -182,8 +205,20 @@ class OnPolicyAlgorithm(tf.Module):
               policy_step.state should be consistent with `predict_state_spec`
 
         """
-        policy_step = self.train_step(time_step, state)
-        return policy_step._replace(info=())
+
+        def dist_fn(dist):
+            try:
+                greedy_action = dist.mode()
+            except NotImplementedError:
+                raise ValueError(
+                    "Your network's distribution does not implement mode "
+                    "making it incompatible with a greedy policy.")
+
+            return tfp.distributions.Deterministic(loc=greedy_action)
+
+        policy_step = self.predict(time_step, state)
+        action = tf.nest.map_structure(dist_fn, policy_step.action)
+        return policy_step._replace(action=action)
 
     @abstractmethod
     def train_step(self, time_step: ActionTimeStep, state=None):

@@ -79,6 +79,7 @@ class OnPolicyDriver(driver.Driver):
                  observers=[],
                  metrics=[],
                  training=True,
+                 greedy_predict=False,
                  train_interval=20,
                  final_step_mode=FINAL_STEP_REDO,
                  debug_summaries=False,
@@ -94,6 +95,8 @@ class OnPolicyDriver(driver.Driver):
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             training (bool): True for training, false for evaluating
+            greedy_predict (bool): use greedy action for evaluation (i.e.
+                training==False).
             train_interval (int):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for
@@ -119,6 +122,7 @@ class OnPolicyDriver(driver.Driver):
 
         self._algorithm = algorithm
         self._training = training
+        self._greedy_predict = greedy_predict
         self._train_interval = train_interval
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
@@ -221,6 +225,8 @@ class OnPolicyDriver(driver.Driver):
 
         if self._training:
             return self._algorithm.train_step(time_step, state)
+        elif self._greedy_predict:
+            return self._algorithm.greedy_predict(time_step, state)
         else:
             return self._algorithm.predict(time_step, state)
 

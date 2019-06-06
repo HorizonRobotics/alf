@@ -238,8 +238,8 @@ def get_global_counter(default_counter=None):
 
 
 @gin.configurable
-def image_scale_transformer(observation):
-    """Scale image by 2/255 and substract 1.
+def image_scale_transformer(observation, min=-1.0, max=1.0):
+    """Scale image to min and max (0->min, 255->max)
 
     Note: it treats an observation with len(shape)==4 as image
     Args:
@@ -252,7 +252,9 @@ def image_scale_transformer(observation):
         # tf_agent changes all gym.spaces.Box observation to tf.float32.
         # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
         if len(obs.shape) == 4:
-            return (2. / 255.) * obs - 1.
+            if obs.dtype == tf.uint8:
+                obs = tf.cast(obs, tf.float32)
+            return ((max - min) / 255.) * obs + min
         else:
             return obs
 
