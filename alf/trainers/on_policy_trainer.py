@@ -138,7 +138,10 @@ def play(train_dir,
     global_step = tf.summary.experimental.get_step()
 
     driver = OnPolicyDriver(
-        env=env, algorithm=algorithm, training=False, greedy_predict=True)
+        env=env,
+        algorithm=algorithm,
+        training=False,
+        greedy_predict=greedy_predict)
 
     checkpointer = tfa_common.Checkpointer(
         ckpt_dir=os.path.join(train_dir, 'algorithm'),
