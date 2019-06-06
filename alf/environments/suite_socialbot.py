@@ -34,7 +34,7 @@ def is_available():
 
 
 class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
-    """tf_agetns ProcessPyEnvironment with render()."""
+    """tf_agents ProcessPyEnvironment with render()."""
 
     def __init__(self, env_constructor, flatten=False):
         super(ProcessPyEnvironment, self).__init__(
