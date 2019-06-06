@@ -218,7 +218,11 @@ def copy_gin_configs(root_dir, gin_files):
 
 def main(_):
     logging.set_verbosity(logging.INFO)
-    copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
+    if not FLAGS.play:
+        copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
+        # TODO: use the gin files under FLAGS.root_dir if FLAGS.gin_file
+        # is not specified
+
     gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
     if FLAGS.play:
         play(FLAGS.root_dir + "/train")
