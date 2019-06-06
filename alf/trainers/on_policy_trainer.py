@@ -46,6 +46,7 @@ def train(train_dir,
     additional prefix "driver_loop", it's might be a bug of tf2. We'll see.
 
     Args:
+        train_dir (str): directory for saving summary and checkpoints
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         random_seed (int): random seed
@@ -114,9 +115,23 @@ def train(train_dir,
 def play(train_dir,
          env,
          algorithm,
+         greedy_predict=True,
          random_seed=0,
          num_steps=10000,
+         sleep_time_per_step=0.01,
          use_tf_functions=True):
+    """Play using the latest checkpoint under `train_dir`.
+
+    Args:
+        train_dir (str): same as the train_dir used for `train()`
+        env (TFEnvironment): the environment
+        algorithm (OnPolicyAlgorithm): the training algorithm
+        greedy_predict (bool): use greedy action for evaluation.
+        random_seed (int): random seed
+        num_steps (int): number of steps to play
+        sleep_time_per_step (float): sleep so many seconds for each step
+        use_tf_functions (bool): whether to use tf.function
+    """
     train_dir = os.path.expanduser(train_dir)
 
     tf.random.set_seed(random_seed)
@@ -142,4 +157,4 @@ def play(train_dir,
         time_step, policy_state = driver.run(
             max_num_steps=1, time_step=time_step, policy_state=policy_state)
         env.pyenv.envs[0].render(mode='human')
-        time.sleep(0.01)
+        time.sleep(sleep_time_per_step)

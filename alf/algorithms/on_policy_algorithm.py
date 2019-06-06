@@ -178,7 +178,7 @@ class OnPolicyAlgorithm(tf.Module):
 
         Args:
             time_step (ActionTimeStep):
-            state (nested Tensor): should be consistant with train_state_spec
+            state (nested Tensor): should be consistent with train_state_spec
 
         Returns:
             policy_step (PolicyStep):
@@ -196,7 +196,7 @@ class OnPolicyAlgorithm(tf.Module):
 
         Args:
             time_step (ActionTimeStep):
-            state (nested Tensor): should be consistant with train_state_spec
+            state (nested Tensor): should be consistent with train_state_spec
 
         Returns:
             policy_step (PolicyStep):

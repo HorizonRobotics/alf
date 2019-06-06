@@ -95,6 +95,8 @@ class OnPolicyDriver(driver.Driver):
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             training (bool): True for training, false for evaluating
+            greedy_predict (bool): use greedy action for evaluation (i.e.
+                training==False).
             train_interval (int):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for

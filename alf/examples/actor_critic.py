@@ -195,7 +195,7 @@ def train_eval(train_dir, debug_summaries=False):
 
 
 def play(train_dir):
-    """A simple train and eval for ActorCriticAlgorithm."""
+    """Play using the latest checkpoint under `train_dir`."""
     env = create_environment(num_parallel_environments=1)
     algorithm = create_algorithm(env)
     on_policy_trainer.play(train_dir, env, algorithm)
