@@ -69,12 +69,14 @@ from tf_agents.environments import tf_py_environment
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.encoding_network import EncodingNetwork
+from alf.utils.encoding_network import EncodingNetwork as AlfEncodingNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.environments import suite_socialbot
+from alf.environments import suite_mario
 from alf.trainers import on_policy_trainer
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
@@ -103,6 +105,7 @@ def load_with_random_max_episode_steps(env_name,
 def create_algorithm(env,
                      actor_fc_layers=(200, 100),
                      value_fc_layers=(200, 100),
+                     encoding_conv_layers=(),
                      encoding_fc_layers=(),
                      use_rnns=False,
                      use_icm=False,
@@ -132,9 +135,20 @@ def create_algorithm(env,
             env.observation_spec(), fc_layer_params=value_fc_layers)
 
     encoding_net = None
-    if encoding_fc_layers:
-        encoding_net = EncodingNetwork(
-            env.observation_spec(), fc_layer_params=encoding_fc_layers)
+    if encoding_fc_layers or encoding_conv_layers:
+        if len(encoding_fc_layers) > 1:
+            # support different activation function for hidden and output layers
+            encoding_net = AlfEncodingNetwork(
+                input_tensor_spec=env.observation_spec(),
+                conv_layer_params=encoding_conv_layers,
+                preprocessing_combiner=None,
+                fc_layer_params=encoding_fc_layers[:-1],
+                last_layer_size=encoding_fc_layers[-1])
+        else:
+            encoding_net = EncodingNetwork(
+                input_tensor_spec=env.observation_spec(),
+                conv_layer_params=encoding_conv_layers,
+                fc_layer_params=encoding_fc_layers)
 
     icm = None
     if use_icm:
