@@ -69,7 +69,6 @@ from tf_agents.environments import tf_py_environment
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.encoding_network import EncodingNetwork
-from alf.utils.encoding_network import EncodingNetwork as AlfEncodingNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 
@@ -136,18 +135,10 @@ def create_algorithm(env,
 
     encoding_net = None
     if encoding_fc_layers or encoding_conv_layers:
-        if len(encoding_fc_layers) > 1:
-            # support different activation function for hidden and output layers
-            encoding_net = AlfEncodingNetwork(
-                input_tensor_spec=env.observation_spec(),
-                conv_layer_params=encoding_conv_layers,
-                fc_layer_params=encoding_fc_layers[:-1],
-                last_layer_size=encoding_fc_layers[-1])
-        else:
-            encoding_net = EncodingNetwork(
-                input_tensor_spec=env.observation_spec(),
-                conv_layer_params=encoding_conv_layers,
-                fc_layer_params=encoding_fc_layers)
+        encoding_net = EncodingNetwork(
+            input_tensor_spec=env.observation_spec(),
+            conv_layer_params=encoding_conv_layers,
+            fc_layer_params=encoding_fc_layers)
 
     icm = None
     if use_icm:
