@@ -26,7 +26,14 @@ from gym import spaces
 
 class MarioXReward(gym.Wrapper):
     """
-    Use X-axis coordinate increment as reward
+    Wrap mario environment and use X-axis coordinate increment as reward
+
+    ```
+        max_x = 0 if initial or upgrade_to_new_level
+        current_x = xscrollHi * 256 + xscrollLo
+        reward = current_x - max_x if current_x > max_x else 0
+        max_x = current_x if current_x > max_x else max_x
+    ```
     """
 
     def __init__(self, env):
@@ -72,8 +79,21 @@ class MarioXReward(gym.Wrapper):
 
 class LimitedDiscreteActions(gym.ActionWrapper):
     """
-    Map button combinations to discrete actions
+    Wrap mario environment and make it use discrete actions.
+    Map available button combinations to discrete actions
+    eg:
+       0 -> None
+       1 -> UP
+       2 -> DOWN
+       ...
+       k -> A
+       ...
+       m -> A + LEFT
+       ...
+       n -> B + UP
+       ...
     """
+
     BUTTONS = {"A", "B"}
     SHOULDERS = {"L", "R"}
 
@@ -156,45 +176,6 @@ class ProcessFrame84(gym.ObservationWrapper):
         return x_t.astype(np.uint8)
 
 
-#   See https://github.com/openai/baselines/blob/
-#   9b68103b737ac46bc201dfb3121cfa5df2127e53/
-#   baselines/common/atari_wrappers.py#L188-L257
-
-
-class LazyFrames(object):
-    def __init__(self, frames):
-        """This object ensures that common frames between
-        the observations are only stored once.
-        It exists purely to optimize memory usage which can be
-        huge for DQN's 1M frames replay
-        buffers.
-
-        This object should only be converted to numpy array
-        before being passed to the model.
-
-        You'd not believe how complex the previous solution was."""
-        self._frames = frames
-        self._out = None
-
-    def _force(self):
-        if self._out is None:
-            self._out = np.concatenate(self._frames, axis=-1)
-            self._frames = None
-        return self._out
-
-    def __array__(self, dtype=None):
-        out = self._force()
-        if dtype is not None:
-            out = out.astype(dtype)
-        return out
-
-    def __len__(self):
-        return len(self._force())
-
-    def __getitem__(self, i):
-        return self._force()[i]
-
-
 class FrameStack(gym.Wrapper):
     def __init__(self, env, k):
         """Stack k last frames.
@@ -219,16 +200,16 @@ class FrameStack(gym.Wrapper):
         return self._get_ob(), reward, done, info
 
     def _get_ob(self):
-        assert len(self.frames) == self.k
         return np.concatenate(self.frames, axis=2)
-        # Returns lazy array, which is much more memory efficient.
-        # return LazyFrames(list(self.frames))
 
 
 class FrameFormat(gym.Wrapper):
     """
     Format frame to specified data_format
-    `channels_first` for CHW and `channels_last` for HWC
+
+    Args:
+       data_format: Data format for frame
+          `channels_first` for CHW and `channels_last` for HWC
     """
 
     def __init__(self, env, data_format='channels_last'):

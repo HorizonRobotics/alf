@@ -141,7 +141,6 @@ def create_algorithm(env,
             encoding_net = AlfEncodingNetwork(
                 input_tensor_spec=env.observation_spec(),
                 conv_layer_params=encoding_conv_layers,
-                preprocessing_combiner=None,
                 fc_layer_params=encoding_fc_layers[:-1],
                 last_layer_size=encoding_fc_layers[-1])
         else:
