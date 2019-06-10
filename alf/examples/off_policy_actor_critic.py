@@ -61,7 +61,7 @@ def main(_):
 
     gin_file = common.get_gin_file()
 
-    if not FLAGS.play:
+    if FLAGS.gin_file and not FLAGS.play:
         common.copy_gin_configs(FLAGS.root_dir, gin_file)
 
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
