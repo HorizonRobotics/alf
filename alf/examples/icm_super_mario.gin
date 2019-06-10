@@ -1,3 +1,5 @@
+# icm on SuperMario
+
 # environment config
 # gym-retro>=0.7.0 is required for this experiment and also
 #  a suitable `SuperMarioBros-Nes` rom should be obtain and imported (roms are not included in gym-retro)
@@ -12,7 +14,7 @@ suite_mario.load.wrap_with_process=0
 conv_layer_params=[(32,8,4),(64,4,2),(64,3,1)]
 
 create_algorithm.use_rnns=False
-create_algorithm.learning_rate=2e-5
+create_algorithm.learning_rate=3e-5
 create_algorithm.use_icm=1
 create_algorithm.encoding_conv_layers=%conv_layer_params
 create_algorithm.encoding_fc_layers=(256,)
