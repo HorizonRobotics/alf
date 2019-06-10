@@ -17,8 +17,8 @@ import numpy as np
 import gin
 
 from tf_agents.environments import suite_gym
-from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import wrappers
+from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, FrameSkip, ProcessFrame84, FrameStack, FrameFormat
 
@@ -40,6 +40,7 @@ def load(game,
          frame_skip=4,
          frame_stack=4,
          data_format='channels_last',
+         record=None,
          crop=True,
          max_episode_steps=4500,
          spec_dtype_map=None):
@@ -53,6 +54,7 @@ def load(game,
         frame_stack: Stack k last frames
         data_format：one of `channels_last` (default) or `channels_first`.
                     The ordering of the dimensions in the inputs.
+        record: Record the gameplay to file
         crop: whether to crop frame to fixed size
         max_episode_steps: max episode step limit
         spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
@@ -72,7 +74,7 @@ def load(game,
 
     def env_ctor():
         env_args = [game, state] if state else [game]
-        env = retro.make(*env_args)
+        env = retro.make(*env_args, record=record)
         buttons = env.buttons
         env = MarioXReward(env)
         if frame_skip:
@@ -94,7 +96,7 @@ def load(game,
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
     if wrap_with_process:
-        process_env = parallel_py_environment.ProcessPyEnvironment(
+        process_env = ProcessPyEnvironment(
             lambda: env_ctor())
         process_env.start()
         py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
