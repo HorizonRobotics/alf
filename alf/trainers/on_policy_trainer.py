@@ -161,3 +161,4 @@ def play(train_dir,
             max_num_steps=1, time_step=time_step, policy_state=policy_state)
         env.pyenv.envs[0].render(mode='human')
         time.sleep(sleep_time_per_step)
+    env.reset()

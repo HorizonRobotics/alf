@@ -55,7 +55,6 @@ class ICMAlgorithm(Algorithm):
                  action_spec,
                  feature_spec,
                  hidden_size=256,
-                 reward_scale=1.0,
                  reward_adapt_speed=8.0,
                  encoding_net: Network = None,
                  forward_net: Network = None,
@@ -78,7 +77,6 @@ class ICMAlgorithm(Algorithm):
             self._num_actions = action_spec.shape[-1]
 
         self._action_spec = action_spec
-        self._reward_scale = reward_scale
 
         feature_dim = tf.nest.flatten(feature_spec)[0].shape[-1]
 
@@ -146,7 +144,6 @@ class ICMAlgorithm(Algorithm):
 
         intrinsic_reward = tf.stop_gradient(forward_loss)
         intrinsic_reward = self._reward_normalizer.normalize(intrinsic_reward)
-        intrinsic_reward *= self._reward_scale
 
         return AlgorithmStep(
             outputs=intrinsic_reward,
