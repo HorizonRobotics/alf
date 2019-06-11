@@ -40,7 +40,7 @@ def load(game,
          frame_skip=4,
          frame_stack=4,
          data_format='channels_last',
-         record=None,
+         record=False,
          crop=True,
          max_episode_steps=4500,
          spec_dtype_map=None):
@@ -54,7 +54,9 @@ def load(game,
         frame_stack: Stack k last frames
         data_format：one of `channels_last` (default) or `channels_first`.
                     The ordering of the dimensions in the inputs.
-        record: Record the gameplay to file
+        record: Record the gameplay , see retro.retro_env.RetroEnv.record
+               `False` for not record otherwise record to current working directory or
+               specified director
         crop: whether to crop frame to fixed size
         max_episode_steps: max episode step limit
         spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
