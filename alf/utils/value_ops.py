@@ -89,6 +89,23 @@ def discounted_return(rewards,
     return tf.stop_gradient(returns)
 
 
+def one_step_discounted_return(rewards,
+                               values,
+                               step_types,
+                               discounts,
+                               final_value,
+                               final_time_step,
+                               time_major=True):
+    discounts = shift_back(discounts, final_time_step.discount)
+    rewards = shift_back(rewards, final_time_step.reward)
+    values = shift_back(values, final_value)
+
+    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    returns = rewards + (1 - is_lasts) * discounts * values
+
+    return returns
+
+
 def generalized_advantage_estimation(rewards,
                                      values,
                                      step_types,

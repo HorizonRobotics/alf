@@ -29,6 +29,23 @@ TrainingInfo = namedtuple("TrainingInfo", [
 ])
 
 
+def make_training_info(action_distribution=None,
+                       action=None,
+                       step_type=None,
+                       reward=None,
+                       discount=None,
+                       info=None,
+                       collect_info=None):
+    return TrainingInfo(
+        action_distribution=action_distribution,
+        action=action,
+        step_type=step_type,
+        reward=reward,
+        discount=discount,
+        info=info,
+        collect_info=collect_info)
+
+
 class OnPolicyAlgorithm(policy_algorithm.PolicyAlgorithm):
     """
     OnPolicyAlgorithm works with alf.policies.TrainingPolicy to do training
@@ -109,7 +126,7 @@ class OnPolicyAlgorithm(policy_algorithm.PolicyAlgorithm):
             name=name)
 
     @abstractmethod
-    def train_step(self, time_step: ActionTimeStep =None, state=None):
+    def train_step(self, time_step: ActionTimeStep = None, state=None):
         """Perform one step of action and training computation.
         
         It is called to generate actions for every environment step.
@@ -129,9 +146,11 @@ class OnPolicyAlgorithm(policy_algorithm.PolicyAlgorithm):
         pass
 
     # Subclass may override train_complete() to allow customized training
-    def train_complete(
-            self, tape: tf.GradientTape=None, training_info: TrainingInfo=None,
-            final_time_step: ActionTimeStep =None, final_policy_step: PolicyStep=None):
+    def train_complete(self,
+                       tape: tf.GradientTape = None,
+                       training_info: TrainingInfo = None,
+                       final_time_step: ActionTimeStep = None,
+                       final_policy_step: PolicyStep = None):
         """Complete one iteration of training.
 
         `train_complete` should calcuate gradients and update parameters using
