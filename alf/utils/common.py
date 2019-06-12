@@ -15,9 +15,11 @@
 
 import os
 
+import gin
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
+from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
 
@@ -245,3 +247,26 @@ def to_transitions(experience, state_spec=()):
     time_steps, policy_steps, next_time_steps = transitions
     actions = policy_steps.action
     return time_steps, actions, next_time_steps
+
+@gin.configurable
+def image_scale_transformer(observation, min=-1.0, max=1.0):
+    """Scale image to min and max (0->min, 255->max)
+
+    Note: it treats an observation with len(shape)==4 as image
+    Args:
+        observation (nested Tensor): observations
+    Returns:
+        Transfromed observation
+    """
+
+    def _transform_image(obs):
+        # tf_agent changes all gym.spaces.Box observation to tf.float32.
+        # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
+        if len(obs.shape) == 4:
+            if obs.dtype == tf.uint8:
+                obs = tf.cast(obs, tf.float32)
+            return ((max - min) / 255.) * obs + min
+        else:
+            return obs
+
+    return tf.nest.map_structure(_transform_image, observation)

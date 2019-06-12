@@ -46,6 +46,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  value_network: Network,
                  encoding_network: Network = None,
                  intrinsic_curiosity_module=None,
+                 intrinsic_reward_coef=1.0,
+                 extrinsic_reward_coef=1.0,
                  loss=None,
                  optimizer=None,
                  gradient_clipping=None,
@@ -65,6 +67,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
           encoding_network (Network): A function that encodes the observation
           intrinsic_curiosity_module (Algorithm): an algorithm whose outputs
             is a scalar intrinsid reward
+          intrinsic_reward_coef: Coefficient for intrinsic reward
+          extrinsic_reward_coef: Coefficient for extrinsic reward
           loss (None|ActorCriticLoss): an object for calculating loss. If None,
             a default ActorCriticLoss will be used.
           optimizer (tf.optimizers.Optimizer): The optimizer for training.
@@ -92,6 +96,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         self._encoding_network = encoding_network
+        self._intrinsic_reward_coef = intrinsic_reward_coef
+        self._extrinsic_reward_coef = extrinsic_reward_coef
         if loss is None:
             loss = ActorCriticLoss(
                 action_spec, debug_summaries=debug_summaries)
@@ -149,11 +155,16 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             self.add_reward_summary("reward/intrinsic",
                                     training_info.info.icm_reward)
 
+            reward_calc_fn = lambda extrinsic, intrinsic: (
+                    self._extrinsic_reward_coef * extrinsic +
+                    self._intrinsic_reward_coef * intrinsic)
+
             training_info = training_info._replace(
-                reward=training_info.reward + training_info.info.icm_reward)
+                reward=reward_calc_fn(training_info.reward,
+                                   training_info.info.icm_reward))
             final_time_step = final_time_step._replace(
-                reward=final_time_step.reward +
-                final_policy_step.info.icm_reward)
+                reward=reward_calc_fn(final_time_step.reward,
+                                   final_policy_step.info.icm_reward))
 
         final_value = final_policy_step.info.value
         ac_loss = self._loss(training_info, training_info.info.value,

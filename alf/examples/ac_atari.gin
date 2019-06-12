@@ -1,0 +1,43 @@
+# You need to install following packages
+# pip3 install atari-py opencv-python 
+
+# environment config
+import tf_agents.environments.suite_atari
+create_environment.env_name='PongNoFrameskip-v4'
+create_environment.env_load_fn=@suite_atari.load
+create_environment.num_parallel_environments=30
+
+# AtariPreprocessing is not compatible with some version of gym. Make sure to
+# use gym==0.10.11.
+suite_atari.load.gym_env_wrappers=(@AtariPreprocessing, @FrameStack4)
+
+# algorithm config
+ActorCriticLoss.entropy_regularization=0.01
+ActorCriticLoss.use_gae=True
+ActorCriticLoss.use_td_lambda_return=True
+
+ActorDistributionNetwork.activation_fn=@tf.nn.elu
+
+CONV_LAYER_PARAMS=((32, 8, 4), (64, 4, 2), (64, 3, 1))
+ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+CategoricalProjectionNetwork.logits_init_output_factor=1e-10
+ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+
+ValueNetwork.activation_fn=@tf.nn.elu
+ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+
+create_algorithm.actor_fc_layers=(256,)
+create_algorithm.value_fc_layers=(256,)
+
+ActorCriticAlgorithm.gradient_clipping=None
+create_algorithm.learning_rate=5e-4
+
+# training config
+on_policy_trainer.train.num_iterations=1000000
+on_policy_trainer.train.summarize_grads_and_vars=1
+on_policy_trainer.train.summary_interval=1
+on_policy_trainer.train.train_interval=100
+on_policy_trainer.train.use_tf_functions=1
+
+OnPolicyDriver.observation_transformer=@image_scale_transformer
+train_eval.debug_summaries=1

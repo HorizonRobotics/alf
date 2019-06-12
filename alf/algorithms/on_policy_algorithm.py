@@ -17,6 +17,7 @@ from abc import abstractmethod
 from collections import namedtuple
 
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
@@ -124,6 +125,24 @@ class OnPolicyAlgorithm(policy_algorithm.PolicyAlgorithm):
             train_step_counter,
             debug_summaries,
             name=name)
+        super(OnPolicyAlgorithm, self).__init__(name=name)
+
+    # Subclass may override predict() to allow more efficient implementation
+    def predict(self, time_step: ActionTimeStep, state=None):
+        """Predict for one step of observation.
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+
+        Returns:
+            policy_step (PolicyStep):
+              policy_step.action is nested tf.distribution which consistent with 
+                `action_distribution_spec`
+              policy_step.state should be consistent with `predict_state_spec`
+        """
+        policy_step = self.train_step(time_step, state)
+        return policy_step._replace(info=())
 
     @abstractmethod
     def train_step(self, time_step: ActionTimeStep = None, state=None):

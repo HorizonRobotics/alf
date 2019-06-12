@@ -18,6 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+import os
+import psutil
+from typing import Callable
 
 import gin.tf
 import tensorflow as tf
@@ -67,9 +70,11 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
     def __init__(self,
                  env: TFEnvironment,
                  algorithm: OnPolicyAlgorithm,
+                 observation_transformer: Callable = None,
                  observers=[],
                  metrics=[],
                  training=True,
+                 greedy_predict=False,
                  train_interval=20,
                  final_step_mode=FINAL_STEP_REDO,
                  debug_summaries=False,
@@ -85,6 +90,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             training (bool): True for training, false for evaluating
+            greedy_predict (bool): use greedy action for evaluation (i.e.
+                training==False).
             train_interval (int):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for
@@ -105,7 +112,11 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             summarize_grads_and_vars,
             train_step_counter)
 
+        self._final_step_mode = final_step_mode
+        self._metrics = metrics
+
         if training:
+            self._policy_state_spec = algorithm.train_state_spec
             time_step_spec = env.time_step_spec()
             action_distribution_param_spec = tf.nest.map_structure(
                 lambda spec: spec.input_params_spec,
@@ -124,10 +135,72 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 reward=time_step_spec.reward,
                 discount=time_step_spec.discount,
                 info=info_spec)
+            self._trainable_variables = algorithm.trainable_variables
+        else:
+            self._policy_state_spec = algorithm.predict_state_spec
 
-        self._train_interval = train_interval
+        self._train_step_counter = common.get_global_counter(
+            train_step_counter)
 
-        self._final_step_mode = final_step_mode
+        self._initial_state = self.get_initial_state()
+        self._proc = psutil.Process(os.getpid())
+
+    def run(self, max_num_steps, time_step=None, policy_state=None):
+        """Take steps in the environment for max_num_steps.
+
+        If in training mode, algorithm.train_step() and 
+        algorithm.train_complete() will be called.
+        If not in training mode, algorith.predict() will be called.
+
+        The observers will also be called for every environment step.
+
+        Args:
+            max_num_steps (int): stops after so many environment steps. Is the
+                total number of steps from all the individual environment in
+                the bached enviroments including StepType.LAST steps.
+            time_step (ActionTimeStep): optional initial time_step. If None, it
+                will use self.get_initial_time_step(). Elements should be shape
+                [batch_size, ...].
+            policy_state (nested Tensor): optional initial state for the policy.
+
+        Returns:
+            time_step (ActionTimeStep): named tuple with final observation,
+                reward, etc.
+            policy_state (nested Tensor): final step policy state.
+        """
+        if time_step is None:
+            time_step = self.get_initial_time_step()
+        if policy_state is None:
+            policy_state = self._initial_state
+        return self._run(
+            time_step=time_step,
+            policy_state=policy_state,
+            max_num_steps=max_num_steps)
+
+    def _run(self, time_step, policy_state, max_num_steps):
+        if self._training:
+            maximum_iterations = math.ceil(
+                max_num_steps /
+                (self._env.batch_size *
+                 (self._train_interval +
+                  (self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP))))
+            [time_step, policy_state] = tf.while_loop(
+                cond=lambda *_: True,
+                body=self._iter,
+                loop_vars=[time_step, policy_state],
+                maximum_iterations=maximum_iterations,
+                back_prop=False,
+                name="driver_loop")
+        else:
+            maximum_iterations = math.ceil(
+                max_num_steps / self._env.batch_size)
+            [time_step, policy_state] = tf.while_loop(
+                cond=lambda *_: True,
+                body=self._eval_loop_body,
+                loop_vars=[time_step, policy_state],
+                maximum_iterations=maximum_iterations,
+                back_prop=False,
+                name="driver_loop")
 
     def train(self, max_num_steps, time_step, policy_state):
         maximum_iterations = math.ceil(
@@ -207,7 +280,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 time_step, policy_state)
             next_state = policy_step.state
         else:
-            policy_step = self._algorithm.train_step(time_step, policy_state)
+            policy_step = self._algorithm_step(time_step, policy_state)
             next_time_step = time_step
             next_state = policy_state
 
@@ -215,10 +288,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             tape, training_info, time_step, policy_step)
 
         self.summary(loss_info, grads_and_vars)
-
-        if self._debug_summaries:
-            common.add_action_summaries(training_info.action,
-                                        self._training_info_spec.action)
 
         self._train_step_counter.assign_add(1)
 
