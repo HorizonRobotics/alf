@@ -28,9 +28,9 @@ from tf_agents.trajectories.time_step import TimeStep
 from tf_agents.policies import tf_policy
 from tf_agents.utils import eager_utils
 
-from alf.drivers.policy_driver import ActionTimeStep, make_action_time_step
+from alf.algorithms.rl_algorithm import ActionTimeStep, make_action_time_step
+from alf.algorithms.rl_algorithm import TrainingInfo, make_training_info
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.utils.common import add_action_summaries
 from alf.utils.common import add_loss_summaries
 from alf.utils.common import get_distribution_params
@@ -179,7 +179,7 @@ class TrainingPolicy(tf_policy.Base):
             action_distribution)
 
         self._training_info.append(
-            TrainingInfo(
+            make_training_info(
                 action_distribution=action_distribution_param,
                 action=action,
                 reward=time_step.reward,
@@ -202,7 +202,7 @@ class TrainingPolicy(tf_policy.Base):
                 action_distribution=action_distribution)
 
         loss_info, grads_and_vars = self._algorithm.train_complete(
-            tape, training_info, final_time_step, final_policy_step)
+            tape, training_info, final_time_step, final_policy_step.info)
 
         if self._summarize_grads_and_vars:
             eager_utils.add_variables_summaries(grads_and_vars,

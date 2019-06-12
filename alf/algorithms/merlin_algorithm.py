@@ -29,12 +29,11 @@ from tf_agents.trajectories.policy_step import PolicyStep
 
 import alf
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.memory import MemoryWithUsage
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 from alf.algorithms.actor_critic_algorithm import ActorCriticInfo
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.on_policy_algorithm import TrainingInfo
-from alf.drivers.policy_driver import ActionTimeStep
+from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.utils.action_encoder import SimpleActionEncoder
 
@@ -331,10 +330,9 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             action=action_distribution, state=rnn_state, info=info)
 
     def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep,
-                  final_policy_step: PolicyStep):
+                  final_time_step: ActionTimeStep, final_info):
         """Calculate loss."""
-        final_value = final_policy_step.info.value
+        final_value = final_info.value
         loss = self._loss(training_info, training_info.info.value,
                           final_time_step, final_value)
         return loss._replace(loss=self._loss_weight * loss.loss)
@@ -421,7 +419,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     def train_step(self, time_step: ActionTimeStep, state):
         """Train one step."""
         mbp_step = self._mbp.train_step(
-            inputs=(time_step.observation, time_step.action),
+            inputs=(time_step.observation, time_step.prev_action),
             state=state.mbp_state)
         mba_step = self._mba.train_step(
             time_step=time_step._replace(observation=mbp_step.outputs),
@@ -434,18 +432,13 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
 
     def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep,
-                  final_policy_step: PolicyStep):
+                  final_time_step: ActionTimeStep, final_info):
         """Calculate loss."""
         self.add_reward_summary("reward", training_info.reward)
         mbp_loss_info = self._mbp.calc_loss(training_info.info.mbp_info)
         mba_loss_info = self._mba.calc_loss(
             training_info._replace(info=training_info.info.mba_info),
-            final_time_step,
-            PolicyStep(
-                action=None,
-                state=final_policy_step.state.mba_state,
-                info=final_policy_step.info.mba_info))
+            final_time_step, final_info.mba_info)
 
         return LossInfo(
             loss=mbp_loss_info.loss + mba_loss_info.loss,

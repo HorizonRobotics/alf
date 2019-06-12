@@ -31,8 +31,7 @@ from tf_agents.utils import eager_utils
 
 import alf.utils.common as common
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.on_policy_algorithm import TrainingInfo
-
+from alf.algorithms.rl_algorithm import TrainingInfo, make_training_info
 from alf.drivers import policy_driver
 
 
@@ -104,55 +103,52 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
-
         super(OnPolicyDriver, self).__init__(
-            env, algorithm,
-            observers, metrics,
-            training, debug_summaries,
-            summarize_grads_and_vars,
-            train_step_counter)
+            env=env,
+            algorithm=algorithm,
+            observers=observers,
+            metrics=metrics,
+            training=training,
+            greedy_predict=greedy_predict,
+            debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            train_step_counter=train_step_counter)
 
         self._final_step_mode = final_step_mode
-        self._metrics = metrics
 
         if training:
-            self._policy_state_spec = algorithm.train_state_spec
-            time_step_spec = env.time_step_spec()
-            action_distribution_param_spec = tf.nest.map_structure(
-                lambda spec: spec.input_params_spec,
-                algorithm.action_distribution_spec)
-
-            policy_step = algorithm.train_step(self.get_initial_time_step(),
-                                               self.get_initial_state())
-            info_spec = tf.nest.map_structure(
-                lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
-                policy_step.info)
-
-            self._training_info_spec = TrainingInfo(
-                action_distribution=action_distribution_param_spec,
-                action=env.action_spec(),
-                step_type=time_step_spec.step_type,
-                reward=time_step_spec.reward,
-                discount=time_step_spec.discount,
-                info=info_spec)
+            self._prepare_specs(env, algorithm)
             self._trainable_variables = algorithm.trainable_variables
+            self._train_interval = train_interval
+
+    def _prepare_specs(self, env, algorithm):
+        time_step_spec = env.time_step_spec()
+        action_distribution_param_spec = tf.nest.map_structure(
+            lambda spec: spec.input_params_spec,
+            algorithm.action_distribution_spec)
+
+        policy_step = algorithm.train_step(self.get_initial_time_step(),
+                                           self.get_initial_state())
+        info_spec = tf.nest.map_structure(
+            lambda t: tf.TensorSpec(t.shape[1:], t.dtype), policy_step.info)
+
+        self._training_info_spec = make_training_info(
+            action_distribution=action_distribution_param_spec,
+            action=env.action_spec(),
+            step_type=time_step_spec.step_type,
+            reward=time_step_spec.reward,
+            discount=time_step_spec.discount,
+            info=info_spec)
+
+    def _run(self, max_num_steps, time_step, policy_state):
+        """Take steps in the environment for max_num_steps."""
+        if self._training:
+            return self.train(max_num_steps, time_step, policy_state)
         else:
-            self._policy_state_spec = algorithm.predict_state_spec
+            return self.predict(max_num_steps, time_step, policy_state)
 
-        self._train_step_counter = common.get_global_counter(
-            train_step_counter)
-
-        self._initial_state = self.get_initial_state()
-        self._proc = psutil.Process(os.getpid())
-
-    def run(self, max_num_steps, time_step=None, policy_state=None):
-        """Take steps in the environment for max_num_steps.
-
-        If in training mode, algorithm.train_step() and 
-        algorithm.train_complete() will be called.
-        If not in training mode, algorith.predict() will be called.
-
-        The observers will also be called for every environment step.
+    def train(self, max_num_steps, time_step, policy_state):
+        """Perform on-policy training with `max_num_steps`.
 
         Args:
             max_num_steps (int): stops after so many environment steps. Is the
@@ -162,47 +158,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 will use self.get_initial_time_step(). Elements should be shape
                 [batch_size, ...].
             policy_state (nested Tensor): optional initial state for the policy.
-
-        Returns:
-            time_step (ActionTimeStep): named tuple with final observation,
-                reward, etc.
-            policy_state (nested Tensor): final step policy state.
         """
-        if time_step is None:
-            time_step = self.get_initial_time_step()
-        if policy_state is None:
-            policy_state = self._initial_state
-        return self._run(
-            time_step=time_step,
-            policy_state=policy_state,
-            max_num_steps=max_num_steps)
-
-    def _run(self, time_step, policy_state, max_num_steps):
-        if self._training:
-            maximum_iterations = math.ceil(
-                max_num_steps /
-                (self._env.batch_size *
-                 (self._train_interval +
-                  (self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP))))
-            [time_step, policy_state] = tf.while_loop(
-                cond=lambda *_: True,
-                body=self._iter,
-                loop_vars=[time_step, policy_state],
-                maximum_iterations=maximum_iterations,
-                back_prop=False,
-                name="driver_loop")
-        else:
-            maximum_iterations = math.ceil(
-                max_num_steps / self._env.batch_size)
-            [time_step, policy_state] = tf.while_loop(
-                cond=lambda *_: True,
-                body=self._eval_loop_body,
-                loop_vars=[time_step, policy_state],
-                maximum_iterations=maximum_iterations,
-                back_prop=False,
-                name="driver_loop")
-
-    def train(self, max_num_steps, time_step, policy_state):
         maximum_iterations = math.ceil(
             max_num_steps /
             (self._env.batch_size *
@@ -225,7 +181,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         action_distribution_param = common.get_distribution_params(
             policy_step.action)
 
-        training_info = TrainingInfo(
+        training_info = make_training_info(
             action_distribution=action_distribution_param,
             action=action,
             reward=time_step.reward,
@@ -256,7 +212,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         training_info_ta = tf.nest.map_structure(create_ta,
                                                  self._training_info_spec)
 
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(watch_accessed_variables=False) as tape:
+            tape.watch(self._trainable_variables)
             [_, time_step, policy_state, training_info_ta] = tf.while_loop(
                 cond=lambda counter, *_: tf.less(counter, self._train_interval),
                 body=self._train_loop_body,
@@ -285,7 +242,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             next_state = policy_state
 
         loss_info, grads_and_vars = self._algorithm.train_complete(
-            tape, training_info, time_step, policy_step)
+            tape, training_info, time_step, policy_step.info)
 
         self.summary(loss_info, grads_and_vars)
 

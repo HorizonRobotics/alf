@@ -11,63 +11,64 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Base class for off policy algorithms."""
 
 import abc
 from collections import namedtuple
 
 import tensorflow as tf
 
+from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 
-from alf.algorithms import policy_algorithm
+from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm
 
-Experience = namedtupple("Experience", [
-    'step_type', 'reward', 'discount'
-    'observation', 'prev_action', 'action', 'info'
+Experience = namedtuple("Experience", [
+    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'action',
+    'info'
 ])
 
 
-class OffPolicyAlgorithm(policy_algorithm.PolicyAlgorithm):
-    def __init__(self,
-                 action_spec,
-                 train_state_spec,
-                 action_distribution_spec,
-                 predict_state_spec=None,
-                 optimizer=None,
-                 gradient_clipping=None,
-                 train_step_counter=None,
-                 debug_summaries=False,
-                 name="OffPolicyAlgorithm"):
-        super().__init__(action_spec, train_state_spec,
-                         action_distribution_spec, predict_state_spec,
-                         optimizer, gradient_clipping, train_step_counter,
-                         debug_summaries, name)
+def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
+    """Make an instance of Experience from ActionTimeStep and PolicyStep."""
+    return Experience(
+        step_type=time_step.step_type,
+        reward=time_step.reward,
+        discount=time_step.discount,
+        observation=time_step.observation,
+        prev_action=time_step.prev_action,
+        action=policy_step.action,
+        info=policy_step.info)
+
+
+class OffPolicyAlgorithm(RLAlgorithm):
+    """Base class of off-policy algorithms."""
 
     @abc.abstractmethod
-    def train_step(self, experience, state):
+    def predict(self, time_step: ActionTimeStep, state=None):
+        """Predict for one step of observation.
+
+        Returns:
+            policy_step (PolicyStep):
+              policy_step.action is nested tf.distribution which consistent with
+                `action_distribution_spec`
+              policy_step.state should be consistent with `predict_state_spec`
+        """
         pass
 
-    def train_complete(self, tape: tf.GradientTape,
-                       training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep, final_info):
+    @abc.abstractmethod
+    def train_step(self, experience: Experience, state):
+        """Perform one step of action and training computation.
+        
+        Args:
+            experience (Experience):
+            state (nested Tensor): should be consistent with train_state_spec
 
-        valid_masks = tf.cast(
-            tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
-        with tape:
-            loss_info = self.calc_loss(training_info, final_time_step,
-                                       final_policy_step)
-            loss_info = tf.nest.map_structure(
-                lambda l: tf.reduce_mean(l * valid_masks), loss_info)
-
-        if self._cached_vars is None:
-            # Cache it because trainable_variables is an expensive operation
-            # according to the documentation.
-            self._cached_vars = self.trainable_variables
-        vars = self._cached_vars
-        grads = tape.gradient(loss_info.loss, vars)
-        grads_and_vars = tuple(zip(grads, vars))
-        if self._gradient_clipping is not None:
-            grads_and_vars = eager_utils.clip_gradient_norms(
-                grads_and_vars, self._gradient_clipping)
-        self._optimizer.apply_gradients(grads_and_vars)
-        return loss_info, grads_and_vars
+        Returns (tuple):
+            state: training RNN state
+            info: everything necessary for training. Note that 
+                ("action", "reward", "discount", "is_last") are automatically
+                collected by OffPolicyDriver. So the user only need to put other
+                stuff (e.g. value estimation) into `info`
+        """
+        pass

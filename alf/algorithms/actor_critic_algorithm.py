@@ -23,10 +23,9 @@ from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.drivers.policy_driver import ActionTimeStep
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
                               ["actor_state", "value_state", "icm_state"])
@@ -131,8 +130,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             network_state=state.actor_state)
 
         if self._icm is not None:
-            icm_step = self._icm.train_step((observation, time_step.action),
-                                            state=state.icm_state)
+            icm_step = self._icm.train_step(
+                (observation, time_step.prev_action), state=state.icm_state)
             info = ActorCriticInfo(
                 value=value,
                 icm_reward=icm_step.outputs,
@@ -149,24 +148,22 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         return PolicyStep(action=action_distribution, state=state, info=info)
 
-    def calc_loss(self, training_info, final_time_step, final_policy_step):
+    def calc_loss(self, training_info, final_time_step, final_info):
         if self._icm is not None:
             self.add_reward_summary("reward/external", training_info.reward)
             self.add_reward_summary("reward/intrinsic",
                                     training_info.info.icm_reward)
 
-            reward_calc_fn = lambda extrinsic, intrinsic: (
-                    self._extrinsic_reward_coef * extrinsic +
-                    self._intrinsic_reward_coef * intrinsic)
+            reward_calc_fn = lambda extrinsic, intrinsic: (self._extrinsic_reward_coef * extrinsic + self._intrinsic_reward_coef * intrinsic)
 
             training_info = training_info._replace(
-                reward=reward_calc_fn(training_info.reward,
-                                   training_info.info.icm_reward))
+                reward=reward_calc_fn(training_info.reward, training_info.info.
+                                      icm_reward))
             final_time_step = final_time_step._replace(
-                reward=reward_calc_fn(final_time_step.reward,
-                                   final_policy_step.info.icm_reward))
+                reward=reward_calc_fn(final_time_step.reward, final_info.
+                                      icm_reward))
 
-        final_value = final_policy_step.info.value
+        final_value = final_info.value
         ac_loss = self._loss(training_info, training_info.info.value,
                              final_time_step, final_value)
 

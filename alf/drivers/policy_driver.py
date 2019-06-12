@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import abc
 import os
 from collections import namedtuple
+from typing import Callable
 
 import numpy as np
 import psutil
@@ -27,38 +29,10 @@ from tf_agents.metrics import tf_metrics
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.trajectories.trajectory import from_transition
 from tf_agents.utils import eager_utils
+
 from alf.utils import common, common as common
-
-
-class ActionTimeStep(
-    namedtuple(
-        'ActionTimeStep',
-        ['step_type', 'reward', 'discount', 'observation', 'action'])):
-    """TimeStep with action."""
-
-    def is_first(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.FIRST)
-        return np.equal(self.step_type, StepType.FIRST)
-
-    def is_mid(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.MID)
-        return np.equal(self.step_type, StepType.MID)
-
-    def is_last(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.LAST)
-        return np.equal(self.step_type, StepType.LAST)
-
-
-def make_action_time_step(time_step, action):
-    return ActionTimeStep(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        action=action)
+from alf.algorithms.off_policy_algorithm import Experience, make_experience
+from alf.algorithms.rl_algorithm import make_action_time_step
 
 
 @gin.configurable
@@ -66,12 +40,34 @@ class PolicyDriver(driver.Driver):
     def __init__(self,
                  env,
                  algorithm,
+                 observation_transformer: Callable = None,
                  observers=[],
                  metrics=[],
                  training=True,
+                 greedy_predict=False,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
+        """Create a PolicyDriver.
+
+        Args:
+            env (TFEnvironment): A TFEnvoronmnet
+            algorithm (OnPolicyAlgorith): The algorithm for training
+            observers (list[Callable]): An optional list of observers that are
+                updated after every step in the environment. Each observer is a
+                callable(time_step.Trajectory).
+            metrics (list[TFStepMetric]): An optiotional list of metrics.
+            training (bool): True for training, false for evaluating
+            greedy_predict (bool): use greedy action for evaluation (i.e.
+                training==False).
+            debug_summaries (bool): A bool to gather debug summaries.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time the a new iteration is started. If None, it will use 
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
+        """
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
             tf_metrics.NumberOfEpisodes(),
@@ -82,25 +78,33 @@ class PolicyDriver(driver.Driver):
         metrics = standard_metrics + metrics
         super(PolicyDriver, self).__init__(env, None, observers + metrics)
 
+        self._exp_observers = []
+
         self._algorithm = algorithm
         self._training = training
-
+        self._greedy_predict = greedy_predict
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
         self._metrics = metrics
+        self._observation_transformer = observation_transformer
 
         if training:
             self._policy_state_spec = algorithm.train_state_spec
-            self._algorithm_step = algorithm.train_step
-            self._trainable_variables = algorithm.trainable_variables
         else:
             self._policy_state_spec = algorithm.predict_state_spec
-            self._algorithm_step = algorithm.predict
 
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
         self._initial_state = self.get_initial_state()
         self._proc = psutil.Process(os.getpid())
+
+    def add_experience_observer(self, observer: Callable):
+        """Add an observer to receive experience.
+        
+        Args:
+            observer (Callable): callable which accept Experience as argument.
+        """
+        self._exp_observers.append(observer)
 
     def get_initial_time_step(self):
         """Returns the initial action_time_step."""
@@ -108,6 +112,19 @@ class PolicyDriver(driver.Driver):
         action = common.zero_tensor_from_nested_spec(self.env.action_spec(),
                                                      self.env.batch_size)
         return make_action_time_step(time_step, action)
+
+    def _algorithm_step(self, time_step, state):
+        if self._observation_transformer is not None:
+            time_step = time_step._replace(
+                observation=self._observation_transformer(time_step.
+                                                          observation))
+
+        if self._training:
+            return self._algorithm.train_step(time_step, state)
+        elif self._greedy_predict:
+            return self._algorithm.greedy_predict(time_step, state)
+        else:
+            return self._algorithm.predict(time_step, state)
 
     def run(self, max_num_steps=None, time_step=None, policy_state=None):
         """Take steps in the environment for max_num_steps.
@@ -136,33 +153,33 @@ class PolicyDriver(driver.Driver):
             time_step = self.get_initial_time_step()
         if policy_state is None:
             policy_state = self._initial_state
+        return self._run(
+            time_step=time_step,
+            policy_state=policy_state,
+            max_num_steps=max_num_steps)
 
-        if self._training:
-            return self.train(max_num_steps, time_step, policy_state)
-        else:
-            return self.predict(max_num_steps, time_step, policy_state)
-
-    def train(self, max_num_steps, time_step, policy_state):
-        raise NotImplemented
+    @abc.abstractmethod
+    def _run(self, max_num_steps, time_step, policy_state):
+        """Take steps in the environment for max_num_steps."""
+        pass
 
     def predict(self, max_num_steps, time_step, policy_state):
-        maximum_iterations = math.ceil(
-            max_num_steps / self._env.batch_size)
+        maximum_iterations = math.ceil(max_num_steps / self._env.batch_size)
         [time_step, policy_state] = tf.while_loop(
             cond=lambda *_: True,
             body=self._eval_loop_body,
             loop_vars=[time_step, policy_state],
             maximum_iterations=maximum_iterations,
             back_prop=False,
-            name="driver_loop")
+            name="predict_loop")
         return time_step, policy_state
 
     def summary(self, loss_info, grads_and_vars):
         if self._summarize_grads_and_vars:
-            eager_utils.add_variables_summaries(
-                grads_and_vars, self._train_step_counter)
-            eager_utils.add_gradients_summaries(
-                grads_and_vars, self._train_step_counter)
+            eager_utils.add_variables_summaries(grads_and_vars,
+                                                self._train_step_counter)
+            eager_utils.add_gradients_summaries(grads_and_vars,
+                                                self._train_step_counter)
         if self._debug_summaries:
             common.add_loss_summaries(loss_info)
 
@@ -202,16 +219,23 @@ class PolicyDriver(driver.Driver):
         return [next_time_step, policy_step.state]
 
     def _step(self, time_step, policy_state):
-        policy_state = common.reset_state_if_necessary(
-            policy_state, self._initial_state, time_step.is_first())
+        policy_state = common.reset_state_if_necessary(policy_state,
+                                                       self._initial_state,
+                                                       time_step.is_first())
         policy_step = self._algorithm_step(time_step, state=policy_state)
         action = self._sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:
-            traj = from_transition(
-                time_step, policy_step._replace(action=action), next_time_step)
+            traj = from_transition(time_step,
+                                   policy_step._replace(action=action),
+                                   next_time_step)
             for observer in self._observers:
                 observer(traj)
+        if self._exp_observers:
+            exp = make_experience(time_step,
+                                  policy_step._replace(action=action))
+            for observer in self._exp_observers:
+                observer(exp)
 
         return next_time_step, policy_step, action
 
@@ -222,11 +246,12 @@ class PolicyDriver(driver.Driver):
     def _sample_action_distribution(self, actions_or_distributions):
         def _to_distribution(action_or_distribution):
             if isinstance(action_or_distribution, tf.Tensor):
-                return tfp.distributions.Deterministic(loc=action_or_distribution)
+                return tfp.distributions.Deterministic(
+                    loc=action_or_distribution)
             return action_or_distribution
 
-        distributions = tf.nest.map_structure(
-            _to_distribution, actions_or_distributions)
+        distributions = tf.nest.map_structure(_to_distribution,
+                                              actions_or_distributions)
         seed_stream = tfp.distributions.SeedStream(seed=None, salt='driver')
-        return tf.nest.map_structure(
-            lambda d: d.sample(seed=seed_stream()), distributions)
+        return tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
+                                     distributions)

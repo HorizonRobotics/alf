@@ -21,7 +21,7 @@ from tf_agents.trajectories import trajectory, policy_step
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.replay_buffers.tf_uniform_replay_buffer import TFUniformReplayBuffer
 
-from alf.algorithms.on_policy_algorithm import make_training_info
+from alf.algorithms.rl_algorithm import make_training_info
 from alf.drivers import policy_driver
 from alf.utils import common
 from alf.algorithms.off_policy_algorithm import Experience
@@ -34,42 +34,66 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  algorithm,
                  observers=[],
                  metrics=[],
-                 replay_buffer=None,
-                 training=True,
-                 train_interval=20,
-                 trainig_batch_size=64,
-                 initial_collect_steps=128,
-                 collect_steps_per_iteration=1,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
+        """Create an OffPolicyDriver.
 
-        if training and replay_buffer is None:
-            observers = observers + [replay_buffer.add_batch]
-            self._prepare_specs(env, algorithm)
-            if replay_buffer is None:
-                # use gin_param to set replay_buffer capacity
-                replay_buffer = TFUniformReplayBuffer(self._experience_spec,
-                                                      env.batch_size)
-
+        Args:
+            env (TFEnvironment): A TFEnvoronmnet
+            algorithm (OnPolicyAlgorith): The algorithm for training
+            observers (list[Callable]): An optional list of observers that are
+                updated after every step in the environment. Each observer is a
+                callable(time_step.Trajectory).
+            metrics (list[TFStepMetric]): An optiotional list of metrics.
+            debug_summaries (bool): A bool to gather debug summaries.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time the a new iteration is started. If None, it will use 
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
+        """
         super(OffPolicyDriver, self).__init__(
-            env, algorithm, observers, metrics, training, debug_summaries,
-            summarize_grads_and_vars, train_step_counter)
+            env=env,
+            algorithm=algorithm,
+            observers=observers,
+            metrics=metrics,
+            training=False,
+            greedy_predict=False,
+            debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            train_step_counter=train_step_counter)
 
-        self._initial_collect_steps = initial_collect_steps
-        self._collect_steps_per_iteration = collect_steps_per_iteration
-        self._training_batch_size = trainig_batch_size
-        self._replay_buffer = replay_buffer
-        self._train_interval = train_interval
+        self._prepare_specs(env, algorithm)
+        self._trainable_variables = algorithm.trainable_variables
+
+    def add_replay_buffer(self, replay_buffer=None):
+        """Add a replay_buffer.
+
+        Args:
+            replay_buffer (ReplayBuffer): if None, a default
+                TFUniformReplayBuffer will be created.
+        Returns:
+            replay_buffer
+        """
+        if replay_buffer is None:
+            # use gin_param to set replay_buffer capacity
+            replay_buffer = TFUniformReplayBuffer(self._experience_spec,
+                                                  self._env.batch_size)
+        self.add_experience_observer(replay_buffer.add_batch)
+        return replay_buffer
 
     def _prepare_specs(self, env, algorithm):
+        """Prepare various tensor specs."""
+
         def extract_spec(nest):
             return tf.nest.map_structure(
                 lambda t: tf.TensorSpec(t.shape[1:], t.dtype), nest)
 
         time_step_spec = env.time_step_spec()
-        policy_step = algorithm.collect_step(self.get_initial_time_step(),
-                                             self.get_initial_state())
+        policy_step = algorithm.predict(self.get_initial_time_step(),
+                                        self.get_initial_state())
         collect_info_spec = extract_spec(policy_step.info)
 
         self._experience_spec = Experience(
@@ -87,8 +111,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             reward=ts.reward,
             discount=ts.discount,
             observation=ts.observation,
-            prev_action=ts.action,
-            action=ts.action,
+            prev_action=ts.prev_action,
+            action=ts.prev_action,
             info=policy_step.info)
 
         _, info = algorithm.train_step(exp, self.get_initial_train_state(3))
@@ -105,55 +129,83 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         return common.zero_tensor_from_nested_spec(
             self._algorithm.train_state_spec, batch_size)
 
-    # def train(self, max_num_steps, time_step, policy_state):
-    #     # collect every iteration
-    #     time_step, policy_state = self.predict(
-    #         self._initial_collect_steps, time_step, policy_state)
+    def _run(self, max_num_steps, time_step, policy_state):
+        """Take steps in the environment for max_num_steps."""
 
-    #     maximum_iterations = math.ceil(
-    #         max_num_steps / (self._env.batch_size * self._collect_steps_per_iteration))
-    #     [time_step, policy_state] = tf.while_loop(
-    #         cond=lambda *_: True,
-    #         body=self._iter,
-    #         loop_vars=[time_step, policy_state],
-    #         maximum_iterations=maximum_iterations,
-    #         back_prop=False,
-    #         name="driver_loop")
+        return self.predict(max_num_steps, time_step, policy_state)
 
-    #     return time_step, policy_state
+    def _make_time_major(self, nest):
+        def transpose2(x, dim1, dim2):
+            perm = list(range(len(x.shape)))
+            perm[dim1] = dim2
+            perm[dim2] = dim1
+            return tf.transpose(x, perm)
 
-    def train(self, experience):
-        experience = make_time_major(experience)
+        return tf.nest.map_structure(lambda x: transpose2(x, 0, 1), nest)
+
+    def train(self, experience: Experience):
+        """Train using `experience`
+
+        Args:
+            experience (Experience): experience from replay_buffer. It is
+                assumed to be batch major.
+        """
+        experience = self._make_time_major(experience)
         batch_size = experience.step_type.shape[1]
         counter = tf.zeros((), tf.int32)
-        policy_state = self.get_initial_state()
+        initial_train_state = self.get_initial_train_state(batch_size)
+        num_steps = experience.step_type.shape[0] - 1
 
         def create_ta(s):
             return tf.TensorArray(
                 dtype=s.dtype,
-                size=self._train_interval,
+                size=num_steps,
                 element_shape=tf.TensorShape([batch_size]).concatenate(
                     s.shape))
 
-        experience_ta = tf.nest.map_structory(create_ta, self._experience_spec)
-        experience_ta = tf.nest.map_structury(
+        experience_ta = tf.nest.map_structure(create_ta, self._experience_spec)
+        experience_ta = tf.nest.map_structure(
             lambda elem, ta: ta.unstack(elem[0:-1]), experience, experience_ta)
         training_info_ta = tf.nest.map_structure(create_ta,
                                                  self._training_info_spec)
 
-        with tf.GradientTape() as tape:
-            [_, policy_state, _, training_info_ta] = tf.while_loop(
-                cond=lambda counter, *_: tf.less(counter, self._train_interval),
-                body=self._train_loop_body,
-                loop_vars=[
-                    counter, policy_state, experience_ta, training_info_ta
-                ],
+        def _train_loop_body(counter, policy_state, training_info_ta):
+            exp = tf.nest.map_structure(lambda ta: ta.read(counter),
+                                        experience_ta)
+            policy_state = common.reset_state_if_necessary(
+                policy_state, initial_train_state,
+                tf.equal(exp.step_type, StepType.FIRST))
+            state, info = self._algorithm.train_step(exp, state=policy_state)
+
+            training_info = make_training_info(
+                action=exp.action,
+                reward=exp.reward,
+                discount=exp.discount,
+                step_type=exp.step_type,
+                info=info,
+                collect_info=exp.info)
+
+            training_info_ta = tf.nest.map_structure(
+                lambda ta, x: ta.write(counter, x), training_info_ta,
+                training_info)
+
+            counter += 1
+
+            return [counter, state, training_info_ta]
+
+        with tf.GradientTape(
+                persistent=True, watch_accessed_variables=False) as tape:
+            tape.watch(self._trainable_variables)
+            [_, policy_state, training_info_ta] = tf.while_loop(
+                cond=lambda counter, *_: tf.less(counter, num_steps),
+                body=_train_loop_body,
+                loop_vars=[counter, initial_train_state, training_info_ta],
                 back_prop=True,
-                name="iter_loop")
+                name="train_loop")
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),
                                                   training_info_ta)
 
-        final_exp = tf.nest.map_structure(lambda t: t[-1], experience)
+        final_exp = tf.nest.map_structure(lambda x: x[-1], experience)
         policy_state, final_info = self._algorithm.train_step(
             final_exp, policy_state)
 
@@ -163,31 +215,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             final_time_step=final_exp,
             final_info=final_info)
 
+        del tape
+
         self.summary(loss_info, grads_and_vars)
 
         self._train_step_counter.assign_add(1)
-
-    def _train_loop_body(self, counter, policy_state, experience_ta,
-                         training_info_ta):
-
-        exp = tf.nest.map_structure(lambda ta: ta.read(counter), experience_ta)
-        policy_state = common.reset_state_if_necessary(
-            policy_state, self._initial_state,
-            tf.equal(exp.step_type, StepType.FIRST))
-        state, info = self._algorithm.train_step(exp, state=policy_state)
-
-        training_info = make_training_info(
-            action=exp.action,
-            reward=exp.reward,
-            discount=exp.discount,
-            step_type=exp.step_type,
-            info=info,
-            collect_info=exp.info)
-
-        training_info_ta = tf.nest.map_structure(
-            lambda ta, x: ta.write(counter, x), training_info_ta,
-            training_info)
-
-        counter += 1
-
-        return [counter, state, experience_ta, training_info_ta]

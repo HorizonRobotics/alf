@@ -89,13 +89,25 @@ def discounted_return(rewards,
     return tf.stop_gradient(returns)
 
 
-def one_step_discounted_return(rewards,
-                               values,
-                               step_types,
-                               discounts,
-                               final_value,
-                               final_time_step,
-                               time_major=True):
+def one_step_discounted_return(rewards, values, step_types, discounts,
+                               final_value, final_time_step):
+    """Calculate the one step discounted return.
+    
+    return = next_reward + next_discount * next_value
+    Note: Input tensors must be time major
+    Args:
+        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
+        values (Tensor): shape is [T,B] (or [T]) representing values.
+        step_types (Tensor): shape is [T,B] (or [T]) representing step types.
+        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
+        final_value (Tensor): shape is [B] (or [1]) representing value estimate
+            at t=T.
+        final_time_step (TimeStep): time_step at t=T
+
+    Returns:
+        A tensor with shape [T, B] (or [T]) representing the discounted returns.
+    """
+
     discounts = shift_back(discounts, final_time_step.discount)
     rewards = shift_back(rewards, final_time_step.reward)
     values = shift_back(values, final_value)
