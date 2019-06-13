@@ -115,6 +115,7 @@ def train(train_dir,
 def play(train_dir,
          env,
          algorithm,
+         checkpoint_name=None,
          greedy_predict=True,
          random_seed=0,
          num_steps=10000,
@@ -126,6 +127,8 @@ def play(train_dir,
         train_dir (str): same as the train_dir used for `train()`
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
+        checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
+            If None, the latest checkpoint unber train_dir will be used.
         greedy_predict (bool): use greedy action for evaluation.
         random_seed (int): random seed
         num_steps (int): number of steps to play
@@ -143,12 +146,18 @@ def play(train_dir,
         training=False,
         greedy_predict=greedy_predict)
 
-    checkpointer = tfa_common.Checkpointer(
-        ckpt_dir=os.path.join(train_dir, 'algorithm'),
+    ckpt_dir = os.path.join(train_dir, 'algorithm')
+    checkpoint = tf.train.Checkpoint(
         algorithm=algorithm,
         metrics=metric_utils.MetricsGroup(driver.get_metrics(), 'metrics'),
         global_step=global_step)
-    checkpointer.initialize_or_restore()
+    if checkpoint_name is not None:
+        ckpt_path = os.path.join(ckpt_dir, checkpoint_name)
+    else:
+        ckpt_path = tf.train.latest_checkpoint(ckpt_dir)
+    if ckpt_path is not None:
+        logging.info("Restore from checkpoint %s" % ckpt_path)
+        checkpoint.restore(ckpt_path)
 
     if use_tf_functions:
         driver.run = tf.function(driver.run)
