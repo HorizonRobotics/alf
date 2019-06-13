@@ -153,6 +153,8 @@ def play(train_dir,
     if use_tf_functions:
         driver.run = tf.function(driver.run)
 
+    # pybullet_envs need to `render()` before reset() to enable rendering.
+    env.pyenv.envs[0].render(mode='human')
     env.reset()
     time_step = driver.get_initial_time_step()
     policy_state = driver.get_initial_state()
