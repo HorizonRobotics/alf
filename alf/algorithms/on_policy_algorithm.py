@@ -17,6 +17,7 @@ from abc import abstractmethod
 from collections import namedtuple
 
 import numpy as np
+from typing import Callable
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -68,7 +69,7 @@ class OnPolicyAlgorithm(tf.Module):
     at the time of policy rollout.
 
     User needs to implement train_step() and train_complete().
-    
+
     train_step() is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
@@ -82,7 +83,7 @@ class OnPolicyAlgorithm(tf.Module):
     ```python
     tape = tf.GradientTape()
     training_info = []
-    
+
     while training not ends:
         if len(training_info) == train_intervel:
             old_tape = tape
@@ -107,6 +108,7 @@ class OnPolicyAlgorithm(tf.Module):
                  predict_state_spec=None,
                  optimizer=None,
                  gradient_clipping=None,
+                 reward_shaping_fn: Callable =None,
                  train_step_counter=None,
                  debug_summaries=False,
                  name="OnPolicyAlgorithm"):
@@ -114,16 +116,19 @@ class OnPolicyAlgorithm(tf.Module):
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            train_state_spec (nested TensorSpec): for the network state of 
+            train_state_spec (nested TensorSpec): for the recurrent network state of
                 `train_step()`
             action_distribution_spec (nested DistributionSpec): for the action
                 distributions.
-            predict_state_spec (nested TensorSpec): for the network state of 
-                `train_step()`. If None, it's assume to be same as
+            predict_state_spec (nested TensorSpec): for the recurrent network state of
+                `predict()`. If None, it's assume to be same as
                  train_state_spec
             optimizer (tf.optimizers.Optimizer): The optimizer for training.
+            gradient_clipping (float): positive threshold for clipping gradient norms
+            reward_shaping_fn (Callable): a function that transforms extrinsic
+                immediate rewards
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
@@ -140,10 +145,10 @@ class OnPolicyAlgorithm(tf.Module):
         self._action_distribution_spec = action_distribution_spec
         self._optimizer = optimizer
         self._gradient_clipping = gradient_clipping
+        self._reward_shaping_fn = reward_shaping_fn
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
         self._debug_summaries = debug_summaries
-        self._trainable_variables = None
         self._cached_vars = None
 
     def add_reward_summary(self, name, rewards):
@@ -182,7 +187,7 @@ class OnPolicyAlgorithm(tf.Module):
 
         Returns:
             policy_step (PolicyStep):
-              policy_step.action is nested tf.distribution which consistent with 
+              policy_step.action is nested tf.distribution which consistent with
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
         """
@@ -200,7 +205,7 @@ class OnPolicyAlgorithm(tf.Module):
 
         Returns:
             policy_step (PolicyStep):
-              policy_step.action is nested tf.distribution which consistent with 
+              policy_step.action is nested tf.distribution which consistent with
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
 
@@ -223,7 +228,7 @@ class OnPolicyAlgorithm(tf.Module):
     @abstractmethod
     def train_step(self, time_step: ActionTimeStep, state=None):
         """Perform one step of action and training computation.
-        
+
         It is called to generate actions for every environment step.
         It also needs to generate necessary information for training.
 
@@ -232,7 +237,7 @@ class OnPolicyAlgorithm(tf.Module):
             state (nested Tensor): should be consistant with train_state_spec
 
         Returns (PolicyStep):
-            info: everything necessary for training. Note that 
+            info: everything necessary for training. Note that
                 ("action_distribution", "action", "reward", "discount",
                 "is_last") are automatically collected by TrainingPolicy. So
                 the user only need to put other stuff (e.g. value estimation)
@@ -250,7 +255,7 @@ class OnPolicyAlgorithm(tf.Module):
         those gradients.
 
         Args:
-            tape (tf.GradientTape): the tape which are used for calculating 
+            tape (tf.GradientTape): the tape which are used for calculating
                 gradient. All the previous `train_interval` `train_step()` for
                 are called under the context of this tape.
             training_info (TrainingInfo): information collected for training.
@@ -265,10 +270,18 @@ class OnPolicyAlgorithm(tf.Module):
             a tuple of the following:
             loss_info (LossInfo): loss information
             grads_and_vars (list[tuple]): list of gradient and variable tuples
-            
+
         """
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
+
+        # reward shaping
+        if self._reward_shaping_fn is not None:
+            training_info = training_info._replace(
+                reward=self._reward_shaping_fn(training_info.reward))
+            final_time_step = final_time_step._replace(
+                reward=self._reward_shaping_fn(final_time_step.reward))
+
         with tape:
             loss_info = self.calc_loss(training_info, final_time_step,
                                        final_policy_step)

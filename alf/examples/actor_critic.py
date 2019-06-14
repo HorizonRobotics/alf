@@ -62,6 +62,7 @@ python actor_critic.py \
 import os
 import random
 import shutil
+import glob
 import time
 
 from absl import app
@@ -212,8 +213,6 @@ def copy_gin_configs(root_dir, gin_files):
         root_dir (str): directory path
         gin_files (None|list[str]): list of file paths
     """
-    if gin_files is None:
-        return
     root_dir = os.path.expanduser(root_dir)
     os.makedirs(root_dir, exist_ok=True)
     for f in gin_files:
@@ -222,12 +221,17 @@ def copy_gin_configs(root_dir, gin_files):
 
 def main(_):
     logging.set_verbosity(logging.INFO)
+
+    if FLAGS.gin_file is None:
+        gin_file = glob.glob(FLAGS.root_dir + "/*.gin")
+        assert gin_file, "No gin files are found! Please provide"
+
     if not FLAGS.play:
         copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
-        # TODO: use the gin files under FLAGS.root_dir if FLAGS.gin_file
-        # is not specified
+        gin_file = FLAGS.gin_file
 
-    gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
+    gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+
     if FLAGS.play:
         play(FLAGS.root_dir + "/train")
     else:
