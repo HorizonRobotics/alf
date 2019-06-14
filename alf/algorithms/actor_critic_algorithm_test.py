@@ -30,6 +30,7 @@ from alf.environments.suite_unittest import ValueUnittestEnv
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.policies.training_policy import TrainingPolicy
+from alf.environments.suite_unittest import ActionType
 
 
 class GradientTypeTest(unittest.TestCase):
@@ -147,6 +148,30 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
         logging.info("time=%s" % (time.time() - t0))
         self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-2)
+
+    def test_actor_critic_continous_policy(self):
+        batch_size = 100
+        steps_per_episode = 13
+        env = PolicyUnittestEnv(batch_size, steps_per_episode,
+            action_type=ActionType.Continuous)
+        
+        policy = self._create_policy(env,
+            learning_rate=1e-2)  # the default 1e-1 won't work here
+        policy_state = policy.get_initial_state(batch_size)
+        time_step = env.reset()
+        t0 = time.time()
+        for i in range(100):
+            for _ in range(steps_per_episode):
+                reward = time_step.reward
+                policy_step = policy.action(time_step, policy_state)
+                policy_state = policy_step.state
+                time_step = env.step(policy_step.action)
+
+            if (i + 1) % 10 == 0:
+                print('reward=%s' % float(tf.reduce_mean(reward)))
+
+        logging.info("time=%s" % (time.time() - t0))
+        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=5e-2)
 
     def test_actor_critic_rnn_policy(self):
         batch_size = 100

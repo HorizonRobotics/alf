@@ -30,6 +30,7 @@ from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
+from alf.environments.suite_unittest import ActionType
 
 
 def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
@@ -87,6 +88,31 @@ class OnPolicyDriverTest(unittest.TestCase):
         print("reward=%s" % tf.reduce_mean(time_step.reward))
         self.assertAlmostEqual(
             1.0, float(tf.reduce_mean(time_step.reward)), delta=1e-2)
+
+    def test_actor_critic_continous_policy(self):
+        batch_size = 100
+        steps_per_episode = 13
+        env = PolicyUnittestEnv(batch_size, steps_per_episode,
+            action_type=ActionType.Continuous)
+        # We need to wrap env using TFPyEnvironment because the methods of env
+        # has side effects (e.g, env._current_time_step can be changed)
+        env = TFPyEnvironment(env)
+
+        algorithm = create_algorithm(env, learning_rate=1e-2)
+        driver = OnPolicyDriver(env, algorithm, train_interval=1)
+        eval_driver = OnPolicyDriver(env, algorithm, training=False)
+
+        driver.run = tf.function(driver.run)
+
+        t0 = time.time()
+        driver.run(max_num_steps=1300 * batch_size)
+        print("time=%s" % (time.time() - t0))
+
+        env.reset()
+        time_step, _ = eval_driver.run(max_num_steps=4 * batch_size)
+        print("reward=%s" % tf.reduce_mean(time_step.reward))
+        self.assertAlmostEqual(
+            1.0, float(tf.reduce_mean(time_step.reward)), delta=5e-2)
 
     def test_actor_critic_rnn_policy(self):
         batch_size = 100

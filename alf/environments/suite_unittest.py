@@ -20,6 +20,9 @@ from tf_agents.environments.py_environment import PyEnvironment
 from tf_agents.specs.tensor_spec import TensorSpec, BoundedTensorSpec
 from tf_agents.trajectories.time_step import TimeStep, StepType
 
+from enum import Enum
+
+ActionType = Enum('ActionType', ('Discrete', 'Continuous'))
 
 class UnittestEnv(PyEnvironment):
     """Abstract base for unittest environment.
@@ -28,7 +31,7 @@ class UnittestEnv(PyEnvironment):
     The observation is one dimensional. The action is binary {0, 1}.
     """
 
-    def __init__(self, batch_size, episode_length, obs_dim=1):
+    def __init__(self, batch_size, episode_length, obs_dim=1, action_type=ActionType.Discrete):
         """Initializes the environment.
 
         Args:
@@ -39,9 +42,10 @@ class UnittestEnv(PyEnvironment):
         self._steps = 0
         self._episode_length = episode_length
         super(UnittestEnv, self).__init__()
-
+        self._action_type=action_type
+        action_dtype = tf.int64 if action_type == ActionType.Discrete else tf.float32
         self._action_spec = BoundedTensorSpec(
-            shape=(1, ), dtype=tf.int64, minimum=0, maximum=1)
+            shape=(1, ), dtype=action_dtype, minimum=0, maximum=1)
         self._observation_spec = TensorSpec(
             shape=(obs_dim, ), dtype=tf.float32)
         self._batch_size = batch_size
@@ -132,9 +136,7 @@ class PolicyUnittestEnv(UnittestEnv):
             reward = tf.constant([0.] * self.batch_size)
         else:
             prev_observation = self._current_time_step.observation
-            reward = tf.cast(
-                tf.equal(action, tf.cast(prev_observation, tf.int64)),
-                tf.float32)
+            reward = 1.0 - tf.abs(prev_observation - tf.cast(action, tf.float32))
             reward = tf.reshape(reward, shape=(self.batch_size, ))
 
         observation = tf.constant(
