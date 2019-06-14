@@ -291,7 +291,7 @@ class OnPolicyDriver(driver.Driver):
 
         next_time_step, policy_step, action = self._step(
             time_step, policy_state)
-        action = tf.nest.map_structure(lambda a: tf.stop_gradient(a), action)
+        action = tf.nest.map_structure(tf.stop_gradient, action)
         action_distribution_param = common.get_distribution_params(
             policy_step.action)
 

@@ -167,9 +167,19 @@ def play(train_dir,
     env.reset()
     time_step = driver.get_initial_time_step()
     policy_state = driver.get_initial_state()
+    episode_reward = 0.
+    episode_length = 0
     for _ in range(num_steps):
         time_step, policy_state = driver.run(
             max_num_steps=1, time_step=time_step, policy_state=policy_state)
+        if time_step.is_last():
+            logging.info("episode_length=%s episode_reward=%s" %
+                         (episode_length, episode_reward))
+            episode_reward = 0.
+            episode_length = 0.
+        else:
+            episode_reward += float(time_step.reward)
+            episode_length += 1
         env.pyenv.envs[0].render(mode='human')
         time.sleep(sleep_time_per_step)
     env.reset()
