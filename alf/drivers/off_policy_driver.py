@@ -12,16 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
+
 import gin.tf
 import tensorflow as tf
 
 from tf_agents.environments.tf_environment import TFEnvironment
-from tf_agents.trajectories import trajectory, policy_step
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.replay_buffers.tf_uniform_replay_buffer import TFUniformReplayBuffer
 
 from alf.algorithms.rl_algorithm import make_training_info
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.drivers import policy_driver
 from alf.utils import common
 from alf.algorithms.off_policy_algorithm import Experience
@@ -31,9 +31,11 @@ from alf.algorithms.off_policy_algorithm import Experience
 class OffPolicyDriver(policy_driver.PolicyDriver):
     def __init__(self,
                  env: TFEnvironment,
-                 algorithm,
+                 algorithm: OffPolicyAlgorithm,
                  observers=[],
                  metrics=[],
+                 training=True,
+                 greedy_predict=False,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
@@ -41,7 +43,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         Args:
             env (TFEnvironment): A TFEnvoronmnet
-            algorithm (OnPolicyAlgorith): The algorithm for training
+            algorithm (OffPolicyAlgorithm): The algorithm for training
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
@@ -59,8 +61,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             algorithm=algorithm,
             observers=observers,
             metrics=metrics,
-            training=False,
-            greedy_predict=False,
+            training=training,
+            greedy_predict=greedy_predict,
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=train_step_counter)
@@ -128,6 +130,12 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
     def get_initial_train_state(self, batch_size):
         return common.zero_tensor_from_nested_spec(
             self._algorithm.train_state_spec, batch_size)
+
+    def _algorithm_step(self, time_step, state):
+        if self._greedy_predict:
+            return self._algorithm.greedy_predict(time_step, state)
+        else:
+            return self._algorithm.predict(time_step, state)
 
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""

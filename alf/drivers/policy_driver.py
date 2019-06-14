@@ -113,18 +113,12 @@ class PolicyDriver(driver.Driver):
                                                      self.env.batch_size)
         return make_action_time_step(time_step, action)
 
-    def _algorithm_step(self, time_step, state):
+    def algorithm_step(self, time_step, state):
         if self._observation_transformer is not None:
             time_step = time_step._replace(
                 observation=self._observation_transformer(time_step.
                                                           observation))
-
-        if self._training:
-            return self._algorithm.train_step(time_step, state)
-        elif self._greedy_predict:
-            return self._algorithm.greedy_predict(time_step, state)
-        else:
-            return self._algorithm.predict(time_step, state)
+        return self._algorithm_step(time_step, state)
 
     def run(self, max_num_steps=None, time_step=None, policy_state=None):
         """Take steps in the environment for max_num_steps.
@@ -157,6 +151,12 @@ class PolicyDriver(driver.Driver):
             time_step=time_step,
             policy_state=policy_state,
             max_num_steps=max_num_steps)
+
+    @abc.abstractmethod
+    def _algorithm_step(self, time_step, state):
+        """Return policy_step for this time_step and state
+        """
+        pass
 
     @abc.abstractmethod
     def _run(self, max_num_steps, time_step, policy_state):
@@ -222,7 +222,7 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        policy_step = self._algorithm_step(time_step, state=policy_state)
+        policy_step = self.algorithm_step(time_step, state=policy_state)
         action = self._sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:

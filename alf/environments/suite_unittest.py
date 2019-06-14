@@ -28,7 +28,9 @@ class UnittestEnv(PyEnvironment):
     """Abstract base for unittest environment.
 
     Every episode ends in `episode_length` steps (including LAST step).
-    The observation is one dimensional. The action is binary {0, 1}.
+    The observation is one dimensional.
+    The action is binary {0, 1} when action_type is ActionType.Discrete
+        and a float value in range (0.0, 1.0) when action_type is ActionType.Continuous
     """
 
     def __init__(self, batch_size, episode_length, obs_dim=1, action_type=ActionType.Discrete):
@@ -38,6 +40,7 @@ class UnittestEnv(PyEnvironment):
             batch_size (int): The batch size expected for the actions and
                 observations.
             episode_length (int): length of each episode
+            action_type: ActionType
         """
         self._steps = 0
         self._episode_length = episode_length
@@ -119,7 +122,7 @@ class ValueUnittestEnv(UnittestEnv):
 class PolicyUnittestEnv(UnittestEnv):
     """Environment for testing policy.
 
-    The agent receives reward 1 if its action matches the observation.
+    The agent receives  1 - diff(action, observation) as  reward
     """
 
     def _gen_time_step(self, s, action):
