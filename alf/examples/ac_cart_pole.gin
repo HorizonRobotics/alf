@@ -16,5 +16,6 @@ create_algorithm.learning_rate=0.001
 # training config
 on_policy_trainer.train.train_interval=8
 on_policy_trainer.train.num_iterations=20
+on_policy_trainer.train.summary_interval=5
 
 train_eval.debug_summaries=1

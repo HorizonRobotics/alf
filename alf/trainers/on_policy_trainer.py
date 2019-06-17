@@ -24,11 +24,14 @@ from tf_agents.utils import common as tfa_common
 
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.utils.common import run_under_record_context
+from alf.utils.metric_utils import eager_compute
+from tf_agents.metrics import tf_metrics
 
 
 @gin.configurable
 def train(train_dir,
           env,
+          eval_env,
           algorithm,
           random_seed=0,
           train_interval=20,
@@ -37,6 +40,8 @@ def train(train_dir,
           use_tf_functions=True,
           summary_interval=50,
           summaries_flush_secs=1,
+          eval_interval=10,
+          num_eval_episodes=10,
           checkpoint_interval=1000,
           debug_summaries=False,
           summarize_grads_and_vars=False):
@@ -65,6 +70,13 @@ def train(train_dir,
     """
 
     train_dir = os.path.expanduser(train_dir)
+    eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
+    eval_metrics = [
+        tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
+        tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes)
+    ]
+    eval_summary_writer = tf.summary.create_file_writer(
+        eval_dir, flush_millis=summaries_flush_secs * 1000)
 
     def train_():
         tf.random.set_seed(random_seed)
@@ -92,6 +104,7 @@ def train(train_dir,
         policy_state = driver.get_initial_state()
         for iter in range(num_iterations):
             t0 = time.time()
+
             time_step, policy_state = driver.run(
                 max_num_steps=num_steps_per_iter,
                 time_step=time_step,
@@ -101,6 +114,17 @@ def train(train_dir,
 
             if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())
+
+            if (iter + 1) % eval_interval == 0:
+                with tf.summary.record_if(True):
+                    eager_compute(eval_metrics, eval_env,
+                                  algorithm.predict_state_spec,
+                                  algorithm.greedy_predict,
+                                  num_eval_episodes,
+                                  global_step,
+                                  eval_summary_writer,
+                                  "Metrics")
+                    metric_utils.log_metrics(eval_metrics)
 
         checkpointer.save(global_step=global_step.numpy())
 

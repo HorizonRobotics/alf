@@ -157,7 +157,7 @@ def create_algorithm(env,
     if use_icm:
         feature_spec = env.observation_spec()
         if encoding_net:
-            feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
+            feature_spec = tf.TensorSpec((encoding_fc_layers[-1],),
                                          dtype=tf.float32)
         icm = ICMAlgorithm(
             env.action_spec(), feature_spec, encoding_net=encoding_net)
@@ -193,9 +193,10 @@ def create_environment(env_name='CartPole-v0',
 def train_eval(train_dir, debug_summaries=False):
     """A simple train and eval for ActorCriticAlgorithm."""
     env = create_environment()
+    eval_env = create_environment(num_parallel_environments=1)
     algorithm = create_algorithm(env, debug_summaries=debug_summaries)
     on_policy_trainer.train(
-        train_dir, env, algorithm, debug_summaries=debug_summaries)
+        train_dir, env, eval_env, algorithm, debug_summaries=debug_summaries)
 
 
 def play(train_dir):
@@ -237,6 +238,7 @@ def main(_):
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
+
     set_per_process_memory_growth()
     flags.mark_flag_as_required('root_dir')
     app.run(main)
