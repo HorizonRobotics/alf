@@ -46,12 +46,13 @@ class ActorCriticLoss(object):
                  td_lambda=0.95,
                  use_td_lambda_return=True,
                  normalize_advantages=False,
+                 advantage_clip=None,
                  entropy_regularization=None,
                  td_loss_weight=1.0,
                  debug_summaries=False):
         """Create a ActorCriticLoss object
 
-        The total loss equals to 
+        The total loss equals to
         (policy_gradient_loss
          + td_loss_weight * td_loss
          - entropy_regularization * entropy)
@@ -72,6 +73,7 @@ class ActorCriticLoss(object):
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
                 gradient. This is commonly used for PPO.
+            advantage_clip (float): If set, clip advantages to [-x, x]
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
@@ -85,6 +87,8 @@ class ActorCriticLoss(object):
         self._lambda = td_lambda
         self._use_td_lambda_return = use_td_lambda_return
         self._normalize_advantages = normalize_advantages
+        assert advantage_clip is None or advantage_clip > 0, "Clipping value should be positive!"
+        self._advantage_clip = advantage_clip
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
 
@@ -128,6 +132,12 @@ class ActorCriticLoss(object):
 
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages, axes=(0, 1))
+
+        if self._advantage_clip:
+            advantages = tf.clip_by_value(advantages,
+                                          -self._advantage_clip,
+                                          self._advantage_clip)
+
         pg_loss = self._pg_loss(training_info, advantages)
 
         td_loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)

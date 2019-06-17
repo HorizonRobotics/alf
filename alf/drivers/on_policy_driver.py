@@ -48,7 +48,7 @@ class OnPolicyDriver(driver.Driver):
     OnPolicyDriver runs the eviroment with the algorithm for on-policy training.
     Training consists of multiple iterations. Each iteration performs the
     following computation:
-    
+
     ```python
     with GradientTape as tape:
         for _ in range(train_interval):
@@ -65,7 +65,7 @@ class OnPolicyDriver(driver.Driver):
         redo the policy_step for the same time_step in the next iteration.
         This requires that the algorithm can correctly generate policy_step with
         repeated train_step() call.
-    * FINAL_STEP_SKIP: use final_policy_step for one more env.step(). Hence this 
+    * FINAL_STEP_SKIP: use final_policy_step for one more env.step(). Hence this
         environment step will be skipped for training because it's not performed
         with GradientTape() context.
     """
@@ -105,7 +105,7 @@ class OnPolicyDriver(driver.Driver):
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
@@ -137,6 +137,7 @@ class OnPolicyDriver(driver.Driver):
                 lambda spec: spec.input_params_spec,
                 algorithm.action_distribution_spec)
 
+            # compute a random step to obtain policy_step.info spec
             policy_step = algorithm.train_step(self.get_initial_time_step(),
                                                self.get_initial_state())
             info_spec = tf.nest.map_structure(
@@ -163,7 +164,7 @@ class OnPolicyDriver(driver.Driver):
     def run(self, max_num_steps, time_step=None, policy_state=None):
         """Take steps in the environment for max_num_steps.
 
-        If in training mode, algorithm.train_step() and 
+        If in training mode, algorithm.train_step() and
         algorithm.train_complete() will be called.
         If not in training mode, algorith.predict() will be called.
 
@@ -333,11 +334,12 @@ class OnPolicyDriver(driver.Driver):
 
         with tf.GradientTape() as tape:
             [_, time_step, policy_state, training_info_ta] = tf.while_loop(
-                cond=lambda counter, *_: tf.less(counter, self._train_interval),
+                cond=lambda *_: True,
                 body=self._train_loop_body,
                 loop_vars=[counter, time_step, policy_state, training_info_ta],
                 back_prop=True,
                 parallel_iterations=1,
+                maximum_iterations=self._train_interval,
                 name='iter_loop')
 
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),

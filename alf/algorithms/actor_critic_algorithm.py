@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections import namedtuple
+from typing import Callable
 
 import gin.tf
 
@@ -51,6 +52,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss=None,
                  optimizer=None,
                  gradient_clipping=None,
+                 reward_shaping_fn: Callable =None,
                  train_step_counter=None,
                  debug_summaries=False,
                  name="ActorCriticAlgorithm"):
@@ -71,7 +73,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
           extrinsic_reward_coef: Coefficient for extrinsic reward
           loss (None|ActorCriticLoss): an object for calculating loss. If None,
             a default ActorCriticLoss will be used.
-          optimizer (tf.optimizers.Optimizer): The optimizer for training.
+          optimizer (tf.optimizers.Optimizer): The optimizer for training
+          gradient_clipping (float): If not None, serve as a positive threshold
+            for clipping gradient norms
+          reward_shaping_fn (Callable): a function that transforms extrinsic
+            immediate rewards
           debug_summaries: True if debug summaries should be created.
         """
 
@@ -89,6 +95,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             action_distribution_spec=actor_network.output_spec,
             optimizer=optimizer,
             gradient_clipping=gradient_clipping,
+            reward_shaping_fn=reward_shaping_fn,
             train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
             name=name)
@@ -151,8 +158,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def calc_loss(self, training_info, final_time_step, final_policy_step):
         if self._icm is not None:
-            self.add_reward_summary("reward/external", training_info.reward)
-            self.add_reward_summary("reward/intrinsic",
+            self.add_reward_summary("training_reward/intrinsic",
                                     training_info.info.icm_reward)
 
             reward_calc_fn = lambda extrinsic, intrinsic: (
@@ -161,16 +167,18 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
             training_info = training_info._replace(
                 reward=reward_calc_fn(training_info.reward,
-                                   training_info.info.icm_reward))
+                                      training_info.info.icm_reward))
             final_time_step = final_time_step._replace(
                 reward=reward_calc_fn(final_time_step.reward,
-                                   final_policy_step.info.icm_reward))
+                                      final_policy_step.info.icm_reward))
+
+            self.add_reward_summary("training_reward/overall",
+                                    training_info.reward)
+
 
         final_value = final_policy_step.info.value
         ac_loss = self._loss(training_info, training_info.info.value,
                              final_time_step, final_value)
-
-        self.add_reward_summary("reward", training_info.reward)
 
         if self._icm is not None:
             icm_loss = self._icm.calc_loss(training_info.info.icm_info)

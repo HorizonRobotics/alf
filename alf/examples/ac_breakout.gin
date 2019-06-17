@@ -1,0 +1,54 @@
+# You need to install following packages
+# pip3 install atari-py opencv-python
+
+# environment config
+import tf_agents.environments.suite_atari
+# From OpenAI gym wiki:
+# "v0 vs v4: v0 has repeat_action_probability of 0.25
+#  (meaning 25% of the time the previous action will be used instead of the new action),
+#   while v4 has 0 (always follow your issued action)
+# Because we already implements frame_skip in AtariPreprocessing, we should always
+# use 'NoFrameSkip' Atari environments from OpenAI gym
+create_environment.env_name='BreakoutNoFrameskip-v4'
+create_environment.env_load_fn=@suite_atari.load
+create_environment.num_parallel_environments=512
+
+# Do not use "frame_skip=1"! Issue with _pool_and_resize()
+# See my PR: https://github.com/tensorflow/agents/pull/138
+AtariPreprocessing.frame_skip=4
+
+suite_atari.load.gym_env_wrappers=(@AtariPreprocessing, @FrameStack4)
+
+# algorithm config
+ActorCriticLoss.entropy_regularization=0.01
+ActorCriticLoss.use_gae=True
+ActorCriticLoss.use_td_lambda_return=True
+ActorCriticLoss.advantage_clip=None
+
+ActorDistributionNetwork.activation_fn=@tf.nn.elu
+
+CONV_LAYER_PARAMS=((32, 3, 2), (64, 3, 2), (64, 3, 2), (64, 3, 2))
+ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+CategoricalProjectionNetwork.logits_init_output_factor=1e-10
+ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+
+ValueNetwork.activation_fn=@tf.nn.elu
+ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+
+create_algorithm.actor_fc_layers=(256,)
+create_algorithm.value_fc_layers=(256,)
+
+ActorCriticAlgorithm.gradient_clipping=None
+ActorCriticAlgorithm.reward_shaping_fn=@reward_clipping
+common.reward_clipping.minmax=(-1, 1)
+create_algorithm.learning_rate=5e-4
+
+# training config
+on_policy_trainer.train.num_iterations=1000000
+on_policy_trainer.train.summarize_grads_and_vars=1
+on_policy_trainer.train.summary_interval=10
+on_policy_trainer.train.train_interval=3
+on_policy_trainer.train.use_tf_functions=1
+
+OnPolicyDriver.observation_transformer=@image_scale_transformer
+train_eval.debug_summaries=1
