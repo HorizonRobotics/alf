@@ -190,13 +190,16 @@ def create_environment(env_name='CartPole-v0',
 
 
 @gin.configurable
-def train_eval(train_dir, debug_summaries=False):
+def train_eval(train_dir, evaluate=True, debug_summaries=False):
     """A simple train and eval for ActorCriticAlgorithm."""
     env = create_environment()
-    eval_env = create_environment(num_parallel_environments=1)
+    if evaluate:
+        eval_env = create_environment(num_parallel_environments=1)
+    else:
+        eval_env = None
     algorithm = create_algorithm(env, debug_summaries=debug_summaries)
     on_policy_trainer.train(
-        train_dir, env, eval_env, algorithm, debug_summaries=debug_summaries)
+        train_dir, env, algorithm, eval_env=eval_env, debug_summaries=debug_summaries)
 
 
 def play(train_dir):
