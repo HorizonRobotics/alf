@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import gin.tf
 import tensorflow as tf
 
@@ -48,6 +47,9 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
+            training (bool): True for training, false for evaluating
+            greedy_predict (bool): use greedy action for evaluation (i.e.
+                training==False).
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
@@ -225,6 +227,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         del tape
 
-        self.summary(loss_info, grads_and_vars)
+        self._summary(loss_info, grads_and_vars)
 
         self._train_step_counter.assign_add(1)

@@ -20,7 +20,6 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import eager_utils
 
@@ -83,7 +82,11 @@ def make_action_time_step(time_step, prev_action):
 
 
 class RLAlgorithm(tf.Module):
-    """The base class of RL algorithm."""
+    """Abstract base class for  RL Algorithms.
+
+    RLAlgorithm provide basic functions and generic interface for rl algorithms.
+    See Policy
+    """
 
     def __init__(self,
                  action_spec,
@@ -211,6 +214,11 @@ class RLAlgorithm(tf.Module):
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
         """
+        pass
+
+    @abstractmethod
+    def train_step(self):
+        """Perform one step of action and training computation."""
         pass
 
     # Subclass may override train_complete() to allow customized training

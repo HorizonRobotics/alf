@@ -24,6 +24,7 @@ from enum import Enum
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous'))
 
+
 class UnittestEnv(PyEnvironment):
     """Abstract base for unittest environment.
 
@@ -33,7 +34,11 @@ class UnittestEnv(PyEnvironment):
         and a float value in range (0.0, 1.0) when action_type is ActionType.Continuous
     """
 
-    def __init__(self, batch_size, episode_length, obs_dim=1, action_type=ActionType.Discrete):
+    def __init__(self,
+                 batch_size,
+                 episode_length,
+                 obs_dim=1,
+                 action_type=ActionType.Discrete):
         """Initializes the environment.
 
         Args:
@@ -45,7 +50,7 @@ class UnittestEnv(PyEnvironment):
         self._steps = 0
         self._episode_length = episode_length
         super(UnittestEnv, self).__init__()
-        self._action_type=action_type
+        self._action_type = action_type
         action_dtype = tf.int64 if action_type == ActionType.Discrete else tf.float32
         self._action_spec = BoundedTensorSpec(
             shape=(1, ), dtype=action_dtype, minimum=0, maximum=1)
@@ -122,7 +127,7 @@ class ValueUnittestEnv(UnittestEnv):
 class PolicyUnittestEnv(UnittestEnv):
     """Environment for testing policy.
 
-    The agent receives  1 - diff(action, observation) as  reward
+    The agent receives 1-diff(action, observation) as reward
     """
 
     def _gen_time_step(self, s, action):
@@ -139,7 +144,8 @@ class PolicyUnittestEnv(UnittestEnv):
             reward = tf.constant([0.] * self.batch_size)
         else:
             prev_observation = self._current_time_step.observation
-            reward = 1.0 - tf.abs(prev_observation - tf.cast(action, tf.float32))
+            reward = 1.0 - tf.abs(prev_observation -
+                                  tf.cast(action, tf.float32))
             reward = tf.reshape(reward, shape=(self.batch_size, ))
 
         observation = tf.constant(

@@ -41,13 +41,13 @@ def create_ddpg_algorithm(env, use_rnn=False, learning_rate=1e-1):
             action_spec,
             input_fc_layer_params=(),
             output_fc_layer_params=(),
-            lstm_size=(4,))
+            lstm_size=(4, ))
         critic_net = CriticRnnNetwork((observation_spec, action_spec),
                                       observation_fc_layer_params=(),
                                       action_fc_layer_params=(),
                                       output_fc_layer_params=(),
-                                      joint_fc_layer_params=(10,),
-                                      lstm_size=(4,))
+                                      joint_fc_layer_params=(10, ),
+                                      lstm_size=(4, ))
     else:
         actor_net = ActorNetwork(
             observation_spec, action_spec, fc_layer_params=())
@@ -68,7 +68,6 @@ def create_ddpg_algorithm(env, use_rnn=False, learning_rate=1e-1):
 
 
 class OffPolicyDriverTest(unittest.TestCase):
-
     def test_ddpg(self):
         batch_size = 100
         steps_per_episode = 13
@@ -107,13 +106,13 @@ class OffPolicyDriverTest(unittest.TestCase):
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)
-            logging.info(
-                "%s reward=%s" % (i, tf.reduce_mean(eval_time_step.reward)))
+            logging.info("%d reward=%f", i,
+                         float(tf.reduce_mean(eval_time_step.reward)))
 
         eval_env.reset()
         eval_time_step, _ = eval_driver.run(
             max_num_steps=(steps_per_episode - 1) * batch_size)
-        logging.info("reward=%s" % tf.reduce_mean(eval_time_step.reward))
+        logging.info("reward=%f", float(tf.reduce_mean(eval_time_step.reward)))
         self.assertAlmostEqual(
             1.0, float(tf.reduce_mean(eval_time_step.reward)), delta=2e-1)
 
@@ -123,11 +122,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    # from alf.utils.common import run_under_record_context
-    #
-    # run_under_record_context(
-    #     OffPolicyDriverTest().test_ddpg,
-    #     summary_dir="~/tmp/debug",
-    #     summary_interval=1,
-    #     flush_millis=1000)
     unittest.main()

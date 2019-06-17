@@ -42,7 +42,35 @@ def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
-    """Base class of off-policy algorithms."""
+    """
+       OnPolicyAlgorithm works with alf.drivers.off_policy_driver to do training
+
+       User needs to implement predict() and train_step().
+
+       predict() is called to generate actions for every environment step.
+
+       train_step() is called to generate necessary information for training.
+
+        ```python
+        while training not ends:
+            # collect experience
+            policy_step = predict(time_step, policy_step.state)
+            experience = make_experience(time_step, policy_step)
+            store experience to replay buffer
+
+            # sample experiences and perform training
+            experiences = sample batch from replay_buffer
+            with tf.GradientTape() as tape:
+                batched_training_info
+                for experience in experiences:
+                    train_info = train_step(experience,...)
+                    write train_info to batched_training_info
+                train_complete(tape, batched_training_info,...)
+
+            action = sample action from policy_step.action
+            time_step = env.step(action)
+    ```
+    """
 
     @abc.abstractmethod
     def predict(self, time_step: ActionTimeStep, state=None):

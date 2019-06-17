@@ -20,15 +20,13 @@ from tensorflow_probability import distributions as tfd
 
 from tf_agents.networks.network import Network
 from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import StepType
-from tf_agents.trajectories.trajectory import Trajectory
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
-from tf_agents.utils import eager_utils
 
+from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
-from alf.utils import losses, common, value_ops
+from alf.utils import losses, common
 
 DdpgCriticState = namedtuple("DdpgCriticState",
                              ['critic', 'target_actor', 'target_critic'])
@@ -64,13 +62,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 call(observation, step_type).
             critic_network (Network): The network will be called with
                 call(observation, action, step_type).
-            loss (None|ActorCriticLoss): an object for calculating loss. If None,
-                a default ActorCriticLoss will be used.
-            optimizer (tf.optimizers.Optimizer): The optimizer for training.
+
             ou_stddev (float): Standard deviation for the Ornstein-Uhlenbeck
                 (OU) noise added in the default collect policy.
             ou_damping (float): Damping factor for the OU noise added in the
                 default collect policy.
+            critic_loss (TDLoss):
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -78,7 +75,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
                 Does not perform clipping if dqda_clipping == 0.
-            critic_loss (TDLoss):  
+            actor_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
+            critic_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
             gradient_clipping (float): Norm length to clip gradients.
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
@@ -270,33 +268,3 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         ou_process = tf.nest.map_structure(_create_ou_process,
                                            self._action_spec)
         return ou_process
-
-
-@gin.configurable
-class OneStepTDLoss(object):
-    def __init__(self,
-                 gamma=0.99,
-                 td_error_loss_fn=losses.element_wise_squared_loss,
-                 debug_summaries=False):
-        """
-        Args:
-            gamma (float): A discount factor for future rewards.
-            td_errors_loss_fn (Callable): A function for computing the TD errors
-                loss. This function takes as input the target and the estimated 
-                Q values and returns the loss for each element of the batch.
-        """
-        self._gamma = gamma
-        self._td_error_loss_fn = td_error_loss_fn
-        self._debug_summaries = debug_summaries
-
-    def __call__(self, training_info: TrainingInfo, value, target_value,
-                 final_time_step, final_target_value):
-        returns = value_ops.one_step_discounted_return(
-            rewards=training_info.reward,
-            values=target_value,
-            step_types=training_info.step_type,
-            discounts=training_info.discount * self._gamma,
-            final_value=final_target_value,
-            final_time_step=final_time_step)
-        loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
-        return LossInfo(loss=loss, extra=loss)

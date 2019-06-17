@@ -248,7 +248,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         loss_info, grads_and_vars = self._algorithm.train_complete(
             tape, training_info, time_step, policy_step.info)
 
-        self.summary(loss_info, grads_and_vars)
+        self._summary(loss_info, grads_and_vars)
 
         self._train_step_counter.assign_add(1)
 

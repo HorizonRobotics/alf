@@ -31,15 +31,13 @@ class SuiteUnittestEnvTest(parameterized.TestCase, unittest.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertEqual(float(tf.reduce_max(abs(x - y))), 0.)
 
-    @parameterized.parameters(False, True)
-    def test_value_unittest_env(self, env_is_discrete):
+    @parameterized.parameters(ActionType.Discrete, ActionType.Continuous)
+    def test_value_unittest_env(self, action_type):
         batch_size = 1
         steps_per_episode = 13
 
-        action_type = ActionType.Discrete if env_is_discrete else ActionType.Continuous
         env = ValueUnittestEnv(
-            batch_size, steps_per_episode,
-            action_type=action_type)
+            batch_size, steps_per_episode, action_type=action_type)
 
         time_step = env.reset()
         for _ in range(10):
@@ -67,13 +65,13 @@ class SuiteUnittestEnvTest(parameterized.TestCase, unittest.TestCase):
                                            dtype=tf.int64)
                 time_step = env.step(action)
 
-    @parameterized.parameters(False, True)
-    def test_policy_unittest_env(self, env_is_discrete):
+    @parameterized.parameters(ActionType.Discrete, ActionType.Continuous)
+    def test_policy_unittest_env(self, action_type):
         batch_size = 100
         steps_per_episode = 13
 
-        action_type = ActionType.Discrete if env_is_discrete else ActionType.Continuous
-        env = PolicyUnittestEnv(batch_size, steps_per_episode, action_type=action_type)
+        env = PolicyUnittestEnv(
+            batch_size, steps_per_episode, action_type=action_type)
 
         time_step = env.reset()
         for _ in range(10):

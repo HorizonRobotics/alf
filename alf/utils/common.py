@@ -261,17 +261,6 @@ def get_global_counter(default_counter=None):
     return default_counter
 
 
-def to_transitions(experience, state_spec=()):
-    transitions = trajectory.to_transition(experience)
-    if not state_spec:
-        # Sequence empty time dimension if critic network is stateless.
-        transitions = tf.nest.map_structure(lambda t: tf.squeeze(t, axis=1),
-                                            transitions)
-    time_steps, policy_steps, next_time_steps = transitions
-    actions = policy_steps.action
-    return time_steps, actions, next_time_steps
-
-
 @gin.configurable
 def image_scale_transformer(observation, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max)
