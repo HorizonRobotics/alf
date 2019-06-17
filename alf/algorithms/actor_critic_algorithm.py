@@ -74,7 +74,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
           loss (None|ActorCriticLoss): an object for calculating loss. If None,
             a default ActorCriticLoss will be used.
           optimizer (tf.optimizers.Optimizer): The optimizer for training
-          gradient_clipping (float): positive threshold for clipping gradient norms
+          gradient_clipping (float): If not None, serve as a positive threshold
+            for clipping gradient norms
           reward_shaping_fn (Callable): a function that transforms extrinsic
             immediate rewards
           debug_summaries: True if debug summaries should be created.
@@ -157,7 +158,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def calc_loss(self, training_info, final_time_step, final_policy_step):
         if self._icm is not None:
-            self.add_reward_summary("training_reward/external", training_info.reward)
             self.add_reward_summary("training_reward/intrinsic",
                                     training_info.info.icm_reward)
 
@@ -175,8 +175,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         final_value = final_policy_step.info.value
         ac_loss = self._loss(training_info, training_info.info.value,
                              final_time_step, final_value)
-
-        self.add_reward_summary("training_reward", training_info.reward)
 
         if self._icm is not None:
             icm_loss = self._icm.calc_loss(training_info.info.icm_info)

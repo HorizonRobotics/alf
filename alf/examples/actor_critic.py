@@ -222,13 +222,13 @@ def copy_gin_configs(root_dir, gin_files):
 def main(_):
     logging.set_verbosity(logging.INFO)
 
-    if FLAGS.gin_file is None:
+    gin_file = FLAGS.gin_file
+    if gin_file is None:
         gin_file = glob.glob(FLAGS.root_dir + "/*.gin")
         assert gin_file, "No gin files are found! Please provide"
 
     if not FLAGS.play:
-        copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
-        gin_file = FLAGS.gin_file
+        copy_gin_configs(FLAGS.root_dir, gin_file)
 
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
 

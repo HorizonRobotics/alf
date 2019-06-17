@@ -275,12 +275,18 @@ class OnPolicyAlgorithm(tf.Module):
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
 
+        # reward unshaped extrinsic rewards given by the environment
+        self.add_reward_summary("environment_reward", training_info.reward)
+
         # reward shaping
         if self._reward_shaping_fn is not None:
             training_info = training_info._replace(
                 reward=self._reward_shaping_fn(training_info.reward))
             final_time_step = final_time_step._replace(
                 reward=self._reward_shaping_fn(final_time_step.reward))
+
+        # record shaped extrinsic rewards actually used for training
+        self.add_reward_summary("training_reward/extrinsic", training_info.reward)
 
         with tape:
             loss_info = self.calc_loss(training_info, final_time_step,

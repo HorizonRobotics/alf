@@ -88,8 +88,8 @@ def train(train_dir,
             driver.run = tf.function(driver.run)
 
         env.reset()
-        time_step = None
-        policy_state = None
+        time_step = driver.get_initial_time_step()
+        policy_state = driver.get_initial_state()
         for iter in range(num_iterations):
             t0 = time.time()
             time_step, policy_state = driver.run(

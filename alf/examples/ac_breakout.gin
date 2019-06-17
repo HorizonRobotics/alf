@@ -13,7 +13,8 @@ create_environment.env_name='BreakoutNoFrameskip-v4'
 create_environment.env_load_fn=@suite_atari.load
 create_environment.num_parallel_environments=512
 
-# Do not use this frame_skip! Potential issue with _pool_and_resize()
+# Do not use "frame_skip=1"! Issue with _pool_and_resize()
+# See my PR: https://github.com/tensorflow/agents/pull/138
 AtariPreprocessing.frame_skip=4
 
 suite_atari.load.gym_env_wrappers=(@AtariPreprocessing, @FrameStack4)
