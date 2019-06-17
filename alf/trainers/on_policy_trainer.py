@@ -115,6 +115,7 @@ def train(train_dir,
 def play(train_dir,
          env,
          algorithm,
+         checkpoint_name=None,
          greedy_predict=True,
          random_seed=0,
          num_steps=10000,
@@ -126,6 +127,8 @@ def play(train_dir,
         train_dir (str): same as the train_dir used for `train()`
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
+        checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
+            If None, the latest checkpoint unber train_dir will be used.
         greedy_predict (bool): use greedy action for evaluation.
         random_seed (int): random seed
         num_steps (int): number of steps to play
@@ -143,22 +146,40 @@ def play(train_dir,
         training=False,
         greedy_predict=greedy_predict)
 
-    checkpointer = tfa_common.Checkpointer(
-        ckpt_dir=os.path.join(train_dir, 'algorithm'),
+    ckpt_dir = os.path.join(train_dir, 'algorithm')
+    checkpoint = tf.train.Checkpoint(
         algorithm=algorithm,
         metrics=metric_utils.MetricsGroup(driver.get_metrics(), 'metrics'),
         global_step=global_step)
-    checkpointer.initialize_or_restore()
+    if checkpoint_name is not None:
+        ckpt_path = os.path.join(ckpt_dir, checkpoint_name)
+    else:
+        ckpt_path = tf.train.latest_checkpoint(ckpt_dir)
+    if ckpt_path is not None:
+        logging.info("Restore from checkpoint %s" % ckpt_path)
+        checkpoint.restore(ckpt_path)
 
     if use_tf_functions:
         driver.run = tf.function(driver.run)
 
+    # pybullet_envs need to `render()` before reset() to enable rendering.
+    env.pyenv.envs[0].render(mode='human')
     env.reset()
     time_step = driver.get_initial_time_step()
     policy_state = driver.get_initial_state()
+    episode_reward = 0.
+    episode_length = 0
     for _ in range(num_steps):
         time_step, policy_state = driver.run(
             max_num_steps=1, time_step=time_step, policy_state=policy_state)
+        if time_step.is_last():
+            logging.info("episode_length=%s episode_reward=%s" %
+                         (episode_length, episode_reward))
+            episode_reward = 0.
+            episode_length = 0.
+        else:
+            episode_reward += float(time_step.reward)
+            episode_length += 1
         env.pyenv.envs[0].render(mode='human')
         time.sleep(sleep_time_per_step)
     env.reset()
