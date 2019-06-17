@@ -62,6 +62,7 @@ python actor_critic.py \
 import os
 import random
 import shutil
+import glob
 import time
 
 from absl import app
@@ -72,7 +73,6 @@ import gin.tf.external_configurables
 import tensorflow as tf
 
 from tf_agents.environments import parallel_py_environment
-from tf_agents.environments import suite_mujoco
 from tf_agents.environments import suite_gym
 from tf_agents.environments import tf_py_environment
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
@@ -80,14 +80,13 @@ from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionR
 from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
-from tf_agents.environments import atari_wrappers
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments import suite_socialbot
-from alf.environments import suite_mario
 from alf.trainers import on_policy_trainer
+import alf.utils.external_configurables
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -96,12 +95,6 @@ flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_bool('play', False, 'Visualize the playing')
 
 FLAGS = flags.FLAGS
-
-tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
-                                                   'tf.keras.layers.Conv2D')
-tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
-                                               'tf.optimizers.Adam')
-gin.external_configurable(atari_wrappers.FrameStack4)
 
 
 @gin.configurable
@@ -216,8 +209,6 @@ def copy_gin_configs(root_dir, gin_files):
         root_dir (str): directory path
         gin_files (None|list[str]): list of file paths
     """
-    if gin_files is None:
-        return
     root_dir = os.path.expanduser(root_dir)
     os.makedirs(root_dir, exist_ok=True)
     for f in gin_files:
@@ -226,12 +217,17 @@ def copy_gin_configs(root_dir, gin_files):
 
 def main(_):
     logging.set_verbosity(logging.INFO)
-    if not FLAGS.play:
-        copy_gin_configs(FLAGS.root_dir, FLAGS.gin_file)
-        # TODO: use the gin files under FLAGS.root_dir if FLAGS.gin_file
-        # is not specified
 
-    gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param)
+    gin_file = FLAGS.gin_file
+    if gin_file is None:
+        gin_file = glob.glob(FLAGS.root_dir + "/*.gin")
+        assert gin_file, "No gin files are found! Please provide"
+
+    if not FLAGS.play:
+        copy_gin_configs(FLAGS.root_dir, gin_file)
+
+    gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+
     if FLAGS.play:
         play(FLAGS.root_dir + "/train")
     else:

@@ -23,9 +23,9 @@ from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
 
 from alf.drivers.on_policy_driver import OnPolicyDriver
-from alf.utils.common import run_under_record_context
 from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
+from alf.utils.common import run_under_record_context, get_global_counter
 
 
 @gin.configurable
@@ -57,7 +57,7 @@ def train(train_dir,
         eval_env (TFEnvironment): environment for evaluating
         random_seed (int): random seed
         train_interval (int): update parameter every so many env.step().
-        num_steps_per_iter (int): number of steps for one iteration. It is the 
+        num_steps_per_iter (int): number of steps for one iteration. It is the
             total steps from all individual environment in the batch
             environment.
         use_tf_functions (bool): whether to use tf.function
@@ -87,7 +87,7 @@ def train(train_dir,
 
     def train_():
         tf.random.set_seed(random_seed)
-        global_step = tf.summary.experimental.get_step()
+        global_step = get_global_counter()
 
         driver = OnPolicyDriver(
             env=env,
@@ -170,7 +170,7 @@ def play(train_dir,
     train_dir = os.path.expanduser(train_dir)
 
     tf.random.set_seed(random_seed)
-    global_step = tf.summary.experimental.get_step()
+    global_step = get_global_counter()
 
     driver = OnPolicyDriver(
         env=env,
