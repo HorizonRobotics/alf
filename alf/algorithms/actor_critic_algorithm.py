@@ -163,14 +163,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                                     training_info.info.icm_reward)
 
             reward_calc_fn = lambda extrinsic, intrinsic: (
-                    self._extrinsic_reward_coef * extrinsic + self._intrinsic_reward_coef * intrinsic)
+                    self._extrinsic_reward_coef * extrinsic +
+                    self._intrinsic_reward_coef * intrinsic)
 
             training_info = training_info._replace(
                 reward=reward_calc_fn(training_info.reward,
                                       training_info.info.icm_reward))
             final_time_step = final_time_step._replace(
                 reward=reward_calc_fn(final_time_step.reward,
-                                      final_info.info.icm_reward))
+                                      final_info.icm_reward))
 
             self.add_reward_summary("training_reward/overall",
                                     training_info.reward)
