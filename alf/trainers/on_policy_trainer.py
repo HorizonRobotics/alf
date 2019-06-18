@@ -131,7 +131,7 @@ def train(train_dir,
                                   num_episodes=num_eval_episodes,
                                   train_step=global_step,
                                   summary_writer=eval_summary_writer,
-                                  summary_prefix="Eval/Metrics")
+                                  summary_prefix="Metrics")
                     metric_utils.log_metrics(eval_metrics)
 
         checkpointer.save(global_step=global_step.numpy())

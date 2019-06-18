@@ -19,28 +19,27 @@ from tf_agents.eval.metric_utils import eager_compute as tfa_eager_compute
 
 
 class Policy(Base):
-    """Wrap an action fn to policy
-
-    Args:
-        time_step_spec: A `TimeStep` spec of the expected time_steps. Usually
-            provided by the user to the subclass.
-        action_spec: A nest of BoundedTensorSpec representing the actions. Usually
-            provided by the user to the subclass.
-        policy_state_spec: A nest of TensorSpec representing the policy_state.
-            Provided by the subclass, not directly by the user.
-        action_fn: action function that generates next action given the time_step and policy_state
-    """
+    """Wrap an action fn to policy"""
 
     def __init__(self,
                  time_step_spec,
                  action_spec,
                  policy_state_spec,
                  action_fn):
+        """Create a Policy.
+
+        Args:
+            time_step_spec (TimeStep): spec of the expected time_steps.
+            action_spec (nested BoundedTensorSpec): representing the actions.
+            policy_state_spec (nested TensorSpec): representing the policy_state.
+            action_fn (Callable): action function that generates next action
+                given the time_step and policy_state
+        """
         super(Policy, self).__init__(
             time_step_spec=time_step_spec,
             action_spec=action_spec,
             policy_state_spec=policy_state_spec)
-        # already exist attribute named `_action_fn` in parent
+        # attribute named `_action_fn` already exist in parent
         self._action_fn1 = action_fn
 
     def _action(self, time_step, policy_state=(), seed=None):
@@ -63,15 +62,15 @@ def eager_compute(metrics,
     """Compute metrics using `action_fn` on the `environment`.
 
     Args:
-        metrics: List of metrics to compute.
-        environment: tf_environment instance.
-        state_spec: A nest of TensorSpec representing the RNN state for predict.
-        action_fn: action function used to step the environment that
+        metrics (list[TFStepMetric]): metrics to compute.
+        environment (TFEnvironment): tf_environment instance.
+        state_spec (nested TensorSpec): representing the RNN state for predict.
+        action_fn (Callable): action function used to step the environment that
             generates next action given the time_step and policy_state.
-        num_episodes: Number of episodes to compute the metrics over.
-        train_step: An optional step to write summaries against.
-        summary_writer: An optional writer for generating metric summaries.
-        summary_prefix: An optional prefix scope for metric summaries.
+        num_episodes (int): Number of episodes to compute the metrics over.
+        train_step (Variable): An optional step to write summaries against.
+        summary_writer (SummaryWriter): An optional writer for generating metric summaries.
+        summary_prefix (str): An optional prefix scope for metric summaries.
     Returns:
         A dictionary of results {metric_name: metric_value}
     """
