@@ -50,5 +50,5 @@ on_policy_trainer.train.train_interval=32
 on_policy_trainer.train.summary_interval=1
 on_policy_trainer.train.use_tf_functions=1
 
-OnPolicyDriver.observation_transformer=@image_scale_transformer
+PolicyDriver.observation_transformer=@image_scale_transformer
 train_eval.debug_summaries=1
