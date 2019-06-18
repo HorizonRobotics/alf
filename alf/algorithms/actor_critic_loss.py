@@ -21,7 +21,7 @@ import tensorflow_probability as tfp
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 
-from alf.algorithms.on_policy_algorithm import TrainingInfo
+from alf.algorithms.rl_algorithm import TrainingInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import value_ops
 

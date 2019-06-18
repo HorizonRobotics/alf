@@ -24,10 +24,9 @@ from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.on_policy_algorithm import ActionTimeStep
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.on_policy_algorithm import TrainingInfo
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
                               ["actor_state", "value_state", "icm_state"])
@@ -52,7 +51,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss=None,
                  optimizer=None,
                  gradient_clipping=None,
-                 reward_shaping_fn: Callable =None,
+                 reward_shaping_fn: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
                  name="ActorCriticAlgorithm"):
@@ -63,7 +62,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
           actor_network (DistributionNetwork): A network that returns nested
             tensor of action distribution for each observation given observation
             and network state.
-          value_net (Network): A function that returns value tensor from neural
+          value_network (Network): A function that returns value tensor from neural
             net predictions for each observation given observation and nwtwork
             state.
           encoding_network (Network): A function that encodes the observation
@@ -78,7 +77,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             for clipping gradient norms
           reward_shaping_fn (Callable): a function that transforms extrinsic
             immediate rewards
+          train_step_counter (tf.Variable): An optional counter to increment.
           debug_summaries: True if debug summaries should be created.
+          name (str): Name of this algorithm.
         """
 
         icm_state_spec = ()
@@ -138,8 +139,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             network_state=state.actor_state)
 
         if self._icm is not None:
-            icm_step = self._icm.train_step((observation, time_step.action),
-                                            state=state.icm_state)
+            icm_step = self._icm.train_step(
+                (observation, time_step.prev_action), state=state.icm_state)
             info = ActorCriticInfo(
                 value=value,
                 icm_reward=icm_step.outputs,
@@ -156,7 +157,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         return PolicyStep(action=action_distribution, state=state, info=info)
 
-    def calc_loss(self, training_info, final_time_step, final_policy_step):
+    def calc_loss(self, training_info, final_time_step, final_info):
         if self._icm is not None:
             self.add_reward_summary("training_reward/intrinsic",
                                     training_info.info.icm_reward)
@@ -170,13 +171,12 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                                       training_info.info.icm_reward))
             final_time_step = final_time_step._replace(
                 reward=reward_calc_fn(final_time_step.reward,
-                                      final_policy_step.info.icm_reward))
+                                      final_info.icm_reward))
 
             self.add_reward_summary("training_reward/overall",
                                     training_info.reward)
 
-
-        final_value = final_policy_step.info.value
+        final_value = final_info.value
         ac_loss = self._loss(training_info, training_info.info.value,
                              final_time_step, final_value)
 

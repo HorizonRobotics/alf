@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Various functions used by different alf modules"""
+"""Various functions used by different alf modules."""
 
 import os
 
@@ -21,6 +21,7 @@ import tensorflow as tf
 from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
+from tf_agents.trajectories import trajectory
 
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
@@ -55,7 +56,29 @@ def set_per_process_memory_growth(flag=True):
                 print(e)
 
 
-def get_target_updater(model, target_model, tau=1.0, period=1):
+def as_list(x):
+    """Convert x to a list.
+
+    It performs the following conversion:
+        None => []
+        list => x
+        tuple => list(x)
+        other => [x]
+    Args:
+        x (any): the object to be converted
+    Returns:
+        a list.
+    """
+    if x is None:
+        return []
+    if isinstance(x, list):
+        return x
+    if isinstance(x, tuple):
+        return list(x)
+    return [x]
+
+
+def get_target_updater(models, target_models, tau=1.0, period=1):
     """Performs a soft update of the target model parameters.
 
     For each weight w_s in the model, and its corresponding
@@ -63,8 +86,8 @@ def get_target_updater(model, target_model, tau=1.0, period=1):
     w_t = (1 - tau) * w_t + tau * w_s
 
     Args:
-        model (Network): the current model.
-        target_model (Network): the model to be updated.
+        models (Network | list[Network]): the current model.
+        target_models (Network | list[Network]): the model to be updated.
         tau (float): A float scalar in [0, 1]. Default `tau=1.0` means hard
             update.
         period (int): Step interval at which the target model is updated.
@@ -72,14 +95,15 @@ def get_target_updater(model, target_model, tau=1.0, period=1):
     Returns:
         A callable that performs a soft update of the target model parameters.
     """
-    with tf.name_scope('update_targets'):
+    models = as_list(models)
+    target_models = as_list(models)
 
-        def update():
-            return tfa_common.soft_variables_update(
-                model.variables, target_model.variables, tau)
+    def update():
+        for model, target_model in zip(models, target_models):
+            tfa_common.soft_variables_update(model.variables,
+                                             target_model.variables, tau)
 
-        return tfa_common.Periodically(update, period,
-                                       'periodic_update_targets')
+    return tfa_common.Periodically(update, period, 'periodic_update_targets')
 
 
 def add_nested_summaries(prefix, data):
@@ -244,6 +268,8 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
     Note: it treats an observation with len(shape)==4 as image
     Args:
         observation (nested Tensor): observations
+        min (float): normalize minimum to this value
+        max (float): normalize maximum to this value
     Returns:
         Transfromed observation
     """
