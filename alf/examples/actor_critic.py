@@ -211,13 +211,24 @@ def copy_gin_configs(root_dir, gin_files):
         shutil.copyfile(f, os.path.join(root_dir, os.path.basename(f)))
 
 
+def get_gin_file():
+    """Get the gin configuration file.
+    
+    If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
+    returns them.
+    """
+    gin_file = FLAGS.gin_file
+    if gin_file is None:
+        root_dir = os.path.expanduser(FLAGS.root_dir)
+        gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
+        assert gin_file, "No gin files are found! Please provide"
+    return gin_file
+
+
 def main(_):
     logging.set_verbosity(logging.INFO)
 
-    gin_file = FLAGS.gin_file
-    if gin_file is None:
-        gin_file = glob.glob(FLAGS.root_dir + "/*.gin")
-        assert gin_file, "No gin files are found! Please provide"
+    gin_file = get_gin_file()
 
     if not FLAGS.play:
         copy_gin_configs(FLAGS.root_dir, gin_file)
