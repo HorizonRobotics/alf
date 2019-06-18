@@ -40,7 +40,7 @@ def zero_tensor_from_nested_spec(nested_spec, batch_size):
 def set_per_process_memory_growth(flag=True):
     """Set if memory growth should be enabled for a PhysicalDevice.
 
-    With memory growth set to True, tf will not allocate all memory on the 
+    With memory growth set to True, tf will not allocate all memory on the
     device upfront.
 
     Args:
@@ -187,7 +187,7 @@ def get_distribution_params(nested_distribution):
 
 def expand_dims_as(x, y):
     """Expand the shape of `x` with extra singular dimensions.
-     
+
     The result is broadcastable to the shape of `y`
     Args:
         x (Tensor): source tensor
@@ -206,7 +206,7 @@ def expand_dims_as(x, y):
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
     """Reset state to initial state according to reset_mask
-    
+
     Args:
       state (nested Tensor): the current batched states
       initial_state (nested Tensor): batched intitial states
@@ -246,7 +246,7 @@ def get_global_counter(default_counter=None):
     Args:
         default_counter (Variable): If not None, this counter will be returned.
     Returns:
-        If default_counter is not None, it will be returned. Otherwise, 
+        If default_counter is not None, it will be returned. Otherwise,
         If tf.summary.experimental.get_step() is not None, it will be returned.
         Othewise, a counter will be created and returned.
         tf.summary.experimental.set_step() will be set to the created counter.
@@ -285,3 +285,26 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
             return obs
 
     return tf.nest.map_structure(_transform_image, observation)
+
+
+@gin.configurable
+def reward_clipping(r, minmax=(-1, 1)):
+    """
+    Clamp immediate rewards to the range [`min`, `max`].
+
+    Can be used as a reward shaping function passed to an algorithm
+    (e.g. ActorCriticAlgorithm).
+    """
+    assert minmax[0] <= minmax[1], "range error"
+    return tf.clip_by_value(r, minmax[0], minmax[1])
+
+
+@gin.configurable
+def reward_scaling(r, scale=1):
+    """
+    Scale immediate rewards by a factor of `scale`.
+
+    Can be used as a reward shaping function passed to an algorithm
+    (e.g. ActorCriticAlgorithm).
+    """
+    return r * scale

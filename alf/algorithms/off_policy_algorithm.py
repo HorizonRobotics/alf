@@ -43,7 +43,7 @@ def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
 
 class OffPolicyAlgorithm(RLAlgorithm):
     """
-       OnPolicyAlgorithm works with alf.drivers.off_policy_driver to do training
+       OffPolicyAlgorithm works with alf.drivers.off_policy_driver to do training
 
        User needs to implement predict() and train_step().
 
@@ -51,24 +51,30 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
        train_step() is called to generate necessary information for training.
 
-        ```python
-        while training not ends:
-            # collect experience
+       The following is the pseudo code to illustrate how OffPolicyAlgorithm is used
+       with OffPolicyDriver:
+
+       ```python
+        # (1) collect stage
+        for _ in range(steps_per_collection):
+            # collect experience and store to replay buffer
             policy_step = predict(time_step, policy_step.state)
             experience = make_experience(time_step, policy_step)
             store experience to replay buffer
+            action = sample action from policy_step.action
+            time_step = env.step(action)
 
+        # (2) train stage
+        for _ in range(training_per_collection):
             # sample experiences and perform training
             experiences = sample batch from replay_buffer
             with tf.GradientTape() as tape:
                 batched_training_info
                 for experience in experiences:
-                    train_info = train_step(experience,...)
+                    state, info = train_step(experience, state)
+                    train_info = make_training_info(info, ...)
                     write train_info to batched_training_info
                 train_complete(tape, batched_training_info,...)
-
-            action = sample action from policy_step.action
-            time_step = env.step(action)
     ```
     """
 

@@ -32,6 +32,7 @@ class OneStepTDLoss(object):
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
+            debug_summaries (bool): True if debug summaries should be created
         """
         self._gamma = gamma
         self._td_error_loss_fn = td_error_loss_fn

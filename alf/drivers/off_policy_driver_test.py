@@ -100,6 +100,7 @@ class OffPolicyDriverTest(unittest.TestCase):
                 max_num_steps=batch_size * steps_per_episode,
                 time_step=time_step,
                 policy_state=policy_state)
+
             experience = replay_buffer.gather_all()
             driver.train(experience)
             replay_buffer.clear()

@@ -38,7 +38,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
     OnPolicyDriver runs the eviroment with the algorithm for on-policy training.
     Training consists of multiple iterations. Each iteration performs the
     following computation:
-    
+
     ```python
     with GradientTape as tape:
         for _ in range(train_interval):
@@ -55,7 +55,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         redo the policy_step for the same time_step in the next iteration.
         This requires that the algorithm can correctly generate policy_step with
         repeated train_step() call.
-    * FINAL_STEP_SKIP: use final_policy_step for one more env.step(). Hence this 
+    * FINAL_STEP_SKIP: use final_policy_step for one more env.step(). Hence this
         environment step will be skipped for training because it's not performed
         with GradientTape() context.
     """
@@ -94,7 +94,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
@@ -219,11 +219,12 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self._trainable_variables)
             [_, time_step, policy_state, training_info_ta] = tf.while_loop(
-                cond=lambda counter, *_: tf.less(counter, self._train_interval),
+                cond=lambda *_: True,
                 body=self._train_loop_body,
                 loop_vars=[counter, time_step, policy_state, training_info_ta],
                 back_prop=True,
                 parallel_iterations=1,
+                maximum_iterations=self._train_interval,
                 name='iter_loop')
 
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),

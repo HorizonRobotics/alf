@@ -15,6 +15,7 @@
 
 from abc import abstractmethod
 from collections import namedtuple
+from typing import Callable
 
 import numpy as np
 import tensorflow as tf
@@ -50,9 +51,9 @@ def make_training_info(action_distribution=(),
 
 
 class ActionTimeStep(
-        namedtuple(
-            'ActionTimeStep',
-            ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
+    namedtuple(
+        'ActionTimeStep',
+        ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
 ):
     """TimeStep with action."""
 
@@ -85,7 +86,6 @@ class RLAlgorithm(tf.Module):
     """Abstract base class for  RL Algorithms.
 
     RLAlgorithm provide basic functions and generic interface for rl algorithms.
-    See Policy
     """
 
     def __init__(self,
@@ -96,6 +96,7 @@ class RLAlgorithm(tf.Module):
                  optimizer=None,
                  get_trainable_variables_func=None,
                  gradient_clipping=None,
+                 reward_shaping_fn: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
                  name="RLAlgorithm"):
@@ -116,7 +117,10 @@ class RLAlgorithm(tf.Module):
                 corresponds to one optimizer in `optimizer`. When called, it
                 should return the variables for the correponding optimizer. If
                 there is only one optimizer, this can be None and
-                `self.trainable_variables` will be used. 
+                `self.trainable_variables` will be used.
+            gradient_clipping (float): If not None, serve as a positive threshold
+            reward_shaping_fn (Callable): a function that transforms extrinsic
+                immediate rewards
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -139,10 +143,11 @@ class RLAlgorithm(tf.Module):
             get_trainable_variables_func)
         assert (len(self._optimizers) == len(
             self._get_trainable_variables_funcs)), (
-                "`optimizer` and `get_trainable_variables_func`"
-                "should have same length")
+            "`optimizer` and `get_trainable_variables_func`"
+            "should have same length")
 
         self._gradient_clipping = gradient_clipping
+        self._reward_shaping_fn = reward_shaping_fn
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
         self._debug_summaries = debug_summaries
@@ -249,6 +254,20 @@ class RLAlgorithm(tf.Module):
         """
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
+
+        # reward unshaped extrinsic rewards given by the environment
+        self.add_reward_summary("environment_reward", training_info.reward)
+
+        # reward shaping
+        if self._reward_shaping_fn is not None:
+            training_info = training_info._replace(
+                reward=self._reward_shaping_fn(training_info.reward))
+            final_time_step = final_time_step._replace(
+                reward=self._reward_shaping_fn(final_time_step.reward))
+
+        # record shaped extrinsic rewards actually used for training
+        self.add_reward_summary("training_reward/extrinsic", training_info.reward)
+
         with tape:
             loss_info = self.calc_loss(training_info, final_time_step,
                                        final_info)

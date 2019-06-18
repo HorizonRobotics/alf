@@ -14,14 +14,6 @@
 """Base class for on-policy RL algorithms."""
 
 from abc import abstractmethod
-from collections import namedtuple
-
-import tensorflow as tf
-
-from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import StepType
-from tf_agents.utils import eager_utils
-
 from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm
 
 
@@ -31,7 +23,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
     at the time of policy rollout.
 
     User needs to implement train_step() and train_complete().
-    
+
     train_step() is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
@@ -45,7 +37,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
     ```python
     tape = tf.GradientTape()
     training_info = []
-    
+
     while training not ends:
         if len(training_info) == train_intervel:
             old_tape = tape
@@ -73,7 +65,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
 
         Returns:
             policy_step (PolicyStep):
-              policy_step.action is nested tf.distribution which consistent with 
+              policy_step.action is nested tf.distribution which consistent with
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
         """
@@ -83,7 +75,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
     @abstractmethod
     def train_step(self, time_step: ActionTimeStep, state):
         """Perform one step of action and training computation.
-        
+
         It is called to generate actions for every environment step.
         It also needs to generate necessary information for training.
 
@@ -92,7 +84,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
             state (nested Tensor): should be consistent with train_state_spec
 
         Returns (PolicyStep):
-            info: everything necessary for training. Note that 
+            info: everything necessary for training. Note that
                 ("action_distribution", "action", "reward", "discount",
                 "is_last") are automatically collected by TrainingPolicy. So
                 the user only need to put other stuff (e.g. value estimation)

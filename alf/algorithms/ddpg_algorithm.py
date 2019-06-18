@@ -62,12 +62,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 call(observation, step_type).
             critic_network (Network): The network will be called with
                 call(observation, action, step_type).
-
             ou_stddev (float): Standard deviation for the Ornstein-Uhlenbeck
                 (OU) noise added in the default collect policy.
             ou_damping (float): Damping factor for the OU noise added in the
                 default collect policy.
-            critic_loss (TDLoss):
+            critic_loss (None|OneStepTDLoss): an object for calculating critic loss. If None,
+            a default OneStepTDLoss will be used.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
