@@ -23,6 +23,8 @@ from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
 
 from alf.drivers.on_policy_driver import OnPolicyDriver
+from alf.utils.metric_utils import eager_compute
+from tf_agents.metrics import tf_metrics
 from alf.utils.common import run_under_record_context, get_global_counter
 
 
@@ -30,6 +32,7 @@ from alf.utils.common import run_under_record_context, get_global_counter
 def train(train_dir,
           env,
           algorithm,
+          eval_env=None,
           random_seed=0,
           train_interval=20,
           num_steps_per_iter=10000,
@@ -37,6 +40,8 @@ def train(train_dir,
           use_tf_functions=True,
           summary_interval=50,
           summaries_flush_secs=1,
+          eval_interval=10,
+          num_eval_episodes=10,
           checkpoint_interval=1000,
           debug_summaries=False,
           summarize_grads_and_vars=False):
@@ -47,8 +52,9 @@ def train(train_dir,
 
     Args:
         train_dir (str): directory for saving summary and checkpoints
-        env (TFEnvironment): the environment
+        env (TFEnvironment): environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
+        eval_env (TFEnvironment): environment for evaluating
         random_seed (int): random seed
         train_interval (int): update parameter every so many env.step().
         num_steps_per_iter (int): number of steps for one iteration. It is the
@@ -58,6 +64,8 @@ def train(train_dir,
         summary_interval (int): write summary every so many training steps (
             i.e. number of parameter updates)
         summaries_flush_secs (int): flush summary to disk every so many seconds.
+        eval_interval (int): evaluate every so many iteration
+        num_eval_episodes (int) : number of episodes for one evaluation
         checkpoint_interval (int): checkpoint every so many iterations
         debug_summaries (bool): A bool to gather debug summaries.
         summarize_grads_and_vars (bool): If True, gradient and network variable
@@ -65,6 +73,17 @@ def train(train_dir,
     """
 
     train_dir = os.path.expanduser(train_dir)
+    eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
+
+    eval_metrics = None
+    eval_summary_writer = None
+    if eval_env is not None:
+        eval_metrics = [
+            tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
+            tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes)
+        ]
+        eval_summary_writer = tf.summary.create_file_writer(
+            eval_dir, flush_millis=summaries_flush_secs * 1000)
 
     def train_():
         tf.random.set_seed(random_seed)
@@ -92,6 +111,7 @@ def train(train_dir,
         policy_state = driver.get_initial_state()
         for iter in range(num_iterations):
             t0 = time.time()
+
             time_step, policy_state = driver.run(
                 max_num_steps=num_steps_per_iter,
                 time_step=time_step,
@@ -101,6 +121,18 @@ def train(train_dir,
 
             if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())
+
+            if eval_env is not None and (iter + 1) % eval_interval == 0:
+                with tf.summary.record_if(True):
+                    eager_compute(metrics=eval_metrics,
+                                  environment=eval_env,
+                                  state_spec=algorithm.predict_state_spec,
+                                  action_fn=algorithm.greedy_predict,
+                                  num_episodes=num_eval_episodes,
+                                  train_step=global_step,
+                                  summary_writer=eval_summary_writer,
+                                  summary_prefix="Metrics")
+                    metric_utils.log_metrics(eval_metrics)
 
         checkpointer.save(global_step=global_step.numpy())
 
