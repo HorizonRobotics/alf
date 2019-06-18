@@ -20,9 +20,9 @@ from PIL import Image
 import gym
 from gym import spaces
 
-
 # See https://github.com/openai/large-scale-curiosity/blob/ \
 #  0c3d179fd61ee46233199d0891c40fbe7964d3aa/wrappers.py#L155-L238
+
 
 class MarioXReward(gym.Wrapper):
     """
@@ -101,11 +101,14 @@ class LimitedDiscreteActions(gym.ActionWrapper):
         gym.ActionWrapper.__init__(self, env)
         # 'B', None, 'SELECT', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'A'
         self._num_buttons = len(all_buttons)
-        button_keys = {i for i, b in enumerate(all_buttons) if b in self.BUTTONS}
+        button_keys = {
+            i
+            for i, b in enumerate(all_buttons) if b in self.BUTTONS
+        }
         buttons = [(), *zip(button_keys),
                    *itertools.combinations(button_keys, 2)]
         # 'UP', 'DOWN', 'LEFT', 'RIGHT'
-        arrows = [(), (4,), (5,), (6,), (7,)]
+        arrows = [(), (4, ), (5, ), (6, ), (7, )]
         acts = []
         acts += arrows
         acts += buttons[1:]
@@ -118,28 +121,6 @@ class LimitedDiscreteActions(gym.ActionWrapper):
         for i in self._actions[a]:
             mask[i] = 1
         return mask
-
-
-class FrameSkip(gym.Wrapper):
-    """
-    Repeat same action n times and return the last observation
-     and accumulated reward
-    """
-
-    def __init__(self, env, n):
-        gym.Wrapper.__init__(self, env)
-        self.n = n
-
-    def step(self, action):
-        obs = None
-        accumulated_reward = 0
-        done = False
-        info = None
-        for _ in range(self.n):
-            obs, reward, done, info = self.env.step(action)
-            accumulated_reward += reward
-            if done: break
-        return obs, accumulated_reward, done, info
 
 
 class ProcessFrame84(gym.ObservationWrapper):
@@ -169,38 +150,12 @@ class ProcessFrame84(gym.ObservationWrapper):
             assert False, "Unknown resolution." + str(frame.size)
         img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
         size = (84, 110 if crop else 84)
-        resized_screen = np.array(Image.fromarray(img).resize(
-            size, resample=Image.BILINEAR), dtype=np.uint8)
+        resized_screen = np.array(
+            Image.fromarray(img).resize(size, resample=Image.BILINEAR),
+            dtype=np.uint8)
         x_t = resized_screen[18:102, :] if crop else resized_screen
         x_t = np.reshape(x_t, [84, 84, 1])
         return x_t.astype(np.uint8)
-
-
-class FrameStack(gym.Wrapper):
-    def __init__(self, env, k):
-        """Stack k last frames.
-        """
-        gym.Wrapper.__init__(self, env)
-        self.k = k
-        self.frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
-        self.observation_space = spaces.Box(
-            low=0, high=255, shape=(shp[:-1] + (shp[-1] * k,)),
-            dtype=env.observation_space.dtype)
-
-    def reset(self):
-        ob = self.env.reset()
-        for _ in range(self.k):
-            self.frames.append(ob)
-        return self._get_ob()
-
-    def step(self, action):
-        ob, reward, done, info = self.env.step(action)
-        self.frames.append(ob)
-        return self._get_ob(), reward, done, info
-
-    def _get_ob(self):
-        return np.concatenate(self.frames, axis=2)
 
 
 class FrameFormat(gym.Wrapper):
@@ -216,17 +171,17 @@ class FrameFormat(gym.Wrapper):
         gym.Wrapper.__init__(self, env)
         data_format = data_format.lower()
         if data_format not in {'channels_first', 'channels_last'}:
-            raise ValueError(
-                'The `data_format` argument must be one of '
-                '"channels_first", "channels_last". Received: ' +
-                str(data_format))
+            raise ValueError('The `data_format` argument must be one of '
+                             '"channels_first", "channels_last". Received: ' +
+                             str(data_format))
         self._transpose = False
         obs_shape = env.observation_space.shape
         if data_format == 'channels_first':
             self._transpose = True
-            obs_shape = (obs_shape[-1],) + (obs_shape[:-1])
+            obs_shape = (obs_shape[-1], ) + (obs_shape[:-1])
         self.observation_space = spaces.Box(
-            low=0, high=255,
+            low=0,
+            high=255,
             shape=obs_shape,
             dtype=env.observation_space.dtype)
 

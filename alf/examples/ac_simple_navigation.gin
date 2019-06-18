@@ -1,11 +1,16 @@
+
 # environment config
+import alf.environments.wrappers
+CHANNEL_ORDER='channels_first'
+FrameStack.channel_order=%CHANNEL_ORDER
 create_environment.env_name='SocialBot-SimpleNavigationNoLanguageDiscreteAction-v0'
 create_environment.env_load_fn=@suite_socialbot.load
+suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
 create_environment.num_parallel_environments=30
 SimpleNavigation.resized_image_size=(84, 84)
 
 # algorithm config
-ActorCriticLoss.entropy_regularization=0.001
+ActorCriticLoss.entropy_regularization=0.002
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
@@ -32,8 +37,8 @@ create_algorithm.learning_rate=5e-4
 #   [id=3806 driver_loop/body/_1/iter_loop_grad/next_iteration/_1116-0-1-TransposeNCHWToNHWC-LayoutOptimizer:0 -> driver_loop/body/_1/iter_loop_grad/merge/_957:1]
 #   to driver_loop/body/_1/iter_loop_grad/merge/_957
 #   when visiting the graph in post-order.  Most likely indicates a bug in deadness analysis. [Op:__inference_run_16937]
-SimpleNavigation.data_format='channels_first'
-tf.keras.layers.Conv2D.data_format='channels_first'
+SimpleNavigation.data_format=%CHANNEL_ORDER
+tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config
 on_policy_trainer.train.num_iterations=1000000

@@ -20,7 +20,8 @@ from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.mario_wrappers import MarioXReward, \
-    LimitedDiscreteActions, FrameSkip, ProcessFrame84, FrameStack, FrameFormat
+    LimitedDiscreteActions, ProcessFrame84, FrameFormat
+from alf.environments.wrappers import FrameSkip, FrameStack
 
 try:
     import retro
@@ -83,7 +84,7 @@ def load(game,
             env = FrameSkip(env, frame_skip)
         env = ProcessFrame84(env, crop=crop)
         if frame_stack:
-            env = FrameStack(env, frame_stack)
+            env = FrameStack(env, stack_size=frame_stack)
         env = FrameFormat(env, data_format=data_format)
         env = LimitedDiscreteActions(env, buttons)
         return suite_gym.wrap_env(
@@ -98,8 +99,7 @@ def load(game,
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
     if wrap_with_process:
-        process_env = ProcessPyEnvironment(
-            lambda: env_ctor())
+        process_env = ProcessPyEnvironment(lambda: env_ctor())
         process_env.start()
         py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
     else:
