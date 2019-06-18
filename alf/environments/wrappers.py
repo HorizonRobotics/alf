@@ -86,7 +86,7 @@ class FrameSkip(gym.Wrapper):
         Args:
             skip (int): skip `skip` frames (skip=1 means no skip)
         """
-        super().__init__(self, env)
+        super().__init__(env)
         self._skip = skip
 
     def step(self, action):
@@ -99,3 +99,6 @@ class FrameSkip(gym.Wrapper):
             accumulated_reward += reward
             if done: break
         return obs, accumulated_reward, done, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
