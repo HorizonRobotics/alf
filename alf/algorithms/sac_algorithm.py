@@ -184,15 +184,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
-    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+    def predict(self, time_step: ActionTimeStep, state=None):
         action, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state)
         return PolicyStep(action=action, state=state, info=())
-
-    def predict(self, time_step: ActionTimeStep, state=None):
-        return self.greedy_predict(time_step=time_step, state=state)
 
     def _actions_and_log_probs(self, exp: Experience, state):
         action_distribution, actor_state = self._actor_network(
