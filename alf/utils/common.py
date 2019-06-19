@@ -13,8 +13,11 @@
 # limitations under the License.
 """Various functions used by different alf modules."""
 
+import glob
 import os
+import shutil
 
+from absl import flags
 import gin
 import tensorflow as tf
 
@@ -239,6 +242,9 @@ def run_under_record_context(func, summary_dir, summary_interval,
     with tf.summary.record_if(
             lambda: tf.equal((global_step + 1) % summary_interval, 0)):
         func()
+
+
+from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
 
 
 def get_global_counter(default_counter=None):

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Train using ActorCriticPolicy
+r"""Train using ActorCriticAlgorithm.
 
 To run actor_critic on gym CartPole:
 ```bash
@@ -61,9 +61,6 @@ python actor_critic.py \
 
 import os
 import random
-import shutil
-import glob
-import time
 
 from absl import app
 from absl import flags
@@ -87,6 +84,7 @@ from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments import suite_socialbot
 from alf.trainers import on_policy_trainer
 import alf.utils.external_configurables
+from alf.utils import common
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -150,7 +148,7 @@ def create_algorithm(env,
     if use_icm:
         feature_spec = env.observation_spec()
         if encoding_net:
-            feature_spec = tf.TensorSpec((encoding_fc_layers[-1],),
+            feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
                                          dtype=tf.float32)
         icm = ICMAlgorithm(
             env.action_spec(), feature_spec, encoding_net=encoding_net)
@@ -192,7 +190,11 @@ def train_eval(train_dir, evaluate=True, debug_summaries=False):
         eval_env = None
     algorithm = create_algorithm(env, debug_summaries=debug_summaries)
     on_policy_trainer.train(
-        train_dir, env, algorithm, eval_env=eval_env, debug_summaries=debug_summaries)
+        train_dir,
+        env,
+        algorithm,
+        eval_env=eval_env,
+        debug_summaries=debug_summaries)
 
 
 def play(train_dir):
@@ -202,40 +204,13 @@ def play(train_dir):
     on_policy_trainer.play(train_dir, env, algorithm)
 
 
-def copy_gin_configs(root_dir, gin_files):
-    """Copy gin config files to root_dir
-
-    Args:
-        root_dir (str): directory path
-        gin_files (None|list[str]): list of file paths
-    """
-    root_dir = os.path.expanduser(root_dir)
-    os.makedirs(root_dir, exist_ok=True)
-    for f in gin_files:
-        shutil.copyfile(f, os.path.join(root_dir, os.path.basename(f)))
-
-
-def get_gin_file():
-    """Get the gin configuration file.
-    
-    If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
-    returns them.
-    """
-    gin_file = FLAGS.gin_file
-    if gin_file is None:
-        root_dir = os.path.expanduser(FLAGS.root_dir)
-        gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
-        assert gin_file, "No gin files are found! Please provide"
-    return gin_file
-
-
 def main(_):
     logging.set_verbosity(logging.INFO)
 
-    gin_file = get_gin_file()
+    gin_file = common.get_gin_file()
 
     if not FLAGS.play:
-        copy_gin_configs(FLAGS.root_dir, gin_file)
+        common.copy_gin_configs(FLAGS.root_dir, gin_file)
 
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
 

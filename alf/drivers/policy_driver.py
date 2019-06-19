@@ -113,12 +113,26 @@ class PolicyDriver(driver.Driver):
                                                      self.env.batch_size)
         return make_action_time_step(time_step, action)
 
+    def _to_distribution(self, action_or_distribution):
+        """Convert Tensors in action_or_distribution to Deterministic."""
+
+        def _to_dist(action_or_distribution):
+            if isinstance(action_or_distribution, tf.Tensor):
+                return tfp.distributions.Deterministic(
+                    loc=action_or_distribution)
+            else:
+                return action_or_distribution
+
+        return tf.nest.map_structure(_to_dist, action_or_distribution)
+
     def algorithm_step(self, time_step, state):
         if self._observation_transformer is not None:
             time_step = time_step._replace(
                 observation=self._observation_transformer(time_step.
                                                           observation))
-        return self._algorithm_step(time_step, state)
+        policy_step = self._algorithm_step(time_step, state)
+        return policy_step._replace(
+            action=self._to_distribution(policy_step.action))
 
     def run(self, max_num_steps=None, time_step=None, policy_state=None):
         """Take steps in the environment for max_num_steps.
@@ -231,8 +245,12 @@ class PolicyDriver(driver.Driver):
             for observer in self._observers:
                 observer(traj)
         if self._exp_observers:
-            exp = make_experience(time_step,
-                                  policy_step._replace(action=action))
+            action_distribution_param = common.get_distribution_params(
+                policy_step.action)
+            exp = make_experience(
+                time_step,
+                policy_step._replace(action=action),
+                action_distribution=action_distribution_param)
             for observer in self._exp_observers:
                 observer(exp)
 

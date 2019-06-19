@@ -23,7 +23,7 @@ from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.rl_algorithm import TrainingInfo
 from alf.utils.losses import element_wise_squared_loss
-from alf.utils import value_ops
+from alf.utils import common, value_ops
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "entropy_loss"])
@@ -134,11 +134,10 @@ class ActorCriticLoss(object):
             advantages = _normalize_advantages(advantages, axes=(0, 1))
 
         if self._advantage_clip:
-            advantages = tf.clip_by_value(advantages,
-                                          -self._advantage_clip,
+            advantages = tf.clip_by_value(advantages, -self._advantage_clip,
                                           self._advantage_clip)
 
-        pg_loss = self._pg_loss(training_info, advantages)
+        pg_loss = self._pg_loss(training_info, tf.stop_gradient(advantages))
 
         td_loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
 
@@ -166,4 +165,4 @@ class ActorCriticLoss(object):
         action_log_prob = tfa_common.log_probability(
             training_info.action_distribution, training_info.action,
             self._action_spec)
-        return -tf.stop_gradient(advantages) * action_log_prob
+        return -advantages * action_log_prob

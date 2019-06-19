@@ -215,15 +215,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         state = DdpgActorState(actor=actor_state, critic=critic_state)
         info = LossInfo(
             loss=tf.add_n(tf.nest.flatten(actor_loss)), extra=actor_loss)
-        return state, info
+        return PolicyStep(action=action, state=state, info=info)
 
     def train_step(self, exp: Experience, state: DdpgState):
         critic_state, critic_info = self._critic_train_step(
             exp=exp, state=state.critic)
-        actor_state, actor_loss = self._actor_train_step(
-            exp=exp, state=state.actor)
-        return (DdpgState(actor=actor_state, critic=critic_state),
-                DdpgInfo(critic=critic_info, actor_loss=actor_loss))
+        policy_step = self._actor_train_step(exp=exp, state=state.actor)
+        return policy_step._replace(
+            state=DdpgState(actor=policy_step.state, critic=critic_state),
+            info=DdpgInfo(critic=critic_info, actor_loss=policy_step.info))
 
     def calc_loss(self, training_info: TrainingInfo,
                   final_time_step: Experience, final_info: DdpgInfo):
@@ -243,12 +243,14 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
     def train_complete(self, tape: tf.GradientTape,
                        training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep, final_info: DdpgInfo):
+                       final_time_step: ActionTimeStep, final_info: DdpgInfo,
+                       weight: float):
         ret = super().train_complete(
             tape=tape,
             training_info=training_info,
             final_time_step=final_time_step,
-            final_info=final_info)
+            final_info=final_info,
+            weight=weight)
 
         self._update_target()
 

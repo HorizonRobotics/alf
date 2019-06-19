@@ -1,3 +1,5 @@
+# run with off_policy_actor_critic.py
+
 # environment config
 create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
@@ -14,9 +16,13 @@ create_algorithm.value_fc_layers=(100,)
 create_algorithm.learning_rate=0.001
 
 # training config
-on_policy_trainer.train.train_interval=8
-on_policy_trainer.train.num_iterations=20
-on_policy_trainer.train.summary_interval=5
-
-train_eval.debug_summaries=True
-train_eval.evaluate=False
+off_policy_trainer.train.mini_batch_length=9
+off_policy_trainer.train.num_steps_per_iter=72
+off_policy_trainer.train.mini_batch_size=8
+off_policy_trainer.train.num_iterations=3000
+off_policy_trainer.train.summary_interval=5
+off_policy_trainer.train.checkpoint_interval=100000
+off_policy_trainer.train.num_updates_per_train_step=1
+TFUniformReplayBuffer.max_length=2048
+__main__.train_eval.debug_summaries=1
+__main__.train_eval.evaluate=0
