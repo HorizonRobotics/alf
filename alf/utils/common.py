@@ -22,6 +22,7 @@ from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
+from alf.utils import summary_utils
 
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
@@ -147,17 +148,23 @@ def add_action_summaries(actions, action_specs):
     """
     action_specs = tf.nest.flatten(action_specs)
     actions = tf.nest.flatten(actions)
+
     for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
         if len(action_spec.shape) > 1:
             continue
-        if len(action_spec.shape) == 0:
-            action_dim = 1
+        if tensor_spec.is_discrete(action_spec):
+            num_actions = action_spec.maximum - action_spec.minimum + 1
+            summary_utils.histogram_discrete(
+                "action/%s" % i, data=action, buckets=num_actions)
         else:
-            action_dim = action_spec.shape[-1]
-        action = tf.reshape(action, (-1, action_dim))
-        for a in range(action_dim):
-            # TODO: use a descriptive name for the summary
-            tf.summary.histogram("action/%s/%s" % (i, a), action[:, a])
+            if len(action_spec.shape) == 0:
+                action_dim = 1
+            else:
+                action_dim = action_spec.shape[-1]
+            action = tf.reshape(action, (-1, action_dim))
+            for a in range(action_dim):
+                # TODO: use a descriptive name for the summary
+                tf.summary.histogram("action/%s/%s" % (i, a), action[:, a])
 
 
 def get_distribution_params(nested_distribution):

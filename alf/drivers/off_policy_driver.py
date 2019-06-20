@@ -227,6 +227,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         del tape
 
-        self._summary(loss_info, grads_and_vars)
+        self._summary(training_info, loss_info, grads_and_vars)
 
         self._train_step_counter.assign_add(1)
