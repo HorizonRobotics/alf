@@ -262,32 +262,6 @@ def get_global_counter(default_counter=None):
 
 
 @gin.configurable
-def image_scale_transformer(observation, min=-1.0, max=1.0):
-    """Scale image to min and max (0->min, 255->max)
-
-    Note: it treats an observation with len(shape)==4 as image
-    Args:
-        observation (nested Tensor): observations
-        min (float): normalize minimum to this value
-        max (float): normalize maximum to this value
-    Returns:
-        Transfromed observation
-    """
-
-    def _transform_image(obs):
-        # tf_agent changes all gym.spaces.Box observation to tf.float32.
-        # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
-        if len(obs.shape) == 4:
-            if obs.dtype == tf.uint8:
-                obs = tf.cast(obs, tf.float32)
-            return ((max - min) / 255.) * obs + min
-        else:
-            return obs
-
-    return tf.nest.map_structure(_transform_image, observation)
-
-
-@gin.configurable
 def reward_clipping(r, minmax=(-1, 1)):
     """
     Clamp immediate rewards to the range [`min`, `max`].

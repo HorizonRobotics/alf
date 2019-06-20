@@ -40,7 +40,6 @@ class PolicyDriver(driver.Driver):
     def __init__(self,
                  env,
                  algorithm,
-                 observation_transformer: Callable = None,
                  observers=[],
                  metrics=[],
                  training=True,
@@ -64,7 +63,7 @@ class PolicyDriver(driver.Driver):
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
@@ -86,7 +85,6 @@ class PolicyDriver(driver.Driver):
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
         self._metrics = metrics
-        self._observation_transformer = observation_transformer
 
         if training:
             self._policy_state_spec = algorithm.train_state_spec
@@ -100,7 +98,7 @@ class PolicyDriver(driver.Driver):
 
     def add_experience_observer(self, observer: Callable):
         """Add an observer to receive experience.
-        
+
         Args:
             observer (Callable): callable which accept Experience as argument.
         """
@@ -112,13 +110,6 @@ class PolicyDriver(driver.Driver):
         action = common.zero_tensor_from_nested_spec(self.env.action_spec(),
                                                      self.env.batch_size)
         return make_action_time_step(time_step, action)
-
-    def algorithm_step(self, time_step, state):
-        if self._observation_transformer is not None:
-            time_step = time_step._replace(
-                observation=self._observation_transformer(time_step.
-                                                          observation))
-        return self._algorithm_step(time_step, state)
 
     def run(self, max_num_steps=None, time_step=None, policy_state=None):
         """Take steps in the environment for max_num_steps.
@@ -221,7 +212,7 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        policy_step = self.algorithm_step(time_step, state=policy_state)
+        policy_step = self._algorithm_step(time_step, state=policy_state)
         action = self._sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:

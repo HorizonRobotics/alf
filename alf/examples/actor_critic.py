@@ -217,7 +217,7 @@ def copy_gin_configs(root_dir, gin_files):
 
 def get_gin_file():
     """Get the gin configuration file.
-    
+
     If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
     returns them.
     """

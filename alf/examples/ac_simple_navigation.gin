@@ -5,7 +5,7 @@ CHANNEL_ORDER='channels_first'
 FrameStack.channel_order=%CHANNEL_ORDER
 create_environment.env_name='SocialBot-SimpleNavigationNoLanguageDiscreteAction-v0'
 create_environment.env_load_fn=@suite_socialbot.load
-suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
+suite_socialbot.load.gym_env_wrappers=(@FrameStack, @ImageScaleTransformer)
 create_environment.num_parallel_environments=30
 SimpleNavigation.resized_image_size=(84, 84)
 
@@ -29,8 +29,8 @@ ActorCriticAlgorithm.gradient_clipping=None
 create_algorithm.learning_rate=5e-4
 
 # tf has a bug which can be triggered by the default data_format 'channels_last'
-# It has something to do with AddLayoutTransposeToOutputs() in 
-# tensorflow/core/grappler/optimizers/layout_optimizer.cc and 
+# It has something to do with AddLayoutTransposeToOutputs() in
+# tensorflow/core/grappler/optimizers/layout_optimizer.cc and
 # DeadnessAnalysisImpl::GetInputPreds() in tensorflow/compiler/jit/deadness_analysis.cc
 # The error is like the following:
 #   tensorflow.python.framework.errors_impl.InternalError: Could not find input
@@ -47,5 +47,4 @@ on_policy_trainer.train.summary_interval=1
 on_policy_trainer.train.train_interval=100
 on_policy_trainer.train.use_tf_functions=1
 
-PolicyDriver.observation_transformer=@image_scale_transformer
 train_eval.debug_summaries=1

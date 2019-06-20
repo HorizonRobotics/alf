@@ -1,15 +1,16 @@
 # You need to install following packages
-# pip3 install atari-py opencv-python 
+# pip3 install atari-py opencv-python
 
 # environment config
 import tf_agents.environments.suite_atari
+import tf.environments.wrappers
 create_environment.env_name='PongNoFrameskip-v4'
 create_environment.env_load_fn=@suite_atari.load
 create_environment.num_parallel_environments=30
 
 # AtariPreprocessing is not compatible with some version of gym. Make sure to
 # use gym==0.10.11.
-suite_atari.load.gym_env_wrappers=(@AtariPreprocessing, @FrameStack4)
+suite_atari.load.gym_env_wrappers=(@AtariPreprocessing, @FrameStack4, @ImageScaleTransformer)
 
 # algorithm config
 ActorCriticLoss.entropy_regularization=0.01
@@ -39,5 +40,4 @@ on_policy_trainer.train.summary_interval=1
 on_policy_trainer.train.train_interval=100
 on_policy_trainer.train.use_tf_functions=1
 
-PolicyDriver.observation_transformer=@image_scale_transformer
 train_eval.debug_summaries=1

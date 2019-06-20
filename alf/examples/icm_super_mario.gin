@@ -5,11 +5,13 @@
 #  a suitable `SuperMarioBros-Nes` rom should be obtain and imported (roms are not included in gym-retro)
 #   see `https://retro.readthedocs.io/en/latest/getting_started.html#importing-roms` to import roms
 import alf.environments.suite_mario
+import alf.environments.wrappers
 create_environment.env_load_fn=@suite_mario.load
 create_environment.env_name="SuperMarioBros-Nes"
 create_environment.num_parallel_environments=30
 suite_mario.load.state="Level1-1"
 suite_mario.load.wrap_with_process=0
+suite_mario.load.gym_env_wrappers=(@ImageScaleTransformer,)
 
 conv_layer_params=[(32,8,4),(64,4,2),(64,3,1)]
 
@@ -50,5 +52,4 @@ on_policy_trainer.train.train_interval=32
 on_policy_trainer.train.summary_interval=1
 on_policy_trainer.train.use_tf_functions=1
 
-PolicyDriver.observation_transformer=@image_scale_transformer
 train_eval.debug_summaries=1
