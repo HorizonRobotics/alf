@@ -25,6 +25,7 @@ from tf_agents.utils import common as tfa_common
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
+from alf.utils import common
 from alf.utils.common import run_under_record_context, get_global_counter
 
 
@@ -80,7 +81,8 @@ def train(train_dir,
     if eval_env is not None:
         eval_metrics = [
             tf_metrics.AverageReturnMetric(buffer_size=num_eval_episodes),
-            tf_metrics.AverageEpisodeLengthMetric(buffer_size=num_eval_episodes)
+            tf_metrics.AverageEpisodeLengthMetric(
+                buffer_size=num_eval_episodes)
         ]
         eval_summary_writer = tf.summary.create_file_writer(
             eval_dir, flush_millis=summaries_flush_secs * 1000)
@@ -124,15 +126,19 @@ def train(train_dir,
 
             if eval_env is not None and (iter + 1) % eval_interval == 0:
                 with tf.summary.record_if(True):
-                    eager_compute(metrics=eval_metrics,
-                                  environment=eval_env,
-                                  state_spec=algorithm.predict_state_spec,
-                                  action_fn=algorithm.greedy_predict,
-                                  num_episodes=num_eval_episodes,
-                                  train_step=global_step,
-                                  summary_writer=eval_summary_writer,
-                                  summary_prefix="Metrics")
+                    eager_compute(
+                        metrics=eval_metrics,
+                        environment=eval_env,
+                        state_spec=algorithm.predict_state_spec,
+                        action_fn=algorithm.greedy_predict,
+                        num_episodes=num_eval_episodes,
+                        train_step=global_step,
+                        summary_writer=eval_summary_writer,
+                        summary_prefix="Metrics")
                     metric_utils.log_metrics(eval_metrics)
+            if iter == 0:
+                with tf.summary.record_if(True):
+                    common.summarize_gin_config()
 
         checkpointer.save(global_step=global_step.numpy())
 
