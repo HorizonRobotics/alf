@@ -1,6 +1,5 @@
 
 # environment config
-import alf.environments.wrappers
 CHANNEL_ORDER='channels_first'
 FrameStack.channel_order=%CHANNEL_ORDER
 create_environment.env_name='SocialBot-SimpleNavigationNoLanguageDiscreteAction-v0'

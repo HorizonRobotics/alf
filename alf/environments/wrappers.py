@@ -17,7 +17,6 @@ import collections
 import gin
 import gym
 import numpy as np
-import tensorflow as tf
 
 
 @gin.configurable
@@ -116,39 +115,42 @@ class ImageScaleTransformer(gym.Wrapper):
 
     Note: it treats an observation with len(shape)==4 as image
     Args:
-        observation (nested Tensor): observations
+        observation (numpy arary): observations
         min (float): normalize minimum to this value
         max (float): normalize maximum to this value
     Returns:
         Transfromed observation
     """
     def __init__(self, env, minmax=(-1., 1.)):
-        super().__init__(env)
+        super(ImageScaleTransformer, self).__init__(env)
         self._minmax = minmax
+        space = env.observation_space
+        self.observation_space = gym.spaces.Box(
+            low=self._minmax[0], high=self._minmax[1],
+            shape=space.shape, dtype=np.float32)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
         return getattr(self.env, name)
 
-    def reset(self):
+    def _reset(self):
         observation = self.env.reset()
         return self._transform(observation)
 
-    def step(self, action):
+    def _step(self, action):
         observation, reward, done, info = self.env.step(action)
         return self._transform(observation), reward, done, info
 
-    def _transform(self, observation):
-        def _transform_image(obs):
-            # tf_agent changes all gym.spaces.Box observation to tf.float32.
-            # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
-            min, max = self._minmax
-            if len(obs.shape) == 4:
-                if obs.dtype == tf.uint8:
-                    obs = tf.cast(obs, tf.float32)
-                return ((max - min) / 255.) * obs + min
-            else:
-                return obs
+    def _transform(self, obs):
+        min, max = self._minmax
+        if len(obs.shape) == 3:
+            if obs.dtype == np.uint8:
+                obs = obs.astype(np.float32)
+            return ((max - min) / 255.) * obs + min
+        else:
+            return obs
 
-        return tf.nest.map_structure(
-            _transform_image, observation)
+
+@gin.configurable
+def get_box_float32_map():
+    return {gym.spaces.Box: np.float32}

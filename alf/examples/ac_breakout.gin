@@ -3,7 +3,7 @@
 
 # environment config
 import tf_agents.environments.suite_atari
-import alf.environments.wrappers
+
 # From OpenAI gym wiki:
 # "v0 vs v4: v0 has repeat_action_probability of 0.25
 #  (meaning 25% of the time the previous action will be used instead of the new action),
@@ -19,6 +19,7 @@ create_environment.num_parallel_environments=512
 AtariPreprocessing.frame_skip=4
 
 suite_atari.load.gym_env_wrappers=(@AtariPreprocessing, @FrameStack4, @ImageScaleTransformer)
+suite_atari.load.spec_dtype_map = @wrappers.get_box_float32_map()
 
 # algorithm config
 ActorCriticLoss.entropy_regularization=0.01

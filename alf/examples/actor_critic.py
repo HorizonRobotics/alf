@@ -85,6 +85,7 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments import suite_socialbot
+import alf.environments.wrappers
 from alf.trainers import on_policy_trainer
 import alf.utils.external_configurables
 
