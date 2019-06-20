@@ -242,7 +242,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 time_step, policy_state)
             next_state = policy_step.state
         else:
-            policy_step = self.algorithm_step(time_step, policy_state)
+            policy_step = self._algorithm_step(time_step, policy_state)
             next_time_step = time_step
             next_state = policy_state
 
