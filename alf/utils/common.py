@@ -224,6 +224,7 @@ def run_under_record_context(func, summary_dir, summary_interval,
     """Run `func` under summary record context.
 
     Args:
+        func (Callable): the function to be executed.
         summary_dir (str): directory to store summary. A directory starting with
             "~/" will be expanded to "$HOME/"
         summary_interval (int): how often to generate summary based on the
@@ -308,3 +309,79 @@ def reward_scaling(r, scale=1):
     (e.g. ActorCriticAlgorithm).
     """
     return r * scale
+
+
+def _markdownify_operative_config_str(string):
+    """Convert an operative config string to markdown format.
+    
+    Args:
+        string (str): the string from gin.operative_config_str()
+    Returns:
+        The string of the markdown version of the config string.
+    """
+
+    # This function is from gin.tf.utils.GinConfigSaverHook
+    # TODO: Total hack below. Implement more principled formatting.
+    def process(line):
+        """Convert a single line to markdown format."""
+        if not line.startswith('#'):
+            return '    ' + line
+
+        line = line[2:]
+        if line.startswith('===='):
+            return ''
+        if line.startswith('None'):
+            return '    # None.'
+        if line.endswith(':'):
+            return '#### ' + line
+        return line
+
+    output_lines = []
+    for line in string.splitlines():
+        procd_line = process(line)
+        if procd_line is not None:
+            output_lines.append(procd_line)
+
+    return '\n'.join(output_lines)
+
+
+def summarize_gin_config():
+    """Write the operative gin config to Tensorboard summary.
+    
+    The operative configuration consists of all parameter values used by
+    configurable functions that are actually called during execution of the
+    current program. See `gin.operative_config_str()` for more detail on how
+    the operative config is generated.
+    """
+    config_str = gin.operative_config_str()
+    md_config_str = _markdownify_operative_config_str(config_str)
+    tf.summary.text('gin/operative_config', md_config_str)
+
+
+def copy_gin_configs(root_dir, gin_files):
+    """Copy gin config files to root_dir
+
+    Args:
+        root_dir (str): directory path
+        gin_files (None|list[str]): list of file paths
+    """
+    root_dir = os.path.expanduser(root_dir)
+    os.makedirs(root_dir, exist_ok=True)
+    for f in gin_files:
+        shutil.copyfile(f, os.path.join(root_dir, os.path.basename(f)))
+
+
+def get_gin_file():
+    """Get the gin configuration file.
+    
+    If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
+    returns them.
+    Returns:
+        the gin file(s)
+    """
+    gin_file = flags.FLAGS.gin_file
+    if gin_file is None:
+        root_dir = os.path.expanduser(flags.FLAGS.root_dir)
+        gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
+        assert gin_file, "No gin files are found! Please provide"
+    return gin_file
