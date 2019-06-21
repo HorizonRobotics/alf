@@ -263,10 +263,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return info
 
     def train_step(self, exp: Experience, state: SacState):
-        action_distribution, actor_state = self._actor_network(
+        action_distribution, share_actor_state = self._actor_network(
             exp.observation,
             step_type=exp.step_type,
-            network_state=state.actor)
+            network_state=state.share.actor)
         action = tf.nest.map_structure(lambda d: d.sample(),
                                        action_distribution)
         log_pi = tfa_common.log_probability(
@@ -280,7 +280,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             exp, state.critic, action, log_pi)
         alpha_info = self._alpha_train_step(log_pi)
         state = SacState(
-            share=SacShareState(actor=actor_state),
+            share=SacShareState(actor=share_actor_state),
             actor=actor_state,
             critic=critic_state)
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)

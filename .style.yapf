@@ -1,0 +1,5 @@
+# style file used by yapf. See https://github.com/google/yapf for detail
+[style]
+BASED_ON_STYLE = pep8
+ALLOW_MULTILINE_LAMBDAS = True
+INDENT_DICTIONARY_VALUE = True
