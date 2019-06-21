@@ -99,3 +99,15 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 into `policy_step.info`
         """
         pass
+
+    def preprocess_experience(self, experience: Experience):
+        """Preprocess experience.
+
+        The shapes of tensors in expererience are assumed to be (B, T, ...)
+
+        Args:
+            experience (Experience): original experience
+        Returns:
+            processed experience
+        """
+        return experience

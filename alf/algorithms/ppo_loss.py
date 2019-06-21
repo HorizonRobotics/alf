@@ -13,16 +13,23 @@
 # limitations under the License.
 """Loss for PPO algorithm."""
 
+from collections import namedtuple
+
 import gin
 import tensorflow as tf
 
+from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 from tf_agents.specs import tensor_spec
 
 from alf.algorithms.rl_algorithm import TrainingInfo
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
+from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import common
+
+PPOLossInfo = namedtuple("ActorCriticLossInfo",
+                         ["pg_loss", "td_loss", "entropy_loss"])
 
 
 @gin.configurable
@@ -52,9 +59,9 @@ class PPOLoss(ActorCriticLoss):
          + td_loss_weight * td_loss (L^{VF} in equation (9))
          - entropy_regularization * entropy)
 
-        Note: There is a difference with baseline.ppo2 implementation. Here the
+        Note: There is a difference with baselines.ppo2 implementation. Here the
             advantage is recomputed after every update performed in
-            OffPolicyDriver._update(), where in baseline.ppo2, the advantage is
+            OffPolicyDriver._update(), where in baselines.ppo2, the advantage is
             fixed within one epoch.
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
@@ -163,3 +170,60 @@ class PPOLoss(ActorCriticLoss):
                 policy_gradient_loss, 'policy_gradient_loss')
 
         return policy_gradient_loss
+
+
+@gin.configurable
+class PPOLoss2(PPOLoss):
+    """Create a PPOLoss2 object.
+
+    Note: Different from PPOLoss, PPOLoss uses pre-computed advantage so the
+    advantage is fixed within one epoch, which is the behavior of baselines.ppo2.
+    """
+
+    def __call__(self, training_info: TrainingInfo, value):
+        """Cacluate actor critic loss
+
+        The first dimension of all the tensors is time dimension and the
+        second dimesion is the batch dimension.
+
+        Args:
+            training_info (TrainingInfo): training_info collected by
+                TrainingPolicy. All tensors in training_info are time-major
+            value (tf.Tensor): the time-major tensor for the value at each time
+                step
+            final_value (tf.Tensor): the value at one step ahead.
+        Returns:
+            loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
+        """
+        advantages = training_info.collect_info.advantage
+        returns = advantages + value
+        if self._normalize_advantages:
+            advantages = _normalize_advantages(advantages, axes=(0, 1))
+
+        if self._advantage_clip:
+            advantages = tf.clip_by_value(advantages, -self._advantage_clip,
+                                          self._advantage_clip)
+
+        pg_loss = self._pg_loss(training_info, tf.stop_gradient(advantages))
+
+        td_loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
+
+        loss = pg_loss + self._td_loss_weight * td_loss
+
+        entropy_loss = ()
+        if self._entropy_regularization is not None:
+            entropies = tfa_common.entropy(training_info.action_distribution,
+                                           self._action_spec)
+            entropy_loss = -entropies
+            loss += self._entropy_regularization * entropy_loss
+
+        if self._debug_summaries:
+            with tf.name_scope('ActorCriticLoss'):
+                tf.summary.scalar("values", tf.reduce_mean(value))
+                tf.summary.scalar("returns", tf.reduce_mean(returns))
+                tf.summary.scalar("advantages", tf.reduce_mean(advantages))
+
+        return LossInfo(
+            loss,
+            PPOLossInfo(
+                td_loss=td_loss, pg_loss=pg_loss, entropy_loss=entropy_loss))

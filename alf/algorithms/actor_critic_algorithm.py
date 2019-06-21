@@ -52,6 +52,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss_class=ActorCriticLoss,
                  optimizer=None,
                  gradient_clipping=None,
+                 clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
@@ -76,6 +77,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
+            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to 
+                clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             train_step_counter (tf.Variable): An optional counter to increment.
@@ -97,6 +100,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             action_distribution_spec=actor_network.output_spec,
             optimizer=optimizer,
             gradient_clipping=gradient_clipping,
+            clip_by_global_norm=clip_by_global_norm,
             reward_shaping_fn=reward_shaping_fn,
             train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,

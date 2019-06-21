@@ -98,6 +98,7 @@ class RLAlgorithm(tf.Module):
                  optimizer=None,
                  get_trainable_variables_func=None,
                  gradient_clipping=None,
+                 clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
@@ -121,6 +122,8 @@ class RLAlgorithm(tf.Module):
                 there is only one optimizer, this can be None and
                 `self.trainable_variables` will be used.
             gradient_clipping (float): If not None, serve as a positive threshold
+            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to 
+                clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             train_step_counter (tf.Variable): An optional counter to increment
@@ -149,6 +152,7 @@ class RLAlgorithm(tf.Module):
                 "should have same length")
 
         self._gradient_clipping = gradient_clipping
+        self._clip_by_global_norm = clip_by_global_norm
         self._reward_shaping_fn = reward_shaping_fn
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
@@ -291,8 +295,13 @@ class RLAlgorithm(tf.Module):
             grads_and_vars = tuple(zip(grads, vars))
             all_grads_and_vars = all_grads_and_vars + grads_and_vars
             if self._gradient_clipping is not None:
-                grads_and_vars = eager_utils.clip_gradient_norms(
-                    grads_and_vars, self._gradient_clipping)
+                if self._clip_by_global_norm:
+                    grads, _ = tf.clip_by_global_norm(grads,
+                                                      self._gradient_clipping)
+                    grads_and_vars = tuple(zip(grads, vars))
+                else:
+                    grads_and_vars = eager_utils.clip_gradient_norms(
+                        grads_and_vars, self._gradient_clipping)
             optimizer.apply_gradients(grads_and_vars)
 
         return loss_info, all_grads_and_vars

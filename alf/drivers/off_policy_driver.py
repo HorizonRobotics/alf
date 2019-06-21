@@ -165,6 +165,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             info=policy_step.info,
             action_distribution=action_dist)
 
+        processed_exp = algorithm.preprocess_experience(exp)
+        self._processed_experience_spec = self._experience_spec._replace(
+            info=extract_spec(processed_exp.info))
+
         policy_step = self._train_step(exp, self.get_initial_train_state(3))
         info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
@@ -174,7 +178,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
             info=info_spec,
-            collect_info=self._experience_spec.info,
+            collect_info=self._processed_experience_spec.info,
             collect_action_distribution=action_dist_param_spec)
 
     def get_initial_train_state(self, batch_size):
@@ -224,6 +228,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         assert length % mini_batch_length == 0
 
+        experience = self._algorithm.preprocess_experience(experience)
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
                                  ), experience)
@@ -269,7 +274,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 element_shape=tf.TensorShape([batch_size]).concatenate(
                     s.shape))
 
-        experience_ta = tf.nest.map_structure(create_ta, self._experience_spec)
+        experience_ta = tf.nest.map_structure(create_ta,
+                                              self._processed_experience_spec)
         experience_ta = tf.nest.map_structure(
             lambda elem, ta: ta.unstack(elem[0:-1]), experience, experience_ta)
         training_info_ta = tf.nest.map_structure(create_ta,
