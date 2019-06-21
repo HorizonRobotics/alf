@@ -64,7 +64,7 @@ class PolicyDriver(driver.Driver):
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
@@ -100,7 +100,7 @@ class PolicyDriver(driver.Driver):
 
     def add_experience_observer(self, observer: Callable):
         """Add an observer to receive experience.
-        
+
         Args:
             observer (Callable): callable which accept Experience as argument.
         """
@@ -125,12 +125,17 @@ class PolicyDriver(driver.Driver):
 
         return tf.nest.map_structure(_to_dist, action_or_distribution)
 
-    def algorithm_step(self, time_step, state):
+    def algorithm_step(self, time_step, state, training):
         if self._observation_transformer is not None:
             time_step = time_step._replace(
                 observation=self._observation_transformer(time_step.
                                                           observation))
-        policy_step = self._algorithm_step(time_step, state)
+        if training:
+            policy_step = self._algorithm.train_step(time_step, state)
+        elif self._greedy_predict:
+            policy_step = self._algorithm.greedy_predict(time_step, state)
+        else:
+            policy_step = self._algorithm.predict(time_step, state)
         return policy_step._replace(
             action=self._to_distribution(policy_step.action))
 
@@ -165,11 +170,6 @@ class PolicyDriver(driver.Driver):
             time_step=time_step,
             policy_state=policy_state,
             max_num_steps=max_num_steps)
-
-    @abc.abstractmethod
-    def _algorithm_step(self, time_step, state):
-        """Return policy_step for this time_step and state"""
-        pass
 
     @abc.abstractmethod
     def _run(self, max_num_steps, time_step, policy_state):
@@ -237,7 +237,7 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        policy_step = self.algorithm_step(time_step, state=policy_state)
+        policy_step = self.algorithm_step(time_step, state=policy_state, training=self._training)
         action = self._sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:
