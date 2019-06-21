@@ -133,11 +133,11 @@ class ImageScaleTransformer(gym.Wrapper):
         """Forward all other calls to the base environment."""
         return getattr(self.env, name)
 
-    def _reset(self):
+    def reset(self):
         observation = self.env.reset()
         return self._transform(observation)
 
-    def _step(self, action):
+    def step(self, action):
         observation, reward, done, info = self.env.step(action)
         return self._transform(observation), reward, done, info
 
