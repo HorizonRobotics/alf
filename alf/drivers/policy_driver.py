@@ -187,12 +187,14 @@ class PolicyDriver(driver.Driver):
             name="predict_loop")
         return time_step, policy_state
 
-    def _summary(self, loss_info, grads_and_vars):
+    def _summary(self, training_info, loss_info, grads_and_vars):
         if self._summarize_grads_and_vars:
             eager_utils.add_variables_summaries(grads_and_vars,
                                                 self._train_step_counter)
             eager_utils.add_gradients_summaries(grads_and_vars,
                                                 self._train_step_counter)
+            common.add_action_summaries(training_info.action,
+                                        self.env.action_spec())
         if self._debug_summaries:
             common.add_loss_summaries(loss_info)
 
