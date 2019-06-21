@@ -152,10 +152,12 @@ def add_action_summaries(actions, action_specs):
     for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
         if len(action_spec.shape) > 1:
             continue
+
         if tensor_spec.is_discrete(action_spec):
-            num_actions = action_spec.maximum - action_spec.minimum + 1
             summary_utils.histogram_discrete(
-                "action/%s" % i, data=action, buckets=num_actions)
+                name="action/%s" % i, data=action,
+                bucket_min=action_spec.minimum,
+                bucket_max=action_spec.maximum)
         else:
             if len(action_spec.shape) == 0:
                 action_dim = 1
@@ -164,7 +166,10 @@ def add_action_summaries(actions, action_specs):
             action = tf.reshape(action, (-1, action_dim))
             for a in range(action_dim):
                 # TODO: use a descriptive name for the summary
-                tf.summary.histogram("action/%s/%s" % (i, a), action[:, a])
+                summary_utils.histogram_continuous(
+                    name="action/%s/%s" % (i, a), data=action[:, a],
+                    bucket_min=action_spec.minimum[a],
+                    bucket_max=action_spec.maximum[a])
 
 
 def get_distribution_params(nested_distribution):
@@ -208,7 +213,7 @@ def expand_dims_as(x, y):
     if k == 0:
         return x
     else:
-        return tf.reshape(x, x.shape.concatenate((1, ) * k))
+        return tf.reshape(x, x.shape.concatenate((1,) * k))
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
