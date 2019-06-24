@@ -49,6 +49,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  intrinsic_reward_coef=1.0,
                  extrinsic_reward_coef=1.0,
                  loss=None,
+                 loss_class=ActorCriticLoss,
                  optimizer=None,
                  gradient_clipping=None,
                  reward_shaping_fn: Callable = None,
@@ -58,29 +59,29 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         """Create an ActorCriticAlgorithm
 
         Args:
-          action_spec: A nest of BoundedTensorSpec representing the actions.
-          actor_network (DistributionNetwork): A network that returns nested
-            tensor of action distribution for each observation given observation
-            and network state.
-          value_network (Network): A function that returns value tensor from neural
-            net predictions for each observation given observation and nwtwork
-            state.
-          encoding_network (Network): A function that encodes the observation
-          intrinsic_curiosity_module (Algorithm): an algorithm whose outputs
-            is a scalar intrinsid reward
-          intrinsic_reward_coef: Coefficient for intrinsic reward
-          extrinsic_reward_coef: Coefficient for extrinsic reward
-          loss (None|ActorCriticLoss): an object for calculating loss. If None,
-            a default ActorCriticLoss will be used.
-          optimizer (tf.optimizers.Optimizer): The optimizer for training
-          gradient_clipping (float): If not None, serve as a positive threshold
-            for clipping gradient norms
-          reward_shaping_fn (Callable): a function that transforms extrinsic
-            immediate rewards
-          train_step_counter (tf.Variable): An optional counter to increment.
-          debug_summaries: True if debug summaries should be created.
-          name (str): Name of this algorithm.
-        """
+            action_spec (nested BoundedTensorSpec): representing the actions.
+            actor_network (DistributionNetwork): A network that returns nested
+                tensor of action distribution for each observation given observation
+                and network state.
+            value_network (Network): A function that returns value tensor from neural
+                net predictions for each observation given observation and nwtwork
+                state.
+            encoding_network (Network): A function that encodes the observation
+            intrinsic_curiosity_module (Algorithm): an algorithm whose outputs
+                is a scalar intrinsid reward
+            intrinsic_reward_coef (float): Coefficient for intrinsic reward
+            extrinsic_reward_coef (float): Coefficient for extrinsic reward
+            loss (None|ActorCriticLoss): an object for calculating loss. If
+                None, a default loss of class loss_class will be used.
+            optimizer (tf.optimizers.Optimizer): The optimizer for training
+            gradient_clipping (float): If not None, serve as a positive threshold
+                for clipping gradient norms
+            reward_shaping_fn (Callable): a function that transforms extrinsic
+                immediate rewards
+            train_step_counter (tf.Variable): An optional counter to increment.
+            debug_summaries (bool): True if debug summaries should be created.
+            name (str): Name of this algorithm.
+            """
 
         icm_state_spec = ()
         if intrinsic_curiosity_module is not None:
@@ -107,8 +108,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._intrinsic_reward_coef = intrinsic_reward_coef
         self._extrinsic_reward_coef = extrinsic_reward_coef
         if loss is None:
-            loss = ActorCriticLoss(
-                action_spec, debug_summaries=debug_summaries)
+            loss = loss_class(action_spec, debug_summaries=debug_summaries)
         self._loss = loss
         self._icm = intrinsic_curiosity_module
 
@@ -163,15 +163,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                                     training_info.info.icm_reward)
 
             reward_calc_fn = lambda extrinsic, intrinsic: (
-                    self._extrinsic_reward_coef * extrinsic +
-                    self._intrinsic_reward_coef * intrinsic)
+                self._extrinsic_reward_coef * extrinsic + self.
+                _intrinsic_reward_coef * intrinsic)
 
             training_info = training_info._replace(
-                reward=reward_calc_fn(training_info.reward,
-                                      training_info.info.icm_reward))
+                reward=reward_calc_fn(training_info.reward, training_info.info.
+                                      icm_reward))
             final_time_step = final_time_step._replace(
-                reward=reward_calc_fn(final_time_step.reward,
-                                      final_info.icm_reward))
+                reward=reward_calc_fn(final_time_step.reward, final_info.
+                                      icm_reward))
 
             self.add_reward_summary("training_reward/overall",
                                     training_info.reward)

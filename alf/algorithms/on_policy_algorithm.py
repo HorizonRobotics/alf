@@ -14,7 +14,11 @@
 """Base class for on-policy RL algorithms."""
 
 from abc import abstractmethod
-from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm
+
+import tensorflow as tf
+
+from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm, TrainingInfo
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
 
 
 class OnPolicyAlgorithm(RLAlgorithm):
@@ -84,10 +88,67 @@ class OnPolicyAlgorithm(RLAlgorithm):
             state (nested Tensor): should be consistent with train_state_spec
 
         Returns (PolicyStep):
-            info: everything necessary for training. Note that
+            action (nested tf.distribution): should be consistent with 
+                `action_distribution_spec`
+            state (nested Tensor): should be consistent with `train_state_spec`
+            info (nested Tensor): everything necessary for training. Note that
                 ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by TrainingPolicy. So
+                "is_last") are automatically collected by OnPolicyDriver. So
                 the user only need to put other stuff (e.g. value estimation)
                 into `policy_step.info`
         """
         pass
+
+
+class OffPolicyAdapter(OffPolicyAlgorithm):
+    """An adapter to make an on-policy algorithm into an off-policy algorithm.
+    
+    See alf/examples/off_policy_actor_critic.py for example usage.
+    """
+
+    def __init__(self, algorithm: OnPolicyAlgorithm):
+        super().__init__(
+            action_spec=algorithm.action_spec,
+            train_state_spec=algorithm.train_state_spec,
+            action_distribution_spec=algorithm.action_distribution_spec,
+            predict_state_spec=algorithm.predict_state_spec,
+            debug_summaries=algorithm._debug_summaries,
+            name=algorithm._name)
+        self._algorithm = algorithm
+
+    @property
+    def action_spec(self):
+        return self._algorithm.action_spec
+
+    @property
+    def action_distribution_spec(self):
+        return self._algorithm.action_distribution_spec
+
+    @property
+    def predict_state_spec(self):
+        return self._algorithm.predict_state_spec
+
+    @property
+    def train_state_spec(self):
+        return self._algorithm.train_state_spec
+
+    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+        return self._algorithm.greedy_predict(time_step, state)
+
+    def predict(self, time_step: ActionTimeStep, state=None):
+        return self._algorithm.predict(time_step, state)
+
+    def train_complete(self, tape: tf.GradientTape,
+                       training_info: TrainingInfo,
+                       final_time_step: ActionTimeStep, final_info, weight):
+        return self._algorithm.train_complete(
+            tape, training_info, final_time_step, final_info, weight)
+
+    def train_step(self, exp: Experience, state):
+        time_step = ActionTimeStep(
+            step_type=exp.step_type,
+            reward=exp.reward,
+            discount=exp.discount,
+            observation=exp.observation,
+            prev_action=exp.prev_action)
+        return self._algorithm.train_step(time_step, state)

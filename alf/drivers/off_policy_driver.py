@@ -11,13 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Driver for off-policy training."""
 
+import math
+
+from absl import logging
 import gin.tf
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from tf_agents.environments.tf_environment import TFEnvironment
+from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.replay_buffers.tf_uniform_replay_buffer import TFUniformReplayBuffer
+from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 
 from alf.algorithms.rl_algorithm import make_training_info
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
@@ -28,6 +35,26 @@ from alf.algorithms.off_policy_algorithm import Experience
 
 @gin.configurable
 class OffPolicyDriver(policy_driver.PolicyDriver):
+    """Driver for off-policy training.
+
+    It provides two major interface functions.
+
+    * run(): for collecting data into replay buffer using algorithm.predict
+    * train(): for training with one batch of data.
+
+    train() further divides a batch into multiple minibatches. For each mini-
+    batch. It performs the following computation:
+    ```python
+        with tf.GradientTape() as tape:
+            batched_training_info
+            for experience in batch[:-1]:
+                policy_step = train_step(experience, state)
+                collect necessary information and policy_step.info into training_info
+            final_policy_step = algorithm.train_step(training_info)
+            train_complete(tape, training_info, batch[-1], final_policy_step.info)
+    ```
+    """
+
     def __init__(self,
                  env: TFEnvironment,
                  algorithm: OffPolicyAlgorithm,
@@ -100,6 +127,19 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                                         self.get_initial_state())
         collect_info_spec = extract_spec(policy_step.info)
 
+        def _to_distribution_spec(spec):
+            if isinstance(spec, tf.TensorSpec):
+                return DistributionSpec(
+                    tfp.distributions.Deterministic,
+                    input_params_spec={"loc": spec},
+                    sample_spec=spec)
+            return spec
+
+        self._action_distribution_spec = tf.nest.map_structure(
+            _to_distribution_spec, algorithm.action_distribution_spec)
+        action_dist_param_spec = tf.nest.map_structure(
+            lambda spec: spec.input_params_spec,
+            self._action_distribution_spec)
         self._experience_spec = Experience(
             step_type=time_step_spec.step_type,
             reward=time_step_spec.reward,
@@ -107,9 +147,14 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             observation=time_step_spec.observation,
             prev_action=env.action_spec(),
             action=env.action_spec(),
-            info=collect_info_spec)
+            info=collect_info_spec,
+            action_distribution=action_dist_param_spec)
 
         ts = self.get_initial_time_step()
+        action_dist_params = common.zero_tensor_from_nested_spec(
+            self._experience_spec.action_distribution, self.env.batch_size)
+        action_dist = nested_distributions_from_specs(
+            self._action_distribution_spec, action_dist_params)
         exp = Experience(
             step_type=ts.step_type,
             reward=ts.reward,
@@ -117,17 +162,20 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             observation=ts.observation,
             prev_action=ts.prev_action,
             action=ts.prev_action,
-            info=policy_step.info)
+            info=policy_step.info,
+            action_distribution=action_dist)
 
-        _, info = algorithm.train_step(exp, self.get_initial_train_state(3))
-        info_spec = extract_spec(info)
+        policy_step = self._train_step(exp, self.get_initial_train_state(3))
+        info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
             action=env.action_spec(),
+            action_distribution=action_dist_param_spec,
             step_type=time_step_spec.step_type,
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
             info=info_spec,
-            collect_info=self._experience_spec.info)
+            collect_info=self._experience_spec.info,
+            collect_action_distribution=action_dist_param_spec)
 
     def get_initial_train_state(self, batch_size):
         return common.zero_tensor_from_nested_spec(
@@ -153,14 +201,62 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         return tf.nest.map_structure(lambda x: transpose2(x, 0, 1), nest)
 
-    def train(self, experience: Experience):
+    def train(self,
+              experience: Experience,
+              num_updates=1,
+              mini_batch_size=None,
+              mini_batch_length=None):
         """Train using `experience`
 
         Args:
             experience (Experience): experience from replay_buffer. It is
                 assumed to be batch major.
+            num_updates (int): number of optimization steps
+            mini_batch_size (int): number of sequences for each minibatch
+            mini_batch_length (int): the length of the sequence for each 
+                sample in the minibatch
         """
-        experience = self._make_time_major(experience)
+        length = experience.step_type.shape[1]
+        if mini_batch_length is None:
+            mini_batch_length = length
+        if mini_batch_size is None:
+            mini_batch_size = experience.step_type.shape[0]
+
+        assert length % mini_batch_length == 0
+
+        experience = tf.nest.map_structure(
+            lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
+                                 ), experience)
+
+        batch_size = experience.step_type.shape[0]
+        for u in tf.range(num_updates):
+            if mini_batch_size < batch_size:
+                indices = tf.random.shuffle(
+                    tf.range(experience.step_type.shape[0]))
+                experience = tf.nest.map_structure(
+                    lambda x: tf.gather(x, indices), experience)
+            for b in tf.range(0, batch_size, mini_batch_size):
+                batch = tf.nest.map_structure(
+                    lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
+                    experience)
+                batch = self._make_time_major(batch)
+                training_info, loss_info, grads_and_vars = self._update(
+                    batch, weight=batch.step_type.shape[0] / mini_batch_size)
+                # somehow tf.function autograph does not work correctly for the
+                # following code:
+                # if u == num_updates - 1 and b + mini_batch_size >= batch_size:
+                if tf.logical_and(
+                        tf.equal(u, num_updates - 1),
+                        tf.greater_equal(b + mini_batch_size, batch_size)):
+                    self._summary(training_info, loss_info, grads_and_vars)
+        self._train_step_counter.assign_add(1)
+
+    def _train_step(self, exp, state):
+        policy_step = self._algorithm.train_step(exp, state=state)
+        return policy_step._replace(
+            action=self._to_distribution(policy_step.action))
+
+    def _update(self, experience, weight):
         batch_size = experience.step_type.shape[1]
         counter = tf.zeros((), tf.int32)
         initial_train_state = self.get_initial_train_state(batch_size)
@@ -182,18 +278,28 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         def _train_loop_body(counter, policy_state, training_info_ta):
             exp = tf.nest.map_structure(lambda ta: ta.read(counter),
                                         experience_ta)
+            collect_action_distribution_param = exp.action_distribution
+            collect_action_distribution = nested_distributions_from_specs(
+                self._action_distribution_spec,
+                collect_action_distribution_param)
+            exp = exp._replace(action_distribution=collect_action_distribution)
+
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
-            state, info = self._algorithm.train_step(exp, state=policy_state)
+            policy_step = self._train_step(exp, state=policy_state)
+            action_distribution_param = common.get_distribution_params(
+                policy_step.action)
 
             training_info = make_training_info(
                 action=exp.action,
+                action_distribution=action_distribution_param,
                 reward=exp.reward,
                 discount=exp.discount,
                 step_type=exp.step_type,
-                info=info,
-                collect_info=exp.info)
+                info=policy_step.info,
+                collect_info=exp.info,
+                collect_action_distribution=collect_action_distribution_param)
 
             training_info_ta = tf.nest.map_structure(
                 lambda ta, x: ta.write(counter, x), training_info_ta,
@@ -201,7 +307,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
             counter += 1
 
-            return [counter, state, training_info_ta]
+            return [counter, policy_step.state, training_info_ta]
 
         with tf.GradientTape(
                 persistent=True, watch_accessed_variables=False) as tape:
@@ -214,19 +320,26 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 name="train_loop")
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),
                                                   training_info_ta)
+            action_distribution = nested_distributions_from_specs(
+                self._action_distribution_spec,
+                training_info.action_distribution)
+            collect_action_distribution = nested_distributions_from_specs(
+                self._action_distribution_spec,
+                training_info.collect_action_distribution)
+            training_info = training_info._replace(
+                action_distribution=action_distribution,
+                collect_action_distribution=collect_action_distribution)
 
         final_exp = tf.nest.map_structure(lambda x: x[-1], experience)
-        policy_state, final_info = self._algorithm.train_step(
-            final_exp, policy_state)
+        policy_step = self._train_step(final_exp, policy_state)
 
         loss_info, grads_and_vars = self._algorithm.train_complete(
             tape=tape,
             training_info=training_info,
             final_time_step=final_exp,
-            final_info=final_info)
+            final_info=policy_step.info,
+            weight=weight)
 
         del tape
 
-        self._summary(training_info, loss_info, grads_and_vars)
-
-        self._train_step_counter.assign_add(1)
+        return training_info, loss_info, grads_and_vars

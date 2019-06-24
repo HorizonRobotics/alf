@@ -28,7 +28,7 @@ import alf.utils.common as common
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
-    "collect_info"
+    "collect_info", "collect_action_distribution"
 ])
 
 
@@ -38,7 +38,8 @@ def make_training_info(action_distribution=(),
                        reward=(),
                        discount=(),
                        info=(),
-                       collect_info=()):
+                       collect_info=(),
+                       collect_action_distribution=()):
     """Create an instance of TrainingInfo."""
     return TrainingInfo(
         action_distribution=action_distribution,
@@ -47,13 +48,14 @@ def make_training_info(action_distribution=(),
         reward=reward,
         discount=discount,
         info=info,
-        collect_info=collect_info)
+        collect_info=collect_info,
+        collect_action_distribution=collect_action_distribution)
 
 
 class ActionTimeStep(
-    namedtuple(
-        'ActionTimeStep',
-        ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
+        namedtuple(
+            'ActionTimeStep',
+            ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
 ):
     """TimeStep with action."""
 
@@ -143,8 +145,8 @@ class RLAlgorithm(tf.Module):
             get_trainable_variables_func)
         assert (len(self._optimizers) == len(
             self._get_trainable_variables_funcs)), (
-            "`optimizer` and `get_trainable_variables_func`"
-            "should have same length")
+                "`optimizer` and `get_trainable_variables_func`"
+                "should have same length")
 
         self._gradient_clipping = gradient_clipping
         self._reward_shaping_fn = reward_shaping_fn
@@ -221,15 +223,13 @@ class RLAlgorithm(tf.Module):
         """
         pass
 
-    @abstractmethod
-    def train_step(self):
-        """Perform one step of action and training computation."""
-        pass
-
     # Subclass may override train_complete() to allow customized training
-    def train_complete(self, tape: tf.GradientTape,
+    def train_complete(self,
+                       tape: tf.GradientTape,
                        training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep, final_info):
+                       final_time_step: ActionTimeStep,
+                       final_info,
+                       weight=1.0):
         """Complete one iteration of training.
 
         `train_complete` should calcuate gradients and update parameters using
@@ -246,7 +246,8 @@ class RLAlgorithm(tf.Module):
             final_info (nested Tensor): `info` from additional
                 `train_step` evaluated from final_time_step or final_experience.
                 This final_info is NOT calculated under the context of `tape`
-
+            weight (float): weight for this batch. Loss will be multiplied with
+                this wegith before calculating gradient
         Returns:
             a tuple of the following:
             loss_info (LossInfo): loss information
@@ -266,13 +267,15 @@ class RLAlgorithm(tf.Module):
                 reward=self._reward_shaping_fn(final_time_step.reward))
 
         # record shaped extrinsic rewards actually used for training
-        self.add_reward_summary("training_reward/extrinsic", training_info.reward)
+        self.add_reward_summary("training_reward/extrinsic",
+                                training_info.reward)
 
         with tape:
             loss_info = self.calc_loss(training_info, final_time_step,
                                        final_info)
             loss_info = tf.nest.map_structure(
                 lambda l: tf.reduce_mean(l * valid_masks), loss_info)
+            loss = weight * loss_info.loss
 
         if self._cached_var_sets is None:
             # Cache it because trainable_variables is an expensive operation
@@ -284,7 +287,7 @@ class RLAlgorithm(tf.Module):
         var_sets = self._cached_var_sets
         all_grads_and_vars = ()
         for vars, optimizer in zip(var_sets, self._optimizers):
-            grads = tape.gradient(loss_info.loss, vars)
+            grads = tape.gradient(loss, vars)
             grads_and_vars = tuple(zip(grads, vars))
             all_grads_and_vars = all_grads_and_vars + grads_and_vars
             if self._gradient_clipping is not None:

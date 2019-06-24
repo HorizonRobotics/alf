@@ -25,11 +25,12 @@ from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm
 
 Experience = namedtuple("Experience", [
     'step_type', 'reward', 'discount', 'observation', 'prev_action', 'action',
-    'info'
+    'info', 'action_distribution'
 ])
 
 
-def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
+def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep,
+                    action_distribution):
     """Make an instance of Experience from ActionTimeStep and PolicyStep."""
     return Experience(
         step_type=time_step.step_type,
@@ -38,7 +39,8 @@ def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
         observation=time_step.observation,
         prev_action=time_step.prev_action,
         action=policy_step.action,
-        info=policy_step.info)
+        info=policy_step.info,
+        action_distribution=action_distribution)
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
@@ -71,24 +73,12 @@ class OffPolicyAlgorithm(RLAlgorithm):
             with tf.GradientTape() as tape:
                 batched_training_info
                 for experience in experiences:
-                    state, info = train_step(experience, state)
+                    policy_step = train_step(experience, state)
                     train_info = make_training_info(info, ...)
                     write train_info to batched_training_info
                 train_complete(tape, batched_training_info,...)
     ```
     """
-
-    @abc.abstractmethod
-    def predict(self, time_step: ActionTimeStep, state=None):
-        """Predict for one step of observation.
-
-        Returns:
-            policy_step (PolicyStep):
-              policy_step.action is nested tf.distribution which consistent with
-                `action_distribution_spec`
-              policy_step.state should be consistent with `predict_state_spec`
-        """
-        pass
 
     @abc.abstractmethod
     def train_step(self, experience: Experience, state):
@@ -98,11 +88,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
             experience (Experience):
             state (nested Tensor): should be consistent with train_state_spec
 
-        Returns (tuple):
-            state: training RNN state
-            info: everything necessary for training. Note that 
-                ("action", "reward", "discount", "is_last") are automatically
-                collected by OffPolicyDriver. So the user only need to put other
-                stuff (e.g. value estimation) into `info`
+        Returns (PolicyStep):
+            action (nested tf.distribution): should be consistent with 
+                `action_distribution_spec`
+            state (nested Tensor): should be consistent with `train_state_spec`
+            info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OffPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
         """
         pass

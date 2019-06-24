@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from collections import namedtuple
 import numpy as np
 import tensorflow as tf
@@ -28,27 +27,22 @@ from alf.algorithms.one_step_loss import OneStepTDLoss
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
-SacActorState = namedtuple(
-    "SacActorState", ["critic1", "critic2"])
+SacActorState = namedtuple("SacActorState", ["critic1", "critic2"])
 
 SacCriticState = namedtuple(
-    "SacCriticState", ["critic1", "critic2",
-                       "target_critic1", "target_critic2"])
+    "SacCriticState",
+    ["critic1", "critic2", "target_critic1", "target_critic2"])
 
-SacState = namedtuple(
-    "SacState", ["share", "actor", "critic"])
+SacState = namedtuple("SacState", ["share", "actor", "critic"])
 
-SacActorInfo = namedtuple(
-    "SacActorInfo", ["loss"])
+SacActorInfo = namedtuple("SacActorInfo", ["loss"])
 
-SacCriticInfo = namedtuple(
-    "SacCriticInfo", ["critic1", "critic2", "target_critic"])
+SacCriticInfo = namedtuple("SacCriticInfo",
+                           ["critic1", "critic2", "target_critic"])
 
-SacAlphaInfo = namedtuple(
-    "SacAlphaInfo", ["loss"])
+SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss"])
 
-SacInfo = namedtuple(
-    "SacInfo", ["actor", "critic", "alpha"])
+SacInfo = namedtuple("SacInfo", ["actor", "critic", "alpha"])
 
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
 
@@ -61,7 +55,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
     Haarnoja et al "Soft Actor-Critic Algorithms and Applications" arXiv:1812.05905v2
     """
 
-    def __init__(self, action_spec,
+    def __init__(self,
+                 action_spec,
                  actor_network: Network,
                  critic_network: Network,
                  critic_loss=None,
@@ -128,15 +123,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     target_critic2=critic_network.state_spec)),
             action_distribution_spec=actor_network.output_spec,
             predict_state_spec=actor_network.state_spec,
-            optimizer=[
-                actor_optimizer,
-                critic_optimizer,
-                alpha_optimizer],
+            optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
             get_trainable_variables_func=[
                 lambda: actor_network.trainable_variables,
-                lambda: (critic_network1.trainable_variables +
-                         critic_network2.trainable_variables),
-                lambda: [log_alpha]],
+                lambda: (critic_network1.trainable_variables + critic_network2.trainable_variables),
+                lambda: [log_alpha]
+            ],
             gradient_clipping=gradient_clipping,
             train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
@@ -162,7 +154,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             flat_action_spec = tf.nest.flatten(self._action_spec)
             target_entropy = -np.sum([
                 np.product(single_spec.shape.as_list())
-                for single_spec in flat_action_spec])
+                for single_spec in flat_action_spec
+            ])
         self._target_entropy = target_entropy
 
         self._dqda_clipping = dqda_clipping
@@ -192,21 +185,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             network_state=state)
         return PolicyStep(action=action, state=state, info=())
 
-    def _actions_and_log_probs(self, exp: Experience, state):
-        action_distribution, actor_state = self._actor_network(
-            exp.observation,
-            step_type=exp.step_type,
-            network_state=state.actor)
-        action = tf.nest.map_structure(
-            lambda d: d.sample(), action_distribution)
-        log_pi = tfa_common.log_probability(
-            action_distribution,
-            tf.nest.map_structure(lambda a: tf.stop_gradient(a), action),
-            self._action_spec)
-        return (action, log_pi), SacShareState(actor=actor_state)
-
-    def _actor_train_step(self, exp: Experience, state: SacActorState, actions_and_log_probs):
-        action, log_pi = actions_and_log_probs
+    def _actor_train_step(self, exp: Experience, state: SacActorState, action,
+                          log_pi):
         critic_input = (exp.observation, action)
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
@@ -227,9 +207,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
-                dqda = tf.clip_by_value(
-                    dqda, -self._dqda_clipping,
-                    self._dqda_clipping)
+                dqda = tf.clip_by_value(dqda, -self._dqda_clipping,
+                                        self._dqda_clipping)
             loss = losses.element_wise_squared_loss(
                 tf.stop_gradient(dqda + action), action)
             loss = tf.reduce_sum(loss, axis=loss.shape[1:])
@@ -238,25 +217,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
         actor_loss = tf.nest.map_structure(actor_loss_fn, dqda, action)
         actor_loss += tf.stop_gradient(tf.exp(self._log_alpha)) * log_pi
 
-        state = SacActorState(
-            critic1=critic1_state,
-            critic2=critic2_state)
+        state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
         return state, info
 
-    def _critic_train_step(self, exp: Experience, state: SacCriticState, actions_and_log_probs):
-        action, log_pi = actions_and_log_probs
-
+    def _critic_train_step(self, exp: Experience, state: SacCriticState,
+                           action, log_pi):
         critic_input = (exp.observation, exp.action)
         critic1, critic1_state = self._critic_network1(
-            critic_input,
-            step_type=exp.step_type,
-            network_state=state.critic1)
+            critic_input, step_type=exp.step_type, network_state=state.critic1)
 
         critic2, critic2_state = self._critic_network2(
-            critic_input,
-            step_type=exp.step_type,
-            network_state=state.critic2)
+            critic_input, step_type=exp.step_type, network_state=state.critic2)
 
         target_critic_input = (exp.observation, action)
 
@@ -280,44 +252,56 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic2=target_critic2_state)
 
         info = SacCriticInfo(
-            critic1=critic1, critic2=critic2,
-            target_critic=target_critic)
+            critic1=critic1, critic2=critic2, target_critic=target_critic)
 
         return state, info
 
-    def _alpha_train_step(self, actions_and_log_probs):
-        action, log_pi = actions_and_log_probs
-        alpha_loss = self._log_alpha * tf.stop_gradient(-log_pi - self._target_entropy)
+    def _alpha_train_step(self, log_pi):
+        alpha_loss = self._log_alpha * tf.stop_gradient(-log_pi -
+                                                        self._target_entropy)
         info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))
         return info
 
     def train_step(self, exp: Experience, state: SacState):
-        actions_and_log_probs, share_state = self._actions_and_log_probs(exp, state.share)
+        action_distribution, share_actor_state = self._actor_network(
+            exp.observation,
+            step_type=exp.step_type,
+            network_state=state.share.actor)
+        action = tf.nest.map_structure(lambda d: d.sample(),
+                                       action_distribution)
+        log_pi = tfa_common.log_probability(
+            action_distribution,
+            tf.nest.map_structure(lambda a: tf.stop_gradient(a), action),
+            self._action_spec)
+
         actor_state, actor_info = self._actor_train_step(
-            exp, state.actor, actions_and_log_probs)
+            exp, state.actor, action, log_pi)
         critic_state, critic_info = self._critic_train_step(
-            exp, state.critic, actions_and_log_probs)
-        alpha_info = self._alpha_train_step(actions_and_log_probs)
+            exp, state.critic, action, log_pi)
+        alpha_info = self._alpha_train_step(log_pi)
         state = SacState(
-            share=share_state, actor=actor_state,
+            share=SacShareState(actor=share_actor_state),
+            actor=actor_state,
             critic=critic_state)
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
-        return state, info
+        return PolicyStep(action_distribution, state, info)
 
-    def train_complete(self, tape: tf.GradientTape,
-                       training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep,
-                       final_info):
+    def train_complete(
+            self, tape: tf.GradientTape, training_info: TrainingInfo,
+            final_time_step: ActionTimeStep, final_info: SacInfo, weight):
         ret = super().train_complete(
-            tape, training_info,
-            final_time_step, final_info)
+            tape=tape,
+            training_info=training_info,
+            final_time_step=final_time_step,
+            final_info=final_info,
+            weight=weight)
         self._update_target()
         return ret
 
     def calc_loss(self, training_info: TrainingInfo,
                   final_time_step: ActionTimeStep, final_info: SacInfo):
-        critic_loss = self._calc_critic_loss(
-            training_info, final_time_step, final_info)
+        critic_loss = self._calc_critic_loss(training_info, final_time_step,
+                                             final_info)
         alpha_loss = training_info.info.alpha.loss
         actor_loss = training_info.info.actor.loss
         return LossInfo(

@@ -1,0 +1,29 @@
+# run with off_policy_actor_critic.py
+
+# environment config
+create_environment.env_name="CartPole-v0"
+create_environment.num_parallel_environments=8
+
+# algorithm config
+ActorCriticAlgorithm.loss_class=@PPOLoss
+PPOLoss.entropy_regularization=1e-4
+PPOLoss.gamma=0.98
+PPOLoss.td_error_loss_fn=@element_wise_huber_loss
+PPOLoss.use_gae=True
+PPOLoss.use_td_lambda_return=True
+PPOLoss.normalize_advantages=False
+create_algorithm.actor_fc_layers=(100,)
+create_algorithm.value_fc_layers=(100,)
+create_algorithm.learning_rate=0.001
+
+# training config
+off_policy_trainer.train.mini_batch_length=9
+off_policy_trainer.train.num_steps_per_iter=72
+off_policy_trainer.train.mini_batch_size=8
+off_policy_trainer.train.num_iterations=3000
+off_policy_trainer.train.summary_interval=5
+off_policy_trainer.train.checkpoint_interval=100000
+off_policy_trainer.train.num_updates_per_train_step=4
+TFUniformReplayBuffer.max_length=2048
+__main__.train_eval.debug_summaries=1
+__main__.train_eval.evaluate=0

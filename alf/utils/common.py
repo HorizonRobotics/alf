@@ -17,6 +17,7 @@ import glob
 import os
 import shutil
 
+from absl import flags
 import gin
 import tensorflow as tf
 
@@ -157,7 +158,8 @@ def add_action_summaries(actions, action_specs):
 
         if tensor_spec.is_discrete(action_spec):
             summary_utils.histogram_discrete(
-                name="action/%s" % i, data=action,
+                name="action/%s" % i,
+                data=action,
                 bucket_min=action_spec.minimum,
                 bucket_max=action_spec.maximum)
         else:
@@ -169,7 +171,8 @@ def add_action_summaries(actions, action_specs):
             for a in range(action_dim):
                 # TODO: use a descriptive name for the summary
                 summary_utils.histogram_continuous(
-                    name="action/%s/%s" % (i, a), data=action[:, a],
+                    name="action/%s/%s" % (i, a),
+                    data=action[:, a],
                     bucket_min=action_spec.minimum[a],
                     bucket_max=action_spec.maximum[a])
 
@@ -215,7 +218,7 @@ def expand_dims_as(x, y):
     if k == 0:
         return x
     else:
-        return tf.reshape(x, x.shape.concatenate((1,) * k))
+        return tf.reshape(x, x.shape.concatenate((1, ) * k))
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
@@ -250,9 +253,12 @@ def run_under_record_context(func, summary_dir, summary_interval,
         summary_dir, flush_millis=flush_millis)
     summary_writer.set_as_default()
     global_step = get_global_counter()
-    with tf.summary.record_if(
-            lambda: tf.equal((global_step + 1) % summary_interval, 0)):
+    with tf.summary.record_if(lambda: tf.equal((global_step + 1) %
+                                               summary_interval, 0)):
         func()
+
+
+from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
 
 
 def get_global_counter(default_counter=None):
