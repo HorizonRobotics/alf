@@ -139,10 +139,8 @@ class OffPolicyAdapter(OffPolicyAlgorithm):
         return self._algorithm.predict(time_step, state)
 
     def train_complete(self, tape: tf.GradientTape,
-                       training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep, final_info, weight):
-        return self._algorithm.train_complete(
-            tape, training_info, final_time_step, final_info, weight)
+                       training_info: TrainingInfo, weight):
+        return self._algorithm.train_complete(tape, training_info, weight)
 
     def train_step(self, exp: Experience, state):
         time_step = ActionTimeStep(

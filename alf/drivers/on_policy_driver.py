@@ -161,6 +161,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 will use self.get_initial_time_step(). Elements should be shape
                 [batch_size, ...].
             policy_state (nested Tensor): optional initial state for the policy.
+        Returns:
+            None
         """
         maximum_iterations = math.ceil(
             max_num_steps /
@@ -209,7 +211,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         def create_ta(s):
             return tf.TensorArray(
                 dtype=s.dtype,
-                size=self._train_interval,
+                size=self._train_interval + 1,
                 element_shape=tf.TensorShape([batch_size]).concatenate(
                     s.shape))
 
@@ -218,15 +220,43 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(self._trainable_variables)
-            [_, time_step, policy_state, training_info_ta] = tf.while_loop(
-                cond=lambda *_: True,
-                body=self._train_loop_body,
-                loop_vars=[counter, time_step, policy_state, training_info_ta],
-                back_prop=True,
-                parallel_iterations=1,
-                maximum_iterations=self._train_interval,
-                name='iter_loop')
+            [counter, time_step, policy_state,
+             training_info_ta] = tf.while_loop(
+                 cond=lambda *_: True,
+                 body=self._train_loop_body,
+                 loop_vars=[
+                     counter, time_step, policy_state, training_info_ta
+                 ],
+                 back_prop=True,
+                 parallel_iterations=1,
+                 maximum_iterations=self._train_interval,
+                 name='iter_loop')
 
+        if self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP:
+            next_time_step, policy_step, action = self._step(
+                time_step, policy_state)
+            next_state = policy_step.state
+        else:
+            policy_step = self.algorithm_step(time_step, policy_state)
+            action = self._sample_action_distribution(policy_step.action)
+            next_time_step = time_step
+            next_state = policy_state
+
+        action_distribution_param = common.get_distribution_params(
+            policy_step.action)
+
+        final_training_info = make_training_info(
+            action_distribution=action_distribution_param,
+            action=action,
+            reward=time_step.reward,
+            discount=time_step.discount,
+            step_type=time_step.step_type,
+            info=policy_step.info)
+
+        with tape:
+            training_info_ta = tf.nest.map_structure(
+                lambda ta, x: ta.write(counter, x), training_info_ta,
+                final_training_info)
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),
                                                   training_info_ta)
 
@@ -237,17 +267,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             training_info = training_info._replace(
                 action_distribution=action_distribution)
 
-        if self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP:
-            next_time_step, policy_step, _ = self._step(
-                time_step, policy_state)
-            next_state = policy_step.state
-        else:
-            policy_step = self.algorithm_step(time_step, policy_state)
-            next_time_step = time_step
-            next_state = policy_state
-
         loss_info, grads_and_vars = self._algorithm.train_complete(
-            tape, training_info, time_step, policy_step.info)
+            tape, training_info)
 
         self._summary(training_info, loss_info, grads_and_vars)
 

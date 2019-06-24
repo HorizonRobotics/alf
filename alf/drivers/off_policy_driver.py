@@ -260,7 +260,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         batch_size = experience.step_type.shape[1]
         counter = tf.zeros((), tf.int32)
         initial_train_state = self.get_initial_train_state(batch_size)
-        num_steps = experience.step_type.shape[0] - 1
+        num_steps = experience.step_type.shape[0]
 
         def create_ta(s):
             return tf.TensorArray(
@@ -271,7 +271,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         experience_ta = tf.nest.map_structure(create_ta, self._experience_spec)
         experience_ta = tf.nest.map_structure(
-            lambda elem, ta: ta.unstack(elem[0:-1]), experience, experience_ta)
+            lambda elem, ta: ta.unstack(elem), experience, experience_ta)
         training_info_ta = tf.nest.map_structure(create_ta,
                                                  self._training_info_spec)
 
@@ -312,7 +312,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         with tf.GradientTape(
                 persistent=True, watch_accessed_variables=False) as tape:
             tape.watch(self._trainable_variables)
-            [_, policy_state, training_info_ta] = tf.while_loop(
+            [_, _, training_info_ta] = tf.while_loop(
                 cond=lambda counter, *_: tf.less(counter, num_steps),
                 body=_train_loop_body,
                 loop_vars=[counter, initial_train_state, training_info_ta],
@@ -330,15 +330,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 action_distribution=action_distribution,
                 collect_action_distribution=collect_action_distribution)
 
-        final_exp = tf.nest.map_structure(lambda x: x[-1], experience)
-        policy_step = self._train_step(final_exp, policy_state)
-
         loss_info, grads_and_vars = self._algorithm.train_complete(
-            tape=tape,
-            training_info=training_info,
-            final_time_step=final_exp,
-            final_info=policy_step.info,
-            weight=weight)
+            tape=tape, training_info=training_info, weight=weight)
 
         del tape
 

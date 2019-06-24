@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Soft Actor Critic Algorithm."""
 
 from collections import namedtuple
 import numpy as np
@@ -125,9 +126,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             predict_state_spec=actor_network.state_spec,
             optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
             get_trainable_variables_func=[
-                lambda: actor_network.trainable_variables,
-                lambda: (critic_network1.trainable_variables + critic_network2.trainable_variables),
-                lambda: [log_alpha]
+                lambda: actor_network.trainable_variables, lambda:
+                (critic_network1.trainable_variables + critic_network2.
+                 trainable_variables), lambda: [log_alpha]
             ],
             gradient_clipping=gradient_clipping,
             train_step_counter=train_step_counter,
@@ -286,22 +287,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
         return PolicyStep(action_distribution, state, info)
 
-    def train_complete(
-            self, tape: tf.GradientTape, training_info: TrainingInfo,
-            final_time_step: ActionTimeStep, final_info: SacInfo, weight):
+    def train_complete(self, tape: tf.GradientTape,
+                       training_info: TrainingInfo, weight):
         ret = super().train_complete(
-            tape=tape,
-            training_info=training_info,
-            final_time_step=final_time_step,
-            final_info=final_info,
-            weight=weight)
+            tape=tape, training_info=training_info, weight=weight)
         self._update_target()
         return ret
 
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep, final_info: SacInfo):
-        critic_loss = self._calc_critic_loss(training_info, final_time_step,
-                                             final_info)
+    def calc_loss(self, training_info: TrainingInfo):
+        critic_loss = self._calc_critic_loss(training_info)
         alpha_loss = training_info.info.alpha.loss
         actor_loss = training_info.info.actor.loss
         return LossInfo(
@@ -311,26 +305,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic=critic_loss.extra,
                 alpha=alpha_loss.extra))
 
-    def _calc_critic_loss(self, training_info, final_time_step, final_info):
+    def _calc_critic_loss(self, training_info):
         critic_info = training_info.info.critic
-        final_critic_info = final_info.critic
 
         target_critic = critic_info.target_critic
-        final_target_critic = final_critic_info.target_critic
 
         critic_loss1 = self._critic_loss(
             training_info=training_info,
             value=critic_info.critic1,
-            target_value=target_critic,
-            final_time_step=final_time_step,
-            final_target_value=final_target_critic)
+            target_value=target_critic)
 
         critic_loss2 = self._critic_loss(
             training_info=training_info,
             value=critic_info.critic2,
-            target_value=target_critic,
-            final_time_step=final_time_step,
-            final_target_value=final_target_critic)
+            target_value=target_critic)
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
         return LossInfo(loss=critic_loss, extra=critic_loss)
