@@ -28,9 +28,9 @@ from absl import logging
 import gin
 import tensorflow as tf
 
-from alf.examples.actor_critic import create_algorithm, create_environment, play
+from alf.examples.actor_critic import create_algorithm, create_environment
 from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
-from alf.trainers import off_policy_trainer
+from alf.trainers import off_policy_trainer, on_policy_trainer
 import alf.utils.external_configurables
 from alf.utils import common
 import alf.algorithms.ppo_loss
@@ -54,6 +54,14 @@ def train_eval(train_dir, evaluate=True, debug_summaries=False):
         algorithm,
         eval_env=eval_env,
         debug_summaries=debug_summaries)
+
+
+def play(train_dir):
+    """Play using the latest checkpoint under `train_dir`."""
+    env = create_environment(num_parallel_environments=1)
+    algorithm = create_algorithm(env)
+    algorithm = OffPolicyAdapter(algorithm)
+    on_policy_trainer.play(train_dir, env, algorithm)
 
 
 def main(_):
