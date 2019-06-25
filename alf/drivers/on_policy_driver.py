@@ -47,7 +47,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             collect necessary information and policy_step.info into training_info
             time_step = env.step(action)
     final_policy_step = algorithm.train_step(training_info)
-    algorithm.train_complete(tape, training_info, time_step, final_policy_step.info)
+    collect necessary information and final_policy_step.info into training_info
+    algorithm.train_complete(tape, training_info)
     ```
 
     There are two modes of handling the final_policy_step from the above code:

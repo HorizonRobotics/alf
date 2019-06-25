@@ -39,23 +39,15 @@ class OnPolicyAlgorithm(RLAlgorithm):
     by TrainingPolicy:
 
     ```python
-    tape = tf.GradientTape()
-    training_info = []
-
-    while training not ends:
-        if len(training_info) == train_intervel:
-            old_tape = tape
-            tape = tf.GradientTape()
-        with tape:
+    with GradientTape as tape:
+        for _ in range(train_interval):
             policy_step = train_step(time_step, policy_step.state)
-        if len(training_info) == train_intervel:
-            with old_tape:
-                get batched_training_info from training_info
-            train_complete(tape, batched_training_info, time_step, policy_step)
-            training_info = []
-        action = sample action from policy_step.action
-        collect necessary information and policy_step.info into training_info
-        time_step = env.step(action)
+            action = sample action from policy_step.action
+            collect necessary information and policy_step.info into training_info
+            time_step = env.step(action)
+    final_policy_step = train_step(training_info)
+    collect necessary information and final_policy_step.info into training_info
+    train_complete(tape, training_info)
     ```
     """
 

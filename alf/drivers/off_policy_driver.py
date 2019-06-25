@@ -47,11 +47,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
     ```python
         with tf.GradientTape() as tape:
             batched_training_info
-            for experience in batch[:-1]:
+            for experience in batch:
                 policy_step = train_step(experience, state)
                 collect necessary information and policy_step.info into training_info
-            final_policy_step = algorithm.train_step(training_info)
-            train_complete(tape, training_info, batch[-1], final_policy_step.info)
+            train_complete(tape, training_info)
     ```
     """
 
