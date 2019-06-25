@@ -17,6 +17,10 @@ import gin.tf
 import tensorflow as tf
 
 from tensorflow_probability import distributions as tfd
+from tf_agents.agents.ddpg.actor_network import ActorNetwork
+from tf_agents.agents.ddpg.actor_rnn_network import ActorRnnNetwork
+from tf_agents.agents.ddpg.critic_network import CriticNetwork
+from tf_agents.agents.ddpg.critic_rnn_network import CriticRnnNetwork
 
 from tf_agents.networks.network import Network
 from tf_agents.trajectories.policy_step import PolicyStep
@@ -100,8 +104,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             predict_state_spec=actor_network.state_spec,
             optimizer=[actor_optimizer, critic_optimizer],
             get_trainable_variables_func=[
-                lambda: actor_network.trainable_variables,
-                lambda: critic_network.trainable_variables
+                lambda: actor_network.trainable_variables, lambda:
+                critic_network.trainable_variables
             ],
             gradient_clipping=gradient_clipping,
             train_step_counter=train_step_counter,
@@ -241,10 +245,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             extra=DdpgLossInfo(
                 critic=critic_loss.extra, actor=actor_loss.extra))
 
-    def train_complete(self, tape: tf.GradientTape,
+    def train_complete(self,
+                       tape: tf.GradientTape,
                        training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep, final_info: DdpgInfo,
-                       weight: float):
+                       final_time_step: ActionTimeStep,
+                       final_info: DdpgInfo,
+                       weight: float = 1.0):
         ret = super().train_complete(
             tape=tape,
             training_info=training_info,
@@ -270,3 +276,54 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         ou_process = tf.nest.map_structure(_create_ou_process,
                                            self._action_spec)
         return ou_process
+
+
+@gin.configurable
+def create_ddpg_algorithm(env,
+                          actor_fc_layers=(100, 100),
+                          critic_fc_layers=(100, 100),
+                          use_rnns=False,
+                          actor_learning_rate=1e-4,
+                          critic_learning_rate=1e-3,
+                          debug_summaries=False):
+    """Create a simple DdpgAlgorithm.
+
+    Args:
+        env (TFEnvironment): A TFEnvironment
+        actor_fc_layers (list[int]): list of fc layers parameters for actor network
+        critic_fc_layers (list[int]): list of fc layers parameters for critic network
+        use_rnns (bool): True if rnn should be used
+        actor_learning_rate (float) : learning rate for actor network
+        critic_learning_rate (float) : learning rate for critic network
+        debug_summaries (bool): True if debug summaries should be created
+    """
+    observation_spec = env.observation_spec()
+    action_spec = env.action_spec()
+
+    if use_rnns:
+        actor_net = ActorRnnNetwork(
+            observation_spec,
+            action_spec,
+            input_fc_layer_params=actor_fc_layers,
+            output_fc_layer_params=())
+        critic_net = CriticRnnNetwork((observation_spec, action_spec),
+                                      observation_fc_layer_params=(),
+                                      action_fc_layer_params=(),
+                                      output_fc_layer_params=(),
+                                      joint_fc_layer_params=critic_fc_layers)
+    else:
+        actor_net = ActorNetwork(
+            observation_spec, action_spec, fc_layer_params=actor_fc_layers)
+        critic_net = CriticNetwork((observation_spec, action_spec),
+                                   joint_fc_layer_params=critic_fc_layers)
+
+    actor_optimizer = tf.optimizers.Adam(learning_rate=actor_learning_rate)
+    critic_optimizer = tf.optimizers.Adam(learning_rate=critic_learning_rate)
+
+    return DdpgAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        critic_network=critic_net,
+        actor_optimizer=actor_optimizer,
+        critic_optimizer=critic_optimizer,
+        debug_summaries=debug_summaries)

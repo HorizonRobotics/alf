@@ -31,6 +31,7 @@ from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.policies.training_policy import TrainingPolicy
 from alf.environments.suite_unittest import ActionType
+from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 
 
 class GradientTypeTest(unittest.TestCase):
@@ -61,38 +62,17 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
                        train_interval=1,
                        use_rnn=False,
                        learning_rate=1e-1):
-        observation_spec = env.observation_spec()
-        action_spec = env.action_spec()
         time_step_spec = env.time_step_spec()
 
         global_step = tf.Variable(
             0, dtype=tf.int64, trainable=False, name="global_step")
 
-        if use_rnn:
-            actor_net = ActorDistributionRnnNetwork(
-                observation_spec,
-                action_spec,
-                input_fc_layer_params=(),
-                output_fc_layer_params=(),
-                lstm_size=(4, ))
-            value_net = ValueRnnNetwork(
-                observation_spec,
-                input_fc_layer_params=(),
-                output_fc_layer_params=(),
-                lstm_size=(4, ))
-        else:
-            actor_net = ActorDistributionNetwork(
-                observation_spec, action_spec, fc_layer_params=())
-            value_net = ValueNetwork(observation_spec, fc_layer_params=())
-
-        optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
-
-        algorithm = ActorCriticAlgorithm(
-            action_spec=action_spec,
-            actor_network=actor_net,
-            value_network=value_net,
-            loss=ActorCriticLoss(action_spec=action_spec, gamma=1.0),
-            optimizer=optimizer)
+        algorithm = create_ac_algorithm(
+            env=env,
+            actor_fc_layers=(),
+            value_fc_layers=(),
+            learning_rate=learning_rate,
+            use_rnns=use_rnn)
 
         policy = TrainingPolicy(
             algorithm=algorithm,
@@ -152,11 +132,11 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
     def test_actor_critic_continous_policy(self):
         batch_size = 100
         steps_per_episode = 13
-        env = PolicyUnittestEnv(batch_size, steps_per_episode,
-            action_type=ActionType.Continuous)
-        
-        policy = self._create_policy(env,
-            learning_rate=1e-2)  # the default 1e-1 won't work here
+        env = PolicyUnittestEnv(
+            batch_size, steps_per_episode, action_type=ActionType.Continuous)
+
+        policy = self._create_policy(
+            env, learning_rate=1e-2)  # the default 1e-1 won't work here
         policy_state = policy.get_initial_state(batch_size)
         time_step = env.reset()
         t0 = time.time()
@@ -201,5 +181,6 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
+
     set_per_process_memory_growth()
     unittest.main()

@@ -20,12 +20,18 @@ import gin.tf
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
+from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.network import Network, DistributionNetwork
+from tf_agents.networks.value_network import ValueNetwork
+from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.algorithm import Algorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.icm_algorithm import ICMAlgorithm
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm, OffPolicyAdapter
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
@@ -192,3 +198,78 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             loss=loss,
             extra=ActorCriticAlgorithmLossInfo(
                 ac=ac_loss.extra, icm=icm_loss_extra))
+
+
+@gin.configurable
+def create_ac_algorithm(env,
+                        actor_fc_layers=(200, 100),
+                        value_fc_layers=(200, 100),
+                        encoding_conv_layers=(),
+                        encoding_fc_layers=(),
+                        use_rnns=False,
+                        use_icm=False,
+                        learning_rate=5e-5,
+                        off_policy=False,
+                        debug_summaries=False):
+    """Create a simple ActorCriticAlgorithm.
+
+    Args:
+        env (TFEnvironment): A TFEnvironment
+        actor_fc_layers (list[int]): list of fc layers parameters for actor network
+        value_fc_layers (list[int]): list of fc layers parameters for value network
+        encoding_conv_layers (list[int]): list of convolution layers parameters for encoding network
+        encoding_fc_layers (list[int]): list of fc layers parameters for encoding network
+        use_rnns (bool): True if rnn should be used
+        use_icm (bool): True if intrinsic curiosity module should be used
+        learning_rate (float) : learning rate
+        off_policy (bool) : True if used for off policy training
+        debug_summaries (bool): True if debug summaries should be created.
+    """
+    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+
+    if use_rnns:
+        actor_net = ActorDistributionRnnNetwork(
+            env.observation_spec(),
+            env.action_spec(),
+            input_fc_layer_params=actor_fc_layers,
+            output_fc_layer_params=None)
+        value_net = ValueRnnNetwork(
+            env.observation_spec(),
+            input_fc_layer_params=value_fc_layers,
+            output_fc_layer_params=None)
+    else:
+        actor_net = ActorDistributionNetwork(
+            env.observation_spec(),
+            env.action_spec(),
+            fc_layer_params=actor_fc_layers)
+        value_net = ValueNetwork(
+            env.observation_spec(), fc_layer_params=value_fc_layers)
+
+    encoding_net = None
+    if encoding_fc_layers or encoding_conv_layers:
+        encoding_net = EncodingNetwork(
+            input_tensor_spec=env.observation_spec(),
+            conv_layer_params=encoding_conv_layers,
+            fc_layer_params=encoding_fc_layers)
+
+    icm = None
+    if use_icm:
+        feature_spec = env.observation_spec()
+        if encoding_net:
+            feature_spec = tf.TensorSpec((encoding_fc_layers[-1], ),
+                                         dtype=tf.float32)
+        icm = ICMAlgorithm(
+            env.action_spec(), feature_spec, encoding_net=encoding_net)
+
+    algorithm = ActorCriticAlgorithm(
+        action_spec=env.action_spec(),
+        actor_network=actor_net,
+        value_network=value_net,
+        intrinsic_curiosity_module=icm,
+        optimizer=optimizer,
+        debug_summaries=debug_summaries)
+
+    if off_policy:
+        algorithm = OffPolicyAdapter(algorithm)
+
+    return algorithm

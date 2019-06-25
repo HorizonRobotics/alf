@@ -11,10 +11,10 @@ ActorCriticLoss.entropy_regularization=0.1
 ActorDistributionNetwork.activation_fn=@tf.nn.elu
 ValueNetwork.activation_fn=@tf.nn.elu
 
-create_algorithm.use_icm=1
-create_algorithm.actor_fc_layers=(256,)
-create_algorithm.value_fc_layers=(256,)
-create_algorithm.encoding_fc_layers=(200,)
+create_ac_algorithm.use_icm=1
+create_ac_algorithm.actor_fc_layers=(256,)
+create_ac_algorithm.value_fc_layers=(256,)
+create_ac_algorithm.encoding_fc_layers=(200,)
 
 ICMAlgorithm.hidden_size=200
 EncodingNetwork.activation_fn=@tf.nn.elu

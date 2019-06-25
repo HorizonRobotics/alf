@@ -45,7 +45,7 @@ class TrainingPolicy(tf_policy.Base):
     To use it, you need to implement an OnPolicyAlgorithm and pass as argument
     to the constructor.
 
-    See example/actor_critic.py for example.
+    See example/main.py for example.
     """
 
     def __init__(self,

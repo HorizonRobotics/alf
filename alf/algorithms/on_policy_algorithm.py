@@ -101,10 +101,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
 
 
 class OffPolicyAdapter(OffPolicyAlgorithm):
-    """An adapter to make an on-policy algorithm into an off-policy algorithm.
-    
-    See alf/examples/off_policy_actor_critic.py for example usage.
-    """
+    """An adapter to make an on-policy algorithm into an off-policy algorithm."""
 
     def __init__(self, algorithm: OnPolicyAlgorithm):
         super().__init__(
@@ -138,9 +135,12 @@ class OffPolicyAdapter(OffPolicyAlgorithm):
     def predict(self, time_step: ActionTimeStep, state=None):
         return self._algorithm.predict(time_step, state)
 
-    def train_complete(self, tape: tf.GradientTape,
+    def train_complete(self,
+                       tape: tf.GradientTape,
                        training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep, final_info, weight):
+                       final_time_step: ActionTimeStep,
+                       final_info,
+                       weight=1.0):
         return self._algorithm.train_complete(
             tape, training_info, final_time_step, final_info, weight)
 

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from absl import logging
-import numpy as np
 import os
 import psutil
 import time
@@ -22,12 +21,8 @@ import unittest
 import tensorflow as tf
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
-from tf_agents.networks.encoding_network import EncodingNetwork
-from tf_agents.specs.tensor_spec import TensorSpec
 
-from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.decoding_algorithm import DecodingAlgorithm
-from alf.algorithms.merlin_algorithm import MerlinAlgorithm
+from alf.algorithms.merlin_algorithm import create_merlin_algorithm
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.policies.training_policy import TrainingPolicy
@@ -35,48 +30,8 @@ from alf.utils.common import run_under_record_context
 
 
 class MerlinAlgorithmTest(unittest.TestCase):
-    def _create_algorithm(self, env, learning_rate=1e-1):
-        observation_spec = env.observation_spec()
-        action_spec = env.action_spec()
-
-        latent_dim = 3
-        memory_size = 20
-
-        global_step = tf.summary.experimental.get_step()
-
-        encoder = EncodingNetwork(
-            input_tensor_spec=observation_spec,
-            fc_layer_params=(3, ),
-            activation_fn=None,
-            name="ObsEncoder")
-
-        decoder = DecodingAlgorithm(
-            decoder=EncodingNetwork(
-                input_tensor_spec=TensorSpec((latent_dim, ), dtype=tf.float32),
-                fc_layer_params=(3, ),
-                activation_fn=None,
-                name="ObsDecoder"),
-            loss_weight=100.)
-
-        optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
-
-        algorithm = MerlinAlgorithm(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            encoders=encoder,
-            decoders=decoder,
-            latent_dim=latent_dim,
-            lstm_size=(4, ),
-            memory_size=memory_size,
-            rl_loss=ActorCriticLoss(action_spec=action_spec, gamma=1.0),
-            train_step_counter=global_step,
-            optimizer=optimizer,
-            debug_summaries=True)
-
-        return algorithm
-
     def _create_policy(self, env, train_interval=1, learning_rate=1e-1):
-        algorithm = self._create_algorithm(env, learning_rate)
+        algorithm = create_merlin_algorithm(env, learning_rate)
 
         global_step = tf.summary.experimental.get_step()
 
@@ -124,7 +79,7 @@ class MerlinAlgorithmTest(unittest.TestCase):
             batch_size, steps_per_episode, gap, obs_dim=3)
         env = TFPyEnvironment(env)
 
-        algorithm = self._create_algorithm(env, learning_rate=1e-3)
+        algorithm = create_merlin_algorithm(env, learning_rate=1e-3)
         driver = OnPolicyDriver(
             env,
             algorithm,
@@ -159,6 +114,7 @@ class MerlinAlgorithmTest(unittest.TestCase):
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
+
     set_per_process_memory_growth()
 
     run_under_record_context(
