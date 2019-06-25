@@ -30,3 +30,6 @@ gin.external_configurable(atari_wrappers.FrameStack4)
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
 gym.envs.registration.EnvSpec.make = gin.external_configurable(
     gym.envs.registration.EnvSpec.make, 'gym.envs.registration.EnvSpec.make')
+
+# Activation functions.
+gin.external_configurable(tf.math.exp, 'tf.math.exp')

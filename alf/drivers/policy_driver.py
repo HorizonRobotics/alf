@@ -193,9 +193,9 @@ class PolicyDriver(driver.Driver):
                                                 self._train_step_counter)
             eager_utils.add_gradients_summaries(grads_and_vars,
                                                 self._train_step_counter)
+        if self._debug_summaries:
             common.add_action_summaries(training_info.action,
                                         self.env.action_spec())
-        if self._debug_summaries:
             common.add_loss_summaries(loss_info)
 
         for metric in self._metrics:
