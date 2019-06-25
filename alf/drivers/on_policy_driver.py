@@ -226,7 +226,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                  name='iter_loop')
 
         if self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP:
-            next_time_step, policy_step, _ = self._step(
+            next_time_step, policy_step, action = self._step(
                 time_step, policy_state)
             next_state = policy_step.state
         else:
