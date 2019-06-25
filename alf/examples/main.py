@@ -77,6 +77,7 @@ def train_eval(train_dir,
         debug_summaries=debug_summaries)
 
 
+@gin.configurable
 def play(train_dir, algorithm_ctor=create_ac_algorithm):
     """Play using the latest checkpoint under `train_dir`."""
     env = create_environment(num_parallel_environments=1)
