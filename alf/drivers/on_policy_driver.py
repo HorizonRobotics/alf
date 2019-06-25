@@ -135,14 +135,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             discount=time_step_spec.discount,
             info=info_spec)
 
-    def _algorithm_step(self, time_step, state):
-        if self._training:
-            return self._algorithm.train_step(time_step, state)
-        elif self._greedy_predict:
-            return self._algorithm.greedy_predict(time_step, state)
-        else:
-            return self._algorithm.predict(time_step, state)
-
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""
         if self._training:
@@ -242,7 +234,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 time_step, policy_state)
             next_state = policy_step.state
         else:
-            policy_step = self.algorithm_step(time_step, policy_state)
+            policy_step = self.algorithm_step(time_step, policy_state, self._training)
             next_time_step = time_step
             next_state = policy_state
 

@@ -60,7 +60,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  algorithm: OffPolicyAlgorithm,
                  observers=[],
                  metrics=[],
-                 training=True,
                  greedy_predict=False,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
@@ -74,23 +73,25 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
-            training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
+        # training=False because training info is always obtained from
+        # replayed exps instead of current time_step prediction. So _step() in
+        # policy_driver.py has nothing to do with training for off-policy algorithms
         super(OffPolicyDriver, self).__init__(
             env=env,
             algorithm=algorithm,
             observers=observers,
             metrics=metrics,
-            training=training,
+            training=False,
             greedy_predict=greedy_predict,
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
@@ -181,15 +182,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         return common.zero_tensor_from_nested_spec(
             self._algorithm.train_state_spec, batch_size)
 
-    def _algorithm_step(self, time_step, state):
-        if self._greedy_predict:
-            return self._algorithm.greedy_predict(time_step, state)
-        else:
-            return self._algorithm.predict(time_step, state)
-
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""
-
         return self.predict(max_num_steps, time_step, policy_state)
 
     def _make_time_major(self, nest):
@@ -213,7 +207,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 assumed to be batch major.
             num_updates (int): number of optimization steps
             mini_batch_size (int): number of sequences for each minibatch
-            mini_batch_length (int): the length of the sequence for each 
+            mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch
         """
         length = experience.step_type.shape[1]
@@ -252,7 +246,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._train_step_counter.assign_add(1)
 
     def _train_step(self, exp, state):
-        policy_step = self._algorithm.train_step(exp, state=state)
+        policy_step = self.algorithm_step(exp, state=state, training=True)
         return policy_step._replace(
             action=self._to_distribution(policy_step.action))
 
@@ -287,6 +281,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
+
             policy_step = self._train_step(exp, state=policy_state)
             action_distribution_param = common.get_distribution_params(
                 policy_step.action)

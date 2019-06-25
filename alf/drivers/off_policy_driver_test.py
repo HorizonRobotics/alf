@@ -135,7 +135,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
             summarize_grads_and_vars=True)
         replay_buffer = driver.add_replay_buffer()
         eval_driver = OffPolicyDriver(
-            eval_env, algorithm, training=False, greedy_predict=True)
+            eval_env, algorithm, greedy_predict=True)
         driver.run = tf.function(driver.run)
         eval_driver.run = tf.function(eval_driver.run)
 
