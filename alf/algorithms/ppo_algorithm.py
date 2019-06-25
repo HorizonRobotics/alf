@@ -59,3 +59,7 @@ class PPOAlgorithm(OffPolicyAdapter):
 
     def predict(self, time_step: ActionTimeStep, state=None):
         return self._algorithm.train_step(time_step, state)
+
+    @property
+    def predict_state_spec(self):
+        return self._algorithm.train_state_spec
