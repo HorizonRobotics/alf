@@ -176,12 +176,12 @@ class PPOLoss(ActorCriticLoss):
 class PPOLoss2(PPOLoss):
     """Create a PPOLoss2 object.
 
-    Note: Different from PPOLoss, PPOLoss uses pre-computed advantage so the
+    Note: Different from PPOLoss, PPOLoss2 uses pre-computed advantage so the
     advantage is fixed within one epoch, which is the behavior of baselines.ppo2.
     """
 
     def __call__(self, training_info: TrainingInfo, value):
-        """Cacluate actor critic loss
+        """Cacluate PPO Loss.
 
         The first dimension of all the tensors is time dimension and the
         second dimesion is the batch dimension.
