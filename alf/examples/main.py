@@ -86,7 +86,7 @@ def train_eval(train_dir,
     else:
         raise ValueError(
             "Algorithm must be one of `OffPolicyAlgorithm`,"
-            " `OffPolicyAlgorithm`. Received:", type(algorithm))
+            " `OnPolicyAlgorithm`. Received:", type(algorithm))
     trainer(
         train_dir,
         env,
