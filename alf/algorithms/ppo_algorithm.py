@@ -18,6 +18,7 @@ import gin
 import tensorflow as tf
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
+from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
 from alf.algorithms.off_policy_algorithm import Experience
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
@@ -63,3 +64,15 @@ class PPOAlgorithm(OffPolicyAdapter):
     @property
     def predict_state_spec(self):
         return self._algorithm.train_state_spec
+
+
+@gin.configurable
+def create_ppo_algorithm(env, debug_summaries):
+    """Create a simple PPOAlgorithm.
+
+    Args:
+        env (TFEnvironment): A TFEnvironment
+        debug_summaries (bool): True if debug summaries should be created.
+    """
+    algorithm = create_ac_algorithm(env, debug_summaries=debug_summaries)
+    return PPOAlgorithm(algorithm)

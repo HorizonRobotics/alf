@@ -51,9 +51,13 @@ class UnittestEnv(PyEnvironment):
         self._episode_length = episode_length
         super(UnittestEnv, self).__init__()
         self._action_type = action_type
-        action_dtype = tf.int64 if action_type == ActionType.Discrete else tf.float32
-        self._action_spec = BoundedTensorSpec(
-            shape=(1, ), dtype=action_dtype, minimum=0, maximum=1)
+        if action_type == ActionType.Discrete:
+            self._action_spec = BoundedTensorSpec(
+                shape=(1, ), dtype=tf.int64, minimum=0, maximum=1)
+        else:
+            self._action_spec = BoundedTensorSpec(
+                shape=(1, ), dtype=tf.float32, minimum=[0], maximum=[1])
+
         self._observation_spec = TensorSpec(
             shape=(obs_dim, ), dtype=tf.float32)
         self._batch_size = batch_size

@@ -26,11 +26,11 @@ ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 ValueNetwork.activation_fn=@tf.nn.elu
 ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
-create_algorithm.actor_fc_layers=(256,)
-create_algorithm.value_fc_layers=(256,)
+create_ac_algorithm.actor_fc_layers=(256,)
+create_ac_algorithm.value_fc_layers=(256,)
 
 ActorCriticAlgorithm.gradient_clipping=None
-create_algorithm.learning_rate=5e-4
+create_ac_algorithm.learning_rate=5e-4
 
 # training config
 on_policy_trainer.train.num_iterations=1000000

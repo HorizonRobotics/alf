@@ -22,11 +22,12 @@ ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 ValueNetwork.activation_fn=@tf.nn.elu
 ValueNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 
-create_algorithm.actor_fc_layers=(256,)
-create_algorithm.value_fc_layers=(256,)
+create_ac_algorithm.actor_fc_layers=(256,)
+create_ac_algorithm.value_fc_layers=(256,)
+create_ac_algorithm.learning_rate=1e-4
 
 ActorCriticAlgorithm.gradient_clipping=None
-create_algorithm.learning_rate=5e-4
+
 
 # tf has a bug which can be triggered by the default data_format 'channels_last'
 # It has something to do with AddLayoutTransposeToOutputs() in 

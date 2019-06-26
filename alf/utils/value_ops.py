@@ -11,26 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Various functions related to calculating values."""
 
 import tensorflow as tf
 
 from tf_agents.trajectories.time_step import StepType
 
 
-def shift_back(a, last):
-    """Pop `a[0]` and append `last` to `a`
-    """
-    return tf.concat([a[1:], tf.expand_dims(last, 0)], axis=0)
-
-
-def discounted_return(rewards,
-                      values,
-                      step_types,
-                      discounts,
-                      final_value,
-                      final_time_step,
-                      time_major=True):
-    """Computes discounted return.
+def discounted_return(rewards, values, step_types, discounts, time_major=True):
+    """Computes discounted return for the first T-1 steps.
 
     The difference between this function and the one tf_agents.utils.value_ops
     is that the accumulated_discounted_reward is replaced by value for is_last
@@ -49,15 +38,12 @@ def discounted_return(rewards,
         values (Tensor): shape is [T,B] (or [T]) representing values.
         step_types (Tensor): shape is [T,B] (or [T]) representing step types.
         discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
-        final_value (Tensor): shape is [B] (or [1]) representing value estimate
-            at t=T.
-        final_time_step (TimeStep): time_step at t=T
         time_major (bool): Whether input tensors are time major.
             False means input tensors have shape [B, T].
 
     Returns:
-        A tensor with shape [T, B] (or [T]) representing the discounted returns.
-        Shape is [B, T] when time_major is false.
+        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
+        returns. Shape is [B, T-1] when time_major is false.
     """
 
     if not time_major:
@@ -66,9 +52,12 @@ def discounted_return(rewards,
         values = tf.transpose(a=values)
         step_types = tf.transpose(a=step_types)
 
-    discounts = shift_back(discounts, final_time_step.discount)
-    rewards = shift_back(rewards, final_time_step.reward)
+    discounts = discounts[1:]
+    rewards = rewards[1:]
+    final_value = values[-1]
+    values = values[:-1]
 
+    step_types = step_types[:-1]
     is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
 
     def discounted_return_fn(acc_discounted_reward, args):
@@ -89,9 +78,8 @@ def discounted_return(rewards,
     return tf.stop_gradient(returns)
 
 
-def one_step_discounted_return(rewards, values, step_types, discounts,
-                               final_value, final_time_step):
-    """Calculate the one step discounted return.
+def one_step_discounted_return(rewards, values, step_types, discounts):
+    """Calculate the one step discounted return  for the first T-1 steps.
     
     return = next_reward + next_discount * next_value
     Note: Input tensors must be time major
@@ -100,17 +88,15 @@ def one_step_discounted_return(rewards, values, step_types, discounts,
         values (Tensor): shape is [T,B] (or [T]) representing values.
         step_types (Tensor): shape is [T,B] (or [T]) representing step types.
         discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
-        final_value (Tensor): shape is [B] (or [1]) representing value estimate
-            at t=T.
-        final_time_step (TimeStep): time_step at t=T
-
     Returns:
-        A tensor with shape [T, B] (or [T]) representing the discounted returns.
+        A tensor with shape [T-1, B] (or [T-1]) representing the discounted
+        returns.
     """
 
-    discounts = shift_back(discounts, final_time_step.discount)
-    rewards = shift_back(rewards, final_time_step.reward)
-    values = shift_back(values, final_value)
+    discounts = discounts[1:]
+    rewards = rewards[1:]
+    values = values[1:]
+    step_types = step_types[:-1]
 
     is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
     returns = rewards + (1 - is_lasts) * discounts * values
@@ -122,11 +108,9 @@ def generalized_advantage_estimation(rewards,
                                      values,
                                      step_types,
                                      discounts,
-                                     final_value,
-                                     final_time_step,
                                      td_lambda=1.0,
                                      time_major=True):
-    """Computes generalized advantage estimation (GAE).
+    """Computes generalized advantage estimation (GAE) for the first T-1 steps.
 
     For theory, see
     "High-Dimensional Continuous Control Using Generalized Advantage Estimation"
@@ -145,17 +129,14 @@ def generalized_advantage_estimation(rewards,
         values (Tensor): shape is [T,B] (or [T]) representing values.
         step_types (Tensor): shape is [T,B] (or [T]) representing step types.
         discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
-        final_value (Tensor): shape is [B] (or [1]) representing value estimate
-            at t=T.
-        final_time_step (TimeStep): time_step at t=T
         td_lambda (float): A scalar between [0, 1]. It's used for variance
             reduction in temporal difference.
         time_major (bool): Whether input tensors are time major.
             False means input tensors have shape [B, T].
 
     Returns:
-        A tensor with shape [T, B] representing advantages. Shape is [B, T] when
-        time_major is false.
+        A tensor with shape [T-1, B] representing advantages. Shape is [B, T-1]
+        when time_major is false.
     """
 
     if not time_major:
@@ -164,10 +145,12 @@ def generalized_advantage_estimation(rewards,
         values = tf.transpose(a=values)
         step_types = tf.transpose(a=step_types)
 
-    rewards = shift_back(rewards, final_time_step.reward)
-    next_values = shift_back(values, final_value)
-    discounts = shift_back(discounts, final_time_step.discount)
-
+    rewards = rewards[1:]
+    next_values = values[1:]
+    final_value = values[-1]
+    values = values[:-1]
+    discounts = discounts[1:]
+    step_types = step_types[:-1]
     is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
 
     delta = rewards + discounts * next_values - values

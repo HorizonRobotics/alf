@@ -129,6 +129,7 @@ def train(train_dir,
                 policy_state=policy_state)
 
             experience = replay_buffer.gather_all()
+
             driver.train(
                 experience,
                 num_updates=num_updates_per_train_step,

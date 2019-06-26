@@ -21,9 +21,11 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.agents.tf_agent import LossInfo
+from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.network import Network
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.value_network import ValueNetwork
+from tf_agents.specs import TensorSpec
 from tf_agents.specs.tensor_spec import TensorSpec
 from tf_agents.trajectories.policy_step import PolicyStep
 
@@ -31,6 +33,7 @@ import alf
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_algorithm import ActorCriticInfo
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep
@@ -329,12 +332,9 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         return PolicyStep(
             action=action_distribution, state=rnn_state, info=info)
 
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep, final_info):
+    def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
-        final_value = final_info.value
-        loss = self._loss(training_info, training_info.info.value,
-                          final_time_step, final_value)
+        loss = self._loss(training_info, training_info.info.value)
         return loss._replace(loss=self._loss_weight * loss.loss)
 
 
@@ -431,16 +431,64 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
 
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep, final_info):
+    def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
         self.add_reward_summary("reward", training_info.reward)
         mbp_loss_info = self._mbp.calc_loss(training_info.info.mbp_info)
         mba_loss_info = self._mba.calc_loss(
-            training_info._replace(info=training_info.info.mba_info),
-            final_time_step, final_info.mba_info)
+            training_info._replace(info=training_info.info.mba_info))
 
         return LossInfo(
             loss=mbp_loss_info.loss + mba_loss_info.loss,
             extra=MerlinLossInfo(
                 mbp=mbp_loss_info.extra, mba=mba_loss_info.extra))
+
+
+@gin.configurable
+def create_merlin_algorithm(env,
+                            encoder_fc_layers=(3, ),
+                            latent_dim=3,
+                            lstm_size=(4, ),
+                            memory_size=20,
+                            learning_rate=1e-1):
+    """Create a simple MerlinAlgorithm
+
+    Args:
+        env (TFEnvironment): A TFEnvironment
+        encoder_fc_layers (list[int]): list of fc layers parameters for encoder
+        latent_dim (int): the dimension of the hidden represenation of VAE.
+        lstm_size (list[int]): size of lstm layers for MBP and MBA
+        memory_size (int): number of memory slots
+        learning_rate (float): learning rate for training
+    """
+    observation_spec = env.observation_spec()
+    action_spec = env.action_spec()
+
+    encoder = EncodingNetwork(
+        input_tensor_spec=observation_spec,
+        fc_layer_params=encoder_fc_layers,
+        activation_fn=None,
+        name="ObsEncoder")
+
+    decoder = DecodingAlgorithm(
+        decoder=EncodingNetwork(
+            input_tensor_spec=TensorSpec((latent_dim, ), dtype=tf.float32),
+            fc_layer_params=encoder_fc_layers,
+            activation_fn=None,
+            name="ObsDecoder"),
+        loss_weight=100.)
+
+    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+
+    algorithm = MerlinAlgorithm(
+        observation_spec=observation_spec,
+        action_spec=action_spec,
+        encoders=encoder,
+        decoders=decoder,
+        latent_dim=latent_dim,
+        lstm_size=lstm_size,
+        memory_size=memory_size,
+        optimizer=optimizer,
+        debug_summaries=True)
+
+    return algorithm

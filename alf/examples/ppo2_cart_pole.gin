@@ -5,6 +5,7 @@ create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
 
 # algorithm config
+train_eval.algorithm_ctor=create_ppo_algorithm
 ActorCriticAlgorithm.loss_class=@PPOLoss2
 PPOLoss2.entropy_regularization=1e-4
 PPOLoss2.gamma=0.98
