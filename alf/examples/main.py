@@ -45,6 +45,7 @@ from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.environments.utils import create_environment
 from alf.trainers import on_policy_trainer, off_policy_trainer
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.utils import common
 import alf.utils.external_configurables
 
@@ -62,6 +63,15 @@ def train_eval(train_dir,
                algorithm_ctor=create_ac_algorithm,
                evaluate=True,
                debug_summaries=False):
+    """Train and evaluate algorithm
+
+    Args:
+        train_dir (str): directory for saving summary and checkpoints
+        algorithm_ctor (Callable): callable that create an
+            `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
+        evaluate (bool): A bool to evaluate when training.
+        debug_summaries (bool): A bool to gather debug summaries.
+    """
     env = create_environment()
     if evaluate:
         eval_env = create_environment(num_parallel_environments=1)
@@ -71,8 +81,12 @@ def train_eval(train_dir,
 
     if isinstance(algorithm, OffPolicyAlgorithm):
         trainer = off_policy_trainer.train
-    else:
+    elif isinstance(algorithm, OnPolicyAlgorithm):
         trainer = on_policy_trainer.train
+    else:
+        raise ValueError(
+            "Algorithm must be one of `OffPolicyAlgorithm`,"
+            " `OffPolicyAlgorithm`. Received:", type(algorithm))
     trainer(
         train_dir,
         env,
@@ -83,7 +97,14 @@ def train_eval(train_dir,
 
 @gin.configurable
 def play(train_dir, algorithm_ctor):
-    """Play using the latest checkpoint under `train_dir`."""
+    """Play using the latest checkpoint under `train_dir`.
+
+    Args:
+        train_dir (str): directory where checkpoints stores
+        algorithm_ctor (Callable): callable that create an algorithm
+            parameter value is bind with `__main__.train_eval.algorithm_ctor`,
+            just config `__main__.train_eval.algorithm_ctor` when using with gin configuration
+    """
     env = create_environment(num_parallel_environments=1)
     algorithm = algorithm_ctor(env)
     on_policy_trainer.play(train_dir, env, algorithm)
