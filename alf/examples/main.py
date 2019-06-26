@@ -44,6 +44,7 @@ import gin.tf.external_configurables
 from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.environments.utils import create_environment
 from alf.trainers import on_policy_trainer, off_policy_trainer
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.utils import common
 import alf.utils.external_configurables
 
@@ -59,7 +60,6 @@ FLAGS = flags.FLAGS
 @gin.configurable
 def train_eval(train_dir,
                algorithm_ctor=create_ac_algorithm,
-               trainer=on_policy_trainer.train,
                evaluate=True,
                debug_summaries=False):
     env = create_environment()
@@ -69,6 +69,10 @@ def train_eval(train_dir,
         eval_env = None
     algorithm = algorithm_ctor(env, debug_summaries=debug_summaries)
 
+    if isinstance(algorithm, OffPolicyAlgorithm):
+        trainer = off_policy_trainer.train
+    else:
+        trainer = on_policy_trainer.train
     trainer(
         train_dir,
         env,
@@ -78,7 +82,7 @@ def train_eval(train_dir,
 
 
 @gin.configurable
-def play(train_dir, algorithm_ctor=create_ac_algorithm):
+def play(train_dir, algorithm_ctor):
     """Play using the latest checkpoint under `train_dir`."""
     env = create_environment(num_parallel_environments=1)
     algorithm = algorithm_ctor(env)
@@ -94,8 +98,11 @@ def main(_):
         common.copy_gin_configs(FLAGS.root_dir, gin_file)
 
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-
     if FLAGS.play:
+        with gin.unlock_config():
+            gin.bind_parameter(
+                '__main__.play.algorithm_ctor',
+                gin.query_parameter('__main__.train_eval.algorithm_ctor'))
         play(FLAGS.root_dir + "/train")
     else:
         train_eval(FLAGS.root_dir + "/train")

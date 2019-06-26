@@ -28,4 +28,3 @@ TFUniformReplayBuffer.max_length=2048
 
 train_eval.debug_summaries=1
 train_eval.evaluate=0
-train_eval.trainer=@off_policy_trainer.train

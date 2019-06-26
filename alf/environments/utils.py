@@ -50,5 +50,13 @@ def load_with_random_max_episode_steps(env_name,
                                        env_load_fn=suite_gym.load,
                                        min_steps=200,
                                        max_steps=250):
-    return suite_gym.load(
+    """Create environment with random max_episode_steps in range [min_steps, max_steps]
+
+    Args:
+        env_name (str): env name
+        env_load_fn (Callable) : callable that create an environment
+        min_steps (int): represent min value of the random range
+        max_steps (int): represent max value of the random range
+    """
+    return env_load_fn(
         env_name, max_episode_steps=random.randint(min_steps, max_steps))

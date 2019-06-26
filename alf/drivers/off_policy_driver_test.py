@@ -20,8 +20,6 @@ import tensorflow as tf
 import gin.tf
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
-from tf_agents.agents.ddpg.critic_rnn_network import CriticRnnNetwork
-from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 
 from alf.algorithms.ddpg_algorithm import create_ddpg_algorithm
 from alf.algorithms.sac_algorithm import create_sac_algorithm
@@ -50,13 +48,6 @@ def _create_ddpg_algorithm(env):
 
 
 class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
-    def setUp(self) -> None:
-        gin.parse_config([
-            "ActorDistributionRnnNetwork.lstm_size=(4,)",
-            "CriticRnnNetwork.lstm_size=(4,)"
-        ])
-        super().setUp()
-
     @parameterized.parameters(
         _create_sac_algorithm,
         _create_ddpg_algorithm,

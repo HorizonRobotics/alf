@@ -25,53 +25,11 @@ from tf_agents.environments.tf_py_environment import TFPyEnvironment
 from alf.algorithms.merlin_algorithm import create_merlin_algorithm
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
-from alf.policies.training_policy import TrainingPolicy
 from alf.utils.common import run_under_record_context
 
 
 class MerlinAlgorithmTest(unittest.TestCase):
-    def _create_policy(self, env, train_interval=1, learning_rate=1e-1):
-        algorithm = create_merlin_algorithm(env, learning_rate)
-
-        global_step = tf.summary.experimental.get_step()
-
-        policy = TrainingPolicy(
-            algorithm=algorithm,
-            time_step_spec=env.time_step_spec(),
-            train_interval=train_interval,
-            train_step_counter=global_step,
-            debug_summaries=True,
-            summarize_grads_and_vars=False)
-
-        return policy
-
     def test_merlin_algorithm(self):
-        batch_size = 100
-        steps_per_episode = 15
-        gap = 10
-        env = RNNPolicyUnittestEnv(
-            batch_size, steps_per_episode, gap, obs_dim=3)
-
-        proc = psutil.Process(os.getpid())
-
-        policy = self._create_policy(env, train_interval=6, learning_rate=1e-3)
-        policy_state = policy.get_initial_state(batch_size)
-        time_step = env.reset()
-        for i in range(100):
-            t0 = time.time()
-            for _ in range(10 * steps_per_episode):
-                reward = time_step.reward
-                policy_step = policy.action(time_step, policy_state)
-                policy_state = policy_step.state
-                time_step = env.step(policy_step.action)
-
-            mem = proc.memory_info().rss // 1e6
-            print('%s time=%.3f mem=%s reward=%.3f' %
-                  (i, time.time() - t0, mem, float(tf.reduce_mean(reward))))
-
-        self.assertAlmostEqual(1.0, float(tf.reduce_mean(reward)), delta=1e-1)
-
-    def test_merlin_algorithm_on_policy_driver(self):
         batch_size = 100
         steps_per_episode = 15
         gap = 10
