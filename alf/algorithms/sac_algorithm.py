@@ -17,6 +17,10 @@ from collections import namedtuple
 import numpy as np
 import tensorflow as tf
 import gin.tf
+from tf_agents.agents.ddpg.critic_network import CriticNetwork
+from tf_agents.agents.ddpg.critic_rnn_network import CriticRnnNetwork
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.network import Network
 from tf_agents.utils import common as tfa_common
 from tf_agents.agents.tf_agent import LossInfo
@@ -287,8 +291,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
         return PolicyStep(action_distribution, state, info)
 
-    def train_complete(self, tape: tf.GradientTape,
-                       training_info: TrainingInfo, weight):
+    def train_complete(self,
+                       tape: tf.GradientTape,
+                       training_info: TrainingInfo,
+                       weight=1.0):
         ret = super().train_complete(
             tape=tape, training_info=training_info, weight=weight)
         self._update_target()
@@ -322,3 +328,58 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
         return LossInfo(loss=critic_loss, extra=critic_loss)
+
+
+@gin.configurable
+def create_sac_algorithm(env,
+                         actor_fc_layers=(100, 100),
+                         critic_fc_layers=(100, 100),
+                         use_rnns=False,
+                         alpha_learning_rate=5e-3,
+                         actor_learning_rate=5e-3,
+                         critic_learning_rate=5e-3,
+                         debug_summaries=False):
+    """Create a simple SacAlgorithm.
+
+    Args:
+        env (TFEnvironment): A TFEnvironment
+        actor_fc_layers (list[int]): list of fc layers parameters for actor network
+        critic_fc_layers (list[int]): list of fc layers parameters for critic network
+        use_rnns (bool): True if rnn should be used
+        alpha_learning_rate (float): learning rate for alpha
+        actor_learning_rate (float) : learning rate for actor network
+        critic_learning_rate (float) : learning rate for critic network
+        debug_summaries (bool): True if debug summaries should be created
+    """
+
+    observation_spec = env.observation_spec()
+    action_spec = env.action_spec()
+
+    if use_rnns:
+        actor_net = ActorDistributionRnnNetwork(
+            observation_spec,
+            action_spec,
+            input_fc_layer_params=actor_fc_layers,
+            output_fc_layer_params=())
+        critic_net = CriticRnnNetwork((observation_spec, action_spec),
+                                      observation_fc_layer_params=(),
+                                      action_fc_layer_params=(),
+                                      output_fc_layer_params=(),
+                                      joint_fc_layer_params=critic_fc_layers)
+    else:
+        actor_net = ActorDistributionNetwork(
+            observation_spec, action_spec, fc_layer_params=actor_fc_layers)
+        critic_net = CriticNetwork((observation_spec, action_spec),
+                                   joint_fc_layer_params=critic_fc_layers)
+
+    actor_optimizer = tf.optimizers.Adam(learning_rate=actor_learning_rate)
+    critic_optimizer = tf.optimizers.Adam(learning_rate=critic_learning_rate)
+    alpha_optimizer = tf.optimizers.Adam(learning_rate=alpha_learning_rate)
+    return SacAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        critic_network=critic_net,
+        actor_optimizer=actor_optimizer,
+        critic_optimizer=critic_optimizer,
+        alpha_optimizer=alpha_optimizer,
+        debug_summaries=debug_summaries)
