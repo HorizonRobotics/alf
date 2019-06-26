@@ -67,7 +67,7 @@ class PPOAlgorithm(OffPolicyAdapter):
 
 
 @gin.configurable
-def create_ppo_algorithm(env, debug_summaries):
+def create_ppo_algorithm(env, debug_summaries=False):
     """Create a simple PPOAlgorithm.
 
     Args:

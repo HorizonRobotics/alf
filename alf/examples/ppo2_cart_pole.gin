@@ -1,19 +1,17 @@
-# run with ppo2.py
+include 'ppo2.gin'
 
 # environment config
 create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
 
 # algorithm config
-train_eval.algorithm_ctor=create_ppo_algorithm
-ActorCriticAlgorithm.loss_class=@PPOLoss2
 PPOLoss2.entropy_regularization=1e-4
 PPOLoss2.gamma=0.98
 PPOLoss2.td_error_loss_fn=@element_wise_huber_loss
 PPOLoss2.normalize_advantages=False
-create_algorithm.actor_fc_layers=(100,)
-create_algorithm.value_fc_layers=(100,)
-create_algorithm.learning_rate=0.001
+create_ac_algorithm.actor_fc_layers=(100,)
+create_ac_algorithm.value_fc_layers=(100,)
+create_ac_algorithm.learning_rate=0.001
 
 # training config
 off_policy_trainer.train.mini_batch_length=1
@@ -26,5 +24,5 @@ off_policy_trainer.train.num_updates_per_train_step=4
 off_policy_trainer.train.use_tf_functions=False
 TFUniformReplayBuffer.max_length=2048
 
-__main__.train_eval.debug_summaries=True
-__main__.train_eval.evaluate=0
+train_eval.debug_summaries=True
+train_eval.evaluate=False

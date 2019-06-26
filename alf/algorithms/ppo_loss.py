@@ -71,10 +71,12 @@ class PPOLoss(ActorCriticLoss):
                 Q values and returns the loss for each element of the batch.
             use_gae (bool): If True, uses generalized advantage estimation for
                 computing per-timestep advantage. Else, just subtracts value
-                predictions from empirical return.
+                predictions from empirical return. This is ignored by PPOLoss2
+                (Alwasy assumed to be True)
             use_td_lambda_return (bool): Only effective if use_gae is True.
                 If True, uses td_lambda_return for training value function.
-                (td_lambda_return = gae_advantage + value_predictions)
+                (td_lambda_return = gae_advantage + value_predictions). This is
+                ignored by PPOLoss2 (Alwasy assumed to be True)
             td_lambda (float): Lambda parameter for TD-lambda computation.
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
