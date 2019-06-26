@@ -227,8 +227,6 @@ class RLAlgorithm(tf.Module):
     def train_complete(self,
                        tape: tf.GradientTape,
                        training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep,
-                       final_info,
                        weight=1.0):
         """Complete one iteration of training.
 
@@ -242,10 +240,6 @@ class RLAlgorithm(tf.Module):
             training_info (TrainingInfo): information collected for training.
                 training_info.info are the batched from each policy_step.info
                 returned by train_step()
-            final_time_step (ActionTimeStep): the additional time_step
-            final_info (nested Tensor): `info` from additional
-                `train_step` evaluated from final_time_step or final_experience.
-                This final_info is NOT calculated under the context of `tape`
             weight (float): weight for this batch. Loss will be multiplied with
                 this wegith before calculating gradient
         Returns:
@@ -263,16 +257,13 @@ class RLAlgorithm(tf.Module):
         if self._reward_shaping_fn is not None:
             training_info = training_info._replace(
                 reward=self._reward_shaping_fn(training_info.reward))
-            final_time_step = final_time_step._replace(
-                reward=self._reward_shaping_fn(final_time_step.reward))
 
         # record shaped extrinsic rewards actually used for training
         self.add_reward_summary("training_reward/extrinsic",
                                 training_info.reward)
 
         with tape:
-            loss_info = self.calc_loss(training_info, final_time_step,
-                                       final_info)
+            loss_info = self.calc_loss(training_info)
             loss_info = tf.nest.map_structure(
                 lambda l: tf.reduce_mean(l * valid_masks), loss_info)
             loss = weight * loss_info.loss
@@ -298,8 +289,7 @@ class RLAlgorithm(tf.Module):
         return loss_info, all_grads_and_vars
 
     @abstractmethod
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep, final_info):
+    def calc_loss(self, training_info: TrainingInfo):
         """Calculate the loss for each step.
 
         `calc_loss()` does not need to mask out the loss at invalid steps as

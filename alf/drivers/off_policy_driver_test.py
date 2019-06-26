@@ -46,20 +46,18 @@ def create_ddpg_algorithm(env, use_rnn=False, learning_rate=1e-1):
             action_spec,
             input_fc_layer_params=(),
             output_fc_layer_params=(),
-            lstm_size=(4,))
-        critic_net = CriticRnnNetwork(
-            (observation_spec, action_spec),
-            observation_fc_layer_params=(),
-            action_fc_layer_params=(),
-            output_fc_layer_params=(),
-            joint_fc_layer_params=(10,),
-            lstm_size=(4,))
+            lstm_size=(4, ))
+        critic_net = CriticRnnNetwork((observation_spec, action_spec),
+                                      observation_fc_layer_params=(),
+                                      action_fc_layer_params=(),
+                                      output_fc_layer_params=(),
+                                      joint_fc_layer_params=(10, ),
+                                      lstm_size=(4, ))
     else:
         actor_net = ActorNetwork(
             observation_spec, action_spec, fc_layer_params=())
-        critic_net = CriticNetwork(
-            (observation_spec, action_spec),
-            joint_fc_layer_params=(10, 10))
+        critic_net = CriticNetwork((observation_spec, action_spec),
+                                   joint_fc_layer_params=(10, 10))
 
     actor_optimizer = tf.optimizers.Adam(learning_rate=0.1 * learning_rate)
     critic_optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
@@ -78,8 +76,8 @@ def create_sac_algorithm(env, use_rnn=False, learning_rate=5e-3):
     observation_spec = env.observation_spec()
     action_spec = env.action_spec()
 
-    actor_fc_layers = (100,)
-    critic_fc_layers = (100,)
+    actor_fc_layers = (100, )
+    critic_fc_layers = (100, )
 
     if use_rnn:
         actor_net = ActorDistributionRnnNetwork(
@@ -87,35 +85,34 @@ def create_sac_algorithm(env, use_rnn=False, learning_rate=5e-3):
             action_spec,
             input_fc_layer_params=actor_fc_layers,
             output_fc_layer_params=(),
-            lstm_size=(4,))
-        critic_net = CriticRnnNetwork(
-            (observation_spec, action_spec),
-            observation_fc_layer_params=(),
-            action_fc_layer_params=(),
-            output_fc_layer_params=(),
-            joint_fc_layer_params=critic_fc_layers,
-            lstm_size=(4,))
+            lstm_size=(4, ))
+        critic_net = CriticRnnNetwork((observation_spec, action_spec),
+                                      observation_fc_layer_params=(),
+                                      action_fc_layer_params=(),
+                                      output_fc_layer_params=(),
+                                      joint_fc_layer_params=critic_fc_layers,
+                                      lstm_size=(4, ))
     else:
         actor_net = ActorDistributionNetwork(
             observation_spec, action_spec, fc_layer_params=actor_fc_layers)
-        critic_net = CriticNetwork(
-            (observation_spec, action_spec),
-            joint_fc_layer_params=critic_fc_layers)
+        critic_net = CriticNetwork((observation_spec, action_spec),
+                                   joint_fc_layer_params=critic_fc_layers)
 
     actor_optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
     critic_optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
     alpha_optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
-    return SacAlgorithm(action_spec=action_spec,
-                        actor_network=actor_net,
-                        critic_network=critic_net,
-                        actor_optimizer=actor_optimizer,
-                        critic_optimizer=critic_optimizer,
-                        alpha_optimizer=alpha_optimizer)
+    return SacAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        critic_network=critic_net,
+        actor_optimizer=actor_optimizer,
+        critic_optimizer=critic_optimizer,
+        alpha_optimizer=alpha_optimizer)
 
 
 class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
 
-    @parameterized.parameters(create_sac_algorithm, create_ddpg_algorithm, )
+    #@parameterized.parameters(create_sac_algorithm, create_ddpg_algorithm, )
     def test_off_policy_algorithm(self, algorithm_ctor):
         batch_size = 100
         steps_per_episode = 13
@@ -134,8 +131,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
             debug_summaries=True,
             summarize_grads_and_vars=True)
         replay_buffer = driver.add_replay_buffer()
-        eval_driver = OffPolicyDriver(
-            eval_env, algorithm, greedy_predict=True)
+        eval_driver = OffPolicyDriver(eval_env, algorithm, greedy_predict=True)
         driver.run = tf.function(driver.run)
         eval_driver.run = tf.function(eval_driver.run)
 
@@ -154,7 +150,8 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                 max_num_steps=batch_size * 4,
                 time_step=time_step,
                 policy_state=policy_state)
-            experience, _ = replay_buffer.get_next(sample_batch_size=128, num_steps=2)
+            experience, _ = replay_buffer.get_next(
+                sample_batch_size=128, num_steps=2)
             driver.train(experience)
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(

@@ -92,8 +92,7 @@ class ActorCriticLoss(object):
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
 
-    def __call__(self, training_info: TrainingInfo, value, final_time_step,
-                 final_value):
+    def __call__(self, training_info: TrainingInfo, value):
         """Cacluate actor critic loss
 
         Except final_value, the first dimension of all the tensors is time
@@ -112,9 +111,8 @@ class ActorCriticLoss(object):
             rewards=training_info.reward,
             values=value,
             step_types=training_info.step_type,
-            discounts=training_info.discount * self._gamma,
-            final_value=final_value,
-            final_time_step=final_time_step)
+            discounts=training_info.discount * self._gamma)
+        returns = common.tensor_extend(returns, value[-1])
 
         if not self._use_gae:
             advantages = returns - value
@@ -124,12 +122,10 @@ class ActorCriticLoss(object):
                 values=value,
                 step_types=training_info.step_type,
                 discounts=training_info.discount * self._gamma,
-                final_value=final_value,
-                final_time_step=final_time_step,
                 td_lambda=self._lambda)
+            advantages = common.tensor_extend_zero(advantages)
             if self._use_td_lambda_return:
                 returns = advantages + value
-
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages, axes=(0, 1))
 

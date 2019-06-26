@@ -237,7 +237,8 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        policy_step = self.algorithm_step(time_step, state=policy_state, training=self._training)
+        policy_step = self.algorithm_step(
+            time_step, state=policy_state, training=self._training)
         action = self._sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:

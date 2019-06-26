@@ -157,7 +157,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         return PolicyStep(action=action_distribution, state=state, info=info)
 
-    def calc_loss(self, training_info, final_time_step, final_info):
+    def calc_loss(self, training_info):
         if self._icm is not None:
             self.add_reward_summary("training_reward/intrinsic",
                                     training_info.info.icm_reward)
@@ -169,16 +169,11 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             training_info = training_info._replace(
                 reward=reward_calc_fn(training_info.reward, training_info.info.
                                       icm_reward))
-            final_time_step = final_time_step._replace(
-                reward=reward_calc_fn(final_time_step.reward, final_info.
-                                      icm_reward))
 
             self.add_reward_summary("training_reward/overall",
                                     training_info.reward)
 
-        final_value = final_info.value
-        ac_loss = self._loss(training_info, training_info.info.value,
-                             final_time_step, final_value)
+        ac_loss = self._loss(training_info, training_info.info.value)
 
         if self._icm is not None:
             icm_loss = self._icm.calc_loss(training_info.info.icm_info)
