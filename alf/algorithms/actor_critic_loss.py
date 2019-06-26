@@ -87,7 +87,8 @@ class ActorCriticLoss(object):
         self._lambda = td_lambda
         self._use_td_lambda_return = use_td_lambda_return
         self._normalize_advantages = normalize_advantages
-        assert advantage_clip is None or advantage_clip > 0, "Clipping value should be positive!"
+        assert advantage_clip is None or advantage_clip > 0, (
+            "Clipping value should be positive!")
         self._advantage_clip = advantage_clip
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
@@ -95,12 +96,12 @@ class ActorCriticLoss(object):
     def __call__(self, training_info: TrainingInfo, value):
         """Cacluate actor critic loss
 
-        Except final_value, the first dimension of all the tensors is time
-        dimension and the second dimesion is the batch dimension.
+        The first dimension of all the tensors is time dimension and the second
+        dimesion is the batch dimension.
 
         Args:
             training_info (TrainingInfo): training_info collected by
-                TrainingPolicy. All tensors in training_info are time-major
+                (On/Off)PolicyDriver. All tensors in training_info are time-major
             value (tf.Tensor): the time-major tensor for the value at each time
                 step
             final_value (tf.Tensor): the value at one step ahead.
@@ -116,6 +117,8 @@ class ActorCriticLoss(object):
                 tf.summary.scalar("values", tf.reduce_mean(value))
                 tf.summary.scalar("returns", tf.reduce_mean(returns))
                 tf.summary.scalar("advantages", tf.reduce_mean(advantages))
+                tf.summary.scalar("explained_variance_of_return_by_value",
+                                  common.explained_variance(value, returns))
 
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages, axes=(0, 1))

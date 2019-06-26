@@ -435,3 +435,25 @@ def tensor_extend_zero(x):
     """
     return tf.concat(
         [x, tf.zeros([1] + x.shape.as_list()[1:], dtype=x.dtype)], axis=0)
+
+
+def explained_variance(ypred, y):
+    """Computes fraction of variance that ypred explains about y.
+    
+    Adapted from baselines.ppo2 explained_variance()
+
+    Interpretation:
+        ev=0  =>  might as well have predicted zero
+        ev=1  =>  perfect prediction
+        ev<0  =>  worse than just predicting zero
+    
+    Args:
+        ypred (Tensor): prediction for y
+        y (Tensor): target
+    Returns:
+        1 - Var[y-ypred] / Var[y]
+    """
+    ypred = tf.reshape(ypred, [-1])
+    y = tf.reshape(y, [-1])
+    _, vary = tf.nn.moments(y, axes=(0, ))
+    return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)

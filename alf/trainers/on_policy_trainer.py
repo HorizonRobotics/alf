@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import sys
 import time
 
 from absl import logging
@@ -140,6 +141,7 @@ def train(train_dir,
             if iter == 0:
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
+                    tf.summary.text('commandline', ' '.join(sys.argv))
 
         checkpointer.save(global_step=global_step.numpy())
 
