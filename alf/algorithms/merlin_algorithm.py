@@ -332,12 +332,9 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         return PolicyStep(
             action=action_distribution, state=rnn_state, info=info)
 
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep, final_info):
+    def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
-        final_value = final_info.value
-        loss = self._loss(training_info, training_info.info.value,
-                          final_time_step, final_value)
+        loss = self._loss(training_info, training_info.info.value)
         return loss._replace(loss=self._loss_weight * loss.loss)
 
 
@@ -434,14 +431,12 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
 
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: ActionTimeStep, final_info):
+    def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
         self.add_reward_summary("reward", training_info.reward)
         mbp_loss_info = self._mbp.calc_loss(training_info.info.mbp_info)
         mba_loss_info = self._mba.calc_loss(
-            training_info._replace(info=training_info.info.mba_info),
-            final_time_step, final_info.mba_info)
+            training_info._replace(info=training_info.info.mba_info))
 
         return LossInfo(
             loss=mbp_loss_info.loss + mba_loss_info.loss,

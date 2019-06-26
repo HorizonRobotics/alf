@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Deep Deterministic Policy Gradient (DDPG)."""
 
 from collections import namedtuple
 import gin.tf
@@ -43,6 +44,13 @@ DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
 @gin.configurable
 class DdpgAlgorithm(OffPolicyAlgorithm):
+    """Deep Deterministic Policy Gradient (DDPG).
+
+    Reference:
+    Lillicrap et al "Continuous control with deep reinforcement learning"
+    https://arxiv.org/abs/1509.02971
+    """
+
     def __init__(self,
                  action_spec,
                  actor_network: Network,
@@ -229,14 +237,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             state=DdpgState(actor=policy_step.state, critic=critic_state),
             info=DdpgInfo(critic=critic_info, actor_loss=policy_step.info))
 
-    def calc_loss(self, training_info: TrainingInfo,
-                  final_time_step: Experience, final_info: DdpgInfo):
+    def calc_loss(self, training_info: TrainingInfo):
         critic_loss = self._critic_loss(
             training_info=training_info,
             value=training_info.info.critic.q_value,
-            target_value=training_info.info.critic.target_q_value,
-            final_time_step=final_time_step,
-            final_target_value=final_info.critic.target_q_value)
+            target_value=training_info.info.critic.target_q_value)
 
         actor_loss = training_info.info.actor_loss
 
@@ -248,15 +253,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def train_complete(self,
                        tape: tf.GradientTape,
                        training_info: TrainingInfo,
-                       final_time_step: ActionTimeStep,
-                       final_info: DdpgInfo,
                        weight: float = 1.0):
         ret = super().train_complete(
-            tape=tape,
-            training_info=training_info,
-            final_time_step=final_time_step,
-            final_info=final_info,
-            weight=weight)
+            tape=tape, training_info=training_info, weight=weight)
 
         self._update_target()
 

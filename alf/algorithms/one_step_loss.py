@@ -17,7 +17,7 @@ import gin.tf
 from tf_agents.agents.tf_agent import LossInfo
 
 from alf.algorithms.rl_algorithm import TrainingInfo
-from alf.utils import losses, value_ops
+from alf.utils import common, losses, value_ops
 
 
 @gin.configurable
@@ -38,14 +38,16 @@ class OneStepTDLoss(object):
         self._td_error_loss_fn = td_error_loss_fn
         self._debug_summaries = debug_summaries
 
-    def __call__(self, training_info: TrainingInfo, value, target_value,
-                 final_time_step, final_target_value):
+    def __call__(self, training_info: TrainingInfo, value, target_value):
         returns = value_ops.one_step_discounted_return(
             rewards=training_info.reward,
             values=target_value,
             step_types=training_info.step_type,
-            discounts=training_info.discount * self._gamma,
-            final_value=final_target_value,
-            final_time_step=final_time_step)
+            discounts=training_info.discount * self._gamma)
+        returns = common.tensor_extend(returns, value[-1])
+        if self._debug_summaries:
+            with tf.name_scope('OneStepTDLoss'):
+                tf.summary.scalar("values", tf.reduce_mean(value))
+                tf.summary.scalar("returns", tf.reduce_mean(returns))
         loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
         return LossInfo(loss=loss, extra=loss)

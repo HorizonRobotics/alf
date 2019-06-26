@@ -47,11 +47,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
     ```python
         with tf.GradientTape() as tape:
             batched_training_info
-            for experience in batch[:-1]:
+            for experience in batch:
                 policy_step = train_step(experience, state)
                 collect necessary information and policy_step.info into training_info
-            final_policy_step = algorithm.train_step(training_info)
-            train_complete(tape, training_info, batch[-1], final_policy_step.info)
+            train_complete(tape, training_info)
     ```
     """
 
@@ -60,7 +59,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  algorithm: OffPolicyAlgorithm,
                  observers=[],
                  metrics=[],
-                 training=True,
                  greedy_predict=False,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
@@ -74,23 +72,25 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
-            training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use 
+                every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
+        # training=False because training info is always obtained from
+        # replayed exps instead of current time_step prediction. So _step() in
+        # policy_driver.py has nothing to do with training for off-policy algorithms
         super(OffPolicyDriver, self).__init__(
             env=env,
             algorithm=algorithm,
             observers=observers,
             metrics=metrics,
-            training=training,
+            training=False,
             greedy_predict=greedy_predict,
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
@@ -181,15 +181,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         return common.zero_tensor_from_nested_spec(
             self._algorithm.train_state_spec, batch_size)
 
-    def _algorithm_step(self, time_step, state):
-        if self._greedy_predict:
-            return self._algorithm.greedy_predict(time_step, state)
-        else:
-            return self._algorithm.predict(time_step, state)
-
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""
-
         return self.predict(max_num_steps, time_step, policy_state)
 
     def _make_time_major(self, nest):
@@ -213,7 +206,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 assumed to be batch major.
             num_updates (int): number of optimization steps
             mini_batch_size (int): number of sequences for each minibatch
-            mini_batch_length (int): the length of the sequence for each 
+            mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch
         """
         length = experience.step_type.shape[1]
@@ -252,7 +245,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._train_step_counter.assign_add(1)
 
     def _train_step(self, exp, state):
-        policy_step = self._algorithm.train_step(exp, state=state)
+        policy_step = self.algorithm_step(exp, state=state, training=True)
         return policy_step._replace(
             action=self._to_distribution(policy_step.action))
 
@@ -260,7 +253,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         batch_size = experience.step_type.shape[1]
         counter = tf.zeros((), tf.int32)
         initial_train_state = self.get_initial_train_state(batch_size)
-        num_steps = experience.step_type.shape[0] - 1
+        num_steps = experience.step_type.shape[0]
 
         def create_ta(s):
             return tf.TensorArray(
@@ -271,7 +264,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         experience_ta = tf.nest.map_structure(create_ta, self._experience_spec)
         experience_ta = tf.nest.map_structure(
-            lambda elem, ta: ta.unstack(elem[0:-1]), experience, experience_ta)
+            lambda elem, ta: ta.unstack(elem), experience, experience_ta)
         training_info_ta = tf.nest.map_structure(create_ta,
                                                  self._training_info_spec)
 
@@ -287,6 +280,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
+
             policy_step = self._train_step(exp, state=policy_state)
             action_distribution_param = common.get_distribution_params(
                 policy_step.action)
@@ -312,7 +306,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         with tf.GradientTape(
                 persistent=True, watch_accessed_variables=False) as tape:
             tape.watch(self._trainable_variables)
-            [_, policy_state, training_info_ta] = tf.while_loop(
+            [_, _, training_info_ta] = tf.while_loop(
                 cond=lambda counter, *_: tf.less(counter, num_steps),
                 body=_train_loop_body,
                 loop_vars=[counter, initial_train_state, training_info_ta],
@@ -330,15 +324,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 action_distribution=action_distribution,
                 collect_action_distribution=collect_action_distribution)
 
-        final_exp = tf.nest.map_structure(lambda x: x[-1], experience)
-        policy_step = self._train_step(final_exp, policy_state)
-
         loss_info, grads_and_vars = self._algorithm.train_complete(
-            tape=tape,
-            training_info=training_info,
-            final_time_step=final_exp,
-            final_info=policy_step.info,
-            weight=weight)
+            tape=tape, training_info=training_info, weight=weight)
 
         del tape
 

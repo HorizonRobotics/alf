@@ -168,13 +168,17 @@ def add_action_summaries(actions, action_specs):
             else:
                 action_dim = action_spec.shape[-1]
             action = tf.reshape(action, (-1, action_dim))
+
+            def _get_val(a, i):
+                return a if len(a.shape) == 0 else a[i]
+
             for a in range(action_dim):
                 # TODO: use a descriptive name for the summary
                 summary_utils.histogram_continuous(
                     name="action/%s/%s" % (i, a),
                     data=action[:, a],
-                    bucket_min=action_spec.minimum[a],
-                    bucket_max=action_spec.maximum[a])
+                    bucket_min=_get_val(action_spec.minimum, a),
+                    bucket_max=_get_val(action_spec.maximum, a))
 
 
 def get_distribution_params(nested_distribution):
@@ -405,3 +409,29 @@ def get_gin_file():
         gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
         assert gin_file, "No gin files are found! Please provide"
     return gin_file
+
+
+def tensor_extend(x, y):
+    """Extending tensor with new_slice.
+
+    new_slice.shape should be same as tensor.shape[1:]
+    Args:
+        x (Tensor): tensor to be extended
+        y (Tensor): the tensor which will be appended to `x`
+    Returns:
+        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+    """
+    return tf.concat([x, tf.reshape(y, [1] + y.shape.as_list())], axis=0)
+
+
+def tensor_extend_zero(x):
+    """Extending tensor with zeros.
+
+    new_slice.shape should be same as tensor.shape[1:]
+    Args:
+        x (Tensor): tensor to be extended
+    Returns:
+        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+    """
+    return tf.concat(
+        [x, tf.zeros([1] + x.shape.as_list()[1:], dtype=x.dtype)], axis=0)
