@@ -107,25 +107,16 @@ class ActorCriticLoss(object):
         Returns:
             loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
         """
-        returns = value_ops.discounted_return(
-            rewards=training_info.reward,
-            values=value,
-            step_types=training_info.step_type,
-            discounts=training_info.discount * self._gamma)
-        returns = common.tensor_extend(returns, value[-1])
 
-        if not self._use_gae:
-            advantages = returns - value
-        else:
-            advantages = value_ops.generalized_advantage_estimation(
-                rewards=training_info.reward,
-                values=value,
-                step_types=training_info.step_type,
-                discounts=training_info.discount * self._gamma,
-                td_lambda=self._lambda)
-            advantages = common.tensor_extend_zero(advantages)
-            if self._use_td_lambda_return:
-                returns = advantages + value
+        returns, advantages = self._calc_returns_and_advantages(
+            training_info, value)
+
+        if self._debug_summaries:
+            with tf.name_scope('ActorCriticLoss'):
+                tf.summary.scalar("values", tf.reduce_mean(value))
+                tf.summary.scalar("returns", tf.reduce_mean(returns))
+                tf.summary.scalar("advantages", tf.reduce_mean(advantages))
+
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages, axes=(0, 1))
 
@@ -146,12 +137,6 @@ class ActorCriticLoss(object):
             entropy_loss = -entropies
             loss += self._entropy_regularization * entropy_loss
 
-        if self._debug_summaries:
-            with tf.name_scope('ActorCriticLoss'):
-                tf.summary.scalar("values", tf.reduce_mean(value))
-                tf.summary.scalar("returns", tf.reduce_mean(returns))
-                tf.summary.scalar("advantages", tf.reduce_mean(advantages))
-
         return LossInfo(
             loss,
             ActorCriticLossInfo(
@@ -162,3 +147,26 @@ class ActorCriticLoss(object):
             training_info.action_distribution, training_info.action,
             self._action_spec)
         return -advantages * action_log_prob
+
+    def _calc_returns_and_advantages(self, training_info, value):
+        returns = value_ops.discounted_return(
+            rewards=training_info.reward,
+            values=value,
+            step_types=training_info.step_type,
+            discounts=training_info.discount * self._gamma)
+        returns = common.tensor_extend(returns, value[-1])
+
+        if not self._use_gae:
+            advantages = returns - value
+        else:
+            advantages = value_ops.generalized_advantage_estimation(
+                rewards=training_info.reward,
+                values=value,
+                step_types=training_info.step_type,
+                discounts=training_info.discount * self._gamma,
+                td_lambda=self._lambda)
+            advantages = common.tensor_extend_zero(advantages)
+            if self._use_td_lambda_return:
+                returns = advantages + value
+
+        return returns, advantages
