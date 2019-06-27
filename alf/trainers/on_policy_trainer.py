@@ -132,6 +132,7 @@ def train(train_dir,
                         state_spec=algorithm.predict_state_spec,
                         action_fn=algorithm.greedy_predict,
                         num_episodes=num_eval_episodes,
+                        step_metrics=driver.get_step_metrics(),
                         train_step=global_step,
                         summary_writer=eval_summary_writer,
                         summary_prefix="Metrics")
