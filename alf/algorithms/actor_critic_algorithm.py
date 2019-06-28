@@ -167,18 +167,31 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         return PolicyStep(action=action_distribution, state=state, info=info)
 
+    def calc_training_reward(self, external_reward, info: ActorCriticInfo):
+        """Calculate the reward actually used for training.
+
+        The training_reward includes both intrinsic reward (if there's any) and
+        the external reward.
+        Args:
+            external_reward (Tensor): reward from environment
+            info (ActorCriticInfo): (batched) policy_step.info from train_step()
+        Returns:
+            reward used for training.
+        """
+        if self._icm is not None:
+            return (self._extrinsic_reward_coef * external_reward +
+                    self._intrinsic_reward_coef * info.icm_reward)
+        else:
+            return external_reward
+
     def calc_loss(self, training_info):
         if self._icm is not None:
             self.add_reward_summary("training_reward/intrinsic",
                                     training_info.info.icm_reward)
 
-            reward_calc_fn = lambda extrinsic, intrinsic: (
-                self._extrinsic_reward_coef * extrinsic + self.
-                _intrinsic_reward_coef * intrinsic)
-
             training_info = training_info._replace(
-                reward=reward_calc_fn(training_info.reward, training_info.info.
-                                      icm_reward))
+                reward=self.calc_training_reward(training_info.reward,
+                                                 training_info.info))
 
             self.add_reward_summary("training_reward/overall",
                                     training_info.reward)

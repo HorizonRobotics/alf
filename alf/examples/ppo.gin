@@ -1,6 +1,6 @@
-# base config for ppo2 (PPOAlgorithm)
+# base config for ppo (PPOAlgorithm)
 
 import alf.algorithms.ppo_algorithm
 import alf.algorithms.ppo_loss
 train_eval.algorithm_ctor=@create_ppo_algorithm
-ActorCriticAlgorithm.loss_class=@PPOLoss2
+ActorCriticAlgorithm.loss_class=@PPOLoss

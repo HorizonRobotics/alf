@@ -33,9 +33,7 @@ class PPOLoss(ActorCriticLoss):
                  action_spec,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
-                 use_gae=True,
                  td_lambda=0.95,
-                 use_td_lambda_return=True,
                  normalize_advantages=True,
                  advantage_clip=None,
                  entropy_regularization=None,
@@ -54,24 +52,18 @@ class PPOLoss(ActorCriticLoss):
          + td_loss_weight * td_loss (L^{VF} in equation (9))
          - entropy_regularization * entropy)
 
-        Note: There is a difference with baselines.ppo2 implementation. Here the
-            advantage is recomputed after every update performed in
-            OffPolicyDriver._update(), where in baselines.ppo2, the advantage is
-            fixed within one epoch.
+        This loss works with PPOAlgorithm. The advantages and returns are
+        pre-computed by PPOAlgorithm.preprocess(). One known difference with
+        baselines.ppo2 is that value estimation is not clipped here, while
+        baselines.ppo2 also clipped value if it is deviate from returns too
+        much.
+
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             gamma (float): A discount factor for future rewards.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
-            use_gae (bool): If True, uses generalized advantage estimation for
-                computing per-timestep advantage. Else, just subtracts value
-                predictions from empirical return. This is ignored by PPOLoss2
-                (Alwasy assumed to be True)
-            use_td_lambda_return (bool): Only effective if use_gae is True.
-                If True, uses td_lambda_return for training value function.
-                (td_lambda_return = gae_advantage + value_predictions). This is
-                ignored by PPOLoss2 (Alwasy assumed to be True)
             td_lambda (float): Lambda parameter for TD-lambda computation.
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
@@ -93,9 +85,9 @@ class PPOLoss(ActorCriticLoss):
             action_spec=action_spec,
             gamma=gamma,
             td_error_loss_fn=td_error_loss_fn,
-            use_gae=use_gae,
+            use_gae=True,
             td_lambda=td_lambda,
-            use_td_lambda_return=use_td_lambda_return,
+            use_td_lambda_return=True,
             normalize_advantages=normalize_advantages,
             entropy_regularization=entropy_regularization,
             td_loss_weight=td_loss_weight,
@@ -167,16 +159,6 @@ class PPOLoss(ActorCriticLoss):
                 policy_gradient_loss, 'policy_gradient_loss')
 
         return policy_gradient_loss
-
-
-@gin.configurable
-class PPOLoss2(PPOLoss):
-    """Create a PPOLoss2 object.
-
-    Note: Different from PPOLoss, PPOLoss2 uses advantages pre-computed by
-    `PPOAlgorithm.preprocess()` so the advantage is fixed within one iteration,
-    which is the behavior of baselines.ppo2.
-    """
 
     def _calc_returns_and_advantages(self, training_info: TrainingInfo, value):
         advantages = training_info.collect_info.advantages
