@@ -222,10 +222,10 @@ class PolicyDriver(driver.Driver):
                                                    self.env.batch_size)
 
     def get_step_metrics(self):
-        """Get step metrics
+        """Get step metrics that used for generating summaries against
 
         Returns:
-             list[TFStepMetric]
+             list[TFStepMetric]: step metrics `EnvironmentSteps` and `NumberOfEpisodes`
         """
         return self._metrics[:2]
 
