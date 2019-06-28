@@ -228,9 +228,9 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                     tf.range(experience.step_type.shape[0]))
                 experience = tf.nest.map_structure(
                     lambda x: tf.gather(x, indices), experience)
-            for b in tf.range(0, batch_size, mini_batch_size):
+            for b in range(0, batch_size, mini_batch_size):
                 batch = tf.nest.map_structure(
-                    lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
+                    lambda x: x[b:min(batch_size, b + mini_batch_size)],
                     experience)
                 batch = self._make_time_major(batch)
                 training_info, loss_info, grads_and_vars = self._update(
