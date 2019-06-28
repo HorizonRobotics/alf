@@ -305,6 +305,7 @@ class RLAlgorithm(tf.Module):
                 else:
                     grads_and_vars = eager_utils.clip_gradient_norms(
                         grads_and_vars, self._gradient_clipping)
+
             optimizer.apply_gradients(grads_and_vars)
 
         return loss_info, all_grads_and_vars

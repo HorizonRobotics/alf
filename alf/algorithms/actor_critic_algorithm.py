@@ -224,7 +224,7 @@ def create_ac_algorithm(env,
                         use_rnns=False,
                         use_icm=False,
                         learning_rate=5e-5,
-                        off_policy=False,
+                        off_policy_adaptor_class=None,
                         debug_summaries=False):
     """Create a simple ActorCriticAlgorithm.
 
@@ -284,7 +284,7 @@ def create_ac_algorithm(env,
         optimizer=optimizer,
         debug_summaries=debug_summaries)
 
-    if off_policy:
-        algorithm = OffPolicyAdapter(algorithm)
+    if off_policy_adaptor_class is not None:
+        algorithm = off_policy_adaptor_class(algorithm)
 
     return algorithm

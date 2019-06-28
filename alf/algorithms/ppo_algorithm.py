@@ -58,8 +58,8 @@ class PPOAlgorithm(OffPolicyAdapter):
             advantages,
             tf.zeros(
                 advantages.shape.as_list()[:-1] + [1], dtype=advantages.dtype)
-        ],
-                               axis=-1)
+            ],
+            axis=-1)
         returns = exp.info.value + advantages
         return exp._replace(info=PPOInfo(returns, advantages))
 
