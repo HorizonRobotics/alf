@@ -221,6 +221,14 @@ class PolicyDriver(driver.Driver):
         return common.zero_tensor_from_nested_spec(self._policy_state_spec,
                                                    self.env.batch_size)
 
+    def get_step_metrics(self):
+        """Get step metrics that used for generating summaries against
+
+        Returns:
+             list[TFStepMetric]: step metrics `EnvironmentSteps` and `NumberOfEpisodes`
+        """
+        return self._metrics[:2]
+
     def get_metrics(self):
         """Returns the metrics monitored by this driver.
 
