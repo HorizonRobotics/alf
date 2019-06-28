@@ -46,7 +46,7 @@ class PPOAlgorithm(OffPolicyAdapter):
         reward = exp.reward
         if self._algorithm._reward_shaping_fn is not None:
             reward = self._algorithm._reward_shaping_fn(reward)
-        reward = self._algorithm.calc_training_reward(exp.reward, exp.info)
+        reward = self._algorithm.calc_training_reward(reward, exp.info)
         advantages = value_ops.generalized_advantage_estimation(
             rewards=reward,
             values=exp.info.value,
