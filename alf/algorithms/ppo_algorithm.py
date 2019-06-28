@@ -24,7 +24,7 @@ from alf.algorithms.off_policy_algorithm import Experience
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 from alf.utils import common, value_ops
 
-PPOInfo = namedtuple("PPOInfo", ["advantage"])
+PPOInfo = namedtuple("PPOInfo", ["returns", "advantages"])
 
 
 @gin.configurable
@@ -56,7 +56,8 @@ class PPOAlgorithm(OffPolicyAdapter):
                 advantages.shape.as_list()[:-1] + [1], dtype=advantages.dtype)
         ],
                                axis=-1)
-        return exp._replace(info=PPOInfo(advantages))
+        returns = exp.info.value + advantages
+        return exp._replace(info=PPOInfo(returns, advantages))
 
     def predict(self, time_step: ActionTimeStep, state=None):
         return self._algorithm.train_step(time_step, state)

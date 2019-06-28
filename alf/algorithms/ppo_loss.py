@@ -179,6 +179,6 @@ class PPOLoss2(PPOLoss):
     """
 
     def _calc_returns_and_advantages(self, training_info: TrainingInfo, value):
-        advantages = training_info.collect_info.advantage
-        returns = advantages + value
+        advantages = training_info.collect_info.advantages
+        returns = training_info.collect_info.returns
         return returns, advantages
