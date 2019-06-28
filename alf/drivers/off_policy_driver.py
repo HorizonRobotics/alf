@@ -165,6 +165,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             info=policy_step.info,
             action_distribution=action_dist)
 
+        processed_exp = algorithm.preprocess_experience(exp)
+        self._processed_experience_spec = self._experience_spec._replace(
+            info=extract_spec(processed_exp.info))
+
         policy_step = self._train_step(exp, self.get_initial_train_state(3))
         info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
@@ -174,7 +178,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
             info=info_spec,
-            collect_info=self._experience_spec.info,
+            collect_info=self._processed_experience_spec.info,
             collect_action_distribution=action_dist_param_spec)
 
     def get_initial_train_state(self, batch_size):
@@ -217,21 +221,35 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         assert length % mini_batch_length == 0
 
+        experience = self._algorithm.preprocess_experience(experience)
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
                                  ), experience)
 
         batch_size = experience.step_type.shape[0]
+        # The reason of this constraint is at L244
+        # TODO: remove this constraint.
+        assert batch_size % mini_batch_size == 0, (
+            "batch_size=%s mini_batch_size=%s" % (batch_size, mini_batch_size))
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
                 indices = tf.random.shuffle(
                     tf.range(experience.step_type.shape[0]))
                 experience = tf.nest.map_structure(
                     lambda x: tf.gather(x, indices), experience)
-            for b in range(0, batch_size, mini_batch_size):
+            for b in tf.range(0, batch_size, mini_batch_size):
                 batch = tf.nest.map_structure(
-                    lambda x: x[b:min(batch_size, b + mini_batch_size)],
+                    lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
                     experience)
+                # Make the shape explicit. The shapes of tensors from the
+                # previous line depend on tensor `b`, which is replaced with
+                # None by tf. This makes some operations depending on the shape
+                # of tensor fail. (Currently, it's alf.common.tensor_extend)
+                # TODO: Find a way to work around with shapes containing None
+                # at common.tensor_extend()
+                batch = tf.nest.map_structure(
+                    lambda x: tf.reshape(x, [mini_batch_size] + list(x.shape)[
+                        1:]), batch)
                 batch = self._make_time_major(batch)
                 training_info, loss_info, grads_and_vars = self._update(
                     batch, weight=batch.step_type.shape[0] / mini_batch_size)
@@ -262,7 +280,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 element_shape=tf.TensorShape([batch_size]).concatenate(
                     s.shape))
 
-        experience_ta = tf.nest.map_structure(create_ta, self._experience_spec)
+        experience_ta = tf.nest.map_structure(create_ta,
+                                              self._processed_experience_spec)
         experience_ta = tf.nest.map_structure(
             lambda elem, ta: ta.unstack(elem), experience, experience_ta)
         training_info_ta = tf.nest.map_structure(create_ta,

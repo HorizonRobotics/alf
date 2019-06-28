@@ -1,4 +1,4 @@
-include 'ppo2.gin'
+include 'ppo.gin'
 
 # environment config
 
@@ -14,11 +14,11 @@ create_environment.num_parallel_environments=32
 ActorCriticAlgorithm.gradient_clipping=0.5
 ActorCriticAlgorithm.clip_by_global_norm=True
 
-PPOLoss2.entropy_regularization=1e-2
-PPOLoss2.gamma=0.99
-PPOLoss2.normalize_advantages=True
-PPOLoss2.td_lambda=0.95
-PPOLoss2.td_error_loss_fn=@element_wise_squared_loss
+PPOLoss.entropy_regularization=1e-2
+PPOLoss.gamma=0.99
+PPOLoss.normalize_advantages=True
+PPOLoss.td_lambda=0.95
+PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 
 ActorDistributionNetwork.activation_fn=@tf.nn.tanh
 ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
@@ -37,7 +37,7 @@ off_policy_trainer.train.num_steps_per_iter=4096
 off_policy_trainer.train.mini_batch_size=1024
 off_policy_trainer.train.num_iterations=100000
 off_policy_trainer.train.summary_interval=1
-off_policy_trainer.train.num_updates_per_train_step=4
+off_policy_trainer.train.num_updates_per_train_step=10
 off_policy_trainer.train.eval_interval=100
 off_policy_trainer.train.summarize_grads_and_vars=True
 

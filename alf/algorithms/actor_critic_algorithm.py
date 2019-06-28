@@ -58,6 +58,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss_class=ActorCriticLoss,
                  optimizer=None,
                  gradient_clipping=None,
+                 clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
@@ -82,6 +83,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
+            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to 
+                clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             train_step_counter (tf.Variable): An optional counter to increment.
@@ -103,6 +106,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             action_distribution_spec=actor_network.output_spec,
             optimizer=optimizer,
             gradient_clipping=gradient_clipping,
+            clip_by_global_norm=clip_by_global_norm,
             reward_shaping_fn=reward_shaping_fn,
             train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
@@ -163,18 +167,31 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         return PolicyStep(action=action_distribution, state=state, info=info)
 
+    def calc_training_reward(self, external_reward, info: ActorCriticInfo):
+        """Calculate the reward actually used for training.
+
+        The training_reward includes both intrinsic reward (if there's any) and
+        the external reward.
+        Args:
+            external_reward (Tensor): reward from environment
+            info (ActorCriticInfo): (batched) policy_step.info from train_step()
+        Returns:
+            reward used for training.
+        """
+        if self._icm is not None:
+            return (self._extrinsic_reward_coef * external_reward +
+                    self._intrinsic_reward_coef * info.icm_reward)
+        else:
+            return external_reward
+
     def calc_loss(self, training_info):
         if self._icm is not None:
             self.add_reward_summary("training_reward/intrinsic",
                                     training_info.info.icm_reward)
 
-            reward_calc_fn = lambda extrinsic, intrinsic: (
-                self._extrinsic_reward_coef * extrinsic + self.
-                _intrinsic_reward_coef * intrinsic)
-
             training_info = training_info._replace(
-                reward=reward_calc_fn(training_info.reward, training_info.info.
-                                      icm_reward))
+                reward=self.calc_training_reward(training_info.reward,
+                                                 training_info.info))
 
             self.add_reward_summary("training_reward/overall",
                                     training_info.reward)

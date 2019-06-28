@@ -1,32 +1,28 @@
-#
-
-import alf.algorithms.ppo_loss
+include 'ppo.gin'
 
 # environment config
 create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
 
 # algorithm config
-ActorCriticAlgorithm.loss_class=@PPOLoss
 PPOLoss.entropy_regularization=1e-4
 PPOLoss.gamma=0.98
 PPOLoss.td_error_loss_fn=@element_wise_huber_loss
-PPOLoss.use_gae=True
-PPOLoss.use_td_lambda_return=True
 PPOLoss.normalize_advantages=False
 create_ac_algorithm.actor_fc_layers=(100,)
 create_ac_algorithm.value_fc_layers=(100,)
 create_ac_algorithm.learning_rate=0.001
-create_ac_algorithm.off_policy=True
 
 # training config
-off_policy_trainer.train.mini_batch_length=9
-off_policy_trainer.train.num_steps_per_iter=72
-off_policy_trainer.train.mini_batch_size=8
-off_policy_trainer.train.num_iterations=3000
+off_policy_trainer.train.mini_batch_length=1
+off_policy_trainer.train.num_steps_per_iter=256
+off_policy_trainer.train.mini_batch_size=256
+off_policy_trainer.train.num_iterations=1000
 off_policy_trainer.train.summary_interval=5
 off_policy_trainer.train.checkpoint_interval=100000
 off_policy_trainer.train.num_updates_per_train_step=4
+off_policy_trainer.train.use_tf_functions=True
 TFUniformReplayBuffer.max_length=2048
-train_eval.debug_summaries=1
-train_eval.evaluate=0
+
+train_eval.debug_summaries=True
+train_eval.evaluate=False
