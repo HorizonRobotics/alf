@@ -43,6 +43,9 @@ class PPOAlgorithm(OffPolicyAdapter):
 
     def preprocess_experience(self, exp: Experience):
         """Compute advantages and put it into exp.info."""
+        reward = exp.reward
+        if self._algorithm._reward_shaping_fn is not None:
+            reward = self._algorithm._reward_shaping_fn(reward)
         reward = self._algorithm.calc_training_reward(exp.reward, exp.info)
         advantages = value_ops.generalized_advantage_estimation(
             rewards=reward,
