@@ -37,7 +37,7 @@ off_policy_trainer.train.num_steps_per_iter=4096
 off_policy_trainer.train.mini_batch_size=1024
 off_policy_trainer.train.num_iterations=100000
 off_policy_trainer.train.summary_interval=1
-off_policy_trainer.train.num_updates_per_train_step=4
+off_policy_trainer.train.num_updates_per_train_step=10
 off_policy_trainer.train.eval_interval=100
 off_policy_trainer.train.summarize_grads_and_vars=True
 
