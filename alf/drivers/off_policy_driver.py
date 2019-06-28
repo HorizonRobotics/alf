@@ -213,18 +213,17 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch
         """
+        experience = self._algorithm.preprocess_experience(experience)
         length = experience.step_type.shape[1]
         if mini_batch_length is None:
             mini_batch_length = length
+        experience = tf.nest.map_structure(
+            lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])),
+            experience)
         if mini_batch_size is None:
             mini_batch_size = experience.step_type.shape[0]
 
         assert length % mini_batch_length == 0
-
-        experience = self._algorithm.preprocess_experience(experience)
-        experience = tf.nest.map_structure(
-            lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
-                                 ), experience)
 
         batch_size = experience.step_type.shape[0]
         # The reason of this constraint is at L244
