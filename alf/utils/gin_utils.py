@@ -19,9 +19,9 @@ def inoperative_config_str(max_line_length=80, continuation_indent=4):
     """Retrieve the "inoperative" configuration as a config string.
 
     Args:
-        max_line_length: A (soft) constraint on the maximum length of a line in the
-            formatted string.
-        continuation_indent: The indentation for continued lines.
+        max_line_length (int): A (soft) constraint on the maximum length
+            of a line in the formatted string.
+        continuation_indent (int): The indentation for continued lines.
     Returns:
         A config string capturing all parameter values configured but not
             used by the current program (override by explicit call).
