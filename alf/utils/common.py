@@ -25,7 +25,7 @@ from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
-from alf.utils import summary_utils
+from alf.utils import summary_utils, gin_utils
 
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
@@ -335,8 +335,8 @@ def reward_scaling(r, scale=1):
     return r * scale
 
 
-def _markdownify_operative_config_str(string):
-    """Convert an operative config string to markdown format.
+def _markdownify_gin_config_str(string):
+    """Convert an gin config string to markdown format.
     
     Args:
         string (str): the string from gin.operative_config_str()
@@ -370,16 +370,21 @@ def _markdownify_operative_config_str(string):
 
 
 def summarize_gin_config():
-    """Write the operative gin config to Tensorboard summary.
+    """Write the operative and inoperative gin config to Tensorboard summary.
     
     The operative configuration consists of all parameter values used by
     configurable functions that are actually called during execution of the
-    current program. See `gin.operative_config_str()` for more detail on how
-    the operative config is generated.
+    current program, and inoperative configuration consists of all parameter
+    configured but not used by configurable functions. See `gin.operative_config_str()`
+    and `gin_utils.inoperative_config_str` for more detail on how the config is generated.
     """
-    config_str = gin.operative_config_str()
-    md_config_str = _markdownify_operative_config_str(config_str)
+    operative_config_str = gin.operative_config_str()
+    md_config_str = _markdownify_gin_config_str(operative_config_str)
     tf.summary.text('gin/operative_config', md_config_str)
+    inoperative_config_str = gin_utils.inoperative_config_str()
+    if inoperative_config_str:
+        md_config_str = _markdownify_gin_config_str(inoperative_config_str)
+        tf.summary.text('gin/inoperative_config', md_config_str)
 
 
 def copy_gin_configs(root_dir, gin_files):
