@@ -17,6 +17,7 @@ import collections
 import gin
 import gym
 import numpy as np
+import cv2
 
 
 @gin.configurable
@@ -31,8 +32,9 @@ class FrameStack(gym.Wrapper):
             channel_order (str): one of `channels_last` or `channels_first`.
                 The ordering of the dimensions in the images.
                 `channels_last` corresponds to images with shape
-                `(height, width, channels)` while `channels_first` corresponds
-                to images with shape `(channels, height, width)`.
+                `(height, width, channels)` (Atari's default) while
+                `channels_first` corresponds to images with shape
+                `(channels, height, width)`.
         """
         super().__init__(env)
         self._frames = collections.deque(maxlen=stack_size)
@@ -102,3 +104,200 @@ class FrameSkip(gym.Wrapper):
 
     def reset(self, **kwargs):
         return self.env.reset(**kwargs)
+
+    def __getattr__(self, name):
+        """Forward all other calls to the base environment."""
+        return getattr(self.env, name)
+
+
+@gin.configurable
+class DMAtariPreprocessing(gym.Wrapper):
+    """
+    Derived from tf_agents AtariPreprocessing. Three differences:
+    1. If terminating on losing a life, stepping a NO-OP action instead of resetting
+    2. Random number of NOOPs after reset
+    3. FIRE after step 2
+
+    To see a complete list of atari wrappers used by DeepMind, see
+    https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py
+    Also see OpenAI Gym's implementation (not completely the same):
+    https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
+
+    Note: This wrapper does not handle framestacking. It can be paired with FrameStack.
+    See ac_breakout.gin for an example.
+    """
+    def __init__(self,
+                 env,
+                 frame_skip=4,
+                 noop_max=30,
+                 terminal_on_life_loss=False,
+                 screen_size=84):
+        """Constructor for an Atari 2600 preprocessor.
+
+        Args:
+        environment: Gym environment whose observations are preprocessed.
+        frame_skip: int, the frequency at which the agent experiences the game.
+        terminal_on_life_loss: bool, If True, the step() method returns
+            is_terminal=True whenever a life is lost. See Mnih et al. 2015.
+        screen_size: int, size of a resized Atari 2600 frame.
+
+        Raises:
+        ValueError: if frame_skip or screen_size are not strictly positive.
+        """
+        super().__init__(env)
+        if frame_skip <= 0:
+            raise ValueError(
+                'Frame skip should be strictly positive, got {}'.format(frame_skip))
+        if screen_size <= 0:
+            raise ValueError('Target screen size should be strictly positive, got {}'
+                            .format(screen_size))
+
+        self.terminal_on_life_loss = terminal_on_life_loss
+        self.frame_skip = frame_skip
+        self.screen_size = screen_size
+        self.noop_max = noop_max
+        assert env.unwrapped.get_action_meanings()[0] == "NOOP"
+
+        obs_dims = self.env.observation_space
+        # Stores temporary observations used for pooling over two successive
+        # frames.
+        self.screen_buffer = [
+            np.empty((obs_dims.shape[0], obs_dims.shape[1]), dtype=np.uint8),
+            np.empty((obs_dims.shape[0], obs_dims.shape[1]), dtype=np.uint8)
+        ]
+
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=(self.screen_size, self.screen_size, 1),
+            dtype=np.uint8)
+
+        self.game_over = True
+        self.lives = 0  # Will need to be set by reset().
+
+    def reset_with_random_noops(self):
+        self.env.reset()
+        n_noops = self.env.unwrapped.np_random.randint(
+            1, self.noop_max + 1)
+        for _ in range(n_noops):
+            _, _, game_over, _ = self.env.step(0)
+            if game_over:
+                self.env.reset()
+
+    def fire_on_reset(self):
+        # The following code is from https://github.com/openai/gym/...
+        # ...blob/master/gym/wrappers/atari_preprocessing.py
+        action_meanings = self.env.unwrapped.get_action_meanings()
+        if action_meanings[1] == 'FIRE' and len(action_meanings) >= 3:
+            self.env.step(1)
+            self.env.step(2)
+
+    def reset(self):
+        """Resets the environment.
+
+        Returns:
+        observation: numpy array, the initial observation emitted by the
+            environment.
+        """
+        if self.game_over:
+            self.reset_with_random_noops()
+            self.lives = self.env.ale.lives()
+            self.game_over = False
+        else:
+            # reset called because of losing a life
+            self.env.step(0) # no-op
+
+        self.fire_on_reset()
+
+        # in either case, we need to clear the screen buffer
+        self._fetch_grayscale_observation(self.screen_buffer[0])
+        self.screen_buffer[1].fill(0)
+        return self._pool_and_resize()
+
+    def step(self, action):
+        """Applies the given action in the environment.
+
+        Remarks:
+
+        * If a terminal state (from life loss or episode end) is reached, this may
+            execute fewer than self.frame_skip steps in the environment.
+        * Furthermore, in this case the returned observation may not contain valid
+            image data and should be ignored.
+
+        Args:
+        action: The action to be executed.
+
+        Returns:
+        observation: numpy array, the observation following the action.
+        reward: float, the reward following the action.
+        is_terminal: bool, whether the environment has reached a terminal state.
+            This is true when a life is lost and terminal_on_life_loss, or when the
+            episode is over.
+        info: Gym API's info data structure.
+        """
+        accumulated_reward = 0.
+
+        for time_step in range(self.frame_skip):
+            # We bypass the Gym observation altogether and directly fetch the
+            # grayscale image from the ALE. This is a little faster.
+            _, reward, game_over, info = self.env.step(action)
+            accumulated_reward += reward
+
+            if self.terminal_on_life_loss:
+                new_lives = self.env.ale.lives()
+                is_terminal = game_over or new_lives < self.lives
+                self.lives = new_lives
+            else:
+                is_terminal = game_over
+
+            if is_terminal:
+                break
+            # We max-pool over the last two frames, in grayscale.
+            elif time_step >= self.frame_skip - 2:
+                t = time_step - (self.frame_skip - 2)
+                # when frame_skip==1, self.screen_buffer[1] will be filled!
+                self._fetch_grayscale_observation(self.screen_buffer[t])
+
+        if self.frame_skip == 1:
+            self.screen_buffer[0] = self.screen_buffer[1]
+
+        # Pool the last two observations.
+        observation = self._pool_and_resize()
+
+        self.game_over = game_over
+        return observation, accumulated_reward, is_terminal, info
+
+    def _fetch_grayscale_observation(self, output):
+        """Returns the current observation in grayscale.
+
+        The returned observation is stored in 'output'.
+
+        Args:
+        output: numpy array, screen buffer to hold the returned observation.
+
+        Returns:
+        observation: numpy array, the current observation in grayscale.
+        """
+        self.env.ale.getScreenGrayscale(output)
+        return output
+
+    def _pool_and_resize(self):
+        """Transforms two frames into a Nature DQN observation.
+
+        For efficiency, the transformation is done in-place in self.screen_buffer.
+
+        Returns:
+        transformed_screen: numpy array, pooled, resized screen.
+        """
+        # Pool if there are enough screens to do so.
+        if self.frame_skip > 1:
+            np.maximum(
+                self.screen_buffer[0],
+                self.screen_buffer[1],
+                out=self.screen_buffer[0])
+
+        transformed_image = cv2.resize(
+            self.screen_buffer[0], (self.screen_size, self.screen_size),
+            interpolation=cv2.INTER_AREA)
+        int_image = np.asarray(transformed_image, dtype=np.uint8)
+        return np.expand_dims(int_image, axis=2)
