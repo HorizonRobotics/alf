@@ -335,11 +335,12 @@ def reward_scaling(r, scale=1):
     return r * scale
 
 
-def _markdownify_gin_config_str(string):
+def _markdownify_gin_config_str(string, description=''):
     """Convert an gin config string to markdown format.
     
     Args:
         string (str): the string from gin.operative_config_str()
+        description (str): Optional long-form description for this config_str
     Returns:
         The string of the markdown version of the config string.
     """
@@ -361,6 +362,10 @@ def _markdownify_gin_config_str(string):
         return line
 
     output_lines = []
+
+    if description:
+        output_lines.append('*# ' + description + '*')
+
     for line in string.splitlines():
         procd_line = process(line)
         if procd_line is not None:
@@ -379,11 +384,17 @@ def summarize_gin_config():
     and `gin_utils.inoperative_config_str` for more detail on how the config is generated.
     """
     operative_config_str = gin.operative_config_str()
-    md_config_str = _markdownify_gin_config_str(operative_config_str)
+    md_config_str = _markdownify_gin_config_str(
+        operative_config_str,
+        'All parameter values used by configurable functions that are actually called'
+    )
     tf.summary.text('gin/operative_config', md_config_str)
     inoperative_config_str = gin_utils.inoperative_config_str()
     if inoperative_config_str:
-        md_config_str = _markdownify_gin_config_str(inoperative_config_str)
+        md_config_str = _markdownify_gin_config_str(
+            inoperative_config_str,
+            "All parameter values configured but not used by program (override by explicit call)"
+        )
         tf.summary.text('gin/inoperative_config', md_config_str)
 
 
