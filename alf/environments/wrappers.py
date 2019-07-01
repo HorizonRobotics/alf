@@ -135,7 +135,7 @@ class DMAtariPreprocessing(gym.Wrapper):
         """Constructor for an Atari 2600 preprocessor.
 
         Args:
-            env (Gym environment): the environment whose observations are preprocessed.
+            env (gym.Env): the environment whose observations are preprocessed.
             frame_skip (int): the frequency at which the agent experiences the game.
             noop_max (int): the maximum number of no-op actions after resetting the env
             terminal_on_life_loss (bool): If True, the step() method returns
