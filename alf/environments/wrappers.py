@@ -135,14 +135,12 @@ class DMAtariPreprocessing(gym.Wrapper):
         """Constructor for an Atari 2600 preprocessor.
 
         Args:
-        environment: Gym environment whose observations are preprocessed.
-        frame_skip: int, the frequency at which the agent experiences the game.
-        terminal_on_life_loss: bool, If True, the step() method returns
-            is_terminal=True whenever a life is lost. See Mnih et al. 2015.
-        screen_size: int, size of a resized Atari 2600 frame.
-
-        Raises:
-        ValueError: if frame_skip or screen_size are not strictly positive.
+            env (Gym environment): the environment whose observations are preprocessed.
+            frame_skip (int): the frequency at which the agent experiences the game.
+            noop_max (int): the maximum number of no-op actions after resetting the env
+            terminal_on_life_loss (bool): If True, the step() method returns
+                is_terminal=True whenever a life is lost. See Mnih et al. 2015.
+            screen_size (int): size of a resized Atari 2600 frame.
         """
         super().__init__(env)
         if frame_skip <= 0:
@@ -193,11 +191,11 @@ class DMAtariPreprocessing(gym.Wrapper):
             self.env.step(2)
 
     def reset(self):
-        """Resets the environment.
-
+        """
+        Resets the environment.
         Returns:
-        observation: numpy array, the initial observation emitted by the
-            environment.
+            observation (np.array): the initial observation emitted by the
+                environment.
         """
         if self.game_over:
             self.reset_with_random_noops()
@@ -225,15 +223,15 @@ class DMAtariPreprocessing(gym.Wrapper):
             image data and should be ignored.
 
         Args:
-        action: The action to be executed.
+            action (int): The action to be executed.
 
         Returns:
-        observation: numpy array, the observation following the action.
-        reward: float, the reward following the action.
-        is_terminal: bool, whether the environment has reached a terminal state.
-            This is true when a life is lost and terminal_on_life_loss, or when the
-            episode is over.
-        info: Gym API's info data structure.
+            observation (np.array): the observation following the action.
+            reward (float): the reward following the action.
+            is_terminal (bool): whether the environment has reached a terminal state.
+                This is true when a life is lost and terminal_on_life_loss, or when the
+                episode is over.
+            info: Gym API's info data structure.
         """
         accumulated_reward = 0.
 
@@ -273,10 +271,10 @@ class DMAtariPreprocessing(gym.Wrapper):
         The returned observation is stored in 'output'.
 
         Args:
-        output: numpy array, screen buffer to hold the returned observation.
+            output (np.array): screen buffer to hold the returned observation.
 
         Returns:
-        observation: numpy array, the current observation in grayscale.
+            observation (np.array): the current observation in grayscale.
         """
         self.env.ale.getScreenGrayscale(output)
         return output
@@ -287,7 +285,7 @@ class DMAtariPreprocessing(gym.Wrapper):
         For efficiency, the transformation is done in-place in self.screen_buffer.
 
         Returns:
-        transformed_screen: numpy array, pooled, resized screen.
+            transformed_screen (np.array): pooled, resized screen.
         """
         # Pool if there are enough screens to do so.
         if self.frame_skip > 1:
