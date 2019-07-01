@@ -393,7 +393,9 @@ def summarize_gin_config():
     if inoperative_config_str:
         md_config_str = _markdownify_gin_config_str(
             inoperative_config_str,
-            "All parameter values configured but not used by program (override by explicit call)"
+            "All parameter values configured but not used by program. The configured "
+            "functions are either not called or called with explicit parameter values "
+            "overriding the config."
         )
         tf.summary.text('gin/inoperative_config', md_config_str)
 
