@@ -105,6 +105,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 critic=critic_network.state_spec,
                 target_actor=actor_network.state_spec,
                 target_critic=critic_network.state_spec))
+
         super().__init__(
             action_spec,
             train_state_spec=train_state_spec,
@@ -157,8 +158,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self._actor_network.variables,
             self._target_actor_network.variables,
             tau=1.0)
-        self._cached_actor_vars = None
-        self._cached_critic_vars = None
 
     @property
     def trainable_variables(self):
@@ -220,7 +219,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                         self._dqda_clipping)
             loss = losses.element_wise_squared_loss(
                 tf.stop_gradient(dqda + action), action)
-            loss = tf.reduce_sum(loss, axis=loss.shape[1:])
+            loss = tf.reduce_sum(loss, axis=list(range(1, len(loss.shape))))
             return loss
 
         actor_loss = tf.nest.map_structure(actor_loss_fn, dqda, action)

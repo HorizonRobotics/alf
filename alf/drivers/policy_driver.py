@@ -14,24 +14,20 @@
 
 import abc
 import os
-from collections import namedtuple
 from typing import Callable
 
-import numpy as np
 import psutil
 import math
 import gin.tf
 import tensorflow as tf
-import tensorflow_probability as tfp
 
 from tf_agents.drivers import driver
 from tf_agents.metrics import tf_metrics
-from tf_agents.trajectories.time_step import StepType
 from tf_agents.trajectories.trajectory import from_transition
 from tf_agents.utils import eager_utils
 
-from alf.utils import common, common as common
-from alf.algorithms.off_policy_algorithm import Experience, make_experience
+from alf.utils import common as common
+from alf.algorithms.off_policy_algorithm import make_experience
 from alf.algorithms.rl_algorithm import make_action_time_step
 
 
@@ -113,18 +109,6 @@ class PolicyDriver(driver.Driver):
                                                      self.env.batch_size)
         return make_action_time_step(time_step, action)
 
-    def _to_distribution(self, action_or_distribution):
-        """Convert Tensors in action_or_distribution to Deterministic."""
-
-        def _to_dist(action_or_distribution):
-            if isinstance(action_or_distribution, tf.Tensor):
-                return tfp.distributions.Deterministic(
-                    loc=action_or_distribution)
-            else:
-                return action_or_distribution
-
-        return tf.nest.map_structure(_to_dist, action_or_distribution)
-
     def algorithm_step(self, time_step, state, training):
         if self._observation_transformer is not None:
             time_step = time_step._replace(
@@ -137,7 +121,7 @@ class PolicyDriver(driver.Driver):
         else:
             policy_step = self._algorithm.predict(time_step, state)
         return policy_step._replace(
-            action=self._to_distribution(policy_step.action))
+            action=common.to_distribution(policy_step.action))
 
     def run(self, max_num_steps=None, time_step=None, policy_state=None):
         """Take steps in the environment for max_num_steps.
@@ -247,7 +231,7 @@ class PolicyDriver(driver.Driver):
                                                        time_step.is_first())
         policy_step = self.algorithm_step(
             time_step, state=policy_state, training=self._training)
-        action = self._sample_action_distribution(policy_step.action)
+        action = common.sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:
             traj = from_transition(time_step,
@@ -270,16 +254,3 @@ class PolicyDriver(driver.Driver):
     def _env_step(self, action):
         time_step = self.env.step(action)
         return make_action_time_step(time_step, action)
-
-    def _sample_action_distribution(self, actions_or_distributions):
-        def _to_distribution(action_or_distribution):
-            if isinstance(action_or_distribution, tf.Tensor):
-                return tfp.distributions.Deterministic(
-                    loc=action_or_distribution)
-            return action_or_distribution
-
-        distributions = tf.nest.map_structure(_to_distribution,
-                                              actions_or_distributions)
-        seed_stream = tfp.distributions.SeedStream(seed=None, salt='driver')
-        return tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
-                                     distributions)

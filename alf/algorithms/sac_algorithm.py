@@ -183,6 +183,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
+    @property
+    def trainable_variables(self):
+        return ([self._log_alpha] + self._actor_network.trainable_variables +
+                self._critic_network1.trainable_variables +
+                self._critic_network2.trainable_variables)
+
     def predict(self, time_step: ActionTimeStep, state=None):
         action, state = self._actor_network(
             time_step.observation,
@@ -216,7 +222,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                         self._dqda_clipping)
             loss = losses.element_wise_squared_loss(
                 tf.stop_gradient(dqda + action), action)
-            loss = tf.reduce_sum(loss, axis=loss.shape[1:])
+            loss = tf.reduce_sum(loss, axis=list(range(1, len(loss.shape))))
             return loss
 
         actor_loss = tf.nest.map_structure(actor_loss_fn, dqda, action)
