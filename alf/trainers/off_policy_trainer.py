@@ -70,7 +70,7 @@ def train(train_dir,
             one iteration
         mini_batch_size (int): number of sequences for each minibatch
         clear_replay_buffer (bool): whether use all data in replay buffer to perform
-            one update and wiped clean
+            one update and then wiped clean
         mini_batch_length (int): the length of the sequence for each 
             sample in the minibatch
         num_steps_per_iter (int): number of steps for one iteration. It is the
@@ -93,9 +93,10 @@ def train(train_dir,
     eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
     # make sure the length of samples from rollout can be divided by
     # `mini_batch_length`
-    num_steps_per_iter = (
-        math.ceil(num_steps_per_iter / (mini_batch_length * env.batch_size)) *
-        mini_batch_length * env.batch_size)
+    if clear_replay_buffer:
+        num_steps_per_iter = (math.ceil(num_steps_per_iter /
+                                        (mini_batch_length * env.batch_size)) *
+                              mini_batch_length * env.batch_size)
     eval_metrics = None
     eval_summary_writer = None
     if eval_env is not None:
@@ -133,17 +134,18 @@ def train(train_dir,
         time_step = driver.get_initial_time_step()
         policy_state = driver.get_initial_state()
 
-        collect_steps = initial_collect_steps
-        if not collect_steps:
-            collect_steps = num_steps_per_iter
-
-        time_step, policy_state = driver.run(
-            max_num_steps=collect_steps,
-            time_step=time_step,
-            policy_state=policy_state)
-
         for iter in range(num_iterations):
             t0 = time.time()
+
+            if iter == 0 and initial_collect_steps > 0:
+                max_num_steps = initial_collect_steps
+            else:
+                max_num_steps = num_steps_per_iter
+
+            time_step, policy_state = driver.run(
+                max_num_steps=max_num_steps,
+                time_step=time_step,
+                policy_state=policy_state)
 
             if clear_replay_buffer:
                 experience = replay_buffer.gather_all()
@@ -158,11 +160,6 @@ def train(train_dir,
                 num_updates=num_updates_per_train_step,
                 mini_batch_length=mini_batch_length,
                 mini_batch_size=mini_batch_size)
-
-            time_step, policy_state = driver.run(
-                max_num_steps=num_steps_per_iter,
-                time_step=time_step,
-                policy_state=policy_state)
 
             logging.info('%s time=%.3f' % (iter, time.time() - t0))
 

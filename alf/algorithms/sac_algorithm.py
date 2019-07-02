@@ -183,12 +183,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
-    @property
-    def trainable_variables(self):
-        return ([self._log_alpha] + self._actor_network.trainable_variables +
-                self._critic_network1.trainable_variables +
-                self._critic_network2.trainable_variables)
-
     def predict(self, time_step: ActionTimeStep, state=None):
         action, state = self._actor_network(
             time_step.observation,

@@ -159,12 +159,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self._target_actor_network.variables,
             tau=1.0)
 
-    @property
-    def trainable_variables(self):
-        # The default trainable_variables() will include target networks
-        return (self._critic_network.trainable_variables +
-                self._actor_network.trainable_variables)
-
     def greedy_predict(self, time_step: ActionTimeStep, state=None):
         action, state = self._actor_network(
             time_step.observation,
