@@ -364,7 +364,7 @@ def _markdownify_gin_config_str(string, description=''):
     output_lines = []
 
     if description:
-        output_lines.append('*# ' + description + '*')
+        output_lines.append("    # %s\n" % description)
 
     for line in string.splitlines():
         procd_line = process(line)
@@ -395,8 +395,7 @@ def summarize_gin_config():
             inoperative_config_str,
             "All parameter values configured but not used by program. The configured "
             "functions are either not called or called with explicit parameter values "
-            "overriding the config."
-        )
+            "overriding the config.")
         tf.summary.text('gin/inoperative_config', md_config_str)
 
 
