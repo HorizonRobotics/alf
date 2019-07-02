@@ -115,25 +115,27 @@ class DMAtariPreprocessing(gym.Wrapper):
     """
     Derived from tf_agents AtariPreprocessing. Three differences:
     1. Random number of NOOPs after reset
-    2. FIRE after a reset or a lost life. This is for the purpose of evaluation with
-       greedy prediction without getting stucked in the early training stage.
+    2. FIRE after a reset or a lost life. This is for the purpose of evaluation
+       with greedy prediction without getting stucked in the early training
+       stage.
     3. A lost life doesn't result in a terminal state
 
-    NOTE:
-    Some implementations mark a terminal state when a life is lost to help learn value
-    functions, but only resetting the env when all lives are used `done==True`. In
-    this case, the episodic score is still summed over all lives.
+    NOTE: Some implementations forces the time step that loses a life to have a
+    zero value (i.e., mark a 'terminal' state) to help boostrap value functions,
+    but *only resetting the env when all lives are used (`done==True`)*. In this
+    case, the episodic score is still summed over all lives.
 
-    For our implementation, we only mark a terminal state when `done==True`. It's more
-    difficult to learn in our case (time horizon is longer).
+    For our implementation, we only mark a terminal state when all lives are
+    used (`done==True`). It's more difficult to learn in our case (time horizon
+    is longer).
 
     To see a complete list of atari wrappers used by DeepMind, see
     https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py
     Also see OpenAI Gym's implementation (not completely the same):
     https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
 
-    (This wrapper does not handle framestacking. It can be paired with FrameStack.
-    See ac_atari.gin for an example.)
+    (This wrapper does not handle framestacking. It can be paired with
+    FrameStack. See ac_atari.gin for an example.)
     """
     def __init__(self,
                  env,
@@ -177,7 +179,7 @@ class DMAtariPreprocessing(gym.Wrapper):
 
         self._lives = 0
 
-    def reset_with_random_noops(self):
+    def _reset_with_random_noops(self):
         self.env.reset()
         self._lives = self.env.ale.lives()
         n_noops = self.env.unwrapped.np_random.randint(
@@ -195,22 +197,22 @@ class DMAtariPreprocessing(gym.Wrapper):
             self.env.step(1)
             self.env.step(2)
 
-    def reset(self, hard_reset=True):
+    def _start_new_life(self):
+        self.fire()
+        # in either case, we need to clear the screen buffer
+        self._fetch_grayscale_observation(self.screen_buffer[0])
+        self.screen_buffer[1].fill(0)
+        return self._pool_and_resize()
+
+    def reset(self):
         """
         Resets the environment.
         Returns:
             observation (np.array): the initial observation emitted by the
                 environment.
         """
-        if hard_reset:
-            self.reset_with_random_noops()
-
-        self.fire()
-
-        # in either case, we need to clear the screen buffer
-        self._fetch_grayscale_observation(self.screen_buffer[0])
-        self.screen_buffer[1].fill(0)
-        return self._pool_and_resize()
+        self._reset_with_random_noops()
+        return self._start_new_life()
 
     def step(self, action):
         """Applies the given action in the environment.
@@ -255,7 +257,7 @@ class DMAtariPreprocessing(gym.Wrapper):
 
         # Pool the last two observations.
         if life_lost:
-            observation = self.reset(False)
+            observation = self._start_new_life()
         else:
             observation = self._pool_and_resize()
 
