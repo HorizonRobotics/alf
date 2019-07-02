@@ -31,8 +31,8 @@ from alf.environments.suite_unittest import ActionType
 def _create_sac_algorithm(env):
     return create_sac_algorithm(
         env=env,
-        actor_fc_layers=(100, ),
-        critic_fc_layers=(100, ),
+        actor_fc_layers=(16, 16),
+        critic_fc_layers=(16, 16),
         alpha_learning_rate=5e-3,
         actor_learning_rate=5e-3,
         critic_learning_rate=5e-3)
@@ -41,8 +41,8 @@ def _create_sac_algorithm(env):
 def _create_ddpg_algorithm(env):
     return create_ddpg_algorithm(
         env=env,
-        actor_fc_layers=(),
-        critic_fc_layers=(),
+        actor_fc_layers=(16, 16),
+        critic_fc_layers=(16, 16),
         actor_learning_rate=1e-2,
         critic_learning_rate=1e-1)
 

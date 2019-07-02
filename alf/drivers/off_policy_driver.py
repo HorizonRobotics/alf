@@ -218,8 +218,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         if mini_batch_length is None:
             mini_batch_length = length
         experience = tf.nest.map_structure(
-            lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])),
-            experience)
+            lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
+                                 ), experience)
         if mini_batch_size is None:
             mini_batch_size = experience.step_type.shape[0]
 
@@ -251,7 +251,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                         1:]), batch)
                 batch = self._make_time_major(batch)
                 training_info, loss_info, grads_and_vars = self._update(
-                    batch, weight=batch.step_type.shape[0] / mini_batch_size)
+                    batch, weight=batch.step_type.shape[1] / mini_batch_size)
                 # somehow tf.function autograph does not work correctly for the
                 # following code:
                 # if u == num_updates - 1 and b + mini_batch_size >= batch_size:
@@ -264,7 +264,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
     def _train_step(self, exp, state):
         policy_step = self.algorithm_step(exp, state=state, training=True)
         return policy_step._replace(
-            action=self._to_distribution(policy_step.action))
+            action=common.to_distribution(policy_step.action))
 
     def _update(self, experience, weight):
         batch_size = experience.step_type.shape[1]

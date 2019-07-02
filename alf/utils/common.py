@@ -17,6 +17,7 @@ import glob
 import os
 import shutil
 
+import tensorflow_probability as tfp
 from absl import flags
 import gin
 import tensorflow as tf
@@ -100,12 +101,15 @@ def get_target_updater(models, target_models, tau=1.0, period=1):
         A callable that performs a soft update of the target model parameters.
     """
     models = as_list(models)
-    target_models = as_list(models)
+    target_models = as_list(target_models)
 
     def update():
+        update_ops = []
         for model, target_model in zip(models, target_models):
-            tfa_common.soft_variables_update(model.variables,
-                                             target_model.variables, tau)
+            update_op = tfa_common.soft_variables_update(
+                model.variables, target_model.variables, tau)
+            update_ops.append(update_op)
+        return tf.group(*update_ops)
 
     return tfa_common.Periodically(update, period, 'periodic_update_targets')
 
@@ -474,3 +478,42 @@ def explained_variance(ypred, y):
     y = tf.reshape(y, [-1])
     _, vary = tf.nn.moments(y, axes=(0, ))
     return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)
+
+
+def sample_action_distribution(actions_or_distributions, seed=None):
+    """Sample actions from distributions
+    Args:
+        actions_or_distributions (nested tf.Tensor|nested Distribution]):
+            tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
+            and others for tfp.distributions.Distribution instances
+        seed (Any):Any Python object convertible to string, supplying the
+            initial entropy.  If `None`, operations seeded with seeds
+            drawn from this `SeedStream` will follow TensorFlow semantics
+            for not being seeded.
+    Returns:
+        sampled actions
+    """
+
+    distributions = tf.nest.map_structure(to_distribution,
+                                          actions_or_distributions)
+    seed_stream = tfp.distributions.SeedStream(seed=seed, salt='sample')
+    return tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
+                                 distributions)
+
+
+def to_distribution(action_or_distribution):
+    """Convert action_or_distribution to to Distribution.
+
+    Args:
+        action_or_distribution (tf.Tensor|Distribution):
+            tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
+            and others for tfp.distributions.Distribution instance
+    """
+
+    def _to_dist(action_or_distribution):
+        if isinstance(action_or_distribution, tf.Tensor):
+            return tfp.distributions.Deterministic(loc=action_or_distribution)
+        else:
+            return action_or_distribution
+
+    return tf.nest.map_structure(_to_dist, action_or_distribution)

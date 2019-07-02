@@ -216,7 +216,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                         self._dqda_clipping)
             loss = losses.element_wise_squared_loss(
                 tf.stop_gradient(dqda + action), action)
-            loss = tf.reduce_sum(loss, axis=loss.shape[1:])
+            loss = tf.reduce_sum(loss, axis=list(range(1, len(loss.shape))))
             return loss
 
         actor_loss = tf.nest.map_structure(actor_loss_fn, dqda, action)

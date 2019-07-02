@@ -37,9 +37,11 @@ def train(train_dir,
           algorithm,
           eval_env=None,
           random_seed=0,
+          initial_collect_steps=0,
           num_updates_per_train_step=4,
           mini_batch_length=20,
           mini_batch_size=256,
+          clear_replay_buffer=True,
           num_steps_per_iter=10000,
           num_iterations=1000,
           use_tf_functions=True,
@@ -60,15 +62,21 @@ def train(train_dir,
         env (TFEnvironment): environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
         eval_env (TFEnvironment): environment for evaluating
+        initial_collect_steps (int): number of steps environment steps
+            before perform first update, num_steps_per_iter will be used if
+            it is zero.
         random_seed (int): random seed
-        num_updates_per_train_steppdates (int): number of optimization steps for
+        num_updates_per_train_step (int): number of optimization steps for
             one iteration
         mini_batch_size (int): number of sequences for each minibatch
+        clear_replay_buffer (bool): whether use all data in replay buffer to perform
+            one update and then wiped clean
         mini_batch_length (int): the length of the sequence for each 
             sample in the minibatch
         num_steps_per_iter (int): number of steps for one iteration. It is the
             total steps from all individual environment in the batch
             environment.
+        num_iterations (int): number of update iterations
         use_tf_functions (bool): whether to use tf.function
         summary_interval (int): write summary every so many training steps (
             i.e. number of parameter updates)
@@ -85,9 +93,10 @@ def train(train_dir,
     eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
     # make sure the length of samples from rollout can be divided by
     # `mini_batch_length`
-    num_steps_per_iter = (
-        math.ceil(num_steps_per_iter / (mini_batch_length * env.batch_size)) *
-        mini_batch_length * env.batch_size)
+    if clear_replay_buffer:
+        num_steps_per_iter = (math.ceil(num_steps_per_iter /
+                                        (mini_batch_length * env.batch_size)) *
+                              mini_batch_length * env.batch_size)
     eval_metrics = None
     eval_summary_writer = None
     if eval_env is not None:
@@ -124,21 +133,33 @@ def train(train_dir,
         env.reset()
         time_step = driver.get_initial_time_step()
         policy_state = driver.get_initial_state()
+
         for iter in range(num_iterations):
             t0 = time.time()
+
+            if iter == 0 and initial_collect_steps > 0:
+                max_num_steps = initial_collect_steps
+            else:
+                max_num_steps = num_steps_per_iter
+
             time_step, policy_state = driver.run(
-                max_num_steps=num_steps_per_iter,
+                max_num_steps=max_num_steps,
                 time_step=time_step,
                 policy_state=policy_state)
 
-            experience = replay_buffer.gather_all()
+            if clear_replay_buffer:
+                experience = replay_buffer.gather_all()
+                replay_buffer.clear()
+            else:
+                experience, _ = replay_buffer.get_next(
+                    sample_batch_size=mini_batch_size,
+                    num_steps=mini_batch_length)
 
             driver.train(
                 experience,
                 num_updates=num_updates_per_train_step,
                 mini_batch_length=mini_batch_length,
                 mini_batch_size=mini_batch_size)
-            replay_buffer.clear()
 
             logging.info('%s time=%.3f' % (iter, time.time() - t0))
 

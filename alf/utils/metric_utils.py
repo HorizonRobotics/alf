@@ -17,6 +17,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tf_agents.policies.tf_policy import Base
 from tf_agents.eval.metric_utils import eager_compute as tfa_eager_compute
+from alf.utils import common
 
 
 class Policy(Base):
@@ -42,10 +43,7 @@ class Policy(Base):
 
     def _action(self, time_step, policy_state=(), seed=None):
         policy_step = self._action_fn1(time_step, policy_state)
-        seed_stream = tfp.distributions.SeedStream(
-            seed=seed, salt='policy_proxy')
-        action = tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
-                                       policy_step.action)
+        action = common.sample_action_distribution(policy_step.action, seed)
         policy_step = policy_step._replace(action=action)
         return policy_step
 

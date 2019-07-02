@@ -15,6 +15,7 @@
 
 from abc import abstractmethod
 from collections import namedtuple
+import itertools
 from typing import Callable
 
 import numpy as np
@@ -142,14 +143,16 @@ class RLAlgorithm(tf.Module):
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
         self._optimizers = common.as_list(optimizer)
-        if optimizer is not None and get_trainable_variables_func is None:
-            get_trainable_variables_func = lambda: self.trainable_variables
+        if get_trainable_variables_func is None:
+            get_trainable_variables_func = lambda: super(RLAlgorithm, self
+                                                         ).trainable_variables
         self._get_trainable_variables_funcs = common.as_list(
             get_trainable_variables_func)
-        assert (len(self._optimizers) == len(
-            self._get_trainable_variables_funcs)), (
-                "`optimizer` and `get_trainable_variables_func`"
-                "should have same length")
+        if optimizer:
+            assert (len(self._optimizers) == len(
+                self._get_trainable_variables_funcs)), (
+                    "`optimizer` and `get_trainable_variables_func`"
+                    "should have same length")
 
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
@@ -178,6 +181,19 @@ class RLAlgorithm(tf.Module):
     def train_state_spec(self):
         """Return the RNN state spec for train_step()."""
         return self._train_state_spec
+
+    @property
+    def trainable_variables(self):
+        return list(itertools.chain(*self._get_cached_var_sets()))
+
+    def _get_cached_var_sets(self):
+        if self._cached_var_sets is None:
+            # Cache it because trainable_variables is an expensive operation
+            # according to the documentation.
+            self._cached_var_sets = []
+            for f in self._get_trainable_variables_funcs:
+                self._cached_var_sets.append(f())
+        return self._cached_var_sets
 
     def add_reward_summary(self, name, rewards):
         if self._debug_summaries:
@@ -272,14 +288,7 @@ class RLAlgorithm(tf.Module):
                 lambda l: tf.reduce_mean(l * valid_masks), loss_info)
             loss = weight * loss_info.loss
 
-        if self._cached_var_sets is None:
-            # Cache it because trainable_variables is an expensive operation
-            # according to the documentation.
-            self._cached_var_sets = []
-            for f in self._get_trainable_variables_funcs:
-                self._cached_var_sets.append(f())
-
-        var_sets = self._cached_var_sets
+        var_sets = self._get_cached_var_sets()
         all_grads_and_vars = ()
         for vars, optimizer in zip(var_sets, self._optimizers):
             grads = tape.gradient(loss, vars)
