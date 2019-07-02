@@ -24,7 +24,6 @@ tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
                                                    'tf.keras.layers.Conv2D')
 tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
                                                'tf.optimizers.Adam')
-gin.external_configurable(atari_wrappers.FrameStack4)
 
 # This allows the environment creation arguments to be configurable by supplying
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE

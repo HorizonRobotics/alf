@@ -114,23 +114,31 @@ class FrameSkip(gym.Wrapper):
 class DMAtariPreprocessing(gym.Wrapper):
     """
     Derived from tf_agents AtariPreprocessing. Three differences:
-    1. If terminating on losing a life, stepping a NO-OP action instead of resetting
-    2. Random number of NOOPs after reset
-    3. FIRE after step 2
+    1. Random number of NOOPs after reset
+    2. FIRE after a reset or a lost life. This is for the purpose of evaluation with
+       greedy prediction without getting stucked in the early training stage.
+    3. A lost life doesn't result in a terminal state
+
+    NOTE:
+    Some implementations mark a terminal state when a life is lost to help learn value
+    functions, but only resetting the env when all lives are used `done==True`. In
+    this case, the episodic score is still summed over all lives.
+
+    For our implementation, we only mark a terminal state when `done==True`. It's more
+    difficult to learn in our case (time horizon is longer).
 
     To see a complete list of atari wrappers used by DeepMind, see
     https://github.com/ray-project/ray/blob/master/python/ray/rllib/env/atari_wrappers.py
     Also see OpenAI Gym's implementation (not completely the same):
     https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
 
-    Note: This wrapper does not handle framestacking. It can be paired with FrameStack.
-    See ac_breakout.gin for an example.
+    (This wrapper does not handle framestacking. It can be paired with FrameStack.
+    See ac_breakout.gin for an example.)
     """
     def __init__(self,
                  env,
                  frame_skip=4,
                  noop_max=30,
-                 terminal_on_life_loss=False,
                  screen_size=84):
         """Constructor for an Atari 2600 preprocessor.
 
@@ -138,8 +146,6 @@ class DMAtariPreprocessing(gym.Wrapper):
             env (gym.Env): the environment whose observations are preprocessed.
             frame_skip (int): the frequency at which the agent experiences the game.
             noop_max (int): the maximum number of no-op actions after resetting the env
-            terminal_on_life_loss (bool): If True, the step() method returns
-                is_terminal=True whenever a life is lost. See Mnih et al. 2015.
             screen_size (int): size of a resized Atari 2600 frame.
         """
         super().__init__(env)
@@ -150,7 +156,6 @@ class DMAtariPreprocessing(gym.Wrapper):
             raise ValueError('Target screen size should be strictly positive, got {}'
                             .format(screen_size))
 
-        self.terminal_on_life_loss = terminal_on_life_loss
         self.frame_skip = frame_skip
         self.screen_size = screen_size
         self.noop_max = noop_max
@@ -170,11 +175,11 @@ class DMAtariPreprocessing(gym.Wrapper):
             shape=(self.screen_size, self.screen_size, 1),
             dtype=np.uint8)
 
-        self.game_over = True
-        self.lives = 0  # Will need to be set by reset().
+        self._lives = 0
 
     def reset_with_random_noops(self):
         self.env.reset()
+        self._lives = self.env.ale.lives()
         n_noops = self.env.unwrapped.np_random.randint(
             1, self.noop_max + 1)
         for _ in range(n_noops):
@@ -182,7 +187,7 @@ class DMAtariPreprocessing(gym.Wrapper):
             if game_over:
                 self.env.reset()
 
-    def fire_on_reset(self):
+    def fire(self):
         # The following code is from https://github.com/openai/gym/...
         # ...blob/master/gym/wrappers/atari_preprocessing.py
         action_meanings = self.env.unwrapped.get_action_meanings()
@@ -190,22 +195,17 @@ class DMAtariPreprocessing(gym.Wrapper):
             self.env.step(1)
             self.env.step(2)
 
-    def reset(self):
+    def reset(self, hard_reset=True):
         """
         Resets the environment.
         Returns:
             observation (np.array): the initial observation emitted by the
                 environment.
         """
-        if self.game_over:
+        if hard_reset:
             self.reset_with_random_noops()
-            self.lives = self.env.ale.lives()
-            self.game_over = False
-        else:
-            # reset called because of losing a life
-            self.env.step(0) # no-op
 
-        self.fire_on_reset()
+        self.fire()
 
         # in either case, we need to clear the screen buffer
         self._fetch_grayscale_observation(self.screen_buffer[0])
@@ -217,7 +217,7 @@ class DMAtariPreprocessing(gym.Wrapper):
 
         Remarks:
 
-        * If a terminal state (from life loss or episode end) is reached, this may
+        * If a terminal state (episode end) is reached, this may
             execute fewer than self.frame_skip steps in the environment.
         * Furthermore, in this case the returned observation may not contain valid
             image data and should be ignored.
@@ -228,27 +228,21 @@ class DMAtariPreprocessing(gym.Wrapper):
         Returns:
             observation (np.array): the observation following the action.
             reward (float): the reward following the action.
-            is_terminal (bool): whether the environment has reached a terminal state.
-                This is true when a life is lost and terminal_on_life_loss, or when the
-                episode is over.
+            game_over (bool): whether the environment has reached a terminal state.
+                This is true when an episode is over.
             info: Gym API's info data structure.
         """
         accumulated_reward = 0.
+        life_lost = False
 
         for time_step in range(self.frame_skip):
             # We bypass the Gym observation altogether and directly fetch the
             # grayscale image from the ALE. This is a little faster.
             _, reward, game_over, info = self.env.step(action)
+            life_lost = self.env.ale.lives() < self._lives
+            self._lives = self.env.ale.lives()
             accumulated_reward += reward
-
-            if self.terminal_on_life_loss:
-                new_lives = self.env.ale.lives()
-                is_terminal = game_over or new_lives < self.lives
-                self.lives = new_lives
-            else:
-                is_terminal = game_over
-
-            if is_terminal:
+            if game_over or life_lost:
                 break
             # We max-pool over the last two frames, in grayscale.
             elif time_step >= self.frame_skip - 2:
@@ -260,10 +254,12 @@ class DMAtariPreprocessing(gym.Wrapper):
             self.screen_buffer[0] = self.screen_buffer[1]
 
         # Pool the last two observations.
-        observation = self._pool_and_resize()
+        if life_lost:
+            observation = self.reset(False)
+        else:
+            observation = self._pool_and_resize()
 
-        self.game_over = game_over
-        return observation, accumulated_reward, is_terminal, info
+        return observation, accumulated_reward, game_over, info
 
     def _fetch_grayscale_observation(self, output):
         """Returns the current observation in grayscale.
