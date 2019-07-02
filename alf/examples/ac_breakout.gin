@@ -1,7 +1,7 @@
 # You need to install following packages
 # pip3 install atari-py opencv-python
 
-include 'ac_atari.gin'
+include 'atari.gin'
 # From OpenAI gym wiki:
 # "v0 vs v4: v0 has repeat_action_probability of 0.25
 #  (meaning 25% of the time the previous action will be used instead of the new action),
