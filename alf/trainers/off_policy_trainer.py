@@ -14,6 +14,7 @@
 
 import math
 import os
+import sys
 import time
 
 from absl import logging
@@ -82,6 +83,8 @@ def train(train_dir,
 
     train_dir = os.path.expanduser(train_dir)
     eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
+    # make sure the length of samples from rollout can be divided by
+    # `mini_batch_length`
     num_steps_per_iter = (
         math.ceil(num_steps_per_iter / (mini_batch_length * env.batch_size)) *
         mini_batch_length * env.batch_size)
@@ -158,6 +161,7 @@ def train(train_dir,
             if iter == 0:
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
+                    tf.summary.text('commandline', ' '.join(sys.argv))
 
         checkpointer.save(global_step=global_step.numpy())
 
