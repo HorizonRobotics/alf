@@ -20,6 +20,8 @@ import numpy as np
 from tensorflow.keras.datasets import mnist
 import matplotlib.pyplot as plt
 
+interactive_mode = False
+
 
 class VaeMnistTest(unittest.TestCase):
     def setUp(self):
@@ -113,9 +115,11 @@ class VaeTest(VaeMnistTest):
             validation_data=(self.x_test, None))
 
         last_val_loss = hist.history['val_loss'][-1]
+        print("loss: ", last_val_loss)
         self.assertTrue(38.0 < last_val_loss <= 39.0)
-        self.show_encoded_images(model)
-        self.show_sampled_images(lambda eps: decoding_layers(eps))
+        if interactive_mode:
+            self.show_encoded_images(model)
+            self.show_sampled_images(lambda eps: decoding_layers(eps))
 
 
 # train conditional vae on mnist
@@ -156,30 +160,32 @@ class CVaeTest(VaeMnistTest):
 
         last_val_loss = hist.history['val_loss'][-1]
         # cvae seems have the lowest errors with the same settings
+        print("loss: ", last_val_loss)
         self.assertTrue(30.0 < last_val_loss < 31.0)
 
-        self.show_encoded_images(model, with_priors=True)
-        nrows = 10
-        fig = plt.figure()
-        idx = 0
-        for i in range(10):
-            eps = tf.random.normal((nrows, self.latent_dim),
-                                   dtype=tf.float32,
-                                   mean=0.,
-                                   stddev=1.0)
-            conditionals = tf.stack([tf.one_hot(i, 10) for _ in range(10)])
-            sampled_outputs = decoding_layers(
-                tf.concat([conditionals, eps], -1))
-            # for the same digit i, we sample a bunch of images
-            # it actually looks great.
-            for j in range(nrows):
-                fig.add_subplot(nrows, nrows, idx + 1)
-                plt.imshow(
-                    np.reshape(sampled_outputs[j],
-                               (self.image_size, self.image_size)))
-                idx += 1
+        if interactive_mode:
+            self.show_encoded_images(model, with_priors=True)
+            nrows = 10
+            fig = plt.figure()
+            idx = 0
+            for i in range(10):
+                eps = tf.random.normal((nrows, self.latent_dim),
+                                       dtype=tf.float32,
+                                       mean=0.,
+                                       stddev=1.0)
+                conditionals = tf.stack([tf.one_hot(i, 10) for _ in range(10)])
+                sampled_outputs = decoding_layers(
+                    tf.concat([conditionals, eps], -1))
+                # for the same digit i, we sample a bunch of images
+                # it actually looks great.
+                for j in range(nrows):
+                    fig.add_subplot(nrows, nrows, idx + 1)
+                    plt.imshow(
+                        np.reshape(sampled_outputs[j],
+                                   (self.image_size, self.image_size)))
+                    idx += 1
 
-        plt.show()
+            plt.show()
 
 
 class PriorNetwork(tf.keras.Model):
@@ -230,33 +236,35 @@ class VaePriorNetworkTest(VaeMnistTest):
 
         last_val_loss = hist.history['val_loss'][-1]
         # total loss is much smaller with label based prior network.
+        print("loss: ", last_val_loss)
         self.assertTrue(34.0 < last_val_loss < 35.5)
-        self.show_encoded_images(model, with_priors=True)
+        if interactive_mode:
+            self.show_encoded_images(model, with_priors=True)
 
-        # with prior network, sampling is more complicated
-        nrows = 10
-        fig = plt.figure()
-        idx = 0
-        for i in range(10):
-            z_mean_prior, z_log_var_prior = prior_network(
-                tf.stack([tf.one_hot(i, 10) for _ in range(10)]))
+            # with prior network, sampling is more complicated
+            nrows = 10
+            fig = plt.figure()
+            idx = 0
+            for i in range(10):
+                z_mean_prior, z_log_var_prior = prior_network(
+                    tf.stack([tf.one_hot(i, 10) for _ in range(10)]))
 
-            eps = tf.random.normal((nrows, self.latent_dim),
-                                   dtype=tf.float32,
-                                   mean=0.,
-                                   stddev=1.0)
-            sampled_outputs = decoding_layers(eps * z_log_var_prior +
-                                              z_mean_prior)
-            # for the same digit i, we sample a bunch of images
-            # it actually looks great.
-            for j in range(nrows):
-                fig.add_subplot(nrows, nrows, idx + 1)
-                plt.imshow(
-                    np.reshape(sampled_outputs[j],
-                               (self.image_size, self.image_size)))
-                idx += 1
+                eps = tf.random.normal((nrows, self.latent_dim),
+                                       dtype=tf.float32,
+                                       mean=0.,
+                                       stddev=1.0)
+                sampled_outputs = decoding_layers(eps * z_log_var_prior +
+                                                  z_mean_prior)
+                # for the same digit i, we sample a bunch of images
+                # it actually looks great.
+                for j in range(nrows):
+                    fig.add_subplot(nrows, nrows, idx + 1)
+                    plt.imshow(
+                        np.reshape(sampled_outputs[j],
+                                   (self.image_size, self.image_size)))
+                    idx += 1
 
-        plt.show()
+            plt.show()
 
 
 class SimpleVaeTest(unittest.TestCase):
@@ -300,5 +308,6 @@ class SimpleVaeTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    tf.config.gpu.set_per_process_memory_growth(True)
+    from alf.utils.common import set_per_process_memory_growth
+    set_per_process_memory_growth()
     unittest.main()

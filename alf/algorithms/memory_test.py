@@ -116,7 +116,7 @@ class TestMemory(unittest.TestCase):
             s = tf.ones((x.shape[0], 3), dtype=tf.float32) * 20.
             return tf.concat([x, x, x, s], axis=-1)
 
-        r = mem.genkey_and_read(keynet, w0)
+        r = mem.genkey_and_read(keynet, w0, flatten_result=False)
         self.assertEqual(list(r.shape), [2, 3, 2])
         self.assertArrayEqual(r[:, 0, :], w0)
         self.assertArrayEqual(r[:, 1, :], w0)
@@ -124,6 +124,6 @@ class TestMemory(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    tf.config.gpu.set_per_process_memory_growth(True)
-    TestMemory().test_genkey_and_read()
-    #unittest.main()
+    from alf.utils.common import set_per_process_memory_growth
+    set_per_process_memory_growth()
+    unittest.main()
