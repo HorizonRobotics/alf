@@ -1,8 +1,18 @@
+# Although this config uses off_policy_trainer, it is essentially same as
+# on-policy training because the collected experiences are used once (
+# off_policy_trainer.train.num_updates_per_train_step=1) for updating policy.
+# It is used to validate the correctness of off_policy_trainer.
 #
+# And in order to do correct off-policy AC, the loss need to includes importance
+# ratio, such as the V-trace in IMPALA (arXiv:1802.01561)
 
 # environment config
 create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
+
+# reward scaling
+ActorCriticAlgorithm.reward_shaping_fn = @reward_scaling
+common.reward_scaling.scale = 0.01
 
 # algorithm config
 ActorCriticAlgorithm.gradient_clipping=10.0
@@ -26,5 +36,5 @@ off_policy_trainer.train.checkpoint_interval=100000
 off_policy_trainer.train.num_updates_per_train_step=1
 TFUniformReplayBuffer.max_length=2048
 
-train_eval.debug_summaries=1
-train_eval.evaluate=0
+train_eval.debug_summaries=True
+train_eval.evaluate=False
