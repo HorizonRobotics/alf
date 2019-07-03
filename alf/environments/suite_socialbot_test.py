@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Test for alf.environments.suite_socialbot."""
 
 from __future__ import absolute_import
@@ -41,22 +40,25 @@ class SuiteSocialbotTest(absltest.TestCase):
             gin.clear_config()
 
     def test_socialbot_env_registered(self):
-        env = suite_socialbot.load('SocialBot-Pr2Gripper-v0')
+        env = suite_socialbot.load('SocialBot-CartPole-v0')
         self.assertIsInstance(env, py_environment.PyEnvironment)
 
     def test_observation_spec(self):
-        env = suite_socialbot.load('SocialBot-Pr2Gripper-v0')
+        env = suite_socialbot.load('SocialBot-CartPole-v0')
         self.assertEqual(np.float32, env.observation_spec().dtype)
-        self.assertEqual((84, 84, 1), env.observation_spec().shape)
+        self.assertEqual((4, ), env.observation_spec().shape)
 
     def test_action_spec(self):
-        env = suite_socialbot.load('SocialBot-Pr2Gripper-v0')
+        env = suite_socialbot.load('SocialBot-CartPole-v0')
         self.assertEqual(np.float32, env.action_spec().dtype)
-        self.assertEqual((20,), env.action_spec().shape)
+        self.assertEqual((1, ), env.action_spec().shape)
 
     def test_batched_envs(self):
         env_num = 5
-        envs = [suite_socialbot.load('SocialBot-Pr2Gripper-v0') for _ in range(env_num)]
+        envs = [
+            suite_socialbot.load('SocialBot-CartPole-v0')
+            for _ in range(env_num)
+        ]
         batched_env = batched_py_environment.BatchedPyEnvironment(envs)
         tf_env = tf_py_environment.TFPyEnvironment(batched_env)
 
@@ -64,8 +66,7 @@ class SuiteSocialbotTest(absltest.TestCase):
         self.assertEqual(tf_env.batch_size, env_num)
 
         random_policy = random_tf_policy.RandomTFPolicy(
-            tf_env.time_step_spec(),
-            tf_env.action_spec())
+            tf_env.time_step_spec(), tf_env.action_spec())
 
         replay_buffer_capacity = 100
         replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
@@ -86,4 +87,6 @@ class SuiteSocialbotTest(absltest.TestCase):
 
 
 if __name__ == '__main__':
+    from alf.utils.common import set_per_process_memory_growth
+    set_per_process_memory_growth()
     absltest.main()
