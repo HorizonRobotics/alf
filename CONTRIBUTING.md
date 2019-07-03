@@ -40,7 +40,7 @@ github and review will be more difficult because the new change cannot
 be separated from previous change. For the same reason, if you need to incorporate
 the latest code from master, please use `git pull` instead of `git pull --rebase`.
 
-## Coding stardard
+## Coding standard
 
 We follow the coding style http://google.github.io/styleguide/pyguide.html. 
 And please comment all the public functions with the following style:
