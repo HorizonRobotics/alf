@@ -21,12 +21,24 @@ pre-commit install
 git co -b PR_change_name origin/master
 ```
 
-Make change to your code and test
+Make change to your code and test. You can run all the existing unittests
+by the following command:
+```bash
+python -m unittest discover -s alf -p "*_test.py" -v
+```
+
+Then commit your change to the local branch using `git commit`
 
 5. Make pull request:
 ```bash
 git push origin PR_change_name
 ```
+6. Change your code based on review comments. The new change should be added
+as NEW commit to your previous commits. Do not use `--amend` option for the 
+commit, because then you will have to use '-f' option to push your change to
+github and review will be more difficult because the new change cannot
+be separated from previous change. For the same reason, if you need to incorporate
+the latest code from master, please use `git pull` instead of `git pull --rebase`.
 
 ## Coding stardard
 
