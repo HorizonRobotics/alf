@@ -20,7 +20,7 @@ import numpy as np
 from tensorflow.keras.datasets import mnist
 import matplotlib.pyplot as plt
 
-interactive_mode = False
+INTERACTIVE_MODE = False
 
 
 class VaeMnistTest(unittest.TestCase):
@@ -117,7 +117,7 @@ class VaeTest(VaeMnistTest):
         last_val_loss = hist.history['val_loss'][-1]
         print("loss: ", last_val_loss)
         self.assertTrue(38.0 < last_val_loss <= 39.0)
-        if interactive_mode:
+        if INTERACTIVE_MODE:
             self.show_encoded_images(model)
             self.show_sampled_images(lambda eps: decoding_layers(eps))
 
@@ -163,7 +163,7 @@ class CVaeTest(VaeMnistTest):
         print("loss: ", last_val_loss)
         self.assertTrue(30.0 < last_val_loss < 31.0)
 
-        if interactive_mode:
+        if INTERACTIVE_MODE:
             self.show_encoded_images(model, with_priors=True)
             nrows = 10
             fig = plt.figure()
@@ -238,7 +238,7 @@ class VaePriorNetworkTest(VaeMnistTest):
         # total loss is much smaller with label based prior network.
         print("loss: ", last_val_loss)
         self.assertTrue(34.0 < last_val_loss < 35.5)
-        if interactive_mode:
+        if INTERACTIVE_MODE:
             self.show_encoded_images(model, with_priors=True)
 
             # with prior network, sampling is more complicated
