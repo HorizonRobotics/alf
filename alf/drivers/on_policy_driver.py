@@ -232,7 +232,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         else:
             policy_step = self.algorithm_step(time_step, policy_state,
                                               self._training)
-            action = self._sample_action_distribution(policy_step.action)
+            action = common.sample_action_distribution(policy_step.action)
             next_time_step = time_step
             next_state = policy_state
 
