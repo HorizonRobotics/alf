@@ -2,6 +2,10 @@
 create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
 
+# reward scaling
+ActorCriticAlgorithm.reward_shaping_fn = @reward_scaling
+common.reward_scaling.scale = 0.01
+
 # algorithm config
 ActorCriticAlgorithm.gradient_clipping=10.0
 ActorCriticLoss.entropy_regularization=1e-4
@@ -17,6 +21,7 @@ create_ac_algorithm.learning_rate=0.001
 on_policy_trainer.train.train_interval=8
 on_policy_trainer.train.num_iterations=20
 on_policy_trainer.train.summary_interval=5
+on_policy_trainer.train.summarize_grads_and_vars=True
 
 train_eval.debug_summaries=True
 train_eval.evaluate=False
