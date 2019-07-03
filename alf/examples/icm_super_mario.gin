@@ -8,6 +8,7 @@ import alf.environments.suite_mario
 create_environment.env_load_fn=@suite_mario.load
 create_environment.env_name="SuperMarioBros-Nes"
 create_environment.num_parallel_environments=30
+ParallelPyEnvironment.start_serially=False
 suite_mario.load.state="Level1-1"
 suite_mario.load.wrap_with_process=0
 

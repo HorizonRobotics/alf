@@ -9,6 +9,7 @@ include 'ppo.gin'
 import pybullet_envs
 create_environment.env_name="HumanoidBulletEnv-v0"
 create_environment.num_parallel_environments=32
+ParallelPyEnvironment.start_serially=False
 
 # algorithm config
 ActorCriticAlgorithm.gradient_clipping=0.5

@@ -5,6 +5,7 @@ include 'ppo.gin'
 # "SocialBot-ICubWalk-v0"
 create_environment.env_name="SocialBot-Pr2Gripper-v0"
 create_environment.num_parallel_environments=60
+ParallelPyEnvironment.start_serially=False
 create_environment.env_load_fn=@suite_socialbot.load
 
 # algorithm config

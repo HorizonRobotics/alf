@@ -7,6 +7,7 @@ create_environment.env_name='SocialBot-SimpleNavigationNoLanguageDiscreteAction-
 create_environment.env_load_fn=@suite_socialbot.load
 suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
 create_environment.num_parallel_environments=30
+ParallelPyEnvironment.start_serially=False
 SimpleNavigation.resized_image_size=(84, 84)
 
 # algorithm config
