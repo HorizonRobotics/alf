@@ -22,6 +22,12 @@ python main.py \
   --alsologtostderr
 ```
 
+You can view various training curves using Tensorboard by running the follwoing
+command in a different terminal:
+```bash
+tensorboard --logdir=~/tmp/cart_pole
+```
+
 You can visualize playing of the trained model by running:
 ```bash
 python main.py \
@@ -59,9 +65,7 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
-def train_eval(train_dir,
-               algorithm_ctor=create_ac_algorithm,
-               evaluate=True,
+def train_eval(train_dir, algorithm_ctor, evaluate=True,
                debug_summaries=False):
     """Train and evaluate algorithm
 

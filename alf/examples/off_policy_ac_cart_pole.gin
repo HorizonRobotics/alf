@@ -15,6 +15,7 @@ ActorCriticAlgorithm.reward_shaping_fn = @reward_scaling
 common.reward_scaling.scale = 0.01
 
 # algorithm config
+train_eval.algorithm_ctor=@create_ac_algorithm
 ActorCriticAlgorithm.gradient_clipping=10.0
 ActorCriticLoss.entropy_regularization=1e-4
 ActorCriticLoss.gamma=0.98

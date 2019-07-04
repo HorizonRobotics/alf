@@ -11,24 +11,26 @@ create_environment.num_parallel_environments=30
 suite_mario.load.state="Level1-1"
 suite_mario.load.wrap_with_process=0
 
-conv_layer_params=[(32,8,4),(64,4,2),(64,3,1)]
+# algorithm config
+train_eval.algorithm_ctor=@create_ac_algorithm
+CONV_LAYER_PARAMS=[(32,8,4),(64,4,2),(64,3,1)]
 
 create_ac_algorithm.use_rnns=False
 create_ac_algorithm.learning_rate=3e-5
 create_ac_algorithm.use_icm=1
-create_ac_algorithm.encoding_conv_layers=%conv_layer_params
+create_ac_algorithm.encoding_conv_layers=%CONV_LAYER_PARAMS
 create_ac_algorithm.encoding_fc_layers=(256,)
 
 EncodingNetwork.activation_fn=@tf.nn.elu
 ICMAlgorithm.hidden_size=256
 
 # value network layers
-ValueNetwork.conv_layer_params=%conv_layer_params
+ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 create_ac_algorithm.value_fc_layers=(256,256)
 ValueNetwork.activation_fn=@tf.nn.elu
 
 # actor network layers
-ActorDistributionNetwork.conv_layer_params=%conv_layer_params
+ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 create_ac_algorithm.actor_fc_layers=(256,256)
 ActorDistributionNetwork.activation_fn=@tf.nn.elu
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10

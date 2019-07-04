@@ -7,6 +7,7 @@ load_with_random_max_episode_steps.max_steps=1200
 suite_gym.load.max_episode_steps=1000
 
 # algorithm config
+train_eval.algorithm_ctor=@create_ac_algorithm
 ActorCriticLoss.entropy_regularization=0.1
 ActorDistributionNetwork.activation_fn=@tf.nn.elu
 ValueNetwork.activation_fn=@tf.nn.elu
