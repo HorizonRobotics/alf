@@ -27,12 +27,10 @@ class TestTextEncodeDecodeNetwork(unittest.TestCase):
         code_len = encoder_lstm_size
         decoder_lstm_size = 100
 
-        encoder = text_codec.TextEncodeNetwork(
-            vocab_size, seq_len, embed_size,
-            encoder_lstm_size)
-        decoder = text_codec.TextDecodeNetwork(
-            vocab_size, code_len, seq_len,
-            decoder_lstm_size)
+        encoder = text_codec.TextEncodeNetwork(vocab_size, seq_len, embed_size,
+                                               encoder_lstm_size)
+        decoder = text_codec.TextDecodeNetwork(vocab_size, code_len, seq_len,
+                                               decoder_lstm_size)
 
         s0 = tf.constant([1, 3, 2])
         s1 = tf.constant([4])
@@ -51,4 +49,6 @@ class TestTextEncodeDecodeNetwork(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    from alf.utils.common import set_per_process_memory_growth
+    set_per_process_memory_growth()
     unittest.main()

@@ -25,7 +25,7 @@ from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
+from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.environments.suite_unittest import PolicyUnittestEnv
@@ -61,7 +61,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         value_network=value_net,
         loss=PPOLoss(action_spec=action_spec, gamma=1.0),
         optimizer=optimizer)
-    return OffPolicyAdapter(ac_algorithm)
+    return PPOAlgorithm(ac_algorithm)
 
 
 class PpoTest(unittest.TestCase):
@@ -81,8 +81,7 @@ class PpoTest(unittest.TestCase):
             debug_summaries=True,
             summarize_grads_and_vars=True)
         replay_buffer = driver.add_replay_buffer()
-        eval_driver = OffPolicyDriver(
-            eval_env, algorithm, training=False, greedy_predict=True)
+        eval_driver = OffPolicyDriver(eval_env, algorithm, greedy_predict=True)
         driver.run = tf.function(driver.run)
         eval_driver.run = tf.function(eval_driver.run)
 
