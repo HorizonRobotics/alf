@@ -56,8 +56,8 @@ class SuiteSocialbotTest(absltest.TestCase):
     def test_parallel_envs(self):
         env_num = 5
 
-        ctors = [lambda: suite_socialbot.load('SocialBot-CartPole-v0')
-                 ] * env_num
+        ctors = [lambda: suite_socialbot.load('SocialBot-CartPole-v0',
+                                              wrap_with_process=False)] * env_num
 
         parallel_envs = parallel_py_environment.ParallelPyEnvironment(
             env_constructors=ctors, start_serially=False)
@@ -85,6 +85,8 @@ class SuiteSocialbotTest(absltest.TestCase):
         step_driver.run()
 
         self.assertIsNotNone(replay_buffer.get_next())
+
+        parallel_envs.close()
 
 
 if __name__ == '__main__':
