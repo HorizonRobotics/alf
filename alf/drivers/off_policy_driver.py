@@ -262,7 +262,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._train_step_counter.assign_add(1)
 
     def _train_step(self, exp, state):
-        policy_step = self.algorithm_step(exp, state=state, training=True)
+        policy_step = self.algorithm_step(
+            exp, state=state, training=True, greedy_predict=False)
         return policy_step._replace(
             action=common.to_distribution(policy_step.action))
 

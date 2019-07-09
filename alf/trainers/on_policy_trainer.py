@@ -19,6 +19,7 @@ import time
 from absl import logging
 import gin.tf
 import tensorflow as tf
+import functools
 
 from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
@@ -131,7 +132,10 @@ def train(train_dir,
                         metrics=eval_metrics,
                         environment=eval_env,
                         state_spec=algorithm.predict_state_spec,
-                        action_fn=algorithm.greedy_predict,
+                        action_fn=functools.partial(
+                            driver.algorithm_step,
+                            training=False,
+                            greedy_predict=True),
                         num_episodes=num_eval_episodes,
                         step_metrics=driver.get_step_metrics(),
                         train_step=global_step,
