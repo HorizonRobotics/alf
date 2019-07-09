@@ -85,13 +85,15 @@ def eager_compute(metrics,
         train_step=train_step,
         summary_writer=summary_writer,
         summary_prefix=summary_prefix)
-    for metric_result, step_metric in itertools.product(
-            metric_results.items(), step_metrics):
-        metric_name, metric_value = metric_result
-        step_tag = '{}_vs_{}/{}'.format(summary_prefix, step_metric.name,
-                                        metric_name)
-        step = step_metric.result()
-        with summary_writer.as_default():
-            tf.summary.scalar(name=step_tag, data=metric_value, step=step)
+
+    if train_step and summary_writer:
+        for metric_result, step_metric in itertools.product(
+                metric_results.items(), step_metrics):
+            metric_name, metric_value = metric_result
+            step_tag = '{}_vs_{}/{}'.format(summary_prefix, step_metric.name,
+                                            metric_name)
+            step = step_metric.result()
+            with summary_writer.as_default():
+                tf.summary.scalar(name=step_tag, data=metric_value, step=step)
 
     return metric_results
