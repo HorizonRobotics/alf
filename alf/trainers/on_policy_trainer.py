@@ -110,12 +110,12 @@ def train(root_dir,
             global_step=global_step)
         checkpointer.initialize_or_restore()
 
-        if use_tf_functions:
-            driver.run = tf.function(driver.run)
+        if not use_tf_functions:
+            tf.config.experimental_run_functions_eagerly(True)
 
         env.reset()
         time_step = driver.get_initial_time_step()
-        policy_state = driver.get_initial_state()
+        policy_state = driver.get_initial_policy_state()
         for iter in range(num_iterations):
             t0 = time.time()
 
@@ -136,7 +136,9 @@ def train(root_dir,
                         environment=eval_env,
                         state_spec=algorithm.predict_state_spec,
                         action_fn=functools.partial(
-                            driver.algorithm_step,
+                            common.algorithm_step,
+                            algorithm=driver.algorithm,
+                            ob_transformer=driver.observation_transformer,
                             training=False,
                             greedy_predict=True),
                         num_episodes=num_eval_episodes,
@@ -223,8 +225,8 @@ def play(root_dir,
     else:
         logging.info("Checkpoint is not found at %s" % ckpt_dir)
 
-    if use_tf_functions:
-        driver.run = tf.function(driver.run)
+    if not use_tf_functions:
+        tf.config.experimental_run_functions_eagerly(True)
 
     recorder = None
     if record_file is not None:
@@ -236,7 +238,7 @@ def play(root_dir,
     if recorder:
         recorder.capture_frame()
     time_step = driver.get_initial_time_step()
-    policy_state = driver.get_initial_state()
+    policy_state = driver.get_initial_policy_state()
     episode_reward = 0.
     episode_length = 0
     episodes = 0

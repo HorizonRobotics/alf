@@ -31,15 +31,22 @@ create_ac_algorithm.actor_fc_layers=(32, 32, 32)
 create_ac_algorithm.value_fc_layers=(32, 32, 32)
 create_ac_algorithm.learning_rate=3e-4
 
-# training config
-off_policy_trainer.train.mini_batch_length=1
-off_policy_trainer.train.num_steps_per_iter=16384
-off_policy_trainer.train.mini_batch_size=4096
-off_policy_trainer.train.num_iterations=100000
-off_policy_trainer.train.summary_interval=1
-off_policy_trainer.train.num_updates_per_train_step=20
-off_policy_trainer.train.eval_interval=100
-off_policy_trainer.train.summarize_grads_and_vars=True
+# driver config
+N = 2
+OffPolicyDriver.num_envs = %N
+OffPolicyDriver.num_actor_queues = %N
+OffPolicyDriver.actor_queue_cap = 1
+OffPolicyDriver.learn_queue_cap = 1
 
-TFUniformReplayBuffer.max_length=2048
+# training config
+off_policy_trainer.train.num_iterations = 100000
+off_policy_trainer.train.summarize_grads_and_vars = True
+off_policy_trainer.train.num_updates_per_train_step = 20
+off_policy_trainer.train.unroll_length = 512
+off_policy_trainer.train.mini_batch_length = 1
+off_policy_trainer.train.eval_interval = 100
+off_policy_trainer.summary_interval = 10
+off_policy_trainer.train.mini_batch_size = 4096
+
 train_eval.debug_summaries=True
+train_eval.evaluate=True

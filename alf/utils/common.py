@@ -16,6 +16,7 @@
 import glob
 import os
 import shutil
+from typing import Callable
 
 import tensorflow_probability as tfp
 from absl import flags
@@ -26,7 +27,9 @@ from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
+from tf_agents.trajectories.policy_step import PolicyStep
 from alf.utils import summary_utils, gin_utils
+from alf.algorithms.rl_algorithm import make_action_time_step
 
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
@@ -356,7 +359,7 @@ def reward_scaling(r, scale=1):
 
 def _markdownify_gin_config_str(string, description=''):
     """Convert an gin config string to markdown format.
-    
+
     Args:
         string (str): the string from gin.operative_config_str()
         description (str): Optional long-form description for this config_str
@@ -395,7 +398,7 @@ def _markdownify_gin_config_str(string, description=''):
 
 def summarize_gin_config():
     """Write the operative and inoperative gin config to Tensorboard summary.
-    
+
     The operative configuration consists of all parameter values used by
     configurable functions that are actually called during execution of the
     current program, and inoperative configuration consists of all parameter
@@ -433,7 +436,7 @@ def copy_gin_configs(root_dir, gin_files):
 
 def get_gin_file():
     """Get the gin configuration file.
-    
+
     If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
     returns them.
     Returns:
@@ -475,14 +478,14 @@ def tensor_extend_zero(x):
 
 def explained_variance(ypred, y):
     """Computes fraction of variance that ypred explains about y.
-    
+
     Adapted from baselines.ppo2 explained_variance()
 
     Interpretation:
         ev=0  =>  might as well have predicted zero
         ev=1  =>  perfect prediction
         ev<0  =>  worse than just predicting zero
-    
+
     Args:
         ypred (Tensor): prediction for y
         y (Tensor): target
@@ -532,3 +535,61 @@ def to_distribution(action_or_distribution):
             return action_or_distribution
 
     return tf.nest.map_structure(_to_dist, action_or_distribution)
+
+
+def summarize_time(name, data):
+    with tf.name_scope("Elapsed times (seconds)"):
+        tf.summary.scalar(name=name, data=data)
+
+
+def get_initial_policy_state(batch_size, policy_state_spec):
+    return zero_tensor_from_nested_spec(policy_state_spec, batch_size)
+
+
+def get_initial_policy_step(batch_size, policy_step_spec):
+    action = zero_tensor_from_nested_spec(policy_step_spec.action, batch_size)
+    state = get_initial_policy_state(batch_size, policy_step_spec.state)
+    info = zero_tensor_from_nested_spec(policy_step_spec.info, batch_size)
+    return PolicyStep(action=action, state=state, info=info)
+
+
+def get_initial_time_step(env):
+    time_step = env.current_time_step()
+    action = zero_tensor_from_nested_spec(env.action_spec(), env.batch_size)
+    return make_action_time_step(time_step, action)
+
+
+def algorithm_step(algorithm,
+                   ob_transformer: Callable,
+                   time_step,
+                   state,
+                   greedy_predict=False,
+                   training=False):
+    """
+    Perform an algorithm step on a time step.
+    1. If `ob_transformer` is not None, then apply the transformation to the
+       observation before stepping.
+    2. Always convert the output `policy_step.action` to an action distribution
+
+    Args:
+        algorithm (RLAlgorithm): algorithm that steps
+        ob_transformer (Callable): transformation applied to `time_step.observation`
+        time_step (ActionTimeStep):
+        state (tf.nest): could be consistent with either `algorithm.train_state_spec`
+                         or `algorithm.predict_state_spec`
+        greedy_predict (bool): if True, argmax on action distribution
+        training (bool): if True, call `algorithm.train_step`
+
+    Output:
+        policy_step (PolicyStep):
+    """
+    if ob_transformer is not None:
+        time_step = time_step._replace(
+            observation=ob_transformer(time_step.observation))
+    if training:
+        policy_step = algorithm.train_step(time_step, state)
+    elif greedy_predict:
+        policy_step = algorithm.greedy_predict(time_step, state)
+    else:
+        policy_step = algorithm.predict(time_step, state)
+    return policy_step._replace(action=to_distribution(policy_step.action))

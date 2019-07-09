@@ -96,7 +96,7 @@ class UnittestEnv(PyEnvironment):
             s (int): step count in current episode. It ranges from 0 to
                 `episode_length` - 1.
             action: action from agent.
-        
+
         Returns:
             time_step (TimeStep)
         """

@@ -77,24 +77,26 @@ def train_eval(root_dir, algorithm_ctor, evaluate=True, debug_summaries=False):
         evaluate (bool): A bool to evaluate when training.
         debug_summaries (bool): A bool to gather debug summaries.
     """
-    env = create_environment()
     if evaluate:
         eval_env = create_environment(num_parallel_environments=1)
     else:
         eval_env = None
-    algorithm = algorithm_ctor(env, debug_summaries=debug_summaries)
+    algorithm = algorithm_ctor(
+        create_environment(), debug_summaries=debug_summaries)
 
     if isinstance(algorithm, OffPolicyAlgorithm):
         trainer = off_policy_trainer.train
+        env_or_env_f = create_environment
     elif isinstance(algorithm, OnPolicyAlgorithm):
         trainer = on_policy_trainer.train
+        env_or_env_f = create_environment()
     else:
         raise ValueError(
             "Algorithm must be one of `OffPolicyAlgorithm`,"
             " `OnPolicyAlgorithm`. Received:", type(algorithm))
     trainer(
         root_dir,
-        env,
+        env_or_env_f,
         algorithm,
         eval_env=eval_env,
         debug_summaries=debug_summaries)

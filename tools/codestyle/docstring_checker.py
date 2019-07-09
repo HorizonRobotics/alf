@@ -123,13 +123,13 @@ class DocstringChecker(BaseChecker):
     msgs = {
         'W9001': ('One line doc string on > 1 lines', symbol + "-one-line",
                   'Used when a short doc string is on multiple lines'),
-        'W9002':
-        ('Doc string does not end with "." period', symbol + "-end-with",
-         'Used when a doc string does not end with a period'),
-        'W9003':
-        ('All args with their types must be mentioned in doc string %s',
-         symbol + "-with-all-args",
-         'Used when not all arguments are in the doc string '),
+        'W9002': ('Doc string does not end with "." period',
+                  symbol + "-end-with",
+                  'Used when a doc string does not end with a period'),
+        'W9003': (
+            'All args with their types must be mentioned in doc string %s',
+            symbol + "-with-all-args",
+            'Used when not all arguments are in the doc string '),
         'W9005': ('Missing docstring or docstring is too short',
                   symbol + "-missing", 'Add docstring longer >=10'),
         'W9006': ('Docstring indent error, use 4 space for indent',
