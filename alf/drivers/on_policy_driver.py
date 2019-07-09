@@ -230,8 +230,11 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 time_step, policy_state)
             next_state = policy_step.state
         else:
-            policy_step = self.algorithm_step(time_step, policy_state,
-                                              self._training)
+            policy_step = self.algorithm_step(
+                time_step,
+                policy_state,
+                self._training,
+                greedy_predict=self._greedy_predict)
             action = common.sample_action_distribution(policy_step.action)
             next_time_step = time_step
             next_state = policy_state

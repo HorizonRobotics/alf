@@ -109,14 +109,14 @@ class PolicyDriver(driver.Driver):
                                                      self.env.batch_size)
         return make_action_time_step(time_step, action)
 
-    def algorithm_step(self, time_step, state, training):
+    def algorithm_step(self, time_step, state, training, greedy_predict):
         if self._observation_transformer is not None:
             time_step = time_step._replace(
                 observation=self._observation_transformer(time_step.
                                                           observation))
         if training:
             policy_step = self._algorithm.train_step(time_step, state)
-        elif self._greedy_predict:
+        elif greedy_predict:
             policy_step = self._algorithm.greedy_predict(time_step, state)
         else:
             policy_step = self._algorithm.predict(time_step, state)
@@ -230,7 +230,10 @@ class PolicyDriver(driver.Driver):
                                                        self._initial_state,
                                                        time_step.is_first())
         policy_step = self.algorithm_step(
-            time_step, state=policy_state, training=self._training)
+            time_step,
+            state=policy_state,
+            training=self._training,
+            greedy_predict=self._greedy_predict)
         action = common.sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:
