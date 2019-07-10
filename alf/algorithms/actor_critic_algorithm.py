@@ -83,7 +83,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
-            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to 
+            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to
                 clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
@@ -142,6 +142,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             observation,
             step_type=time_step.step_type,
             network_state=state.value_state)
+        # ValueRnnNetwork will add a time dim to value
+        # See value_rnn_network.py L153
+        if isinstance(self._value_network, ValueRnnNetwork):
+            value = tf.squeeze(value, axis=1)
 
         action_distribution, actor_state = self._actor_network(
             observation,
