@@ -214,7 +214,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             if self._dqda_clipping:
                 dqda = tf.clip_by_value(dqda, -self._dqda_clipping,
                                         self._dqda_clipping)
-            loss = losses.element_wise_squared_loss(
+            loss = 0.5 * losses.element_wise_squared_loss(
                 tf.stop_gradient(dqda + action), action)
             loss = tf.reduce_sum(loss, axis=list(range(1, len(loss.shape))))
             return loss
@@ -274,10 +274,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             network_state=state.share.actor)
         action = tf.nest.map_structure(lambda d: d.sample(),
                                        action_distribution)
-        log_pi = tfa_common.log_probability(
-            action_distribution,
-            tf.nest.map_structure(lambda a: tf.stop_gradient(a), action),
-            self._action_spec)
+        log_pi = tfa_common.log_probability(action_distribution, action,
+                                            self._action_spec)
 
         actor_state, actor_info = self._actor_train_step(
             exp, state.actor, action, log_pi)

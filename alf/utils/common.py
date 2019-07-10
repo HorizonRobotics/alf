@@ -317,6 +317,21 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
 
 
 @gin.configurable
+def std_clip_transform(stddevs, clip_value_min=-20, clip_value_max=2):
+    """ Clip stddevs to the range [`clip_value_min`, `clip_value_max`]
+    then compute exponential
+
+    Args:
+         stddevs (nested Tensor): stddevs
+         clip_value_min (float): The minimum value to clip by.
+         clip_value_max (float): The maximum value to clip by.
+    """
+    stddevs = tf.nest.map_structure(
+        lambda t: tf.clip_by_value(t, clip_value_min, clip_value_max), stddevs)
+    return tf.exp(stddevs)
+
+
+@gin.configurable
 def reward_clipping(r, minmax=(-1, 1)):
     """
     Clamp immediate rewards to the range [`min`, `max`].
