@@ -24,7 +24,7 @@ import numpy as np
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.policies import random_tf_policy
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.environments import batched_py_environment, py_environment, tf_py_environment
+from tf_agents.environments import parallel_py_environment, py_environment, tf_py_environment
 from tf_agents.utils import common
 from alf.environments import suite_socialbot
 
@@ -53,14 +53,15 @@ class SuiteSocialbotTest(absltest.TestCase):
         self.assertEqual(np.float32, env.action_spec().dtype)
         self.assertEqual((1, ), env.action_spec().shape)
 
-    def test_batched_envs(self):
+    def test_parallel_envs(self):
         env_num = 5
-        envs = [
-            suite_socialbot.load('SocialBot-CartPole-v0')
-            for _ in range(env_num)
-        ]
-        batched_env = batched_py_environment.BatchedPyEnvironment(envs)
-        tf_env = tf_py_environment.TFPyEnvironment(batched_env)
+
+        ctors = [lambda: suite_socialbot.load('SocialBot-CartPole-v0',
+                                              wrap_with_process=False)] * env_num
+
+        parallel_envs = parallel_py_environment.ParallelPyEnvironment(
+            env_constructors=ctors, start_serially=False)
+        tf_env = tf_py_environment.TFPyEnvironment(parallel_envs)
 
         self.assertTrue(tf_env.batched)
         self.assertEqual(tf_env.batch_size, env_num)
@@ -85,8 +86,11 @@ class SuiteSocialbotTest(absltest.TestCase):
 
         self.assertIsNotNone(replay_buffer.get_next())
 
+        parallel_envs.close()
+
 
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
+
     set_per_process_memory_growth()
     absltest.main()

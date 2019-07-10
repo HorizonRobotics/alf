@@ -129,19 +129,22 @@ def _get_unused_port(start, end=65536):
         end (int): port range end
     """
     process_lock = None
+    unused_port = None
     try:
-        unused_port = None
         for port in range(start, end):
+            process_lock = InterProcessLock(
+                path='/tmp/socialbot/{}.lock'.format(port))
+            if not process_lock.acquire(blocking=False):
+                process_lock = None
+                continue
             try:
                 with contextlib.closing(socket.socket()) as sock:
                     sock.bind(('', port))
-                    process_lock = InterProcessLock(
-                        path='/tmp/socialbot/{}.lock'.format(port))
-                    if process_lock.acquire(blocking=False):
-                        unused_port = port
-                        break
+                    unused_port = port
+                    break
             except socket.error:
-                continue
+                process_lock.release()
+                process_lock = None
         if unused_port is None:
             raise socket.error("No unused port in [{}, {})".format(start, end))
         yield unused_port
