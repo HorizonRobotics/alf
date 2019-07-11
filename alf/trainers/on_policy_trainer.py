@@ -18,6 +18,7 @@ import time
 
 from absl import logging
 import gin.tf
+from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import tensorflow as tf
 
 from tf_agents.eval import metric_utils
@@ -62,6 +63,7 @@ def train(train_dir,
         num_steps_per_iter (int): number of steps for one iteration. It is the
             total steps from all individual environment in the batch
             environment.
+        num_iterations (int): number of training iterations
         use_tf_functions (bool): whether to use tf.function
         summary_interval (int): write summary every so many training steps (
             i.e. number of parameter updates)
@@ -159,11 +161,19 @@ def play(train_dir,
          checkpoint_name=None,
          greedy_predict=True,
          random_seed=0,
-         num_steps=10000,
+         num_episodes=10,
          sleep_time_per_step=0.01,
+         record_file=None,
          use_tf_functions=True):
     """Play using the latest checkpoint under `train_dir`.
 
+    The following example record the play of a trained model to a mp4 video:
+    ```bash
+    python main.py --play \
+    --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
+    --gin_param='on_policy_trainer.play.num_episodes=1' \
+    --gin_param='on_policy_trainer.play.record_file="ppo_bullet_humanoid.mp4"'
+    ```
     Args:
         train_dir (str): same as the train_dir used for `train()`
         env (TFEnvironment): the environment
@@ -172,8 +182,10 @@ def play(train_dir,
             If None, the latest checkpoint unber train_dir will be used.
         greedy_predict (bool): use greedy action for evaluation.
         random_seed (int): random seed
-        num_steps (int): number of steps to play
+        num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
+        record_file (str): if provided, video will be recorded to a file
+            instead of shown on the screen.
         use_tf_functions (bool): whether to use tf.function
     """
     train_dir = os.path.expanduser(train_dir)
@@ -199,28 +211,43 @@ def play(train_dir,
     if ckpt_path is not None:
         logging.info("Restore from checkpoint %s" % ckpt_path)
         checkpoint.restore(ckpt_path)
+    else:
+        logging.info("Checkpoint is not found at %s" % ckpt_dir)
 
     if use_tf_functions:
         driver.run = tf.function(driver.run)
 
-    # pybullet_envs need to `render()` before reset() to enable rendering.
-    env.pyenv.envs[0].render(mode='human')
+    recorder = None
+    if record_file is not None:
+        recorder = VideoRecorder(env.pyenv.envs[0], path=record_file)
+    else:
+        # pybullet_envs need to render() before reset() to enable mode='human'
+        env.pyenv.envs[0].render(mode='human')
     env.reset()
+    if recorder:
+        recorder.capture_frame()
     time_step = driver.get_initial_time_step()
     policy_state = driver.get_initial_state()
     episode_reward = 0.
     episode_length = 0
-    for _ in range(num_steps):
+    episodes = 0
+    while episodes < num_episodes:
         time_step, policy_state = driver.run(
             max_num_steps=1, time_step=time_step, policy_state=policy_state)
+        if recorder:
+            recorder.capture_frame()
+        else:
+            env.pyenv.envs[0].render(mode='human')
+            time.sleep(sleep_time_per_step)
         if time_step.is_last():
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
             episode_reward = 0.
             episode_length = 0.
+            episodes += 1
         else:
             episode_reward += float(time_step.reward)
             episode_length += 1
-        env.pyenv.envs[0].render(mode='human')
-        time.sleep(sleep_time_per_step)
+    if recorder:
+        recorder.close()
     env.reset()

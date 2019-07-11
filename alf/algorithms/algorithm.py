@@ -43,16 +43,12 @@ class Algorithm(tf.Module):
 
     ```python
     while training not ends:
-        tape = tf.GradientTape()
         training_info = []
-        
+        with GradientTape() as tape:
         for i in range(train_interval):
             get inputs
-            with tape:
-                outputs, state, info = train_step(inputs, state)
-            training_info.append(info)
-        with tape:
-            get batched_training_info from training_info
+            outputs, state, info = train_step(inputs, state)
+            add info to training_info
         
         train_complete(tape, batched_training_info)
     ```
