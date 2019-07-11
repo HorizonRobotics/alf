@@ -17,7 +17,15 @@ from setuptools import setup, find_packages
 setup(
     name='alf',
     version='0.0.1',
-    install_requires=['gym', 'numpy', 'psutil', 'matplotlib',
-                      'fasteners'],  # And any other dependencies foo needs
+    install_requires=[
+        'atari_py',
+        'fasteners',
+        'gym',
+        'matplotlib',
+        'numpy',
+        'opencv-python',
+        'psutil',
+        'pybullet',
+    ],  # And any other dependencies foo needs
     packages=find_packages(),
 )
