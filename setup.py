@@ -18,14 +18,14 @@ setup(
     name='alf',
     version='0.0.1',
     install_requires=[
-        'atari_py',
+        'atari_py == 0.1.7',
         'fasteners',
         'gym',
         'matplotlib',
         'numpy',
-        'opencv-python',
+        'opencv-python >= 3.4.1.15',
         'psutil',
-        'pybullet',
+        'pybullet == 2.4.2',
     ],  # And any other dependencies foo needs
     packages=find_packages(),
 )
