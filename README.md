@@ -35,13 +35,19 @@ pip install -e .
 
 ### A2C
 * [Cart pole](alf/examples/ac_cart_pole.gin).
+
 * [Atari games](alf/examples/ac_breakout.gin). Need to install python package atari-py for atari game environments.
+
 * [Simple navigation with visual input](alf/examples/ac_simple_navigation.gin). Follow the instruction at [SocialRobot](https://github.com/HorizonRobotics/SocialRobot) to install the environment.
 
 ### PPO
 * [PR2 grasping state only](alf/examples/ppo_pr2.gin). Follow the instruction at [SocialRobot](https://github.com/HorizonRobotics/SocialRobot) to install the environment.
-* [Humonoid](alf/examples/ppo_bullet_humanoid.gin). Need to install python pybullet>=2.5.0 for the environment.
+* [Humonoid](alf/examples/ppo_bullet_humanoid.gin). Learning to walk using pybullet humanoid environment. Need to install python pybullet>=2.5.0 for the environment.
+
+<img src="alf/examples/ppo_bullet_humanoid.png" width = "300" height ="200" alt="Humanoid-training-curve"/> <img src="alf/examples/ppo_bullet_humanoid.gif" width = "300" height ="200" alt="Humanoid-video"/>
 
 ### ICM
-* [Super Mario](alf/examples/icm_super_mario_intrinsic_only.gin).
+* [Super Mario](alf/examples/icm_super_mario_intrinsic_only.gin). Playing Super Mario only using intrinsic reward.
   Python package gym-retro>=0.7.0 is required for this experiment and also a suitable `SuperMarioBros-Nes` rom should be obtained and imported (roms are not included in gym-retro). See [this doc](https://retro.readthedocs.io/en/latest/getting_started.html#importing-roms) on how to import roms.
+
+<img src="alf/examples/icm_super_mario_intrinsic_only.png" width = "300" height ="200" alt="super-mario-training-curve"/> <img src="alf/examples/icm_super_mario_intrinsic_only.gif" width = "300" height ="200" alt="super-mario-video"/>
