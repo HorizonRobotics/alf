@@ -57,7 +57,10 @@ import alf.utils.external_configurables
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
+flags.DEFINE_multi_string(
+    'gin_file', None,
+    'Optional path to the gin-config file.  When provided, overwrites the existing gin file in the root_dir.'
+)
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_bool('play', False, 'Visualize the playing')
 
@@ -115,6 +118,8 @@ def play(train_dir, algorithm_ctor):
 
 
 def main(_):
+    """Runs training
+    """
     logging.set_verbosity(logging.INFO)
 
     gin_file = common.get_gin_file()
