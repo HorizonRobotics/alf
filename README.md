@@ -29,6 +29,8 @@ cd tf_agents
 pip install -e .
 cd ..
 pip install -e .
+
+pip install opencv-python
 ```
 
 ## Examples
