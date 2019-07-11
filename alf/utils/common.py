@@ -537,11 +537,6 @@ def to_distribution(action_or_distribution):
     return tf.nest.map_structure(_to_dist, action_or_distribution)
 
 
-def summarize_time(name, data):
-    with tf.name_scope("Elapsed times (seconds)"):
-        tf.summary.scalar(name=name, data=data)
-
-
 def get_initial_policy_state(batch_size, policy_state_spec):
     return zero_tensor_from_nested_spec(policy_state_spec, batch_size)
 
@@ -593,3 +588,22 @@ def algorithm_step(algorithm,
     else:
         policy_step = algorithm.predict(time_step, state)
     return policy_step._replace(action=to_distribution(policy_step.action))
+
+
+def transpose2(x, dim1, dim2):
+    perm = list(range(len(x.shape)))
+    perm[dim1] = dim2
+    perm[dim2] = dim1
+    return tf.transpose(x, perm)
+
+
+def make_time_major(nest):
+    return tf.nest.map_structure(lambda x: transpose2(x, 0, 1), nest)
+
+
+def get_act_dist_param(policy_step):
+    """ input `policy_step` should have action distribution"""
+    action_distribution_param = get_distribution_params(policy_step.action)
+    action = sample_action_distribution(policy_step.action)
+    policy_step = policy_step._replace(action=action)
+    return policy_step, action_distribution_param

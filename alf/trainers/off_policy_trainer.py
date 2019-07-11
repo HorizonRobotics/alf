@@ -26,7 +26,8 @@ import tensorflow as tf
 from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
 
-from alf.drivers.off_policy_driver import OffPolicyDriver
+from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
+from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
 from alf.utils import common
@@ -37,6 +38,7 @@ from alf.utils.common import run_under_record_context, get_global_counter
 def train(root_dir,
           env_f: Callable,
           algorithm,
+          sync_driver=True,
           eval_env=None,
           random_seed=0,
           initial_collect_steps=0,
@@ -63,6 +65,7 @@ def train(root_dir,
         root_dir (str): directory for saving summary and checkpoints
         env_f (Callable[TFEnvironment]): creates an environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
+        sync_driver (bool): whether use the synchronous driver or asynchronous driver
         eval_env (TFEnvironment): environment for evaluating
         initial_collect_steps (int): if positive, number of steps each single environment
             steps before perform first update
@@ -116,12 +119,19 @@ def train(root_dir,
         tf.random.set_seed(random_seed)
         global_step = get_global_counter()
 
-        driver = OffPolicyDriver(
-            env_f=env_f,
-            algorithm=algorithm,
-            unroll_length=unroll_length,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars)
+        if sync_driver:
+            driver = SyncOffPolicyDriver(
+                env=env,
+                algorithm=algorithm,
+                debug_summaries=debug_summaries,
+                summarize_grads_and_vars=summarize_grads_and_vars)
+        else:
+            driver = AsyncOffPolicyDriver(
+                env_f=env_f,
+                algorithm=algorithm,
+                unroll_length=unroll_length,
+                debug_summaries=debug_summaries,
+                summarize_grads_and_vars=summarize_grads_and_vars)
         replayer = driver.exp_replayer
 
         checkpointer = tfa_common.Checkpointer(
@@ -136,13 +146,23 @@ def train(root_dir,
 
         env.reset()
         driver.start()
+        time_step = driver.get_initial_time_step()
+        policy_state = driver.get_initial_policy_state()
 
         for iter in range(num_iterations):
             t0 = tf.timestamp()
 
             steps = 0
             while True:
-                steps += driver.run()
+                if sync_driver:
+                    max_num_steps = unroll_length * env.batch_size
+                    time_step, policy_state = driver.run(
+                        max_num_steps=max_num_steps,
+                        time_step=time_step,
+                        policy_state=policy_state)
+                    steps += max_num_steps
+                else:
+                    steps += driver.run()
                 if iter > 0 or steps >= initial_collect_steps:
                     break
 
@@ -162,8 +182,8 @@ def train(root_dir,
                 mini_batch_size=mini_batch_size)
 
             logging.info('%s time=%.3f' % (iter, tf.timestamp() - t0))
-            common.summarize_time(
-                name='driver.train()', data=tf.timestamp() - t1)
+            tf.summary.scalar(
+                name='time/driver.train()', data=tf.timestamp() - t1)
 
             if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())

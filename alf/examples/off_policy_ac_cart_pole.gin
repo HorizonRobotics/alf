@@ -29,7 +29,7 @@ create_ac_algorithm.off_policy=True
 
 # training config
 off_policy_trainer.train.mini_batch_length=9
-off_policy_trainer.train.num_steps_per_iter=72
+off_policy_trainer.train.unroll_length=9
 off_policy_trainer.train.mini_batch_size=8
 off_policy_trainer.train.num_iterations=3000
 off_policy_trainer.train.summary_interval=5

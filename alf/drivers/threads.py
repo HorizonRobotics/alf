@@ -207,15 +207,6 @@ def flatten_once(t):
     return tf.reshape(t, [-1] + list(t.shape[2:]))
 
 
-def get_act_dist_param(policy_step):
-    """ input `policy_step` should have action distribution"""
-    action_distribution_param = common.get_distribution_params(
-        policy_step.action)
-    action = common.sample_action_distribution(policy_step.action)
-    policy_step = policy_step._replace(action=action)
-    return policy_step, action_distribution_param
-
-
 class ActorThread(Thread):
     """
     An actor thread is responsible for taking out time steps from its
@@ -232,7 +223,6 @@ class ActorThread(Thread):
                  algorithm,
                  tf_queues,
                  id,
-                 greedy_predict,
                  observation_transformer: Callable = None):
         """
         Args:
@@ -242,14 +232,12 @@ class ActorThread(Thread):
             tf_queues (TFQueues): for storing all the tf.FIFOQueues for communicating
                                     between threads
             id (int): thread id
-            greedy_predict (bool): if True, argmax on action distribution when predicting
             observation_transformer (Callable): transformation applied to `time_step.observation`
         """
         super().__init__(name=name, target=self._run, args=(coord, algorithm))
         self._tfq = tf_queues
         self._id = id
         self._actor_q = self._tfq.actor_queues[id]
-        self._greedy_predict = greedy_predict
         self._ob_transformer = observation_transformer
 
     @tf.function
@@ -278,9 +266,9 @@ class ActorThread(Thread):
             self._ob_transformer,
             time_step,
             state,
-            self._greedy_predict,
+            greedy_predict=False,
             training=False)
-        policy_step, action_dist_param = get_act_dist_param(policy_step)
+        policy_step, action_dist_param = common.get_act_dist_param(policy_step)
         return policy_step, action_dist_param
 
     @tf.function

@@ -32,7 +32,8 @@ from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
 from alf.drivers.threads import NestFIFOQueue
 from alf.drivers.threads import flatten_once
 from alf.drivers.threads import ActorThread, EnvThread
-from alf.drivers.off_policy_driver import OffPolicyDriver
+from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
+from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.drivers.on_policy_driver import OnPolicyDriver
 import collections
 
@@ -62,7 +63,7 @@ def _create_ac_algorithm(env):
             env=env, actor_fc_layers=(8, ), value_fc_layers=(8, )))
 
 
-class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
+class ThreadQueueTest(parameterized.TestCase, unittest.TestCase):
     def test_nest_fifo(self):
         NamedTuple = collections.namedtuple('tuple', 'x y')
         t0 = NamedTuple(x=tf.ones([2, 3]), y=tf.ones([2]))
@@ -93,6 +94,8 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
             lambda e1, e2: self.assertTrue(tf.reduce_all(tf.equal(e1, e2))),
             nested, nested_)
 
+
+class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters((50, 20, 10, 5, 5, 10))
     def test_alf_metrics(self, num_envs, learn_queue_cap, unroll_length,
                          actor_queue_cap, num_actors, num_iterations):
@@ -100,9 +103,9 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         env_f = lambda: TFPyEnvironment(
             ValueUnittestEnv(batch_size=1, episode_length=episode_length))
         alg = _create_ac_algorithm(env_f())
-        driver = OffPolicyDriver(env_f, alg, num_envs, num_actors,
-                                 unroll_length, learn_queue_cap,
-                                 actor_queue_cap)
+        driver = AsyncOffPolicyDriver(env_f, alg, num_envs, num_actors,
+                                      unroll_length, learn_queue_cap,
+                                      actor_queue_cap)
         driver.start()
         total_num_steps_ = 0
         for _ in range(num_iterations):
@@ -119,12 +122,15 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         episode_length = int(driver.get_metrics()[3].result())
         self.assertEqual(episode_length, episode_length)
 
+
+class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters(
-        _create_sac_algorithm,
-        _create_ddpg_algorithm,
-    )
-    def test_off_policy_algorithm(self, algorithm_ctor):
-        batch_size = 100
+        (_create_sac_algorithm, True), (_create_ddpg_algorithm, True),
+        (_create_sac_algorithm, False), (_create_ddpg_algorithm, False))
+    def test_off_policy_algorithm(self, algorithm_ctor, sync_driver):
+        logging.info("{} {}".format(algorithm_ctor.__name__, sync_driver))
+
+        batch_size = 128
         steps_per_episode = 12
         env_f = lambda: TFPyEnvironment(
             PolicyUnittestEnv(
@@ -139,26 +145,52 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                 action_type=ActionType.Continuous))
 
         algorithm = algorithm_ctor(env_f())
-        driver = OffPolicyDriver(
-            env_f,
-            algorithm,
-            num_envs=1,
-            num_actor_queues=1,
-            unroll_length=steps_per_episode,
-            learn_queue_cap=1,
-            actor_queue_cap=1,
-            debug_summaries=True,
-            summarize_grads_and_vars=True)
+
+        if sync_driver:
+            driver = SyncOffPolicyDriver(
+                env_f(),
+                algorithm,
+                debug_summaries=True,
+                summarize_grads_and_vars=True)
+        else:
+            driver = AsyncOffPolicyDriver(
+                env_f,
+                algorithm,
+                num_envs=1,
+                num_actor_queues=1,
+                unroll_length=steps_per_episode,
+                learn_queue_cap=1,
+                actor_queue_cap=1,
+                debug_summaries=True,
+                summarize_grads_and_vars=True)
         replayer = driver.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
 
         eval_env.reset()
         driver.start()
-        for i in range(200):
-            driver.run()
-            experience = replayer.replay_all()
-            driver.train(experience, mini_batch_size=100, mini_batch_length=2)
+        if sync_driver:
+            time_step = driver.get_initial_time_step()
+            policy_state = driver.get_initial_policy_state()
+            for i in range(5):
+                time_step, policy_state = driver.run(
+                    max_num_steps=batch_size * steps_per_episode,
+                    time_step=time_step,
+                    policy_state=policy_state)
+
+        for i in range(300):
+            if sync_driver:
+                time_step, policy_state = driver.run(
+                    max_num_steps=batch_size * 4,
+                    time_step=time_step,
+                    policy_state=policy_state)
+                experience, _ = replayer.replay(
+                    sample_batch_size=128, mini_batch_length=2)
+            else:
+                driver.run()
+                experience = replayer.replay_all()
+
+            driver.train(experience, mini_batch_size=128, mini_batch_length=2)
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)
@@ -175,5 +207,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    tf.config.experimental_run_functions_eagerly(True)
     unittest.main()

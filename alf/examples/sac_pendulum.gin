@@ -25,7 +25,7 @@ NormalProjectionNetwork.std_transform=@common.std_clip_transform
 # training config
 off_policy_trainer.train.initial_collect_steps=1000
 off_policy_trainer.train.mini_batch_length=2
-off_policy_trainer.train.num_steps_per_iter=%NUM_PARALLEL_ENVIRONMENTS
+off_policy_trainer.train.unroll_length=1
 off_policy_trainer.train.mini_batch_size=64
 off_policy_trainer.train.num_iterations=20000
 off_policy_trainer.train.summary_interval=100

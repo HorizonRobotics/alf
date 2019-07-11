@@ -2,9 +2,6 @@
 import alf.algorithms.ddpg_algorithm
 
 
-# NOTE: DDPG example might be broken because replay buffer for the new
-# off-policy driver has not been implemented yet!!!
-
 # environment config
 NUM_PARALLEL_ENVIRONMENTS=10
 create_environment.env_name="Pendulum-v0"
@@ -20,13 +17,6 @@ CriticNetwork.observation_fc_layer_params=(400,)
 create_ddpg_algorithm.critic_fc_layers=(300,)
 DdpgAlgorithm.target_update_period=5
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_huber_loss
-
-# driver config
-N = 1
-OffPolicyDriver.num_envs = %N
-OffPolicyDriver.num_actor_queues = %N
-OffPolicyDriver.actor_queue_cap = %N
-OffPolicyDriver.learn_queue_cap = %N
 
 # training config
 off_policy_trainer.train.initial_collect_steps=1000

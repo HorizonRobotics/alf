@@ -17,13 +17,6 @@ create_ac_algorithm.actor_fc_layers=(100,)
 create_ac_algorithm.value_fc_layers=(100,)
 create_ac_algorithm.learning_rate=0.001
 
-# driver config
-N = 1
-OffPolicyDriver.num_envs = %N
-OffPolicyDriver.num_actor_queues = %N
-OffPolicyDriver.actor_queue_cap = %N
-OffPolicyDriver.learn_queue_cap = %N
-
 # training config
 off_policy_trainer.train.mini_batch_length=1
 off_policy_trainer.train.unroll_length=32
