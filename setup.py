@@ -25,7 +25,7 @@ setup(
         'numpy',
         'opencv-python >= 3.4.1.15',
         'psutil',
-        'pybullet == 2.4.2',
+        'pybullet == 2.5.0',
     ],  # And any other dependencies foo needs
     packages=find_packages(),
 )
