@@ -33,7 +33,7 @@ from alf.utils.common import run_under_record_context, get_global_counter
 
 
 @gin.configurable
-def train(train_dir,
+def train(root_dir,
           env,
           algorithm,
           eval_env=None,
@@ -55,7 +55,7 @@ def train(train_dir,
     additional prefix "driver_loop", it's might be a bug of tf2. We'll see.
 
     Args:
-        train_dir (str): directory for saving summary and checkpoints
+        root_dir (str): directory for saving summary and checkpoints
         env (TFEnvironment): environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
         eval_env (TFEnvironment): environment for evaluating
@@ -77,8 +77,9 @@ def train(train_dir,
             summaries will be written during training.
     """
 
-    train_dir = os.path.expanduser(train_dir)
-    eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
+    root_dir = os.path.expanduser(root_dir)
+    train_dir = os.path.join(root_dir, 'train')
+    eval_dir = os.path.join(root_dir, 'eval')
 
     eval_metrics = None
     eval_summary_writer = None
@@ -150,6 +151,9 @@ def train(train_dir,
                     tf.summary.text('commandline', ' '.join(sys.argv))
 
         checkpointer.save(global_step=global_step.numpy())
+        env.close()
+        if eval_env:
+            eval_env.close()
 
     run_under_record_context(
         func=train_,

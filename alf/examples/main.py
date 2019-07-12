@@ -65,12 +65,11 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
-def train_eval(train_dir, algorithm_ctor, evaluate=True,
-               debug_summaries=False):
+def train_eval(root_dir, algorithm_ctor, evaluate=True, debug_summaries=False):
     """Train and evaluate algorithm
 
     Args:
-        train_dir (str): directory for saving summary and checkpoints
+        root_dir (str): directory for saving summary and checkpoints
         algorithm_ctor (Callable): callable that create an
             `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
         evaluate (bool): A bool to evaluate when training.
@@ -92,7 +91,7 @@ def train_eval(train_dir, algorithm_ctor, evaluate=True,
             "Algorithm must be one of `OffPolicyAlgorithm`,"
             " `OnPolicyAlgorithm`. Received:", type(algorithm))
     trainer(
-        train_dir,
+        root_dir,
         env,
         algorithm,
         eval_env=eval_env,
@@ -100,18 +99,18 @@ def train_eval(train_dir, algorithm_ctor, evaluate=True,
 
 
 @gin.configurable
-def play(train_dir, algorithm_ctor):
+def play(root_dir, algorithm_ctor):
     """Play using the latest checkpoint under `train_dir`.
 
     Args:
-        train_dir (str): directory where checkpoints stores
+        root_dir (str): directory where checkpoints stores
         algorithm_ctor (Callable): callable that create an algorithm
             parameter value is bind with `__main__.train_eval.algorithm_ctor`,
             just config `__main__.train_eval.algorithm_ctor` when using with gin configuration
     """
     env = create_environment(num_parallel_environments=1)
     algorithm = algorithm_ctor(env)
-    on_policy_trainer.play(train_dir, env, algorithm)
+    on_policy_trainer.play(root_dir, env, algorithm)
 
 
 def main(_):
@@ -128,9 +127,9 @@ def main(_):
             gin.bind_parameter(
                 '__main__.play.algorithm_ctor',
                 gin.query_parameter('__main__.train_eval.algorithm_ctor'))
-        play(FLAGS.root_dir + "/train")
+        play(FLAGS.root_dir)
     else:
-        train_eval(FLAGS.root_dir + "/train")
+        train_eval(FLAGS.root_dir)
 
 
 if __name__ == '__main__':
