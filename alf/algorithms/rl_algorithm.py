@@ -323,10 +323,6 @@ class RLAlgorithm(tf.Module):
                 training_info.info are the batched from each policy_step.info
                 returned by train_step(). Note that training_info.next_discount
                 is 0 if the next step is the last step in an episode.
-            final_time_step (ActionTimeStep): the additional time_step
-            final_info (nested Tensor): `info` from additional
-                `train_step` evaluated from final_time_step or final_experience.
-                This final_info is NOT calculated under the context of `tape`
 
         Returns (LossInfo):
             loss at each time step for each sample in the batch. The shapes of

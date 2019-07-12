@@ -23,8 +23,8 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
 
 class OnPolicyAlgorithm(RLAlgorithm):
     """
-    OnPolicyAlgorithm works with alf.policies.TrainingPolicy to do training
-    at the time of policy rollout.
+    OnPolicyAlgorithm works with alf.drivers.on_policy_driver.OnPolicyDriver
+    to do training at the time of policy rollout.
 
     User needs to implement train_step() and train_complete().
 
@@ -32,11 +32,11 @@ class OnPolicyAlgorithm(RLAlgorithm):
     It also needs to generate necessary information for training.
 
     train_complete() is called every `train_interval` steps (specified in
-    TrainingPolicy). All the training information collected at each previous
+    OnPolicyDriver). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
     The following is the pseudo code to illustrate how OnPolicyAlgoirhtm is used
-    by TrainingPolicy:
+    by OnPolicyDriver:
 
     ```python
     with GradientTape as tape:
