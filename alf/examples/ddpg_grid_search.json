@@ -1,5 +1,6 @@
 {
   "desc": "Grid Search Example For DDPG",
+  "max_worker_num": 8,
   "parameters": {
     "create_ddpg_algorithm.actor_learning_rate": [
       1e-3,

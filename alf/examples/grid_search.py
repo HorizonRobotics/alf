@@ -25,8 +25,6 @@ from alf.utils import common
 
 flags.DEFINE_string('search_config', None,
                     'Path to the grid search config file.')
-flags.DEFINE_integer('max_worker_num', 0,
-                     'Max number of parallel search processes.')
 FLAGS = flags.FLAGS
 r"""Grid search.
 
@@ -35,7 +33,6 @@ To run grid search on ddpg for gym Pendulum:
 python grid_search.py \
   --root_dir=~/tmp/ddpg_pendulum \
   --search_config=ddpg_grid_search.json \
-  --max_worker_num=8 \
   --gin_file=ddpg_pendulum.gin \
   --gin_param='create_environment.num_parallel_environments=8' \
   --alsologtostderr
@@ -43,51 +40,91 @@ python grid_search.py \
 """
 
 
+class GridSearchConfig(object):
+    """ Grid Search Config
+
+    Grid search config file should be json format
+    For example:
+    {
+        "desc": "desc text",
+        "max_worker_num": 8,
+        "parameters": {
+            "create_ddpg_algorithm.actor_learning_rate": [1e-3, 8e-4],
+            "OneStepTDLoss.gamma":"(0.995, 0.99)",
+            "param3_name": param3_value,
+              ...
+        }
+        ...
+    }
+    `max_worker_num` is max number of parallel search worker processes
+    `parameters` is a dict(param_name=param_value,) of configured search space .
+    param_name is a gin configurable argument str and param_value must be an
+    iterable python object or a str that can be evaluated to an iterable object.
+
+    See `ddpg_grid_search.json` for a example.
+    """
+
+    def __init__(self, conf_file):
+        """
+        Args:
+            conf_file (str): Path to the config file.
+        """
+        with open(conf_file) as f:
+            param_keys = []
+            param_values = []
+            conf = json.loads(f.read())
+            for key, value in conf['parameters'].items():
+                if isinstance(value, str):
+                    value = eval(value)
+                param_keys.append(key)
+                param_values.append(value)
+
+        self._desc = conf['desc']
+        self._param_keys = param_keys
+        self._param_values = param_values
+        self._max_worker_num = conf['max_worker_num']
+
+    @property
+    def desc(self):
+        return self._desc
+
+    @property
+    def param_keys(self):
+        return self._param_keys
+
+    @property
+    def param_values(self):
+        return self._param_values
+
+    @property
+    def max_worker_num(self):
+        return self._max_worker_num
+
+
 class GridSearch(object):
     """Grid Search"""
 
     def __init__(self, conf_file):
         """Create GridSearch instance
-
-        Grid search config file must be json format, and element `parameters` is required
-        `parameters` is a dict(key=value,) of configured search space .
-        key must be gin configurable argument str and value must be an iterable python object
-        or a str that can be evaluated to an iterable object .
-        see `ddpg_grid_search.json` for a example.
-
         Args:
             conf_file (str): Path to the config file.
         """
-        self._conf_file = conf_file
+        self._conf = GridSearchConfig(conf_file)
 
-    @staticmethod
-    def parse_config(conf_file):
-        with open(conf_file) as f:
-            keys = []
-            values = []
-            conf = json.loads(f.read())
-            for key, value in conf['parameters'].items():
-                if isinstance(value, str):
-                    value = eval(value)
-                keys.append(key)
-                values.append(value)
-        return keys, values
+    def run(self):
 
-    def run(self, max_worker_num=0):
-        """
-        Args:
-            max_worker_num (int): Max number of parallel search worker processes,
-                0 for unlimited.
-        """
         processes = []
-        para_keys, para_values = GridSearch.parse_config(self._conf_file)
+        param_keys = self._conf.param_keys
+        param_values = self._conf.param_values
+        max_worker_num = self._conf.max_worker_num
+
         # `worker_queue` is just a status queue to control the number for working process.
         # And to simplify, process pool is not used here, just spawn process for new
         # search job.
         worker_queue = multiprocessing.Queue(maxsize=max_worker_num)
-        for values in itertools.product(*para_values):
+        for values in itertools.product(*param_values):
             worker_queue.put(None, block=True)
-            parameters = dict(zip(para_keys, values))
+            parameters = dict(zip(param_keys, values))
             root_dir = "%s/%d" % (FLAGS.root_dir, len(processes))
             process = multiprocessing.Process(
                 target=self._worker, args=(root_dir, parameters, worker_queue))
@@ -109,7 +146,7 @@ class GridSearch(object):
 
 
 def main(_):
-    GridSearch(FLAGS.search_config).run(max_worker_num=FLAGS.max_worker_num)
+    GridSearch(FLAGS.search_config).run()
 
 
 if __name__ == '__main__':
