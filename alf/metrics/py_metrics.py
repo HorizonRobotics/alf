@@ -19,6 +19,7 @@ import itertools
 import abc
 import six
 
+from tf_agents.metrics import py_metric
 from tf_agents.utils import numpy_storage
 from tf_agents.metrics import py_metrics
 from tf_agents.utils import nest_utils
@@ -27,23 +28,18 @@ from tf_agents.utils import nest_utils
 class StreamingMetric(py_metrics.StreamingMetric):
     """
     The difference between this class with the one defined by tf_agents is that
-    for async training we assume `call()` receives both `traj` and the corresponding
+    for async training we assume `call()` receives both `trajectory` and the corresponding
     `id` so that we know how to align metrics w.r.t. different environments, because
-    each time `traj` is from one of all the environments.
+    each time `trajectory` is from one of all the environments.
     """
 
     def __init__(self, buffer_size, num_envs, name='StreamingMetric'):
         super(StreamingMetric, self).__init__(name, buffer_size, num_envs)
 
-    def call(self, trajectory):
-        """
-        Copied from the base class py_metrics.StreamingMetric with the change that
-        `trajectory` is a tuple of (`traj`, `id`).
-        """
-        traj, id = trajectory
-        if traj.step_type.ndim == 0:
-            traj = nest_utils.batch_nested_array(traj)
-        self._batched_call((traj, id))
+    def call(self, trajectory, id):
+        if trajectory.step_type.ndim == 0:
+            trajectory = nest_utils.batch_nested_array(trajectory)
+        self._batched_call(trajectory, id)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -68,19 +64,17 @@ class AsyncStreamingMetric(StreamingMetric):
         super(AsyncStreamingMetric, self).__init__(
             buffer_size=buffer_size, num_envs=num_envs, name=name)
 
-    def _batched_call(self, trajectory):
+    def _batched_call(self, trajectory, id):
         """
         Args:
-            trajectory (tuple(traj, id)): where,
-                `traj` is a nested structure where each leaf has the shape
-                (`unroll_length`, `env_batch_size`, ...); `id` is an int
-                indicating which environment generated `traj`
+            trajectory (Trajectory): a nested structure where each leaf has the
+                shape (`unroll_length`, `env_batch_size`, ...)
+            id (int): indicates which environment generated `trajectory`
         """
-        traj, id = trajectory
-        is_first = traj.is_first()
-        is_last = traj.is_last()
-        is_boundary = traj.is_boundary()
-        reward = traj.reward
+        is_first = trajectory.is_first()
+        is_last = trajectory.is_last()
+        is_boundary = trajectory.is_boundary()
+        reward = trajectory.reward
         ids = np.arange(self._env_batch_size) + id * self._env_batch_size
         for t in range(reward.shape[0]):
             self._batched_call_per_step(is_first[t], is_last[t],

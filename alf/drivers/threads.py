@@ -442,7 +442,7 @@ class LogThread(Thread):
         time_step, policy_step, next_time_step, id = batch
         traj = from_transition(time_step, policy_step, next_time_step)
         for ob in self._observers:
-            ob((traj, id))
+            ob(traj, id)
 
     def _run(self, coord, queue):
         with coord.stop_on_exception():

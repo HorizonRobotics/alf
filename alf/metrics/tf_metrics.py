@@ -40,33 +40,36 @@ class TFPyMetric(tf_metric.TFStepMetric):
         self._dtype = dtype
         self._lock = threading.Lock()
 
-    def call(self, trajectory):
+    def call(self, trajectory, id):
         """Update the value of the metric using trajectory.
 
         The trajectory can be either batched or un-batched depending on
         the expected inputs for the py_metric being wrapped.
 
         Args:
-            trajectory ([tf_agents.trajectory.Trajectory, env_ids]):
+            trajectory (Trajectory): tf_agents trajectory data
+            id (tf.int32): indicates which environment generated `trajectory`
 
         Output:
-            trajectory ([tf_agents.trajectory.Trajectory, env_ids]) :
+            trajectory (Trajectory) :
                 the argument itself, for easy chaining.
+            id (tf.int32):
         """
 
-        def _call(*flattened_trajectories):
+        def _call(id, *flattened_trajectories):
             with self._lock:
                 flat_sequence = [x.numpy() for x in flattened_trajectories]
                 packed_trajectories = tf.nest.pack_sequence_as(
                     structure=(trajectory), flat_sequence=flat_sequence)
-                return self._py_metric(packed_trajectories)
+                return self._py_metric(packed_trajectories, id.numpy())
 
         flattened_trajectories = tf.nest.flatten(trajectory)
         metric_op = tf.py_function(
-            _call, flattened_trajectories, [], name='metric_call_py_func')
+            _call, [id] + flattened_trajectories, [],
+            name='metric_call_py_func')
 
         with tf.control_dependencies([metric_op]):
-            return tf.nest.map_structure(tf.identity, trajectory)
+            return tf.nest.map_structure(tf.identity, trajectory), id
 
     def result(self):
         def _result():
@@ -126,25 +129,25 @@ class AverageEpisodeLengthMetric(TFPyMetric):
 
 class NumberOfEpisodes(tf_metrics.NumberOfEpisodes):
     """
-    Overload call() to accept the other arg (env_id) and ignore it.
+    Overload call() to accept the other arg (env id) and ignore it.
     """
 
     def __init__(self, name='NumberOfEpisodes', dtype=tf.int64):
         super(NumberOfEpisodes, self).__init__(name, dtype)
 
-    def call(self, trajectory):
-        traj, _ = trajectory
-        return super().call(traj)
+    def call(self, trajectory, id):
+        """This metric doesn't care about which env the traj comes from"""
+        return super().call(trajectory)
 
 
 class EnvironmentSteps(tf_metrics.EnvironmentSteps):
     """
-    Overload call() to accept the other arg (env_id) and ignore it.
+    Overload call() to accept the other arg (env id) and ignore it.
     """
 
     def __init__(self, name='EnvironmentSteps', dtype=tf.int64):
         super(EnvironmentSteps, self).__init__(name, dtype)
 
-    def call(self, trajectory):
-        traj, _ = trajectory
-        return super().call(traj)
+    def call(self, trajectory, id):
+        """This metric doesn't care about which env the traj comes from"""
+        return super().call(trajectory)
