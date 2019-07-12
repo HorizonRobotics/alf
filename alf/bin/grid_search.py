@@ -20,7 +20,7 @@ from absl import app
 from absl import flags
 from absl import logging
 import gin
-from alf.examples.main import train_eval
+from alf.bin.main import train_eval
 from alf.utils import common
 
 flags.DEFINE_string('search_config', None,
@@ -30,7 +30,8 @@ r"""Grid search.
 
 To run grid search on ddpg for gym Pendulum:
 ```bash
-python grid_search.py \
+cd ${PROJECT}/alf/examples;
+python -m alf.bin.grid_search \
   --root_dir=~/tmp/ddpg_pendulum \
   --search_config=ddpg_grid_search.json \
   --gin_file=ddpg_pendulum.gin \
@@ -61,7 +62,7 @@ class GridSearchConfig(object):
     param_name is a gin configurable argument str and param_value must be an
     iterable python object or a str that can be evaluated to an iterable object.
 
-    See `ddpg_grid_search.json` for a example.
+    See `ddpg_grid_search.json` for an example.
     """
 
     def __init__(self, conf_file):
@@ -112,6 +113,8 @@ class GridSearch(object):
         self._conf = GridSearchConfig(conf_file)
 
     def run(self):
+        """Run trainings with all possible parameter combinations in configured space
+        """
 
         processes = []
         param_keys = self._conf.param_keys

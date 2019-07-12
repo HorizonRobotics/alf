@@ -15,7 +15,8 @@ r"""Train using ActorCriticAlgorithm.
 
 To run actor_critic on gym CartPole:
 ```bash
-python main.py \
+cd ${PROJECT}/alf/examples;
+python -m alf.bin.main \
   --root_dir=~/tmp/cart_pole \
   --gin_file=ac_cart_pole.gin \
   --gin_param='create_environment.num_parallel_environments=8' \
@@ -30,7 +31,8 @@ tensorboard --logdir=~/tmp/cart_pole
 
 You can visualize playing of the trained model by running:
 ```bash
-python main.py \
+cd ${PROJECT}/alf/examples;
+python -m alf.bin.main \
   --root_dir=~/tmp/cart_pole \
   --gin_file=ac_cart_pole.gin \
   --play \

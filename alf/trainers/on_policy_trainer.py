@@ -163,7 +163,7 @@ def train(root_dir,
 
 
 @gin.configurable
-def play(train_dir,
+def play(root_dir,
          env,
          algorithm,
          checkpoint_name=None,
@@ -177,13 +177,13 @@ def play(train_dir,
 
     The following example record the play of a trained model to a mp4 video:
     ```bash
-    python main.py --play \
+    python -m alf.bin.main --play \
     --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
     --gin_param='on_policy_trainer.play.num_episodes=1' \
     --gin_param='on_policy_trainer.play.record_file="ppo_bullet_humanoid.mp4"'
     ```
     Args:
-        train_dir (str): same as the train_dir used for `train()`
+        root_dir (str): same as the root_dir used for `train()`
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
@@ -196,7 +196,8 @@ def play(train_dir,
             instead of shown on the screen.
         use_tf_functions (bool): whether to use tf.function
     """
-    train_dir = os.path.expanduser(train_dir)
+    root_dir = os.path.expanduser(root_dir)
+    train_dir = os.path.join(root_dir, 'train')
 
     tf.random.set_seed(random_seed)
     global_step = get_global_counter()
