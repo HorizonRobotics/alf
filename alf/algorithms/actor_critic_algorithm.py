@@ -190,15 +190,14 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def calc_loss(self, training_info):
         if self._icm is not None:
-            self.add_reward_summary("training_reward/intrinsic",
+            self.add_reward_summary("reward/intrinsic",
                                     training_info.info.icm_reward)
 
             training_info = training_info._replace(
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
 
-            self.add_reward_summary("training_reward/overall",
-                                    training_info.reward)
+            self.add_reward_summary("reward/overall", training_info.reward)
 
         ac_loss = self._loss(training_info, training_info.info.value)
 
