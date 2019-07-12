@@ -123,7 +123,7 @@ class RLAlgorithm(tf.Module):
                 there is only one optimizer, this can be None and
                 `self.trainable_variables` will be used.
             gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to 
+            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to
                 clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
@@ -201,7 +201,7 @@ class RLAlgorithm(tf.Module):
             tf.summary.histogram(name + "/value", rewards, step)
             tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards), step)
 
-    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         """Predict for one step of observation.
 
         Generate greedy action that maximizes the action probablity).
@@ -209,17 +209,22 @@ class RLAlgorithm(tf.Module):
         Args:
             time_step (ActionTimeStep):
             state (nested Tensor): should be consistent with train_state_spec
+            eps (float): a floating value in [0,1], representing the chance of
+                action sampling instead of taking argmax. This can help prevent
+                a dead loop in some deterministic environment like Breakout.
 
         Returns:
             policy_step (PolicyStep):
-              policy_step.action is nested tf.distribution which consistent with 
+              policy_step.action is nested tf.distribution which consistent with
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
         """
 
         def dist_fn(dist):
             try:
-                greedy_action = dist.mode()
+                greedy_action = tf.cond(
+                    tf.less(tf.random.uniform((), 0, 1), eps), dist.sample,
+                    dist.mode)
             except NotImplementedError:
                 raise ValueError(
                     "Your network's distribution does not implement mode "
@@ -254,7 +259,7 @@ class RLAlgorithm(tf.Module):
         those gradients.
 
         Args:
-            tape (tf.GradientTape): the tape which are used for calculating 
+            tape (tf.GradientTape): the tape which are used for calculating
                 gradient. All the previous `train_interval` `train_step()` for
                 are called under the context of this tape.
             training_info (TrainingInfo): information collected for training.
@@ -318,10 +323,6 @@ class RLAlgorithm(tf.Module):
                 training_info.info are the batched from each policy_step.info
                 returned by train_step(). Note that training_info.next_discount
                 is 0 if the next step is the last step in an episode.
-            final_time_step (ActionTimeStep): the additional time_step
-            final_info (nested Tensor): `info` from additional
-                `train_step` evaluated from final_time_step or final_experience.
-                This final_info is NOT calculated under the context of `tape`
 
         Returns (LossInfo):
             loss at each time step for each sample in the batch. The shapes of

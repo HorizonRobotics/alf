@@ -211,7 +211,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             if self._dqda_clipping:
                 dqda = tf.clip_by_value(dqda, -self._dqda_clipping,
                                         self._dqda_clipping)
-            loss = losses.element_wise_squared_loss(
+            loss = 0.5 * losses.element_wise_squared_loss(
                 tf.stop_gradient(dqda + action), action)
             loss = tf.reduce_sum(loss, axis=list(range(1, len(loss.shape))))
             return loss
