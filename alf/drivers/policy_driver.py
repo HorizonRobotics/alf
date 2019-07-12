@@ -217,6 +217,7 @@ class PolicyDriver(driver.Driver):
         time_step = self._env.step(action)
         return make_action_time_step(time_step, action)
 
+    @tf.function
     def run(self, max_num_steps=None, time_step=None, policy_state=None):
         """
         Take steps in the environment for max_num_steps.

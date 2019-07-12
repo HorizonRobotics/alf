@@ -139,7 +139,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             discount=time_step_spec.discount,
             info=info_spec)
 
-    @tf.function
     def _run(self, max_num_steps, time_step, policy_state):
         if self._training:
             return self.train(max_num_steps, time_step, policy_state)

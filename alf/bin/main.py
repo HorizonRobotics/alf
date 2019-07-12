@@ -81,8 +81,8 @@ def train_eval(root_dir, algorithm_ctor, evaluate=True, debug_summaries=False):
         eval_env = create_environment(num_parallel_environments=1)
     else:
         eval_env = None
-    algorithm = algorithm_ctor(
-        create_environment(), debug_summaries=debug_summaries)
+    env = create_environment(num_parallel_environments=1)
+    algorithm = algorithm_ctor(env, debug_summaries=debug_summaries)
 
     if isinstance(algorithm, OffPolicyAlgorithm):
         trainer = off_policy_trainer.train

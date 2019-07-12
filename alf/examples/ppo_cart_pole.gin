@@ -27,5 +27,7 @@ off_policy_trainer.train.checkpoint_interval=100000
 off_policy_trainer.train.num_updates_per_train_step=4
 off_policy_trainer.train.use_tf_functions=True
 
+TFUniformReplayBuffer.max_length = 2048
+
 train_eval.debug_summaries=True
 train_eval.evaluate=False

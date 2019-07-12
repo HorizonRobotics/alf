@@ -45,13 +45,13 @@ def make_learning_batch(time_step, policy_step, act_dist_param, next_time_step,
 @gin.configurable
 class AsyncOffPolicyDriver(OffPolicyDriver):
     """
-    A driver that enables async training. The definition of 'async' is that prediction
-    and learning are not intervened like below:
+    A driver that enables async training. The definition of 'async' is that
+    prediction and learning are not intervened like below (synchronous):
         pred -> learn -> pred -> learn -> ...
     Instead they are decoupled:
         pred -> pred -> pred -> ...
                    |
-            (sync periodically)
+            (synchronize periodically)
                    |
         learn -> learn -> learn -> ...
     And more importantly, a learner or predictor may only operate on a subset of
@@ -76,35 +76,39 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         Args:
             env_f (Callable): a function with 0 args that creates an environment
             algorithm (OffPolicyAlgorithm):
-            num_envs (int): the number of environments to run asynchronously. Note:
-                    each environment itself could be a tf_agent batched environment.
-                    So the actual total number of environments is `num_envs` * `env_f().batch_size`.
-                    However, `env_f().batch_size` is transparent to this driver. So all
-                    the queues operate on the assumption of `num_envs` environments.
-                    Each environment is exclusively owned by only one `EnvThread`.
-            num_actor_queues (int): number of actor queues. Each queue is exclusivly owned by just one actor
-                            thread.
-            unroll_length (int): number of time steps each environment proceeds before sending the steps
-                            to the learner queue
-            learn_queue_cap (int): the learner queue capacity determines how many environments contribute
-                            to the training data for each training iteration
-            actor_queue_cap (int): the actor queue capacity determines how many environments contribute to
-                            the data for each prediction forward in an `ActorThread`. To prevent deadlock,
-                            it's required that `actor_queue_cap` * `num_actor_queues` <= `num_envs`.
+            num_envs (int): the number of environments to run asynchronously.
+                Note: each environment itself could be a tf_agent batched
+                environment. So the actual total number of environments is
+                `num_envs` * `env_f().batch_size`. However, `env_f().batch_size`
+                is transparent to this driver. So all the queues operate on the
+                assumption of `num_envs` environments. Each environment is
+                exclusively owned by only one `EnvThread`.
+            num_actor_queues (int): number of actor queues. Each queue is
+                exclusivly owned by just one actor thread.
+            unroll_length (int): number of time steps each environment proceeds
+                before sending the steps to the learner queue
+            learn_queue_cap (int): the learner queue capacity determines how many
+                environments contribute to the training data for each training
+                iteration
+            actor_queue_cap (int): the actor queue capacity determines how many
+                environments contribute to the data for each prediction forward
+                in an `ActorThread`. To prevent deadlock, it's required that
+                `actor_queue_cap` * `num_actor_queues` <= `num_envs`.
             observers (list[Callable]): An optional list of observers that are
-                                        updated after every step in the environment. Each observer
-                                        is a callable(time_step.Trajectory).
+                updated after every step in the environment. Each observer is a
+                callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
-            exp_replayer_class (ExperienceReplayer): a class that implements how to storie and replay
-                                experiences. See `OnetimeExperienceRelayer` for example. The replayed
-                                experiences are used for parameter updating.
+            exp_replayer_class (ExperienceReplayer): a class that implements how
+                to storie and replay experiences. See `OnetimeExperienceRelayer`
+                for example. The replayed experiences are used for parameter
+                updating.
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
-                                            variable summaries will be written during training.
-            train_step_counter (tf.Variable): An optional counter to increment every time the a new
-                                            iteration is started. If None, it will use
-                                            tf.summary.experimental.get_step(). If this is still None,
-                                            a counter will be created.
+                variable summaries will be written during training.
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time the a new iteration is started. If None, it will use
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
         """
         super(AsyncOffPolicyDriver, self).__init__(
             env=env_f(),
@@ -173,18 +177,22 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             th.start()
         logging.info("All threads started")
 
-    def _run(self, *args, **kwargs):
+    def run_async(self):
         """
-        Each call of run() will wait for a learning batch to be filled in by the
-        env threads.
-        Running in the eager mode.
+        Each call of run_async() will wait for a learning batch to be filled in
+        by the env threads.
+        Running in the eager mode. The reason is that currently
+        OnetimeExperienceReplayer is incompatible with Graph mode because it
+        replays by a temporary variable.
 
         Output:
             steps (int): the total number of unrolled steps
         """
         t0 = tf.timestamp()
         batch = make_learning_batch(*self._tfq.learn_queue.dequeue_all())
-        tf.summary.scalar(name="time/Learning queue", data=tf.timestamp() - t0)
+        with tf.control_dependencies(tf.nest.flatten(batch)):
+            tf.summary.scalar(
+                name="time/Learning queue", data=tf.timestamp() - t0)
         # convert the batch to the experience format
         exp = make_experience(batch.time_step, batch.policy_step,
                               batch.act_dist_param)
@@ -197,6 +205,10 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         num_envs, unroll_length, env_batch_size \
             = batch.time_step.observation.shape[:3]
         return num_envs * unroll_length * env_batch_size
+
+    def _run(self, *args, **kwargs):
+        raise RuntimeError(
+            "You should call self.run_async instead for async drivers")
 
     def stop(self):
         # finishes the entire program

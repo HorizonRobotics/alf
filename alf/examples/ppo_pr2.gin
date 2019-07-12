@@ -39,4 +39,6 @@ off_policy_trainer.train.num_updates_per_train_step=25
 off_policy_trainer.train.eval_interval=100
 off_policy_trainer.train.summarize_grads_and_vars=True
 
+TFUniformReplayBuffer.max_length=2048
+
 train_eval.debug_summaries=True

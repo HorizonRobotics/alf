@@ -84,9 +84,17 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         return self._exp_replayer
 
     def start(self):
+        """
+        Start the driver. Only valid for AsyncOffPolicyDriver.
+        This empty function keeps OffPolicyDriver APIs consistent.
+        """
         pass
 
     def stop(self):
+        """
+        Stop the driver. Only valid for AsyncOffPolicyDriver.
+        This empty function keeps OffPolicyDriver APIs consistent.
+        """
         pass
 
     def _prepare_specs(self, algorithm):
@@ -154,7 +162,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         policy_step = common.algorithm_step(
             algorithm,
-            ob_transformer=None,
+            ob_transformer=self._observation_transformer,
             time_step=exp,
             state=common.get_initial_policy_state(self._env.batch_size,
                                                   algorithm.train_state_spec),
@@ -176,7 +184,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
               num_updates=1,
               mini_batch_size=None,
               mini_batch_length=None):
-        """Train using `experience`. Copied from off_policy_driver.py.
+        """Train using `experience`.
 
         Args:
             experience (Experience): experience from replay_buffer. It is
@@ -202,6 +210,11 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         assert length % mini_batch_length == 0
 
+        def _make_time_major(nest):
+            """Put the time dim to axis=0"""
+            return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
+                                         nest)
+
         batch_size = experience.step_type.shape[0]
         # The reason of this constraint is at L244
         # TODO: remove this constraint.
@@ -226,9 +239,9 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 batch = tf.nest.map_structure(
                     lambda x: tf.reshape(x, [mini_batch_size] + list(x.shape)[
                         1:]), batch)
-                batch = common.make_time_major(batch)
+                batch = _make_time_major(batch)
                 training_info, loss_info, grads_and_vars = self._update(
-                    batch, weight=batch.step_type.shape[0] / mini_batch_size)
+                    batch, weight=batch.step_type.shape[1] / mini_batch_size)
                 # somehow tf.function autograph does not work correctly for the
                 # following code:
                 # if u == num_updates - 1 and b + mini_batch_size >= batch_size:
@@ -266,6 +279,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             exp = tf.nest.map_structure(lambda ta: ta.read(counter),
                                         experience_ta)
             collect_action_distribution_param = exp.action_distribution
+            collect_action_distribution = nested_distributions_from_specs(
+                self._action_distribution_spec,
+                collect_action_distribution_param)
+            exp = exp._replace(action_distribution=collect_action_distribution)
 
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_train_state,
@@ -277,8 +294,9 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 exp,
                 policy_state,
                 training=True)
-            policy_step, action_dist_param = common.get_act_dist_param(
-                policy_step)
+
+            action_dist_param = common.get_distribution_params(
+                policy_step.action)
 
             training_info = make_training_info(
                 action=exp.action,

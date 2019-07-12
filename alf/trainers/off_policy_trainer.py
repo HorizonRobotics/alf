@@ -38,7 +38,7 @@ from alf.utils.common import run_under_record_context, get_global_counter
 def train(root_dir,
           env_f: Callable,
           algorithm,
-          sync_driver=True,
+          synchronous=True,
           eval_env=None,
           random_seed=0,
           initial_collect_steps=0,
@@ -65,19 +65,29 @@ def train(root_dir,
         root_dir (str): directory for saving summary and checkpoints
         env_f (Callable[TFEnvironment]): creates an environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
-        sync_driver (bool): whether use the synchronous driver or asynchronous driver
+        synchronous (bool): whether use the synchronous driver or asynchronous
+            driver. For their data pipeline differences, please refer to the
+            docstring of AsyncOffPolicyDriver. Generally, you may use the
+            synchronous driver for both on-policy (e.g., A2C) and off-policy
+            (e.g., PPO) algorithms, and the rollout always uses the most up-to-date
+            policy. However, the asynchronous driver always has some policy lag
+            between the training policy and the rollout policy. It's used to
+            potentially squeeze the waiting time before every two training updates
+            and yield higher data throughput. Example algorithms: DQN, off-policy
+            AC, PPO.
         eval_env (TFEnvironment): environment for evaluating
-        initial_collect_steps (int): if positive, number of steps each single environment
-            steps before perform first update
+        initial_collect_steps (int): if positive, number of steps each single
+            environment steps before perform first update
         random_seed (int): random seed
         num_updates_per_train_step (int): number of optimization steps for
             one iteration
-        unroll_length (int): number of time steps each environment proceeds per iteration.
-            The total number of time steps from all environments per iteration can be
-            computed as: `num_envs` * `env_batch_size` * `unroll_length`.
+        unroll_length (int): number of time steps each environment proceeds per
+            iteration. The total number of time steps from all environments per
+            iteration can be computed as: `num_envs` * `env_batch_size`
+            * `unroll_length`.
         mini_batch_size (int): number of sequences for each minibatch
-        clear_replay_buffer (bool): whether use all data in replay buffer to perform
-            one update and then wiped clean
+        clear_replay_buffer (bool): whether use all data in replay buffer to
+            perform one update and then wiped clean
         mini_batch_length (int): the length of the sequence for each
             sample in the minibatch
 
@@ -119,7 +129,7 @@ def train(root_dir,
         tf.random.set_seed(random_seed)
         global_step = get_global_counter()
 
-        if sync_driver:
+        if synchronous:
             driver = SyncOffPolicyDriver(
                 env=env,
                 algorithm=algorithm,
@@ -154,7 +164,7 @@ def train(root_dir,
 
             steps = 0
             while True:
-                if sync_driver:
+                if synchronous:
                     max_num_steps = unroll_length * env.batch_size
                     time_step, policy_state = driver.run(
                         max_num_steps=max_num_steps,
@@ -162,7 +172,7 @@ def train(root_dir,
                         policy_state=policy_state)
                     steps += max_num_steps
                 else:
-                    steps += driver.run()
+                    steps += driver.run_async()
                 if iter > 0 or steps >= initial_collect_steps:
                     break
 

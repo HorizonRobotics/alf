@@ -40,9 +40,9 @@ class NestFIFOQueue(object):
         """
         Args:
             capacity (int): maximum number of elements
-            sample_element (tf.nest): an example of elements to be stored in the queue. It's
-                                    just used to infer dtypes and shapes without being
-                                    actually stored.
+            sample_element (tf.nest): an example of elements to be stored in the
+                queue. It's just used to infer dtypes and shapes without being
+                actually stored.
         """
         dtypes = tf.nest.map_structure(lambda e: e.dtype, sample_element)
         shapes = tf.nest.map_structure(lambda e: e.shape, sample_element)
@@ -57,29 +57,55 @@ class NestFIFOQueue(object):
         self._capacity = capacity
 
     def enqueue(self, vals):
+        """
+        Enqueue a nested structure into the queue. The structure will first be
+        flattened.
+
+        Args:
+            vals (nested structure): a single structure with nested tensors
+        """
         flat_vals = tf.nest.flatten(vals)
         self._queue.enqueue(flat_vals)
 
     def dequeue(self):
+        """
+        Dequeue an element from the queue. The flat element will be packed into
+        the original nested structure.
+
+        Output:
+            vals (nested structure):
+        """
         flat_vals = self._queue.dequeue()
         if self._unsqueeze:
             flat_vals = [flat_vals]
         return tf.nest.pack_sequence_as(self._structure, flat_vals)
 
     def dequeue_many(self, n):
+        """
+        Dequeue `n` elements from the queue.
+
+        Output:
+            vals (nested structure): Each item of `vals` will have an additional
+            dim at axis=0 because of stacking the `n` elements. See tf.queue for
+            more information.
+        """
         vals = self._queue.dequeue_many(n)
         return tf.nest.pack_sequence_as(self._structure, vals)
 
     def dequeue_all(self):
+        """Dequeue all elements."""
         return self.dequeue_many(self._capacity)
 
     def close(self, cancel_pending_enqueues=True):
+        """A wrapper for tf.queue.FIFOQueue.close()"""
         self._queue.close(cancel_pending_enqueues)
 
     def is_closed(self):
+        """A wrapper for tf.queue.FIFOQueue.is_closed()"""
         return self._queue.is_closed()
 
     def size(self):
+        """A wrapper for tf.queue.FIFOQueue.size()"""
         return self._queue.size()
 
 
@@ -103,35 +129,43 @@ class TFQueues(object):
                  unroll_length,
                  num_actor_queues=1):
         """
-        Create four kinds of queues:
+        Create five kinds of queues:
         1. one learner queue
-           - stores batches of training trajectories
-             all agent threads should enqueue unrolled trajectories into it
-        2. one actor queue
-           - stores batches of observations to act upon
-             all agent threads should enqueue current observations into it to
-             get predicted actions
+            stores batches of training trajectories
+            all agent threads should enqueue unrolled trajectories into it
+        2.`num_actor_queues` actor queues
+            each queue stores batches of observations from some envs to act upon
+            all agent threads should enqueue current observations into one of
+            the actor queues to get predicted actions
         3. `num_envs` action-returning queues
-           - each env holds one such queue for receiving the returned action
-             predicted the by actor
+            each env holds one such queue for receiving the returned action
+            predicted the by actor
         4. one log queue
-           - the logging thread retrieves trajectory data from this queue
+            the logging thread retrieves trajectory data from this queue
+        5. `num_envs` env-unroll queues
+            there is a one-to-one mapping from a queue to an env. Each queue
+            accumulates `unroll_length` time steps before they are used for
+            training.
 
-        These queues are used for communications between learner&actor threads and
-        actor&logging threads.
+        These queues are used for communications between learner&actor threads
+        and actor&logging threads. We manage them in a centralized way to
+        facilitate closing.
 
         Args:
-            num_envs (int): number of tf_agents batched environments running in parallel. Each environment
-                            could be a batch of environments!
+            num_envs (int): number of tf_agents batched environments running in
+                parallel. Each environment could be a batch of environments!
             env_batch_size (int): number of envs contained by each batched env
             learn_queue_cap (int): the capacity of the learner queue
             actor_queue_cap (int): the capacity of a actor queue
-            time_step_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs(); used for creating queues
-            policy_step_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs(); used for creating queues
+            time_step_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs();
+                used for creating queues
+            policy_step_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs();
+                used for creating queues
             act_dist_param_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs();
-                                            used for creating queues
-            unroll_length (int): how many time steps each environment proceeds before training
-            num_actor_queues (int): number of actor queues running in parallel (default: 1)
+                used for creating queues
+            unroll_length (int): how many time steps each environment proceeds
+                before training
+            num_actor_queues (int): number of actor queues running in parallel
         """
         self._time_step_spec = repeat_shape_n(time_step_spec, env_batch_size)
         self._policy_step_spec = repeat_shape_n(policy_step_spec,
@@ -200,21 +234,14 @@ class TFQueues(object):
             euq.close()
 
 
-def flatten_once(t):
-    """
-    Flatten a tensor along axis=0 and axis=1
-    """
-    return tf.reshape(t, [-1] + list(t.shape[2:]))
-
-
 class ActorThread(Thread):
     """
     An actor thread is responsible for taking out time steps from its
     corresponding actor queue, calling the algorithm's prediction, and putting
     the results back in a return queue.
 
-    An actor thread will keep running forever until the coordinator requests a stop
-    (from another thread).
+    An actor thread will keep running forever until the coordinator requests a
+    stop (from another thread).
     """
 
     def __init__(self,
@@ -229,10 +256,11 @@ class ActorThread(Thread):
             name (str): the name of the actor thread
             coord (tf.train.Coordinator): coordinate among threads
             algorithm (OffPolicyAlgorithm): for prediction
-            tf_queues (TFQueues): for storing all the tf.FIFOQueues for communicating
-                                    between threads
+            tf_queues (TFQueues): for storing all the tf.FIFOQueues for
+                communicating between threads
             id (int): thread id
-            observation_transformer (Callable): transformation applied to `time_step.observation`
+            observation_transformer (Callable): transformation applied to
+                `time_step.observation`
         """
         super().__init__(name=name, target=self._run, args=(coord, algorithm))
         self._tfq = tf_queues
@@ -268,15 +296,16 @@ class ActorThread(Thread):
             state,
             greedy_predict=False,
             training=False)
-        policy_step, action_dist_param = common.get_act_dist_param(policy_step)
+        action_dist_param = common.get_distribution_params(policy_step.action)
+        policy_step = common.sample_policy_action(policy_step)
         return policy_step, action_dist_param
 
     @tf.function
     def _dequeue_and_step(self, algorithm):
         time_step, policy_state, env_ids = self._actor_q.dequeue_all()
         # pack
-        time_step = tf.nest.map_structure(flatten_once, time_step)
-        policy_state = tf.nest.map_structure(flatten_once, policy_state)
+        time_step = tf.nest.map_structure(common.flatten_once, time_step)
+        policy_state = tf.nest.map_structure(common.flatten_once, policy_state)
 
         # prediction forward
         policy_step, action_dist_param = self._step(algorithm, time_step,
@@ -333,14 +362,14 @@ class EnvThread(Thread):
             name (str): name of the thread
             coord (tf.train.Coordinator): coordinate among threads
             env_f (Callable): a function that creates an env
-            tf_queues (TFQueues): an object for storing all the tf.FIFOQueues for communicating
-                                    between threads
-            unroll_length (int): Each env unrolls for so many steps before sending the
-                                    steps to the learning queue. If the env is batched, then
-                                    the total number would be `unroll_length` * `batch_size`.
+            tf_queues (TFQueues): an object for storing all the tf.FIFOQueues
+                for communicating between threads
+            unroll_length (int): Each env unrolls for so many steps before sending
+                the steps to the learning queue. If the env is batched, then
+                the total number would be `unroll_length` * `batch_size`.
             id (int): an integer identifies the env thread
-            actor_id (int): indicates which actor thread the env thread should send
-                                time steps to.
+            actor_id (int): indicates which actor thread the env thread should
+                send time steps to.
         """
         super().__init__(
             name=name, target=self._run, args=(coord, unroll_length))
@@ -350,16 +379,15 @@ class EnvThread(Thread):
         self._actor_q = self._tfq.actor_queues[actor_id]
         self._action_return_q = self._tfq.action_return_queues[id]
         self._unroll_queue = self._tfq.env_unroll_queues[id]
-        self._initial_policy_step = common.get_initial_policy_step(
+        self._initial_policy_state = common.get_initial_policy_state(
             self._env.batch_size,
             tf.nest.map_structure(
                 lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
-                self._tfq._policy_step_spec))
+                self._tfq._policy_step_spec.state))
 
-    def _step(self, time_step, policy_step):
+    def _step(self, time_step, policy_state):
         policy_state = common.reset_state_if_necessary(
-            policy_step.state, self._initial_policy_step.state,
-            time_step.is_first())
+            policy_state, self._initial_policy_state, time_step.is_first())
         self._actor_q.enqueue([time_step, policy_state, self._id])
         policy_step, act_dist_param = self._action_return_q.dequeue()
         action = policy_step.action
@@ -367,37 +395,37 @@ class EnvThread(Thread):
         # temporarily store the transition into a local queue
         self._unroll_queue.enqueue(
             [time_step, policy_step, act_dist_param, next_time_step])
-        return next_time_step, policy_step
+        return next_time_step, policy_step.state
 
-    def _unroll_env(self, time_step, policy_step, unroll_length):
-        time_step, policy_step = tf.while_loop(
+    def _unroll_env(self, time_step, policy_state, unroll_length):
+        time_step, policy_state = tf.while_loop(
             cond=lambda *_: True,
             body=self._step,
-            loop_vars=[time_step, policy_step],
+            loop_vars=[time_step, policy_state],
             maximum_iterations=unroll_length,
             back_prop=False,
             name="eval_loop")
-        return time_step, policy_step
+        return time_step, policy_state
 
     @tf.function
-    def _unroll_and_learn(self, time_step, policy_step, unroll_length):
-        time_step, policy_step = self._unroll_env(time_step, policy_step,
-                                                  unroll_length)
+    def _unroll_and_learn(self, time_step, policy_state, unroll_length):
+        time_step, policy_state = self._unroll_env(time_step, policy_state,
+                                                   unroll_length)
         # Dump transitions from the local queue and put into
         # the learner queue and the log queue
         # unrolled: (time_step, policy_step, act_dist_param, next_time_step)
         unrolled = self._unroll_queue.dequeue_all()
         self._tfq.learn_queue.enqueue(unrolled + [self._id])
         self._tfq.log_queue.enqueue(unrolled[:2] + [unrolled[3], self._id])
-        return time_step, policy_step
+        return time_step, policy_state
 
     def _run(self, coord, unroll_length):
         with coord.stop_on_exception():
             time_step = common.get_initial_time_step(self._env)
-            policy_step = self._initial_policy_step
+            policy_state = self._initial_policy_state
             while not coord.should_stop():
-                time_step, policy_step = self._unroll_and_learn(
-                    time_step, policy_step, unroll_length)
+                time_step, policy_state = self._unroll_and_learn(
+                    time_step, policy_state, unroll_length)
         # Whoever stops first, cancel all pending requests
         # (including enqueues and dequeues),
         # so that no thread hangs before calling coord.should_stop()
@@ -417,8 +445,8 @@ class LogThread(Thread):
             num_envs (int): number of env threads
             env_batch_size (int): batch size of each env
             observers (list[Callable]): A list of observers that are
-                    updated after every step in the environment. Each observer is a
-                    callable(time_step.Trajectory).
+                updated after every step in the environment. Each observer is a
+                callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): A list of metrics.
             coord (tf.train.Coordinator): coordinate among threads
             queue (NestFIFOQueue): the queue containing data to be logged

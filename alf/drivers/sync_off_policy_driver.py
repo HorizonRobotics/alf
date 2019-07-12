@@ -35,14 +35,15 @@ class SyncOffPolicyDriver(OffPolicyDriver):
     * run(): for collecting data into replay buffer using algorithm.predict
     * train(): for training with one batch of data.
 
-    train() further divides a batch into multiple minibatches. For each mini-
-    batch. It performs the following computation:
+    train() further divides a batch into multiple minibatches. For each
+    mini-batch. It performs the following computation:
     ```python
         with tf.GradientTape() as tape:
             batched_training_info
             for experience in batch:
                 policy_step = train_step(experience, state)
-                collect necessary information and policy_step.info into training_info
+                collect necessary information and policy_step.info into
+                training_info
             train_complete(tape, training_info)
     ```
     """
@@ -61,9 +62,10 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         Args:
             env (TFEnvironment): A TFEnvoronmnet
             algorithm (OffPolicyAlgorithm): The algorithm for training
-            exp_replayer_class (ExperienceReplayer): a class that implements how to storie and replay
-                                experiences. See `OnetimeExperienceRelayer` for example. The replayed
-                                experiences are used for parameter updating.
+            exp_replayer_class (ExperienceReplayer): a class that implements how
+                to storie and replay experiences. See `OnetimeExperienceRelayer`
+                for example. The replayed experiences are used for parameter
+                updating.
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
@@ -78,7 +80,8 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         """
         # training=False because training info is always obtained from
         # replayed exps instead of current time_step prediction. So _step() in
-        # policy_driver.py has nothing to do with training for off-policy algorithms
+        # policy_driver.py has nothing to do with training for off-policy
+        # algorithms
         super(SyncOffPolicyDriver, self).__init__(
             env=env,
             algorithm=algorithm,
@@ -89,7 +92,6 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=train_step_counter)
 
-    @tf.function
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""
         return self.predict(max_num_steps, time_step, policy_state)

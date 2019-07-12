@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import unittest
+import collections
 from absl.testing import parameterized
 
 from absl import logging
@@ -28,14 +29,14 @@ from alf.environments.suite_unittest import ActionType
 from alf.algorithms.ddpg_algorithm import create_ddpg_algorithm
 from alf.algorithms.sac_algorithm import create_sac_algorithm
 from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
+from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
 from alf.drivers.threads import NestFIFOQueue
-from alf.drivers.threads import flatten_once
 from alf.drivers.threads import ActorThread, EnvThread
 from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
 from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.drivers.on_policy_driver import OnPolicyDriver
-import collections
+from alf.utils.common import flatten_once
 
 
 def _create_sac_algorithm(env):
@@ -55,6 +56,15 @@ def _create_ddpg_algorithm(env):
         critic_fc_layers=(16, 16),
         actor_learning_rate=1e-2,
         critic_learning_rate=1e-1)
+
+
+def _create_ppo_algorithm(env):
+    return PPOAlgorithm(
+        create_ac_algorithm(
+            env=env,
+            actor_fc_layers=(16, 16),
+            value_fc_layers=(16, 16),
+            learning_rate=1e-3))
 
 
 def _create_ac_algorithm(env):
@@ -109,7 +119,7 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         driver.start()
         total_num_steps_ = 0
         for _ in range(num_iterations):
-            total_num_steps_ += driver.run()
+            total_num_steps_ += driver.run_async()
         driver.stop()
 
         total_num_steps = int(driver.get_metrics()[1].result())
@@ -124,9 +134,9 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
 
 
 class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
-    @parameterized.parameters(
-        (_create_sac_algorithm, True), (_create_ddpg_algorithm, True),
-        (_create_sac_algorithm, False), (_create_ddpg_algorithm, False))
+    @parameterized.parameters((_create_sac_algorithm, True),
+                              (_create_ddpg_algorithm, True),
+                              (_create_ppo_algorithm, False))
     def test_off_policy_algorithm(self, algorithm_ctor, sync_driver):
         logging.info("{} {}".format(algorithm_ctor.__name__, sync_driver))
 
@@ -187,7 +197,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                 experience, _ = replayer.replay(
                     sample_batch_size=128, mini_batch_length=2)
             else:
-                driver.run()
+                driver.run_async()
                 experience = replayer.replay_all()
 
             driver.train(experience, mini_batch_size=128, mini_batch_length=2)
