@@ -33,7 +33,7 @@ from alf.utils.common import run_under_record_context, get_global_counter
 
 
 @gin.configurable
-def train(train_dir,
+def train(root_dir,
           env,
           algorithm,
           eval_env=None,
@@ -55,7 +55,7 @@ def train(train_dir,
     additional prefix "driver_loop", it's might be a bug of tf2. We'll see.
 
     Args:
-        train_dir (str): directory for saving summary and checkpoints
+        root_dir (str): directory for saving summary and checkpoints
         env (TFEnvironment): environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
         eval_env (TFEnvironment): environment for evaluating
@@ -77,8 +77,9 @@ def train(train_dir,
             summaries will be written during training.
     """
 
-    train_dir = os.path.expanduser(train_dir)
-    eval_dir = os.path.join(os.path.dirname(train_dir), 'eval')
+    root_dir = os.path.expanduser(root_dir)
+    train_dir = os.path.join(root_dir, 'train')
+    eval_dir = os.path.join(root_dir, 'eval')
 
     eval_metrics = None
     eval_summary_writer = None
@@ -150,6 +151,9 @@ def train(train_dir,
                     tf.summary.text('commandline', ' '.join(sys.argv))
 
         checkpointer.save(global_step=global_step.numpy())
+        env.close()
+        if eval_env:
+            eval_env.close()
 
     run_under_record_context(
         func=train_,
@@ -159,7 +163,7 @@ def train(train_dir,
 
 
 @gin.configurable
-def play(train_dir,
+def play(root_dir,
          env,
          algorithm,
          checkpoint_name=None,
@@ -173,13 +177,13 @@ def play(train_dir,
 
     The following example record the play of a trained model to a mp4 video:
     ```bash
-    python main.py --play \
+    python -m alf.bin.main --play \
     --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
     --gin_param='on_policy_trainer.play.num_episodes=1' \
     --gin_param='on_policy_trainer.play.record_file="ppo_bullet_humanoid.mp4"'
     ```
     Args:
-        train_dir (str): same as the train_dir used for `train()`
+        root_dir (str): same as the root_dir used for `train()`
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
@@ -192,7 +196,8 @@ def play(train_dir,
             instead of shown on the screen.
         use_tf_functions (bool): whether to use tf.function
     """
-    train_dir = os.path.expanduser(train_dir)
+    root_dir = os.path.expanduser(root_dir)
+    train_dir = os.path.join(root_dir, 'train')
 
     tf.random.set_seed(random_seed)
     global_step = get_global_counter()

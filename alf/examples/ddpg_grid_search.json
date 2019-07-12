@@ -1,0 +1,15 @@
+{
+  "desc": "Grid Search Example For DDPG",
+  "max_worker_num": 8,
+  "parameters": {
+    "create_ddpg_algorithm.actor_learning_rate": [
+      1e-3,
+      5e-4
+    ],
+    "create_ddpg_algorithm.critic_learning_rate": "map(lambda x: x*5e-4, range(1,3))",
+    "OneStepTDLoss.td_error_loss_fn": [
+      "@losses.element_wise_huber_loss",
+      "@losses.element_wise_squared_loss"
+    ]
+  }
+}
