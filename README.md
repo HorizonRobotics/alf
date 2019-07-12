@@ -36,7 +36,9 @@ pip install -e .
 ### A2C
 * [Cart pole](alf/examples/ac_cart_pole.gin).
 
-* [Atari games](alf/examples/ac_breakout.gin). Need to install python package atari-py for atari game environments.
+* [Atari games](alf/examples/ac_breakout.gin). Need to install python package atari-py for atari game environments. 1.5 hours (on one RTX 2080Ti GPU) to reach 800 evaluation (by taking argmax of the policy) score on Breakout.
+
+<img src="alf/examples/ac_breakout.png" width="300" height="200" alt="breakout-training-curve"/> <img src="alf/examples/ac_breakout.gif" width="150" height="200" alt="breakout-playing-screen"/>
 
 * [Simple navigation with visual input](alf/examples/ac_simple_navigation.gin). Follow the instruction at [SocialRobot](https://github.com/HorizonRobotics/SocialRobot) to install the environment.
 
