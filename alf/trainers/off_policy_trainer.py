@@ -74,7 +74,9 @@ def train(root_dir,
             between the training policy and the rollout policy. It's used to
             potentially squeeze the waiting time before every two training updates
             and yield higher data throughput. Example algorithms: DQN, off-policy
-            AC, PPO.
+            AC, PPO. If set to False, remember to set the arguments `num_envs`,
+            `num_actor_queues`, `actor_queue_cap`, and `learn_queue_cap` for
+            AsyncOffPolicyDriver.
         eval_env (TFEnvironment): environment for evaluating
         initial_collect_steps (int): if positive, number of steps each single
             environment steps before perform first update
