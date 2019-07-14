@@ -151,9 +151,9 @@ def train(root_dir,
                     tf.summary.text('commandline', ' '.join(sys.argv))
 
         checkpointer.save(global_step=global_step.numpy())
-        env.close()
+        env.pyenv.close()
         if eval_env:
-            eval_env.close()
+            eval_env.pyenv.close()
 
     run_under_record_context(
         func=train_,
