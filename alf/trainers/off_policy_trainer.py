@@ -17,7 +17,6 @@ import os
 import sys
 import time
 from typing import Callable
-import functools
 
 from absl import logging
 import gin.tf
@@ -206,12 +205,14 @@ def train(root_dir,
                         metrics=eval_metrics,
                         environment=eval_env,
                         state_spec=algorithm.predict_state_spec,
-                        action_fn=functools.partial(
-                            common.algorithm_step,
+                        action_fn=lambda time_step, state: common.
+                        algorithm_step(
                             algorithm=driver.algorithm,
                             ob_transformer=driver.observation_transformer,
-                            training=False,
-                            greedy_predict=True),
+                            time_step=time_step,
+                            state=state,
+                            greedy_predict=True,
+                            training=False),
                         num_episodes=num_eval_episodes,
                         step_metrics=driver.get_step_metrics(),
                         train_step=global_step,

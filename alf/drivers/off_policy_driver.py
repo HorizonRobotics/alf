@@ -200,13 +200,18 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         length = experience.step_type.shape[1]
         if mini_batch_length is None:
             mini_batch_length = length
+        else:
+            mini_batch_length = min(mini_batch_length, length)
 
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
                                  ), experience)
 
+        batch_size = experience.step_type.shape[0]
         if mini_batch_size is None:
-            mini_batch_size = experience.step_type.shape[0]
+            mini_batch_size = batch_size
+        else:
+            mini_batch_size = min(mini_batch_size, batch_size)
 
         assert length % mini_batch_length == 0
 
@@ -215,7 +220,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
-        batch_size = experience.step_type.shape[0]
         # The reason of this constraint is at L244
         # TODO: remove this constraint.
         assert batch_size % mini_batch_size == 0, (
