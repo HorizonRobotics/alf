@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import multiprocessing
+# import multiprocessing
 import itertools
 import json
 
@@ -20,6 +20,9 @@ from absl import app
 from absl import flags
 from absl import logging
 import gin
+
+# serialization overwrite by dill, it's more convenient
+from pathos import multiprocessing
 from alf.bin.main import train_eval
 from alf.utils import common
 
@@ -121,22 +124,21 @@ class GridSearch(object):
         param_values = self._conf.param_values
         max_worker_num = self._conf.max_worker_num
 
-        # `worker_queue` is just a status queue to control the number for working process.
-        # And to simplify, process pool is not used here, just spawn process for new
-        # search job.
-        worker_queue = multiprocessing.Queue(maxsize=max_worker_num)
+        process_pool = multiprocessing.Pool(
+            processes=max_worker_num, maxtasksperchild=1)
+
         for values in itertools.product(*param_values):
-            worker_queue.put(None, block=True)
             parameters = dict(zip(param_keys, values))
             root_dir = "%s/%d" % (FLAGS.root_dir, len(processes))
-            process = multiprocessing.Process(
-                target=self._worker, args=(root_dir, parameters, worker_queue))
-            process.start()
-            processes.append(process)
-        for process in processes:
-            process.join()
+            process_pool.apply_async(
+                func=self._worker,
+                args=[root_dir, parameters],
+                error_callback=lambda e: logging.error(e))
 
-    def _worker(self, root_dir, parameters, worker_queue):
+        process_pool.close()
+        process_pool.join()
+
+    def _worker(self, root_dir, parameters):
         logging.set_verbosity(logging.INFO)
         gin_file = common.get_gin_file()
         if FLAGS.gin_file:
@@ -145,7 +147,6 @@ class GridSearch(object):
         with gin.unlock_config():
             gin.parse_config(['%s=%s' % (k, v) for k, v in parameters.items()])
         train_eval(root_dir)
-        worker_queue.get()
 
 
 def main(_):
