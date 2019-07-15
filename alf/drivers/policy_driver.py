@@ -22,12 +22,12 @@ import gin.tf
 import tensorflow as tf
 
 from tf_agents.drivers import driver
+from tf_agents.utils import eager_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.trajectories.trajectory import from_transition
-from tf_agents.utils import eager_utils
 
-from alf.utils import common as common
 from alf.algorithms.off_policy_algorithm import make_experience
+from alf.utils import common
 from alf.algorithms.rl_algorithm import make_action_time_step
 
 
@@ -71,28 +71,26 @@ class PolicyDriver(driver.Driver):
             tf_metrics.AverageReturnMetric(buffer_size=metric_buf_size),
             tf_metrics.AverageEpisodeLengthMetric(buffer_size=metric_buf_size),
         ]
-        metrics = standard_metrics + metrics
-        super(PolicyDriver, self).__init__(env, None, observers + metrics)
-
+        self._metrics = standard_metrics + metrics
         self._exp_observers = []
+
+        super(PolicyDriver, self).__init__(env, None,
+                                           observers + self._metrics)
 
         self._algorithm = algorithm
         self._training = training
         self._greedy_predict = greedy_predict
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
-        self._metrics = metrics
         self._observation_transformer = observation_transformer
-
+        self._train_step_counter = common.get_global_counter(
+            train_step_counter)
+        self._proc = psutil.Process(os.getpid())
         if training:
             self._policy_state_spec = algorithm.train_state_spec
         else:
             self._policy_state_spec = algorithm.predict_state_spec
-
-        self._train_step_counter = common.get_global_counter(
-            train_step_counter)
-        self._initial_state = self.get_initial_state()
-        self._proc = psutil.Process(os.getpid())
+        self._initial_state = self.get_initial_policy_state()
 
     def add_experience_observer(self, observer: Callable):
         """Add an observer to receive experience.
@@ -102,76 +100,7 @@ class PolicyDriver(driver.Driver):
         """
         self._exp_observers.append(observer)
 
-    def get_initial_time_step(self):
-        """Returns the initial action_time_step."""
-        time_step = self.env.current_time_step()
-        action = common.zero_tensor_from_nested_spec(self.env.action_spec(),
-                                                     self.env.batch_size)
-        return make_action_time_step(time_step, action)
-
-    def algorithm_step(self, time_step, state, training, greedy_predict):
-        if self._observation_transformer is not None:
-            time_step = time_step._replace(
-                observation=self._observation_transformer(time_step.
-                                                          observation))
-        if training:
-            policy_step = self._algorithm.train_step(time_step, state)
-        elif greedy_predict:
-            policy_step = self._algorithm.greedy_predict(time_step, state)
-        else:
-            policy_step = self._algorithm.predict(time_step, state)
-        return policy_step._replace(
-            action=common.to_distribution(policy_step.action))
-
-    def run(self, max_num_steps=None, time_step=None, policy_state=None):
-        """Take steps in the environment for max_num_steps.
-
-        If in training mode, algorithm.train_step() and
-        algorithm.train_complete() will be called.
-        If not in training mode, algorith.predict() will be called.
-
-        The observers will also be called for every environment step.
-
-        Args:
-            max_num_steps (int): stops after so many environment steps. Is the
-                total number of steps from all the individual environment in
-                the bached enviroments including StepType.LAST steps.
-            time_step (ActionTimeStep): optional initial time_step. If None, it
-                will use self.get_initial_time_step(). Elements should be shape
-                [batch_size, ...].
-            policy_state (nested Tensor): optional initial state for the policy.
-
-        Returns:
-            time_step (ActionTimeStep): named tuple with final observation,
-                reward, etc.
-            policy_state (nested Tensor): final step policy state.
-        """
-        if time_step is None:
-            time_step = self.get_initial_time_step()
-        if policy_state is None:
-            policy_state = self._initial_state
-        return self._run(
-            time_step=time_step,
-            policy_state=policy_state,
-            max_num_steps=max_num_steps)
-
-    @abc.abstractmethod
-    def _run(self, max_num_steps, time_step, policy_state):
-        """Take steps in the environment for max_num_steps."""
-        pass
-
-    def predict(self, max_num_steps, time_step, policy_state):
-        maximum_iterations = math.ceil(max_num_steps / self._env.batch_size)
-        [time_step, policy_state] = tf.while_loop(
-            cond=lambda *_: True,
-            body=self._eval_loop_body,
-            loop_vars=[time_step, policy_state],
-            maximum_iterations=maximum_iterations,
-            back_prop=False,
-            name="predict_loop")
-        return time_step, policy_state
-
-    def _summary(self, training_info, loss_info, grads_and_vars):
+    def _training_summary(self, training_info, loss_info, grads_and_vars):
         if self._summarize_grads_and_vars:
             eager_utils.add_variables_summaries(grads_and_vars,
                                                 self._train_step_counter)
@@ -182,10 +111,10 @@ class PolicyDriver(driver.Driver):
                                         self.env.action_spec())
             common.add_loss_summaries(loss_info)
 
-        for metric in self._metrics:
+        for metric in self.get_metrics():
             metric.tf_summaries(
                 train_step=self._train_step_counter,
-                step_metrics=self._metrics[:2])
+                step_metrics=self.get_metrics()[:2])
 
         mem = tf.py_function(
             lambda: self._proc.memory_info().rss // 1e6, [],
@@ -195,15 +124,17 @@ class PolicyDriver(driver.Driver):
             mem.set_shape(())
         tf.summary.scalar(name='memory_usage', data=mem)
 
-    def get_initial_state(self):
-        """Returns an initial state usable by the algorithm.
+    @property
+    def algorithm(self):
+        return self._algorithm
 
-        Returns:
-            A nested object of type `policy_state` containing properly
-            initialized Tensors.
-        """
-        return common.zero_tensor_from_nested_spec(self._policy_state_spec,
-                                                   self.env.batch_size)
+    @property
+    def observation_transformer(self):
+        return self._observation_transformer
+
+    @abc.abstractmethod
+    def _prepare_specs(self, algorithm):
+        pass
 
     def get_step_metrics(self):
         """Get step metrics that used for generating summaries against
@@ -221,6 +152,32 @@ class PolicyDriver(driver.Driver):
         """
         return self._metrics
 
+    def get_initial_time_step(self):
+        return common.get_initial_time_step(self._env)
+
+    def get_initial_policy_state(self):
+        """
+        Return can be the train or prediction state spec, depending on self._training
+        """
+        return common.get_initial_policy_state(self._env.batch_size,
+                                               self._policy_state_spec)
+
+    def get_initial_train_state(self, batch_size):
+        """Always return the training state spec"""
+        return common.zero_tensor_from_nested_spec(
+            self._algorithm.train_state_spec, batch_size)
+
+    def predict(self, max_num_steps, time_step, policy_state):
+        maximum_iterations = math.ceil(max_num_steps / self._env.batch_size)
+        [time_step, policy_state] = tf.while_loop(
+            cond=lambda *_: True,
+            body=self._eval_loop_body,
+            loop_vars=[time_step, policy_state],
+            maximum_iterations=maximum_iterations,
+            back_prop=False,
+            name="predict_loop")
+        return time_step, policy_state
+
     def _eval_loop_body(self, time_step, policy_state):
         next_time_step, policy_step, _ = self._step(time_step, policy_state)
         return [next_time_step, policy_step.state]
@@ -229,7 +186,9 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        policy_step = self.algorithm_step(
+        policy_step = common.algorithm_step(
+            self._algorithm,
+            self._observation_transformer,
             time_step,
             state=policy_state,
             training=self._training,
@@ -255,5 +214,43 @@ class PolicyDriver(driver.Driver):
         return next_time_step, policy_step, action
 
     def _env_step(self, action):
-        time_step = self.env.step(action)
+        time_step = self._env.step(action)
         return make_action_time_step(time_step, action)
+
+    @tf.function
+    def run(self, max_num_steps=None, time_step=None, policy_state=None):
+        """
+        Take steps in the environment for max_num_steps.
+
+        If in training mode, algorithm.train_step() and
+        algorithm.train_complete() will be called.
+        If not in training mode, algorithm.predict() will be called.
+
+        The observers will also be called for every environment step.
+
+        Args:
+            max_num_steps (int): stops after so many environment steps. Is the
+                total number of steps from all the individual environment in
+                the bached enviroments including StepType.LAST steps.
+            time_step (ActionTimeStep): optional initial time_step. If None, it
+                will use self.get_initial_time_step(). Elements should be shape
+                [batch_size, ...].
+            policy_state (nested Tensor): optional initial state for the policy.
+
+        Returns:
+            For OnPolicyDriver and SyncOffPolicyDriver:
+                time_step (ActionTimeStep): named tuple with final observation,
+                    reward, etc.
+                policy_state (nested Tensor): final step policy state.
+            For AsyncOffPolicyDriver:
+                num_steps (int): how many steps have been run
+        """
+        if time_step is None:
+            time_step = common.get_initial_time_step(self._env)
+        if policy_state is None:
+            policy_state = self._initial_state
+        return self._run(max_num_steps, time_step, policy_state)
+
+    def _run(self, max_num_steps, time_step, policy_state):
+        """Different drivers implement different runs"""
+        raise NotImplementedError()

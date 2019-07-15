@@ -31,7 +31,7 @@ create_ac_algorithm.learning_rate=2e-4
 
 # training config
 off_policy_trainer.train.mini_batch_length=1
-off_policy_trainer.train.num_steps_per_iter=6000
+off_policy_trainer.train.unroll_length=100
 off_policy_trainer.train.mini_batch_size=6000
 off_policy_trainer.train.num_iterations=100000
 off_policy_trainer.train.summary_interval=1
@@ -40,4 +40,5 @@ off_policy_trainer.train.eval_interval=100
 off_policy_trainer.train.summarize_grads_and_vars=True
 
 TFUniformReplayBuffer.max_length=2048
+
 train_eval.debug_summaries=True

@@ -33,7 +33,8 @@ class TextEncodeNetwork(network.Network):
             lstm_size (int): lstm size for encoding
         """
         super(TextEncodeNetwork, self).__init__(
-            input_tensor_spec=specs.ArraySpec(shape=(None, seq_len), dtype=np.int),
+            input_tensor_spec=specs.ArraySpec(
+                shape=(None, seq_len), dtype=np.int),
             state_spec=(),
             name='TextEncodeNetwork')
         self._vocab_size = vocab_size
@@ -74,7 +75,8 @@ class TextDecodeNetwork(network.Network):
             lstm_size (int): lstm size for decoding
         """
         super(TextDecodeNetwork, self).__init__(
-            input_tensor_spec=specs.ArraySpec(shape=(None, code_len), dtype=np.float),
+            input_tensor_spec=specs.ArraySpec(
+                shape=(None, code_len), dtype=np.float),
             state_spec=(),
             name='TextDecodeNetwork')
         self._vocab_size = vocab_size

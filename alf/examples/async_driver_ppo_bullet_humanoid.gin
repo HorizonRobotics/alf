@@ -31,7 +31,15 @@ create_ac_algorithm.actor_fc_layers=(32, 32, 32)
 create_ac_algorithm.value_fc_layers=(32, 32, 32)
 create_ac_algorithm.learning_rate=3e-4
 
+# driver config
+N = 2
+AsyncOffPolicyDriver.num_envs = %N
+AsyncOffPolicyDriver.num_actor_queues = %N
+AsyncOffPolicyDriver.actor_queue_cap = 1
+AsyncOffPolicyDriver.learn_queue_cap = 1
+
 # training config
+off_policy_trainer.train.synchronous = False
 off_policy_trainer.train.num_iterations = 100000
 off_policy_trainer.train.summarize_grads_and_vars = True
 off_policy_trainer.train.num_updates_per_train_step = 20
@@ -40,8 +48,6 @@ off_policy_trainer.train.mini_batch_length = 1
 off_policy_trainer.train.eval_interval = 100
 off_policy_trainer.train.summary_interval = 10
 off_policy_trainer.train.mini_batch_size = 4096
-
-TFUniformReplayBuffer.max_length = 2048
 
 train_eval.debug_summaries=True
 train_eval.evaluate=True

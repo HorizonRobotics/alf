@@ -2,7 +2,6 @@
 import alf.algorithms.ddpg_algorithm
 
 
-
 # environment config
 NUM_PARALLEL_ENVIRONMENTS=10
 create_environment.env_name="Pendulum-v0"
@@ -22,14 +21,13 @@ OneStepTDLoss.td_error_loss_fn=@losses.element_wise_huber_loss
 # training config
 off_policy_trainer.train.initial_collect_steps=1000
 off_policy_trainer.train.mini_batch_length=2
-off_policy_trainer.train.num_steps_per_iter=%NUM_PARALLEL_ENVIRONMENTS
+off_policy_trainer.train.unroll_length=1
 off_policy_trainer.train.mini_batch_size=64
 off_policy_trainer.train.num_iterations=20000
 off_policy_trainer.train.summary_interval=5
 off_policy_trainer.train.checkpoint_interval=100000
 off_policy_trainer.train.num_updates_per_train_step=1
 off_policy_trainer.train.summarize_grads_and_vars=1
-off_policy_trainer.train.summary_interval=1
 off_policy_trainer.train.clear_replay_buffer=False
 
 TFUniformReplayBuffer.max_length=100000

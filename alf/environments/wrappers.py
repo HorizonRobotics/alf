@@ -137,11 +137,8 @@ class DMAtariPreprocessing(gym.Wrapper):
     (This wrapper does not handle framestacking. It can be paired with
     FrameStack. See ac_atari.gin for an example.)
     """
-    def __init__(self,
-                 env,
-                 frame_skip=4,
-                 noop_max=30,
-                 screen_size=84):
+
+    def __init__(self, env, frame_skip=4, noop_max=30, screen_size=84):
         """Constructor for an Atari 2600 preprocessor.
 
         Args:
@@ -152,11 +149,12 @@ class DMAtariPreprocessing(gym.Wrapper):
         """
         super().__init__(env)
         if frame_skip <= 0:
-            raise ValueError(
-                'Frame skip should be strictly positive, got {}'.format(frame_skip))
+            raise ValueError('Frame skip should be strictly positive, got {}'.
+                             format(frame_skip))
         if screen_size <= 0:
-            raise ValueError('Target screen size should be strictly positive, got {}'
-                            .format(screen_size))
+            raise ValueError(
+                'Target screen size should be strictly positive, got {}'.
+                format(screen_size))
 
         self.frame_skip = frame_skip
         self.screen_size = screen_size
@@ -182,8 +180,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     def _reset_with_random_noops(self):
         self.env.reset()
         self._lives = self.env.ale.lives()
-        n_noops = self.env.unwrapped.np_random.randint(
-            1, self.noop_max + 1)
+        n_noops = self.env.unwrapped.np_random.randint(1, self.noop_max + 1)
         for _ in range(n_noops):
             _, _, game_over, _ = self.env.step(0)
             if game_over:

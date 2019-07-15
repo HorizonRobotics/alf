@@ -16,6 +16,7 @@ import math
 import os
 import sys
 import time
+from typing import Callable
 import functools
 
 from absl import logging
@@ -25,7 +26,8 @@ import tensorflow as tf
 from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
 
-from alf.drivers.off_policy_driver import OffPolicyDriver
+from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
+from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
 from alf.utils import common
@@ -34,16 +36,17 @@ from alf.utils.common import run_under_record_context, get_global_counter
 
 @gin.configurable
 def train(root_dir,
-          env,
+          env_f: Callable,
           algorithm,
+          synchronous=True,
           eval_env=None,
           random_seed=0,
           initial_collect_steps=0,
           num_updates_per_train_step=4,
+          unroll_length=8,
           mini_batch_length=20,
           mini_batch_size=256,
           clear_replay_buffer=True,
-          num_steps_per_iter=10000,
           num_iterations=1000,
           use_tf_functions=True,
           summary_interval=50,
@@ -60,23 +63,36 @@ def train(root_dir,
 
     Args:
         root_dir (str): directory for saving summary and checkpoints
-        env (TFEnvironment): environment for training
+        env_f (Callable[TFEnvironment]): creates an environment for training
         algorithm (OnPolicyAlgorithm): the training algorithm
+        synchronous (bool): whether use the synchronous driver or asynchronous
+            driver. For their data pipeline differences, please refer to the
+            docstring of AsyncOffPolicyDriver. Generally, you may use the
+            synchronous driver for both on-policy (e.g., A2C) and off-policy
+            (e.g., PPO) algorithms, and the rollout always uses the most up-to-date
+            policy. However, the asynchronous driver always has some policy lag
+            between the training policy and the rollout policy. It's used to
+            potentially squeeze the waiting time before every two training updates
+            and yield higher data throughput. Example algorithms: DQN, off-policy
+            AC, PPO. If set to False, remember to set the arguments `num_envs`,
+            `num_actor_queues`, `actor_queue_cap`, and `learn_queue_cap` for
+            AsyncOffPolicyDriver.
         eval_env (TFEnvironment): environment for evaluating
-        initial_collect_steps (int): number of steps environment steps
-            before perform first update, num_steps_per_iter will be used if
-            it is zero.
+        initial_collect_steps (int): if positive, number of steps each single
+            environment steps before perform first update
         random_seed (int): random seed
         num_updates_per_train_step (int): number of optimization steps for
             one iteration
+        unroll_length (int): number of time steps each environment proceeds per
+            iteration. The total number of time steps from all environments per
+            iteration can be computed as: `num_envs` * `env_batch_size`
+            * `unroll_length`.
         mini_batch_size (int): number of sequences for each minibatch
-        clear_replay_buffer (bool): whether use all data in replay buffer to perform
-            one update and then wiped clean
-        mini_batch_length (int): the length of the sequence for each 
+        clear_replay_buffer (bool): whether use all data in replay buffer to
+            perform one update and then wiped clean
+        mini_batch_length (int): the length of the sequence for each
             sample in the minibatch
-        num_steps_per_iter (int): number of steps for one iteration. It is the
-            total steps from all individual environment in the batch
-            environment.
+
         num_iterations (int): number of update iterations
         use_tf_functions (bool): whether to use tf.function
         summary_interval (int): write summary every so many training steps (
@@ -93,12 +109,13 @@ def train(root_dir,
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
     eval_dir = os.path.join(root_dir, 'eval')
+    env = env_f()
     # make sure the length of samples from rollout can be divided by
     # `mini_batch_length`
     if clear_replay_buffer:
-        num_steps_per_iter = (math.ceil(num_steps_per_iter /
-                                        (mini_batch_length * env.batch_size)) *
-                              mini_batch_length * env.batch_size)
+        unroll_length = math.ceil(
+            unroll_length / mini_batch_length) * mini_batch_length
+
     eval_metrics = None
     eval_summary_writer = None
     if eval_env is not None:
@@ -114,12 +131,20 @@ def train(root_dir,
         tf.random.set_seed(random_seed)
         global_step = get_global_counter()
 
-        driver = OffPolicyDriver(
-            env=env,
-            algorithm=algorithm,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars)
-        replay_buffer = driver.add_replay_buffer()
+        if synchronous:
+            driver = SyncOffPolicyDriver(
+                env=env,
+                algorithm=algorithm,
+                debug_summaries=debug_summaries,
+                summarize_grads_and_vars=summarize_grads_and_vars)
+        else:
+            driver = AsyncOffPolicyDriver(
+                env_f=env_f,
+                algorithm=algorithm,
+                unroll_length=unroll_length,
+                debug_summaries=debug_summaries,
+                summarize_grads_and_vars=summarize_grads_and_vars)
+        replayer = driver.exp_replayer
 
         checkpointer = tfa_common.Checkpointer(
             ckpt_dir=os.path.join(train_dir, 'algorithm'),
@@ -128,42 +153,49 @@ def train(root_dir,
             global_step=global_step)
         checkpointer.initialize_or_restore()
 
-        if use_tf_functions:
-            driver.run = tf.function(driver.run)
-            driver.train = tf.function(driver.train)
+        if not use_tf_functions:
+            tf.config.experimental_run_functions_eagerly(True)
 
         env.reset()
+        driver.start()
         time_step = driver.get_initial_time_step()
-        policy_state = driver.get_initial_state()
+        policy_state = driver.get_initial_policy_state()
 
         for iter in range(num_iterations):
-            t0 = time.time()
+            t0 = tf.timestamp()
 
-            if iter == 0 and initial_collect_steps > 0:
-                max_num_steps = initial_collect_steps
-            else:
-                max_num_steps = num_steps_per_iter
-
-            time_step, policy_state = driver.run(
-                max_num_steps=max_num_steps,
-                time_step=time_step,
-                policy_state=policy_state)
+            steps = 0
+            while True:
+                if synchronous:
+                    max_num_steps = unroll_length * env.batch_size
+                    time_step, policy_state = driver.run(
+                        max_num_steps=max_num_steps,
+                        time_step=time_step,
+                        policy_state=policy_state)
+                    steps += max_num_steps
+                else:
+                    steps += driver.run_async()
+                if iter > 0 or steps >= initial_collect_steps:
+                    break
 
             if clear_replay_buffer:
-                experience = replay_buffer.gather_all()
-                replay_buffer.clear()
+                experience = replayer.replay_all()
+                replayer.clear()
             else:
-                experience, _ = replay_buffer.get_next(
+                experience = replayer.replay(
                     sample_batch_size=mini_batch_size,
                     num_steps=mini_batch_length)
 
+            t1 = tf.timestamp()
             driver.train(
                 experience,
                 num_updates=num_updates_per_train_step,
                 mini_batch_length=mini_batch_length,
                 mini_batch_size=mini_batch_size)
 
-            logging.info('%s time=%.3f' % (iter, time.time() - t0))
+            logging.info('%s time=%.3f' % (iter, tf.timestamp() - t0))
+            tf.summary.scalar(
+                name='time/driver.train()', data=tf.timestamp() - t1)
 
             if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())
@@ -175,7 +207,9 @@ def train(root_dir,
                         environment=eval_env,
                         state_spec=algorithm.predict_state_spec,
                         action_fn=functools.partial(
-                            driver.algorithm_step,
+                            common.algorithm_step,
+                            algorithm=driver.algorithm,
+                            ob_transformer=driver.observation_transformer,
                             training=False,
                             greedy_predict=True),
                         num_episodes=num_eval_episodes,
@@ -188,6 +222,8 @@ def train(root_dir,
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
                     tf.summary.text('commandline', ' '.join(sys.argv))
+
+        driver.stop()
 
         checkpointer.save(global_step=global_step.numpy())
         env.pyenv.close()

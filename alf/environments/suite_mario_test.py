@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -48,16 +47,16 @@ class SuiteMarioTest(absltest.TestCase):
         self.assertEqual((84, 84, 4), env.observation_spec().shape)
 
         random_policy = random_tf_policy.RandomTFPolicy(
-            env.time_step_spec(),
-            env.action_spec())
+            env.time_step_spec(), env.action_spec())
 
         metrics = [
             AverageReturnMetric(),
             AverageEpisodeLengthMetric(),
             EnvironmentSteps(),
-            NumberOfEpisodes()]
-        driver = dynamic_step_driver.DynamicStepDriver(
-            env, random_policy, metrics, 10000)
+            NumberOfEpisodes()
+        ]
+        driver = dynamic_step_driver.DynamicStepDriver(env, random_policy,
+                                                       metrics, 10000)
         driver.run(maximum_iterations=10000)
 
 
