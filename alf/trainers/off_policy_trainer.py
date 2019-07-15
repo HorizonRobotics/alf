@@ -136,10 +136,31 @@ def train(root_dir,
         time_step = driver.get_initial_time_step()
         policy_state = driver.get_initial_state()
 
-        for iter in range(num_iterations):
+        if clear_replay_buffer:
+
+            def _get_all_exp():
+                exps = replay_buffer.gather_all()
+                replay_buffer.clear()
+                return exps
+
+            get_experience = _get_all_exp
+        else:
+            dataset = replay_buffer.as_dataset(
+                num_parallel_calls=3,
+                sample_batch_size=mini_batch_size,
+                num_steps=mini_batch_length).prefetch(3)
+            data_iter = iter(dataset)
+
+            def _sample_exp():
+                exps, _ = next(data_iter)
+                return exps
+
+            get_experience = _sample_exp
+
+        for num_iter in range(num_iterations):
             t0 = time.time()
 
-            if iter == 0 and initial_collect_steps > 0:
+            if num_iter == 0 and initial_collect_steps > 0:
                 max_num_steps = initial_collect_steps
             else:
                 max_num_steps = num_steps_per_iter
@@ -149,13 +170,7 @@ def train(root_dir,
                 time_step=time_step,
                 policy_state=policy_state)
 
-            if clear_replay_buffer:
-                experience = replay_buffer.gather_all()
-                replay_buffer.clear()
-            else:
-                experience, _ = replay_buffer.get_next(
-                    sample_batch_size=mini_batch_size,
-                    num_steps=mini_batch_length)
+            experience = get_experience()
 
             driver.train(
                 experience,
@@ -163,12 +178,12 @@ def train(root_dir,
                 mini_batch_length=mini_batch_length,
                 mini_batch_size=mini_batch_size)
 
-            logging.info('%s time=%.3f' % (iter, time.time() - t0))
+            logging.info('%s time=%.3f' % (num_iter, time.time() - t0))
 
-            if (iter + 1) % checkpoint_interval == 0:
+            if (num_iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())
 
-            if eval_env is not None and (iter + 1) % eval_interval == 0:
+            if eval_env is not None and (num_iter + 1) % eval_interval == 0:
                 with tf.summary.record_if(True):
                     eager_compute(
                         metrics=eval_metrics,
@@ -184,7 +199,7 @@ def train(root_dir,
                         summary_writer=eval_summary_writer,
                         summary_prefix="Metrics")
                     metric_utils.log_metrics(eval_metrics)
-            if iter == 0:
+            if num_iter == 0:
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
                     tf.summary.text('commandline', ' '.join(sys.argv))
