@@ -30,7 +30,7 @@ class Algorithm(tf.Module):
     Algorithm is a generic interface for supervised training algorithms.
 
     User needs to implement train_step() and calc_loss()/train_complete().
-    
+
     train_step() is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
@@ -49,7 +49,7 @@ class Algorithm(tf.Module):
             get inputs
             outputs, state, info = train_step(inputs, state)
             add info to training_info
-        
+
         train_complete(tape, batched_training_info)
     ```
     """
@@ -62,9 +62,9 @@ class Algorithm(tf.Module):
         """Create an Algorithm.
 
         Args:
-            train_state_spec (nested TensorSpec): for the network state of 
+            train_state_spec (nested TensorSpec): for the network state of
                 `train_step()`
-            predict_state_spec (nested TensorSpec): for the network state of 
+            predict_state_spec (nested TensorSpec): for the network state of
                 `predict()`. If None, it's assume to be same as train_state_spec
             optimizer (tf.optimizers.Optimizer): The optimizer for training.
             name (str): name of this algorithm.
@@ -76,6 +76,11 @@ class Algorithm(tf.Module):
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
         self._optimizer = optimizer
+
+    @property
+    def optimizer(self):
+        """Return the optimizer for this algorithm."""
+        return self._optimizer
 
     @property
     def predict_state_spec(self):
@@ -108,7 +113,7 @@ class Algorithm(tf.Module):
     @abstractmethod
     def train_step(self, inputs, state=None):
         """Perform one step of predicting and training computation.
-        
+
         It is called to generate actions for every environment step.
         It also needs to generate necessary information for training.
 
@@ -138,7 +143,7 @@ class Algorithm(tf.Module):
         those gradients.
 
         Args:
-            tape (tf.GradientTape): the tape which are used for calculating 
+            tape (tf.GradientTape): the tape which are used for calculating
                 gradient. All the previous `train_interval` `train_step()` for
                 are called under the context of this tape.
             training_info (nested Tensor): information collected for training.
@@ -168,7 +173,7 @@ class Algorithm(tf.Module):
     # Subclass may override calc_loss() to allow more sophiscated loss
     def calc_loss(self, training_info):
         """Calculate the loss at each step for each sample.
-        
+
         Args:
             training_info (nested Tensor): information collected for training.
                 It is batched from each `info` returned bt `train_step()`
