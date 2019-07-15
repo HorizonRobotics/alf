@@ -58,6 +58,10 @@ class EstimatedEntropyTest(parameterized.TestCase, unittest.TestCase):
         logging.info("analytic_entropy_grad=%s" % analytic_grad)
         logging.info("estimated_entropy_grad=%s" % est_grad)
         self.assertArrayAlmostEqual(analytic_grad, est_grad, 1e-2)
+        if not assume_reparametrization:
+            est_grad_wrong = tape.gradient(est_entropy, scale)
+            logging.info("estimated_entropy_grad_wrong=%s", est_grad_wrong)
+            self.assertLess(tf.reduce_max(tf.abs(est_grad_wrong)), 2e-3)
 
 
 if __name__ == '__main__':
