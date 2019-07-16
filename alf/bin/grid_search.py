@@ -20,7 +20,8 @@ from absl import flags
 from absl import logging
 import gin
 
-# serialization overwrite by dill, it's more convenient
+# `pathos.multiprocessing` provides a consistent interface with std lib `multiprocessing`
+# and it's more  flexible
 from pathos import multiprocessing
 from alf.bin.main import train_eval
 from alf.utils import common
