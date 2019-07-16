@@ -1,0 +1,47 @@
+
+import alf.algorithms.sac_algorithm
+import alf.utils.common
+
+# need to `pip install pybullet`
+import pybullet_envs
+
+# environment config
+create_environment.env_name="HumanoidBulletEnv-v0"
+create_environment.num_parallel_environments=32
+
+# algorithm config
+create_sac_algorithm.actor_fc_layers=(256, 256)
+create_sac_algorithm.critic_fc_layers=(256, 256)
+create_sac_algorithm.actor_learning_rate=3e-4
+create_sac_algorithm.critic_learning_rate=3e-4
+create_sac_algorithm.alpha_learning_rate=3e-4
+SacAlgorithm.target_update_tau=0.005
+OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
+
+ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.state_dependent_std=True
+NormalProjectionNetwork.mean_transform=None
+NormalProjectionNetwork.scale_distribution=True
+NormalProjectionNetwork.std_transform=@common.std_clip_transform
+
+# training config
+off_policy_trainer.train.initial_collect_steps=32000
+off_policy_trainer.train.mini_batch_length=4
+off_policy_trainer.train.unroll_length=1
+off_policy_trainer.train.mini_batch_size=4096
+off_policy_trainer.train.num_iterations=10000000
+off_policy_trainer.train.summary_interval=1000
+off_policy_trainer.train.eval_interval=10000
+off_policy_trainer.train.checkpoint_interval=100000
+off_policy_trainer.train.num_updates_per_train_step=1
+off_policy_trainer.train.summarize_grads_and_vars=0
+off_policy_trainer.train.summaries_flush_secs=10
+off_policy_trainer.train.clear_replay_buffer=False
+
+TFUniformReplayBuffer.max_length=2000000
+
+train_eval.algorithm_ctor=@sac_algorithm.create_sac_algorithm
+train_eval.debug_summaries=1
+train_eval.evaluate=1
+
+

@@ -181,9 +181,9 @@ def train(root_dir,
                 experience = replayer.replay_all()
                 replayer.clear()
             else:
-                experience = replayer.replay(
+                experience, _ = replayer.replay(
                     sample_batch_size=mini_batch_size,
-                    num_steps=mini_batch_length)
+                    mini_batch_length=mini_batch_length)
 
             t1 = tf.timestamp()
             driver.train(
