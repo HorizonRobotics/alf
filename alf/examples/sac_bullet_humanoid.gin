@@ -6,9 +6,8 @@ import alf.utils.common
 import pybullet_envs
 
 # environment config
-NUM_PARALLEL_ENVIRONMENTS=32
 create_environment.env_name="HumanoidBulletEnv-v0"
-create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+create_environment.num_parallel_environments=32
 
 # algorithm config
 create_sac_algorithm.actor_fc_layers=(256, 256)
@@ -28,7 +27,7 @@ NormalProjectionNetwork.std_transform=@common.std_clip_transform
 # training config
 off_policy_trainer.train.initial_collect_steps=32000
 off_policy_trainer.train.mini_batch_length=4
-off_policy_trainer.train.num_steps_per_iter=%NUM_PARALLEL_ENVIRONMENTS
+off_policy_trainer.train.unroll_length=1
 off_policy_trainer.train.mini_batch_size=4096
 off_policy_trainer.train.num_iterations=10000000
 off_policy_trainer.train.summary_interval=1000
@@ -39,7 +38,7 @@ off_policy_trainer.train.summarize_grads_and_vars=0
 off_policy_trainer.train.summaries_flush_secs=10
 off_policy_trainer.train.clear_replay_buffer=False
 
-TFUniformReplayBuffer.max_length=8000000
+TFUniformReplayBuffer.max_length=2000000
 
 train_eval.algorithm_ctor=@sac_algorithm.create_sac_algorithm
 train_eval.debug_summaries=1
