@@ -247,8 +247,11 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
         initial_state, state)
 
 
-def run_under_record_context(func, summary_dir, summary_interval,
-                             flush_millis):
+def run_under_record_context(func,
+                             summary_dir,
+                             summary_interval,
+                             flush_millis,
+                             summary_max_queue=10):
     """Run `func` under summary record context.
 
     Args:
@@ -258,18 +261,19 @@ def run_under_record_context(func, summary_dir, summary_interval,
         summary_interval (int): how often to generate summary based on the
             global counter
         flush_millis (int): flush summary to disk every so many milliseconds
+        summary_max_queue (int): the largest number of summaries to keep in a queue; will
+          flush once the queue gets bigger than this. Defaults to 10.
     """
+
+    import alf.utils.summary_utils
     summary_dir = os.path.expanduser(summary_dir)
     summary_writer = tf.summary.create_file_writer(
-        summary_dir, flush_millis=flush_millis)
+        summary_dir, flush_millis=flush_millis, max_queue=summary_max_queue)
     summary_writer.set_as_default()
     global_step = get_global_counter()
     with tf.summary.record_if(lambda: tf.equal((global_step + 1) %
                                                summary_interval, 0)):
         func()
-
-
-from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
 
 
 def get_global_counter(default_counter=None):
