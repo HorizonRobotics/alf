@@ -92,6 +92,7 @@ class PPOLoss(ActorCriticLoss):
             td_lambda=td_lambda,
             use_td_lambda_return=True,
             normalize_advantages=normalize_advantages,
+            advantage_clip=advantage_clip,
             entropy_regularization=entropy_regularization,
             td_loss_weight=td_loss_weight,
             debug_summaries=debug_summaries)

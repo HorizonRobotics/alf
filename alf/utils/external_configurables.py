@@ -20,6 +20,8 @@ import tensorflow as tf
 
 from tf_agents.environments import atari_wrappers
 
+from alf.utils import math_ops
+
 tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
                                                    'tf.keras.layers.Conv2D')
 tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
