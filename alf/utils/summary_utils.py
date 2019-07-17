@@ -196,5 +196,4 @@ def add_gradients_summaries(grads_and_vars, step):
                 step=step)
 
 
-# tf.summary.scalar = _summary_wrapper(tf.summary.scalar)
 tf.summary.histogram = _summary_wrapper(tf.summary.histogram)

@@ -276,6 +276,9 @@ def run_under_record_context(func,
         func()
 
 
+from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
+
+
 def get_global_counter(default_counter=None):
     """Get the global counter.
 
