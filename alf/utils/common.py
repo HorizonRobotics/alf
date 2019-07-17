@@ -533,6 +533,8 @@ def to_distribution(action_or_distribution):
         action_or_distribution (tf.Tensor|Distribution):
             tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
             and others for tfp.distributions.Distribution instance
+    Returns:
+        nested Distribution
     """
 
     def _to_dist(action_or_distribution):
