@@ -6,6 +6,7 @@ In the below, the only difference between A2C PPO and Async PPO is the asynchron
 
 ### A2C
 6 hours (30M steps) to reach 2k training score
+
 <img src="images/sync_ppo_humanoid.png" width="300" height="200"/>
 
 ### Async with 1 actor
@@ -36,4 +37,4 @@ Since async with 2 actors can basically eliminate the learning queue wait time, 
 ## Conclusion
 Whenever possible, we want to minimize the time interval between every two training updates to maximize the throughput (only if the algorithm supports such obtained data).  Generally this can be done by using more actors, however, the CPU resource limit must be taken into account.
 
-*On a single machine, we can imagine that async training is most suitable for problems with simple neural models but complex environment simulations (3D rendering, physics, etc) as seen in the PyBullet envs like Humanoid. Because with simple models, GPU computations (training&inference) can be carried out simultaneously without being slowed down by each other. The system bottleneck is mostly CPU simulation. *
+**On a single machine, we can imagine that async training is most suitable for problems with simple neural models but complex environment simulations (3D rendering, physics, etc) as seen in the PyBullet envs like Humanoid. Because with simple models, GPU computations (training&inference) can be carried out simultaneously without being slowed down by each other. The system bottleneck is mostly CPU simulation.**
