@@ -18,6 +18,59 @@ import tensorflow as tf
 from tf_agents.trajectories.time_step import StepType
 
 
+def action_importance_ratio(training_info: TrainingInfo, action_spec, name_scope,
+    importance_ratio_clipping, log_prob_clipping, check_numerics, debug_summaries):
+    """ ratio for importance sampling, used in PPO loss and vtrace loss.
+    """
+    current_policy_distribution = training_info.action_distribution
+
+    sample_action_log_probs = tfa_common.log_probability(
+        training_info.collect_action_distribution, training_info.action,
+        action_spec)
+    sample_action_log_probs = tf.stop_gradient(sample_action_log_probs)
+
+    action_log_prob = tfa_common.log_probability(
+        current_policy_distribution, training_info.action,
+        action_spec)
+    if log_prob_clipping > 0.0:
+        action_log_prob = tf.clip_by_value(action_log_prob,
+                                           -log_prob_clipping,
+                                           log_prob_clipping)
+    if check_numerics:
+        action_log_prob = tf.debugging.check_numerics(
+            action_log_prob, 'action_log_prob')
+
+    # Prepare both clipped and unclipped importance ratios.
+    importance_ratio = tf.exp(action_log_prob - sample_action_log_probs)
+    if check_numerics:
+        importance_ratio = tf.debugging.check_numerics(
+            importance_ratio, 'importance_ratio')
+    importance_ratio_clipped = tf.clip_by_value(
+        importance_ratio, 1 - importance_ratio_clipping,
+        1 + importance_ratio_clipping)
+
+    if debug_summaries and common.should_record_summaries():
+        with tf.name_scope(name_scope):
+            if importance_ratio_clipping > 0.0:
+                clip_fraction = tf.reduce_mean(
+                    input_tensor=tf.cast(
+                        tf.greater(
+                            tf.abs(importance_ratio - 1.0),
+                            importance_ratio_clipping), tf.float32))
+                tf.summary.scalar('clip_fraction', clip_fraction)
+
+            tf.summary.histogram('action_log_prob', action_log_prob)
+            tf.summary.histogram('action_log_prob_sample',
+                                 sample_action_log_probs)
+            tf.summary.histogram('importance_ratio', importance_ratio)
+            tf.summary.scalar(
+                'importance_ratio_mean',
+                tf.reduce_mean(input_tensor=importance_ratio))
+            tf.summary.histogram('importance_ratio_clipped',
+                                 importance_ratio_clipped)
+
+    return importance_ratio, importance_ratio_clipped
+
 def discounted_return(rewards, values, step_types, discounts, time_major=True):
     """Computes discounted return for the first T-1 steps.
 
@@ -80,7 +133,7 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
 
 def one_step_discounted_return(rewards, values, step_types, discounts):
     """Calculate the one step discounted return  for the first T-1 steps.
-    
+
     return = next_reward + next_discount * next_value
     Note: Input tensors must be time major
     Args:

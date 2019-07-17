@@ -25,6 +25,7 @@ from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import common
+from alf.utils import value_ops
 
 
 @gin.configurable
@@ -47,7 +48,7 @@ class PPOLoss(ActorCriticLoss):
         Implement the simplified surrogate loss in equation (9) of "Proximal
         Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
 
-        The total loss equals to 
+        The total loss equals to
         (policy_gradient_loss (L^{CLIP} in equation (9))
          + td_loss_weight * td_loss (L^{VF} in equation (9))
          - entropy_regularization * entropy)
@@ -98,33 +99,11 @@ class PPOLoss(ActorCriticLoss):
         self._check_numerics = check_numerics
 
     def _pg_loss(self, training_info: TrainingInfo, advantages):
-        current_policy_distribution = training_info.action_distribution
-
-        sample_action_log_probs = tfa_common.log_probability(
-            training_info.collect_action_distribution, training_info.action,
-            self._action_spec)
-        sample_action_log_probs = tf.stop_gradient(sample_action_log_probs)
-
-        action_log_prob = tfa_common.log_probability(
-            current_policy_distribution, training_info.action,
-            self._action_spec)
-        if self._log_prob_clipping > 0.0:
-            action_log_prob = tf.clip_by_value(action_log_prob,
-                                               -self._log_prob_clipping,
-                                               self._log_prob_clipping)
-        if self._check_numerics:
-            action_log_prob = tf.debugging.check_numerics(
-                action_log_prob, 'action_log_prob')
-
-        # Prepare both clipped and unclipped importance ratios.
-        importance_ratio = tf.exp(action_log_prob - sample_action_log_probs)
-        if self._check_numerics:
-            importance_ratio = tf.debugging.check_numerics(
-                importance_ratio, 'importance_ratio')
-        importance_ratio_clipped = tf.clip_by_value(
-            importance_ratio, 1 - self._importance_ratio_clipping,
-            1 + self._importance_ratio_clipping)
-
+        name_scope = 'PPOLoss'
+        importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
+            training_info, self._action_spec, name_scope,
+            self._importance_ratio_clipping, self._log_prob_clipping,
+            self._check_numerics, self._debug_summaries)
         # Pessimistically choose the maximum objective value for clipped and
         # unclipped importance ratios.
         pg_objective = -importance_ratio * advantages
@@ -132,24 +111,7 @@ class PPOLoss(ActorCriticLoss):
         policy_gradient_loss = tf.maximum(pg_objective, pg_objective_clipped)
 
         if self._debug_summaries and common.should_record_summaries():
-            with tf.name_scope('PPOLoss'):
-                if self._importance_ratio_clipping > 0.0:
-                    clip_fraction = tf.reduce_mean(
-                        input_tensor=tf.cast(
-                            tf.greater(
-                                tf.abs(importance_ratio - 1.0), self.
-                                _importance_ratio_clipping), tf.float32))
-                    tf.summary.scalar('clip_fraction', clip_fraction)
-
-                tf.summary.histogram('action_log_prob', action_log_prob)
-                tf.summary.histogram('action_log_prob_sample',
-                                     sample_action_log_probs)
-                tf.summary.histogram('importance_ratio', importance_ratio)
-                tf.summary.scalar(
-                    'importance_ratio_mean',
-                    tf.reduce_mean(input_tensor=importance_ratio))
-                tf.summary.histogram('importance_ratio_clipped',
-                                     importance_ratio_clipped)
+            with tf.name_scope(name_scope):
                 tf.summary.histogram('pg_objective', pg_objective)
                 tf.summary.histogram('pg_objective_clipped',
                                      pg_objective_clipped)
