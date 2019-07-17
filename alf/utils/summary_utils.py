@@ -15,10 +15,34 @@
 
 from tensorboard.compat import tf2 as tf
 from tensorboard.plugins.histogram import metadata
+from tensorflow.python.framework import smart_cond
+from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.framework import constant_op
 
 DEFAULT_BUCKET_COUNT = 30
 
 
+def _summary_wrapper(summary_func):
+    """Summary wrapper
+
+    Wrapper summary function to reduce cost for data computation
+     """
+
+    def wrapper(*args, **kwargs):
+        def do_nothing():
+            return constant_op.constant(False)
+
+        def record():
+            summary_func(*args, **kwargs)
+            return constant_op.constant(True)
+
+        return smart_cond.smart_cond(
+            summary_ops_v2._should_record_summaries_v2(), record, do_nothing)
+
+    return wrapper
+
+
+@_summary_wrapper
 def histogram_discrete(name,
                        data,
                        bucket_min,
@@ -63,6 +87,7 @@ def histogram_discrete(name,
             tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
 
 
+@_summary_wrapper
 def histogram_continuous(name,
                          data,
                          bucket_min=None,
@@ -118,3 +143,57 @@ def histogram_continuous(name,
                 a=tf.stack([left_edges, right_edges, bucket_counts]))
         return tf.summary.write(
             tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
+
+
+@_summary_wrapper
+def add_variables_summaries(grads_and_vars, step):
+    """Add summaries for variables.
+
+    Args:
+      grads_and_vars (list): A list of (gradient, variable) pairs.
+      step (tf.Variable): Variable to use for summaries.
+    """
+
+    for grad, var in grads_and_vars:
+        if grad is not None:
+            if isinstance(var, tf.IndexedSlices):
+                var_values = var.values
+            else:
+                var_values = var
+            var_name = var.name.replace(':', '_')
+            tf.summary.histogram(
+                name='summarize_vars/' + var_name + '_value',
+                data=var_values,
+                step=step)
+            tf.summary.scalar(
+                name='summarize_vars/' + var_name + '_value_norm',
+                data=tf.linalg.global_norm([var_values]),
+                step=step)
+
+
+@_summary_wrapper
+def add_gradients_summaries(grads_and_vars, step):
+    """Add summaries to gradients.
+
+    Args:
+      grads_and_vars (list): A list of gradient to variable pairs (tuples).
+      step (tf.Variable): Variable to use for summaries.
+    """
+    for grad, var in grads_and_vars:
+        if grad is not None:
+            if isinstance(grad, tf.IndexedSlices):
+                grad_values = grad.values
+            else:
+                grad_values = grad
+            var_name = var.name.replace(':', '_')
+            tf.summary.histogram(
+                name='summarize_grads/' + var_name + '_gradient',
+                data=grad_values,
+                step=step)
+            tf.summary.scalar(
+                name='summarize_grads/' + var_name + '_gradient_norm',
+                data=tf.linalg.global_norm([grad_values]),
+                step=step)
+
+
+tf.summary.histogram = _summary_wrapper(tf.summary.histogram)

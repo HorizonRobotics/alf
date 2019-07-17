@@ -22,12 +22,11 @@ import gin.tf
 import tensorflow as tf
 
 from tf_agents.drivers import driver
-from tf_agents.utils import eager_utils
 from tf_agents.metrics import tf_metrics
 from tf_agents.trajectories.trajectory import from_transition
 
 from alf.algorithms.off_policy_algorithm import make_experience
-from alf.utils import common
+from alf.utils import common, summary_utils
 from alf.algorithms.rl_algorithm import make_action_time_step
 
 
@@ -102,10 +101,10 @@ class PolicyDriver(driver.Driver):
 
     def _training_summary(self, training_info, loss_info, grads_and_vars):
         if self._summarize_grads_and_vars:
-            eager_utils.add_variables_summaries(grads_and_vars,
-                                                self._train_step_counter)
-            eager_utils.add_gradients_summaries(grads_and_vars,
-                                                self._train_step_counter)
+            summary_utils.add_variables_summaries(grads_and_vars,
+                                                  self._train_step_counter)
+            summary_utils.add_gradients_summaries(grads_and_vars,
+                                                  self._train_step_counter)
         if self._debug_summaries:
             common.add_action_summaries(training_info.action,
                                         self.env.action_spec())
