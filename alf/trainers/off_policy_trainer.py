@@ -50,6 +50,7 @@ def train(root_dir,
           use_tf_functions=True,
           summary_interval=50,
           summaries_flush_secs=1,
+          summary_max_queue=10,
           eval_interval=10,
           num_eval_episodes=10,
           checkpoint_interval=1000,
@@ -97,6 +98,7 @@ def train(root_dir,
         summary_interval (int): write summary every so many training steps (
             i.e. number of parameter updates)
         summaries_flush_secs (int): flush summary to disk every so many seconds.
+        summary_max_queue (int): flush to disk every so mary summaries
         eval_interval (int): evaluate every so many iteration
         num_eval_episodes (int) : number of episodes for one evaluation
         checkpoint_interval (int): checkpoint every so many iterations
@@ -181,9 +183,9 @@ def train(root_dir,
                 experience = replayer.replay_all()
                 replayer.clear()
             else:
-                experience = replayer.replay(
+                experience, _ = replayer.replay(
                     sample_batch_size=mini_batch_size,
-                    num_steps=mini_batch_length)
+                    mini_batch_length=mini_batch_length)
 
             t1 = tf.timestamp()
             driver.train(
@@ -235,4 +237,5 @@ def train(root_dir,
         func=train_,
         summary_dir=train_dir,
         summary_interval=summary_interval,
-        flush_millis=summaries_flush_secs * 1000)
+        flush_millis=summaries_flush_secs * 1000,
+        summary_max_queue=summary_max_queue)

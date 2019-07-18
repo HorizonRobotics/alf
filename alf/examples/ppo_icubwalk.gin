@@ -1,0 +1,42 @@
+include 'ppo.gin'
+
+# environment config
+
+create_environment.env_name='SocialBot-ICubWalkPID-v0'
+create_environment.env_load_fn=@suite_socialbot.load
+create_environment.num_parallel_environments=32
+
+# algorithm config
+ActorCriticAlgorithm.gradient_clipping=0.5
+ActorCriticAlgorithm.clip_by_global_norm=True
+
+PPOLoss.entropy_regularization=1e-3
+PPOLoss.gamma=0.99
+PPOLoss.normalize_advantages=True
+PPOLoss.td_lambda=0.95
+PPOLoss.td_error_loss_fn=@element_wise_squared_loss
+
+ActorDistributionNetwork.activation_fn=@tf.nn.tanh
+ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.init_means_output_factor=1e-10
+NormalProjectionNetwork.std_bias_initializer_value=0.0
+NormalProjectionNetwork.scale_distribution=True
+estimated_entropy.assume_reparametrization=True
+ValueNetwork.activation_fn=@tf.nn.tanh
+
+create_ac_algorithm.actor_fc_layers=(256, 128)
+create_ac_algorithm.value_fc_layers=(256, 128)
+create_ac_algorithm.learning_rate=1e-4
+
+# training config
+off_policy_trainer.train.mini_batch_length=1
+off_policy_trainer.train.num_steps_per_iter=16384
+off_policy_trainer.train.mini_batch_size=4096
+off_policy_trainer.train.num_iterations=100000
+off_policy_trainer.train.summary_interval=1
+off_policy_trainer.train.num_updates_per_train_step=20
+off_policy_trainer.train.eval_interval=100
+off_policy_trainer.train.summarize_grads_and_vars=True
+
+TFUniformReplayBuffer.max_length=2048
+train_eval.debug_summaries=True

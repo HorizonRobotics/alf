@@ -110,7 +110,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critic_network1 = critic_network
         critic_network2 = critic_network.copy(name='CriticNetwork2')
         log_alpha = tfa_common.create_variable(
-            'initial_log_alpha',
+            name='log_alpha',
             initial_value=initial_log_alpha,
             dtype=tf.float32,
             trainable=True)

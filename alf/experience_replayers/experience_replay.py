@@ -114,6 +114,7 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
 
     def __init__(self, experience_spec, batch_size):
         self._buffer = TFUniformReplayBuffer(experience_spec, batch_size)
+        self._data_iter = None
 
     def observe(self, exp, env_ids=None):
         """
@@ -124,8 +125,13 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
         self._buffer.add_batch(exp)
 
     def replay(self, sample_batch_size, mini_batch_length):
-        return self._buffer.get_next(
-            sample_batch_size=sample_batch_size, num_steps=mini_batch_length)
+        if self._data_iter is None:
+            dataset = self._buffer.as_dataset(
+                num_parallel_calls=3,
+                sample_batch_size=sample_batch_size,
+                num_steps=mini_batch_length).prefetch(3)
+            self._data_iter = iter(dataset)
+        return next(self._data_iter)
 
     def replay_all(self):
         return self._buffer.gather_all()

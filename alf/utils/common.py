@@ -236,19 +236,47 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     """Reset state to initial state according to reset_mask
 
     Args:
-      state (nested Tensor): the current batched states
-      initial_state (nested Tensor): batched intitial states
-      reset_mask (nested Tensor): with shape=(batch_size,), dtype=tf.bool
+        state (nested Tensor): the current batched states
+        initial_state (nested Tensor): batched intitial states
+        reset_mask (nested Tensor): with shape=(batch_size,), dtype=tf.bool
     Returns:
-      nested Tensor
+        nested Tensor
     """
     return tf.nest.map_structure(
         lambda i_s, s: tf.where(expand_dims_as(reset_mask, i_s), i_s, s),
         initial_state, state)
 
 
-def run_under_record_context(func, summary_dir, summary_interval,
-                             flush_millis):
+_summary_enabled_var = None
+
+def _get_summary_enabled_var():
+    global _summary_enabled_var
+    if _summary_enabled_var is None:
+        _summary_enabled_var = tf.Variable(
+            True, dtype=tf.bool, name="summary_enabled")
+    return _summary_enabled_var
+
+
+def enable_summary(flag):
+    """Enable or disable summary.
+
+    Args:
+        flag (bool): True to enable, False to disable
+    """
+    v = _get_summary_enabled_var()
+    v.assign(flag)
+
+
+def is_summary_enabled():
+    """Return whether summary is enabled."""
+    return _get_summary_enabled_var()
+
+
+def run_under_record_context(func,
+                             summary_dir,
+                             summary_interval,
+                             flush_millis,
+                             summary_max_queue=10):
     """Run `func` under summary record context.
 
     Args:
@@ -258,14 +286,19 @@ def run_under_record_context(func, summary_dir, summary_interval,
         summary_interval (int): how often to generate summary based on the
             global counter
         flush_millis (int): flush summary to disk every so many milliseconds
+        summary_max_queue (int): the largest number of summaries to keep in a queue; will
+          flush once the queue gets bigger than this. Defaults to 10.
     """
+
+    import alf.utils.summary_utils
     summary_dir = os.path.expanduser(summary_dir)
     summary_writer = tf.summary.create_file_writer(
-        summary_dir, flush_millis=flush_millis)
+        summary_dir, flush_millis=flush_millis, max_queue=summary_max_queue)
     summary_writer.set_as_default()
     global_step = get_global_counter()
-    with tf.summary.record_if(lambda: tf.equal((global_step + 1) %
-                                               summary_interval, 0)):
+    with tf.summary.record_if(lambda: tf.logical_and(
+            is_summary_enabled(),
+            tf.equal((global_step + 1) % summary_interval, 0))):
         func()
 
 
@@ -369,7 +402,7 @@ def _markdownify_gin_config_str(string, description=''):
 
     # This function is from gin.tf.utils.GinConfigSaverHook
     # TODO: Total hack below. Implement more principled formatting.
-    def process(line):
+    def _process(line):
         """Convert a single line to markdown format."""
         if not line.startswith('#'):
             return '    ' + line
@@ -389,7 +422,7 @@ def _markdownify_gin_config_str(string, description=''):
         output_lines.append("    # %s\n" % description)
 
     for line in string.splitlines():
-        procd_line = process(line)
+        procd_line = _process(line)
         if procd_line is not None:
             output_lines.append(procd_line)
 
@@ -526,6 +559,8 @@ def to_distribution(action_or_distribution):
         action_or_distribution (tf.Tensor|Distribution):
             tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
             and others for tfp.distributions.Distribution instance
+    Returns:
+        nested Distribution
     """
 
     def _to_dist(action_or_distribution):
@@ -545,7 +580,7 @@ def get_initial_policy_state(batch_size, policy_state_spec):
         policy_state_spec (nested structure): each item is a tensor spec for
             a state
 
-    Output:
+    Returns:
         state (nested structure): each item is a tensor with the first dim equal
             to `batch_size`. The remaining dims are consistent with
             the corresponding state spec of `policy_state_spec`.
@@ -559,7 +594,7 @@ def get_initial_time_step(env):
     Args:
         env (TFPyEnvironment):
 
-    Output:
+    Returns:
         time_step (ActionTimeStep): the init time step with actions as zero
             tensors
     """
@@ -590,7 +625,7 @@ def algorithm_step(algorithm,
         greedy_predict (bool): if True, argmax on action distribution
         training (bool): if True, call `algorithm.train_step`
 
-    Output:
+    Returns:
         policy_step (PolicyStep): policy step should always have action
             distributions, even for deterministic ones
     """
@@ -615,12 +650,12 @@ def transpose2(x, dim1, dim2):
 
 
 def sample_policy_action(policy_step):
-    """Sample an action for a policy step and replace the old distribution"""
+    """Sample an action for a policy step and replace the old distribution."""
     action = sample_action_distribution(policy_step.action)
     policy_step = policy_step._replace(action=action)
     return policy_step
 
 
 def flatten_once(t):
-    """Flatten a tensor along axis=0 and axis=1"""
+    """Flatten a tensor along axis=0 and axis=1."""
     return tf.reshape(t, [-1] + list(t.shape[2:]))

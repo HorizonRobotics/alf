@@ -244,14 +244,12 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                     lambda x: tf.reshape(x, [mini_batch_size] + list(x.shape)[
                         1:]), batch)
                 batch = _make_time_major(batch)
-                training_info, loss_info, grads_and_vars = self._update(
-                    batch, weight=batch.step_type.shape[1] / mini_batch_size)
-                # somehow tf.function autograph does not work correctly for the
-                # following code:
-                # if u == num_updates - 1 and b + mini_batch_size >= batch_size:
                 is_last_mini_batch = tf.logical_and(
                     tf.equal(u, num_updates - 1),
                     tf.greater_equal(b + mini_batch_size, batch_size))
+                common.enable_summary(is_last_mini_batch)
+                training_info, loss_info, grads_and_vars = self._update(
+                    batch, weight=batch.step_type.shape[1] / mini_batch_size)
                 if is_last_mini_batch:
                     self._training_summary(training_info, loss_info,
                                            grads_and_vars)
