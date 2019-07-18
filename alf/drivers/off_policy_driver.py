@@ -104,14 +104,11 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             return tf.nest.map_structure(
                 lambda t: tf.TensorSpec(t.shape[1:], t.dtype), nest)
 
-        time_step = common.get_initial_time_step(self._env)
+        time_step = self.get_initial_time_step()
         self._time_step_spec = extract_spec(time_step)
         self._action_spec = self._env.action_spec()
 
-        policy_step = algorithm.predict(
-            time_step,
-            common.get_initial_policy_state(self._env.batch_size,
-                                            algorithm.predict_state_spec))
+        policy_step = algorithm.predict(time_step, self._initial_state)
         info_spec = extract_spec(policy_step.info)
         self._pred_policy_step_spec = PolicyStep(
             action=self._action_spec,

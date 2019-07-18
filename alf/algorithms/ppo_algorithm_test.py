@@ -27,7 +27,8 @@ from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_algorithm import PPOAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.drivers.off_policy_driver import OffPolicyDriver
+from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
+from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import ActionType
 
@@ -75,29 +76,28 @@ class PpoTest(unittest.TestCase):
         eval_env = TFPyEnvironment(eval_env)
 
         algorithm = create_algorithm(env)
-        driver = OffPolicyDriver(
+        driver = SyncOffPolicyDriver(
             env,
             algorithm,
             debug_summaries=True,
             summarize_grads_and_vars=True)
-        replay_buffer = driver.add_replay_buffer()
-        eval_driver = OffPolicyDriver(eval_env, algorithm, greedy_predict=True)
-        driver.run = tf.function(driver.run)
-        eval_driver.run = tf.function(eval_driver.run)
+        replayer = driver.exp_replayer
+        eval_driver = OnPolicyDriver(
+            eval_env, algorithm, training=False, greedy_predict=True)
 
         env.reset()
         eval_env.reset()
         time_step = driver.get_initial_time_step()
-        policy_state = driver.get_initial_state()
+        policy_state = driver.get_initial_policy_state()
         for i in range(20):
             time_step, policy_state = driver.run(
                 max_num_steps=batch_size * steps_per_episode,
                 time_step=time_step,
                 policy_state=policy_state)
 
-            experience = replay_buffer.gather_all()
+            experience = replayer.replay_all()
             driver.train(experience, mini_batch_size=25)
-            replay_buffer.clear()
+            replayer.clear()
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)

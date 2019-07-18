@@ -245,7 +245,7 @@ class PolicyDriver(driver.Driver):
                 num_steps (int): how many steps have been run
         """
         if time_step is None:
-            time_step = common.get_initial_time_step(self._env)
+            time_step = self.get_initial_time_step()
         if policy_state is None:
             policy_state = self._initial_state
         return self._run(max_num_steps, time_step, policy_state)

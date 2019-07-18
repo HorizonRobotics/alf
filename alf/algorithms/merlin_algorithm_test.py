@@ -47,11 +47,9 @@ class MerlinAlgorithmTest(unittest.TestCase):
 
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
-        driver.run = tf.function(driver.run)
-
         proc = psutil.Process(os.getpid())
 
-        policy_state = driver.get_initial_state()
+        policy_state = driver.get_initial_policy_state()
         time_step = driver.get_initial_time_step()
         for i in range(100):
             t0 = time.time()
