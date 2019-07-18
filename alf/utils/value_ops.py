@@ -18,19 +18,26 @@ import tensorflow as tf
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import common as tfa_common
 
-from alf.algorithms.rl_algorithm import TrainingInfo
 from alf.utils import common
 
 
-def action_importance_ratio(training_info: TrainingInfo, action_spec,
-                            name_scope, importance_ratio_clipping,
-                            log_prob_clipping, check_numerics,
-                            debug_summaries):
+def action_importance_ratio(action_distribution, collect_action_distribution,
+                            action, action_spec, calling_class_name, scope,
+                            importance_ratio_clipping, log_prob_clipping,
+                            check_numerics, debug_summaries):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
+
+        Caller has to set tf.name_scope() and nest the call to this function
+            inside the with statement.
+
         Args:
-            training_info: passed in directly from loss classes.
+            action_distribution: Probability of actions under target policy.
+            collect_action_distribution: Probability of action from behavior
+                policy, used to sample actions for the rollout.
+            action: action taken during rollout.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            name_scope: the calling class, 'PPOLoss', 'VTraceLoss' etc..
+            calling_class_name: to decide which clipping method to use.
+            scope: name_scope set outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
                 PPO objective. See the cited paper for more detail.
             log_prob_clipping (float): If >0, clipping log probs to the range
@@ -39,16 +46,17 @@ def action_importance_ratio(training_info: TrainingInfo, action_spec,
             check_numerics (bool):  If true, adds tf.debugging.check_numerics to
                 help find NaN / Inf values. For debugging only.
             debug_summaries (bool): If true, output summary metrics to tf.
+
+        Returns: tuple: importance_ratio, importance_ratio_clipped.
     """
-    current_policy_distribution = training_info.action_distribution
+    current_policy_distribution = action_distribution
 
     sample_action_log_probs = tfa_common.log_probability(
-        training_info.collect_action_distribution, training_info.action,
-        action_spec)
+        collect_action_distribution, action, action_spec)
     sample_action_log_probs = tf.stop_gradient(sample_action_log_probs)
 
-    action_log_prob = tfa_common.log_probability(
-        current_policy_distribution, training_info.action, action_spec)
+    action_log_prob = tfa_common.log_probability(current_policy_distribution,
+                                                 action, action_spec)
     if log_prob_clipping > 0.0:
         action_log_prob = tf.clip_by_value(action_log_prob, -log_prob_clipping,
                                            log_prob_clipping)
@@ -61,12 +69,16 @@ def action_importance_ratio(training_info: TrainingInfo, action_spec,
     if check_numerics:
         importance_ratio = tf.debugging.check_numerics(importance_ratio,
                                                        'importance_ratio')
-    importance_ratio_clipped = tf.clip_by_value(importance_ratio,
-                                                1 - importance_ratio_clipping,
-                                                1 + importance_ratio_clipping)
+
+    if calling_class_name == 'PPOLoss':
+        importance_ratio_clipped = tf.clip_by_value(
+            importance_ratio, 1 - importance_ratio_clipping,
+            1 + importance_ratio_clipping)
+    else:  #if name_scope == VTraceLoss.__class__.__name__:
+        raise Exception('Unsupported calling class: ' + calling_class_name)
 
     if debug_summaries and common.should_record_summaries():
-        with tf.name_scope(name_scope):
+        with tf.name_scope(scope):
             if importance_ratio_clipping > 0.0:
                 clip_fraction = tf.reduce_mean(
                     input_tensor=tf.cast(
