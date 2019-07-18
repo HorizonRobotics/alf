@@ -25,7 +25,7 @@ class AdaptiveNormalizer(EMATensorNormalizer):
                  auto_update=True,
                  variance_epsilon=1e-3):
         """Create reward normalizer
-        
+
         This normalizer gives higher weight to more recent samples for
         calculating mean and variance. Roughly speaking, the weight for each
         sample at time t is proportional to (t/T)^(speed-1), where T is the
@@ -68,8 +68,6 @@ class AdaptiveNormalizer(EMATensorNormalizer):
         self._update_ema_rate.assign(
             self._speed / tf.cast(self._total_env_steps, tf.float32))
         self._total_env_steps.assign_add(1)
-        mean, var = self._get_mean_var_estimates()
-
         super(AdaptiveNormalizer, self).update(tensors)
 
 

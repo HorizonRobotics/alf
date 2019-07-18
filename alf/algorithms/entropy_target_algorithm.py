@@ -19,6 +19,7 @@ import numpy as np
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
+from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 
@@ -74,7 +75,7 @@ class EntropyTargetAlgorithm(Algorithm):
 
         def _calc_default_target_entropy(spec):
             dims = np.product(spec.shape.as_list())
-            if spec.dtype.is_floating:
+            if tensor_spec.is_continuous(spec):
                 e = -1
             else:
                 min_prob = 0.01
@@ -105,6 +106,11 @@ class EntropyTargetAlgorithm(Algorithm):
         alpha = tf.stop_gradient(tf.exp(self._log_alpha))
         loss = alpha_loss
         entropy_loss = -entropy
+
+        # Joint loss for optimizing alpha and entropy. The effect of alpha_loss
+        # is to increase alpha when entropy is lower than target and decrease
+        # alpha when entropy is larger than target. alpha * entropy_for_gradient
+        # is to encourage higher action entropy.
         loss -= alpha * entropy_for_gradient
 
         return AlgorithmStep(
