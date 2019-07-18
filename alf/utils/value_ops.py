@@ -22,13 +22,12 @@ from alf.utils import common
 
 
 def action_importance_ratio(action_distribution, collect_action_distribution,
-                            action, action_spec, calling_class_name, scope,
+                            action, action_spec, clipping_mode, scope,
                             importance_ratio_clipping, log_prob_clipping,
                             check_numerics, debug_summaries):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
 
-        Caller has to set tf.name_scope() and nest the call to this function
-            inside the with statement.
+        Caller has to save tf.name_scope() and pass scope to this function.
 
         Args:
             action_distribution: Probability of actions under target policy.
@@ -36,8 +35,8 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                 policy, used to sample actions for the rollout.
             action: action taken during rollout.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            calling_class_name: to decide which clipping method to use.
-            scope: name_scope set outside.
+            clipping_mode: 1: double_sided [-x, +x] clipping for PPOLoss.
+            scope: the scope object returned by tf.name_scope(), set outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
                 PPO objective. See the cited paper for more detail.
             log_prob_clipping (float): If >0, clipping log probs to the range
@@ -70,15 +69,15 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
         importance_ratio = tf.debugging.check_numerics(importance_ratio,
                                                        'importance_ratio')
 
-    if calling_class_name == 'PPOLoss':
+    if clipping_mode == 1:
         importance_ratio_clipped = tf.clip_by_value(
             importance_ratio, 1 - importance_ratio_clipping,
             1 + importance_ratio_clipping)
     else:  #if name_scope == VTraceLoss.__class__.__name__:
-        raise Exception('Unsupported calling class: ' + calling_class_name)
+        raise Exception('Unsupported clipping mode: {}'.format(clipping_mode))
 
     if debug_summaries and common.should_record_summaries():
-        with tf.name_scope(scope):
+        with scope:
             if importance_ratio_clipping > 0.0:
                 clip_fraction = tf.reduce_mean(
                     input_tensor=tf.cast(

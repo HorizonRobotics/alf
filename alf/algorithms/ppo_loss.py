@@ -30,6 +30,8 @@ from alf.utils import value_ops
 
 @gin.configurable
 class PPOLoss(ActorCriticLoss):
+    """PPO loss."""
+
     def __init__(self,
                  action_spec,
                  gamma=0.99,
@@ -99,35 +101,34 @@ class PPOLoss(ActorCriticLoss):
         self._check_numerics = check_numerics
 
     def _pg_loss(self, training_info: TrainingInfo, advantages):
-        with tf.name_scope(self.__class__.__name__) as scope:
-            importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
-                action_distribution=training_info.action_distribution,
-                collect_action_distribution=training_info.
-                collect_action_distribution,
-                action=training_info.action,
-                action_spec=self._action_spec,
-                calling_class_name=self.__class__.__name__,
-                scope=scope,
-                importance_ratio_clipping=self._importance_ratio_clipping,
-                log_prob_clipping=self._log_prob_clipping,
-                check_numerics=self._check_numerics,
-                debug_summaries=self._debug_summaries)
-            # Pessimistically choose the maximum objective value for clipped and
-            # unclipped importance ratios.
-            pg_objective = -importance_ratio * advantages
-            pg_objective_clipped = -importance_ratio_clipped * advantages
-            policy_gradient_loss = tf.maximum(pg_objective,
-                                              pg_objective_clipped)
+        scope = tf.name_scope(self.__class__.__name__)
+        importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
+            action_distribution=training_info.action_distribution,
+            collect_action_distribution=training_info.
+            collect_action_distribution,
+            action=training_info.action,
+            action_spec=self._action_spec,
+            clipping_mode=1,
+            scope=scope,
+            importance_ratio_clipping=self._importance_ratio_clipping,
+            log_prob_clipping=self._log_prob_clipping,
+            check_numerics=self._check_numerics,
+            debug_summaries=self._debug_summaries)
+        # Pessimistically choose the maximum objective value for clipped and
+        # unclipped importance ratios.
+        pg_objective = -importance_ratio * advantages
+        pg_objective_clipped = -importance_ratio_clipped * advantages
+        policy_gradient_loss = tf.maximum(pg_objective, pg_objective_clipped)
 
-            if self._debug_summaries and common.should_record_summaries():
-                with tf.name_scope(scope):
-                    tf.summary.histogram('pg_objective', pg_objective)
-                    tf.summary.histogram('pg_objective_clipped',
-                                         pg_objective_clipped)
+        if self._debug_summaries and common.should_record_summaries():
+            with scope:
+                tf.summary.histogram('pg_objective', pg_objective)
+                tf.summary.histogram('pg_objective_clipped',
+                                     pg_objective_clipped)
 
-            if self._check_numerics:
-                policy_gradient_loss = tf.debugging.check_numerics(
-                    policy_gradient_loss, 'policy_gradient_loss')
+        if self._check_numerics:
+            policy_gradient_loss = tf.debugging.check_numerics(
+                policy_gradient_loss, 'policy_gradient_loss')
 
         return policy_gradient_loss
 
