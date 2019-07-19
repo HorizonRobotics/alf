@@ -57,7 +57,8 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                 help find NaN / Inf values. For debugging only.
             debug_summaries (bool): If true, output summary metrics to tf.
 
-        Returns: importance_ratio (Tensor), importance_ratio_clipped (Tensor).
+        Returns:
+            importance_ratio (Tensor), importance_ratio_clipped (Tensor).
     """
     current_policy_distribution = action_distribution
 
@@ -85,8 +86,8 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
             importance_ratio, 1 - importance_ratio_clipping,
             1 + importance_ratio_clipping)
     elif clipping_mode == 'capping':
-        importance_ratio_clipped = tf.clip_by_value(
-            importance_ratio, 0, 1 + importance_ratio_clipping)
+        importance_ratio_clipped = tf.minimum(importance_ratio,
+                                              1 + importance_ratio_clipping)
     else:
         raise Exception('Unsupported clipping mode: ' + clipping_mode)
 
