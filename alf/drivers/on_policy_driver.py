@@ -211,7 +211,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         training_info_ta = tf.nest.map_structure(create_ta,
                                                  self._training_info_spec)
 
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
+        with tf.GradientTape(
+                watch_accessed_variables=False, persistent=True) as tape:
             tape.watch(self._trainable_variables)
             [counter, time_step, policy_state,
              training_info_ta] = tf.while_loop(
@@ -268,6 +269,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         loss_info, grads_and_vars = self._algorithm.train_complete(
             tape, training_info)
+
+        del tape
 
         self._training_summary(training_info, loss_info, grads_and_vars)
 

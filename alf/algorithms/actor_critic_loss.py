@@ -111,7 +111,7 @@ class ActorCriticLoss(object):
         returns, advantages = self._calc_returns_and_advantages(
             training_info, value)
 
-        if self._debug_summaries:
+        if self._debug_summaries and common.should_record_summaries():
             with tf.name_scope('ActorCriticLoss'):
                 tf.summary.scalar("values", tf.reduce_mean(value))
                 tf.summary.scalar("returns", tf.reduce_mean(returns))

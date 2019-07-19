@@ -47,7 +47,7 @@ class PPOLoss(ActorCriticLoss):
         Implement the simplified surrogate loss in equation (9) of "Proximal
         Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
 
-        The total loss equals to 
+        The total loss equals to
         (policy_gradient_loss (L^{CLIP} in equation (9))
          + td_loss_weight * td_loss (L^{VF} in equation (9))
          - entropy_regularization * entropy)
