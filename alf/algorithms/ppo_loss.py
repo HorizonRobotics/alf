@@ -108,7 +108,7 @@ class PPOLoss(ActorCriticLoss):
             collect_action_distribution,
             action=training_info.action,
             action_spec=self._action_spec,
-            clipping_mode=1,
+            clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,
             log_prob_clipping=self._log_prob_clipping,

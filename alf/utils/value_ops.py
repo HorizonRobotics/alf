@@ -30,13 +30,21 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
         Caller has to save tf.name_scope() and pass scope to this function.
 
         Args:
-            action_distribution: Probability of actions under target policy.
-            collect_action_distribution: Probability of action from behavior
-                policy, used to sample actions for the rollout.
-            action: action taken during rollout.
+            action_distribution (nested tf.distribution): Distribution over
+                actions under target policy.
+            collect_action_distribution (nested tf.distribution): distribution
+                over actions from behavior policy, used to sample actions for
+                the rollout.
+            action (nested tf.distribution): possibly batched action tuple
+                taken during rollout.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            clipping_mode: 1: double_sided [-x, +x] clipping for PPOLoss.
-            scope: the scope object returned by tf.name_scope(), set outside.
+            clipping_mode (string): mode for clipping the importance ratio.
+                'double_sided': clips the range of importance ratio into
+                    [1-x, 1+x], which is used by PPOLoss.
+                'capping': clips the range of importance ratio into
+                    min(c, importance_ratio), which is used by VTraceLoss.
+            scope (name scope manager): returned by tf.name_scope(), set
+                outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
                 PPO objective. See the cited paper for more detail.
             log_prob_clipping (float): If >0, clipping log probs to the range
@@ -46,7 +54,7 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                 help find NaN / Inf values. For debugging only.
             debug_summaries (bool): If true, output summary metrics to tf.
 
-        Returns: tuple: importance_ratio, importance_ratio_clipped.
+        Returns: tuple: importance_ratio (Tensor), importance_ratio_clipped (Tensor).
     """
     current_policy_distribution = action_distribution
 
@@ -69,12 +77,15 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
         importance_ratio = tf.debugging.check_numerics(importance_ratio,
                                                        'importance_ratio')
 
-    if clipping_mode == 1:
+    if clipping_mode == 'double_sided':
         importance_ratio_clipped = tf.clip_by_value(
             importance_ratio, 1 - importance_ratio_clipping,
             1 + importance_ratio_clipping)
-    else:  #if name_scope == VTraceLoss.__class__.__name__:
-        raise Exception('Unsupported clipping mode: {}'.format(clipping_mode))
+    elif clipping_mode == 'capping':
+        importance_ratio_clipped = tf.clip_by_value(importance_ratio, 0,
+                                                    importance_ratio_clipping)
+    else:
+        raise Exception('Unsupported clipping mode: ' + clipping_mode)
 
     if debug_summaries and common.should_record_summaries():
         with scope:
