@@ -38,11 +38,14 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
             action (nested tf.distribution): possibly batched action tuple
                 taken during rollout.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            clipping_mode (string): mode for clipping the importance ratio.
+            clipping_mode (str): mode for clipping the importance ratio.
                 'double_sided': clips the range of importance ratio into
-                    [1-x, 1+x], which is used by PPOLoss.
+                    [1-importance_ratio_clipping, 1+importance_ratio_clipping],
+                    which is used by PPOLoss.
                 'capping': clips the range of importance ratio into
-                    min(c, importance_ratio), which is used by VTraceLoss.
+                    min(1+importance_ratio_clipping, importance_ratio),
+                    which is used by VTraceLoss, where c_bar or rho_bar =
+                    1+importance_ratio_clipping.
             scope (name scope manager): returned by tf.name_scope(), set
                 outside.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
@@ -54,7 +57,7 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                 help find NaN / Inf values. For debugging only.
             debug_summaries (bool): If true, output summary metrics to tf.
 
-        Returns: tuple: importance_ratio (Tensor), importance_ratio_clipped (Tensor).
+        Returns: importance_ratio (Tensor), importance_ratio_clipped (Tensor).
     """
     current_policy_distribution = action_distribution
 
@@ -82,8 +85,8 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
             importance_ratio, 1 - importance_ratio_clipping,
             1 + importance_ratio_clipping)
     elif clipping_mode == 'capping':
-        importance_ratio_clipped = tf.clip_by_value(importance_ratio, 0,
-                                                    importance_ratio_clipping)
+        importance_ratio_clipped = tf.clip_by_value(
+            importance_ratio, 0, 1 + importance_ratio_clipping)
     else:
         raise Exception('Unsupported clipping mode: ' + clipping_mode)
 
