@@ -1,0 +1,11 @@
+FROM tensorflow/tensorflow:2.0.0b1-py3 
+
+
+RUN apt install -y \
+        libsm6  \
+        libxext-dev \
+        libxrender1
+
+COPY requirements.txt  /tmp/requirements.txt
+RUN pip install -i https://mirrors.aliyun.com/pypi/simple/ -r /tmp/requirements.txt
+

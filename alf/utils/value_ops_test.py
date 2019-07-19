@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import unittest
 import tensorflow as tf
 
 from tf_agents.trajectories.time_step import TimeStep, StepType
@@ -134,4 +135,7 @@ class GeneralizedAdvantageTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-    tf.test.main()
+    from alf.utils.common import set_per_process_memory_growth
+
+    set_per_process_memory_growth()
+    unittest.main()

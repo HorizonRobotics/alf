@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import tensorflow as tf
 import unittest
 import alf.algorithms.vae as vae
@@ -23,6 +24,9 @@ import matplotlib.pyplot as plt
 INTERACTIVE_MODE = False
 
 
+@unittest.skipIf(
+    os.environ.get('SKIP_LONG_TESTS', False),
+    "It takes very long to run this test.")
 class VaeMnistTest(unittest.TestCase):
     def setUp(self):
         # MNIST dataset
@@ -304,7 +308,7 @@ class SimpleVaeTest(unittest.TestCase):
         y_test = model(x_test.astype(np.float32))
         reconstruction_loss = float(tf.reduce_mean(loss_f(x_test - y_test)))
         print("reconstruction_loss:", reconstruction_loss)
-        self.assertLess(reconstruction_loss, 0.01)
+        self.assertLess(reconstruction_loss, 0.05)
 
 
 if __name__ == '__main__':

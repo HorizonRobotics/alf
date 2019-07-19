@@ -28,6 +28,9 @@ from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.utils.common import run_under_record_context
 
 
+@unittest.skipIf(
+    os.environ.get('SKIP_LONG_TESTS', False),
+    "It takes very long to run this test.")
 class MerlinAlgorithmTest(unittest.TestCase):
     def test_merlin_algorithm(self):
         batch_size = 100
@@ -72,9 +75,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-
-    run_under_record_context(
-        unittest.main,
-        summary_dir="~/tmp/debug",
-        summary_interval=1,
-        flush_millis=1000)
+    unittest.main()

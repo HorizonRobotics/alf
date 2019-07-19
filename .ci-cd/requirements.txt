@@ -1,0 +1,13 @@
+tfp-nightly==0.8.0.dev20190609
+tf-agents-nightly==0.2.0.dev20190415
+numpy
+opencv-python>=3.4.1.15
+gym
+gym-retro
+atari_py==0.1.7
+pybullet==2.5.0
+pathos==0.2.4
+psutil
+fasteners
+matplotlib
+Pillow

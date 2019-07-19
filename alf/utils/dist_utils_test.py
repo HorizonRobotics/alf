@@ -61,7 +61,7 @@ class EstimatedEntropyTest(parameterized.TestCase, unittest.TestCase):
         if not assume_reparametrization:
             est_grad_wrong = tape.gradient(est_entropy, scale)
             logging.info("estimated_entropy_grad_wrong=%s", est_grad_wrong)
-            self.assertLess(tf.reduce_max(tf.abs(est_grad_wrong)), 2e-3)
+            self.assertLess(tf.reduce_max(tf.abs(est_grad_wrong)), 5e-2)
 
 
 if __name__ == '__main__':

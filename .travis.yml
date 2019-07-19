@@ -1,0 +1,22 @@
+language: python
+sudo: required
+dist: trusty
+services:
+  - docker
+os:
+  - linux
+env:
+  - JOB=test
+script:
+  - docker run
+    -v $PWD:/ALF
+    -w /ALF/alf
+    -e PYTHONPATH=/ALF/tf_agents:/ALF
+    -e SKIP_LONG_TESTS=True
+    -it horizonrobotics/alf:latest
+    /ALF/.ci-cd/build.sh ${JOB}
+
+notifications:
+  email:
+    on_success: change
+    on_failure: always

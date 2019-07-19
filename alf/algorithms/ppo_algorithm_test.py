@@ -109,7 +109,7 @@ class PpoTest(unittest.TestCase):
             max_num_steps=(steps_per_episode - 1) * batch_size)
         logging.info("reward=%f", float(tf.reduce_mean(eval_time_step.reward)))
         self.assertAlmostEqual(
-            1.0, float(tf.reduce_mean(eval_time_step.reward)), delta=1e-2)
+            1.0, float(tf.reduce_mean(eval_time_step.reward)), delta=1e-1)
 
 
 if __name__ == '__main__':
