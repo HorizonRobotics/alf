@@ -66,6 +66,10 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
 
 
 class PpoTest(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def test_ppo(self):
         batch_size = 100
         steps_per_episode = 13

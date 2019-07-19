@@ -29,6 +29,7 @@ INTERACTIVE_MODE = False
     "It takes very long to run this test.")
 class VaeMnistTest(unittest.TestCase):
     def setUp(self):
+        tf.random.set_seed(0)
         # MNIST dataset
         (x_train, self.y_train), (x_test, self.y_test) = mnist.load_data()
         self.image_size = x_train.shape[1]
@@ -272,6 +273,10 @@ class VaePriorNetworkTest(VaeMnistTest):
 
 
 class SimpleVaeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def test_gaussian(self):
         """Test for one dimensional Gaussion."""
         input_shape = (1, )

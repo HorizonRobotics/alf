@@ -25,6 +25,10 @@ import alf.utils.dist_utils as dist_utils
 
 
 class EstimatedEntropyTest(parameterized.TestCase, unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def assertArrayAlmostEqual(self, x, y, eps):
         self.assertLess(tf.reduce_max(tf.abs(x - y)), eps)
 

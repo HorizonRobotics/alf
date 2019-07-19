@@ -32,6 +32,10 @@ from alf.utils.common import run_under_record_context
     os.environ.get('SKIP_LONG_TESTS', False),
     "It takes very long to run this test.")
 class MerlinAlgorithmTest(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def test_merlin_algorithm(self):
         batch_size = 100
         steps_per_episode = 15
