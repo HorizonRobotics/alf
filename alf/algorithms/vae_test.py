@@ -25,7 +25,7 @@ INTERACTIVE_MODE = False
 
 
 @unittest.skipIf(
-    os.environ.get('SKIP_LONG_TESTS', False),
+    os.environ.get('SKIP_LONG_TIME_COST_TESTS', False),
     "It takes very long to run this test.")
 class VaeMnistTest(unittest.TestCase):
     def setUp(self):

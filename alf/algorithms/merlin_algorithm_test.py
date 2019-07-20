@@ -29,7 +29,7 @@ from alf.utils.common import run_under_record_context
 
 
 @unittest.skipIf(
-    os.environ.get('SKIP_LONG_TESTS', False),
+    os.environ.get('SKIP_LONG_TIME_COST_TESTS', False),
     "It takes very long to run this test.")
 class MerlinAlgorithmTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -49,7 +49,7 @@ class MerlinAlgorithmTest(unittest.TestCase):
             env,
             algorithm,
             train_interval=6,
-            debug_summaries=True,
+            debug_summaries=False,
             summarize_grads_and_vars=False)
 
         eval_driver = OnPolicyDriver(env, algorithm, training=False)

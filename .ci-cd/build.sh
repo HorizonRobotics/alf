@@ -19,6 +19,7 @@ function print_usage() {
      [OPTION]
      \nOptions:
      test: run all unit tests
+     check_style: run code style check
     "
 }
 
@@ -39,7 +40,9 @@ function check_style() {
 }
 
 function test() {
+    cd alf
     python3 -m unittest discover -p "*_test.py" -v -f
+    cd ..
 }
 
 function main() {

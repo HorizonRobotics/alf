@@ -34,7 +34,7 @@ def is_available():
         return False
     try:
         retro.data.get_romfile_path('SuperMarioBros-Nes')
-    except:
+    except FileNotFoundError:
         return False
     return True
 
