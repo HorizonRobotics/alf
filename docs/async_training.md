@@ -19,9 +19,13 @@ The difference between sync and async training is whether the parameter update a
 On the contrary, *async training* decouples them in the following way:
 
 `pred → pred → pred → ...   (several actors running in parallel)`
+
 `           |`
+
 `(synchronize periodically)`
+
 `           |`
+
 `learn → learn → learn → ... (one learner)`
 
 The learner waits for a batch of trajectories to be collected by an actor, updates parameters, and waits for the next batch (probably from a different actor), and so on.
@@ -60,19 +64,27 @@ We can see that with K=96, the EPS ratio reaches a maximum value of 3.1. And for
 In the below, we report the actual training curves for 4 data points in the above table, and see if convergence speed is proportional to EPS. For all runs, we turned off the training summary code.
 
 **sync K=32**
+
 EPS=3.2;  5h 40mins (33M steps) to reach 2k training score
+
 <img src="images/ppo_bullet_humanoid_sync_K32.png" width="300" height="200" />
 
 **async K=32**
+
 EPS=5.3;  4h 20mins (40M steps) to reach 2k training score
+
 <img src="images/ppo_bullet_humanoid_async_K32.png" width="300" height="200" />
 
 **sync K=96 (**`alf/examples/ppo_bullet_humanoid.gin`**)**
+
 EPS=4.8;  3h 20mins (29M steps) to reach 2k training score
+
 <img src="images/ppo_bullet_humanoid_sync_K96.png" width="300" height="200" />
 
 **async K=96 (**`alf/examples/async_ppo_bullet_humanoid.gin`**)**
+
 EPS=14.8; 1h 40mins (46M steps) to reach 2k training score
+
 <img src="images/ppo_bullet_humanoid_async_K96.png" width="300" height="200" />
 
 ## Results analysis
