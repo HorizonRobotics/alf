@@ -42,7 +42,7 @@ Suppose the average time interval between every two training iterations is T. Gi
 
 <img src="images/throughput.jpg" width="600" height="200" />
 
-In the above, K=32. The EPSs for the three settings are 32/10=3.2, 32/9=3.6, 32/6=5.3, respectively. Even though EPS=K/T doesn’t explicitly depend on N, T might be affected by KN because the rollout time of each actor depends on the computational resource constraints (e.g., CPU/GPU, data bandwidth, etc). As N increases, T might decrease due to resource competition.
+In the above, K=32. The EPSs for the three settings are 32/10=3.2, 32/9=3.6, 32/6=5.3, respectively. Even though EPS=K/T doesn’t explicitly depend on N, T might be affected by KN because the rollout time of each actor depends on the computational resource constraints (e.g., CPU/GPU, data bandwidth, etc). As N increases, T might also increase due to resource competition.
 
 In our PPO experiments, EPS can be a highly effective indicator of the convergence speed: we would expect the algorithm to converge faster if EPS is higher.
 
