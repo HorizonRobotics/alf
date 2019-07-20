@@ -21,8 +21,9 @@ create_ac_algorithm.learning_rate=0.001
 # training config
 on_policy_trainer.train.train_interval=8
 on_policy_trainer.train.num_iterations=20
+on_policy_trainer.train.checkpoint_interval=3
 on_policy_trainer.train.summary_interval=5
-on_policy_trainer.train.summarize_grads_and_vars=True
+on_policy_trainer.train.summarize_grads_and_vars=False
 
-train_eval.debug_summaries=True
+train_eval.debug_summaries=False
 train_eval.evaluate=False
