@@ -52,4 +52,4 @@ Trainer.debug_summaries=True
 Trainer.summarize_grads_and_vars = True
 Trainer.summary_interval = 10
 
-train_eval.trainer_cls=@ASyncOffPolicyTrainer
+train_eval.trainer_cls=@AsyncOffPolicyTrainer

@@ -82,7 +82,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
 
     def train_iter(self, iter_num, policy_state, time_step):
         max_num_steps = self._unroll_length * self._env.batch_size
-        if iter_num == 0:
+        if iter_num == 0 and self._initial_collect_steps != 0:
             max_num_steps = self._initial_collect_steps
         time_step, policy_state = self._driver.run(
             max_num_steps=max_num_steps,
@@ -113,9 +113,9 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         return driver
 
     def train_iter(self, iter_num, policy_state, time_step):
-        if iter_num == 0:
+        if iter_num == 0 and self._initial_collect_steps != 0:
             steps = 0
-            while steps < self.__initial_collect_steps:
+            while steps < self._initial_collect_steps:
                 steps += self._driver.run_async()
         else:
             self._driver.run_async()
