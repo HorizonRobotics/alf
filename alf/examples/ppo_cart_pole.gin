@@ -18,16 +18,16 @@ create_ac_algorithm.value_fc_layers=(100,)
 create_ac_algorithm.learning_rate=0.001
 
 # training config
-off_policy_trainer.train.mini_batch_length=1
-off_policy_trainer.train.unroll_length=32
-off_policy_trainer.train.mini_batch_size=128
-off_policy_trainer.train.num_iterations=1000
-off_policy_trainer.train.summary_interval=5
-off_policy_trainer.train.checkpoint_interval=100000
-off_policy_trainer.train.num_updates_per_train_step=4
-off_policy_trainer.train.use_tf_functions=True
+OffPolicyTrainer.mini_batch_length=1
+OffPolicyTrainer.unroll_length=32
+OffPolicyTrainer.mini_batch_size=128
+OffPolicyTrainer.num_updates_per_train_step=4
+Trainer.num_iterations=1000
+Trainer.checkpoint_interval=100000
+Trainer.use_tf_functions=True
+Trainer.evaluate=False
+Trainer.debug_summaries=True
+Trainer.summary_interval=5
 
 TFUniformReplayBuffer.max_length = 2048
 
-train_eval.debug_summaries=True
-train_eval.evaluate=False

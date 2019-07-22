@@ -1,6 +1,9 @@
 # You need to install following packages
 # pip3 install atari-py opencv-python
 
+import alf.algorithms.actor_critic_algorithm
+import alf.trainers.on_policy_trainer
+
 include 'atari.gin'
 # From OpenAI gym wiki:
 # "v0 vs v4: v0 has repeat_action_probability of 0.25
@@ -39,13 +42,16 @@ common.reward_clipping.minmax=(-1, 1)
 create_ac_algorithm.learning_rate=1e-3
 
 # training config
-on_policy_trainer.train.num_iterations=1000000
-on_policy_trainer.train.summarize_grads_and_vars=1
-on_policy_trainer.train.summary_interval=10
-on_policy_trainer.train.train_interval=8
-on_policy_trainer.train.use_tf_functions=True
+OnPolicyTrainer.train_interval=8
+Trainer.algorithm_ctor=@create_ac_algorithm
+Trainer.use_tf_functions=True
+Trainer.num_iterations=1000000
+Trainer.evaluate=False
+Trainer.debug_summaries=1
+Trainer.summarize_grads_and_vars=1
+Trainer.summary_interval=10
 
 PolicyDriver.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
-train_eval.debug_summaries=1
-train_eval.evaluate=False
+
+train_eval.trainer_cls=@OnPolicyTrainer

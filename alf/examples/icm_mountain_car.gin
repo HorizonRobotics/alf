@@ -1,3 +1,6 @@
+import alf.algorithms.actor_critic_algorithm
+import alf.trainers.on_policy_trainer
+
 # environment config
 create_environment.num_parallel_environments=30
 create_environment.env_name='MountainCar-v0'
@@ -7,7 +10,7 @@ load_with_random_max_episode_steps.max_steps=1200
 suite_gym.load.max_episode_steps=1000
 
 # algorithm config
-train_eval.algorithm_ctor=@create_ac_algorithm
+
 ActorCriticLoss.entropy_regularization=0.1
 ActorDistributionNetwork.activation_fn=@tf.nn.elu
 ValueNetwork.activation_fn=@tf.nn.elu
@@ -21,9 +24,11 @@ ICMAlgorithm.hidden_size=200
 EncodingNetwork.activation_fn=@tf.nn.elu
 
 # training config
-on_policy_trainer.train.num_iterations=1000000
-on_policy_trainer.train.summarize_grads_and_vars=1
-on_policy_trainer.train.train_interval=100
-on_policy_trainer.train.use_tf_functions=1
+OnPolicyTrainer.train_interval=100
+Trainer.algorithm_ctor=@create_ac_algorithm
+Trainer.num_iterations=1000000
+Trainer.use_tf_functions=1
+Trainer.debug_summaries=1
+Trainer.summarize_grads_and_vars=1
 
-train_eval.debug_summaries=1
+train_eval.trainer_cls=@OnPolicyTrainer

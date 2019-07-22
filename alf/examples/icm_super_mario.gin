@@ -1,5 +1,8 @@
 # icm on SuperMario
 
+import alf.algorithms.actor_critic_algorithm
+import alf.trainers.on_policy_trainer
+
 # environment config
 # gym-retro>=0.7.0 is required for this experiment and also
 #  a suitable `SuperMarioBros-Nes` rom should be obtain and imported (roms are not included in gym-retro)
@@ -12,7 +15,7 @@ suite_mario.load.state="Level1-1"
 suite_mario.load.wrap_with_process=0
 
 # algorithm config
-train_eval.algorithm_ctor=@create_ac_algorithm
+
 CONV_LAYER_PARAMS=[(32,8,4),(64,4,2),(64,3,1)]
 
 create_ac_algorithm.use_rnns=False
@@ -46,11 +49,14 @@ suite_mario.load.data_format="channels_first"
 tf.keras.layers.Conv2D.data_format="channels_first"
 
 # training config
-on_policy_trainer.train.num_iterations=10000000
-on_policy_trainer.train.summarize_grads_and_vars=1
-on_policy_trainer.train.train_interval=32
-on_policy_trainer.train.summary_interval=1
-on_policy_trainer.train.use_tf_functions=1
+OnPolicyTrainer.train_interval=32
+Trainer.algorithm_ctor=@create_ac_algorithm
+Trainer.num_iterations=10000000
+Trainer.use_tf_functions=1
+Trainer.debug_summaries=1
+Trainer.summarize_grads_and_vars=1
+Trainer.summary_interval=100
 
 PolicyDriver.observation_transformer=@image_scale_transformer
-train_eval.debug_summaries=1
+
+train_eval.trainer_cls=@OnPolicyTrainer

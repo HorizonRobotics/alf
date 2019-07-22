@@ -48,14 +48,10 @@ from absl import flags
 from absl import logging
 
 import gin.tf.external_configurables
-
-from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.environments.utils import create_environment
-from alf.trainers import on_policy_trainer, off_policy_trainer
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.utils import common
 import alf.utils.external_configurables
+from alf.trainers import policy_trainer
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -67,40 +63,16 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
-def train_eval(root_dir, algorithm_ctor, evaluate=True, debug_summaries=False):
+def train_eval(root_dir, trainer_cls):
     """Train and evaluate algorithm
 
     Args:
         root_dir (str): directory for saving summary and checkpoints
-        algorithm_ctor (Callable): callable that create an
-            `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
-        evaluate (bool): A bool to evaluate when training.
-        debug_summaries (bool): A bool to gather debug summaries.
+        trainer_cls (class): cls that used for creating a `Trainer` instance
     """
-    if evaluate:
-        eval_env = create_environment(num_parallel_environments=1)
-    else:
-        eval_env = None
-    env = create_environment(num_parallel_environments=1)
-    algorithm = algorithm_ctor(env, debug_summaries=debug_summaries)
-    env.pyenv.close()
-
-    if isinstance(algorithm, OffPolicyAlgorithm):
-        trainer = off_policy_trainer.train
-        env_or_env_f = create_environment
-    elif isinstance(algorithm, OnPolicyAlgorithm):
-        trainer = on_policy_trainer.train
-        env_or_env_f = create_environment()
-    else:
-        raise ValueError(
-            "Algorithm must be one of `OffPolicyAlgorithm`,"
-            " `OnPolicyAlgorithm`. Received:", type(algorithm))
-    trainer(
-        root_dir,
-        env_or_env_f,
-        algorithm,
-        eval_env=eval_env,
-        debug_summaries=debug_summaries)
+    trainer = trainer_cls(root_dir=root_dir)
+    trainer.initialize()
+    trainer.train()
 
 
 @gin.configurable
@@ -110,12 +82,12 @@ def play(root_dir, algorithm_ctor):
     Args:
         root_dir (str): directory where checkpoints stores
         algorithm_ctor (Callable): callable that create an algorithm
-            parameter value is bind with `__main__.train_eval.algorithm_ctor`,
-            just config `__main__.train_eval.algorithm_ctor` when using with gin configuration
+            parameter value is bind with `Trainer.algorithm_ctor`,
+            just config `Trainer.algorithm_ctor` when using with gin configuration
     """
     env = create_environment(num_parallel_environments=1)
     algorithm = algorithm_ctor(env)
-    on_policy_trainer.play(root_dir, env, algorithm)
+    policy_trainer.play(root_dir, env, algorithm)
 
 
 def main(_):
@@ -129,9 +101,8 @@ def main(_):
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     if FLAGS.play:
         with gin.unlock_config():
-            gin.bind_parameter(
-                '__main__.play.algorithm_ctor',
-                gin.query_parameter('__main__.train_eval.algorithm_ctor'))
+            gin.bind_parameter('__main__.play.algorithm_ctor',
+                               gin.query_parameter('Trainer.algorithm_ctor'))
         play(FLAGS.root_dir)
     else:
         train_eval(FLAGS.root_dir)
