@@ -53,20 +53,19 @@ class OffPolicyTrainer(Trainer):
         self._unroll_length = unroll_length
         self._mini_batch_length = mini_batch_length
         self._mini_batch_size = mini_batch_size
+        self._clear_replay_buffer = clear_replay_buffer
 
-        def _get_all_exp():
-            replay_buffer = self._driver.exp_replayer
+    def get_exp(self):
+        """Get experience from replay buffer for training"""
+        replay_buffer = self._driver.exp_replayer
+        if self._clear_replay_buffer:
             experience = replay_buffer.replay_all()
             replay_buffer.clear()
-            return experience
-
-        def _sample_exp():
-            replay_buffer = self._driver.exp_replayer
-            return replay_buffer.replay(
+        else:
+            experience, _ = replay_buffer.replay(
                 sample_batch_size=self._mini_batch_size,
-                mini_batch_length=self._mini_batch_length)[0]
-
-        self._get_exp = _get_all_exp if clear_replay_buffer else _sample_exp
+                mini_batch_length=self._mini_batch_length)
+        return experience
 
 
 @gin.configurable
@@ -90,7 +89,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             policy_state=policy_state)
 
         self._driver.train(
-            self._get_exp(),
+            self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
@@ -120,7 +119,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         else:
             self._driver.run_async()
         self._driver.train(
-            self._get_exp(),
+            self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)

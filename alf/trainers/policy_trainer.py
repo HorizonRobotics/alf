@@ -124,7 +124,13 @@ class Trainer(object):
 
     @abc.abstractmethod
     def init_driver(self):
-        """initialize driver"""
+        """Initialize driver
+
+        Sub class should implement this method and return an instance of `PolicyDriver`
+
+        Returns:
+            driver (PolicyDriver): driver used for collecting data and training
+        """
         pass
 
     def train(self):
@@ -143,7 +149,16 @@ class Trainer(object):
 
     @abc.abstractmethod
     def train_iter(self, iter_num, policy_state, time_step):
-        """train iteration"""
+        """Perform one training iteration.
+
+        Args:
+            iter_num (int): iteration number
+            policy_state (nested Tensor): should be consistent with train_state_spec
+            time_step (ActionTimeStep): initial time_step
+        Returns:
+            policy_state (nested Tensor): final step policy state.
+            time_step (nested Tensor): named tuple with final observation, reward, etc.
+        """
         pass
 
     def _train(self):
