@@ -94,10 +94,21 @@ We can see that the convergence speed is roughly proportional to EPS. However, g
 1. Due to the lag between the rollout policy and the learning policy, async training always predicts with out-dated policies. So there are at most 100% redundant steps from the perspective of performance logging.
 2. PPO assumes that at the beginning of each training iteration, the behavior policy and the training policy are the same. But this is not the case in async training, which may make the algorithm itself less effective.
 
+## Different batch size
+What if we set K=192 for sync training? In this case, the training batch size would be twice as sync K=96, but the number of environments will be the same with async K=96. Note that the mini-batch size would still keep unchanged (4096 in this case), and just the number of mini batches doubles.
+
+**sync K=192**
+
+EPS=7.0; 3h 30mins (45M steps) to reach 2k training score
+
+<img src="images/ppo_bullet_humanoid_sync_K192.png" width="300" height="200" />
+
+It might be surprising to see that the convergence speed is no better than sync K=96 even though the EPS is about 1.5 (7.0/4.8) higher. In other words, sync K=192 is 1.5x less sample-efficient than sync K=96.  This indicates that the PPO algorithm optimizes the target policy referring to the old policy on an unnecessarily big dataset. So generally, EPSs with different training batch sizes are not comparable indicators of convergence. If we'd like to keep the batch size at a small value but want to increase EPS, then async training is recommended.
+
 ## Conclusion
 
 If possible, we want to minimize the time interval T between every two training iterations to maximize the throughput EPS (assuming K fixed).  Generally this can be achieved by using more than one actors (N > 1) running asynchronously with the training. However, the T must be verified empirically as more actors might have resource competitions.
 
-On a single machine, we can imagine that async training is most suitable for problems with simple neural models but complex environment simulations (3D rendering, physics, etc) as seen in the PyBullet envs like Humanoid. Because with simple models, the system bottleneck is mostly CPU simulation and the rollout time is much greater than the training time.
+Assuming abundant CPU resources, we can imagine that async training is most suitable for problems with simple neural models but complex environment simulations (3D rendering, physics, etc) if the bottleneck is simulation speed. In this case the rollout time is much greater than the training time, and having multiple actors (ideally without comprising each actor's speed) in the data pipeline can decrease the waiting time between two training iterations.
 
 Because async training generally is less sample efficient than sync training, it’s recommended to use it for cases where sample efficiency is not the main metric, e.g., to have faster turn-around times for tweaking model hyperparameters.

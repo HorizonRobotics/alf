@@ -8,7 +8,7 @@ include 'ppo.gin'
 # need to `pip install pybullet`
 import pybullet_envs
 create_environment.env_name="HumanoidBulletEnv-v0"
-create_environment.num_parallel_environments=32
+create_environment.num_parallel_environments=96
 
 # algorithm config
 ActorCriticAlgorithm.gradient_clipping=0.5
