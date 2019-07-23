@@ -125,7 +125,9 @@ def train(root_dir,
                 time_step=time_step,
                 policy_state=policy_state)
 
-            logging.info('%s time=%.3f' % (iter, time.time() - t0))
+            T = time.time() - t0
+            logging.info('%s time=%.3f throughput=%.2f' %
+                         (iter, T, num_steps_per_iter / T))
 
             if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())

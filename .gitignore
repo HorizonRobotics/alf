@@ -103,5 +103,11 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+# idea
+.idea
+
+# sample files
+*.sample
+
 # ~
 *~

@@ -30,7 +30,13 @@ except ImportError:
 
 
 def is_available():
-    return retro is not None
+    if retro is None:
+        return False
+    try:
+        retro.data.get_romfile_path('SuperMarioBros-Nes')
+    except FileNotFoundError:
+        return False
+    return True
 
 
 @gin.configurable

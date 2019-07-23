@@ -28,7 +28,14 @@ from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.utils.common import run_under_record_context
 
 
+@unittest.skipIf(
+    os.environ.get('SKIP_LONG_TIME_COST_TESTS', False),
+    "It takes very long to run this test.")
 class MerlinAlgorithmTest(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def test_merlin_algorithm(self):
         batch_size = 100
         steps_per_episode = 15
@@ -42,7 +49,7 @@ class MerlinAlgorithmTest(unittest.TestCase):
             env,
             algorithm,
             train_interval=6,
-            debug_summaries=True,
+            debug_summaries=False,
             summarize_grads_and_vars=False)
 
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
@@ -72,9 +79,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-
-    run_under_record_context(
-        unittest.main,
-        summary_dir="~/tmp/debug",
-        summary_interval=1,
-        flush_millis=1000)
+    unittest.main()

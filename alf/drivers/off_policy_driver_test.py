@@ -134,6 +134,10 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
 
 
 class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     @parameterized.parameters((_create_sac_algorithm, True),
                               (_create_ddpg_algorithm, True),
                               (_create_ppo_algorithm, False))
