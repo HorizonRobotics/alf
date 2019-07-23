@@ -135,6 +135,8 @@ class Trainer(object):
 
     def train(self):
         """Perform training"""
+        assert None not in (self._env, self._algorithm,
+                            self._driver), "Trainer not initialized"
         self._restore_checkpoint()
         run_under_record_context(
             self._train,
@@ -157,7 +159,7 @@ class Trainer(object):
             time_step (ActionTimeStep): initial time_step
         Returns:
             policy_state (nested Tensor): final step policy state.
-            time_step (nested Tensor): named tuple with final observation, reward, etc.
+            time_step (ActionTimeStep): named tuple with final observation, reward, etc.
         """
         pass
 
