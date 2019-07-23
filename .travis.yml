@@ -1,0 +1,30 @@
+# CI job config file used by travis-ci see https://travis-ci.org/ for detail.
+# Jobs are build inside docker container that all dependencies are pre-installed.
+# here we use `horizonrobotics/alf:latest` which built by docker file `.ci-cd/Dockerfile.cpu`
+# and has been pushed to the public docker hub `https://hub.docker.com/`
+# see https://www.docker.com/ for detail about docker and how to build docker image.
+
+language: python
+sudo: required
+dist: trusty
+git:
+  quiet: true
+services:
+  - docker
+os:
+  - linux
+env:
+  - JOB=check_style
+  - JOB=test
+script:
+  - docker run
+    -v $PWD:/ALF
+    -w /ALF/
+    -e PYTHONPATH=/ALF/tf_agents:/ALF
+    -it horizonrobotics/alf:latest
+    /ALF/.ci-cd/build.sh ${JOB}
+
+notifications:
+  email:
+    on_success: change
+    on_failure: always

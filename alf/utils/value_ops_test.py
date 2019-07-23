@@ -13,6 +13,7 @@
 # limitations under the License.
 """Test various functions related to calculating values."""
 
+import unittest
 import tensorflow as tf
 
 from tf_agents.trajectories.time_step import TimeStep, StepType
@@ -364,4 +365,7 @@ class VTraceTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-    tf.test.main()
+    from alf.utils.common import set_per_process_memory_growth
+
+    set_per_process_memory_growth()
+    unittest.main()
