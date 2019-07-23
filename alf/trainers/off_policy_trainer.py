@@ -194,9 +194,16 @@ def train(root_dir,
                 mini_batch_length=mini_batch_length,
                 mini_batch_size=mini_batch_size)
 
-            logging.info('%s time=%.3f' % (iter, tf.timestamp() - t0))
-            tf.summary.scalar(
-                name='time/driver.train()', data=tf.timestamp() - t1)
+            def _extract_num_steps(experience):
+                batch_size, length = experience.observation.shape[:2]
+                return batch_size * length
+
+            T = tf.timestamp() - t0
+            logging.info('%s time=%.3f throughput=%.2f' %
+                         (iter, T, _extract_num_steps(experience) / T))
+            tf.summary.scalar(name='time/train', data=tf.timestamp() - t1)
+
+            tf.summary.scalar(name="time/wait", data=t1 - t0)
 
             if (iter + 1) % checkpoint_interval == 0:
                 checkpointer.save(global_step=global_step.numpy())
