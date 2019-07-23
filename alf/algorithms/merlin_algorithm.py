@@ -328,7 +328,8 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         value, _ = self._value_net(
             latent_vector, step_type=time_step.step_type, network_state=None)
 
-        info = ActorCriticInfo(value=value, icm_reward=(), icm_info=())
+        info = ActorCriticInfo(
+            value=value, icm_reward=(), icm_info=(), entropy_target_info=())
         return PolicyStep(
             action=action_distribution, state=rnn_state, info=info)
 

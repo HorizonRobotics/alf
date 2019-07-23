@@ -38,6 +38,7 @@ class OnPolicyDriverTest(unittest.TestCase):
             "ValueRnnNetwork.lstm_size=(4,)", "ActorCriticLoss.gamma=1.0"
         ])
         super().setUp()
+        tf.random.set_seed(0)
 
     def test_actor_critic_policy(self):
         batch_size = 100
