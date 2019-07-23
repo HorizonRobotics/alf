@@ -266,3 +266,124 @@ def generalized_advantage_estimation(rewards,
         advantages = tf.transpose(a=advantages)
 
     return tf.stop_gradient(advantages)
+
+
+def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
+                                       rewards,
+                                       values,
+                                       step_types,
+                                       discounts,
+                                       td_lambda=1,
+                                       time_major=True):
+    """Actual implementation after getting importance_ratios
+
+    Args:
+        importance_ratio_clipped (Tensor): shape is [T, B] vtrace IS weights.
+        rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
+        values (Tensor): shape is [T,B] (or [T]) representing values.
+        step_types (Tensor): shape is [T,B] (or [T]) representing step types.
+        discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
+        td_lambda (float): A scalar between [0, 1]. It's used for variance
+            reduction in temporal difference.
+        time_major (bool): Whether input tensors are time major.
+            False means input tensors have shape [B, T].
+
+    Returns:
+        Two tensors with shape [T-1, B] representing returns and advantages.
+        Shape is [B, T-1] when time_major is false.
+    """
+    if not time_major:
+        importance_ratio_clipped = tf.transpose(a=importance_ratio_clipped)
+        discounts = tf.transpose(a=discounts)
+        rewards = tf.transpose(a=rewards)
+        values = tf.transpose(a=values)
+        step_types = tf.transpose(a=step_types)
+
+    importance_ratio_clipped = importance_ratio_clipped[:-1]
+    rewards = rewards[1:]
+    next_values = values[1:]
+    final_value = values[-1]
+    values = values[:-1]
+    discounts = discounts[1:]
+    step_types = step_types[:-1]
+    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+
+    tds = (importance_ratio_clipped *
+           (rewards + discounts * next_values - values))
+    weighted_discounts = discounts * importance_ratio_clipped * td_lambda
+
+    def vs_target_minus_vs_fn(vs_target_minus_vs, params):
+        weighted_discount, td, is_last = params
+        return (1 - is_last) * (td + weighted_discount * vs_target_minus_vs)
+
+    vs_target_minus_vs = tf.scan(
+        fn=vs_target_minus_vs_fn,
+        elems=(weighted_discounts, tds, is_lasts),
+        initializer=tf.zeros_like(final_value),
+        reverse=True,
+        back_prop=False)
+
+    returns = (1 - is_lasts) * vs_target_minus_vs + values
+
+    next_vs_target_minus_vs = common.tensor_extend_zero(vs_target_minus_vs[1:])
+    next_vs_targets = next_vs_target_minus_vs + next_values
+
+    # Note, advantage of last step cannot be computed, and is assumed to be 0.
+    advantages = (1 - is_lasts) * importance_ratio_clipped * (
+        rewards + discounts * next_vs_targets - values)
+
+    returns = common.tensor_extend(returns, final_value)
+    advantages = common.tensor_extend_zero(advantages)
+
+    if not time_major:
+        returns = tf.transpose(a=returns)
+        advantages = tf.transpose(a=advantages)
+
+    return returns, advantages
+
+
+def calc_vtrace_returns_and_advantages(training_info,
+                                       value,
+                                       gamma,
+                                       action_spec,
+                                       td_lambda=1,
+                                       debug_summaries=False):
+    """Cacluate vtrace returns and advantages
+    arXiv:1802.01561v3: IMPALA: Scalable Distributed Deep-RL with Importance
+    Weighted Actor-Learner Architectures
+
+    Args:
+        training_info (TrainingInfo): training_info collected by
+            (On/Off)PolicyDriver. All tensors in training_info are time-major
+        value (tf.Tensor): the time-major tensor for the value at each time
+            step
+        gamma (float): reward future discount.
+        action_spec (BoundedTensorSpec): representing the actions.
+        td_lambda (float): A scalar between [0, 1]. It's used for variance
+            reduction in temporal difference.
+        debug_summaries (bool): whether to output debug summaries.
+
+    Returns:
+        returns (Tensor), advantages (Tensor)
+    """
+    scope = tf.name_scope('vtrace_loss')
+    unused_imp_ratio, importance_ratio_clipped = action_importance_ratio(
+        action_distribution=training_info.action_distribution,
+        collect_action_distribution=training_info.collect_action_distribution,
+        action=training_info.action,
+        action_spec=action_spec,
+        clipping_mode='capping',
+        scope=scope,
+        importance_ratio_clipping=0,
+        log_prob_clipping=0,
+        check_numerics=False,
+        debug_summaries=debug_summaries)
+
+    rewards = training_info.reward
+    values = value
+    discounts = training_info.discount * gamma
+    step_types = training_info.step_type
+
+    return vtrace_returns_and_advantages_impl(importance_ratio_clipped,
+                                              rewards, values, step_types,
+                                              discounts, td_lambda)

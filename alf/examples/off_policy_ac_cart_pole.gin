@@ -33,7 +33,7 @@ off_policy_trainer.train.unroll_length=9
 off_policy_trainer.train.mini_batch_size=8
 off_policy_trainer.train.num_iterations=3000
 off_policy_trainer.train.summary_interval=5
-off_policy_trainer.train.checkpoint_interval=100000
+off_policy_trainer.train.checkpoint_interval=100
 off_policy_trainer.train.num_updates_per_train_step=1
 TFUniformReplayBuffer.max_length=2048
 

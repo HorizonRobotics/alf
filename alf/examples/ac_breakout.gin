@@ -30,6 +30,7 @@ ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 ValueNetwork.activation_fn=@tf.nn.relu
 ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
+train_eval.algorithm_ctor=@create_ac_algorithm
 create_ac_algorithm.actor_fc_layers=(512,)
 create_ac_algorithm.value_fc_layers=(512,)
 
@@ -47,5 +48,5 @@ on_policy_trainer.train.use_tf_functions=True
 
 PolicyDriver.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
-train_eval.debug_summaries=1
+train_eval.debug_summaries=False
 train_eval.evaluate=False
