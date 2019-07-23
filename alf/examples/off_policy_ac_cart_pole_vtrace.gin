@@ -1,0 +1,22 @@
+include 'off_policy_ac_cart_pole.gin'
+create_environment.num_parallel_environments=8
+
+# algorithm config
+ActorCriticLoss.use_td_lambda_return=False
+ActorCriticLoss.td_lambda=1.0
+ActorCriticLoss.use_vtrace=True
+
+train_eval.debug_summaries=False
+
+# driver config
+N = 2
+AsyncOffPolicyDriver.num_envs = %N
+AsyncOffPolicyDriver.num_actor_queues = %N
+AsyncOffPolicyDriver.actor_queue_cap = 1
+AsyncOffPolicyDriver.learn_queue_cap = 1
+
+# training config
+off_policy_trainer.train.synchronous = False
+off_policy_trainer.train.num_iterations=3000
+off_policy_trainer.train.summarize_grads_and_vars=1
+off_policy_trainer.train.use_tf_functions=True
