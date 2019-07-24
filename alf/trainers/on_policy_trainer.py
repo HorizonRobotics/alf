@@ -31,6 +31,7 @@ class OnPolicyTrainer(Trainer):
             num_steps_per_iter (int): number of steps for one iteration. It is the
                 total steps from all individual environment in the batch
                 environment.
+            kwargs (dict): see `Trainer` for details.
         """
         super().__init__(root_dir, **kwargs)
         self._train_interval = train_interval

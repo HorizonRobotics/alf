@@ -46,7 +46,7 @@ class OffPolicyTrainer(Trainer):
                 sample in the minibatch
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
-
+            kwargs (dict): see `Trainer` for details.
         """
         super().__init__(root_dir, **kwargs)
         self._initial_collect_steps = initial_collect_steps
