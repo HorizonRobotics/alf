@@ -109,11 +109,9 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                               tf.reduce_mean(input_tensor=importance_ratio))
             tf.summary.histogram('importance_ratio_clipped',
                                  importance_ratio_clipped)
-            return tf.constant(True)
 
     if debug_summaries:
-        tf.cond(common.should_record_summaries(),
-                _summary, lambda: tf.constant(False))
+        common.run_if(common.should_record_summaries(), _summary)
 
     return importance_ratio, importance_ratio_clipped
 
