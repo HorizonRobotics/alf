@@ -3,7 +3,7 @@
 import alf.environments.wrappers
 CHANNEL_ORDER='channels_first'
 FrameStack.channel_order=%CHANNEL_ORDER
-create_environment.env_name='SocialBot-SimpleNavigationNoLanguageDiscreteAction-v0'
+create_environment.env_name='SocialBot-SimpleNavigationDiscreteAction-v0'
 create_environment.env_load_fn=@suite_socialbot.load
 suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
 create_environment.num_parallel_environments=30
@@ -31,8 +31,8 @@ ActorCriticAlgorithm.gradient_clipping=None
 
 
 # tf has a bug which can be triggered by the default data_format 'channels_last'
-# It has something to do with AddLayoutTransposeToOutputs() in 
-# tensorflow/core/grappler/optimizers/layout_optimizer.cc and 
+# It has something to do with AddLayoutTransposeToOutputs() in
+# tensorflow/core/grappler/optimizers/layout_optimizer.cc and
 # DeadnessAnalysisImpl::GetInputPreds() in tensorflow/compiler/jit/deadness_analysis.cc
 # The error is like the following:
 #   tensorflow.python.framework.errors_impl.InternalError: Could not find input
