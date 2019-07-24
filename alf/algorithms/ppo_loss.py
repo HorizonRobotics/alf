@@ -120,11 +120,16 @@ class PPOLoss(ActorCriticLoss):
         pg_objective_clipped = -importance_ratio_clipped * advantages
         policy_gradient_loss = tf.maximum(pg_objective, pg_objective_clipped)
 
-        if self._debug_summaries and common.should_record_summaries():
+        def _summary():
             with scope:
                 tf.summary.histogram('pg_objective', pg_objective)
                 tf.summary.histogram('pg_objective_clipped',
                                      pg_objective_clipped)
+            return tf.constant(True)
+
+        if self._debug_summaries:
+            tf.cond(common.should_record_summaries(),
+                    _summary, lambda: tf.constant(False))
 
         if self._check_numerics:
             policy_gradient_loss = tf.debugging.check_numerics(
