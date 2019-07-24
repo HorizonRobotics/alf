@@ -5,6 +5,6 @@ import alf.algorithms.ppo_loss
 import alf.algorithms.ddpg_algorithm
 import alf.trainers.off_policy_trainer
 
-train_eval.trainer_cls=@SyncOffPolicyTrainer
-Trainer.algorithm_ctor=@create_ppo_algorithm
+TrainerConfig.trainer_cls=@SyncOffPolicyTrainer
+TrainerConfig.algorithm_ctor=@create_ppo_algorithm
 ActorCriticAlgorithm.loss_class=@PPOLoss

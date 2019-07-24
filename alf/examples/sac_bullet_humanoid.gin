@@ -26,24 +26,25 @@ NormalProjectionNetwork.scale_distribution=True
 NormalProjectionNetwork.std_transform=@common.std_clip_transform
 
 # training config
-OffPolicyTrainer.initial_collect_steps=32000
-OffPolicyTrainer.mini_batch_length=4
-OffPolicyTrainer.unroll_length=1
-OffPolicyTrainer.mini_batch_size=4096
-OffPolicyTrainer.clear_replay_buffer=False
-OffPolicyTrainer.num_updates_per_train_step=1
-Trainer.algorithm_ctor=@create_sac_algorithm
-Trainer.num_iterations=10000000
-Trainer.checkpoint_interval=100000
-Trainer.evaluate=1
-Trainer.eval_interval=10000
-Trainer.debug_summaries=1
-Trainer.summarize_grads_and_vars=0
-Trainer.summary_interval=1000
-Trainer.summaries_flush_secs=10
+TrainerConfig.trainer_cls=@SyncOffPolicyTrainer
+TrainerConfig.initial_collect_steps=32000
+TrainerConfig.mini_batch_length=4
+TrainerConfig.unroll_length=1
+TrainerConfig.mini_batch_size=4096
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_updates_per_train_step=1
+TrainerConfig.algorithm_ctor=@create_sac_algorithm
+TrainerConfig.num_iterations=10000000
+TrainerConfig.checkpoint_interval=100000
+TrainerConfig.evaluate=1
+TrainerConfig.eval_interval=10000
+TrainerConfig.debug_summaries=1
+TrainerConfig.summarize_grads_and_vars=0
+TrainerConfig.summary_interval=1000
+TrainerConfig.summaries_flush_secs=10
 
 TFUniformReplayBuffer.max_length=2000000
 
-train_eval.trainer_cls=@SyncOffPolicyTrainer
+
 
 

@@ -19,7 +19,11 @@ from alf.trainers.policy_trainer import Trainer
 
 @gin.configurable
 class OnPolicyTrainer(Trainer):
-    def __init__(self, root_dir, train_interval=20, num_steps_per_iter=10000):
+    def __init__(self,
+                 root_dir,
+                 train_interval=20,
+                 num_steps_per_iter=10000,
+                 **kwargs):
         """Perform on-policy training using OnPolicyDriver
         Args:
             root_dir (str): directory for saving summary and checkpoints
@@ -28,7 +32,7 @@ class OnPolicyTrainer(Trainer):
                 total steps from all individual environment in the batch
                 environment.
         """
-        super().__init__(root_dir)
+        super().__init__(root_dir, **kwargs)
         self._train_interval = train_interval
         self._num_steps_per_iter = num_steps_per_iter
 

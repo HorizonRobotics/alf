@@ -29,14 +29,14 @@ create_ac_algorithm.value_fc_layers=(256, 128)
 create_ac_algorithm.learning_rate=1e-4
 
 # training config
-OffPolicyTrainer.mini_batch_length=1
-OffPolicyTrainer.num_steps_per_iter=16384
-OffPolicyTrainer.mini_batch_size=4096
-OffPolicyTrainer.num_updates_per_train_step=20
-Trainer.num_iterations=100000
-Trainer.eval_interval=1000
-Trainer.debug_summaries=True
-Trainer.summarize_grads_and_vars=True
-Trainer.summary_interval=100
+TrainerConfig.mini_batch_length=1
+TrainerConfig.num_steps_per_iter=16384
+TrainerConfig.mini_batch_size=4096
+TrainerConfig.num_updates_per_train_step=20
+TrainerConfig.num_iterations=100000
+TrainerConfig.eval_interval=1000
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.summary_interval=100
 
 TFUniformReplayBuffer.max_length=2048

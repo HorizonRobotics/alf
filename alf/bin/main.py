@@ -63,14 +63,15 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
-def train_eval(root_dir, trainer_cls):
+def train_eval(root_dir):
     """Train and evaluate algorithm
 
     Args:
         root_dir (str): directory for saving summary and checkpoints
-        trainer_cls (class): cls that used for creating a `Trainer` instance
     """
-    trainer = trainer_cls(root_dir=root_dir)
+
+    trainer_conf = policy_trainer.TrainerConfig()
+    trainer = trainer_conf.create_trainer(root_dir=root_dir)
     trainer.initialize()
     trainer.train()
 
@@ -101,8 +102,9 @@ def main(_):
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     if FLAGS.play:
         with gin.unlock_config():
-            gin.bind_parameter('__main__.play.algorithm_ctor',
-                               gin.query_parameter('Trainer.algorithm_ctor'))
+            gin.bind_parameter(
+                '__main__.play.algorithm_ctor',
+                gin.query_parameter('TrainerConfig.algorithm_ctor'))
         play(FLAGS.root_dir)
     else:
         train_eval(FLAGS.root_dir)

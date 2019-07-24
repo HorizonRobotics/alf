@@ -28,7 +28,8 @@ class OffPolicyTrainer(Trainer):
                  unroll_length=8,
                  mini_batch_length=20,
                  mini_batch_size=256,
-                 clear_replay_buffer=True):
+                 clear_replay_buffer=True,
+                 **kwargs):
         """Abstract base class for off policy trainer
 
         Args:
@@ -47,7 +48,7 @@ class OffPolicyTrainer(Trainer):
                 perform one update and then wiped clean
 
         """
-        super().__init__(root_dir)
+        super().__init__(root_dir, **kwargs)
         self._initial_collect_steps = initial_collect_steps
         self._num_updates_per_train_step = num_updates_per_train_step
         self._unroll_length = unroll_length

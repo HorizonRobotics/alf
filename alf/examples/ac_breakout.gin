@@ -42,16 +42,17 @@ common.reward_clipping.minmax=(-1, 1)
 create_ac_algorithm.learning_rate=1e-3
 
 # training config
-OnPolicyTrainer.train_interval=8
-Trainer.algorithm_ctor=@create_ac_algorithm
-Trainer.use_tf_functions=True
-Trainer.num_iterations=1000000
-Trainer.evaluate=False
-Trainer.debug_summaries=1
-Trainer.summarize_grads_and_vars=1
-Trainer.summary_interval=10
+TrainerConfig.trainer_cls=@OnPolicyTrainer
+TrainerConfig.train_interval=8
+TrainerConfig.algorithm_ctor=@create_ac_algorithm
+TrainerConfig.use_tf_functions=True
+TrainerConfig.num_iterations=1000000
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=1
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summary_interval=10
 
 PolicyDriver.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
 
-train_eval.trainer_cls=@OnPolicyTrainer
+

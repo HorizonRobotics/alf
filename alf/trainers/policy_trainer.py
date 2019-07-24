@@ -33,6 +33,30 @@ from alf.environments.utils import create_environment
 
 
 @gin.configurable
+class TrainerConfig(object):
+    def __init__(self, trainer_cls, **trainer_kwargs):
+        """
+
+        Args:
+            trainer_cls (class): cls that used for creating a `Trainer` instance,
+                and it should subclass of `Trainer`
+            trainer_kwargs (**kwargs): kwargs that used for construct trainer,
+                see `Trainer` and its subclasses for details
+        """
+        self._trainer_cls = trainer_cls
+        self._trainer_kwargs = trainer_kwargs
+
+    def create_trainer(self, root_dir):
+        """Create a policy trainer from config
+
+        Args:
+            root_dir (str):  directory for saving summary and checkpoints
+        Returns:
+            An instance of `PolicyTrainer`
+        """
+        return self._trainer_cls(root_dir=root_dir, **self._trainer_kwargs)
+
+
 class Trainer(object):
     def __init__(self,
                  root_dir,

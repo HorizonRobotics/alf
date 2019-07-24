@@ -44,14 +44,15 @@ SimpleNavigation.data_format=%CHANNEL_ORDER
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config
-OnPolicyTrainer.train_interval=100
-Trainer.algorithm_ctor=@create_ac_algorithm
-Trainer.num_iterations=1000000
-Trainer.use_tf_functions=1
-Trainer.debug_summaries=True
-Trainer.summarize_grads_and_vars=1
-Trainer.summary_interval=1
+TrainerConfig.trainer_cls=@OnPolicyTrainer
+TrainerConfig.train_interval=100
+TrainerConfig.algorithm_ctor=@create_ac_algorithm
+TrainerConfig.num_iterations=1000000
+TrainerConfig.use_tf_functions=1
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summary_interval=1
 
 PolicyDriver.observation_transformer=@image_scale_transformer
 
-train_eval.trainer_cls=@OnPolicyTrainer
+
