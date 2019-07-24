@@ -39,7 +39,7 @@ class TrainerConfig(object):
 
         Args:
             trainer_cls (class): cls that used for creating a `Trainer` instance,
-                and it should subclass of `Trainer`
+                and it should be subclass of `Trainer`
             trainer_kwargs (dict): kwargs that used for construct trainer,
                 see `Trainer` and its subclasses for details
         """
@@ -47,12 +47,12 @@ class TrainerConfig(object):
         self._trainer_kwargs = trainer_kwargs
 
     def create_trainer(self, root_dir):
-        """Create a policy trainer from config
+        """Create a trainer from config
 
         Args:
             root_dir (str):  directory for saving summary and checkpoints
         Returns:
-            An instance of `PolicyTrainer`
+            An instance of `Trainer`
         """
         return self._trainer_cls(root_dir=root_dir, **self._trainer_kwargs)
 
