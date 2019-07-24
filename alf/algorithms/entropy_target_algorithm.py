@@ -122,7 +122,7 @@ class EntropyTargetAlgorithm(Algorithm):
                     alpha_loss=alpha_loss, entropy_loss=entropy_loss)))
 
     def calc_loss(self, training_info):
-        if self._debug_summaries and common.should_record_summaries():
+        if self._debug_summaries:
             tf.summary.scalar("EntropyTargetAlgorithm/alpha",
                               tf.exp(self._log_alpha))
         return training_info
