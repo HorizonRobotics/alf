@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import tensorflow as tf
 import unittest
 import alf.algorithms.vae as vae
@@ -23,8 +24,12 @@ import matplotlib.pyplot as plt
 INTERACTIVE_MODE = False
 
 
+@unittest.skipIf(
+    os.environ.get('SKIP_LONG_TIME_COST_TESTS', False),
+    "It takes very long to run this test.")
 class VaeMnistTest(unittest.TestCase):
     def setUp(self):
+        tf.random.set_seed(0)
         # MNIST dataset
         (x_train, self.y_train), (x_test, self.y_test) = mnist.load_data()
         self.image_size = x_train.shape[1]
@@ -268,6 +273,10 @@ class VaePriorNetworkTest(VaeMnistTest):
 
 
 class SimpleVaeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def test_gaussian(self):
         """Test for one dimensional Gaussion."""
         input_shape = (1, )
@@ -304,7 +313,7 @@ class SimpleVaeTest(unittest.TestCase):
         y_test = model(x_test.astype(np.float32))
         reconstruction_loss = float(tf.reduce_mean(loss_f(x_test - y_test)))
         print("reconstruction_loss:", reconstruction_loss)
-        self.assertLess(reconstruction_loss, 0.01)
+        self.assertLess(reconstruction_loss, 0.05)
 
 
 if __name__ == '__main__':

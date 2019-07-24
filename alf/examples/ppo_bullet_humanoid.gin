@@ -8,7 +8,7 @@ include 'ppo.gin'
 # need to `pip install pybullet`
 import pybullet_envs
 create_environment.env_name="HumanoidBulletEnv-v0"
-create_environment.num_parallel_environments=32
+create_environment.num_parallel_environments=96
 
 # algorithm config
 ActorCriticAlgorithm.gradient_clipping=0.5
@@ -25,7 +25,6 @@ ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.init_means_output_factor=1e-10
 NormalProjectionNetwork.std_bias_initializer_value=0.0
 NormalProjectionNetwork.std_transform=@tf.math.exp
-NormalProjectionNetwork.scale_distribution=True
 ValueNetwork.activation_fn=@tf.nn.tanh
 
 create_ac_algorithm.actor_fc_layers=(32, 32, 32)
@@ -47,3 +46,4 @@ Trainer.summary_interval = 10
 TFUniformReplayBuffer.max_length = 2048
 
 train_eval.trainer_cls=@SyncOffPolicyTrainer
+

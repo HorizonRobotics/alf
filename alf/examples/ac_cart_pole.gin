@@ -24,9 +24,10 @@ create_ac_algorithm.learning_rate=0.001
 OnPolicyTrainer.train_interval=8
 Trainer.algorithm_ctor=@create_ac_algorithm
 Trainer.num_iterations=20
+Trainer.checkpoint_interval=3
 Trainer.evaluate=False
 Trainer.debug_summaries=True
-Trainer.summarize_grads_and_vars=True
+Trainer.summarize_grads_and_vars=False
 Trainer.summary_interval=5
 
 train_eval.trainer_cls=@OnPolicyTrainer

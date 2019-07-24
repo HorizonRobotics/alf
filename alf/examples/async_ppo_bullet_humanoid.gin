@@ -1,0 +1,55 @@
+include 'ppo.gin'
+
+
+
+# environment config
+
+# baseline ppo2 training command:
+# CUDA_VISIBLE_DEVICES=0 OPENAI_LOGDIR=/home/weixu/tmp/bullet_humanoid_baseline/ppo-0 OPENAI_LOG_FORMAT='stdout,tensorboard' python -m baselines.run --alg=ppo2 --env=HumanoidBulletEnv-v0 --network=mlp --num_timesteps=1e8 --ent_coef=0.01 --num_hidden=32 --num_layers=3 --value_network=copy
+
+# need to `pip install pybullet`
+import pybullet_envs
+create_environment.env_name="HumanoidBulletEnv-v0"
+create_environment.num_parallel_environments=96
+
+# algorithm config
+ActorCriticAlgorithm.gradient_clipping=0.5
+ActorCriticAlgorithm.clip_by_global_norm=True
+
+PPOLoss.entropy_regularization=1e-2
+PPOLoss.gamma=0.99
+PPOLoss.normalize_advantages=True
+PPOLoss.td_lambda=0.95
+PPOLoss.td_error_loss_fn=@element_wise_squared_loss
+
+ActorDistributionNetwork.activation_fn=@tf.nn.tanh
+ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.init_means_output_factor=1e-10
+NormalProjectionNetwork.std_bias_initializer_value=0.0
+NormalProjectionNetwork.std_transform=@tf.math.exp
+ValueNetwork.activation_fn=@tf.nn.tanh
+
+create_ac_algorithm.actor_fc_layers=(32, 32, 32)
+create_ac_algorithm.value_fc_layers=(32, 32, 32)
+create_ac_algorithm.learning_rate=3e-4
+
+# driver config
+N = 2
+AsyncOffPolicyDriver.num_envs = %N
+AsyncOffPolicyDriver.num_actor_queues = %N
+AsyncOffPolicyDriver.actor_queue_cap = 1
+AsyncOffPolicyDriver.learn_queue_cap = 1
+
+# training config
+OffPolicyTrainer.num_updates_per_train_step = 20
+OffPolicyTrainer.unroll_length = 512
+OffPolicyTrainer.mini_batch_length = 1
+OffPolicyTrainer.mini_batch_size = 4096
+Trainer.num_iterations = 100000
+Trainer.evaluate=True
+Trainer.eval_interval = 100
+Trainer.debug_summaries=True
+Trainer.summarize_grads_and_vars = True
+Trainer.summary_interval = 11 # a prime num for showing all actors
+
+train_eval.trainer_cls=@AsyncOffPolicyTrainer

@@ -249,6 +249,7 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
 
 _summary_enabled_var = None
 
+
 def _get_summary_enabled_var():
     global _summary_enabled_var
     if _summary_enabled_var is None:

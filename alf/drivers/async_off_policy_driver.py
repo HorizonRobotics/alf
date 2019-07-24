@@ -177,6 +177,28 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             th.start()
         logging.info("All threads started")
 
+    @tf.function
+    def get_training_exps(self):
+        """
+        Get training experiences from the learning queue
+
+        Returns:
+            exp (Experience):
+            env_id (tf.tensor): if not None, has the shape of (`num_envs`). Each
+                element of `env_ids` indicates which batched env the data come from.
+            steps (int): how many environment steps this batch of exps contain
+        """
+        batch = make_learning_batch(*self._tfq.learn_queue.dequeue_all())
+        # convert the batch to the experience format
+        exp = make_experience(batch.time_step, batch.policy_step,
+                              batch.act_dist_param)
+        # make the exp batch major for each environment
+        exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
+        num_envs, unroll_length, env_batch_size \
+            = batch.time_step.observation.shape[:3]
+        steps = num_envs * unroll_length * env_batch_size
+        return exp, batch.env_id, steps
+
     def run_async(self):
         """
         Each call of run_async() will wait for a learning batch to be filled in
@@ -188,23 +210,10 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         Output:
             steps (int): the total number of unrolled steps
         """
-        t0 = tf.timestamp()
-        batch = make_learning_batch(*self._tfq.learn_queue.dequeue_all())
-        with tf.control_dependencies(tf.nest.flatten(batch)):
-            tf.summary.scalar(
-                name="time/Learning queue", data=tf.timestamp() - t0)
-        # convert the batch to the experience format
-        exp = make_experience(batch.time_step, batch.policy_step,
-                              batch.act_dist_param)
-        # make the exp batch major for each environment
-        exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
-
+        exp, env_id, steps = self.get_training_exps()
         for ob in self._exp_observers:
-            ob(exp, batch.env_id)
-
-        num_envs, unroll_length, env_batch_size \
-            = batch.time_step.observation.shape[:3]
-        return num_envs * unroll_length * env_batch_size
+            ob(exp, env_id)
+        return steps
 
     def _run(self, *args, **kwargs):
         raise RuntimeError(

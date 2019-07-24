@@ -25,6 +25,10 @@ import alf.utils.dist_utils as dist_utils
 
 
 class EstimatedEntropyTest(parameterized.TestCase, unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        tf.random.set_seed(0)
+
     def assertArrayAlmostEqual(self, x, y, eps):
         self.assertLess(tf.reduce_max(tf.abs(x - y)), eps)
 
@@ -53,15 +57,15 @@ class EstimatedEntropyTest(parameterized.TestCase, unittest.TestCase):
         logging.info("scale=%s" % scale)
         logging.info("analytic_entropy=%s" % analytic_entropy)
         logging.info("estimated_entropy=%s" % est_entropy)
-        self.assertArrayAlmostEqual(analytic_entropy, est_entropy, 2e-2)
+        self.assertArrayAlmostEqual(analytic_entropy, est_entropy, 5e-2)
 
         logging.info("analytic_entropy_grad=%s" % analytic_grad)
         logging.info("estimated_entropy_grad=%s" % est_grad)
-        self.assertArrayAlmostEqual(analytic_grad, est_grad, 1e-2)
+        self.assertArrayAlmostEqual(analytic_grad, est_grad, 5e-2)
         if not assume_reparametrization:
             est_grad_wrong = tape.gradient(est_entropy, scale)
             logging.info("estimated_entropy_grad_wrong=%s", est_grad_wrong)
-            self.assertLess(tf.reduce_max(tf.abs(est_grad_wrong)), 2e-3)
+            self.assertLess(tf.reduce_max(tf.abs(est_grad_wrong)), 5e-2)
 
 
 if __name__ == '__main__':
