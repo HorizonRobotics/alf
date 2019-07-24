@@ -91,7 +91,7 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
     else:
         raise Exception('Unsupported clipping mode: ' + clipping_mode)
 
-    if debug_summaries and common.should_record_summaries():
+    def _summary():
         with scope:
             if importance_ratio_clipping > 0.0:
                 clip_fraction = tf.reduce_mean(
@@ -109,6 +109,11 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                               tf.reduce_mean(input_tensor=importance_ratio))
             tf.summary.histogram('importance_ratio_clipped',
                                  importance_ratio_clipped)
+            return tf.constant(True)
+
+    if debug_summaries:
+        tf.cond(common.should_record_summaries(),
+                _summary, lambda: tf.constant(False))
 
     return importance_ratio, importance_ratio_clipped
 
