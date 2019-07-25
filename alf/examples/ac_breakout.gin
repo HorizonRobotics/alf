@@ -42,8 +42,8 @@ common.reward_clipping.minmax=(-1, 1)
 create_ac_algorithm.learning_rate=1e-3
 
 # training config
-TrainerConfig.trainer_cls=@OnPolicyTrainer
-TrainerConfig.train_interval=8
+TrainerConfig.trainer=@on_policy_trainer
+TrainerConfig.unroll_length=8
 TrainerConfig.algorithm_ctor=@create_ac_algorithm
 TrainerConfig.use_tf_functions=True
 TrainerConfig.num_iterations=1000000

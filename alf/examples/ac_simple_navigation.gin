@@ -44,8 +44,8 @@ SimpleNavigation.data_format=%CHANNEL_ORDER
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config
-TrainerConfig.trainer_cls=@OnPolicyTrainer
-TrainerConfig.train_interval=100
+TrainerConfig.trainer=@on_policy_trainer
+TrainerConfig.unroll_length=100
 TrainerConfig.algorithm_ctor=@create_ac_algorithm
 TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1

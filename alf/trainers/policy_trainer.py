@@ -34,35 +34,25 @@ from alf.environments.utils import create_environment
 
 @gin.configurable
 class TrainerConfig(object):
-    def __init__(self, trainer_cls, **trainer_kwargs):
-        """
+    """TrainerConfig
 
-        Args:
-            trainer_cls (class): cls that used for creating a `Trainer` instance,
-                and it should be subclass of `Trainer`
-            trainer_kwargs (dict): kwargs that used for construct trainer,
-                see `Trainer` and its subclasses for details
-        """
-        self._trainer_cls = trainer_cls
-        self._trainer_kwargs = trainer_kwargs
+    Note: This is a mixture collection configuration for all trainers,
+    not all parameter is operative and its not necessary to config it.
 
-    def create_trainer(self, root_dir):
-        """Create a trainer from config
+    1. `num_steps_per_iter` is only for on_policy_trainer.
 
-        Args:
-            root_dir (str):  directory for saving summary and checkpoints
-        Returns:
-            An instance of `Trainer`
-        """
-        return self._trainer_cls(root_dir=root_dir, **self._trainer_kwargs)
+    2. `initial_collect_steps`, `num_updates_per_train_step`, `mini_batch_length`,
+    `mini_batch_size`, `clear_replay_buffer` are used by sync_off_policy_trainer and
+    async_off_policy_trainer.
+    """
 
-
-class Trainer(object):
     def __init__(self,
                  root_dir,
+                 trainer,
                  algorithm_ctor=None,
                  random_seed=0,
                  num_iterations=1000,
+                 unroll_length=8,
                  use_tf_functions=True,
                  checkpoint_interval=1000,
                  evaluate=False,
@@ -72,15 +62,28 @@ class Trainer(object):
                  summaries_flush_secs=1,
                  summary_max_queue=10,
                  debug_summaries=False,
-                 summarize_grads_and_vars=False):
-        """Abstract base class for on-policy and off-policy trainer
+                 summarize_grads_and_vars=False,
+                 num_steps_per_iter=10000,
+                 initial_collect_steps=0,
+                 num_updates_per_train_step=4,
+                 mini_batch_length=20,
+                 mini_batch_size=256,
+                 clear_replay_buffer=True):
+        """Configuration for Trainers
 
         Args:
             root_dir (str): directory for saving summary and checkpoints
+            trainer (class): cls that used for creating a `Trainer` instance,
+                and it should be one of [`on_policy_trainer`, `sync_off_policy_trainer`,
+                `async_off_policy_trainer`]
             algorithm_ctor (Callable): callable that create an
                 `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
             random_seed (int): random seed
             num_iterations (int): number of update iterations
+            unroll_length (int):  number of time steps each environment proceeds per
+                iteration. The total number of time steps from all environments per
+                iteration can be computed as: `num_envs` * `env_batch_size`
+                * `unroll_length`.
             use_tf_functions (bool): whether to use tf.function
             checkpoint_interval (int): checkpoint every so many iterations
             evaluate (bool): A bool to evaluate when training
@@ -92,26 +95,87 @@ class Trainer(object):
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
+            num_steps_per_iter (int): number of steps for one iteration. It is the
+                total steps from all individual environment in the batch
+                environment.
+            initial_collect_steps (int): if positive, number of steps each single
+                environment steps before perform first update
+            num_updates_per_train_step (int): number of optimization steps for
+                one iteration
+            mini_batch_size (int): number of sequences for each minibatch
+            mini_batch_length (int): the length of the sequence for each
+                sample in the minibatch
+            clear_replay_buffer (bool): whether use all data in replay buffer to
+                perform one update and then wiped clean
         """
-        root_dir = os.path.expanduser(root_dir)
+
+        assert issubclass(trainer,
+                          Trainer), "trainer should be subclass of Trainer"
+
+        self._parameters = dict(
+            root_dir=root_dir,
+            algorithm_ctor=algorithm_ctor,
+            random_seed=random_seed,
+            num_iterations=num_iterations,
+            unroll_length=unroll_length,
+            use_tf_functions=use_tf_functions,
+            checkpoint_interval=checkpoint_interval,
+            evaluate=evaluate,
+            eval_interval=eval_interval,
+            num_eval_episodes=num_eval_episodes,
+            summary_interval=summary_interval,
+            summaries_flush_secs=summaries_flush_secs,
+            summary_max_queue=summary_max_queue,
+            debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            num_steps_per_iter=num_steps_per_iter,
+            initial_collect_steps=initial_collect_steps,
+            num_updates_per_train_step=num_updates_per_train_step,
+            mini_batch_length=mini_batch_length,
+            mini_batch_size=mini_batch_size,
+            clear_replay_buffer=clear_replay_buffer)
+
+        self._trainer = trainer
+
+    def create_trainer(self):
+        """Create a trainer from config
+
+        Returns:
+            An instance of `Trainer`
+        """
+        return self._trainer(self)
+
+    def __getattr__(self, param_name):
+        return self._parameters.get(param_name)
+
+
+class Trainer(object):
+    def __init__(self, config):
+        """Abstract base class for on-policy and off-policy trainer
+
+        Args:
+            config (TrainerConfig): configuration used to construct this trainer
+        """
+        root_dir = os.path.expanduser(config.root_dir)
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
 
         self._env = None
-        self._algorithm_ctor = algorithm_ctor
+        self._algorithm_ctor = config.algorithm_ctor
         self._algorithm = None
         self._driver = None
 
-        self._random_seed = random_seed
-        self._num_iterations = num_iterations
-        self._use_tf_functions = use_tf_functions
+        self._random_seed = config.random_seed
+        self._num_iterations = config.num_iterations
+        self._unroll_length = config.unroll_length
+        self._use_tf_functions = config.use_tf_functions
 
-        self._checkpoint_interval = checkpoint_interval
+        self._checkpoint_interval = config.checkpoint_interval
         self._checkpointer = None
 
-        self._evaluate = evaluate
-        self._eval_interval = eval_interval
-        self._num_eval_episodes = num_eval_episodes
+        self._evaluate = config.evaluate
+        self._eval_interval = config.eval_interval
+        self._num_eval_episodes = config.num_eval_episodes
         eval_metrics = None
         eval_summary_writer = None
         if self._evaluate:
@@ -122,16 +186,17 @@ class Trainer(object):
                     buffer_size=self._num_eval_episodes)
             ]
             eval_summary_writer = tf.summary.create_file_writer(
-                self._eval_dir, flush_millis=summaries_flush_secs * 1000)
+                self._eval_dir,
+                flush_millis=config.summaries_flush_secs * 1000)
         self._eval_env = None
         self._eval_summary_writer = eval_summary_writer
         self._eval_metrics = eval_metrics
 
-        self._summary_interval = summary_interval
-        self._summaries_flush_mills = summaries_flush_secs * 1000
-        self._summary_max_queue = summary_max_queue
-        self._debug_summaries = debug_summaries
-        self._summarize_grads_and_vars = summarize_grads_and_vars
+        self._summary_interval = config.summary_interval
+        self._summaries_flush_mills = config.summaries_flush_secs * 1000
+        self._summary_max_queue = config.summary_max_queue
+        self._debug_summaries = config.debug_summaries
+        self._summarize_grads_and_vars = config.summarize_grads_and_vars
 
     def initialize(self):
         """Initializes the Trainer."""
@@ -261,8 +326,8 @@ def play(root_dir,
     ```bash
     python -m alf.bin.main --play \
     --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
-    --gin_param='on_policy_trainer.play.num_episodes=1' \
-    --gin_param='on_policy_trainer.play.record_file="ppo_bullet_humanoid.mp4"'
+    --gin_param='policy_trainer.play.num_episodes=1' \
+    --gin_param='policy_trainer.play.record_file="ppo_bullet_humanoid.mp4"'
     ```
     Args:
         root_dir (str): same as the root_dir used for `train()`

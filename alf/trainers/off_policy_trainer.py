@@ -19,45 +19,26 @@ from alf.environments.utils import create_environment
 from alf.trainers.policy_trainer import Trainer
 
 
-@gin.configurable
 class OffPolicyTrainer(Trainer):
-    def __init__(self,
-                 root_dir,
-                 initial_collect_steps=0,
-                 num_updates_per_train_step=4,
-                 unroll_length=8,
-                 mini_batch_length=20,
-                 mini_batch_size=256,
-                 clear_replay_buffer=True,
-                 **kwargs):
+    def __init__(self, config):
         """Abstract base class for off policy trainer
 
         Args:
-            initial_collect_steps (int): if positive, number of steps each single
-                environment steps before perform first update
-            num_updates_per_train_step (int): number of optimization steps for
-                one iteration
-            unroll_length (int): number of time steps each environment proceeds per
-                iteration. The total number of time steps from all environments per
-                iteration can be computed as: `num_envs` * `env_batch_size`
-                * `unroll_length`.
-            mini_batch_size (int): number of sequences for each minibatch
-            mini_batch_length (int): the length of the sequence for each
-                sample in the minibatch
-            clear_replay_buffer (bool): whether use all data in replay buffer to
-                perform one update and then wiped clean
-            kwargs (dict): see `Trainer` for details.
+            config (TrainerConfig): configuration used to construct this trainer
         """
-        super().__init__(root_dir, **kwargs)
-        self._initial_collect_steps = initial_collect_steps
-        self._num_updates_per_train_step = num_updates_per_train_step
-        self._unroll_length = unroll_length
-        self._mini_batch_length = mini_batch_length
-        self._mini_batch_size = mini_batch_size
-        self._clear_replay_buffer = clear_replay_buffer
+        super().__init__(config)
+        self._initial_collect_steps = config.initial_collect_steps
+        self._num_updates_per_train_step = config.num_updates_per_train_step
+        self._mini_batch_length = config.mini_batch_length
+        self._mini_batch_size = config.mini_batch_size
+        self._clear_replay_buffer = config.clear_replay_buffer
 
     def get_exp(self):
-        """Get experience from replay buffer for training"""
+        """Get experience from replay buffer for training
+
+        Returns:
+            exp (Experience): each item has the shape [B, T ...] where B = batch size, T = steps
+        """
         replay_buffer = self._driver.exp_replayer
         if self._clear_replay_buffer:
             experience = replay_buffer.replay_all()
@@ -69,7 +50,7 @@ class OffPolicyTrainer(Trainer):
         return experience
 
 
-@gin.configurable
+@gin.configurable("sync_off_policy_trainer")
 class SyncOffPolicyTrainer(OffPolicyTrainer):
     """Perform off-policy training using SyncOffPolicyDriver"""
 
@@ -98,7 +79,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
         return time_step, policy_state
 
 
-@gin.configurable
+@gin.configurable("async_off_policy_trainer")
 class AsyncOffPolicyTrainer(OffPolicyTrainer):
     """Perform off-policy training using AsyncOffPolicyDriver"""
 

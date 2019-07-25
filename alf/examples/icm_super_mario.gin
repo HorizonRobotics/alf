@@ -49,7 +49,7 @@ suite_mario.load.data_format="channels_first"
 tf.keras.layers.Conv2D.data_format="channels_first"
 
 # training config
-TrainerConfig.train_interval=32
+TrainerConfig.unroll_length=32
 TrainerConfig.algorithm_ctor=@create_ac_algorithm
 TrainerConfig.num_iterations=10000000
 TrainerConfig.use_tf_functions=1
@@ -59,4 +59,4 @@ TrainerConfig.summary_interval=100
 
 PolicyDriver.observation_transformer=@image_scale_transformer
 
-TrainerConfig.trainer_cls=@OnPolicyTrainer
+TrainerConfig.trainer=@on_policy_trainer

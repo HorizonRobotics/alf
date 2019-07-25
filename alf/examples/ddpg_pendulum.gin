@@ -19,7 +19,7 @@ DdpgAlgorithm.target_update_period=5
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_huber_loss
 
 # training config
-TrainerConfig.trainer_cls=@SyncOffPolicyTrainer
+TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=1000
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.mini_batch_length=2

@@ -17,31 +17,21 @@ from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.trainers.policy_trainer import Trainer
 
 
-@gin.configurable
+@gin.configurable("on_policy_trainer")
 class OnPolicyTrainer(Trainer):
-    def __init__(self,
-                 root_dir,
-                 train_interval=20,
-                 num_steps_per_iter=10000,
-                 **kwargs):
+    def __init__(self, config):
         """Perform on-policy training using OnPolicyDriver
         Args:
-            root_dir (str): directory for saving summary and checkpoints
-            train_interval (int): update parameter every so many env.step().
-            num_steps_per_iter (int): number of steps for one iteration. It is the
-                total steps from all individual environment in the batch
-                environment.
-            kwargs (dict): see `Trainer` for details.
+            config (TrainerConfig): configuration used to construct this trainer
         """
-        super().__init__(root_dir, **kwargs)
-        self._train_interval = train_interval
-        self._num_steps_per_iter = num_steps_per_iter
+        super().__init__(config)
+        self._num_steps_per_iter = config.num_steps_per_iter
 
     def init_driver(self):
         return OnPolicyDriver(
             env=self._env,
             algorithm=self._algorithm,
-            train_interval=self._train_interval,
+            train_interval=self._unroll_length,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)
 

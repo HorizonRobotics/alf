@@ -70,8 +70,8 @@ def train_eval(root_dir):
         root_dir (str): directory for saving summary and checkpoints
     """
 
-    trainer_conf = policy_trainer.TrainerConfig()
-    trainer = trainer_conf.create_trainer(root_dir=root_dir)
+    trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
+    trainer = trainer_conf.create_trainer()
     trainer.initialize()
     trainer.train()
 

@@ -21,8 +21,8 @@ create_ac_algorithm.value_fc_layers=(100,)
 create_ac_algorithm.learning_rate=0.001
 
 # training config
-TrainerConfig.trainer_cls=@OnPolicyTrainer
-TrainerConfig.train_interval=8
+TrainerConfig.trainer=@on_policy_trainer
+TrainerConfig.unroll_length=8
 TrainerConfig.algorithm_ctor=@create_ac_algorithm
 TrainerConfig.num_iterations=20
 TrainerConfig.checkpoint_interval=3

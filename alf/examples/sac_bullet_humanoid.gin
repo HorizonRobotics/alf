@@ -26,7 +26,7 @@ NormalProjectionNetwork.scale_distribution=True
 NormalProjectionNetwork.std_transform=@common.std_clip_transform
 
 # training config
-TrainerConfig.trainer_cls=@SyncOffPolicyTrainer
+TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=32000
 TrainerConfig.mini_batch_length=4
 TrainerConfig.unroll_length=1
