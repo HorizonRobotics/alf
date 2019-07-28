@@ -31,7 +31,6 @@ create_ac_algorithm.learning_rate=1e-4
 # training config
 TrainerConfig.unroll_length=512
 TrainerConfig.mini_batch_length=1
-TrainerConfig.num_steps_per_iter=16384
 TrainerConfig.mini_batch_size=4096
 TrainerConfig.num_updates_per_train_step=20
 TrainerConfig.num_iterations=100000
