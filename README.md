@@ -43,7 +43,7 @@ tensorboard --log_dir=LOG_DIR
 
 After training, you can visualize the trained model using the following command:
 ```bash
-python -m alf.bin.main --play --gin_file=GIN_FILE --root_dir=LOG_DIR
+python -m alf.bin.main --play --root_dir=LOG_DIR
 ```
 
 ### A2C
