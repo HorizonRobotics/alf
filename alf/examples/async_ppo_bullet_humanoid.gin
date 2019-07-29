@@ -1,5 +1,7 @@
 include 'ppo.gin'
 
+
+
 # environment config
 
 # baseline ppo2 training command:
@@ -39,15 +41,16 @@ AsyncOffPolicyDriver.actor_queue_cap = 1
 AsyncOffPolicyDriver.learn_queue_cap = 1
 
 # training config
-off_policy_trainer.train.synchronous = False
-off_policy_trainer.train.num_iterations = 100000
-off_policy_trainer.train.summarize_grads_and_vars = False
-off_policy_trainer.train.num_updates_per_train_step = 20
-off_policy_trainer.train.unroll_length = 512
-off_policy_trainer.train.mini_batch_length = 1
-off_policy_trainer.train.eval_interval = 100
-off_policy_trainer.train.summary_interval = 11 # a prime num for showing all actors
-off_policy_trainer.train.mini_batch_size = 4096
+TrainerConfig.trainer=@async_off_policy_trainer
+TrainerConfig.num_updates_per_train_step = 20
+TrainerConfig.unroll_length = 512
+TrainerConfig.mini_batch_length = 1
+TrainerConfig.mini_batch_size = 4096
+TrainerConfig.num_iterations = 100000
+TrainerConfig.evaluate=True
+TrainerConfig.eval_interval = 100
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars = True
+TrainerConfig.summary_interval = 11 # a prime num for showing all actors
 
-train_eval.debug_summaries=False
-train_eval.evaluate=False
+
