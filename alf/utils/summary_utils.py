@@ -15,9 +15,7 @@
 
 from tensorboard.compat import tf2 as tf
 from tensorboard.plugins.histogram import metadata
-from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import summary_ops_v2
-from tensorflow.python.framework import constant_op
 
 DEFAULT_BUCKET_COUNT = 30
 
@@ -29,15 +27,9 @@ def _summary_wrapper(summary_func):
      """
 
     def wrapper(*args, **kwargs):
-        def do_nothing():
-            return constant_op.constant(False)
-
-        def record():
-            summary_func(*args, **kwargs)
-            return constant_op.constant(True)
-
-        return smart_cond.smart_cond(
-            summary_ops_v2._should_record_summaries_v2(), record, do_nothing)
+        from alf.utils.common import run_if
+        return run_if(summary_ops_v2._should_record_summaries_v2(), lambda:
+                      summary_func(*args, **kwargs))
 
     return wrapper
 
