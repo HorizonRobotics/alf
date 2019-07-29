@@ -1,3 +1,5 @@
+import alf.algorithms.actor_critic_algorithm
+import alf.trainers.on_policy_trainer
 
 # environment config
 import alf.environments.wrappers
@@ -10,7 +12,6 @@ create_environment.num_parallel_environments=30
 SimpleNavigation.resized_image_size=(84, 84)
 
 # algorithm config
-train_eval.algorithm_ctor=@create_ac_algorithm
 ActorCriticLoss.entropy_regularization=0.002
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
@@ -43,11 +44,15 @@ SimpleNavigation.data_format=%CHANNEL_ORDER
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config
-on_policy_trainer.train.num_iterations=1000000
-on_policy_trainer.train.summarize_grads_and_vars=1
-on_policy_trainer.train.summary_interval=1
-on_policy_trainer.train.train_interval=100
-on_policy_trainer.train.use_tf_functions=1
+TrainerConfig.trainer=@on_policy_trainer
+TrainerConfig.unroll_length=100
+TrainerConfig.algorithm_ctor=@create_ac_algorithm
+TrainerConfig.num_iterations=1000000
+TrainerConfig.use_tf_functions=1
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summary_interval=1
 
 PolicyDriver.observation_transformer=@image_scale_transformer
-train_eval.debug_summaries=True
+
+

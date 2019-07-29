@@ -1,10 +1,13 @@
 # Although this config uses off_policy_trainer, it is essentially same as
 # on-policy training because the collected experiences are used once (
-# off_policy_trainer.train.num_updates_per_train_step=1) for updating policy.
+# TrainerConfig.num_updates_per_train_step=1) for updating policy.
 # It is used to validate the correctness of off_policy_trainer.
 #
 # And in order to do correct off-policy AC, the loss need to includes importance
 # ratio, such as the V-trace in IMPALA (arXiv:1802.01561)
+
+import alf.algorithms.actor_critic_algorithm
+import alf.trainers.off_policy_trainer
 
 # environment config
 create_environment.env_name="CartPole-v0"
@@ -15,7 +18,7 @@ ActorCriticAlgorithm.reward_shaping_fn = @reward_scaling
 common.reward_scaling.scale = 0.01
 
 # algorithm config
-train_eval.algorithm_ctor=@create_ac_algorithm
+
 ActorCriticAlgorithm.gradient_clipping=10.0
 ActorCriticLoss.entropy_regularization=1e-4
 ActorCriticLoss.gamma=0.98
@@ -28,14 +31,18 @@ create_ac_algorithm.learning_rate=0.001
 create_ac_algorithm.off_policy=True
 
 # training config
-off_policy_trainer.train.mini_batch_length=9
-off_policy_trainer.train.unroll_length=9
-off_policy_trainer.train.mini_batch_size=8
-off_policy_trainer.train.num_iterations=3000
-off_policy_trainer.train.summary_interval=5
-off_policy_trainer.train.checkpoint_interval=100
-off_policy_trainer.train.num_updates_per_train_step=1
+TrainerConfig.trainer=@sync_off_policy_trainer
+TrainerConfig.mini_batch_length=9
+TrainerConfig.unroll_length=9
+TrainerConfig.mini_batch_size=8
+TrainerConfig.num_updates_per_train_step=1
+TrainerConfig.algorithm_ctor=@create_ac_algorithm
+TrainerConfig.num_iterations=3000
+TrainerConfig.checkpoint_interval=100000
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summary_interval=5
+
 TFUniformReplayBuffer.max_length=2048
 
-train_eval.debug_summaries=True
-train_eval.evaluate=False
+
