@@ -3,7 +3,7 @@
 import alf.environments.wrappers
 CHANNEL_ORDER='channels_first'
 FrameStack.channel_order=%CHANNEL_ORDER
-create_environment.env_name='SocialBot-SimpleNavigationNoLanguageDiscreteAction-v0'
+create_environment.env_name='SocialBot-SimpleNavigationDiscreteAction-v0'
 create_environment.env_load_fn=@suite_socialbot.load
 suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
 create_environment.num_parallel_environments=30
