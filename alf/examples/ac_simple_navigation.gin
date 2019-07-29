@@ -32,8 +32,8 @@ ActorCriticAlgorithm.gradient_clipping=None
 
 
 # tf has a bug which can be triggered by the default data_format 'channels_last'
-# It has something to do with AddLayoutTransposeToOutputs() in 
-# tensorflow/core/grappler/optimizers/layout_optimizer.cc and 
+# It has something to do with AddLayoutTransposeToOutputs() in
+# tensorflow/core/grappler/optimizers/layout_optimizer.cc and
 # DeadnessAnalysisImpl::GetInputPreds() in tensorflow/compiler/jit/deadness_analysis.cc
 # The error is like the following:
 #   tensorflow.python.framework.errors_impl.InternalError: Could not find input
