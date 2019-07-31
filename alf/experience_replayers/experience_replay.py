@@ -76,6 +76,13 @@ class ExperienceReplayer(object):
     def clear(self):
         """Clear all buffers"""
 
+    @abc.abstractmethod
+    def batch_size(self):
+        """
+        Return the buffer's batch_size, assuming all buffers having the same
+        batch_size
+        """
+
 
 @gin.configurable
 class OnetimeExperienceReplayer(ExperienceReplayer):
@@ -85,14 +92,20 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     only once.
 
     Example algorithms: IMPALA, PPO2
+
+    NOTE: this replayer can only be run in the eager mode, because
+    self._experience is updated by python assignment
     """
 
-    def __init__(self, experience_spec, batch_size):
+    def __init__(self, experience_spec, *args, **kwargs):
         self._experience = None
+        self._batch_size = None
 
     def observe(self, exp, env_ids):
         # flatten the shape (num_envs, env_batch_size)
         self._experience = tf.nest.map_structure(flatten_once, exp)
+        if self._batch_size is None:
+            self._batch_size = self._experience.step_type.shape[0]
 
     def replay(self, sample_batch_size, mini_batch_length):
         raise NotImplementedError()  # Only supports replaying all!
@@ -102,6 +115,11 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
 
     def clear(self):
         self._experience = None
+
+    @property
+    def batch_size(self):
+        assert self._batch_size, "No experience is observed yet!"
+        return self._batch_size
 
 
 @gin.configurable
@@ -138,3 +156,7 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
 
     def clear(self):
         self._buffer.clear()
+
+    @property
+    def batch_size(self):
+        return self._buffer._batch_size

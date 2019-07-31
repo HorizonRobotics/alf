@@ -176,11 +176,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             collect_action_distribution=self._action_dist_param_spec)
 
     @tf.function
-    def train(self,
-              experience: Experience,
-              num_updates=1,
-              mini_batch_size=None,
-              mini_batch_length=None):
+    def train(self, experience: Experience, num_updates, mini_batch_size,
+              mini_batch_length):
         """Train using `experience`.
 
         Args:
@@ -195,32 +192,24 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         experience = self._algorithm.preprocess_experience(experience)
 
         length = experience.step_type.shape[1]
-        if mini_batch_length is None:
-            mini_batch_length = length
-        else:
-            mini_batch_length = min(mini_batch_length, length)
+        assert length % mini_batch_length == 0, (
+            "length=%s mini_batch_length=%s" % (length, mini_batch_length))
 
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
                                  ), experience)
 
         batch_size = experience.step_type.shape[0]
-        if mini_batch_size is None:
-            mini_batch_size = batch_size
-        else:
-            mini_batch_size = min(mini_batch_size, batch_size)
-
-        assert length % mini_batch_length == 0
+        # The reason of this constraint is at L233
+        # TODO: remove this constraint.
+        assert batch_size % mini_batch_size == 0, (
+            "batch_size=%s mini_batch_size=%s" % (batch_size, mini_batch_size))
 
         def _make_time_major(nest):
             """Put the time dim to axis=0"""
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
-        # The reason of this constraint is at L244
-        # TODO: remove this constraint.
-        assert batch_size % mini_batch_size == 0, (
-            "batch_size=%s mini_batch_size=%s" % (batch_size, mini_batch_size))
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
                 indices = tf.random.shuffle(

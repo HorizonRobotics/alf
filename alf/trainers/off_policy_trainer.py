@@ -30,6 +30,8 @@ class OffPolicyTrainer(Trainer):
         self._initial_collect_steps = config.initial_collect_steps
         self._num_updates_per_train_step = config.num_updates_per_train_step
         self._mini_batch_length = config.mini_batch_length
+        if self._mini_batch_length is None:
+            self._mini_batch_length = self._unroll_length
         self._mini_batch_size = config.mini_batch_size
         self._clear_replay_buffer = config.clear_replay_buffer
 
@@ -40,6 +42,8 @@ class OffPolicyTrainer(Trainer):
             exp (Experience): each item has the shape [B, T ...] where B = batch size, T = steps
         """
         replay_buffer = self._driver.exp_replayer
+        if self._mini_batch_size is None:
+            self._mini_batch_size = replay_buffer.batch_size
         if self._clear_replay_buffer:
             experience = replay_buffer.replay_all()
             replay_buffer.clear()
@@ -76,7 +80,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
 
-        return time_step, policy_state
+        return time_step, policy_state, max_num_steps
 
 
 @gin.configurable("async_off_policy_trainer")
@@ -99,10 +103,10 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             while steps < self._initial_collect_steps:
                 steps += self._driver.run_async()
         else:
-            self._driver.run_async()
+            steps = self._driver.run_async()
         self._driver.train(
             self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
-        return time_step, policy_state
+        return time_step, policy_state, steps
