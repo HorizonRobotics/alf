@@ -5,9 +5,11 @@
 
 2. Install code style tools
 ```bash
-pip install pre-commit
-pip install cpplint
-pip install pydocstyle
+pip install pre-commit==1.17.0
+pip install cpplint==1.4.4
+pip install pydocstyle==4.0.0
+pip install pylint==2.3.1
+pip install yapf==0.28.0
 sudo apt install clang-format
 ```
 
