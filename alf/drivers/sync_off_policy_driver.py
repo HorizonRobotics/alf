@@ -51,7 +51,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
     def __init__(self,
                  env: TFEnvironment,
                  algorithm: OffPolicyAlgorithm,
-                 exp_replayer_class=SyncUniformExperienceReplayer,
+                 exp_replayer="uniform",
                  observers=[],
                  metrics=[],
                  debug_summaries=False,
@@ -62,10 +62,8 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         Args:
             env (TFEnvironment): A TFEnvoronmnet
             algorithm (OffPolicyAlgorithm): The algorithm for training
-            exp_replayer_class (ExperienceReplayer): a class that implements how
-                to storie and replay experiences. See `OnetimeExperienceRelayer`
-                for example. The replayed experiences are used for parameter
-                updating.
+            exp_replayer (str): a string that indicates which ExperienceReplayer
+                to use.
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
@@ -85,7 +83,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         super(SyncOffPolicyDriver, self).__init__(
             env=env,
             algorithm=algorithm,
-            exp_replayer_class=exp_replayer_class,
+            exp_replayer=exp_replayer,
             observers=observers,
             metrics=metrics,
             debug_summaries=debug_summaries,

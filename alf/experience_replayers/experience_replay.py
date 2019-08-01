@@ -97,7 +97,7 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     self._experience is updated by python assignment
     """
 
-    def __init__(self, experience_spec, *args, **kwargs):
+    def __init__(self):
         self._experience = None
         self._batch_size = None
 

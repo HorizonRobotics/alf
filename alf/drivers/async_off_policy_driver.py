@@ -68,7 +68,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  actor_queue_cap=1,
                  observers=[],
                  metrics=[],
-                 exp_replayer_class=OnetimeExperienceReplayer,
+                 exp_replayer="one_time",
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  train_step_counter=None):
@@ -98,10 +98,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optiotional list of metrics.
-            exp_replayer_class (ExperienceReplayer): a class that implements how
-                to storie and replay experiences. See `OnetimeExperienceRelayer`
-                for example. The replayed experiences are used for parameter
-                updating.
+            exp_replayer (str): a string that indicates which ExperienceReplayer
+                to use.
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
@@ -113,7 +111,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         super(AsyncOffPolicyDriver, self).__init__(
             env=env_f(),
             algorithm=algorithm,
-            exp_replayer_class=exp_replayer_class,
+            exp_replayer=exp_replayer,
             observers=observers,
             metrics=metrics,
             debug_summaries=debug_summaries,
