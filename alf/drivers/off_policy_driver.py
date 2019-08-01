@@ -176,8 +176,11 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             collect_action_distribution=self._action_dist_param_spec)
 
     @tf.function
-    def train(self, experience: Experience, num_updates, mini_batch_size,
-              mini_batch_length):
+    def train(self,
+              experience: Experience,
+              num_updates=1,
+              mini_batch_size=None,
+              mini_batch_length=None):
         """Train using `experience`.
 
         Args:
@@ -192,6 +195,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         experience = self._algorithm.preprocess_experience(experience)
 
         length = experience.step_type.shape[1]
+        mini_batch_length = (mini_batch_length or length)
         assert length % mini_batch_length == 0, (
             "length=%s mini_batch_length=%s" % (length, mini_batch_length))
 
@@ -200,6 +204,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                                  ), experience)
 
         batch_size = experience.step_type.shape[0]
+        mini_batch_size = (mini_batch_size or batch_size)
         # The reason of this constraint is at L233
         # TODO: remove this constraint.
         assert batch_size % mini_batch_size == 0, (
