@@ -55,5 +55,5 @@ TrainerConfig.summary_interval=10
 
 PolicyDriver.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
-train_eval.debug_summaries=False
-train_eval.evaluate=False
+
+
