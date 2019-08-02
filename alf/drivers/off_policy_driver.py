@@ -203,7 +203,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         length = experience.step_type.shape[1]
         mini_batch_length = (mini_batch_length or length)
         assert length % mini_batch_length == 0, (
-            "length=%s mini_batch_length=%s" % (length, mini_batch_length))
+            "length=%s not a multiple of mini_batch_length=%s" %
+            (length, mini_batch_length))
 
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
@@ -211,10 +212,11 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         batch_size = experience.step_type.shape[0]
         mini_batch_size = (mini_batch_size or batch_size)
-        # The reason of this constraint is at L233
+        # The reason of this constraint is tf.reshape at L233
         # TODO: remove this constraint.
         assert batch_size % mini_batch_size == 0, (
-            "batch_size=%s mini_batch_size=%s" % (batch_size, mini_batch_size))
+            "batch_size=%s not a multiple of mini_batch_size=%s" %
+            (batch_size, mini_batch_size))
 
         def _make_time_major(nest):
             """Put the time dim to axis=0"""
