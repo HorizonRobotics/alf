@@ -23,6 +23,8 @@ from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.environments.tf_environment import TFEnvironment
 from alf.algorithms.rl_algorithm import make_training_info
+from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
+from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
 
 from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
@@ -36,7 +38,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
     def __init__(self,
                  env: TFEnvironment,
                  algorithm: OffPolicyAlgorithm,
-                 exp_replayer_class,
+                 exp_replayer: str,
                  observers=[],
                  metrics=[],
                  debug_summaries=False,
@@ -47,9 +49,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         Args:
             env (TFEnvironment): A TFEnvoronmnet
             algorithm (OffPolicyAlgorithm): The algorithm for training
-            exp_replayer_class (ExperienceReplayer): a class that implements how to storie and replay
-                                experiences. See `OnetimeExperienceRelayer` for example. The replayed
-                                experiences are used for parameter updating.
+            exp_replayer (str): a string that indicates which ExperienceReplayer
+                to use. Either "one_time" or "uniform".
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
@@ -75,8 +76,13 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         self._prepare_specs(algorithm)
         self._trainable_variables = algorithm.trainable_variables
-        self._exp_replayer = exp_replayer_class(self._experience_spec,
-                                                self._env.batch_size)
+        if exp_replayer == "one_time":
+            self._exp_replayer = OnetimeExperienceReplayer()
+        elif exp_replayer == "uniform":
+            self._exp_replayer = SyncUniformExperienceReplayer(
+                self._experience_spec, self._env.batch_size)
+        else:
+            raise ValueError("invalid experience replayer name")
         self.add_experience_observer(self._exp_replayer.observe)
 
     @property
@@ -195,32 +201,28 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         experience = self._algorithm.preprocess_experience(experience)
 
         length = experience.step_type.shape[1]
-        if mini_batch_length is None:
-            mini_batch_length = length
-        else:
-            mini_batch_length = min(mini_batch_length, length)
+        mini_batch_length = (mini_batch_length or length)
+        assert length % mini_batch_length == 0, (
+            "length=%s not a multiple of mini_batch_length=%s" %
+            (length, mini_batch_length))
 
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
                                  ), experience)
 
         batch_size = experience.step_type.shape[0]
-        if mini_batch_size is None:
-            mini_batch_size = batch_size
-        else:
-            mini_batch_size = min(mini_batch_size, batch_size)
-
-        assert length % mini_batch_length == 0
+        mini_batch_size = (mini_batch_size or batch_size)
+        # The reason of this constraint is tf.reshape at L233
+        # TODO: remove this constraint.
+        assert batch_size % mini_batch_size == 0, (
+            "batch_size=%s not a multiple of mini_batch_size=%s" %
+            (batch_size, mini_batch_size))
 
         def _make_time_major(nest):
             """Put the time dim to axis=0"""
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
-        # The reason of this constraint is at L244
-        # TODO: remove this constraint.
-        assert batch_size % mini_batch_size == 0, (
-            "batch_size=%s mini_batch_size=%s" % (batch_size, mini_batch_size))
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
                 indices = tf.random.shuffle(

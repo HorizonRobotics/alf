@@ -66,8 +66,8 @@ class TrainerConfig(object):
                  num_steps_per_iter=10000,
                  initial_collect_steps=0,
                  num_updates_per_train_step=4,
-                 mini_batch_length=20,
-                 mini_batch_size=256,
+                 mini_batch_length=None,
+                 mini_batch_size=None,
                  clear_replay_buffer=True):
         """Configuration for Trainers
 
@@ -102,9 +102,10 @@ class TrainerConfig(object):
                 environment steps before perform first update
             num_updates_per_train_step (int): number of optimization steps for
                 one iteration
-            mini_batch_size (int): number of sequences for each minibatch
+            mini_batch_size (int): number of sequences for each minibatch. If None,
+                it's set to the replayer's `batch_size`.
             mini_batch_length (int): the length of the sequence for each
-                sample in the minibatch
+                sample in the minibatch. If None, it's set to `unroll_length`.
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
         """
@@ -249,6 +250,7 @@ class Trainer(object):
         Returns:
             policy_state (nested Tensor): final step policy state.
             time_step (ActionTimeStep): named tuple with final observation, reward, etc.
+            steps (int): how many steps are trained
         """
         pass
 
@@ -258,11 +260,13 @@ class Trainer(object):
         policy_state = self._driver.get_initial_policy_state()
         for iter_num in range(self._num_iterations):
             t0 = time.time()
-            time_step, policy_state = self.train_iter(
+            time_step, policy_state, steps = self.train_iter(
                 iter_num=iter_num,
                 policy_state=policy_state,
                 time_step=time_step)
-            logging.info('%s time=%.3f' % (iter_num, time.time() - t0))
+            logging.info(
+                '%s time=%.3f throughput=%0.2f' %
+                (iter_num, time.time() - t0, int(steps) / (time.time() - t0)))
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
