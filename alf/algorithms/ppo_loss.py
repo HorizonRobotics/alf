@@ -125,11 +125,9 @@ class PPOLoss(ActorCriticLoss):
                 tf.summary.histogram('pg_objective', pg_objective)
                 tf.summary.histogram('pg_objective_clipped',
                                      pg_objective_clipped)
-            return tf.constant(True)
 
         if self._debug_summaries:
-            tf.cond(common.should_record_summaries(),
-                    _summary, lambda: tf.constant(False))
+            common.run_if(common.should_record_summaries(), _summary)
 
         if self._check_numerics:
             policy_gradient_loss = tf.debugging.check_numerics(

@@ -118,11 +118,9 @@ class ActorCriticLoss(object):
                 tf.summary.scalar("advantages", tf.reduce_mean(advantages))
                 tf.summary.scalar("explained_variance_of_return_by_value",
                                   common.explained_variance(value, returns))
-                return tf.constant(True)
 
         if self._debug_summaries:
-            tf.cond(common.should_record_summaries(),
-                    _summary, lambda: tf.constant(False))
+            common.run_if(common.should_record_summaries(), _summary)
 
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages, axes=(0, 1))
