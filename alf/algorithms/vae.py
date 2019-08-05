@@ -22,14 +22,14 @@ from tf_agents.networks import network
 @gin.configurable
 class VariationalAutoEncoder(tf.keras.Model):
     """
-    VariationalAutoEncoder encodes data into diagonal multivariate gaussian, do sampling with
-    reparametrization trick, and return kl divergence between posterior and prior.
+    VariationalAutoEncoder encodes data into diagonal multivariate gaussian, performs sampling with
+    reparametrization trick, and returns kl divergence between posterior and prior.
 
     Mathematically:
 
     log p(x) >= E_z log P(x|z) - beta KL(q(z|x) || prior(z))
 
-    sampling_forward method return sampled z and KL, it is up to user of this class to use returned z to
+    sampling_forward method returns sampled z and KL, it is up to user of this class to use returned z to
     decode and compute reconstructive loss to combine with kl loss returned here to optimize the whole network.
 
     See vae_test.py for example usages to train vanilla vae, conditional vae and vae with prior network
