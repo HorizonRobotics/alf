@@ -22,6 +22,7 @@ ActorCriticLoss.use_td_lambda_return=True
 ActorCriticLoss.td_lambda=0.95
 ActorCriticLoss.td_loss_weight=0.5
 ActorCriticLoss.advantage_clip=None
+#ActorCriticLoss.use_vtrace=True
 
 ActorDistributionNetwork.activation_fn=@tf.nn.relu
 
@@ -33,7 +34,6 @@ ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 ValueNetwork.activation_fn=@tf.nn.relu
 ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
-train_eval.algorithm_ctor=@create_ac_algorithm
 create_ac_algorithm.actor_fc_layers=(512,)
 create_ac_algorithm.value_fc_layers=(512,)
 
