@@ -111,6 +111,47 @@ class FrameSkip(gym.Wrapper):
 
 
 @gin.configurable
+class FrameResize(gym.ObservationWrapper):
+    def __init__(self, env, width=84, height=84):
+        super().__init__(env)
+        self._width = width
+        self._height = height
+        obs_shape = env.observation_space.shape
+        self.observation_space = gym.spaces.Box(
+            low=0,
+            high=255,
+            shape=[width, height] + list(obs_shape[2:]),
+            dtype=np.uint8)
+
+    def observation(self, observation):
+        obs = cv2.resize(
+            observation, (self._width, self._height),
+            interpolation=cv2.INTER_AREA)
+        if len(obs.shape) != 3:
+            obs = obs[:, :, np.newaxis]
+        return obs
+
+
+@gin.configurable
+class FrameGrayScale(gym.ObservationWrapper):
+    """Gray scale image observation"""
+
+    def __init__(self, env):
+        super().__init__(env)
+        obs_shape = env.observation_space.shape
+        self.observation_space = gym.spaces.Box(
+            low=0, high=255, shape=list(obs_shape[:-1]) + [1], dtype=np.uint8)
+
+    def observation(self, obs):
+        obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
+        return np.expand_dims(obs, -1)
+
+    def __getattr__(self, name):
+        """Forward all other calls to the base environment."""
+        return getattr(self.env, name)
+
+
+@gin.configurable
 class DMAtariPreprocessing(gym.Wrapper):
     """
     Derived from tf_agents AtariPreprocessing. Three differences:
