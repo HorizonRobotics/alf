@@ -372,9 +372,13 @@ def calc_vtrace_returns_and_advantages(training_info,
         returns (Tensor), advantages (Tensor)
     """
     scope = tf.name_scope('vtrace_loss')
+    # allow vtrace to be used in on policy trainers
+    collect_action_distribution = training_info.collect_action_distribution
+    if not collect_action_distribution:
+        collect_action_distribution = training_info.action_distribution
     unused_imp_ratio, importance_ratio_clipped = action_importance_ratio(
         action_distribution=training_info.action_distribution,
-        collect_action_distribution=training_info.collect_action_distribution,
+        collect_action_distribution=collect_action_distribution,
         action=training_info.action,
         action_spec=action_spec,
         clipping_mode='capping',
