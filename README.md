@@ -38,7 +38,7 @@ the training results.
 
 During training, you can use tensorboard to show the progress of training:
 ```bash
-tensorboard --log_dir=LOG_DIR
+tensorboard --logdir=LOG_DIR
 ```
 
 After training, you can visualize the trained model using the following command:
