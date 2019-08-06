@@ -66,6 +66,11 @@ python -m alf.bin.main --play --root_dir=LOG_DIR
 
   <img src="alf/examples/async_ppo_bullet_humanoid.png" width = "300" height ="200" alt="Humanoid-training-curve"/> <img src="alf/examples/async_ppo_bullet_humanoid.gif" width = "300" height ="200" alt="Humanoid-video"/>
 
+### SAC
+* [Bipedal Walker](alf/examples/sac_bipedal_walker.gin). 
+  
+  <img src="alf/examples/sac_bipedal_walker.png" width = "300" height ="200" alt="bipedal-walker-training-curve"/> <img src="alf/examples/sac_bipedal_walker.gif" width = "300" height ="200" alt="bipedal-walker-video"/>
+
 ### ICM
 * [Super Mario](alf/examples/icm_super_mario_intrinsic_only.gin). Playing Super Mario only using intrinsic reward.
   Python package gym-retro>=0.7.0 is required for this experiment and also a suitable `SuperMarioBros-Nes` rom should be obtained and imported (roms are not included in gym-retro). See [this doc](https://retro.readthedocs.io/en/latest/getting_started.html#importing-roms) on how to import roms.
