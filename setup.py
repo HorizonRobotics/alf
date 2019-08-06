@@ -20,7 +20,7 @@ setup(
     install_requires=[
         'atari_py == 0.1.7',
         'fasteners',
-        'gym',
+        'gym == 0.10.11',
         'matplotlib',
         'numpy',
         'opencv-python >= 3.4.1.15',
