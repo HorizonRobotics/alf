@@ -119,7 +119,6 @@ class GridSearch(object):
         """Run trainings with all possible parameter combinations in configured space
         """
 
-        processes = []
         param_keys = self._conf.param_keys
         param_values = self._conf.param_values
         max_worker_num = self._conf.max_worker_num
@@ -127,13 +126,15 @@ class GridSearch(object):
         process_pool = multiprocessing.Pool(
             processes=max_worker_num, maxtasksperchild=1)
 
+        task_count = 0
         for values in itertools.product(*param_values):
             parameters = dict(zip(param_keys, values))
-            root_dir = "%s/%d" % (FLAGS.root_dir, len(processes))
+            root_dir = "%s/%d" % (FLAGS.root_dir, task_count)
             process_pool.apply_async(
                 func=self._worker,
                 args=[root_dir, parameters],
                 error_callback=lambda e: logging.error(e))
+            task_count += 1
 
         process_pool.close()
         process_pool.join()
