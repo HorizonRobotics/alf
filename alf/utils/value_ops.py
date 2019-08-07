@@ -296,6 +296,7 @@ def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
     Returns:
         Two tensors with shape [T-1, B] representing returns and advantages.
         Shape is [B, T-1] when time_major is false.
+        The advantages returned are importance-weighted.
     """
     if not time_major:
         importance_ratio_clipped = tf.transpose(a=importance_ratio_clipped)
@@ -329,15 +330,13 @@ def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
         back_prop=False)
 
     returns = (1 - is_lasts) * vs_target_minus_vs + values
+    returns = common.tensor_extend(returns, final_value)
 
-    next_vs_target_minus_vs = common.tensor_extend_zero(vs_target_minus_vs[1:])
-    next_vs_targets = next_vs_target_minus_vs + next_values
+    next_vs_targets = returns[1:]
 
     # Note, advantage of last step cannot be computed, and is assumed to be 0.
     advantages = (1 - is_lasts) * importance_ratio_clipped * (
         rewards + discounts * next_vs_targets - values)
-
-    returns = common.tensor_extend(returns, final_value)
     advantages = common.tensor_extend_zero(advantages)
 
     if not time_major:
@@ -370,6 +369,7 @@ def calc_vtrace_returns_and_advantages(training_info,
 
     Returns:
         returns (Tensor), advantages (Tensor)
+        The advantages returned are importance-weighted.
     """
     scope = tf.name_scope('vtrace_loss')
     # allow vtrace to be used in on policy trainers
@@ -393,6 +393,10 @@ def calc_vtrace_returns_and_advantages(training_info,
     discounts = training_info.discount * gamma
     step_types = training_info.step_type
 
-    return vtrace_returns_and_advantages_impl(importance_ratio_clipped,
-                                              rewards, values, step_types,
-                                              discounts, td_lambda)
+    return vtrace_returns_and_advantages_impl(
+        importance_ratio_clipped=importance_ratio_clipped,
+        rewards=rewards,
+        values=values,
+        step_types=step_types,
+        discounts=discounts,
+        td_lambda=td_lambda)
