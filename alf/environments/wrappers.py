@@ -117,6 +117,7 @@ class FrameResize(gym.ObservationWrapper):
         self._width = width
         self._height = height
         obs_shape = env.observation_space.shape
+        assert len(obs_shape) == 3, "observation shape should be (H,W,C)"
         self.observation_space = gym.spaces.Box(
             low=0,
             high=255,
@@ -139,16 +140,14 @@ class FrameGrayScale(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
         obs_shape = env.observation_space.shape
+        assert len(obs_shape) == 3 and obs_shape[-1] == 3, \
+            "observation shape should be (H, W, C) where C=3"
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=list(obs_shape[:-1]) + [1], dtype=np.uint8)
 
     def observation(self, obs):
         obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         return np.expand_dims(obs, -1)
-
-    def __getattr__(self, name):
-        """Forward all other calls to the base environment."""
-        return getattr(self.env, name)
 
 
 @gin.configurable

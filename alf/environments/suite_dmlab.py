@@ -46,6 +46,31 @@ def action_discretize(action_spec,
 
     TODO: action combinations
 
+    Mapping all valid action values to discrete action
+
+    original deepmind lab environment action_spec:
+
+    `[{'max': 512, 'min': -512, 'name': 'LOOK_LEFT_RIGHT_PIXELS_PER_FRAME'},
+    {'max': 512, 'min': -512, 'name': 'LOOK_DOWN_UP_PIXELS_PER_FRAME'},
+    {'max': 1, 'min': -1, 'name': 'STRAFE_LEFT_RIGHT'},
+    {'max': 1, 'min': -1, 'name': 'MOVE_BACK_FORWARD'},
+    {'max': 1, 'min': 0, 'name': 'FIRE'},
+    {'max': 1, 'min': 0, 'name': 'JUMP'},
+    {'max': 1, 'min': 0, 'name': 'CROUCH'}]`
+
+    and discretized actions:
+
+    0  -> [20,0,0,0,0,0,0] (look left 20 pixels),
+    1  -> [-20,0,0,0,0,0,0] (look right 20 pixels),
+    ...,
+    m  -> [0,0,0,-1,0,0,0] (move back),
+    m+1-> [0,0,0,1,0,0,0] (move forward) ,
+    ...,
+    n  -> [0,0,0,0,1,1,0] (jump and fire),
+    ...
+
+    see `SuiteDMLabTest.test_action_discretize` in `suite_dmlab_test.py` for examples
+
     Args:
         action_spec (list(dict)): action spec
         look_left_right_pixels_per_frame (iterable|str): look left or look right pixels
@@ -101,13 +126,13 @@ class DeepmindLabEnv(gym.Env):
                  action_repeat=4,
                  observation='RGB_INTERLEAVED',
                  config={},
-                 renderer='software'):
+                 renderer='hardware'):
         """Create an deepmind_lab env
 
         Args:
             scene (str): script for the deepmind_lab env. See available script:
                 `https://github.com/deepmind/lab/tree/master/game_scripts/levels`
-            action_repeat (int): the frequency at which the agent experiences the game
+            action_repeat (int): the interval at which the agent experiences the game
             observation (str):  observation format. See doc about the available observations:
                 `https://github.com/deepmind/lab/blob/master/docs/users/python_api.md`
             config (dict): config for env
@@ -154,6 +179,8 @@ class DeepmindLabEnv(gym.Env):
     def render(self, mode='rgb_array', close=False):
         if mode == 'rgb_array':
             return self._last_obs
+        else:
+            super().render(mode=mode)  # just raise an exception
 
 
 @gin.configurable
