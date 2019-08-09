@@ -18,12 +18,6 @@ SacAlgorithm.target_update_tau=0.01
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 OneStepTDLoss.gamma=0.98
 
-ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
-NormalProjectionNetwork.state_dependent_std=True
-NormalProjectionNetwork.mean_transform=None
-NormalProjectionNetwork.scale_distribution=True
-NormalProjectionNetwork.std_transform=@common.std_clip_transform
-
 # training config
 TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=1000
