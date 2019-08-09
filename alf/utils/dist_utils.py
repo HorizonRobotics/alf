@@ -13,11 +13,13 @@
 # limitations under the License.
 
 import gin
+import numpy as np
 
 import tensorflow_probability as tfp
 import tensorflow as tf
 
 from tf_agents.distributions.utils import SquashToSpecNormal
+from tf_agents.specs import tensor_spec
 
 
 @gin.configurable
@@ -129,3 +131,20 @@ def entropy_with_fallback(distributions, action_spec, seed=None):
     entropies = [e for e, eg in entropies]
 
     return tf.add_n(entropies), tf.add_n(entropies_for_gradient)
+
+
+def calc_default_target_entropy(spec):
+    """Calc default target entropy
+    Args:
+        spec (TensorSpec): action spec
+    Returns:
+    """
+    dims = np.product(spec.shape.as_list())
+    if tensor_spec.is_continuous(spec):
+        e = -1
+    else:
+        min_prob = 0.01
+        p = min_prob
+        q = 1 - p
+        e = -p * np.log(p) - q * np.log(q)
+    return e * dims

@@ -19,11 +19,11 @@ import numpy as np
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
-from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 
-from alf.utils import common, dist_utils
+from alf.utils import dist_utils
+from alf.utils.dist_utils import calc_default_target_entropy
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo",
                                    ["alpha_loss", "entropy_loss"])
@@ -73,21 +73,10 @@ class EntropyTargetAlgorithm(Algorithm):
         self._log_alpha = log_alpha
         self._action_spec = action_spec
 
-        def _calc_default_target_entropy(spec):
-            dims = np.product(spec.shape.as_list())
-            if tensor_spec.is_continuous(spec):
-                e = -1
-            else:
-                min_prob = 0.01
-                p = min_prob
-                q = 1 - p
-                e = -p * np.log(p) - q * np.log(q)
-            return e * dims
-
         if target_entropy is None:
             flat_action_spec = tf.nest.flatten(self._action_spec)
             target_entropy = np.sum(
-                list(map(_calc_default_target_entropy, flat_action_spec)))
+                list(map(calc_default_target_entropy, flat_action_spec)))
         self._target_entropy = target_entropy
 
     def train_step(self, distribution):

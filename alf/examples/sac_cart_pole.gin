@@ -1,0 +1,38 @@
+
+import alf.algorithms.sac_algorithm
+import alf.trainers.off_policy_trainer
+import alf.utils.common
+
+# environment config
+NUM_PARALLEL_ENVIRONMENTS=8
+create_environment.env_name="CartPole-v0"
+create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+
+# algorithm config
+create_sac_algorithm.actor_fc_layers=(100,)
+create_sac_algorithm.critic_fc_layers=(100,)
+create_sac_algorithm.actor_learning_rate=1e-3
+create_sac_algorithm.critic_learning_rate=1e-3
+create_sac_algorithm.alpha_learning_rate=1e-3
+SacAlgorithm.target_update_tau=0.01
+OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
+OneStepTDLoss.gamma=0.98
+
+# training config
+TrainerConfig.trainer=@sync_off_policy_trainer
+TrainerConfig.initial_collect_steps=1000
+TrainerConfig.mini_batch_length=2
+TrainerConfig.unroll_length=1
+TrainerConfig.mini_batch_size=64
+TrainerConfig.num_updates_per_train_step=1
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.algorithm_ctor=@create_sac_algorithm
+TrainerConfig.num_iterations=10000
+TrainerConfig.checkpoint_interval=10000
+TrainerConfig.evaluate=1
+TrainerConfig.eval_interval=100
+TrainerConfig.debug_summaries=1
+TrainerConfig.summarize_grads_and_vars=0
+TrainerConfig.summary_interval=50
+
+TFUniformReplayBuffer.max_length=100000
