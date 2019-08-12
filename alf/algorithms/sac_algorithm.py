@@ -240,7 +240,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 step_type=exp.step_type,
                 network_state=state.critic2)
 
-            action_probs = action_distribution._probs
+            action_probs = action_distribution.probs
             log_action_probs = tf.math.log(action_probs + 1e-8)
 
             target_q_value = tf.stop_gradient(tf.minimum(critic1, critic2))
