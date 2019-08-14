@@ -16,7 +16,9 @@
 from collections import namedtuple
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 import gin.tf
+
 from tf_agents.specs import tensor_spec
 from tf_agents.agents.ddpg.critic_network import CriticNetwork
 from tf_agents.agents.ddpg.critic_rnn_network import CriticRnnNetwork
@@ -240,7 +242,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 step_type=exp.step_type,
                 network_state=state.critic2)
 
-            action_probs = action_distribution._probs
+            assert isinstance(
+                action_distribution, tfp.distributions.Categorical), \
+                "Only `tfp.distributions.Categorical` was supported, received:" + str(type(action_distribution))
+
+            action_probs = action_distribution.probs
             log_action_probs = tf.math.log(action_probs + 1e-8)
 
             target_q_value = tf.stop_gradient(tf.minimum(critic1, critic2))
