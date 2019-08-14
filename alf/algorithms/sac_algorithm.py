@@ -61,6 +61,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     It's described in:
     Haarnoja et al "Soft Actor-Critic Algorithms and Applications" arXiv:1812.05905v2
+
+    There are 3 points different with `tf_agents.agents.sac.sac_agent`:
+
+    1. To reduce computation, here we sample actions only once for calculating actor,
+    critic, alpha loss while `tf_agents.agents.sac.sac_agent` sample actions for each loss,
+    and it has little influence on the training  procedure
+
+    2. we calculate losses for every sampled steps.
+    (s_t, a_t), (s_{t+1}, a_{t+1}) in sampled transition are used to calculate actor, critic and
+    alpha loss while `tf_agents.agents.sac.sac_agent` only use (s_t, a_t) and critic loss for s_{t+1}
+    is 0. You should handle this carefully, it equivalently applies a coefficient of 0.5 on the critic loss
+
+    3. we mask `StepType.LAST` steps when calculate losses but `tf_agents.agents.sac.sac_agent`
+    do not. And this may make different performance on same tasks
     """
 
     def __init__(self,
