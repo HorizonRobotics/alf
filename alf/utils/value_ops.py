@@ -13,6 +13,7 @@
 # limitations under the License.
 """Various functions related to calculating values."""
 
+import gin
 import tensorflow as tf
 
 from tf_agents.trajectories.time_step import StepType
@@ -21,6 +22,7 @@ from tf_agents.utils import common as tfa_common
 from alf.utils import common
 
 
+@gin.configurable
 def action_importance_ratio(action_distribution, collect_action_distribution,
                             action, action_spec, clipping_mode, scope,
                             importance_ratio_clipping, log_prob_clipping,
