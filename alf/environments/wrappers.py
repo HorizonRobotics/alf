@@ -175,7 +175,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
 
     (This wrapper does not handle framestacking. It can be paired with
-    FrameStack. See ac_atari.gin for an example.)
+    FrameStack. See atari.gin for an example.)
     """
 
     def __init__(self, env, frame_skip=4, noop_max=30, screen_size=84):
