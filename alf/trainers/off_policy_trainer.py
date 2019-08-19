@@ -89,7 +89,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
 
     def init_driver(self):
         driver = AsyncOffPolicyDriver(
-            env_f=create_environment,
+            env_or_env_fn=self._env,
             algorithm=self._algorithm,
             unroll_length=self._unroll_length,
             debug_summaries=self._debug_summaries,

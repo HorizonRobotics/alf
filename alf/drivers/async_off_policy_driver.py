@@ -23,9 +23,11 @@ from alf.algorithms.off_policy_algorithm import make_experience
 import gin.tf
 import tensorflow as tf
 
+from tf_agents.environments.tf_environment import TFEnvironment
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.drivers.threads import TFQueues, ActorThread, EnvThread, LogThread
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
+from alf.environments.utils import create_environment
 
 LearningBatch = namedtuple(
     "LearningBatch",
@@ -59,7 +61,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
     """
 
     def __init__(self,
-                 env_f: Callable,
+                 env_or_env_fn,
                  algorithm: OffPolicyAlgorithm,
                  num_envs=1,
                  num_actor_queues=1,
@@ -74,7 +76,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  train_step_counter=None):
         """
         Args:
-            env_f (Callable): a function with 0 args that creates an environment
+            env_or_env_fn (TFEnvironment|Callable):  A TFEnvironment or a function with 0 args that creates an environment
             algorithm (OffPolicyAlgorithm):
             num_envs (int): the number of environments to run asynchronously.
                 Note: each environment itself could be a tf_agent batched
@@ -108,8 +110,15 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
+        if isinstance(env_or_env_fn, TFEnvironment):
+            env_fn = create_environment
+            env = env_or_env_fn
+        else:
+            env_fn = env_or_env_fn
+            env = env_fn()
+
         super(AsyncOffPolicyDriver, self).__init__(
-            env=env_f(),
+            env=env,
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
@@ -140,11 +149,14 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 observation_transformer=self._observation_transformer)
             for i in range(num_actor_queues)
         ]
+        envs = [env]
+        for i in range(1, num_envs):
+            envs.append(env_fn())
         env_threads = [
             EnvThread(
                 name="env{}".format(i),
                 coord=self._coord,
-                env_f=env_f,
+                env=envs[i],
                 tf_queues=self._tfq,
                 unroll_length=unroll_length,
                 id=i,
