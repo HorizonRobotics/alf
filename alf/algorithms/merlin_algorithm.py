@@ -64,7 +64,7 @@ def make_lstm_cell(lstm_size, name="lstm_cell"):
     Args:
       lstm_size (int|list[int]): specifying the LSTM cell sizes to use.
       name (str): name of the cell.
-      
+
     Returns:
       cell (LSTMCell|StackedRNNCell): the stacked LSTM cell.
 
@@ -89,7 +89,7 @@ def _collect_variables(*modules):
 @gin.configurable
 class MemoryBasedPredictor(Algorithm):
     """The Memroy Based Predictor.
-    
+
     It's described in:
     Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
     """
@@ -113,7 +113,7 @@ class MemoryBasedPredictor(Algorithm):
             decoders (nested Algorithm): the nest should match observation_spec
             num_read_keys (int): number of keys for reading memory.
             lstm_size (list[int]): size of lstm layers for MBP and MBA
-            latent_dim (int): the dimension of the hidden represenation of VAE.
+            latent_dim (int): the dimension of the hidden representation of VAE.
             memroy_size (int): number of memory slots
             loss_weight (float): weight for the loss
             name (str): name of the algorithm.
@@ -170,7 +170,7 @@ class MemoryBasedPredictor(Algorithm):
             inputs (tuple): a tuple of (observation, prev_action)
             state (MBPState)
         Returns:
-            tuple of (latent_vector, kl_divengence, next_state)
+            tuple of (latent_vector, kl_divergence, next_state)
 
         """
         observation, prev_action = inputs
@@ -259,7 +259,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             memory (MemoryWithUsage): the memory module from MemoryBasedPredictor
             num_read_keys (int): number of keys for reading memory.
-            latent_dim (int): the dimension of the hidden represenation of VAE.
+            latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers
             loss (None|ActorCriticLoss): an object for calculating the loss
                 for reinforcement learning. If None, a default ActorCriticLoss
@@ -311,7 +311,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
     def train_step(self, time_step: ActionTimeStep, state):
         """Train one step.
-        
+
         Args:
             time_step: time_step.observation should be the latent vector
             state: state of the model
@@ -347,7 +347,7 @@ MerlinInfo = namedtuple("MerlinInfo", ["mbp_info", "mba_info"])
 @gin.configurable
 class MerlinAlgorithm(OnPolicyAlgorithm):
     """MERLIN model.
-    
+
     This implements the MERLIN model described in
     Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
 
@@ -378,7 +378,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
             decoders (nested Algorithm): the nest should match observation_spec
-            latent_dim (int): the dimension of the hidden represenation of VAE.
+            latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers for MBP and MBA
             memroy_size (int): number of memory slots
             rl_loss (None|ActorCriticLoss): an object for calculating the loss
@@ -457,7 +457,7 @@ def create_merlin_algorithm(env,
     Args:
         env (TFEnvironment): A TFEnvironment
         encoder_fc_layers (list[int]): list of fc layers parameters for encoder
-        latent_dim (int): the dimension of the hidden represenation of VAE.
+        latent_dim (int): the dimension of the hidden representation of VAE.
         lstm_size (list[int]): size of lstm layers for MBP and MBA
         memory_size (int): number of memory slots
         learning_rate (float): learning rate for training

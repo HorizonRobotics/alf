@@ -47,14 +47,14 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         """Create an OffPolicyDriver.
 
         Args:
-            env (TFEnvironment): A TFEnvoronmnet
+            env (TFEnvironment): A TFEnvironment
             algorithm (OffPolicyAlgorithm): The algorithm for training
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use. Either "one_time" or "uniform".
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            metrics (list[TFStepMetric]): An optiotional list of metrics.
+            metrics (list[TFStepMetric]): An optional list of metrics.
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.

@@ -156,7 +156,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     Derived from tf_agents AtariPreprocessing. Three differences:
     1. Random number of NOOPs after reset
     2. FIRE after a reset or a lost life. This is for the purpose of evaluation
-       with greedy prediction without getting stucked in the early training
+       with greedy prediction without getting stuck in the early training
        stage.
     3. A lost life doesn't result in a terminal state
 

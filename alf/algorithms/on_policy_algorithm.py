@@ -35,7 +35,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
     OnPolicyDriver). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
-    The following is the pseudo code to illustrate how OnPolicyAlgoirhtm is used
+    The following is the pseudo code to illustrate how OnPolicyAlgorithm is used
     by OnPolicyDriver:
 
     ```python
@@ -80,7 +80,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
             state (nested Tensor): should be consistent with train_state_spec
 
         Returns (PolicyStep):
-            action (nested tf.distribution): should be consistent with 
+            action (nested tf.distribution): should be consistent with
                 `action_distribution_spec`
             state (nested Tensor): should be consistent with `train_state_spec`
             info (nested Tensor): everything necessary for training. Note that

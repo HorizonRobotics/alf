@@ -338,7 +338,7 @@ def play(root_dir,
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
-            If None, the latest checkpoint unber train_dir will be used.
+            If None, the latest checkpoint under train_dir will be used.
         greedy_predict (bool): use greedy action for evaluation.
         random_seed (int): random seed
         num_episodes (int): number of episodes to play

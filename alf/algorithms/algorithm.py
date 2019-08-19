@@ -38,7 +38,7 @@ class Algorithm(tf.Module):
     TrainingPolicy). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
-    The following is the pseudo code to illustrate how Algoirhtm is for
+    The following is the pseudo code to illustrate how Algorithm is for
     training.
 
     ```python
@@ -140,9 +140,9 @@ class Algorithm(tf.Module):
                        tape: tf.GradientTape,
                        training_info,
                        valid_masks=None):
-        """Complte one iteration of training.
+        """Complete one iteration of training.
 
-        `train_complete` should calcuate gradients and update parameters using
+        `train_complete` should calculate gradients and update parameters using
         those gradients.
 
         Args:
@@ -173,7 +173,7 @@ class Algorithm(tf.Module):
         self._optimizer.apply_gradients(grads_and_vars)
         return loss_info, grads_and_vars
 
-    # Subclass may override calc_loss() to allow more sophiscated loss
+    # Subclass may override calc_loss() to allow more sophisticated loss
     def calc_loss(self, training_info):
         """Calculate the loss at each step for each sample.
 
