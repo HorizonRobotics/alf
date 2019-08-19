@@ -83,13 +83,13 @@ class OffPolicyAlgorithm(RLAlgorithm):
     @abc.abstractmethod
     def train_step(self, experience: Experience, state):
         """Perform one step of action and training computation.
-        
+
         Args:
             experience (Experience):
             state (nested Tensor): should be consistent with train_state_spec
 
         Returns (PolicyStep):
-            action (nested tf.distribution): should be consistent with 
+            action (nested tf.distribution): should be consistent with
                 `action_distribution_spec`
             state (nested Tensor): should be consistent with `train_state_spec`
             info (nested Tensor): everything necessary for training. Note that
@@ -103,7 +103,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
     def preprocess_experience(self, experience: Experience):
         """Preprocess experience.
 
-        The shapes of tensors in expererience are assumed to be (B, T, ...)
+        The shapes of tensors in experience are assumed to be (B, T, ...)
 
         Args:
             experience (Experience): original experience

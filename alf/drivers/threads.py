@@ -33,7 +33,7 @@ from alf.metrics.tf_metrics import AverageEpisodeLengthMetric
 class NestFIFOQueue(object):
     """
     The original tf.FIFOQueue doesn't support dequeue_all.
-    And it dones't support enqueue nested structures. So we write a wrapper.
+    And it doesn't support enqueue nested structures. So we write a wrapper.
     """
 
     def __init__(self, capacity, sample_element):

@@ -36,7 +36,7 @@ from alf.drivers import policy_driver
 class OnPolicyDriver(policy_driver.PolicyDriver):
     """Driver for on-policy training.
 
-    OnPolicyDriver runs the eviroment with the algorithm for on-policy training.
+    OnPolicyDriver runs the environment with the algorithm for on-policy training.
     Training consists of multiple iterations. Each iteration performs the
     following computation:
 
@@ -79,12 +79,12 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         """Create an OnPolicyDriver.
 
         Args:
-            env (TFEnvironment): A TFEnvoronmnet
+            env (TFEnvironment): A TFEnvironment
             algorithm (OnPolicyAlgorithm): The algorithm for training
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            metrics (list[TFStepMetric]): An optiotional list of metrics.
+            metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
@@ -149,7 +149,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         Args:
             max_num_steps (int): stops after so many environment steps. Is the
                 total number of steps from all the individual environment in
-                the bached enviroments including StepType.LAST steps.
+                the bached environments including StepType.LAST steps.
             time_step (ActionTimeStep): optional initial time_step. If None, it
                 will use self.get_initial_time_step(). Elements should be shape
                 [batch_size, ...].

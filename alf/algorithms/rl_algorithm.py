@@ -119,7 +119,7 @@ class RLAlgorithm(tf.Module):
                 optimizer(s) for training.
             get_trainable_variables_func (Callable | list[Callable]): each one
                 corresponds to one optimizer in `optimizer`. When called, it
-                should return the variables for the correponding optimizer. If
+                should return the variables for the corresponding optimizer. If
                 there is only one optimizer, this can be None and
                 `self.trainable_variables` will be used.
             gradient_clipping (float): If not None, serve as a positive threshold
@@ -204,7 +204,7 @@ class RLAlgorithm(tf.Module):
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         """Predict for one step of observation.
 
-        Generate greedy action that maximizes the action probablity).
+        Generate greedy action that maximizes the action probability).
 
         Args:
             time_step (ActionTimeStep):
@@ -255,7 +255,7 @@ class RLAlgorithm(tf.Module):
                        weight=1.0):
         """Complete one iteration of training.
 
-        `train_complete` should calcuate gradients and update parameters using
+        `train_complete` should calculate gradients and update parameters using
         those gradients.
 
         Args:
@@ -266,7 +266,7 @@ class RLAlgorithm(tf.Module):
                 training_info.info are the batched from each policy_step.info
                 returned by train_step()
             weight (float): weight for this batch. Loss will be multiplied with
-                this wegith before calculating gradient
+                this weight before calculating gradient
         Returns:
             a tuple of the following:
             loss_info (LossInfo): loss information

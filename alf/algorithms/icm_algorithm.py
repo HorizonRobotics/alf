@@ -45,10 +45,10 @@ def validate_specs(action_spec):
 class ICMAlgorithm(Algorithm):
     """Intrinsic Curiosity Module
 
-    This module generate the intrisic reward based on predition error of
+    This module generate the intrinsic reward based on predition error of
     observation.
 
-    See Pathak et al "Curiosity-driven Exploriation by Self-supervised Prediction"
+    See Pathak et al "Curiosity-driven Exploration by Self-supervised Prediction"
     """
 
     def __init__(self,
@@ -118,7 +118,7 @@ class ICMAlgorithm(Algorithm):
             inputs (tuple): observation and previous action
         Returns:
             TrainStep:
-                outputs: intrisic reward
+                outputs: intrinsic reward
                 state:
                 info:
         """

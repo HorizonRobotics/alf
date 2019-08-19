@@ -37,7 +37,7 @@ def create_environment(env_name='CartPole-v0',
     else:
         if env_load_fn == suite_socialbot.load:
             logging.info("suite_socialbot environment")
-            # No need to wrap with process since ParllelPyEnvironment will do it
+            # No need to wrap with process since ParallelPyEnvironment will do it
             env_load_fn = lambda env_name: suite_socialbot.load(
                 env_name, wrap_with_process=False)
         py_env = parallel_py_environment.ParallelPyEnvironment(

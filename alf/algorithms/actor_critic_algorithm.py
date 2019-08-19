@@ -153,7 +153,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        self._entropy_target_algortihm = entropy_target_algorithm
+        self._entropy_target_algorithm = entropy_target_algorithm
         self._actor_network = actor_network
         self._value_network = value_network
         self._encoding_network = encoding_network
@@ -205,8 +205,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         else:
             icm_state = ()
 
-        if self._entropy_target_algortihm:
-            et_step = self._entropy_target_algortihm.train_step(
+        if self._entropy_target_algorithm:
+            et_step = self._entropy_target_algorithm.train_step(
                 action_distribution)
             info = info._replace(entropy_target_info=et_step.info)
 
@@ -255,8 +255,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             loss += icm_loss.loss
             extra = extra._replace(icm=icm_loss.extra)
 
-        if self._entropy_target_algortihm:
-            et_loss = self._entropy_target_algortihm.calc_loss(
+        if self._entropy_target_algorithm:
+            et_loss = self._entropy_target_algorithm.calc_loss(
                 training_info.info.entropy_target_info)
             loss += et_loss.loss
             extra = extra._replace(entropy_target=et_loss.extra)

@@ -33,10 +33,10 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
     -log(p(x)) where x is an unbiased sample of p. However, the gradient of
     -log(p(x)) is not an unbiased estimator of the gradient of entropy. So we
     also calculate a value whose gradient is an unbiased estimator of the
-    gradient of entropy. See entropy_estimator.pdf for detail.
+    gradient of entropy. See entropy_estimation.ipynb for detail.
 
     Args:
-        dist (tfp.distribitions.Distribution): concerned distribution
+        dist (tfp.distributions.Distribution): concerned distribution
         seed (Any): Any Python object convertible to string, supplying the
             initial entropy.
         assume_reparametrization (bool): assume the sample from continuous
@@ -46,7 +46,7 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
             to be False to be safe.
         num_samples (int): number of random samples used for estimating entropy.
     Returns:
-        tuple of (entropy, entroy_for_gradient). entropy_for_gradient is for
+        tuple of (entropy, entropy_for_gradient). entropy_for_gradient is for
         calculating gradient
     """
     sample_shape = (num_samples, )
@@ -91,7 +91,7 @@ def entropy_with_fallback(distributions, action_spec, seed=None):
         seed (Any): Any Python object convertible to string, supplying the
             initial entropy.
     Returns:
-        tuple of (entroy, entropy_for_gradient). You should use entroy in
+        tuple of (entropy, entropy_for_gradient). You should use entropy in
         situations where its value is needed, and entropy_for_gradient where
         you need to calculate the gradient of entropy.
     """
