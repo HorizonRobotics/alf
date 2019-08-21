@@ -151,8 +151,10 @@ class TrainerConfig(object):
 
 
 class Trainer(object):
+    """Abstract base class for on-policy and off-policy trainer."""
+
     def __init__(self, config):
-        """Abstract base class for on-policy and off-policy trainer
+        """Create a Trainer instance.
 
         Args:
             config (TrainerConfig): configuration used to construct this trainer
@@ -224,7 +226,7 @@ class Trainer(object):
         pass
 
     def train(self):
-        """Perform training"""
+        """Perform training."""
         assert None not in (self._env, self._algorithm,
                             self._driver), "Trainer not initialized"
         self._restore_checkpoint()
@@ -264,9 +266,10 @@ class Trainer(object):
                 iter_num=iter_num,
                 policy_state=policy_state,
                 time_step=time_step)
-            logging.info(
-                '%s time=%.3f throughput=%0.2f' %
-                (iter_num, time.time() - t0, int(steps) / (time.time() - t0)))
+            t = time.time() - t0
+            logging.info('%s time=%.3f throughput=%0.2f' % (iter_num, t,
+                                                            int(steps) / t))
+            tf.summary.scalar("time/train_iter", t)
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
