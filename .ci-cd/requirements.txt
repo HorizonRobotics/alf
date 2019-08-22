@@ -1,5 +1,6 @@
-tfp-nightly==0.8.0.dev20190609
 tf-agents-nightly==0.2.0.dev20190415
+tensorflow==2.0.0rc1
+tfp-nightly==0.8.0.dev20190609
 numpy
 opencv-python>=3.4.1.15
 gym

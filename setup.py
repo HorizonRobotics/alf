@@ -24,9 +24,11 @@ setup(
         'matplotlib',
         'numpy',
         'opencv-python >= 3.4.1.15',
+        'pathos == 0.2.4',
+        'pillow',
         'psutil',
         'pybullet == 2.5.0',
-        'pathos == 0.2.4',
+        'tensorflow-gpu==2.0.0b1',
     ],  # And any other dependencies foo needs
     packages=find_packages(),
 )

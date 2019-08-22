@@ -168,7 +168,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             loop_vars=[time_step, policy_state],
             maximum_iterations=maximum_iterations,
             back_prop=False,
-            name="driver_loop")
+            name="")
         return time_step, policy_state
 
     def _train_loop_body(self, counter, time_step, policy_state,
