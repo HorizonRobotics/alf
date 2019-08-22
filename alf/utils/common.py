@@ -28,7 +28,7 @@ from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
 from tf_agents.trajectories.policy_step import PolicyStep
-from alf.utils import summary_utils, gin_utils
+from alf.utils import summary_utils, gin_utils, time_profile
 from alf.algorithms.rl_algorithm import make_action_time_step
 
 
@@ -604,6 +604,7 @@ def get_initial_time_step(env):
     return make_action_time_step(time_step, action)
 
 
+@time_profile.timer()
 def algorithm_step(algorithm,
                    ob_transformer: Callable,
                    time_step,

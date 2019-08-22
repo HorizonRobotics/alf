@@ -26,7 +26,7 @@ from tf_agents.metrics import tf_metrics
 from tf_agents.trajectories.trajectory import from_transition
 
 from alf.algorithms.off_policy_algorithm import make_experience
-from alf.utils import common, summary_utils
+from alf.utils import common, summary_utils, time_profile
 from alf.algorithms.rl_algorithm import make_action_time_step
 
 
@@ -212,6 +212,7 @@ class PolicyDriver(driver.Driver):
 
         return next_time_step, policy_step, action
 
+    @time_profile.timer(name='env_step')
     def _env_step(self, action):
         time_step = self._env.step(action)
         return make_action_time_step(time_step, action)
