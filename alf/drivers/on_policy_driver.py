@@ -27,6 +27,7 @@ from tf_agents.environments.tf_environment import TFEnvironment
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 
 import alf.utils.common as common
+import alf.utils.time_profile as time_profile
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import make_training_info
 from alf.drivers import policy_driver
@@ -196,6 +197,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         return [counter, next_time_step, policy_step.state, training_info_ta]
 
+    @time_profile.timer(record=True, interval=1, name='train_iter')
     def _iter(self, time_step, policy_state):
         """One training iteration."""
         counter = tf.zeros((), tf.int32)
