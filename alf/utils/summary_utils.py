@@ -13,7 +13,7 @@
 # limitations under the License.
 """Utility functions for generate summary."""
 
-from tensorboard.compat import tf2 as tf
+import tensorflow as tf
 from tensorboard.plugins.histogram import metadata
 from tensorflow.python.ops import summary_ops_v2
 
@@ -189,3 +189,35 @@ def add_gradients_summaries(grads_and_vars, step):
 
 
 tf.summary.histogram = _summary_wrapper(tf.summary.histogram)
+
+
+def summarize_action_dist(action_distributions,
+                          action_specs,
+                          name="action_dist"):
+    """Generate summary for action distributions.
+
+    Args:
+        action_distributions (nested tfp.distribuations.Distribution):
+            distributions to be summarized
+        action_specs (nested BoundedTensorSpec): specs for the actions
+        name (str): name of the summary
+    """
+    import tensorflow_probability as tfp
+    from tf_agents.distributions.utils import SquashToSpecNormal
+    action_specs = tf.nest.flatten(action_specs)
+    actions = tf.nest.flatten(action_distributions)
+
+    for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
+        if isinstance(dist, SquashToSpecNormal):
+            dist = dist.input_distribution
+        if not isinstance(dist, tfp.distributions.Normal):
+            # Only support Normal currently
+            continue
+        action_dim = action_spec.shape[-1]
+        log_scale = tf.math.log(dist.scale)
+        for a in range(action_dim):
+            tf.summary.histogram(
+                name="%s_log_scale/%s/%s" % (name, i, a),
+                data=log_scale[..., a])
+            tf.summary.histogram(
+                name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
