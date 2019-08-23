@@ -272,4 +272,4 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         self._train_step_counter.assign_add(1)
 
-        return next_time_step, next_state
+        return [next_time_step, next_state]
