@@ -53,6 +53,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
                  algorithm: OffPolicyAlgorithm,
                  exp_replayer="uniform",
                  observers=[],
+                 use_rollout_state=False,
                  metrics=[],
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
@@ -67,6 +68,8 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
+            use_rollout_state (bool): Include the RNN state for the experiences
+                used for off-policy training
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
@@ -85,6 +88,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
+            use_rollout_state=use_rollout_state,
             metrics=metrics,
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,

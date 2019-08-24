@@ -37,12 +37,13 @@ class PolicyDriver(driver.Driver):
                  algorithm,
                  observation_transformer: Callable = None,
                  observers=[],
+                 use_rollout_state=False,
                  metrics=[],
                  training=True,
                  greedy_predict=False,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
-                 summarize_action_distributions=True,
+                 summarize_action_distributions=False,
                  train_step_counter=None):
         """Create a PolicyDriver.
 
@@ -52,6 +53,8 @@ class PolicyDriver(driver.Driver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
+            use_rollout_state (bool): Include the RNN state for the experiences
+                used for off-policy training
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
@@ -75,6 +78,7 @@ class PolicyDriver(driver.Driver):
         ]
         self._metrics = standard_metrics + metrics
         self._exp_observers = []
+        self._use_rollout_state = use_rollout_state
 
         super(PolicyDriver, self).__init__(env, None,
                                            observers + self._metrics)
@@ -220,7 +224,8 @@ class PolicyDriver(driver.Driver):
             exp = make_experience(
                 time_step,
                 policy_step._replace(action=action),
-                action_distribution=action_distribution_param)
+                action_distribution=action_distribution_param,
+                state=policy_state if self._use_rollout_state else ())
             for observer in self._exp_observers:
                 observer(exp)
 

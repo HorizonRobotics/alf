@@ -208,7 +208,7 @@ class RLAlgorithm(tf.Module):
 
         Args:
             time_step (ActionTimeStep):
-            state (nested Tensor): should be consistent with train_state_spec
+            state (nested Tensor): should be consistent with predict_state_spec
             eps (float): a floating value in [0,1], representing the chance of
                 action sampling instead of taking argmax. This can help prevent
                 a dead loop in some deterministic environment like Breakout.

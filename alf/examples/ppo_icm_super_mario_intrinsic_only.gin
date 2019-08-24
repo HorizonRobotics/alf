@@ -1,7 +1,8 @@
-# icm on SuperMario
+include 'ppo.gin'
 
-import alf.algorithms.actor_critic_algorithm
-import alf.trainers.on_policy_trainer
+# icm on SuperMario using PPO algorithm
+
+CHANNEL_ORDER='channels_first'
 
 # environment config
 # gym-retro>=0.7.0 is required for this experiment and also
@@ -10,16 +11,15 @@ import alf.trainers.on_policy_trainer
 import alf.environments.suite_mario
 create_environment.env_load_fn=@suite_mario.load
 create_environment.env_name="SuperMarioBros-Nes"
-create_environment.num_parallel_environments=30
+create_environment.num_parallel_environments=32
 suite_mario.load.state="Level1-1"
 
 # algorithm config
-
 CONV_LAYER_PARAMS=[(32,8,4),(64,4,2),(64,3,1)]
 
 create_ac_algorithm.use_rnns=False
 create_ac_algorithm.learning_rate=3e-5
-create_ac_algorithm.use_icm=1
+create_ac_algorithm.use_icm=True
 create_ac_algorithm.encoding_conv_layers=%CONV_LAYER_PARAMS
 create_ac_algorithm.encoding_fc_layers=(256,)
 
@@ -38,24 +38,35 @@ ActorDistributionNetwork.activation_fn=@tf.nn.elu
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
 ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
-ActorCriticLoss.entropy_regularization=0.01
 ActorCriticAlgorithm.gradient_clipping=10.0
-ActorCriticLoss.use_gae=True
-ActorCriticLoss.use_td_lambda_return=True
+
+# use only intrinsic reward for training policy
+ActorCriticAlgorithm.extrinsic_reward_coef=0.0
+ActorCriticAlgorithm.intrinsic_reward_coef=1.0
+
+PPOLoss.entropy_regularization=1e-2
+PPOLoss.gamma=0.99
+PPOLoss.normalize_advantages=True
+PPOLoss.td_lambda=0.95
+PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 
 tf.keras.layers.Conv2D.padding="same"
-suite_mario.load.data_format="channels_first"
-tf.keras.layers.Conv2D.data_format="channels_first"
+suite_mario.load.data_format=%CHANNEL_ORDER
+tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config
-TrainerConfig.unroll_length=32
-TrainerConfig.algorithm_ctor=@create_ac_algorithm
-TrainerConfig.num_iterations=10000000
-TrainerConfig.use_tf_functions=1
+TrainerConfig.num_iterations = 100000
+TrainerConfig.num_updates_per_train_step = 4
+TrainerConfig.unroll_length = 32
+TrainerConfig.mini_batch_length = 1
+TrainerConfig.mini_batch_size = 128
+TrainerConfig.eval_interval = 100
+TrainerConfig.evaluate = True
+TrainerConfig.summarize_grads_and_vars = True
 TrainerConfig.debug_summaries=1
-TrainerConfig.summarize_grads_and_vars=1
-TrainerConfig.summary_interval=100
+TrainerConfig.summary_interval = 10
+TrainerConfig.use_rollout_state = True
+TrainerConfig.use_tf_functions = True
 
 PolicyDriver.observation_transformer=@image_scale_transformer
-
-TrainerConfig.trainer=@on_policy_trainer
+TFUniformReplayBuffer.max_length=32
