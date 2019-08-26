@@ -331,10 +331,10 @@ def play(root_dir,
 
     The following example record the play of a trained model to a mp4 video:
     ```bash
-    python -m alf.bin.main --play \
+    python -m alf.bin.play \
     --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
-    --gin_param='policy_trainer.play.num_episodes=1' \
-    --gin_param='policy_trainer.play.record_file="ppo_bullet_humanoid.mp4"'
+    --num_episodes=1 \
+    --record_file=ppo_bullet_humanoid.mp4
     ```
     Args:
         root_dir (str): same as the root_dir used for `train()`
