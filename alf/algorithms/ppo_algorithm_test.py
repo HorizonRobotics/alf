@@ -14,7 +14,6 @@
 
 import unittest
 
-from absl.testing import parameterized
 from absl import logging
 import gin.tf
 import tensorflow as tf
@@ -74,7 +73,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     return PPOAlgorithm(ac_algorithm)
 
 
-class PpoTest(parameterized.TestCase, unittest.TestCase):
+class PpoTest(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
         tf.random.set_seed(0)
