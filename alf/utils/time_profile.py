@@ -53,9 +53,14 @@ def timer(
             count = counter.assign_add(1, use_locking=True)
 
             def _summary():
-                with tf.summary.record_if(True):
-                    tf.summary.scalar(
-                        'time/%s' % func_name, data=time_cost, step=counter)
+                tf.print('Time/%s:' % func_name, time_cost, 'step:', counter)
+
+                # todo Investigate why tf.summary can not work here when decorated function
+                # was called inside a tf.while_loop
+
+                # with tf.summary.record_if(True):
+                #     tf.summary.scalar(
+                #         'time/%s' % func_name, data=time_cost, step=counter)
 
             common.run_if(tf.equal(tf.math.mod(count, interval), 0), _summary)
 
