@@ -116,6 +116,7 @@ class ActorCriticLoss(object):
                 tf.summary.scalar("values", tf.reduce_mean(value))
                 tf.summary.scalar("returns", tf.reduce_mean(returns))
                 tf.summary.scalar("advantages", tf.reduce_mean(advantages))
+                tf.summary.histogram("advantages", advantages)
                 tf.summary.scalar("explained_variance_of_return_by_value",
                                   common.explained_variance(value, returns))
 

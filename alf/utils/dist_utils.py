@@ -26,7 +26,8 @@ from tf_agents.specs import tensor_spec
 def estimated_entropy(dist: tfp.distributions.Distribution,
                       seed=None,
                       assume_reparametrization=False,
-                      num_samples=1):
+                      num_samples=1,
+                      check_numerics=False):
     """Estimate entropy by sampling.
 
     Use sampling to calculate entropy. The unbiased estimator for entropy is
@@ -53,10 +54,14 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
     single_action = dist.sample(sample_shape=sample_shape, seed=seed)
     if single_action.dtype.is_floating and assume_reparametrization:
         entropy = -dist.log_prob(single_action)
+        if check_numerics:
+            entropy = tf.debugging.check_numerics(entropy, 'entropy')
         entropy = tf.reduce_mean(entropy, axis=0)
         entropy_for_gradient = entropy
     else:
         entropy = -dist.log_prob(tf.stop_gradient(single_action))
+        if check_numerics:
+            entropy = tf.debugging.check_numerics(entropy, 'entropy')
         entropy_for_gradient = -0.5 * tf.math.square(entropy)
         entropy = tf.reduce_mean(entropy, axis=0)
         entropy_for_gradient = tf.reduce_mean(entropy_for_gradient, axis=0)
