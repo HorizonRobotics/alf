@@ -88,7 +88,8 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             std_transform = tf.nn.softplus
             std_bias_initializer_value = math.log(math.exp(c) - 1)
         else:
-            raise TypeError("Unsupported std_transform %s" % std_transform)
+            raise TypeError(
+                "Unsupported std_transform %s" % inverse_std_transform)
 
         super().__init__(
             sample_spec=sample_spec,
