@@ -34,7 +34,8 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
     min_std <= std <= max_std. The advantage of this parameterization is that
     its second order derivatives with respect to a and b are bounded even when
     the standard deviations become very small so that the optimization is
-    stabler.
+    more stable. See docs/stable_gradient_descent_for_gaussian_distribution.py
+    for detail.
     """
 
     def __init__(self,

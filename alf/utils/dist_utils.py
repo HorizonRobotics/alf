@@ -34,7 +34,8 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
     -log(p(x)) where x is an unbiased sample of p. However, the gradient of
     -log(p(x)) is not an unbiased estimator of the gradient of entropy. So we
     also calculate a value whose gradient is an unbiased estimator of the
-    gradient of entropy. See entropy_estimation.ipynb for detail.
+    gradient of entropy. See docs/subtleties_of_estimating_entropy.py for
+    detail.
 
     Args:
         dist (tfp.distributions.Distribution): concerned distribution
