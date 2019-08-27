@@ -2,8 +2,6 @@ include 'ppo.gin'
 
 # icm on SuperMario using PPO algorithm
 
-CHANNEL_ORDER='channels_first'
-
 # environment config
 # gym-retro>=0.7.0 is required for this experiment and also
 #  a suitable `SuperMarioBros-Nes` rom should be obtain and imported (roms are not included in gym-retro)
@@ -52,8 +50,6 @@ PPOLoss.td_lambda=0.95
 PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 
 tf.keras.layers.Conv2D.padding="same"
-suite_mario.load.data_format=%CHANNEL_ORDER
-tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # driver config
 N = 2
@@ -78,4 +74,3 @@ TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
 
 PolicyDriver.observation_transformer=@image_scale_transformer
-TFUniformReplayBuffer.max_length=32
