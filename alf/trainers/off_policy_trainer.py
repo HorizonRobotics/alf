@@ -65,6 +65,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
     def init_driver(self):
         return SyncOffPolicyDriver(
             env=self._env,
+            use_rollout_state=self._config.use_rollout_state,
             algorithm=self._algorithm,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)
@@ -95,6 +96,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         driver = AsyncOffPolicyDriver(
             env_f=create_environment,
             algorithm=self._algorithm,
+            use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)

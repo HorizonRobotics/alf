@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -30,6 +32,16 @@ from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 
 
+def warning_once(msg, *args):
+    """Generate warning message once
+
+    Args:
+        msg: str, the message to be logged.
+        *args: The args to be substitued into the msg.
+    """
+    logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
+
+
 class OffPolicyDriver(policy_driver.PolicyDriver):
     """
     A base class for SyncOffPolicyDriver and AsyncOffPolicyDriver
@@ -40,6 +52,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  algorithm: OffPolicyAlgorithm,
                  exp_replayer: str,
                  observers=[],
+                 use_rollout_state=False,
                  metrics=[],
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
@@ -67,6 +80,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             env=env,
             algorithm=algorithm,
             observers=observers,
+            use_rollout_state=use_rollout_state,
             metrics=metrics,
             training=False,  # training can only be done by calling self.train()!
             greedy_predict=False,  # always use OnPolicyDriver for play/eval!
@@ -121,6 +135,12 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             state=algorithm.predict_state_spec,
             info=info_spec)
 
+        if self._use_rollout_state:
+            # We need the states from the rollout to be same as the states used
+            # for training
+            tf.nest.assert_same_structure(algorithm.predict_state_spec,
+                                          algorithm.train_state_spec)
+
         def _to_distribution_spec(spec):
             if isinstance(spec, tf.TensorSpec):
                 return DistributionSpec(
@@ -143,12 +163,16 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             prev_action=self._action_spec,
             action=self._action_spec,
             info=info_spec,
-            action_distribution=self._action_dist_param_spec)
+            action_distribution=self._action_dist_param_spec,
+            state=algorithm.train_state_spec if self._use_rollout_state else
+            ())
 
         action_dist_params = common.zero_tensor_from_nested_spec(
             self._experience_spec.action_distribution, self._env.batch_size)
         action_dist = nested_distributions_from_specs(
             self._action_distribution_spec, action_dist_params)
+        initial_state = common.get_initial_policy_state(
+            self._env.batch_size, algorithm.train_state_spec)
         exp = Experience(
             step_type=time_step.step_type,
             reward=time_step.reward,
@@ -157,7 +181,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             prev_action=time_step.prev_action,
             action=time_step.prev_action,
             info=policy_step.info,
-            action_distribution=action_dist)
+            action_distribution=action_dist,
+            state=initial_state if self._use_rollout_state else ())
 
         processed_exp = algorithm.preprocess_experience(exp)
         self._processed_experience_spec = self._experience_spec._replace(
@@ -167,8 +192,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             algorithm,
             ob_transformer=self._observation_transformer,
             time_step=exp,
-            state=common.get_initial_policy_state(self._env.batch_size,
-                                                  algorithm.train_state_spec),
+            state=initial_state,
             training=True)
         info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
@@ -206,6 +230,17 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             "length=%s not a multiple of mini_batch_length=%s" %
             (length, mini_batch_length))
 
+        if len(tf.nest.flatten(self._algorithm.train_state_spec)
+               ) > 0 and not self._use_rollout_state:
+            if mini_batch_length == 1:
+                logging.fatal(
+                    "Should use TrainerConfig.use_rollout_state=True "
+                    "for off-policy training of RNN when minibatch_length==1.")
+            else:
+                warning_once(
+                    "Consider using TrainerConfig.use_rollout_state=True "
+                    "for off-policy training of RNN.")
+
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
                                  ), experience)
@@ -219,7 +254,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             (batch_size, mini_batch_size))
 
         def _make_time_major(nest):
-            """Put the time dim to axis=0"""
+            """Put the time dim to axis=0."""
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
@@ -260,6 +295,11 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         counter = tf.zeros((), tf.int32)
         initial_train_state = common.get_initial_policy_state(
             batch_size, self._algorithm.train_state_spec)
+        if self._use_rollout_state:
+            first_train_state = tf.nest.map_structure(
+                lambda state: state[0, ...], experience.state)
+        else:
+            first_train_state = initial_train_state
         num_steps = experience.step_type.shape[0]
 
         def create_ta(s):
@@ -323,7 +363,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             [_, _, training_info_ta] = tf.while_loop(
                 cond=lambda counter, *_: tf.less(counter, num_steps),
                 body=_train_loop_body,
-                loop_vars=[counter, initial_train_state, training_info_ta],
+                loop_vars=[counter, first_train_state, training_info_ta],
                 back_prop=True,
                 name="train_loop")
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),

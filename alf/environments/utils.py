@@ -15,9 +15,9 @@ import random
 
 import gin.tf
 
-from absl import logging
 from tf_agents.environments import suite_gym, parallel_py_environment, tf_py_environment
 
+from alf.environments import suite_mario
 from alf.environments import suite_socialbot
 
 
@@ -31,17 +31,21 @@ def create_environment(env_name='CartPole-v0',
         env_name (str): env name
         env_load_fn (Callable) : callable that create an environment
         num_parallel_environments (int): num of parallel environments
+    Returns:
+        TFPyEnvironment
     """
+    xarg = {}
+    if env_load_fn in (suite_socialbot.load, env_load_fn == suite_mario.load):
+        # No need to wrap with process if num_parallel_environments > 1,
+        # because ParallelPyEnvironment will do that.
+        xarg = dict(wrap_with_process=num_parallel_environments == 1)
+
     if num_parallel_environments == 1:
-        py_env = env_load_fn(env_name)
+        py_env = env_load_fn(env_name, **xarg)
     else:
-        if env_load_fn == suite_socialbot.load:
-            logging.info("suite_socialbot environment")
-            # No need to wrap with process since ParallelPyEnvironment will do it
-            env_load_fn = lambda env_name: suite_socialbot.load(
-                env_name, wrap_with_process=False)
         py_env = parallel_py_environment.ParallelPyEnvironment(
-            [lambda: env_load_fn(env_name)] * num_parallel_environments)
+            [lambda: env_load_fn(env_name, **xarg)
+             ] * num_parallel_environments)
     return tf_py_environment.TFPyEnvironment(py_env)
 
 
@@ -57,6 +61,8 @@ def load_with_random_max_episode_steps(env_name,
         env_load_fn (Callable) : callable that create an environment
         min_steps (int): represent min value of the random range
         max_steps (int): represent max value of the random range
+    Returns:
+        TFPyEnvironment
     """
     return env_load_fn(
         env_name, max_episode_steps=random.randint(min_steps, max_steps))

@@ -25,12 +25,12 @@ from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm
 
 Experience = namedtuple("Experience", [
     'step_type', 'reward', 'discount', 'observation', 'prev_action', 'action',
-    'info', 'action_distribution'
+    'info', 'action_distribution', 'state'
 ])
 
 
 def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep,
-                    action_distribution):
+                    action_distribution, state):
     """Make an instance of Experience from ActionTimeStep and PolicyStep."""
     return Experience(
         step_type=time_step.step_type,
@@ -40,7 +40,8 @@ def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep,
         prev_action=time_step.prev_action,
         action=policy_step.action,
         info=policy_step.info,
-        action_distribution=action_distribution)
+        action_distribution=action_distribution,
+        state=state)
 
 
 class OffPolicyAlgorithm(RLAlgorithm):

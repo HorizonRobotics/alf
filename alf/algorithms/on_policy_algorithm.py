@@ -141,3 +141,28 @@ class OffPolicyAdapter(OffPolicyAlgorithm):
             observation=exp.observation,
             prev_action=exp.prev_action)
         return self._algorithm.train_step(time_step, state)
+
+
+class TrainStepAdapter(OffPolicyAdapter):
+    """Adapter to use train_step for predict."""
+
+    def __init__(self, algorithm: OffPolicyAdapter):
+        """Create a TrainStepAdapter.
+
+        This algorithm will use train_step
+        Args:
+            algorithm (OffPolicyAdapter): The algorithm that needs to be
+                adapted.
+        """
+        assert type(algorithm) == OffPolicyAdapter
+        super().__init__(algorithm._algorithm)
+
+    @property
+    def predict_state_spec(self):
+        return self._algorithm.train_state_spec
+
+    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+        return OffPolicyAlgorithm.greedy_predict(self, time_step, state)
+
+    def predict(self, time_step: ActionTimeStep, state=None):
+        return self._algorithm.train_step(time_step, state)
