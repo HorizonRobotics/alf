@@ -121,7 +121,7 @@ class VaeTest(VaeMnistTest):
 
         last_val_loss = hist.history['val_loss'][-1]
         print("loss: ", last_val_loss)
-        self.assertTrue(38.0 < last_val_loss <= 39.0)
+        self.assertTrue(37.5 < last_val_loss <= 39.0)
         if INTERACTIVE_MODE:
             self.show_encoded_images(model)
             self.show_sampled_images(lambda eps: decoding_layers(eps))
