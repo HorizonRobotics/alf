@@ -1,0 +1,32 @@
+include 'ac_simple_navigation.gin'
+
+CHANNEL_ORDER='channels_last'
+FrameStack.channel_order=%CHANNEL_ORDER
+FrameStack.field_to_stack='image'  # due to observation including image and sentence
+
+create_environment.num_parallel_environments=30
+
+create_environment.env_name='SocialBot-GroceryGroundImageLanguage-v0'
+GroceryGround.resized_image_size=(84, 84)
+
+ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.init_means_output_factor=1e-10
+NormalProjectionNetwork.std_bias_initializer_value=0.0
+
+create_ac_algorithm.learning_rate=2e-4
+
+ActorCriticAlgorithm.gradient_clipping=0.5
+
+
+GroceryGround.image_data_format=%CHANNEL_ORDER
+tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
+
+suite_socialbot.load.max_episode_steps=100
+GroceryGroundGoalTask.max_steps=200
+
+GroceryGroundGoalTask.fail_distance_thresh=3
+GroceryGroundGoalTask.random_goal=False
+#GroceryGroundGoalTask.random_range=2
+GroceryGroundGoalTask.goal_name='ball'
+
+TrainerConfig.use_tf_functions=1

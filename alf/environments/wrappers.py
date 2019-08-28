@@ -27,10 +27,17 @@ from tf_agents.trajectories.time_step import StepType
 class FrameStack(gym.Wrapper):
     """Stack previous `stack_size` frames, applied to Gym env."""
 
-    def __init__(self, env, stack_size=4, channel_order='channels_last'):
+    def __init__(
+            self,
+            env,
+            stack_size=4,
+            channel_order='channels_last',
+            field_to_stack=None,
+    ):
         """Create a FrameStack object.
 
         Args:
+            env (gym.Space): gym environment.
             stack_size (int):
             channel_order (str): one of `channels_last` or `channels_first`.
                 The ordering of the dimensions in the images.
@@ -38,13 +45,25 @@ class FrameStack(gym.Wrapper):
                 `(height, width, channels)` (Atari's default) while
                 `channels_first` corresponds to images with shape
                 `(channels, height, width)`.
+            field_to_stack (str): optional name of the key to the
+                Dict env.observation_space.  If specified, only use the
+                space corresponding to the key in FrameStack.
         """
         super().__init__(env)
         self._frames = collections.deque(maxlen=stack_size)
         self._channel_order = channel_order
         self._stack_size = stack_size
+        self._field_to_stack = field_to_stack
 
-        space = self.env.observation_space
+        raw_space = self.env.observation_space
+        if field_to_stack:
+            assert hasattr(raw_space, 'spaces'), 'observation is not dict'
+            assert raw_space.spaces[field_to_stack], (
+                '{} not in observation.spaces'.format(field_to_stack))
+            space = raw_space.spaces[field_to_stack]
+        else:
+            space = raw_space
+
         assert channel_order in ['channels_last', 'channels_first']
 
         if channel_order == 'channels_last':
@@ -53,18 +72,40 @@ class FrameStack(gym.Wrapper):
             shape = [
                 stack_size * space.shape[0],
             ] + list(space.shape[1:])
-        self.observation_space = gym.spaces.Box(
+        box_space = gym.spaces.Box(
             low=0, high=255, shape=shape, dtype=np.uint8)
+        if field_to_stack:
+            self.observation_space.spaces[field_to_stack] = box_space
+        else:
+            self.observation_space = box_space
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
         return getattr(self.env, name)
 
     def _generate_observation(self):
-        if self._channel_order == 'channels_last':
-            return np.concatenate(self._frames, axis=-1)
+        if self._field_to_stack:
+            result = collections.OrderedDict()
+            for frame in self._frames:
+                for key, field in frame.items():
+                    if key not in result:
+                        result[key] = collections.deque(
+                            maxlen=self._stack_size)
+                    result[key].append(field)
+            for key, fields in result.items():
+                if key == self._field_to_stack:
+                    if self._channel_order == 'channels_last':
+                        result[key] = np.concatenate(result[key], axis=-1)
+                    else:
+                        result[key] = np.concatenate(result[key], axis=0)
+                else:
+                    result[key] = result[key][-1]  # take last frame
+            return result
         else:
-            return np.concatenate(self._frames, axis=0)
+            if self._channel_order == 'channels_last':
+                return np.concatenate(self._frames, axis=-1)
+            else:
+                return np.concatenate(self._frames, axis=0)
 
     def reset(self):
         observation = self.env.reset()
