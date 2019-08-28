@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -28,6 +30,16 @@ from alf.experience_replayers.experience_replay import SyncUniformExperienceRepl
 
 from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
+
+
+def warning_once(msg, *args):
+    """Generate warning message once
+
+    Args:
+        msg: str, the message to be logged.
+        *args: The args to be substitued into the msg.
+    """
+    logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
 
 
 class OffPolicyDriver(policy_driver.PolicyDriver):
@@ -125,7 +137,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         if self._use_rollout_state:
             # We need the states from the rollout to be same as the states used
-            # fro training
+            # for training
             tf.nest.assert_same_structure(algorithm.predict_state_spec,
                                           algorithm.train_state_spec)
 
@@ -217,6 +229,17 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         assert length % mini_batch_length == 0, (
             "length=%s not a multiple of mini_batch_length=%s" %
             (length, mini_batch_length))
+
+        if len(tf.nest.flatten(self._algorithm.train_state_spec)
+               ) > 0 and not self._use_rollout_state:
+            if mini_batch_length == 1:
+                logging.fatal(
+                    "Should use TrainerConfig.use_rollout_state=True "
+                    "for off-policy training of RNN when minibatch_length==1.")
+            else:
+                warning_once(
+                    "Consider using TrainerConfig.use_rollout_state=True "
+                    "for off-policy training of RNN.")
 
         experience = tf.nest.map_structure(
             lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])

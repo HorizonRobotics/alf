@@ -162,7 +162,7 @@ class TrainStepAdapter(OffPolicyAdapter):
         return self._algorithm.train_state_spec
 
     def greedy_predict(self, time_step: ActionTimeStep, state=None):
-        return super().greedy_predict(time_step, state)
+        return OffPolicyAlgorithm.greedy_predict(self, time_step, state)
 
     def predict(self, time_step: ActionTimeStep, state=None):
         return self._algorithm.train_step(time_step, state)
