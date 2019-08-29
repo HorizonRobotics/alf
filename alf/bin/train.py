@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Train using ActorCriticAlgorithm.
+r"""Train model.
 
 To run actor_critic on gym CartPole:
 ```bash
 cd ${PROJECT}/alf/examples;
-python -m alf.bin.main \
+python -m alf.bin.train \
   --root_dir=~/tmp/cart_pole \
   --gin_file=ac_cart_pole.gin \
   --gin_param='create_environment.num_parallel_environments=8' \
@@ -32,10 +32,9 @@ tensorboard --logdir=~/tmp/cart_pole
 You can visualize playing of the trained model by running:
 ```bash
 cd ${PROJECT}/alf/examples;
-python -m alf.bin.main \
+python -m alf.bin.play \
   --root_dir=~/tmp/cart_pole \
   --gin_file=ac_cart_pole.gin \
-  --play \
   --alsologtostderr
 ```
 
@@ -57,7 +56,6 @@ flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
-flags.DEFINE_bool('play', False, 'Visualize the playing')
 
 FLAGS = flags.FLAGS
 
@@ -76,38 +74,12 @@ def train_eval(root_dir):
     trainer.train()
 
 
-@gin.configurable
-def play(root_dir, algorithm_ctor):
-    """Play using the latest checkpoint under `train_dir`.
-
-    Args:
-        root_dir (str): directory where checkpoints stores
-        algorithm_ctor (Callable): callable that create an algorithm
-            parameter value is bind with `Trainer.algorithm_ctor`,
-            just config `Trainer.algorithm_ctor` when using with gin configuration
-    """
-    env = create_environment(num_parallel_environments=1)
-    algorithm = algorithm_ctor(env)
-    policy_trainer.play(root_dir, env, algorithm)
-
-
 def main(_):
-    logging.set_verbosity(logging.INFO)
-
     gin_file = common.get_gin_file()
-
-    if FLAGS.gin_file and not FLAGS.play:
+    if FLAGS.gin_file:
         common.copy_gin_configs(FLAGS.root_dir, gin_file)
-
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-    if FLAGS.play:
-        with gin.unlock_config():
-            gin.bind_parameter(
-                '__main__.play.algorithm_ctor',
-                gin.query_parameter('TrainerConfig.algorithm_ctor'))
-        play(FLAGS.root_dir)
-    else:
-        train_eval(FLAGS.root_dir)
+    train_eval(FLAGS.root_dir)
 
 
 if __name__ == '__main__':

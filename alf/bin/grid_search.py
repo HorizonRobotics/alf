@@ -23,7 +23,7 @@ import gin
 # `pathos.multiprocessing` provides a consistent interface with std lib `multiprocessing`
 # and it's more  flexible
 from pathos import multiprocessing
-from alf.bin.main import train_eval
+from alf.bin.train import train_eval
 from alf.utils import common
 
 flags.DEFINE_string('search_config', None,
