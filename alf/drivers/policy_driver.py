@@ -37,11 +37,13 @@ class PolicyDriver(driver.Driver):
                  algorithm,
                  observation_transformer: Callable = None,
                  observers=[],
+                 use_rollout_state=False,
                  metrics=[],
                  training=True,
                  greedy_predict=False,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  train_step_counter=None):
         """Create a PolicyDriver.
 
@@ -51,6 +53,8 @@ class PolicyDriver(driver.Driver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
+            use_rollout_state (bool): Include the RNN state for the experiences
+                used for off-policy training
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
@@ -58,6 +62,8 @@ class PolicyDriver(driver.Driver):
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -72,6 +78,7 @@ class PolicyDriver(driver.Driver):
         ]
         self._metrics = standard_metrics + metrics
         self._exp_observers = []
+        self._use_rollout_state = use_rollout_state
 
         super(PolicyDriver, self).__init__(env, None,
                                            observers + self._metrics)
@@ -81,6 +88,7 @@ class PolicyDriver(driver.Driver):
         self._greedy_predict = greedy_predict
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
+        self._summarize_action_distributions = summarize_action_distributions
         self._observation_transformer = observation_transformer
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
@@ -109,6 +117,16 @@ class PolicyDriver(driver.Driver):
             common.add_action_summaries(training_info.action,
                                         self.env.action_spec())
             common.add_loss_summaries(loss_info)
+
+        if self._summarize_action_distributions:
+            summary_utils.summarize_action_dist(
+                training_info.action_distribution, self.env.action_spec())
+            if training_info.collect_action_distribution:
+                summary_utils.summarize_action_dist(
+                    action_distributions=training_info.
+                    collect_action_distribution,
+                    action_specs=self.env.action_spec(),
+                    name="collect_action_dist")
 
         for metric in self.get_metrics():
             metric.tf_summaries(
@@ -162,7 +180,7 @@ class PolicyDriver(driver.Driver):
                                                self._policy_state_spec)
 
     def get_initial_train_state(self, batch_size):
-        """Always return the training state spec"""
+        """Always return the training state spec."""
         return common.zero_tensor_from_nested_spec(
             self._algorithm.train_state_spec, batch_size)
 
@@ -206,7 +224,8 @@ class PolicyDriver(driver.Driver):
             exp = make_experience(
                 time_step,
                 policy_step._replace(action=action),
-                action_distribution=action_distribution_param)
+                action_distribution=action_distribution_param,
+                state=policy_state if self._use_rollout_state else ())
             for observer in self._exp_observers:
                 observer(exp)
 
@@ -251,5 +270,5 @@ class PolicyDriver(driver.Driver):
         return self._run(max_num_steps, time_step, policy_state)
 
     def _run(self, max_num_steps, time_step, policy_state):
-        """Different drivers implement different runs"""
+        """Different drivers implement different runs."""
         raise NotImplementedError()

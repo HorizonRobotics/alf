@@ -35,7 +35,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
     OnPolicyDriver). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
-    The following is the pseudo code to illustrate how OnPolicyAlgoirhtm is used
+    The following is the pseudo code to illustrate how OnPolicyAlgorithm is used
     by OnPolicyDriver:
 
     ```python
@@ -80,7 +80,7 @@ class OnPolicyAlgorithm(RLAlgorithm):
             state (nested Tensor): should be consistent with train_state_spec
 
         Returns (PolicyStep):
-            action (nested tf.distribution): should be consistent with 
+            action (nested tf.distribution): should be consistent with
                 `action_distribution_spec`
             state (nested Tensor): should be consistent with `train_state_spec`
             info (nested Tensor): everything necessary for training. Note that
@@ -140,4 +140,29 @@ class OffPolicyAdapter(OffPolicyAlgorithm):
             discount=exp.discount,
             observation=exp.observation,
             prev_action=exp.prev_action)
+        return self._algorithm.train_step(time_step, state)
+
+
+class TrainStepAdapter(OffPolicyAdapter):
+    """Adapter to use train_step for predict."""
+
+    def __init__(self, algorithm: OffPolicyAdapter):
+        """Create a TrainStepAdapter.
+
+        This algorithm will use train_step
+        Args:
+            algorithm (OffPolicyAdapter): The algorithm that needs to be
+                adapted.
+        """
+        assert type(algorithm) == OffPolicyAdapter
+        super().__init__(algorithm._algorithm)
+
+    @property
+    def predict_state_spec(self):
+        return self._algorithm.train_state_spec
+
+    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+        return OffPolicyAlgorithm.greedy_predict(self, time_step, state)
+
+    def predict(self, time_step: ActionTimeStep, state=None):
         return self._algorithm.train_step(time_step, state)

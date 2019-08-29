@@ -25,7 +25,6 @@ from tf_agents.environments.tf_py_environment import TFPyEnvironment
 from alf.algorithms.merlin_algorithm import create_merlin_algorithm
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
-from alf.utils.common import run_under_record_context
 
 
 @unittest.skipIf(

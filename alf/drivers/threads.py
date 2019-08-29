@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections import namedtuple
 import threading
 from threading import Thread
 
@@ -33,7 +34,7 @@ from alf.metrics.tf_metrics import AverageEpisodeLengthMetric
 class NestFIFOQueue(object):
     """
     The original tf.FIFOQueue doesn't support dequeue_all.
-    And it dones't support enqueue nested structures. So we write a wrapper.
+    And it doesn't support enqueue nested structures. So we write a wrapper.
     """
 
     def __init__(self, capacity, sample_element):
@@ -68,11 +69,11 @@ class NestFIFOQueue(object):
         self._queue.enqueue(flat_vals)
 
     def dequeue(self):
-        """
-        Dequeue an element from the queue. The flat element will be packed into
-        the original nested structure.
+        """Dequeue an element from the queue.
 
-        Output:
+        The flat element will be packed into the original nested structure.
+
+        Returns:
             vals (nested structure):
         """
         flat_vals = self._queue.dequeue()
@@ -81,10 +82,9 @@ class NestFIFOQueue(object):
         return tf.nest.pack_sequence_as(self._structure, flat_vals)
 
     def dequeue_many(self, n):
-        """
-        Dequeue `n` elements from the queue.
+        """Dequeue `n` elements from the queue.
 
-        Output:
+        Returns:
             vals (nested structure): Each item of `vals` will have an additional
             dim at axis=0 because of stacking the `n` elements. See tf.queue for
             more information.
@@ -97,15 +97,15 @@ class NestFIFOQueue(object):
         return self.dequeue_many(self._capacity)
 
     def close(self, cancel_pending_enqueues=True):
-        """A wrapper for tf.queue.FIFOQueue.close()"""
+        """A wrapper for tf.queue.FIFOQueue.close()."""
         self._queue.close(cancel_pending_enqueues)
 
     def is_closed(self):
-        """A wrapper for tf.queue.FIFOQueue.is_closed()"""
+        """A wrapper for tf.queue.FIFOQueue.is_closed()."""
         return self._queue.is_closed()
 
     def size(self):
-        """A wrapper for tf.queue.FIFOQueue.size()"""
+        """A wrapper for tf.queue.FIFOQueue.size()."""
         return self._queue.size()
 
 
@@ -117,7 +117,15 @@ def repeat_shape_n(nested_spec, n):
         lambda t: tf.TensorSpec([n] + list(t.shape), t.dtype), nested_spec)
 
 
+LearningBatch = namedtuple("LearningBatch", [
+    "time_step", "state", "policy_step", "act_dist_param", "next_time_step",
+    "env_id"
+])
+
+
 class TFQueues(object):
+    """Structure for various queues for async training."""
+
     def __init__(self,
                  num_envs,
                  env_batch_size,
@@ -127,6 +135,7 @@ class TFQueues(object):
                  policy_step_spec,
                  act_dist_param_spec,
                  unroll_length,
+                 store_state,
                  num_actor_queues=1):
         """
         Create five kinds of queues:
@@ -165,6 +174,7 @@ class TFQueues(object):
                 used for creating queues
             unroll_length (int): how many time steps each environment proceeds
                 before training
+            store_state (bool): Include the RNN state for the experiences
             num_actor_queues (int): number of actor queues running in parallel
         """
         self._time_step_spec = repeat_shape_n(time_step_spec, env_batch_size)
@@ -172,16 +182,21 @@ class TFQueues(object):
                                                 env_batch_size)
         self._act_dist_param_spec = repeat_shape_n(act_dist_param_spec,
                                                    env_batch_size)
+        self._store_state = store_state
 
         self.learn_queue = NestFIFOQueue(
             capacity=learn_queue_cap,
-            sample_element=[
-                repeat_shape_n(self._time_step_spec, unroll_length),
-                repeat_shape_n(self._policy_step_spec, unroll_length),
-                repeat_shape_n(self._act_dist_param_spec, unroll_length),
-                repeat_shape_n(self._time_step_spec, unroll_length),
-                tf.ones((), dtype=tf.int32)
-            ])
+            sample_element=LearningBatch(
+                time_step=repeat_shape_n(self._time_step_spec, unroll_length),
+                state=repeat_shape_n(self._policy_step_spec.state,
+                                     unroll_length) if store_state else (),
+                policy_step=repeat_shape_n(self._policy_step_spec,
+                                           unroll_length),
+                act_dist_param=repeat_shape_n(self._act_dist_param_spec,
+                                              unroll_length),
+                next_time_step=repeat_shape_n(self._time_step_spec,
+                                              unroll_length),
+                env_id=tf.ones((), dtype=tf.int32)))
 
         self.log_queue = NestFIFOQueue(
             capacity=num_envs,
@@ -217,10 +232,13 @@ class TFQueues(object):
         self.env_unroll_queues = [
             NestFIFOQueue(
                 capacity=unroll_length,
-                sample_element=[
-                    self._time_step_spec, self._policy_step_spec,
-                    self._act_dist_param_spec, self._time_step_spec
-                ]) for i in range(num_envs)
+                sample_element=LearningBatch(
+                    time_step=self._time_step_spec,
+                    state=self._policy_step_spec.state if store_state else (),
+                    policy_step=self._policy_step_spec,
+                    act_dist_param=self._act_dist_param_spec,
+                    next_time_step=self._time_step_spec,
+                    env_id=())) for i in range(num_envs)
         ]
 
     def close_all(self):
@@ -394,7 +412,13 @@ class EnvThread(Thread):
         next_time_step = make_action_time_step(self._env.step(action), action)
         # temporarily store the transition into a local queue
         self._unroll_queue.enqueue(
-            [time_step, policy_step, act_dist_param, next_time_step])
+            LearningBatch(
+                time_step=time_step,
+                state=policy_state if self._tfq._store_state else (),
+                policy_step=policy_step,
+                act_dist_param=act_dist_param,
+                next_time_step=next_time_step,
+                env_id=()))
         return next_time_step, policy_step.state
 
     def _unroll_env(self, time_step, policy_state, unroll_length):
@@ -413,10 +437,12 @@ class EnvThread(Thread):
                                                    unroll_length)
         # Dump transitions from the local queue and put into
         # the learner queue and the log queue
-        # unrolled: (time_step, policy_step, act_dist_param, next_time_step)
         unrolled = self._unroll_queue.dequeue_all()
-        self._tfq.learn_queue.enqueue(unrolled + [self._id])
-        self._tfq.log_queue.enqueue(unrolled[:2] + [unrolled[3], self._id])
+        self._tfq.learn_queue.enqueue(unrolled._replace(env_id=self._id))
+        self._tfq.log_queue.enqueue([
+            unrolled.time_step, unrolled.policy_step, unrolled.next_time_step,
+            self._id
+        ])
         return time_step, policy_state
 
     def _run(self, coord, unroll_length):

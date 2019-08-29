@@ -14,7 +14,6 @@
 
 from typing import Callable
 from absl import logging
-from collections import namedtuple
 
 from alf.utils import common
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
@@ -28,20 +27,6 @@ from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.drivers.threads import TFQueues, ActorThread, EnvThread, LogThread
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
 from alf.environments.utils import create_environment
-
-LearningBatch = namedtuple(
-    "LearningBatch",
-    "time_step policy_step act_dist_param next_time_step env_id")
-
-
-def make_learning_batch(time_step, policy_step, act_dist_param, next_time_step,
-                        env_id):
-    return LearningBatch(
-        time_step=time_step,
-        policy_step=policy_step,
-        act_dist_param=act_dist_param,
-        next_time_step=next_time_step,
-        env_id=env_id)
 
 
 @gin.configurable
@@ -69,6 +54,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  learn_queue_cap=1,
                  actor_queue_cap=1,
                  observers=[],
+                 use_rollout_state=False,
                  metrics=[],
                  exp_replayer="one_time",
                  debug_summaries=False,
@@ -99,6 +85,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
+            use_rollout_state (bool): Include the RNN state for the experiences
+                used for off-policy training
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
@@ -122,6 +110,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
+            use_rollout_state=use_rollout_state,
             metrics=metrics,
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
@@ -138,6 +127,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             policy_step_spec=self._pred_policy_step_spec,
             act_dist_param_spec=self._action_dist_param_spec,
             unroll_length=unroll_length,
+            store_state=use_rollout_state,
             num_actor_queues=num_actor_queues)
         actor_threads = [
             ActorThread(
@@ -198,10 +188,13 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 element of `env_ids` indicates which batched env the data come from.
             steps (int): how many environment steps this batch of exps contain
         """
-        batch = make_learning_batch(*self._tfq.learn_queue.dequeue_all())
+        batch = self._tfq.learn_queue.dequeue_all()
         # convert the batch to the experience format
-        exp = make_experience(batch.time_step, batch.policy_step,
-                              batch.act_dist_param)
+        exp = make_experience(
+            batch.time_step,
+            batch.policy_step,
+            batch.act_dist_param,
+            state=batch.state)
         # make the exp batch major for each environment
         exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
         num_envs, unroll_length, env_batch_size \

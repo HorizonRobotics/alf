@@ -30,6 +30,7 @@ from tf_agents.metrics import tf_metrics
 from alf.utils import common
 from alf.utils.common import run_under_record_context, get_global_counter
 from alf.environments.utils import create_environment
+from alf.algorithms.on_policy_algorithm import TrainStepAdapter
 
 
 @gin.configurable
@@ -53,6 +54,7 @@ class TrainerConfig(object):
                  random_seed=0,
                  num_iterations=1000,
                  unroll_length=8,
+                 use_rollout_state=False,
                  use_tf_functions=True,
                  checkpoint_interval=1000,
                  evaluate=False,
@@ -84,6 +86,8 @@ class TrainerConfig(object):
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: `num_envs` * `env_batch_size`
                 * `unroll_length`.
+            use_rollout_state (bool): Include the RNN state for the experiences
+                used for off-policy training
             use_tf_functions (bool): whether to use tf.function
             checkpoint_interval (int): checkpoint every so many iterations
             evaluate (bool): A bool to evaluate when training
@@ -119,6 +123,7 @@ class TrainerConfig(object):
             random_seed=random_seed,
             num_iterations=num_iterations,
             unroll_length=unroll_length,
+            use_rollout_state=use_rollout_state,
             use_tf_functions=use_tf_functions,
             checkpoint_interval=checkpoint_interval,
             evaluate=evaluate,
@@ -151,8 +156,10 @@ class TrainerConfig(object):
 
 
 class Trainer(object):
-    def __init__(self, config):
-        """Abstract base class for on-policy and off-policy trainer
+    """Abstract base class for on-policy and off-policy trainer."""
+
+    def __init__(self, config: TrainerConfig):
+        """Create a Trainer instance.
 
         Args:
             config (TrainerConfig): configuration used to construct this trainer
@@ -198,6 +205,7 @@ class Trainer(object):
         self._summary_max_queue = config.summary_max_queue
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
+        self._config = config
 
     def initialize(self):
         """Initializes the Trainer."""
@@ -210,6 +218,13 @@ class Trainer(object):
             self._eval_env = create_environment(num_parallel_environments=1)
         self._algorithm = self._algorithm_ctor(
             self._env, debug_summaries=self._debug_summaries)
+        if self._config.use_rollout_state:
+            try:
+                tf.nest.assert_same_structure(
+                    self._algorithm.train_state_spec,
+                    self._algorithm.predict_state_spec)
+            except TypeError:
+                self._algorithm = TrainStepAdapter(self._algorithm)
         self._driver = self.init_driver()
 
     @abc.abstractmethod
@@ -224,7 +239,7 @@ class Trainer(object):
         pass
 
     def train(self):
-        """Perform training"""
+        """Perform training."""
         assert None not in (self._env, self._algorithm,
                             self._driver), "Trainer not initialized"
         self._restore_checkpoint()
@@ -264,9 +279,10 @@ class Trainer(object):
                 iter_num=iter_num,
                 policy_state=policy_state,
                 time_step=time_step)
-            logging.info(
-                '%s time=%.3f throughput=%0.2f' %
-                (iter_num, time.time() - t0, int(steps) / (time.time() - t0)))
+            t = time.time() - t0
+            logging.info('%s time=%.3f throughput=%0.2f' % (iter_num, t,
+                                                            int(steps) / t))
+            tf.summary.scalar("time/train_iter", t)
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
@@ -338,7 +354,7 @@ def play(root_dir,
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
-            If None, the latest checkpoint unber train_dir will be used.
+            If None, the latest checkpoint under train_dir will be used.
         greedy_predict (bool): use greedy action for evaluation.
         random_seed (int): random seed
         num_episodes (int): number of episodes to play

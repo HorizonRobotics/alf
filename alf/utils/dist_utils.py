@@ -26,17 +26,19 @@ from tf_agents.specs import tensor_spec
 def estimated_entropy(dist: tfp.distributions.Distribution,
                       seed=None,
                       assume_reparametrization=False,
-                      num_samples=1):
+                      num_samples=1,
+                      check_numerics=False):
     """Estimate entropy by sampling.
 
     Use sampling to calculate entropy. The unbiased estimator for entropy is
     -log(p(x)) where x is an unbiased sample of p. However, the gradient of
     -log(p(x)) is not an unbiased estimator of the gradient of entropy. So we
     also calculate a value whose gradient is an unbiased estimator of the
-    gradient of entropy. See entropy_estimator.pdf for detail.
+    gradient of entropy. See docs/subtleties_of_estimating_entropy.py for
+    detail.
 
     Args:
-        dist (tfp.distribitions.Distribution): concerned distribution
+        dist (tfp.distributions.Distribution): concerned distribution
         seed (Any): Any Python object convertible to string, supplying the
             initial entropy.
         assume_reparametrization (bool): assume the sample from continuous
@@ -46,17 +48,21 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
             to be False to be safe.
         num_samples (int): number of random samples used for estimating entropy.
     Returns:
-        tuple of (entropy, entroy_for_gradient). entropy_for_gradient is for
+        tuple of (entropy, entropy_for_gradient). entropy_for_gradient is for
         calculating gradient
     """
     sample_shape = (num_samples, )
     single_action = dist.sample(sample_shape=sample_shape, seed=seed)
     if single_action.dtype.is_floating and assume_reparametrization:
         entropy = -dist.log_prob(single_action)
+        if check_numerics:
+            entropy = tf.debugging.check_numerics(entropy, 'entropy')
         entropy = tf.reduce_mean(entropy, axis=0)
         entropy_for_gradient = entropy
     else:
         entropy = -dist.log_prob(tf.stop_gradient(single_action))
+        if check_numerics:
+            entropy = tf.debugging.check_numerics(entropy, 'entropy')
         entropy_for_gradient = -0.5 * tf.math.square(entropy)
         entropy = tf.reduce_mean(entropy, axis=0)
         entropy_for_gradient = tf.reduce_mean(entropy_for_gradient, axis=0)
@@ -91,7 +97,7 @@ def entropy_with_fallback(distributions, action_spec, seed=None):
         seed (Any): Any Python object convertible to string, supplying the
             initial entropy.
     Returns:
-        tuple of (entroy, entropy_for_gradient). You should use entroy in
+        tuple of (entropy, entropy_for_gradient). You should use entropy in
         situations where its value is needed, and entropy_for_gradient where
         you need to calculate the gradient of entropy.
     """

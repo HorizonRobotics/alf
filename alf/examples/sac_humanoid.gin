@@ -24,7 +24,7 @@ ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.state_dependent_std=True
 NormalProjectionNetwork.mean_transform=None
 NormalProjectionNetwork.scale_distribution=True
-NormalProjectionNetwork.std_transform=@common.std_clip_transform
+NormalProjectionNetwork.std_transform=@clipped_exp
 
 # training config
 TrainerConfig.trainer=@sync_off_policy_trainer

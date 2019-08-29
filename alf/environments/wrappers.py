@@ -156,7 +156,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     Derived from tf_agents AtariPreprocessing. Three differences:
     1. Random number of NOOPs after reset
     2. FIRE after a reset or a lost life. This is for the purpose of evaluation
-       with greedy prediction without getting stucked in the early training
+       with greedy prediction without getting stuck in the early training
        stage.
     3. A lost life doesn't result in a terminal state
 
@@ -175,7 +175,7 @@ class DMAtariPreprocessing(gym.Wrapper):
     https://github.com/openai/gym/blob/master/gym/wrappers/atari_preprocessing.py
 
     (This wrapper does not handle framestacking. It can be paired with
-    FrameStack. See ac_atari.gin for an example.)
+    FrameStack. See atari.gin for an example.)
     """
 
     def __init__(self, env, frame_skip=4, noop_max=30, screen_size=84):

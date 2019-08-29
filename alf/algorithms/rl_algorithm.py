@@ -25,7 +25,7 @@ import tensorflow_probability as tfp
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import eager_utils
 
-import alf.utils as alf_utils
+import alf.utils
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
@@ -119,7 +119,7 @@ class RLAlgorithm(tf.Module):
                 optimizer(s) for training.
             get_trainable_variables_func (Callable | list[Callable]): each one
                 corresponds to one optimizer in `optimizer`. When called, it
-                should return the variables for the correponding optimizer. If
+                should return the variables for the corresponding optimizer. If
                 there is only one optimizer, this can be None and
                 `self.trainable_variables` will be used.
             gradient_clipping (float): If not None, serve as a positive threshold
@@ -142,11 +142,11 @@ class RLAlgorithm(tf.Module):
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
-        self._optimizers = alf_utils.common.as_list(optimizer)
+        self._optimizers = alf.utils.common.as_list(optimizer)
         if get_trainable_variables_func is None:
             get_trainable_variables_func = lambda: super(RLAlgorithm, self
                                                          ).trainable_variables
-        self._get_trainable_variables_funcs = alf_utils.common.as_list(
+        self._get_trainable_variables_funcs = alf.utils.common.as_list(
             get_trainable_variables_func)
         if optimizer:
             assert (len(self._optimizers) == len(
@@ -157,7 +157,7 @@ class RLAlgorithm(tf.Module):
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
         self._reward_shaping_fn = reward_shaping_fn
-        self._train_step_counter = alf_utils.common.get_global_counter(
+        self._train_step_counter = alf.utils.common.get_global_counter(
             train_step_counter)
         self._debug_summaries = debug_summaries
         self._cached_var_sets = None
@@ -204,11 +204,11 @@ class RLAlgorithm(tf.Module):
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         """Predict for one step of observation.
 
-        Generate greedy action that maximizes the action probablity).
+        Generate greedy action that maximizes the action probability).
 
         Args:
             time_step (ActionTimeStep):
-            state (nested Tensor): should be consistent with train_state_spec
+            state (nested Tensor): should be consistent with predict_state_spec
             eps (float): a floating value in [0,1], representing the chance of
                 action sampling instead of taking argmax. This can help prevent
                 a dead loop in some deterministic environment like Breakout.
@@ -255,7 +255,7 @@ class RLAlgorithm(tf.Module):
                        weight=1.0):
         """Complete one iteration of training.
 
-        `train_complete` should calcuate gradients and update parameters using
+        `train_complete` should calculate gradients and update parameters using
         those gradients.
 
         Args:
@@ -266,7 +266,7 @@ class RLAlgorithm(tf.Module):
                 training_info.info are the batched from each policy_step.info
                 returned by train_step()
             weight (float): weight for this batch. Loss will be multiplied with
-                this wegith before calculating gradient
+                this weight before calculating gradient
         Returns:
             a tuple of the following:
             loss_info (LossInfo): loss information
@@ -293,15 +293,19 @@ class RLAlgorithm(tf.Module):
 
         var_sets = self._get_cached_var_sets()
         all_grads_and_vars = ()
-        for vars, optimizer in zip(var_sets, self._optimizers):
+        for i, vars, optimizer in zip(
+                range(len(var_sets)), var_sets, self._optimizers):
             grads = tape.gradient(loss, vars)
             grads_and_vars = tuple(zip(grads, vars))
             all_grads_and_vars = all_grads_and_vars + grads_and_vars
             if self._gradient_clipping is not None:
                 if self._clip_by_global_norm:
-                    grads, _ = tf.clip_by_global_norm(grads,
-                                                      self._gradient_clipping)
+                    grads, global_norm = tf.clip_by_global_norm(
+                        grads, self._gradient_clipping)
                     grads_and_vars = tuple(zip(grads, vars))
+                    alf.utils.common.run_if(
+                        alf.utils.common.should_record_summaries(), lambda: tf.
+                        summary.scalar("global_grad_norm/%s" % i, global_norm))
                 else:
                     grads_and_vars = eager_utils.clip_gradient_norms(
                         grads_and_vars, self._gradient_clipping)

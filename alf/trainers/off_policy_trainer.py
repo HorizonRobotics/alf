@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import time
+
 import gin.tf
+import tensorflow as tf
+
 from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
 from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.environments.utils import create_environment
@@ -61,6 +65,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
     def init_driver(self):
         return SyncOffPolicyDriver(
             env=self._env,
+            use_rollout_state=self._config.use_rollout_state,
             algorithm=self._algorithm,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)
@@ -73,13 +78,13 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             max_num_steps=max_num_steps,
             time_step=time_step,
             policy_state=policy_state)
-
+        t0 = time.time()
         self._driver.train(
             self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
-
+        tf.summary.scalar("time/train", time.time() - t0)
         return time_step, policy_state, max_num_steps
 
 
@@ -91,6 +96,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         driver = AsyncOffPolicyDriver(
             env_or_env_fn=self._env,
             algorithm=self._algorithm,
+            use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)
@@ -104,9 +110,11 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
                 steps += self._driver.run_async()
         else:
             steps = self._driver.run_async()
+        t0 = time.time()
         self._driver.train(
             self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
+        tf.summary.scalar("time/train", time.time() - t0)
         return time_step, policy_state, steps

@@ -31,6 +31,9 @@ from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import ActionType
+from alf.networks.stable_normal_projection_network import StableNormalProjectionNetwork
+
+DEBUGGING = True
 
 
 def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
@@ -51,7 +54,10 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
             lstm_size=(4, ))
     else:
         actor_net = ActorDistributionNetwork(
-            observation_spec, action_spec, fc_layer_params=())
+            observation_spec,
+            action_spec,
+            fc_layer_params=(),
+            continuous_projection_net=StableNormalProjectionNetwork)
         value_net = ValueNetwork(observation_spec, fc_layer_params=())
 
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
@@ -60,8 +66,10 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         action_spec=action_spec,
         actor_network=actor_net,
         value_network=value_net,
-        loss=PPOLoss(action_spec=action_spec, gamma=1.0),
-        optimizer=optimizer)
+        loss=PPOLoss(
+            action_spec=action_spec, gamma=1.0, debug_summaries=DEBUGGING),
+        optimizer=optimizer,
+        debug_summaries=DEBUGGING)
     return PPOAlgorithm(ac_algorithm)
 
 
@@ -71,20 +79,23 @@ class PpoTest(unittest.TestCase):
         tf.random.set_seed(0)
 
     def test_ppo(self):
+        env_class = PolicyUnittestEnv
+        learning_rate = 1e-1
+        iterations = 20
         batch_size = 100
         steps_per_episode = 13
-        env = PolicyUnittestEnv(batch_size, steps_per_episode)
+        env = env_class(batch_size, steps_per_episode)
         env = TFPyEnvironment(env)
 
-        eval_env = PolicyUnittestEnv(batch_size, steps_per_episode)
+        eval_env = env_class(batch_size, steps_per_episode)
         eval_env = TFPyEnvironment(eval_env)
 
-        algorithm = create_algorithm(env)
+        algorithm = create_algorithm(env, learning_rate=learning_rate)
         driver = SyncOffPolicyDriver(
             env,
             algorithm,
-            debug_summaries=True,
-            summarize_grads_and_vars=True)
+            debug_summaries=DEBUGGING,
+            summarize_grads_and_vars=DEBUGGING)
         replayer = driver.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
@@ -93,14 +104,14 @@ class PpoTest(unittest.TestCase):
         eval_env.reset()
         time_step = driver.get_initial_time_step()
         policy_state = driver.get_initial_policy_state()
-        for i in range(20):
+        for i in range(iterations):
             time_step, policy_state = driver.run(
                 max_num_steps=batch_size * steps_per_episode,
                 time_step=time_step,
                 policy_state=policy_state)
 
             experience = replayer.replay_all()
-            driver.train(experience, mini_batch_size=25)
+            driver.train(experience, num_updates=4, mini_batch_size=25)
             replayer.clear()
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
