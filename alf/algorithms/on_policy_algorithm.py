@@ -51,6 +51,14 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
     ```
     """
 
+    def predict(self, time_step: ActionTimeStep, state=None):
+        """Default implementation of predict.
+
+        Subclass may override.
+        """
+        policy_step = self.rollout(time_step, state)
+        return policy_step._replace(info=())
+
     # Implement train_step() to allow off-policy training for an
     # OnPolicyAlgorithm
     def train_step(self, exp: Experience, state):
