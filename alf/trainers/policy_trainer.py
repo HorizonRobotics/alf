@@ -30,7 +30,6 @@ from tf_agents.metrics import tf_metrics
 from alf.utils import common
 from alf.utils.common import run_under_record_context, get_global_counter
 from alf.environments.utils import create_environment
-from alf.algorithms.on_policy_algorithm import TrainStepAdapter
 
 
 @gin.configurable
@@ -218,13 +217,8 @@ class Trainer(object):
             self._eval_env = create_environment(num_parallel_environments=1)
         self._algorithm = self._algorithm_ctor(
             self._env, debug_summaries=self._debug_summaries)
-        if self._config.use_rollout_state:
-            try:
-                tf.nest.assert_same_structure(
-                    self._algorithm.train_state_spec,
-                    self._algorithm.predict_state_spec)
-            except TypeError:
-                self._algorithm = TrainStepAdapter(self._algorithm)
+        self._algorithm.use_rollout_state = self._config.use_rollout_state
+
         self._driver = self.init_driver()
 
     @abc.abstractmethod
@@ -315,12 +309,10 @@ class Trainer(object):
                 environment=self._eval_env,
                 state_spec=self._algorithm.predict_state_spec,
                 action_fn=lambda time_step, state: common.algorithm_step(
-                    algorithm=self._algorithm,
+                    algorithm_step_func=self._algorithm.greedy_predict,
                     ob_transformer=self._driver.observation_transformer,
                     time_step=time_step,
-                    state=state,
-                    greedy_predict=True,
-                    training=False),
+                    state=state),
                 num_episodes=self._num_eval_episodes,
                 step_metrics=self._driver.get_step_metrics(),
                 train_step=global_step,

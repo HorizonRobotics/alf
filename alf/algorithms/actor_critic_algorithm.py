@@ -33,7 +33,7 @@ from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm, OffPolicyAdapter
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 
 ActorCriticState = namedtuple("ActorCriticPolicyState",
@@ -177,7 +177,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         return PolicyStep(
             action=action_distribution, state=actor_state, info=())
 
-    def train_step(self, time_step: ActionTimeStep, state=None):
+    def rollout(self, time_step: ActionTimeStep, state=None):
         observation = self._encode(time_step)
 
         value, value_state = self._value_network(
@@ -273,7 +273,7 @@ def create_ac_algorithm(env,
                         use_rnns=False,
                         use_icm=False,
                         learning_rate=5e-5,
-                        off_policy=False,
+                        algorithm_class=ActorCriticAlgorithm,
                         debug_summaries=False):
     """Create a simple ActorCriticAlgorithm.
 
@@ -285,8 +285,9 @@ def create_ac_algorithm(env,
         encoding_fc_layers (list[int]): list of fc layers parameters for encoding network
         use_rnns (bool): True if rnn should be used
         use_icm (bool): True if intrinsic curiosity module should be used
-        learning_rate (float) : learning rate
-        off_policy (bool) : True if used for off policy training
+        learning_rate (float): learning rate
+        algorithm_class (type): class of the algorithm. Can be
+            ActorCriticAlgorithm or PPOAlgorithm
         debug_summaries (bool): True if debug summaries should be created.
     """
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
@@ -325,15 +326,12 @@ def create_ac_algorithm(env,
         icm = ICMAlgorithm(
             env.action_spec(), feature_spec, encoding_net=encoding_net)
 
-    algorithm = ActorCriticAlgorithm(
+    algorithm = algorithm_class(
         action_spec=env.action_spec(),
         actor_network=actor_net,
         value_network=value_net,
         intrinsic_curiosity_module=icm,
         optimizer=optimizer,
         debug_summaries=debug_summaries)
-
-    if off_policy:
-        algorithm = OffPolicyAdapter(algorithm)
 
     return algorithm
