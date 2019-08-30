@@ -29,7 +29,7 @@ All the examples below are trained on a single machine Intel(R) Core(TM) i9-7960
 
 You can train model of the examples using the following command:
 ```bash
-python -m alf.bin.main --gin_file=GIN_FILE --root_dir=LOG_DIR
+python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
 ```
 GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
 You can find sample gin configuration files for different tasks under directory
@@ -43,7 +43,7 @@ tensorboard --logdir=LOG_DIR
 
 After training, you can visualize the trained model using the following command:
 ```bash
-python -m alf.bin.main --play --root_dir=LOG_DIR
+python -m alf.bin.play --root_dir=LOG_DIR
 ```
 
 ### A2C
@@ -67,8 +67,8 @@ python -m alf.bin.main --play --root_dir=LOG_DIR
   <img src="alf/examples/async_ppo_bullet_humanoid.png" width = "300" height ="200" alt="Humanoid-training-curve"/> <img src="alf/examples/async_ppo_bullet_humanoid.gif" width = "300" height ="200" alt="Humanoid-video"/>
 
 ### SAC
-* [Bipedal Walker](alf/examples/sac_bipedal_walker.gin). 
-  
+* [Bipedal Walker](alf/examples/sac_bipedal_walker.gin).
+
   <img src="alf/examples/sac_bipedal_walker.png" width = "300" height ="200" alt="bipedal-walker-training-curve"/> <img src="alf/examples/sac_bipedal_walker.gif" width = "300" height ="200" alt="bipedal-walker-video"/>
 
 ### ICM
