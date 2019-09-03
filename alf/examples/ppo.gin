@@ -7,4 +7,3 @@ import alf.trainers.off_policy_trainer
 
 TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.algorithm_ctor=@create_ppo_algorithm
-ActorCriticAlgorithm.loss_class=@PPOLoss

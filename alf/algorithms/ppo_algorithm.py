@@ -20,6 +20,7 @@ import tensorflow as tf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.algorithms.off_policy_algorithm import Experience
+from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 from alf.utils import common, value_ops
 
@@ -32,7 +33,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     Implement the simplified surrogate loss in equation (9) of "Proximal
     Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
 
-    It works with ppo_loss.PPOLoss2. It should have same behavior as
+    It works with ppo_loss.PPOLoss. It should have same behavior as
     baselines.ppo2.
     """
 
@@ -66,6 +67,11 @@ def create_ppo_algorithm(env, debug_summaries=False):
     Args:
         env (TFEnvironment): A TFEnvironment
         debug_summaries (bool): True if debug summaries should be created.
+    Returns:
+        PPOAlgorithm
     """
     return create_ac_algorithm(
-        env, algorithm_class=PPOAlgorithm, debug_summaries=debug_summaries)
+        env,
+        algorithm_class=PPOAlgorithm,
+        loss_class=PPOLoss,
+        debug_summaries=debug_summaries)

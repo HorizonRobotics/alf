@@ -90,6 +90,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 PPOLoss).
             loss (None|ActorCriticLoss): an object for calculating loss. If
                 None, a default loss of class loss_class will be used.
+            loss_class (type): the class of the loss. The signature of its
+                constructor: loss_class(action_spec, debug_summaries)
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
@@ -274,6 +276,7 @@ def create_ac_algorithm(env,
                         use_icm=False,
                         learning_rate=5e-5,
                         algorithm_class=ActorCriticAlgorithm,
+                        loss_class=ActorCriticLoss,
                         debug_summaries=False):
     """Create a simple ActorCriticAlgorithm.
 
@@ -288,6 +291,8 @@ def create_ac_algorithm(env,
         learning_rate (float): learning rate
         algorithm_class (type): class of the algorithm. Can be
             ActorCriticAlgorithm or PPOAlgorithm
+        loss_class (type): the class of the loss. The signature of its
+            constructor: loss_class(action_spec, debug_summaries)
         debug_summaries (bool): True if debug summaries should be created.
     """
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
@@ -331,6 +336,7 @@ def create_ac_algorithm(env,
         actor_network=actor_net,
         value_network=value_net,
         intrinsic_curiosity_module=icm,
+        loss_class=ActorCriticLoss,
         optimizer=optimizer,
         debug_summaries=debug_summaries)
 
