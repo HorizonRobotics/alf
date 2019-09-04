@@ -37,7 +37,6 @@ ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
 create_ac_algorithm.actor_fc_layers=(512,)
 create_ac_algorithm.value_fc_layers=(512,)
-create_ac_algorithm.off_policy = True
 
 ActorCriticAlgorithm.gradient_clipping=None
 ActorCriticAlgorithm.reward_shaping_fn=@reward_clipping

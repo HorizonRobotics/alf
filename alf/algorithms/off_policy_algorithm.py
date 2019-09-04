@@ -48,9 +48,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
     """
        OffPolicyAlgorithm works with alf.drivers.off_policy_driver to do training
 
-       User needs to implement predict() and train_step().
+       User needs to implement rollout() and train_step().
 
-       predict() is called to generate actions for every environment step.
+       rollout() is called to generate actions for every environment step.
 
        train_step() is called to generate necessary information for training.
 
@@ -61,7 +61,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
         # (1) collect stage
         for _ in range(steps_per_collection):
             # collect experience and store to replay buffer
-            policy_step = predict(time_step, policy_step.state)
+            policy_step = rollout(time_step, policy_step.state)
             experience = make_experience(time_step, policy_step)
             store experience to replay buffer
             action = sample action from policy_step.action
@@ -72,7 +72,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             # sample experiences and perform training
             experiences = sample batch from replay_buffer
             with tf.GradientTape() as tape:
-                batched_training_info
+                batched_training_info = []
                 for experience in experiences:
                     policy_step = train_step(experience, state)
                     train_info = make_training_info(info, ...)
@@ -81,9 +81,92 @@ class OffPolicyAlgorithm(RLAlgorithm):
     ```
     """
 
+    def predict(self, time_step: ActionTimeStep, state=None):
+        """Default implementation of predict.
+
+        Subclass may override.
+        """
+        policy_step = self._rollout_partial_state(time_step, state)
+        return policy_step._replace(info=())
+
+    def rollout(self, time_step: ActionTimeStep, state=None):
+        """Base implementation of rollout for OffPolicyAlgorithm.
+
+        Calls _rollout_full_state or _rollout_partial_state based on
+        use_rollout_state.
+
+        Subclass may override.
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+        Returns:
+            policy_step (PolicyStep):
+              action (nested tf.distribution): should be consistent with
+                `action_distribution_spec`
+              state (nested Tensor): should be consistent with `train_state_spec`
+              info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OnPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
+        """
+        if self._use_rollout_state and self._is_rnn:
+            return self._rollout_full_state(time_step, state)
+        else:
+            return self._rollout_partial_state(time_step, state)
+
+    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
+        """Rollout without the full state for train_step().
+
+        It is used for non-RNN model or RNN model without computating all states
+        in train_state_spec. In the returned PolicyStep.state, you can use an
+        empty tuple as a placeholder for those states that are not necessary for
+        rollout.
+
+        User needs to override this if _rollout_full_state() is not implemented.
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+        Returns:
+            policy_step (PolicyStep):
+              action (nested tf.distribution): should be consistent with
+                `action_distribution_spec`
+              state (nested Tensor): should be consistent with `train_state_spec`.
+              info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OnPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
+        """
+        return self._rollout_full_state(time_step, state)
+
+    def _rollout_full_state(self, time_step: ActionTimeStep, state=None):
+        """Rollout with full state for train_step().
+
+        If you want to use the rollout state for off-policy training (by setting
+        TrainerConfig.use_rollout=True), you need to implement this function.
+        You need to compute all the states for the returned PolicyStep.state.
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+        Returns:
+            policy_step (PolicyStep):
+              action (nested tf.distribution): should be consistent with
+                `action_distribution_spec`
+              state (nested Tensor): should be consistent with `train_state_spec`.
+              info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OnPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
+        """
+        raise NotImplementedError("_rollout_full_state is not implemented")
+
     @abc.abstractmethod
     def train_step(self, experience: Experience, state):
-        """Perform one step of action and training computation.
+        """Perform one step of training computation.
 
         Args:
             experience (Experience):

@@ -30,7 +30,6 @@ from alf.algorithms.ddpg_algorithm import create_ddpg_algorithm
 from alf.algorithms.sac_algorithm import create_sac_algorithm
 from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.algorithms.ppo_algorithm import PPOAlgorithm
-from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
 from alf.drivers.threads import NestFIFOQueue
 from alf.drivers.threads import ActorThread, EnvThread
 from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
@@ -59,18 +58,17 @@ def _create_ddpg_algorithm(env):
 
 
 def _create_ppo_algorithm(env):
-    return PPOAlgorithm(
-        create_ac_algorithm(
-            env=env,
-            actor_fc_layers=(16, 16),
-            value_fc_layers=(16, 16),
-            learning_rate=1e-3))
+    return create_ac_algorithm(
+        env=env,
+        actor_fc_layers=(16, 16),
+        value_fc_layers=(16, 16),
+        learning_rate=1e-3,
+        algorithm_class=PPOAlgorithm)
 
 
 def _create_ac_algorithm(env):
-    return OffPolicyAdapter(
-        create_ac_algorithm(
-            env=env, actor_fc_layers=(8, ), value_fc_layers=(8, )))
+    return create_ac_algorithm(
+        env=env, actor_fc_layers=(8, ), value_fc_layers=(8, ))
 
 
 class ThreadQueueTest(parameterized.TestCase, unittest.TestCase):

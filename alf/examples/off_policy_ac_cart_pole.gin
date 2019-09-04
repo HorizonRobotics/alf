@@ -28,7 +28,6 @@ ActorCriticLoss.use_td_lambda_return=True
 create_ac_algorithm.actor_fc_layers=(100,)
 create_ac_algorithm.value_fc_layers=(100,)
 create_ac_algorithm.learning_rate=0.001
-create_ac_algorithm.off_policy=True
 
 # training config
 TrainerConfig.trainer=@sync_off_policy_trainer

@@ -115,7 +115,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             learn_queue_cap,
             actor_queue_cap,
             time_step_spec=self._time_step_spec,
-            policy_step_spec=self._pred_policy_step_spec,
+            policy_step_spec=self._policy_step_spec,
             act_dist_param_spec=self._action_dist_param_spec,
             unroll_length=unroll_length,
             store_state=use_rollout_state,

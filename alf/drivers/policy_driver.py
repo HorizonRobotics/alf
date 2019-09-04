@@ -203,13 +203,14 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
+        step_func = self._algorithm.rollout if self._training else (
+            self._algorithm.greedy_predict
+            if self._greedy_predict else self._algorithm.predict)
         policy_step = common.algorithm_step(
-            self._algorithm,
+            step_func,
             self._observation_transformer,
             time_step,
-            state=policy_state,
-            training=self._training,
-            greedy_predict=self._greedy_predict)
+            state=policy_state)
         action = common.sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:
@@ -240,8 +241,7 @@ class PolicyDriver(driver.Driver):
         """
         Take steps in the environment for max_num_steps.
 
-        If in training mode, algorithm.train_step() and
-        algorithm.train_complete() will be called.
+        If in training mode, algorithm.rollout() will be used.
         If not in training mode, algorithm.predict() will be called.
 
         The observers will also be called for every environment step.
