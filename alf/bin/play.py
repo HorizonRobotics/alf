@@ -60,7 +60,8 @@ FLAGS = flags.FLAGS
 def main(_):
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-    algorithm_ctor = gin.query_parameter('TrainerConfig.algorithm_ctor')
+    algorithm_ctor = gin.query_parameter(
+        'TrainerConfig.algorithm_ctor').scoped_configurable_fn
     env = create_environment(num_parallel_environments=1)
     algorithm = algorithm_ctor(env)
     policy_trainer.play(
