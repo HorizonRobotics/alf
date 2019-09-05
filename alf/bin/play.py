@@ -54,10 +54,23 @@ flags.DEFINE_string(
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 
+flags.DEFINE_string('log_level', 'i', "Default logging verbosity: d|i|w|e|f.")
+
 FLAGS = flags.FLAGS
 
 
 def main(_):
+    if FLAGS.log_level == 'd':
+        logging.set_verbosity(logging.DEBUG)
+    elif FLAGS.log_level == 'w':
+        logging.set_verbosity(logging.WARNING)
+    elif FLAGS.log_level == 'e':
+        logging.set_verbosity(logging.ERROR)
+    elif FLAGS.log_level == 'f':
+        logging.set_verbosity(logging.FATAL)
+    else:  # FLAGS.verbosity not set or is 'i'
+        logging.set_verbosity(logging.INFO)
+
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     algorithm_ctor = gin.query_parameter(
@@ -77,7 +90,6 @@ def main(_):
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
