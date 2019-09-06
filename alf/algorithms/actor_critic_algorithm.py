@@ -336,7 +336,7 @@ def create_ac_algorithm(env,
         actor_network=actor_net,
         value_network=value_net,
         intrinsic_curiosity_module=icm,
-        loss_class=ActorCriticLoss,
+        loss_class=loss_class,
         optimizer=optimizer,
         debug_summaries=debug_summaries)
 
