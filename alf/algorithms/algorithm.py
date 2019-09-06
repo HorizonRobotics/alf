@@ -167,7 +167,7 @@ class Algorithm(tf.Module):
                 loss_info = tf.nest.map_structure(lambda l: tf.reduce_mean(l),
                                                   loss_info)
 
-        vars = self.variables
+        vars = self.trainable_variables
         grads = tape.gradient(loss_info.loss, vars)
         grads_and_vars = tuple(zip(grads, vars))
         self._optimizer.apply_gradients(grads_and_vars)
