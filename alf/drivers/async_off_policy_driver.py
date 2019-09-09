@@ -96,6 +96,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
+        self._unroll_length = unroll_length
+        self._num_envs = num_envs
         super(AsyncOffPolicyDriver, self).__init__(
             env=env_f(),
             algorithm=algorithm,
@@ -185,9 +187,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             state=batch.state)
         # make the exp batch major for each environment
         exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
-        num_envs, unroll_length, env_batch_size \
-            = batch.time_step.observation.shape[:3]
-        steps = num_envs * unroll_length * env_batch_size
+        steps = self._num_envs * self._unroll_length * self._env.batch_size
         return exp, batch.env_id, steps
 
     def run_async(self):
