@@ -67,7 +67,7 @@ class MIEstimator(Algorithm):
 
     Among these, 'buffer' and 'shift' seem to perform better and 'shuffle'
     performs worst. 'buffer' incurs additional storage cost. 'shift' has the
-    assumption that y samples from one batch are independent. If the additionaly
+    assumption that y samples from one batch are independent. If the additional
     memory is not a concern, we recommend 'buffer' sampler so that there is no
     need to worry about the assumption of independence.
     """
