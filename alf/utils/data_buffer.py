@@ -34,7 +34,7 @@ class DataBuffer(tf.Module):
         """
         super().__init__()
         self._capacity = capacity
-        shape = shape = [capacity] + tensor_spec.shape.as_list()
+        shape = [capacity] + tensor_spec.shape.as_list()
         self._buffer = tfa_common.create_variable(
             name=name + "/buffer",
             initializer=tf.zeros(shape, dtype=tensor_spec.dtype),
@@ -53,6 +53,10 @@ class DataBuffer(tf.Module):
             dtype=tf.int64,
             shape=(),
             trainable=False)
+
+    @property
+    def current_size(self):
+        return self._current_size
 
     def add_batch(self, batch):
         """Add a batch of items to the buffer.

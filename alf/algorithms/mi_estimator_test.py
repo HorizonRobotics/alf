@@ -19,30 +19,39 @@ from absl import logging
 from absl.testing import parameterized
 import tensorflow as tf
 
-from alf.algorithms.mi_estimator import MINEstimator, ScalarAdaptiveAverager
+from alf.algorithms.mi_estimator import MIEstimator, ScalarAdaptiveAverager
 
 
 class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters(
-        dict(estimator='MINE', rho=0.0, eps=0.02),
-        dict(estimator='MINE', rho=0.5, eps=0.3),
-        dict(estimator='MINE', rho=0.9, eps=7.0),
-        dict(estimator='MINE-f', rho=0.0, eps=0.02),
-        dict(estimator='MINE-f', rho=0.5, eps=0.3),
-        dict(estimator='MINE-f', rho=0.9, eps=7.0),
+        dict(estimator='DV', rho=0.0, eps=0.02),
+        dict(estimator='KLD', rho=0.0, eps=0.02),
+        dict(estimator='JSD', rho=0.0, eps=0.02),
+        dict(estimator='DV', rho=0.5, eps=0.3),
+        dict(estimator='DV', rho=0.5, eps=0.3, sampler='double_buffer'),
+        dict(estimator='DV', rho=0.5, eps=0.3, buffer_size=1048576),
+        dict(estimator='DV', rho=0.5, eps=0.6, sampler='shuffle'),
+        dict(estimator='DV', rho=0.5, eps=0.3, sampler='shift'),
+        dict(estimator='KLD', rho=0.5, eps=0.3),
+        dict(estimator='JSD', rho=0.5, eps=0.3),
+        dict(estimator='DV', rho=0.9, eps=7.0),
+        dict(estimator='KLD', rho=0.9, eps=7.0),
+        dict(estimator='JSD', rho=0.9, eps=12.0),
     )
     def test_mi_estimator(self,
-                          estimator='MINE',
+                          estimator='DV',
+                          sampler='buffer',
                           rho=0.9,
-                          eps=1.0,
+                          eps=1000.0,
                           buffer_size=65536,
                           dim=20):
-        mi_estimator = MINEstimator(
+        mi_estimator = MIEstimator(
             x_spec=tf.TensorSpec(shape=(dim, ), dtype=tf.float32),
             y_spec=tf.TensorSpec(shape=(dim, ), dtype=tf.float32),
             fc_layers=(512, ),
-            buffer_size=1048576,
+            buffer_size=buffer_size,
             estimator_type=estimator,
+            sampler=sampler,
             averager=ScalarAdaptiveAverager(),
             optimizer=tf.optimizers.Adam(learning_rate=1e-4))
 
@@ -66,29 +75,34 @@ class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
             y = tf.reshape(y, (-1, dim))
             return x, y
 
-        def _calc_estimated_mi(i, alg_step):
-            estimated_mi, var = tf.nn.moments(alg_step.outputs, axes=(0, ))
+        def _calc_estimated_mi(i, mi_samples):
+            estimated_mi, var = tf.nn.moments(mi_samples, axes=(0, ))
             estimated_mi = float(estimated_mi)
-            # For MINE estimator, the following std is an approximated std.
+            # For DV estimator, the following std is an approximated std.
             logging.info(
                 "%s estimated mi=%s std=%s" %
-                (i, estimated_mi, math.sqrt(var / alg_step.outputs.shape[0])))
+                (i, estimated_mi, math.sqrt(var / mi_samples.shape[0])))
             return estimated_mi
 
         batch_size = 512
-        logging.info("mi=%s" % float(mi))
+        info = "mi=%s estimator=%s buffer_size=%s sampler=%s dim=%s" % (
+            float(mi), estimator, buffer_size, sampler, dim)
         for i in range(5000):
             x, y = _get_batch(batch_size)
             with tf.GradientTape() as tape:
                 alg_step = mi_estimator.train_step((x, y))
             mi_estimator.train_complete(tape, alg_step.info)
             if i % 1000 == 0:
-                _calc_estimated_mi(i, alg_step)
+                _calc_estimated_mi(i, alg_step.outputs)
         x, y = _get_batch(16384)
-        alg_step = mi_estimator.predict((x, y))
-        estimated_mi = _calc_estimated_mi(estimator, alg_step)
-        self.assertLess(estimated_mi, mi)
-        self.assertGreater(estimated_mi, mi - eps)
+        log_ratio = mi_estimator.calc_pmi(x, y)
+        estimated_mi = _calc_estimated_mi(info, log_ratio)
+        if estimator == 'JSD':
+            self.assertAlmostEqual(estimated_mi, mi, delta=eps)
+        else:
+            self.assertLess(estimated_mi, mi)
+            self.assertGreater(estimated_mi, mi - eps)
+        return mi, estimated_mi
 
 
 if __name__ == '__main__':
