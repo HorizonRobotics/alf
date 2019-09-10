@@ -274,8 +274,10 @@ class Trainer(object):
                 policy_state=policy_state,
                 time_step=time_step)
             t = time.time() - t0
-            logging.info('%s time=%.3f throughput=%0.2f' % (iter_num, t,
-                                                            int(steps) / t))
+            logging.info(
+                '%s time=%.3f throughput=%0.2f' %
+                (iter_num, t,
+                 int(steps) * self._config.num_updates_per_train_step / t))
             tf.summary.scalar("time/train_iter", t)
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()
