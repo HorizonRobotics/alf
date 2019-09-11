@@ -104,7 +104,7 @@ class ThreadQueueTest(parameterized.TestCase, unittest.TestCase):
 
 
 class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
-    @parameterized.parameters((50, 20, 10, 5, 5, 10))
+    @parameterized.parameters((50, 20, 10, 5, 5, 10), (20, 10, 100, 10, 1, 20))
     def test_alf_metrics(self, num_envs, learn_queue_cap, unroll_length,
                          actor_queue_cap, num_actors, num_iterations):
         episode_length = 5
@@ -122,11 +122,19 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
 
         total_num_steps = int(driver.get_metrics()[1].result())
         self.assertGreaterEqual(total_num_steps_, total_num_steps)
-        self.assertGreaterEqual(
-            total_num_steps,  # multiply by 2/3 because 1/3 of steps are StepType.LAST
-            total_num_steps_ * 2 // 3)
+
+        # An exp is only put in the log queue after it's put in the learning queue
+        # So when we stop the driver (which will force all queues to stop),
+        # some exps might be missing from the metric. Here we assert an arbitrary
+        # lower bound of 3/5. The upper bound is due to the fact that StepType.LAST
+        # is not recorded by the metric (episode_length==5).
+        self.assertLessEqual(total_num_steps, int(total_num_steps_ * 4 // 5))
+        self.assertGreaterEqual(total_num_steps,
+                                int(total_num_steps_ * 3 // 5))
+
         average_reward = int(driver.get_metrics()[2].result())
         self.assertEqual(average_reward, episode_length - 1)
+
         episode_length = int(driver.get_metrics()[3].result())
         self.assertEqual(episode_length, episode_length)
 
