@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Environments for unittest."""
 
 from abc import abstractmethod
 import numpy as np
@@ -169,11 +170,19 @@ class RNNPolicyUnittestEnv(UnittestEnv):
     actions action match the observation given at the first step.
     """
 
-    def __init__(self, batch_size, episode_length, gap, obs_dim=1):
+    def __init__(self,
+                 batch_size,
+                 episode_length,
+                 gap=3,
+                 action_type=ActionType.Discrete,
+                 obs_dim=1):
         self._gap = gap
         self._obs_dim = obs_dim
         super(RNNPolicyUnittestEnv, self).__init__(
-            batch_size, episode_length, obs_dim=obs_dim)
+            batch_size,
+            episode_length,
+            action_type=action_type,
+            obs_dim=obs_dim)
 
     def _gen_time_step(self, s, action):
         step_type = StepType.MID
@@ -199,9 +208,8 @@ class RNNPolicyUnittestEnv(UnittestEnv):
             reward = tf.constant([0.] * self.batch_size)
         else:
             obs0 = tf.reshape(
-                tf.cast(self._observation0[:, 0], tf.int64),
-                shape=(self.batch_size, 1))
-            reward = tf.cast(tf.equal(action * 2 - 1, obs0), tf.float32)
+                self._observation0[:, 0], shape=(self.batch_size, 1))
+            reward = 1.0 - tf.abs(tf.cast(action, tf.float32) * 2 - 1 - obs0)
             reward = tf.reshape(reward, shape=(self.batch_size, ))
 
         if s == 0:

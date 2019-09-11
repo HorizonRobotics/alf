@@ -17,19 +17,18 @@ from absl import logging
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from alf.drivers import policy_driver
-from alf.utils import common
-
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
 from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.environments.tf_environment import TFEnvironment
-from alf.algorithms.rl_algorithm import make_training_info
-from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
-
 from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
+
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
+from alf.algorithms.rl_algorithm import make_training_info
+from alf.drivers import policy_driver
+from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
+from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
+from alf.utils import common
 
 
 def warning_once(msg, *args):
@@ -134,12 +133,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             action=self._action_spec,
             state=algorithm.train_state_spec,
             info=info_spec)
-
-        if self._use_rollout_state:
-            # We need the states from the rollout to be same as the states used
-            # for training
-            tf.nest.assert_same_structure(algorithm.predict_state_spec,
-                                          algorithm.train_state_spec)
 
         def _to_distribution_spec(spec):
             if isinstance(spec, tf.TensorSpec):
