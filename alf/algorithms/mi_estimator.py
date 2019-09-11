@@ -48,7 +48,7 @@ class MIEstimator(Algorithm):
 
     Assumming the function class of T is rich enough to represent any function,
     for KLD and JSD, T will converge to log(P/Q) and hence E_P(T) can also be
-    used as an estimator of KLD(P||Q)=MI(P,Q). For DV, T will converge to
+    used as an estimator of KLD(P||Q)=MI(X,Y). For DV, T will converge to
     log(P/Q) + c, where c=log E_Q(exp(T)).
 
     Among these 3 estimators, 'DV' and 'KLD' seems to give a better estimation
@@ -57,9 +57,9 @@ class MIEstimator(Algorithm):
     than 'KLD' because of the logarithm.
 
     Several strategies are implemented in order to estimate E_Q(.):
-    * 'buffer': storing y to a buffer and randomly retrieve samples from the
+    * 'buffer': store y to a buffer and randomly retrieve samples from the
        buffer.
-    * 'double_buffer': stroing both x and y to buffers and randomly retrieve
+    * 'double_buffer': stroe both x and y to buffers and randomly retrieve
        samples from the two buffers.
     * 'shuffle': randomly shuffle batch y
     * 'shift': shift batch y by one sample, i.e.
