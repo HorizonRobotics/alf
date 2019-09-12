@@ -126,11 +126,11 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         # An exp is only put in the log queue after it's put in the learning queue
         # So when we stop the driver (which will force all queues to stop),
         # some exps might be missing from the metric. Here we assert an arbitrary
-        # lower bound of 3/5. The upper bound is due to the fact that StepType.LAST
+        # lower bound of 2/5. The upper bound is due to the fact that StepType.LAST
         # is not recorded by the metric (episode_length==5).
         self.assertLessEqual(total_num_steps, int(total_num_steps_ * 4 // 5))
         self.assertGreaterEqual(total_num_steps,
-                                int(total_num_steps_ * 3 // 5))
+                                int(total_num_steps_ * 2 // 5))
 
         average_reward = int(driver.get_metrics()[2].result())
         self.assertEqual(average_reward, episode_length - 1)
@@ -198,7 +198,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                     time_step=time_step,
                     policy_state=policy_state)
 
-        for i in range(300):
+        for i in range(500):
             if sync_driver:
                 time_step, policy_state = driver.run(
                     max_num_steps=batch_size * 4,
