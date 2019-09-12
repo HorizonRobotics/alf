@@ -53,7 +53,8 @@ class PPOAlgorithm(ActorCriticAlgorithm):
         advantages = tf.concat([
             advantages,
             tf.zeros(
-                advantages.shape.as_list()[:-1] + [1], dtype=advantages.dtype)
+                shape=common.concat_shape(tf.shape(advantages)[:-1], [1]),
+                dtype=advantages.dtype)
         ],
                                axis=-1)
         returns = exp.info.value + advantages

@@ -234,16 +234,12 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                     "for off-policy training of RNN.")
 
         experience = tf.nest.map_structure(
-            lambda x: tf.reshape(x, [-1, mini_batch_length] + list(x.shape[2:])
-                                 ), experience)
+            lambda x: tf.reshape(
+                x, common.concat_shape([-1, mini_batch_length],
+                                       tf.shape(x)[2:])), experience)
 
-        batch_size = experience.step_type.shape[0]
+        batch_size = tf.shape(experience.step_type)[0]
         mini_batch_size = (mini_batch_size or batch_size)
-        # The reason of this constraint is tf.reshape at L233
-        # TODO: remove this constraint.
-        assert batch_size % mini_batch_size == 0, (
-            "batch_size=%s not a multiple of mini_batch_size=%s" %
-            (batch_size, mini_batch_size))
 
         def _make_time_major(nest):
             """Put the time dim to axis=0."""
@@ -253,29 +249,22 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
                 indices = tf.random.shuffle(
-                    tf.range(experience.step_type.shape[0]))
+                    tf.range(tf.shape(experience.step_type)[0]))
                 experience = tf.nest.map_structure(
                     lambda x: tf.gather(x, indices), experience)
             for b in tf.range(0, batch_size, mini_batch_size):
                 batch = tf.nest.map_structure(
                     lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
                     experience)
-                # Make the shape explicit. The shapes of tensors from the
-                # previous line depend on tensor `b`, which is replaced with
-                # None by tf. This makes some operations depending on the shape
-                # of tensor fail. (Currently, it's alf.common.tensor_extend)
-                # TODO: Find a way to work around with shapes containing None
-                # at common.tensor_extend()
-                batch = tf.nest.map_structure(
-                    lambda x: tf.reshape(x, [mini_batch_size] + list(x.shape)[
-                        1:]), batch)
                 batch = _make_time_major(batch)
                 is_last_mini_batch = tf.logical_and(
                     tf.equal(u, num_updates - 1),
                     tf.greater_equal(b + mini_batch_size, batch_size))
                 common.enable_summary(is_last_mini_batch)
                 training_info, loss_info, grads_and_vars = self._update(
-                    batch, weight=batch.step_type.shape[1] / mini_batch_size)
+                    batch,
+                    weight=tf.cast(tf.shape(batch.step_type)[1], tf.float32) /
+                    float(mini_batch_size))
                 if is_last_mini_batch:
                     self._training_summary(training_info, loss_info,
                                            grads_and_vars)
@@ -283,7 +272,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._train_step_counter.assign_add(1)
 
     def _update(self, experience, weight):
-        batch_size = experience.step_type.shape[1]
+        batch_size = tf.shape(experience.step_type)[1]
         counter = tf.zeros((), tf.int32)
         initial_train_state = common.get_initial_policy_state(
             batch_size, self._algorithm.train_state_spec)
@@ -292,13 +281,15 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 lambda state: state[0, ...], experience.state)
         else:
             first_train_state = initial_train_state
-        num_steps = experience.step_type.shape[0]
+        num_steps = tf.shape(experience.step_type)[0]
 
         def create_ta(s):
+            # TensorArray cannot use Tensor (batch_size) as element_shape
+            ta_batch_size = experience.step_type.shape[1]
             return tf.TensorArray(
                 dtype=s.dtype,
                 size=num_steps,
-                element_shape=tf.TensorShape([batch_size]).concatenate(
+                element_shape=tf.TensorShape([ta_batch_size]).concatenate(
                     s.shape))
 
         experience_ta = tf.nest.map_structure(create_ta,

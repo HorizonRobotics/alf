@@ -135,7 +135,7 @@ class MIEstimator(Algorithm):
             self._mean_averager = averager
 
     def _buffer_sampler(self, x, y):
-        batch_size = y.shape[0]
+        batch_size = tf.shape(y)[0]
         if self._y_buffer.current_size >= batch_size:
             y1 = self._y_buffer.get_batch(batch_size)
             self._y_buffer.add_batch(y)
@@ -145,7 +145,7 @@ class MIEstimator(Algorithm):
         return x, y1
 
     def _double_buffer_sampler(self, x, y):
-        batch_size = y.shape[0]
+        batch_size = tf.shape(y)[0]
         self._x_buffer.add_batch(x)
         x1 = self._x_buffer.get_batch(batch_size)
         self._y_buffer.add_batch(y)
