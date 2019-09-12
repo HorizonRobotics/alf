@@ -157,10 +157,12 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         if use_rollout_state:
             steps_per_episode = 5
             mini_batch_length = 8
+            unroll_length = 8
             env_class = RNNPolicyUnittestEnv
         else:
             steps_per_episode = 12
             mini_batch_length = 2
+            unroll_length = 12
             env_class = PolicyUnittestEnv
         env_f = lambda: TFPyEnvironment(
             env_class(
@@ -191,7 +193,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                 use_rollout_state=algorithm.use_rollout_state,
                 num_envs=1,
                 num_actor_queues=1,
-                unroll_length=mini_batch_length * 2,
+                unroll_length=unroll_length,
                 learn_queue_cap=1,
                 actor_queue_cap=1,
                 debug_summaries=True,
