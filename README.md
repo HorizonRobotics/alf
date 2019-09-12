@@ -26,6 +26,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 
 You can run the following commands to install ALF
 ```
+pip install tensorflow-gpu==2.0.0rc1
 git clone https://github.com/HorizonRobotics/alf
 cd alf
 pip install -e .
