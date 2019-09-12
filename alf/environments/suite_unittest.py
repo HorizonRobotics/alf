@@ -209,7 +209,8 @@ class RNNPolicyUnittestEnv(UnittestEnv):
         else:
             obs0 = tf.reshape(
                 self._observation0[:, 0], shape=(self.batch_size, 1))
-            reward = 1.0 - tf.abs(tf.cast(action, tf.float32) * 2 - 1 - obs0)
+            reward = 1.0 - 0.5 * tf.abs(
+                tf.cast(action, tf.float32) * 2 - 1 - obs0)
             reward = tf.reshape(reward, shape=(self.batch_size, ))
 
         if s == 0:
