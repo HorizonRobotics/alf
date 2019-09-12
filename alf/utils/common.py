@@ -589,12 +589,8 @@ def get_initial_time_step(env):
     return make_action_time_step(time_step, action)
 
 
-def algorithm_step(algorithm,
-                   ob_transformer: Callable,
-                   time_step,
-                   state,
-                   greedy_predict=False,
-                   training=False):
+def algorithm_step(algorithm_step_func, ob_transformer: Callable, time_step,
+                   state):
     """
     Perform an algorithm step on a time step.
     1. If `ob_transformer` is not None, then apply the transformation to the
@@ -618,12 +614,8 @@ def algorithm_step(algorithm,
     if ob_transformer is not None:
         time_step = time_step._replace(
             observation=ob_transformer(time_step.observation))
-    if training:
-        policy_step = algorithm.train_step(time_step, state)
-    elif greedy_predict:
-        policy_step = algorithm.greedy_predict(time_step, state)
-    else:
-        policy_step = algorithm.predict(time_step, state)
+
+    policy_step = algorithm_step_func(time_step, state)
     return policy_step._replace(action=to_distribution(policy_step.action))
 
 

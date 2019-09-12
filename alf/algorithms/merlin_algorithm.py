@@ -309,7 +309,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
         # TODO: add qvalue_net for predicting Q-value
 
-    def train_step(self, time_step: ActionTimeStep, state):
+    def rollout(self, time_step: ActionTimeStep, state):
         """Train one step.
 
         Args:
@@ -417,12 +417,12 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         self._mbp = mbp
         self._mba = mba
 
-    def train_step(self, time_step: ActionTimeStep, state):
+    def rollout(self, time_step: ActionTimeStep, state):
         """Train one step."""
         mbp_step = self._mbp.train_step(
             inputs=(time_step.observation, time_step.prev_action),
             state=state.mbp_state)
-        mba_step = self._mba.train_step(
+        mba_step = self._mba.rollout(
             time_step=time_step._replace(observation=mbp_step.outputs),
             state=state.mba_state)
 

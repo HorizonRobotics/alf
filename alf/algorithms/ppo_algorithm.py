@@ -19,8 +19,8 @@ import tensorflow as tf
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
-from alf.algorithms.on_policy_algorithm import OffPolicyAdapter
 from alf.algorithms.off_policy_algorithm import Experience
+from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
 from alf.utils import common, value_ops
 
@@ -28,31 +28,27 @@ PPOInfo = namedtuple("PPOInfo", ["returns", "advantages"])
 
 
 @gin.configurable
-class PPOAlgorithm(OffPolicyAdapter):
+class PPOAlgorithm(ActorCriticAlgorithm):
     """PPO Algorithm.
     Implement the simplified surrogate loss in equation (9) of "Proximal
     Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
 
-    It works with ppo_loss.PPOLoss2. It should have same behavior as
+    It works with ppo_loss.PPOLoss. It should have same behavior as
     baselines.ppo2.
     """
-
-    def __init__(self, algorithm: ActorCriticAlgorithm):
-        assert isinstance(algorithm, ActorCriticAlgorithm)
-        super().__init__(algorithm)
 
     def preprocess_experience(self, exp: Experience):
         """Compute advantages and put it into exp.info."""
         reward = exp.reward
-        if self._algorithm._reward_shaping_fn is not None:
-            reward = self._algorithm._reward_shaping_fn(reward)
-        reward = self._algorithm.calc_training_reward(reward, exp.info)
+        if self._reward_shaping_fn is not None:
+            reward = self._reward_shaping_fn(reward)
+        reward = self.calc_training_reward(reward, exp.info)
         advantages = value_ops.generalized_advantage_estimation(
             rewards=reward,
             values=exp.info.value,
             step_types=exp.step_type,
-            discounts=exp.discount * self._algorithm._loss._gamma,
-            td_lambda=self._algorithm._loss._lambda,
+            discounts=exp.discount * self._loss._gamma,
+            td_lambda=self._loss._lambda,
             time_major=False)
         advantages = tf.concat([
             advantages,
@@ -63,13 +59,6 @@ class PPOAlgorithm(OffPolicyAdapter):
         returns = exp.info.value + advantages
         return exp._replace(info=PPOInfo(returns, advantages))
 
-    def predict(self, time_step: ActionTimeStep, state=None):
-        return self._algorithm.train_step(time_step, state)
-
-    @property
-    def predict_state_spec(self):
-        return self._algorithm.train_state_spec
-
 
 @gin.configurable
 def create_ppo_algorithm(env, debug_summaries=False):
@@ -78,6 +67,11 @@ def create_ppo_algorithm(env, debug_summaries=False):
     Args:
         env (TFEnvironment): A TFEnvironment
         debug_summaries (bool): True if debug summaries should be created.
+    Returns:
+        PPOAlgorithm
     """
-    algorithm = create_ac_algorithm(env, debug_summaries=debug_summaries)
-    return PPOAlgorithm(algorithm)
+    return create_ac_algorithm(
+        env,
+        algorithm_class=PPOAlgorithm,
+        loss_class=PPOLoss,
+        debug_summaries=debug_summaries)

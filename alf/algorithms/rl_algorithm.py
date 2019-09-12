@@ -89,6 +89,16 @@ class RLAlgorithm(tf.Module):
     """Abstract base class for  RL Algorithms.
 
     RLAlgorithm provide basic functions and generic interface for rl algorithms.
+
+    The key interface functions are:
+    1. predict(): one step of computation of action for evaluation.
+    2. rollout(): one step of comutation for rollout. Besides action, it also
+       needs to compute other information necessary for training.
+    3. train_step(): only used for off-policy training.
+    4. train_complete(): Complete one training iteration based on the
+       information collected from rollout() and/or train_step()
+
+    See OnPolicyAlgorithm and OffPolicyAlgorithm for detail.
     """
 
     def __init__(self,
@@ -109,12 +119,11 @@ class RLAlgorithm(tf.Module):
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             train_state_spec (nested TensorSpec): for the network state of
-                `train_step()`
+                `rollout()`
             action_distribution_spec (nested DistributionSpec): for the action
                 distributions.
             predict_state_spec (nested TensorSpec): for the network state of
-                `train_step()`. If None, it's assume to be same as
-                 train_state_spec
+                `predict()`. If None, it's assume to be same as train_state_spec
             optimizer (tf.optimizers.Optimizer | list[Optimizer]): The
                 optimizer(s) for training.
             get_trainable_variables_func (Callable | list[Callable]): each one
@@ -138,6 +147,7 @@ class RLAlgorithm(tf.Module):
 
         self._action_spec = action_spec
         self._train_state_spec = train_state_spec
+        self._is_rnn = len(tf.nest.flatten(train_state_spec)) > 0
         if predict_state_spec is None:
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
@@ -161,6 +171,15 @@ class RLAlgorithm(tf.Module):
             train_step_counter)
         self._debug_summaries = debug_summaries
         self._cached_var_sets = None
+        self._use_rollout_state = False
+
+    @property
+    def use_rollout_state(self):
+        return self._use_rollout_state
+
+    @use_rollout_state.setter
+    def use_rollout_state(self, flag):
+        self._use_rollout_state = flag
 
     @property
     def action_spec(self):
@@ -207,7 +226,8 @@ class RLAlgorithm(tf.Module):
         Generate greedy action that maximizes the action probability).
 
         Args:
-            time_step (ActionTimeStep):
+            time_step (ActionTimeStep): Current observation and other inputs
+                for computing action.
             state (nested Tensor): should be consistent with predict_state_spec
             eps (float): a floating value in [0,1], representing the chance of
                 action sampling instead of taking argmax. This can help prevent
@@ -236,15 +256,46 @@ class RLAlgorithm(tf.Module):
         action = tf.nest.map_structure(dist_fn, policy_step.action)
         return policy_step._replace(action=action)
 
-    @abstractmethod
+    # Subclass may override predict() to allow more efficient implementation
     def predict(self, time_step: ActionTimeStep, state=None):
         """Predict for one step of observation.
 
+        This only used for evaluation. So it only need to perform compuations
+        for generating action distribution.
+
+        Args:
+            time_step (ActionTimeStep): Current observation and other inputs
+                for computing action.
+            state (nested Tensor): should be consistent with predict_state_spec
         Returns:
             policy_step (PolicyStep):
               policy_step.action is nested tf.distribution which consistent with
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
+        """
+        policy_step = self.rollout(time_step, state)
+        return policy_step._replace(info=())
+
+    @abstractmethod
+    def rollout(self, time_step: ActionTimeStep, state=None):
+        """Perform one step of rollout.
+
+        It is called to generate actions for every environment step.
+        It also needs to generate necessary information for training.
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+        Returns:
+            policy_step (PolicyStep):
+              action (nested tf.distribution): should be consistent with
+                `action_distribution_spec`
+              state (nested Tensor): should be consistent with `train_state_spec`
+              info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OnPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
         """
         pass
 

@@ -151,7 +151,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     target_critic1=critic_network.state_spec,
                     target_critic2=critic_network.state_spec)),
             action_distribution_spec=actor_network.output_spec,
-            predict_state_spec=actor_network.state_spec,
             optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
             get_trainable_variables_func=[
                 lambda: actor_network.trainable_variables, lambda:
@@ -208,11 +207,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
-    def predict(self, time_step: ActionTimeStep, state=None):
+    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
         action, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
-            network_state=state)
+            network_state=state.share.actor)
+        empty_state = tf.nest.map_structure(lambda x: (),
+                                            self.train_state_spec)
+        state = empty_state._replace(share=SacShareState(actor=state))
         return PolicyStep(action=action, state=state, info=())
 
     def _actor_train_step(self, exp: Experience, state: SacActorState,

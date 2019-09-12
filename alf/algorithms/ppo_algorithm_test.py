@@ -62,7 +62,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
 
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
-    ac_algorithm = ActorCriticAlgorithm(
+    return PPOAlgorithm(
         action_spec=action_spec,
         actor_network=actor_net,
         value_network=value_net,
@@ -70,7 +70,6 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
             action_spec=action_spec, gamma=1.0, debug_summaries=DEBUGGING),
         optimizer=optimizer,
         debug_summaries=DEBUGGING)
-    return PPOAlgorithm(ac_algorithm)
 
 
 class PpoTest(unittest.TestCase):

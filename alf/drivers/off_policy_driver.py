@@ -82,7 +82,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             observers=observers,
             use_rollout_state=use_rollout_state,
             metrics=metrics,
-            training=False,  # training can only be done by calling self.train()!
+            training=True,
             greedy_predict=False,  # always use OnPolicyDriver for play/eval!
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
@@ -128,11 +128,11 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._time_step_spec = extract_spec(time_step)
         self._action_spec = self._env.action_spec()
 
-        policy_step = algorithm.predict(time_step, self._initial_state)
+        policy_step = algorithm.rollout(time_step, self._initial_state)
         info_spec = extract_spec(policy_step.info)
-        self._pred_policy_step_spec = PolicyStep(
+        self._policy_step_spec = PolicyStep(
             action=self._action_spec,
-            state=algorithm.predict_state_spec,
+            state=algorithm.train_state_spec,
             info=info_spec)
 
         if self._use_rollout_state:
@@ -189,11 +189,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             info=extract_spec(processed_exp.info))
 
         policy_step = common.algorithm_step(
-            algorithm,
+            algorithm_step_func=algorithm.train_step,
             ob_transformer=self._observation_transformer,
             time_step=exp,
-            state=initial_state,
-            training=True)
+            state=initial_state)
         info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
             action=self._action_spec,
@@ -329,12 +328,9 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
 
-            policy_step = common.algorithm_step(
-                self._algorithm,
-                self._observation_transformer,
-                exp,
-                policy_state,
-                training=True)
+            policy_step = common.algorithm_step(self._algorithm.train_step,
+                                                self._observation_transformer,
+                                                exp, policy_state)
 
             action_dist_param = common.get_distribution_params(
                 policy_step.action)

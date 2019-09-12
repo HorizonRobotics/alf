@@ -308,12 +308,7 @@ class ActorThread(Thread):
 
     def _step(self, algorithm, time_step, state):
         policy_step = common.algorithm_step(
-            algorithm,
-            self._ob_transformer,
-            time_step,
-            state,
-            greedy_predict=False,
-            training=False)
+            algorithm.rollout, self._ob_transformer, time_step, state)
         action_dist_param = common.get_distribution_params(policy_step.action)
         policy_step = common.sample_policy_action(policy_step)
         return policy_step, action_dist_param
