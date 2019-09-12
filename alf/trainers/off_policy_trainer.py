@@ -93,8 +93,11 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
     """Perform off-policy training using AsyncOffPolicyDriver"""
 
     def init_driver(self):
+        envs = [self._env]
+        for i in range(1, self._config.num_envs):
+            envs.append(create_environment())
         driver = AsyncOffPolicyDriver(
-            env_or_env_fn=self._env,
+            envs=envs,
             algorithm=self._algorithm,
             use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length,

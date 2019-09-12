@@ -45,7 +45,7 @@ create_ac_algorithm.learning_rate=1e-3
 
 # driver config
 N = 2
-AsyncOffPolicyDriver.num_envs = %N
+
 AsyncOffPolicyDriver.num_actor_queues = %N
 AsyncOffPolicyDriver.actor_queue_cap = 1
 AsyncOffPolicyDriver.learn_queue_cap = 1
@@ -59,7 +59,7 @@ TrainerConfig.unroll_length=8
 TrainerConfig.mini_batch_length=None
 TrainerConfig.mini_batch_size=None
 TrainerConfig.use_tf_functions=True
-
+TrainerConfig.num_envs = %N
 TrainerConfig.algorithm_ctor = @create_ac_algorithm
 TrainerConfig.debug_summaries = 1
 TrainerConfig.evaluate = False

@@ -46,9 +46,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
     """
 
     def __init__(self,
-                 env_or_env_fn,
+                 envs,
                  algorithm: OffPolicyAlgorithm,
-                 num_envs=1,
                  num_actor_queues=1,
                  unroll_length=8,
                  learn_queue_cap=1,
@@ -62,15 +61,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  train_step_counter=None):
         """
         Args:
-            env_or_env_fn (TFEnvironment|Callable):  A TFEnvironment or a function with 0 args that creates an environment
+            envs (list[TFEnvironment]):  list of TFEnvironment
             algorithm (OffPolicyAlgorithm):
-            num_envs (int): the number of environments to run asynchronously.
-                Note: each environment itself could be a tf_agent batched
-                environment. So the actual total number of environments is
-                `num_envs` * `env_f().batch_size`. However, `env_f().batch_size`
-                is transparent to this driver. So all the queues operate on the
-                assumption of `num_envs` environments. Each environment is
-                exclusively owned by only one `EnvThread`.
             num_actor_queues (int): number of actor queues. Each queue is
                 exclusivly owned by just one actor thread.
             unroll_length (int): number of time steps each environment proceeds
@@ -98,15 +90,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
-        if isinstance(env_or_env_fn, TFEnvironment):
-            env_fn = create_environment
-            env = env_or_env_fn
-        else:
-            env_fn = env_or_env_fn
-            env = env_fn()
-
         super(AsyncOffPolicyDriver, self).__init__(
-            env=env,
+            env=envs[0],
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
@@ -118,6 +103,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
 
         # create threads
         self._coord = tf.train.Coordinator()
+        num_envs = len(envs)
         self._tfq = TFQueues(
             num_envs,
             self._env.batch_size,
@@ -139,9 +125,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 observation_transformer=self._observation_transformer)
             for i in range(num_actor_queues)
         ]
-        envs = [env]
-        for i in range(1, num_envs):
-            envs.append(env_fn())
         env_threads = [
             EnvThread(
                 name="env{}".format(i),

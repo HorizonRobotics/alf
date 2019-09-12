@@ -110,10 +110,11 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         episode_length = 5
         env_f = lambda: TFPyEnvironment(
             ValueUnittestEnv(batch_size=1, episode_length=episode_length))
-        alg = _create_ac_algorithm(env_f())
-        driver = AsyncOffPolicyDriver(env_f, alg, num_envs, num_actors,
-                                      unroll_length, learn_queue_cap,
-                                      actor_queue_cap)
+
+        envs = [env_f() for _ in range(num_envs)]
+        alg = _create_ac_algorithm(envs[0])
+        driver = AsyncOffPolicyDriver(envs, alg, num_actors, unroll_length,
+                                      learn_queue_cap, actor_queue_cap)
         driver.start()
         total_num_steps_ = 0
         for _ in range(num_iterations):
@@ -152,7 +153,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
 
         batch_size = 128
         steps_per_episode = 12
-        env_f = lambda: TFPyEnvironment(
+        env = TFPyEnvironment(
             PolicyUnittestEnv(
                 batch_size,
                 steps_per_episode,
@@ -164,25 +165,23 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                 steps_per_episode,
                 action_type=ActionType.Continuous))
 
-        algorithm = algorithm_ctor(env_f())
+        algorithm = algorithm_ctor(env)
 
         if sync_driver:
             driver = SyncOffPolicyDriver(
-                env_f(),
+                env,
                 algorithm,
                 debug_summaries=True,
                 summarize_grads_and_vars=True)
         else:
-            driver = AsyncOffPolicyDriver(
-                env_f,
-                algorithm,
-                num_envs=1,
-                num_actor_queues=1,
-                unroll_length=steps_per_episode,
-                learn_queue_cap=1,
-                actor_queue_cap=1,
-                debug_summaries=True,
-                summarize_grads_and_vars=True)
+            driver = AsyncOffPolicyDriver([env],
+                                          algorithm,
+                                          num_actor_queues=1,
+                                          unroll_length=steps_per_episode,
+                                          learn_queue_cap=1,
+                                          actor_queue_cap=1,
+                                          debug_summaries=True,
+                                          summarize_grads_and_vars=True)
         replayer = driver.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)

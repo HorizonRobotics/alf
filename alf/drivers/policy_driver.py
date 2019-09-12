@@ -97,6 +97,7 @@ class PolicyDriver(driver.Driver):
             self._policy_state_spec = algorithm.train_state_spec
         else:
             self._policy_state_spec = algorithm.predict_state_spec
+        self._initial_time_step = common.get_initial_time_step(env)
         self._initial_state = self.get_initial_policy_state()
 
     def add_experience_observer(self, observer: Callable):
@@ -170,7 +171,7 @@ class PolicyDriver(driver.Driver):
         return self._metrics
 
     def get_initial_time_step(self):
-        return common.get_initial_time_step(self._env)
+        return self._initial_time_step
 
     def get_initial_policy_state(self):
         """
@@ -264,7 +265,7 @@ class PolicyDriver(driver.Driver):
                 num_steps (int): how many steps have been run
         """
         if time_step is None:
-            time_step = self.get_initial_time_step()
+            time_step = self._initial_time_step
         if policy_state is None:
             policy_state = self._initial_state
         return self._run(max_num_steps, time_step, policy_state)
