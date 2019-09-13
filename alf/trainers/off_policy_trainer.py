@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import time
+from absl import logging
 
 import gin.tf
 import tensorflow as tf
@@ -84,8 +85,12 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
-        tf.summary.scalar("time/train", time.time() - t0)
-        return time_step, policy_state, max_num_steps
+        t = time.time() - t0
+        logging.info(
+            '%s time=%.3f throughput=%0.2f' %
+            (iter_num, t,
+             int(max_num_steps) * self._num_updates_per_train_step / t))
+        return time_step, policy_state
 
 
 @gin.configurable("async_off_policy_trainer")
@@ -116,5 +121,8 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
-        tf.summary.scalar("time/train", time.time() - t0)
-        return time_step, policy_state, steps
+        t = time.time() - t0
+        logging.info(
+            '%s time=%.3f throughput=%0.2f' %
+            (iter_num, t, int(steps) * self._num_updates_per_train_step / t))
+        return time_step, policy_state

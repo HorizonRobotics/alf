@@ -25,7 +25,6 @@ from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
 
 from alf.drivers.on_policy_driver import OnPolicyDriver
-from alf.trainers.off_policy_trainer import OffPolicyTrainer
 from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
 from alf.utils import common
@@ -270,18 +269,11 @@ class Trainer(object):
         policy_state = self._driver.get_initial_policy_state()
         for iter_num in range(self._num_iterations):
             t0 = time.time()
-            time_step, policy_state, steps = self.train_iter(
+            time_step, policy_state = self.train_iter(
                 iter_num=iter_num,
                 policy_state=policy_state,
                 time_step=time_step)
             t = time.time() - t0
-            # only off-policy trainers will update several times
-            if issubclass(self._config._trainer, OffPolicyTrainer):
-                num_updates = self._config.num_updates_per_train_step
-            else:  # on-policy trainer only updates on a batch once
-                num_updates = 1
-            logging.info('%s time=%.3f throughput=%0.2f' %
-                         (iter_num, t, int(steps) * num_updates / t))
             tf.summary.scalar("time/train_iter", t)
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()
