@@ -24,7 +24,7 @@ import threading
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
 
 from alf.environments.suite_unittest import ValueUnittestEnv
-from alf.environments.suite_unittest import PolicyUnittestEnv
+from alf.environments.suite_unittest import PolicyUnittestEnv, RNNPolicyUnittestEnv
 from alf.environments.suite_unittest import ActionType
 from alf.algorithms.ddpg_algorithm import create_ddpg_algorithm
 from alf.algorithms.sac_algorithm import create_sac_algorithm
@@ -60,8 +60,9 @@ def _create_ddpg_algorithm(env):
 def _create_ppo_algorithm(env):
     return create_ac_algorithm(
         env=env,
-        actor_fc_layers=(16, 16),
-        value_fc_layers=(16, 16),
+        actor_fc_layers=(),
+        value_fc_layers=(),
+        use_rnns=True,
         learning_rate=1e-3,
         algorithm_class=PPOAlgorithm)
 
@@ -127,11 +128,11 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         # An exp is only put in the log queue after it's put in the learning queue
         # So when we stop the driver (which will force all queues to stop),
         # some exps might be missing from the metric. Here we assert an arbitrary
-        # lower bound of 3/5. The upper bound is due to the fact that StepType.LAST
+        # lower bound of 2/5. The upper bound is due to the fact that StepType.LAST
         # is not recorded by the metric (episode_length==5).
         self.assertLessEqual(total_num_steps, int(total_num_steps_ * 4 // 5))
         self.assertGreaterEqual(total_num_steps,
-                                int(total_num_steps_ * 3 // 5))
+                                int(total_num_steps_ * 2 // 5))
 
         average_reward = int(driver.get_metrics()[2].result())
         self.assertEqual(average_reward, episode_length - 1)
@@ -145,43 +146,59 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         super().setUp()
         tf.random.set_seed(0)
 
-    @parameterized.parameters((_create_sac_algorithm, True),
-                              (_create_ddpg_algorithm, True),
-                              (_create_ppo_algorithm, False))
-    def test_off_policy_algorithm(self, algorithm_ctor, sync_driver):
+    @parameterized.parameters((_create_sac_algorithm, False, True),
+                              (_create_ddpg_algorithm, False, True),
+                              (_create_ppo_algorithm, True, True),
+                              (_create_ppo_algorithm, True, False))
+    def test_off_policy_algorithm(self, algorithm_ctor, use_rollout_state,
+                                  sync_driver):
         logging.info("{} {}".format(algorithm_ctor.__name__, sync_driver))
 
         batch_size = 128
-        steps_per_episode = 12
+        if use_rollout_state:
+            steps_per_episode = 5
+            mini_batch_length = 8
+            unroll_length = 8
+            env_class = RNNPolicyUnittestEnv
+        else:
+            steps_per_episode = 12
+            mini_batch_length = 2
+            unroll_length = 12
+            env_class = PolicyUnittestEnv
+
         env = TFPyEnvironment(
-            PolicyUnittestEnv(
+            env_class(
                 batch_size,
                 steps_per_episode,
                 action_type=ActionType.Continuous))
 
         eval_env = TFPyEnvironment(
-            PolicyUnittestEnv(
+            env_class(
                 batch_size,
                 steps_per_episode,
                 action_type=ActionType.Continuous))
 
         algorithm = algorithm_ctor(env)
+        algorithm.use_rollout_state = use_rollout_state
 
         if sync_driver:
             driver = SyncOffPolicyDriver(
                 env,
                 algorithm,
+                use_rollout_state=use_rollout_state,
                 debug_summaries=True,
                 summarize_grads_and_vars=True)
         else:
-            driver = AsyncOffPolicyDriver([env],
-                                          algorithm,
-                                          num_actor_queues=1,
-                                          unroll_length=steps_per_episode,
-                                          learn_queue_cap=1,
-                                          actor_queue_cap=1,
-                                          debug_summaries=True,
-                                          summarize_grads_and_vars=True)
+            driver = AsyncOffPolicyDriver(
+                [env],
+                algorithm,
+                use_rollout_state=algorithm.use_rollout_state,
+                num_actor_queues=1,
+                unroll_length=unroll_length,
+                learn_queue_cap=1,
+                actor_queue_cap=1,
+                debug_summaries=True,
+                summarize_grads_and_vars=True)
         replayer = driver.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
@@ -197,19 +214,22 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                     time_step=time_step,
                     policy_state=policy_state)
 
-        for i in range(300):
+        for i in range(500):
             if sync_driver:
                 time_step, policy_state = driver.run(
-                    max_num_steps=batch_size * 4,
+                    max_num_steps=batch_size * mini_batch_length * 2,
                     time_step=time_step,
                     policy_state=policy_state)
                 experience, _ = replayer.replay(
-                    sample_batch_size=128, mini_batch_length=2)
+                    sample_batch_size=128, mini_batch_length=mini_batch_length)
             else:
                 driver.run_async()
                 experience = replayer.replay_all()
 
-            driver.train(experience, mini_batch_size=128, mini_batch_length=2)
+            driver.train(
+                experience,
+                mini_batch_size=128,
+                mini_batch_length=mini_batch_length)
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)
