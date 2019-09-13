@@ -142,7 +142,8 @@ def add_loss_summaries(loss_info: LossInfo):
     tf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
-    if getattr(loss_info.extra, '_fields') is None:
+    if not hasattr(loss_info.extra, '_fields'):
+        # not a namedtuple
         return
     add_nested_summaries('loss', loss_info.extra)
 
