@@ -368,13 +368,13 @@ class EnvThread(Thread):
     simulator to an external process
     """
 
-    def __init__(self, name, coord, env_f, tf_queues, unroll_length, id,
+    def __init__(self, name, coord, env, tf_queues, unroll_length, id,
                  actor_id):
         """
         Args:
             name (str): name of the thread
             coord (tf.train.Coordinator): coordinate among threads
-            env_f (Callable): a function that creates an env
+            env (TFEnvironment):  A TFEnvironment
             tf_queues (TFQueues): an object for storing all the tf.FIFOQueues
                 for communicating between threads
             unroll_length (int): Each env unrolls for so many steps before sending
@@ -386,7 +386,7 @@ class EnvThread(Thread):
         """
         super().__init__(
             name=name, target=self._run, args=(coord, unroll_length))
-        self._env = env_f()
+        self._env = env
         self._tfq = tf_queues
         self._id = id
         self._actor_q = self._tfq.actor_queues[actor_id]

@@ -22,9 +22,11 @@ from alf.algorithms.off_policy_algorithm import make_experience
 import gin.tf
 import tensorflow as tf
 
+from tf_agents.environments.tf_environment import TFEnvironment
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.drivers.threads import TFQueues, ActorThread, EnvThread, LogThread
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
+from alf.environments.utils import create_environment
 
 
 @gin.configurable
@@ -44,9 +46,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
     """
 
     def __init__(self,
-                 env_f: Callable,
+                 envs,
                  algorithm: OffPolicyAlgorithm,
-                 num_envs=1,
                  num_actor_queues=1,
                  unroll_length=8,
                  learn_queue_cap=1,
@@ -60,15 +61,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  train_step_counter=None):
         """
         Args:
-            env_f (Callable): a function with 0 args that creates an environment
+            envs (list[TFEnvironment]):  list of TFEnvironment
             algorithm (OffPolicyAlgorithm):
-            num_envs (int): the number of environments to run asynchronously.
-                Note: each environment itself could be a tf_agent batched
-                environment. So the actual total number of environments is
-                `num_envs` * `env_f().batch_size`. However, `env_f().batch_size`
-                is transparent to this driver. So all the queues operate on the
-                assumption of `num_envs` environments. Each environment is
-                exclusively owned by only one `EnvThread`.
             num_actor_queues (int): number of actor queues. Each queue is
                 exclusivly owned by just one actor thread.
             unroll_length (int): number of time steps each environment proceeds
@@ -97,7 +91,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 counter will be created.
         """
         super(AsyncOffPolicyDriver, self).__init__(
-            env=env_f(),
+            env=envs[0],
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
@@ -109,6 +103,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
 
         # create threads
         self._coord = tf.train.Coordinator()
+        num_envs = len(envs)
         self._tfq = TFQueues(
             num_envs,
             self._env.batch_size,
@@ -134,7 +129,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             EnvThread(
                 name="env{}".format(i),
                 coord=self._coord,
-                env_f=env_f,
+                env=envs[i],
                 tf_queues=self._tfq,
                 unroll_length=unroll_length,
                 id=i,

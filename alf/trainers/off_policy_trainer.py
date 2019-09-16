@@ -92,18 +92,27 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
 class AsyncOffPolicyTrainer(OffPolicyTrainer):
     """Perform off-policy training using AsyncOffPolicyDriver"""
 
+    def __init__(self, config):
+        super().__init__(config)
+        self._driver_started = False
+
     def init_driver(self):
+        envs = [self._env]
+        for i in range(1, self._config.num_envs):
+            envs.append(create_environment())
         driver = AsyncOffPolicyDriver(
-            env_f=create_environment,
+            envs=envs,
             algorithm=self._algorithm,
             use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)
-        driver.start()
         return driver
 
     def train_iter(self, iter_num, policy_state, time_step):
+        if not self._driver_started:
+            self._driver.start()
+            self._driver_started = True
         if iter_num == 0 and self._initial_collect_steps != 0:
             steps = 0
             while steps < self._initial_collect_steps:
