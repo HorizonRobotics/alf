@@ -212,6 +212,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             mini_batch_size (int): number of sequences for each minibatch
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch
+
+        Returns:
+            train_steps (int): the actual number of time steps that have been
+                trained (a step might be trained multiple times)
         """
 
         experience = self._algorithm.preprocess_experience(experience)
@@ -281,6 +285,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                                            grads_and_vars)
 
         self._train_step_counter.assign_add(1)
+        train_steps = batch_size * mini_batch_length * num_updates
+        return train_steps
 
     def _update(self, experience, weight):
         batch_size = experience.step_type.shape[1]

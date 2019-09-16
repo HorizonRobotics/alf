@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import time
+from absl import logging
 
 import gin.tf
 import tensorflow as tf
@@ -78,14 +79,13 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             max_num_steps=max_num_steps,
             time_step=time_step,
             policy_state=policy_state)
-        t0 = time.time()
-        self._driver.train(
+        # `train_steps` might be different from `max_num_steps`!
+        train_steps = self._driver.train(
             self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
-        tf.summary.scalar("time/train", time.time() - t0)
-        return time_step, policy_state, max_num_steps
+        return time_step, policy_state, train_steps
 
 
 @gin.configurable("async_off_policy_trainer")
@@ -109,12 +109,11 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             while steps < self._initial_collect_steps:
                 steps += self._driver.run_async()
         else:
-            steps = self._driver.run_async()
-        t0 = time.time()
-        self._driver.train(
+            self._driver.run_async()
+        # `train_steps` might be different from `steps`!
+        train_steps = self._driver.train(
             self.get_exp(),
             num_updates=self._num_updates_per_train_step,
             mini_batch_length=self._mini_batch_length,
             mini_batch_size=self._mini_batch_size)
-        tf.summary.scalar("time/train", time.time() - t0)
-        return time_step, policy_state, steps
+        return time_step, policy_state, train_steps
