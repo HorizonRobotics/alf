@@ -164,6 +164,7 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
             mini_batch_length = 2
             unroll_length = 12
             env_class = PolicyUnittestEnv
+
         env = TFPyEnvironment(
             env_class(
                 batch_size,
