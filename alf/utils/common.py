@@ -214,6 +214,22 @@ def get_distribution_params(nested_distribution):
         nested_distribution)
 
 
+def concat_shape(shape1, shape2):
+    """Concatenate two shape tensor.
+
+    Args:
+        shape1 (Tensor|list): first shape
+        shape2 (Tensor|list): second shape
+    Returns:
+        Tensor for the concatenated shape
+    """
+    if not isinstance(shape1, tf.Tensor):
+        shape1 = tf.convert_to_tensor(shape1, dtype=tf.int32)
+    if not isinstance(shape2, tf.Tensor):
+        shape2 = tf.convert_to_tensor(shape2, dtype=tf.int32)
+    return tf.concat([shape1, shape2], axis=0)
+
+
 def expand_dims_as(x, y):
     """Expand the shape of `x` with extra singular dimensions.
 
@@ -221,16 +237,16 @@ def expand_dims_as(x, y):
     Args:
         x (Tensor): source tensor
         y (Tensor): target tensor. Only its shape will be used.
-    Returns
+    Returns:
         x with extra singular dimensions.
     """
     assert len(x.shape) <= len(y.shape)
-    assert x.shape == y.shape[:len(x.shape)]
+    tf.assert_equal(tf.shape(x), tf.shape(y)[:len(x.shape)])
     k = len(y.shape) - len(x.shape)
     if k == 0:
         return x
     else:
-        return tf.reshape(x, x.shape.concatenate((1, ) * k))
+        return tf.reshape(x, concat_shape(tf.shape(x), [1] * k))
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
@@ -480,7 +496,7 @@ def tensor_extend(x, y):
     Returns:
         the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
     """
-    return tf.concat([x, tf.reshape(y, [1] + y.shape.as_list())], axis=0)
+    return tf.concat([x, tf.expand_dims(y, axis=0)], axis=0)
 
 
 def tensor_extend_zero(x):
@@ -493,7 +509,9 @@ def tensor_extend_zero(x):
         the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
     """
     return tf.concat(
-        [x, tf.zeros([1] + x.shape.as_list()[1:], dtype=x.dtype)], axis=0)
+        [x,
+         tf.expand_dims(tf.zeros(tf.shape(x)[1:], dtype=x.dtype), axis=0)],
+        axis=0)
 
 
 def explained_variance(ypred, y):
@@ -599,14 +617,13 @@ def algorithm_step(algorithm_step_func, ob_transformer: Callable, time_step,
     2. Always convert the output `policy_step.action` to an action distribution
 
     Args:
-        algorithm (RLAlgorithm): algorithm that steps
+        algorithm_step_func (Callable): step function from algorithm. Can be
+            algorithm.predict, algorithm.rollout or algorithm.train_step
         ob_transformer (Callable): transformation applied to
             `time_step.observation`
         time_step (ActionTimeStep):
         state (tf.nest): could be consistent with either
             `algorithm.train_state_spec` or `algorithm.predict_state_spec`
-        greedy_predict (bool): if True, argmax on action distribution
-        training (bool): if True, call `algorithm.train_step`
 
     Returns:
         policy_step (PolicyStep): policy step should always have action

@@ -23,7 +23,7 @@ import tensorflow.keras.activations as activations
 
 from tf_agents.networks import network
 
-from alf.utils.common import expand_dims_as
+from alf.utils.common import expand_dims_as, concat_shape
 
 
 class Memory(object):
@@ -175,7 +175,7 @@ class MemoryWithUsage(Memory):
               (batch_size, num_keys, dim)
 
         """
-        batch_size = query.shape[0]
+        batch_size = tf.shape(query)[0]
         keys_and_scales = keynet(query)
         num_keys = keys_and_scales.shape[-1] // (self.dim + 1)
         assert num_keys * (self.dim + 1) == keys_and_scales.shape[-1]
@@ -183,9 +183,9 @@ class MemoryWithUsage(Memory):
             keys_and_scales,
             num_or_size_splits=[num_keys * self.dim, num_keys],
             axis=-1)
-        keys = tf.reshape(keys, keys.shape[:-1].concatenate((num_keys,
-                                                             self.dim)))
-        scales = tf.math.softplus(tf.reshape(scales, keys.shape[:-1]))
+        keys = tf.reshape(
+            keys, concat_shape(tf.shape(keys)[:-1], [num_keys, self.dim]))
+        scales = tf.math.softplus(tf.reshape(scales, tf.shape(keys)[:-1]))
 
         r = self.read(keys, scales)
         if flatten_result:
@@ -255,7 +255,7 @@ class MemoryWithUsage(Memory):
         Append the content to memory. If the memory is full, the slot with the
         smallest usage will be overriden. The usage is calculated during read as
         the sum of past attentions.
-        
+
         Args:
             content (Tensor): shape should be (b, dim)
         """
@@ -313,10 +313,10 @@ class MemoryWithUsage(Memory):
     @property
     def states(self):
         """Get the states of the memory.
-        
+
         Returns:
             memory states: tuple of memory content and usage tensor.
-            
+
         """
         assert not self._snapshot_only, (
             "states() is not supported for snapshot_only memory")

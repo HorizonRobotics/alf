@@ -64,7 +64,7 @@ class DataBuffer(tf.Module):
         Args:
             batch (Tensor): shape should be [batch_size] + tensor_space.shape
         """
-        batch_size = batch.shape[0]
+        batch_size = tf.cast(tf.shape(batch)[0], tf.int64)
         if batch_size >= self._capacity:
             self._current_size.assign(self._capacity)
             self._current_pos.assign(0)

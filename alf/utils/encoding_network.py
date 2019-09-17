@@ -20,6 +20,7 @@ class EncodingNetwork(TFAEncodingNetwork):
     """Feed Forward network with CNN and FNN layers.."""
 
     def __init__(self,
+                 input_tensor_spec,
                  last_layer_size,
                  last_activation_fn=None,
                  dtype=tf.float32,
@@ -43,11 +44,15 @@ class EncodingNetwork(TFAEncodingNetwork):
                 list of tensors and combines them. Good options include
                 `tf.keras.layers.Add` and `tf.keras.layers.Concatenate(axis=-1)`.
                 This layer must not be already built. For more details see
-                the documentation of `networks.EncodingNetwork`.
+                the documentation of `networks.EncodingNetwork`. If there is only
+                one input, this will be ignored.
             xargs (dict): See tf_agents.networks.encoding_network.EncodingNetwork
               for detail
         """
+        if len(tf.nest.flatten(input_tensor_spec)) == 1:
+            preprocessing_combiner = None
         super(EncodingNetwork, self).__init__(
+            input_tensor_spec=input_tensor_spec,
             preprocessing_combiner=preprocessing_combiner,
             dtype=dtype,
             **xargs)
