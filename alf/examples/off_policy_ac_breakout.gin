@@ -25,23 +25,37 @@ ActorCriticLoss.advantage_clip=None
 # TODO: enable after V-Trace is implemented
 #ActorCriticLoss.use_vtrace=True
 
-ActorDistributionNetwork.activation_fn=@tf.nn.relu
+
+
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
 
 CONV_LAYER_PARAMS=((32, 8, 4), (64, 4, 2), (64, 3, 1))
-ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(512,)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.relu
+actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
-ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
-ValueNetwork.activation_fn=@tf.nn.relu
-ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(512,)
+value/ValueNetwork.activation_fn=@tf.nn.relu
+value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
-create_ac_algorithm.actor_fc_layers=(512,)
-create_ac_algorithm.value_fc_layers=(512,)
 
+ac/Adam.learning_rate=1e-3
+
+ActorCriticAlgorithm.action_spec=%action_spec
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.optimizer=@ac/Adam()
 ActorCriticAlgorithm.gradient_clipping=None
 ActorCriticAlgorithm.reward_shaping_fn=@reward_clipping
 common.reward_clipping.minmax=(-1, 1)
-create_ac_algorithm.learning_rate=1e-3
 
 # driver config
 N = 2
@@ -60,7 +74,7 @@ TrainerConfig.mini_batch_length=None
 TrainerConfig.mini_batch_size=None
 TrainerConfig.use_tf_functions=True
 TrainerConfig.num_envs = %N
-TrainerConfig.algorithm_ctor = @create_ac_algorithm
+TrainerConfig.algorithm_cls=@ActorCriticAlgorithm
 TrainerConfig.debug_summaries = 1
 TrainerConfig.evaluate = False
 

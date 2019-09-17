@@ -49,7 +49,7 @@ class TrainerConfig(object):
     def __init__(self,
                  root_dir,
                  trainer,
-                 algorithm_ctor=None,
+                 algorithm_cls=None,
                  random_seed=0,
                  num_iterations=1000,
                  unroll_length=8,
@@ -78,8 +78,7 @@ class TrainerConfig(object):
             trainer (class): cls that used for creating a `Trainer` instance,
                 and it should be one of [`on_policy_trainer`, `sync_off_policy_trainer`,
                 `async_off_policy_trainer`]
-            algorithm_ctor (Callable): callable that create an
-                `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
+            algorithm_cls (RLAlgorithm): class of the algorithm.
             random_seed (int): random seed
             num_iterations (int): number of update iterations
             unroll_length (int):  number of time steps each environment proceeds per
@@ -120,7 +119,7 @@ class TrainerConfig(object):
 
         self._parameters = dict(
             root_dir=root_dir,
-            algorithm_ctor=algorithm_ctor,
+            algorithm_cls=algorithm_cls,
             random_seed=random_seed,
             num_iterations=num_iterations,
             unroll_length=unroll_length,
@@ -171,7 +170,7 @@ class Trainer(object):
         self._eval_dir = os.path.join(root_dir, 'eval')
 
         self._env = None
-        self._algorithm_ctor = config.algorithm_ctor
+        self._algorithm_cls = config.algorithm_cls
         self._algorithm = None
         self._driver = None
 
@@ -216,10 +215,11 @@ class Trainer(object):
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
         self._env = create_environment()
+        common.set_global_env(self._env)
         if self._evaluate:
             self._eval_env = create_environment(num_parallel_environments=1)
-        self._algorithm = self._algorithm_ctor(
-            self._env, debug_summaries=self._debug_summaries)
+        self._algorithm = self._algorithm_cls(
+            debug_summaries=self._debug_summaries)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         self._driver = self.init_driver()

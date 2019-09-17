@@ -685,3 +685,48 @@ def run_if(cond, func):
         return tf.constant(True)
 
     tf.cond(cond, _if_true, lambda: tf.constant(False))
+
+
+@gin.configurable
+def to_tensor_spec(shape, dtype=tf.float32):
+    """Creates a TensorSpec.
+
+    Args:
+      shape: Value convertible to `tf.TensorShape`. The shape of the tensor.
+      dtype: Value convertible to `tf.DType`. The type of the tensor values.
+    """
+    return tf.TensorSpec(shape=shape, dtype=dtype)
+
+
+_env = None
+
+
+def set_global_env(env):
+    """Set global env"""
+    global _env
+    _env = env
+
+
+@gin.configurable
+def get_observation_spec():
+    """Get the `TensorSpec` of observations provided by the global environment
+
+    Returns:
+      A `TensorSpec`, or a nested dict, list or tuple of
+      `TensorSpec` objects, which describe the observation.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    return _env.observation_spec()
+
+
+@gin.configurable
+def get_action_spec():
+    """Get the specs of the Tensors expected by `step(action)` of the global environment.
+
+    Returns:
+      An single `TensorSpec`, or a nested dict, list or tuple of
+      `TensorSpec` objects, which describe the shape and
+      dtype of each Tensor expected by `step()`.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    return _env.action_spec()
