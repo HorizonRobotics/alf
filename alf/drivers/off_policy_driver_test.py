@@ -154,6 +154,7 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
             ValueUnittestEnv(batch_size=1, episode_length=episode_length))
 
         envs = [env_f() for _ in range(num_envs)]
+        common.set_global_env(envs[0])
         alg = _create_ac_algorithm()
         driver = AsyncOffPolicyDriver(envs, alg, num_actors, unroll_length,
                                       learn_queue_cap, actor_queue_cap)
