@@ -18,7 +18,6 @@ import gin
 import tensorflow as tf
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
 from alf.algorithms.off_policy_algorithm import Experience
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
@@ -59,20 +58,3 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                                axis=-1)
         returns = exp.info.value + advantages
         return exp._replace(info=PPOInfo(returns, advantages))
-
-
-@gin.configurable
-def create_ppo_algorithm(env, debug_summaries=False):
-    """Create a simple PPOAlgorithm.
-
-    Args:
-        env (TFEnvironment): A TFEnvironment
-        debug_summaries (bool): True if debug summaries should be created.
-    Returns:
-        PPOAlgorithm
-    """
-    return create_ac_algorithm(
-        env,
-        algorithm_class=PPOAlgorithm,
-        loss_class=PPOLoss,
-        debug_summaries=debug_summaries)

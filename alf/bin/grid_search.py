@@ -53,7 +53,7 @@ class GridSearchConfig(object):
         "desc": "desc text",
         "max_worker_num": 8,
         "parameters": {
-            "create_ddpg_algorithm.actor_learning_rate": [1e-3, 8e-4],
+            "ac/Adam.learning_rate": [1e-3, 8e-4],
             "OneStepTDLoss.gamma":"(0.995, 0.99)",
             "param3_name": param3_value,
               ...

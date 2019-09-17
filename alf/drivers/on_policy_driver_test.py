@@ -21,14 +21,31 @@ import tensorflow as tf
 import gin.tf
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
-from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
-from tf_agents.networks.value_rnn_network import ValueRnnNetwork
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.value_network import ValueNetwork
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.environments.suite_unittest import ActionType
-from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
+from alf.utils import common
+
+
+def _create_ac_algorithm(learning_rate):
+    observation_spec = common.get_observation_spec()
+    action_spec = common.get_action_spec()
+    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+    actor_net = ActorDistributionNetwork(
+        observation_spec, action_spec, fc_layer_params=())
+    value_net = ValueNetwork(observation_spec, fc_layer_params=())
+
+    return ActorCriticAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        value_network=value_net,
+        loss_class=ActorCriticLoss,
+        optimizer=optimizer)
 
 
 class OnPolicyDriverTest(unittest.TestCase):
@@ -47,9 +64,8 @@ class OnPolicyDriverTest(unittest.TestCase):
         # We need to wrap env using TFPyEnvironment because the methods of env
         # has side effects (e.g, env._current_time_step can be changed)
         env = TFPyEnvironment(env)
-
-        algorithm = create_ac_algorithm(
-            env, actor_fc_layers=(), value_fc_layers=(), learning_rate=1e-1)
+        common.set_global_env(env)
+        algorithm = _create_ac_algorithm(learning_rate=1e-1)
         driver = OnPolicyDriver(env, algorithm, train_interval=1)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
@@ -73,9 +89,8 @@ class OnPolicyDriverTest(unittest.TestCase):
         # We need to wrap env using TFPyEnvironment because the methods of env
         # has side effects (e.g, env._current_time_step can be changed)
         env = TFPyEnvironment(env)
-
-        algorithm = create_ac_algorithm(
-            env, actor_fc_layers=(), value_fc_layers=(), learning_rate=1e-2)
+        common.set_global_env(env)
+        algorithm = _create_ac_algorithm(learning_rate=1e-2)
         driver = OnPolicyDriver(env, algorithm, train_interval=1)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
@@ -100,13 +115,8 @@ class OnPolicyDriverTest(unittest.TestCase):
         # We need to wrap env using TFPyEnvironment because the methods of env
         # has side effects (e.g, env._current_time_step can be changed)
         env = TFPyEnvironment(env)
-
-        algorithm = create_ac_algorithm(
-            env,
-            actor_fc_layers=(),
-            value_fc_layers=(),
-            use_rnns=True,
-            learning_rate=2e-2)
+        common.set_global_env(env)
+        algorithm = _create_ac_algorithm(learning_rate=2e-2)
         driver = OnPolicyDriver(env, algorithm, train_interval=8)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 

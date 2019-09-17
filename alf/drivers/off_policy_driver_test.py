@@ -18,58 +18,99 @@ from absl.testing import parameterized
 
 from absl import logging
 import tensorflow as tf
-import tensorflow_probability as tfp
-import threading
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
-
+from tf_agents.agents.ddpg.actor_network import ActorNetwork
+from tf_agents.agents.ddpg.critic_network import CriticNetwork
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
+from tf_agents.networks.value_network import ValueNetwork
+from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from alf.environments.suite_unittest import ValueUnittestEnv
 from alf.environments.suite_unittest import PolicyUnittestEnv, RNNPolicyUnittestEnv
 from alf.environments.suite_unittest import ActionType
-from alf.algorithms.ddpg_algorithm import create_ddpg_algorithm
-from alf.algorithms.sac_algorithm import create_sac_algorithm
-from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
+from alf.algorithms.ddpg_algorithm import DdpgAlgorithm
+from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.ppo_algorithm import PPOAlgorithm
+from alf.algorithms.ppo_loss import PPOLoss
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
+from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.drivers.threads import NestFIFOQueue
-from alf.drivers.threads import ActorThread, EnvThread
 from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
 from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.utils.common import flatten_once
+from alf.utils import common
 
 
-def _create_sac_algorithm(env):
-    return create_sac_algorithm(
-        env=env,
-        actor_fc_layers=(16, 16),
-        critic_fc_layers=(16, 16),
-        alpha_learning_rate=5e-3,
-        actor_learning_rate=5e-3,
-        critic_learning_rate=5e-3)
+def _create_sac_algorithm():
+    observation_spec = common.get_observation_spec()
+    action_spec = common.get_action_spec()
+    actor_net = ActorDistributionNetwork(
+        observation_spec, action_spec, fc_layer_params=(16, 16))
+    critic_net = CriticNetwork((observation_spec, action_spec),
+                               joint_fc_layer_params=(16, 16))
+    return SacAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        critic_network=critic_net,
+        actor_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
+        critic_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
+        alpha_optimizer=tf.optimizers.Adam(learning_rate=5e-3))
 
 
-def _create_ddpg_algorithm(env):
-    return create_ddpg_algorithm(
-        env=env,
-        actor_fc_layers=(16, 16),
-        critic_fc_layers=(16, 16),
-        actor_learning_rate=1e-2,
-        critic_learning_rate=1e-1)
+def _create_ddpg_algorithm():
+    observation_spec = common.get_observation_spec()
+    action_spec = common.get_action_spec()
+    actor_net = ActorNetwork(
+        observation_spec, action_spec, fc_layer_params=(16, 16))
+    critic_net = CriticNetwork((observation_spec, action_spec),
+                               joint_fc_layer_params=(16, 16))
+    return DdpgAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        critic_network=critic_net,
+        actor_optimizer=tf.optimizers.Adam(learning_rate=1e-2),
+        critic_optimizer=tf.optimizers.Adam(learning_rate=1e-1))
 
 
-def _create_ppo_algorithm(env):
-    return create_ac_algorithm(
-        env=env,
-        actor_fc_layers=(),
-        value_fc_layers=(),
-        use_rnns=True,
-        learning_rate=1e-3,
-        algorithm_class=PPOAlgorithm)
+def _create_ppo_algorithm():
+    observation_spec = common.get_observation_spec()
+    action_spec = common.get_action_spec()
+    optimizer = tf.optimizers.Adam(learning_rate=1e-3)
+
+    actor_net = ActorDistributionRnnNetwork(
+        observation_spec,
+        action_spec,
+        input_fc_layer_params=(),
+        output_fc_layer_params=None)
+    value_net = ValueRnnNetwork(
+        observation_spec,
+        input_fc_layer_params=(),
+        output_fc_layer_params=None)
+
+    return PPOAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        value_network=value_net,
+        loss_class=PPOLoss,
+        optimizer=optimizer)
 
 
-def _create_ac_algorithm(env):
-    return create_ac_algorithm(
-        env=env, actor_fc_layers=(8, ), value_fc_layers=(8, ))
+def _create_ac_algorithm():
+    observation_spec = common.get_observation_spec()
+    action_spec = common.get_action_spec()
+    optimizer = tf.optimizers.Adam(learning_rate=5e-5)
+    actor_net = ActorDistributionNetwork(
+        observation_spec, action_spec, fc_layer_params=(8, ))
+    value_net = ValueNetwork(observation_spec, fc_layer_params=(8, ))
+
+    return ActorCriticAlgorithm(
+        action_spec=action_spec,
+        actor_network=actor_net,
+        value_network=value_net,
+        loss_class=ActorCriticLoss,
+        optimizer=optimizer)
 
 
 class ThreadQueueTest(parameterized.TestCase, unittest.TestCase):
@@ -113,7 +154,8 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
             ValueUnittestEnv(batch_size=1, episode_length=episode_length))
 
         envs = [env_f() for _ in range(num_envs)]
-        alg = _create_ac_algorithm(envs[0])
+        common.set_global_env(envs[0])
+        alg = _create_ac_algorithm()
         driver = AsyncOffPolicyDriver(envs, alg, num_actors, unroll_length,
                                       learn_queue_cap, actor_queue_cap)
         driver.start()
@@ -177,7 +219,8 @@ class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
                 steps_per_episode,
                 action_type=ActionType.Continuous))
 
-        algorithm = algorithm_ctor(env)
+        common.set_global_env(env)
+        algorithm = algorithm_ctor()
         algorithm.use_rollout_state = use_rollout_state
 
         if sync_driver:
