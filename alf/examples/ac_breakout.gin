@@ -55,7 +55,7 @@ common.reward_clipping.minmax=(-1, 1)
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=8
-TrainerConfig.algorithm_cls=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.use_tf_functions=True
 TrainerConfig.num_iterations=1000000
 TrainerConfig.evaluate=False

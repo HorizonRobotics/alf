@@ -56,7 +56,7 @@ tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
-TrainerConfig.algorithm_cls=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=True

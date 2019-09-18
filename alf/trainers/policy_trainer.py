@@ -49,7 +49,7 @@ class TrainerConfig(object):
     def __init__(self,
                  root_dir,
                  trainer,
-                 algorithm_cls=None,
+                 algorithm_ctor=None,
                  random_seed=0,
                  num_iterations=1000,
                  unroll_length=8,
@@ -78,7 +78,8 @@ class TrainerConfig(object):
             trainer (class): cls that used for creating a `Trainer` instance,
                 and it should be one of [`on_policy_trainer`, `sync_off_policy_trainer`,
                 `async_off_policy_trainer`]
-            algorithm_cls (RLAlgorithm): class of the algorithm.
+            algorithm_ctor (Callable): callable that create an
+                `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
             random_seed (int): random seed
             num_iterations (int): number of update iterations
             unroll_length (int):  number of time steps each environment proceeds per
@@ -119,7 +120,7 @@ class TrainerConfig(object):
 
         self._parameters = dict(
             root_dir=root_dir,
-            algorithm_cls=algorithm_cls,
+            algorithm_ctor=algorithm_ctor,
             random_seed=random_seed,
             num_iterations=num_iterations,
             unroll_length=unroll_length,
@@ -170,7 +171,7 @@ class Trainer(object):
         self._eval_dir = os.path.join(root_dir, 'eval')
 
         self._env = None
-        self._algorithm_cls = config.algorithm_cls
+        self._algorithm_ctor = config.algorithm_ctor
         self._algorithm = None
         self._driver = None
 
@@ -218,7 +219,7 @@ class Trainer(object):
         common.set_global_env(self._env)
         if self._evaluate:
             self._eval_env = create_environment(num_parallel_environments=1)
-        self._algorithm = self._algorithm_cls(
+        self._algorithm = self._algorithm_ctor(
             debug_summaries=self._debug_summaries)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 

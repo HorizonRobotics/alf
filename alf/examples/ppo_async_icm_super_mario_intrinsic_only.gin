@@ -36,10 +36,10 @@ icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 icm/EncodingNetwork.fc_layer_params=(256,)
 icm/EncodingNetwork.activation_fn=@tf.nn.elu
-icm/to_tensor_spec.shape=(256,)
+icm/tf.TensorSpec.shape=(256,)
 
 ICMAlgorithm.action_spec=%action_spec
-ICMAlgorithm.feature_spec=@icm/to_tensor_spec()
+ICMAlgorithm.feature_spec=@icm/tf.TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=256
 

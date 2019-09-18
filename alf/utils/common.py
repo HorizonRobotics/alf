@@ -687,17 +687,6 @@ def run_if(cond, func):
     tf.cond(cond, _if_true, lambda: tf.constant(False))
 
 
-@gin.configurable
-def to_tensor_spec(shape, dtype=tf.float32):
-    """Creates a TensorSpec.
-
-    Args:
-      shape: Value convertible to `tf.TensorShape`. The shape of the tensor.
-      dtype: Value convertible to `tf.DType`. The type of the tensor values.
-    """
-    return tf.TensorSpec(shape=shape, dtype=dtype)
-
-
 _env = None
 
 

@@ -74,7 +74,7 @@ TrainerConfig.mini_batch_length=None
 TrainerConfig.mini_batch_size=None
 TrainerConfig.use_tf_functions=True
 TrainerConfig.num_envs = %N
-TrainerConfig.algorithm_cls=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.debug_summaries = 1
 TrainerConfig.evaluate = False
 

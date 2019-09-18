@@ -32,5 +32,7 @@ tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
 gym.envs.registration.EnvSpec.make = gin.external_configurable(
     gym.envs.registration.EnvSpec.make, 'gym.envs.registration.EnvSpec.make')
 
+tf.TensorSpec = gin.external_configurable(tf.TensorSpec, 'tf.TensorSpec')
+
 # Activation functions.
 gin.external_configurable(tf.math.exp, 'tf.math.exp')

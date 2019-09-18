@@ -27,10 +27,10 @@ ac/Adam.learning_rate=5e-5
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.fc_layer_params=(200,)
 icm/EncodingNetwork.activation_fn=@tf.nn.elu
-icm/to_tensor_spec.shape=(200,)
+icm/tf.TensorSpec.shape=(200,)
 
 ICMAlgorithm.action_spec=%action_spec
-ICMAlgorithm.feature_spec=@icm/to_tensor_spec()
+ICMAlgorithm.feature_spec=@icm/tf.TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=200
 
@@ -44,7 +44,7 @@ ActorCriticLoss.entropy_regularization=0.1
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
-TrainerConfig.algorithm_cls=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=1

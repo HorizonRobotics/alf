@@ -38,7 +38,7 @@ ActorCriticLoss.use_td_lambda_return=True
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=8
-TrainerConfig.algorithm_cls=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=20
 TrainerConfig.checkpoint_interval=3
 TrainerConfig.evaluate=False
