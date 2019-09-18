@@ -116,12 +116,13 @@ def entropy_with_fallback(distributions, action_spec, seed=None):
                 action_spec.shape.ndims)
 
     def _compute_entropy(dist: tfp.distributions.Distribution, action_spec):
-        try:
-            entropy = dist.entropy()
-            entropy_for_gradient = entropy
-        except NotImplementedError:
+        if isinstance(dist, SquashToSpecNormal):
             entropy, entropy_for_gradient = estimated_entropy(
                 dist, seed=seed_stream())
+        else:
+            entropy = dist.entropy()
+            entropy_for_gradient = entropy
+
         outer_rank = _calc_outer_rank(dist, action_spec)
         rank = entropy.shape.ndims
         reduce_dims = list(range(outer_rank, rank))
