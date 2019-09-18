@@ -26,8 +26,6 @@ from alf.utils.losses import element_wise_squared_loss
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
 
-ICMLossInfo = namedtuple("ICMLossInfo", ["forward_loss", "inverse_loss"])
-
 
 def validate_specs(action_spec):
     """Validates the spec contains a single action."""
@@ -150,5 +148,5 @@ class ICMAlgorithm(Algorithm):
             state=feature,
             info=LossInfo(
                 loss=forward_loss + inverse_loss,
-                extra=ICMLossInfo(
+                extra=dict(
                     forward_loss=forward_loss, inverse_loss=inverse_loss)))

@@ -44,8 +44,6 @@ ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
 tf.keras.layers.Conv2D.padding="same"
-suite_mario.load.data_format="channels_first"
-tf.keras.layers.Conv2D.data_format="channels_first"
 
 # training config
 TrainerConfig.unroll_length=32
