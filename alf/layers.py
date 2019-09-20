@@ -13,6 +13,7 @@
 # limitations under the License.
 """Various layers."""
 
+import gin
 import six
 
 import tensorflow as tf
@@ -45,8 +46,8 @@ class Split(tf.keras.layers.Layer):
         Args:
             num_or_size_splits (int|list[int]): Either an integer indicating the
                 number of splits along split_dim or a 1-D integer `Tensor` or Python
-                list containing the sizes of each output tensor along split_dim. If 
-                a scalar then it must evenly divide `input.shape[axis]`; otherwise 
+                list containing the sizes of each output tensor along split_dim. If
+                a scalar then it must evenly divide `input.shape[axis]`; otherwise
                 the sum of sizes along the split dimension must match that of the
                 `input`.
             axis: An integer or scalar `int32` `Tensor`. The dimension along which
@@ -87,3 +88,18 @@ class Split(tf.keras.layers.Layer):
             return [None] * self._num_or_size_splits
         else:
             return [None] * len(self._num_or_size_splits)
+
+
+@gin.configurable
+class NestConcatenate(tf.keras.layers.Concatenate):
+    def build(self, input_shape):
+        return super().build(tf.nest.flatten(input_shape))
+
+    def _merge_function(self, inputs):
+        return super()._merge_function(tf.nest.flatten(inputs))
+
+    def compute_output_shape(self, input_shape):
+        return super().compute_output_shape(tf.nest.flatten(input_shape))
+
+    def compute_mask(self, inputs, mask):
+        return super().compute_mask(tf.nest.flatten(inputs), mask)

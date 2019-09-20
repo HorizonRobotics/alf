@@ -15,14 +15,14 @@ import math
 
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.networks.utils import BatchSquash
 from tf_agents.utils.nest_utils import get_outer_rank
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.averager import ScalarAdaptiveAverager
 from alf.utils.data_buffer import DataBuffer
 from alf.utils.encoding_network import EncodingNetwork
+from alf.utils.nest_utils import get_nest_batch_size
 
 
 class MIEstimator(Algorithm):
@@ -86,8 +86,8 @@ class MIEstimator(Algorithm):
         """Create a MIEstimator.
 
         Args:
-            x_spec (TensorSpec): spec of x
-            y_spec (TensorSpec): spec of y
+            x_spec (nested TensorSpec): spec of x
+            y_spec (nested TensorSpec): spec of y
             model (Network): can be called as model([x, y]) and return a Tensor
                 with shape=[batch_size, 1]. If None, a default MLP with
                 fc_layers will be created.
@@ -135,7 +135,7 @@ class MIEstimator(Algorithm):
             self._mean_averager = averager
 
     def _buffer_sampler(self, x, y):
-        batch_size = tf.cast(tf.shape(y)[0], tf.int64)
+        batch_size = get_nest_batch_size(y)
         if self._y_buffer.current_size >= batch_size:
             y1 = self._y_buffer.get_batch(batch_size)
             self._y_buffer.add_batch(y)
@@ -145,7 +145,7 @@ class MIEstimator(Algorithm):
         return x, y1
 
     def _double_buffer_sampler(self, x, y):
-        batch_size = tf.shape(y)[0]
+        batch_size = get_nest_batch_size(y)
         self._x_buffer.add_batch(x)
         x1 = self._x_buffer.get_batch(batch_size)
         self._y_buffer.add_batch(y)
@@ -153,10 +153,13 @@ class MIEstimator(Algorithm):
         return x1, y1
 
     def _shuffle_sampler(self, x, y):
-        return x, tf.random.shuffle(y)
+        return x, tf.nest.map_structure(tf.random.shuffle, y)
 
     def _shift_sampler(self, x, y):
-        return x, tf.concat([y[-1:, ...], y[0:-1, ...]], axis=0)
+        def _shift(y):
+            return tf.concat([y[-1:, ...], y[0:-1, ...]], axis=0)
+
+        return x, tf.nest.map_structure(_shift, y)
 
     def train_step(self, inputs, state=None):
         """Perform training on one batch of inputs.

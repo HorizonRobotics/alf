@@ -13,6 +13,8 @@
 # limitations under the License.
 """Functions for handling nest."""
 
+import tensorflow as tf
+
 
 def nest_list_to_tuple(nest):
     """Convert the lists in a nest to tuples.
@@ -98,3 +100,11 @@ def nest_tuple_to_list(nest, example):
         return new_nest
     else:
         return nest
+
+
+def get_nest_batch_size(nest, dtype=None):
+    """Get the batch_size of a nest."""
+    batch_size = tf.shape(tf.nest.flatten(nest)[0])[0]
+    if dtype is not None:
+        batch_size = tf.cast(batch_size, dtype)
+    return batch_size
