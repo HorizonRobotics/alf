@@ -139,7 +139,7 @@ class OnPolicyDriverTest(unittest.TestCase):
         time_step, _ = eval_driver.run(max_num_steps=4 * batch_size)
         logging.info("reward=%s" % tf.reduce_mean(time_step.reward))
         self.assertAlmostEqual(
-            1.0, float(tf.reduce_mean(time_step.reward)), delta=1e-2)
+            1.0, float(tf.reduce_mean(time_step.reward)), delta=5e-2)
 
 
 if __name__ == '__main__':
