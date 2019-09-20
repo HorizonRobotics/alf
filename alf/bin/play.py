@@ -63,7 +63,8 @@ def main(_):
     algorithm_ctor = gin.query_parameter(
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
     env = create_environment(num_parallel_environments=1)
-    algorithm = algorithm_ctor(env)
+    common.set_global_env(env)
+    algorithm = algorithm_ctor()
     policy_trainer.play(
         FLAGS.root_dir,
         env,

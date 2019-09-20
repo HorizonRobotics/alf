@@ -16,27 +16,39 @@ suite_mario.load.state="Level1-1"
 # algorithm config
 CONV_LAYER_PARAMS=[(32,8,4),(64,4,2),(64,3,1)]
 
-create_ac_algorithm.use_rnns=False
-create_ac_algorithm.learning_rate=3e-5
-create_ac_algorithm.use_icm=True
-create_ac_algorithm.encoding_conv_layers=%CONV_LAYER_PARAMS
-create_ac_algorithm.encoding_fc_layers=(256,)
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(256,)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+CategoricalProjectionNetwork.logits_init_output_factor=1e-10
+actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
-EncodingNetwork.activation_fn=@tf.nn.elu
+
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(256,256)
+value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+value/ValueNetwork.activation_fn=@tf.nn.elu
+
+ac/Adam.learning_rate=3e-5
+
+icm/encoding_net_fc_layer_params=(256,)
+icm/EncodingNetwork.input_tensor_spec=%observation_spec
+icm/EncodingNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
+icm/EncodingNetwork.activation_fn=@tf.nn.elu
+icm/TensorSpec.shape=%icm/encoding_net_fc_layer_params
+
+ICMAlgorithm.action_spec=%action_spec
+ICMAlgorithm.feature_spec=@icm/TensorSpec()
+ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=256
 
-# value network layers
-ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
-create_ac_algorithm.value_fc_layers=(256,256)
-ValueNetwork.activation_fn=@tf.nn.elu
-
-# actor network layers
-ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
-create_ac_algorithm.actor_fc_layers=(256,256)
-ActorDistributionNetwork.activation_fn=@tf.nn.elu
-CategoricalProjectionNetwork.logits_init_output_factor=1e-10
-ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
-
+ActorCriticAlgorithm.action_spec=%action_spec
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.optimizer=@ac/Adam()
+ActorCriticAlgorithm.intrinsic_curiosity_module=@ICMAlgorithm()
 ActorCriticAlgorithm.gradient_clipping=10.0
 
 # use only intrinsic reward for training policy

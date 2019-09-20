@@ -1,7 +1,6 @@
 
 import alf.algorithms.sac_algorithm
 import alf.trainers.off_policy_trainer
-import alf.utils.common
 
 # environment config
 NUM_PARALLEL_ENVIRONMENTS=8
@@ -9,11 +8,27 @@ create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 
 # algorithm config
-create_sac_algorithm.actor_fc_layers=(100,)
-create_sac_algorithm.critic_fc_layers=(100,)
-create_sac_algorithm.actor_learning_rate=1e-3
-create_sac_algorithm.critic_learning_rate=1e-3
-create_sac_algorithm.alpha_learning_rate=1e-3
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(100,)
+actor/Adam.learning_rate=1e-3
+
+critic/QNetwork.input_tensor_spec=%observation_spec
+critic/QNetwork.action_spec=%action_spec
+critic/QNetwork.fc_layer_params=(100,)
+critic/Adam.learning_rate=1e-3
+
+alpha/Adam.learning_rate=1e-3
+
+SacAlgorithm.action_spec=%action_spec
+SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+SacAlgorithm.critic_network=@critic/QNetwork()
+SacAlgorithm.actor_optimizer=@actor/Adam()
+SacAlgorithm.critic_optimizer=@critic/Adam()
+SacAlgorithm.alpha_optimizer=@alpha/Adam()
 SacAlgorithm.target_update_tau=0.01
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 OneStepTDLoss.gamma=0.98
@@ -26,7 +41,7 @@ TrainerConfig.unroll_length=1
 TrainerConfig.mini_batch_size=64
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.clear_replay_buffer=False
-TrainerConfig.algorithm_ctor=@create_sac_algorithm
+TrainerConfig.algorithm_ctor=@SacAlgorithm
 TrainerConfig.num_iterations=10000
 TrainerConfig.checkpoint_interval=10000
 TrainerConfig.evaluate=1

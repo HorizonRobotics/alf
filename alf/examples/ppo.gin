@@ -6,4 +6,8 @@ import alf.algorithms.ddpg_algorithm
 import alf.trainers.off_policy_trainer
 
 TrainerConfig.trainer=@sync_off_policy_trainer
-TrainerConfig.algorithm_ctor=@create_ppo_algorithm
+TrainerConfig.algorithm_ctor=@PPOAlgorithm
+ActorCriticAlgorithm.loss_class=@PPOLoss
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()

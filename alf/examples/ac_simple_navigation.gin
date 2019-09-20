@@ -16,18 +16,28 @@ ActorCriticLoss.entropy_regularization=0.002
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
-ActorDistributionNetwork.activation_fn=@tf.nn.elu
-ActorDistributionNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(256,)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
-ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
-ValueNetwork.activation_fn=@tf.nn.elu
-ValueNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(256,)
+value/ValueNetwork.activation_fn=@tf.nn.elu
+value/ValueNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 
-create_ac_algorithm.actor_fc_layers=(256,)
-create_ac_algorithm.value_fc_layers=(256,)
-create_ac_algorithm.learning_rate=1e-4
+ac/Adam.learning_rate=1e-4
 
+ActorCriticAlgorithm.action_spec=%action_spec
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.optimizer=@ac/Adam()
 ActorCriticAlgorithm.gradient_clipping=None
 
 
@@ -46,7 +56,7 @@ tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
-TrainerConfig.algorithm_ctor=@create_ac_algorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=True

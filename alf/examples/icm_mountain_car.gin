@@ -10,23 +10,42 @@ load_with_random_max_episode_steps.max_steps=1200
 suite_gym.load.max_episode_steps=1000
 
 # algorithm config
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
 
-ActorCriticLoss.entropy_regularization=0.1
-ActorDistributionNetwork.activation_fn=@tf.nn.elu
-ValueNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(256,)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
 
-create_ac_algorithm.use_icm=1
-create_ac_algorithm.actor_fc_layers=(256,)
-create_ac_algorithm.value_fc_layers=(256,)
-create_ac_algorithm.encoding_fc_layers=(200,)
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(256,)
+value/ValueNetwork.activation_fn=@tf.nn.elu
 
+ac/Adam.learning_rate=5e-5
+
+icm/encoding_net_fc_layer_params=(200,)
+icm/EncodingNetwork.input_tensor_spec=%observation_spec
+icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
+icm/EncodingNetwork.activation_fn=@tf.nn.elu
+icm/TensorSpec.shape=%icm/encoding_net_fc_layer_params
+
+ICMAlgorithm.action_spec=%action_spec
+ICMAlgorithm.feature_spec=@icm/TensorSpec()
+ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=200
-EncodingNetwork.activation_fn=@tf.nn.elu
+
+ActorCriticAlgorithm.action_spec=%action_spec
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.optimizer=@ac/Adam()
+ActorCriticAlgorithm.intrinsic_curiosity_module=@ICMAlgorithm()
+ActorCriticLoss.entropy_regularization=0.1
 
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
-TrainerConfig.algorithm_ctor=@create_ac_algorithm
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=1

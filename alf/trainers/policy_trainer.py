@@ -216,10 +216,11 @@ class Trainer(object):
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
         self._env = create_environment()
+        common.set_global_env(self._env)
         if self._evaluate:
             self._eval_env = create_environment(num_parallel_environments=1)
         self._algorithm = self._algorithm_ctor(
-            self._env, debug_summaries=self._debug_summaries)
+            debug_summaries=self._debug_summaries)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         self._driver = self.init_driver()

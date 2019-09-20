@@ -21,14 +21,16 @@ import tensorflow as tf
 import gin.tf
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
+from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
-from alf.algorithms.actor_critic_loss import ActorCriticLoss
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.environments.suite_unittest import ActionType
-from alf.algorithms.actor_critic_algorithm import create_ac_algorithm
+from alf.utils import common
 
 
 class OnPolicyDriverTest(unittest.TestCase):
@@ -47,9 +49,14 @@ class OnPolicyDriverTest(unittest.TestCase):
         # We need to wrap env using TFPyEnvironment because the methods of env
         # has side effects (e.g, env._current_time_step can be changed)
         env = TFPyEnvironment(env)
-
-        algorithm = create_ac_algorithm(
-            env, actor_fc_layers=(), value_fc_layers=(), learning_rate=1e-1)
+        action_spec = env.action_spec()
+        observation_spec = env.observation_spec()
+        algorithm = ActorCriticAlgorithm(
+            action_spec=action_spec,
+            actor_network=ActorDistributionNetwork(
+                observation_spec, action_spec, fc_layer_params=()),
+            value_network=ValueNetwork(observation_spec, fc_layer_params=()),
+            optimizer=tf.optimizers.Adam(learning_rate=1e-1))
         driver = OnPolicyDriver(env, algorithm, train_interval=1)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
@@ -73,9 +80,14 @@ class OnPolicyDriverTest(unittest.TestCase):
         # We need to wrap env using TFPyEnvironment because the methods of env
         # has side effects (e.g, env._current_time_step can be changed)
         env = TFPyEnvironment(env)
-
-        algorithm = create_ac_algorithm(
-            env, actor_fc_layers=(), value_fc_layers=(), learning_rate=1e-2)
+        action_spec = env.action_spec()
+        observation_spec = env.observation_spec()
+        algorithm = ActorCriticAlgorithm(
+            action_spec=action_spec,
+            actor_network=ActorDistributionNetwork(
+                observation_spec, action_spec, fc_layer_params=()),
+            value_network=ValueNetwork(observation_spec, fc_layer_params=()),
+            optimizer=tf.optimizers.Adam(learning_rate=1e-2))
         driver = OnPolicyDriver(env, algorithm, train_interval=1)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
@@ -100,13 +112,20 @@ class OnPolicyDriverTest(unittest.TestCase):
         # We need to wrap env using TFPyEnvironment because the methods of env
         # has side effects (e.g, env._current_time_step can be changed)
         env = TFPyEnvironment(env)
-
-        algorithm = create_ac_algorithm(
-            env,
-            actor_fc_layers=(),
-            value_fc_layers=(),
-            use_rnns=True,
-            learning_rate=2e-2)
+        action_spec = env.action_spec()
+        observation_spec = env.observation_spec()
+        algorithm = ActorCriticAlgorithm(
+            action_spec=action_spec,
+            actor_network=ActorDistributionRnnNetwork(
+                observation_spec,
+                action_spec,
+                input_fc_layer_params=(),
+                output_fc_layer_params=None),
+            value_network=ValueRnnNetwork(
+                observation_spec,
+                input_fc_layer_params=(),
+                output_fc_layer_params=None),
+            optimizer=tf.optimizers.Adam(learning_rate=1e-2))
         driver = OnPolicyDriver(env, algorithm, train_interval=8)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
@@ -120,7 +139,7 @@ class OnPolicyDriverTest(unittest.TestCase):
         time_step, _ = eval_driver.run(max_num_steps=4 * batch_size)
         logging.info("reward=%s" % tf.reduce_mean(time_step.reward))
         self.assertAlmostEqual(
-            1.0, float(tf.reduce_mean(time_step.reward)), delta=1e-2)
+            1.0, float(tf.reduce_mean(time_step.reward)), delta=5e-2)
 
 
 if __name__ == '__main__':

@@ -21,22 +21,32 @@ PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 PPOLoss.check_numerics=True
 estimated_entropy.check_numerics=True
 
+estimated_entropy.assume_reparametrization=True
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(256, 128)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.tanh
+actor/ActorDistributionNetwork.continuous_projection_net=@StableNormalProjectionNetwork
+
 import alf.networks.stable_normal_projection_network
-ActorDistributionNetwork.activation_fn=@tf.nn.tanh
-ActorDistributionNetwork.continuous_projection_net=@StableNormalProjectionNetwork
+
 StableNormalProjectionNetwork.init_means_output_factor=1e-10
 StableNormalProjectionNetwork.inverse_std_transform='softplus'
 StableNormalProjectionNetwork.scale_distribution=True
 StableNormalProjectionNetwork.state_dependent_std=True
 StableNormalProjectionNetwork.init_std=1.0
 
-estimated_entropy.assume_reparametrization=True
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(256, 128)
+value/ValueNetwork.activation_fn=@tf.nn.tanh
 
-ValueNetwork.activation_fn=@tf.nn.tanh
+ac/Adam.learning_rate=1e-4
 
-create_ac_algorithm.actor_fc_layers=(256, 128)
-create_ac_algorithm.value_fc_layers=(256, 128)
-create_ac_algorithm.learning_rate=1e-4
+ActorCriticAlgorithm.action_spec=%action_spec
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.optimizer=@ac/Adam()
 
 # training config
 TrainerConfig.checkpoint_interval=100
