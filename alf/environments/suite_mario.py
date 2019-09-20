@@ -100,7 +100,7 @@ def load(game,
             gym_env_wrappers=(),
             env_wrappers=(),
             spec_dtype_map=spec_dtype_map,
-            auto_reset=False)
+            auto_reset=True)
 
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
