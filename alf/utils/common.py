@@ -122,12 +122,14 @@ def add_nested_summaries(prefix, data):
 
     Args:
         prefix (str): the prefix of the names of the summaries
-        data (namedtuple): data to be summarized
+        data (dict or namedtuple): data to be summarized
     """
-    for field in data._fields:
-        elem = getattr(data, field)
+    fields = data.keys() if isinstance(data, dict) else data._fields
+    for field in fields:
+        elem = data[field] if isinstance(data, dict) else getattr(data, field)
         name = prefix + '/' + field
-        if isinstance(elem, tuple) and hasattr(elem, '_fields'):
+        if isinstance(elem, dict) or (isinstance(elem, tuple)
+                                      and hasattr(elem, '_fields')):
             add_nested_summaries(name, elem)
         elif isinstance(elem, tf.Tensor):
             tf.summary.scalar(name, elem)
