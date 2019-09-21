@@ -16,16 +16,13 @@
 import gin.tf
 import tensorflow as tf
 
-from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
-from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.network import Network, DistributionNetwork
-from tf_agents.networks.value_network import ValueNetwork
-from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, namedtuple
+
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
