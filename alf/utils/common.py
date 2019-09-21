@@ -21,17 +21,29 @@ import math
 from typing import Callable
 
 from absl import flags
+from collections import OrderedDict
 import gin
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
+<<<<<<< HEAD
+=======
+from tf_agents.agents.tf_agent import LossInfo
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
+from tf_agents.networks.value_network import ValueNetwork
+from tf_agents.networks.value_rnn_network import ValueRnnNetwork
+>>>>>>> RNN for target navigation
 from tf_agents.specs import tensor_spec
-from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
 from tf_agents.trajectories.policy_step import PolicyStep
+<<<<<<< HEAD
 from tf_agents.trajectories.time_step import StepType
 
+=======
+from tf_agents.utils import common as tfa_common
+>>>>>>> RNN for target navigation
 from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 
@@ -881,3 +893,155 @@ def write_gin_configs(root_dir, gin_file):
     # the mark-down string can just be safely written as a python file
     with open(file, "w") as f:
         f.write(config_str)
+def get_image_processing_layers(conv_layer_params):
+    layers = []
+    for (filters, kernel_size, strides) in conv_layer_params:
+        layers.append(
+            tf.keras.layers.Conv2D(
+                filters=filters,
+                kernel_size=kernel_size,
+                strides=strides,
+                activation=tf.keras.activations.softsign,
+                kernel_initializer=tf.compat.v1.keras.initializers.
+                glorot_uniform(),
+                dtype=tf.float32,
+                name='ConvLayer'))
+    layers.append(tf.keras.layers.Flatten())
+    image_processing_layers = tf.keras.Sequential(layers)
+    return image_processing_layers
+
+
+def get_preprocessing_and_combining_layers(observation_spec,
+                                           action_spec,
+                                           conv_layer_params=((16, 3, 2),
+                                                              (32, 3, 2)),
+                                           num_embedding_dims=16):
+    """Generates layers as input to the Actor and Value Networks.
+
+
+    This function handles mixed inputs as well as single type of input.
+    """
+    mixed_input = False
+    if (isinstance(observation_spec, dict)):
+        mixed_input = True
+
+    if mixed_input:
+        preprocessing_layers = OrderedDict()
+        for field in observation_spec.keys():
+            if field == 'image':
+                layers = get_image_processing_layers(conv_layer_params)
+            elif field == 'sentence':
+                vocab_size = observation_spec[field].shape[0]
+                layers = tf.keras.Sequential([
+                    tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
+                    tf.keras.layers.GlobalAveragePooling1D(),
+                ])
+            preprocessing_layers[field] = layers
+        preprocessing_combiner = tf.keras.layers.Concatenate(axis=-1)
+        # Note, these layers are copied into actor and value networks,
+        # so network structures are the same, but parameters are not shared.
+        actor_preprocessing_layers = preprocessing_layers
+        actor_preprocessing_combiner = preprocessing_combiner
+        value_preprocessing_layers = preprocessing_layers
+        value_preprocessing_combiner = preprocessing_combiner
+        actor_conv_layer_params = None
+        value_conv_layer_params = None
+    else:
+        actor_preprocessing_layers = None
+        actor_preprocessing_combiner = None
+        value_preprocessing_layers = None
+        value_preprocessing_combiner = None
+        actor_conv_layer_params = conv_layer_params
+        value_conv_layer_params = conv_layer_params
+
+    return (actor_preprocessing_layers, actor_preprocessing_combiner,
+            value_preprocessing_layers, value_preprocessing_combiner,
+            actor_conv_layer_params, value_conv_layer_params)
+
+
+@gin.configurable
+def get_actor_and_value_networks(observation_spec, action_spec,
+                                 conv_layer_params, fc_layer_params,
+                                 num_embedding_dims):
+    (actor_preprocessing_layers, actor_preprocessing_combiner,
+     value_preprocessing_layers, value_preprocessing_combiner,
+     actor_conv_layer_params,
+     value_conv_layer_params) = (get_preprocessing_and_combining_layers(
+         observation_spec, action_spec, conv_layer_params, num_embedding_dims))
+    actor_net = ActorDistributionNetwork(
+        observation_spec,
+        action_spec,
+        preprocessing_layers=actor_preprocessing_layers,
+        preprocessing_combiner=actor_preprocessing_combiner,
+        conv_layer_params=actor_conv_layer_params,
+        fc_layer_params=fc_layer_params)
+    value_net = ValueNetwork(
+        observation_spec,
+        preprocessing_layers=value_preprocessing_layers,
+        preprocessing_combiner=value_preprocessing_combiner,
+        conv_layer_params=value_conv_layer_params,
+        fc_layer_params=fc_layer_params)
+    return actor_net, value_net
+
+
+@gin.configurable
+def get_actor_network(observation_spec, action_spec, conv_layer_params,
+                      fc_layer_params, num_embedding_dims):
+    actor, value = (get_actor_and_value_networks(
+        observation_spec, action_spec, conv_layer_params, fc_layer_params,
+        num_embedding_dims))
+    return actor
+
+
+@gin.configurable
+def get_value_network(observation_spec, action_spec, conv_layer_params,
+                      fc_layer_params, num_embedding_dims):
+    actor, value = (get_actor_and_value_networks(
+        observation_spec, action_spec, conv_layer_params, fc_layer_params,
+        num_embedding_dims))
+    return value
+
+
+@gin.configurable
+def get_actor_and_value_rnn_networks(observation_spec, action_spec,
+                                     conv_layer_params, fc_layer_params,
+                                     num_embedding_dims):
+    (actor_preprocessing_layers, actor_preprocessing_combiner,
+     value_preprocessing_layers, value_preprocessing_combiner,
+     actor_conv_layer_params,
+     value_conv_layer_params) = (get_preprocessing_and_combining_layers(
+         observation_spec, action_spec, conv_layer_params, num_embedding_dims))
+    actor_net = ActorDistributionRnnNetwork(
+        observation_spec,
+        action_spec,
+        preprocessing_layers=actor_preprocessing_layers,
+        preprocessing_combiner=actor_preprocessing_combiner,
+        input_fc_layer_params=fc_layer_params,
+        conv_layer_params=actor_conv_layer_params,
+        output_fc_layer_params=None)
+    value_net = ValueRnnNetwork(
+        observation_spec,
+        preprocessing_layers=value_preprocessing_layers,
+        preprocessing_combiner=value_preprocessing_combiner,
+        input_fc_layer_params=fc_layer_params,
+        conv_layer_params=value_conv_layer_params,
+        output_fc_layer_params=None)
+    return actor_net, value_net
+
+
+@gin.configurable
+def get_actor_rnn_network(observation_spec, action_spec, conv_layer_params,
+                          fc_layer_params, num_embedding_dims):
+    actor, value = (get_actor_and_value_rnn_networks(
+        observation_spec, action_spec, conv_layer_params, fc_layer_params,
+        num_embedding_dims))
+    return actor
+
+
+@gin.configurable
+def get_value_rnn_network(observation_spec, action_spec, conv_layer_params,
+                          fc_layer_params, num_embedding_dims):
+    actor, value = (get_actor_and_value_rnn_networks(
+        observation_spec, action_spec, conv_layer_params, fc_layer_params,
+        num_embedding_dims))
+    return value
