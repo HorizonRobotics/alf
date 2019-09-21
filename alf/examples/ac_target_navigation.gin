@@ -7,7 +7,7 @@ FrameStack.field_to_stack='image'  # due to observation including image and sent
 create_environment.num_parallel_environments=30
 
 create_environment.env_name='SocialBot-GroceryGroundImageLanguage-v0'
-GroceryGround.resized_image_size=(84, 84)
+GroceryGround.resized_image_size=(128, 128)
 
 ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.init_means_output_factor=1e-10
@@ -22,16 +22,20 @@ GroceryGround.image_data_format=%CHANNEL_ORDER
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 suite_socialbot.load.max_episode_steps=1000
-GroceryGroundGoalTask.max_steps=100
+GroceryGroundGoalTask.max_steps=200
 
-GroceryGroundGoalTask.fail_distance_thresh=100
+GroceryGroundGoalTask.fail_distance_thresh=10
 GroceryGroundGoalTask.random_goal=False
 #GroceryGroundGoalTask.random_range=2
 GroceryGroundGoalTask.goal_name='ball'
 
 #Curriculum
 GroceryGroundGoalTask.start_range=1
-GroceryGroundGoalTask.reward_thresh_to_increase_range=0.5
+GroceryGroundGoalTask.max_reward_q_length=100
+GroceryGroundGoalTask.reward_thresh_to_increase_range=0.8
+GroceryGroundGoalTask.increase_range_by_percent=0.1
+GroceryGroundGoalTask.percent_full_range_in_curriculum=0.5
 
 TrainerConfig.use_tf_functions=1
-TrainerConfig.checkpoint_interval=10
+TrainerConfig.checkpoint_interval=40
+TrainerConfig.unroll_length=50

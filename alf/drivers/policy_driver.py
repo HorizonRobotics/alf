@@ -127,17 +127,17 @@ class PolicyDriver(driver.Driver):
                                                   self._train_step_counter)
         if self._debug_summaries:
             common.add_action_summaries(training_info.action,
-                                        self.env.action_spec())
+                                        self._env.action_spec())
             common.add_loss_summaries(loss_info)
 
         if self._summarize_action_distributions:
             summary_utils.summarize_action_dist(
-                training_info.action_distribution, self.env.action_spec())
+                training_info.action_distribution, self._env.action_spec())
             if training_info.collect_action_distribution:
                 summary_utils.summarize_action_dist(
                     action_distributions=training_info.
                     collect_action_distribution,
-                    action_specs=self.env.action_spec(),
+                    action_specs=self._env.action_spec(),
                     name="collect_action_dist")
 
         for metric in self.get_metrics():
