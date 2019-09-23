@@ -14,6 +14,7 @@
 
 import tensorflow as tf
 from tf_agents.networks.encoding_network import EncodingNetwork as TFAEncodingNetwork
+from alf.layers import NestConcatenate
 
 
 class EncodingNetwork(TFAEncodingNetwork):
@@ -26,7 +27,7 @@ class EncodingNetwork(TFAEncodingNetwork):
                  dtype=tf.float32,
                  last_kernel_initializer=None,
                  last_bias_initializer=tf.initializers.Zeros(),
-                 preprocessing_combiner=tf.keras.layers.Concatenate(axis=-1),
+                 preprocessing_combiner=NestConcatenate(axis=-1),
                  **xargs):
         """Create an EncodingNetwork
 

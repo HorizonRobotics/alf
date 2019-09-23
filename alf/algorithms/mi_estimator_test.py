@@ -46,8 +46,14 @@ class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
                           buffer_size=65536,
                           dim=20):
         mi_estimator = MIEstimator(
-            x_spec=tf.TensorSpec(shape=(dim, ), dtype=tf.float32),
-            y_spec=tf.TensorSpec(shape=(dim, ), dtype=tf.float32),
+            x_spec=[
+                tf.TensorSpec(shape=(dim // 3, ), dtype=tf.float32),
+                tf.TensorSpec(shape=(dim - dim // 3, ), dtype=tf.float32)
+            ],
+            y_spec=[
+                tf.TensorSpec(shape=(dim // 2, ), dtype=tf.float32),
+                tf.TensorSpec(shape=(dim // 2, ), dtype=tf.float32)
+            ],
             fc_layers=(512, ),
             buffer_size=buffer_size,
             estimator_type=estimator,
@@ -73,6 +79,8 @@ class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
             y = xy[:, 1]
             x = tf.reshape(x, (-1, dim))
             y = tf.reshape(y, (-1, dim))
+            x = [x[..., :dim // 3], x[..., dim // 3:]]
+            y = [y[..., :dim // 2], y[..., dim // 2:]]
             return x, y
 
         def _calc_estimated_mi(i, mi_samples):

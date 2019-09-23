@@ -16,41 +16,45 @@
 import tensorflow as tf
 
 from tf_agents.utils import common as tfa_common
+from alf.utils.nest_utils import get_nest_batch_size
 
 
 class DataBuffer(tf.Module):
     """A simple circular buffer supporting random sampling.
     """
 
-    def __init__(self, tensor_spec: tf.TensorSpec, capacity,
-                 name="DataBuffer"):
+    def __init__(self, data_spec: tf.TensorSpec, capacity, name="DataBuffer"):
         """Create a DataBuffer.
 
         Args:
-            tensor_spec (TensorSpec): spec for the data item (without batch
+            data_spec (nested TensorSpec): spec for the data item (without batch
                 dimension) to be stored.
             capacity (int): capacity of the buffer.
             name (str): name of the buffer
         """
         super().__init__()
         self._capacity = capacity
-        shape = [capacity] + tensor_spec.shape.as_list()
-        self._buffer = tfa_common.create_variable(
-            name=name + "/buffer",
-            initializer=tf.zeros(shape, dtype=tensor_spec.dtype),
-            dtype=tensor_spec.dtype,
-            shape=shape,
-            trainable=False)
+
+        def _create_buffer(tensor_spec):
+            shape = [capacity] + tensor_spec.shape.as_list()
+            return tfa_common.create_variable(
+                name=name + "/buffer",
+                initializer=tf.zeros(shape, dtype=tensor_spec.dtype),
+                dtype=tensor_spec.dtype,
+                shape=shape,
+                trainable=False)
+
+        self._buffer = tf.nest.map_structure(_create_buffer, data_spec)
         self._current_size = tfa_common.create_variable(
             name=name + "/size",
             initializer=0,
-            dtype=tf.int64,
+            dtype=tf.int32,
             shape=(),
             trainable=False)
         self._current_pos = tfa_common.create_variable(
             name=name + "/pos",
             initializer=0,
-            dtype=tf.int64,
+            dtype=tf.int32,
             shape=(),
             trainable=False)
 
@@ -64,28 +68,18 @@ class DataBuffer(tf.Module):
         Args:
             batch (Tensor): shape should be [batch_size] + tensor_space.shape
         """
-        batch_size = tf.cast(tf.shape(batch)[0], tf.int64)
-        if batch_size >= self._capacity:
-            self._current_size.assign(self._capacity)
-            self._current_pos.assign(0)
-            self._buffer.assign(batch[-self._capacity:, ...])
-        elif batch_size + self._current_pos <= self._capacity:
-            new_pos = self._current_pos + batch_size
-            self._buffer.scatter_update(
-                tf.IndexedSlices(batch, tf.range(self._current_pos, new_pos)))
-            self._current_pos.assign(new_pos)
-            self._current_size.assign(
-                tf.minimum(self._current_size + batch_size, self._capacity))
-        else:
-            first = self._capacity - self._current_pos
-            self._buffer.scatter_update(
-                tf.IndexedSlices(batch[0:first, ...],
-                                 tf.range(self._current_pos, self._capacity)))
-            new_pos = batch_size - first
-            self._buffer.scatter_update(
-                tf.IndexedSlices(batch[first:, ...], tf.range(0, new_pos)))
-            self._current_pos.assign(new_pos)
-            self._current_size.assign(self._capacity)
+        batch_size = get_nest_batch_size(batch, tf.int32)
+        n = tf.minimum(batch_size, self._capacity)
+        indices = tf.range(self._current_pos,
+                           self._current_pos + n) % self._capacity
+        indices = tf.expand_dims(indices, axis=-1)
+        tf.nest.map_structure(
+            lambda buf, bat: buf.scatter_nd_update(indices, bat[-n:]),
+            self._buffer, batch)
+
+        self._current_pos.assign((self._current_pos + n) % self._capacity)
+        self._current_size.assign(
+            tf.minimum(self._current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
         """Get batsh_size random samples in the buffer.
@@ -97,7 +91,11 @@ class DataBuffer(tf.Module):
         """
         indices = tf.random.uniform(
             shape=(batch_size, ),
-            dtype=tf.int64,
+            dtype=tf.int32,
             minval=0,
             maxval=self._current_size)
-        return tf.gather(self._buffer, indices, axis=0)
+        return self.get_batch_by_indices(indices)
+
+    def get_batch_by_indices(self, indices):
+        return tf.nest.map_structure(
+            lambda buffer: tf.gather(buffer, indices, axis=0), self._buffer)
