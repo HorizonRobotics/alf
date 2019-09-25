@@ -14,7 +14,7 @@
 
 import unittest
 from absl.testing import parameterized
-from noisy_array import NoisyArray
+from alf.environments.simple.noisy_array import NoisyArray
 
 
 class NoisyArrayTest(parameterized.TestCase, unittest.TestCase):
