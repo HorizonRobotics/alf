@@ -54,13 +54,15 @@ class NoisyArray(gym.Env):
     FIRE = 1
     RIGHT = 2
 
-    def __init__(self, K=11, M=100):
+    def __init__(self, K=11, M=100, auto_noise=False):
         """
         Args:
             K (int): K-1 will be the minimum steps that take the agent from left
                 to right and get a reward of 1
             M (int): the length of the noisy vector. The total observation length
                 would be K+M
+            auto_noise (bool): if True, the noise vector will change automatically
+                at every step, and FIRE becomes "no-operation".
         """
         super().__init__()
         self.observation_space = spaces.Box(
@@ -68,6 +70,7 @@ class NoisyArray(gym.Env):
         self.action_space = spaces.Discrete(3)
         self._K = K
         self._M = M
+        self._auto_noise = auto_noise
         self.reset()
 
     def reset(self):
@@ -120,7 +123,7 @@ class NoisyArray(gym.Env):
 
         reward = 1 if self._game_over else 0
 
-        if act == self.FIRE:
+        if act == self.FIRE or self._auto_noise:
             self._noise_vector = np.random.randint(2, size=self._M)
 
         position_array = np.zeros(self._K, dtype=np.float32)
