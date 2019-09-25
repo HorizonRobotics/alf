@@ -73,8 +73,8 @@ class MIEstimator(Algorithm):
     """
 
     def __init__(self,
-                 x_spec: tf.TensorSpec,
-                 y_spec: tf.TensorSpec,
+                 x_spec,
+                 y_spec,
                  model=None,
                  fc_layers=(256, ),
                  sampler='buffer',
