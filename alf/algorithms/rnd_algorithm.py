@@ -20,6 +20,7 @@ from tf_agents.networks.network import Network
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
+from alf.utils.adaptive_normalizer import AdaptiveNormalizer
 
 
 @gin.configurable
@@ -41,6 +42,8 @@ class RNDAlgorithm(Algorithm):
                  target_net: Network,
                  predictor_net: Network,
                  reward_adapt_speed=8.0,
+                 observation_adapt_speed=None,
+                 observation_spec=None,
                  name="RNDAlgorithm"):
 
         super(RNDAlgorithm, self).__init__(train_state_spec=(), name=name)
@@ -48,6 +51,15 @@ class RNDAlgorithm(Algorithm):
         self._predictor_net = predictor_net  # trainable
         self._reward_normalizer = ScalarAdaptiveNormalizer(
             speed=reward_adapt_speed)
+        # The paper suggests to also normalize observations, because the
+        # original observation subspace might be small and the target network will
+        # yield random embeddings that are indistinguishable
+        self._observation_normalizer = None
+        if observation_adapt_speed is not None:
+            assert observation_spec is not None, \
+                "Observation normalizer requires its input tensor spec!"
+            self._observation_normalizer = AdaptiveNormalizer(
+                tensor_spec=observation_spec, speed=observation_adapt_speed)
 
     def train_step(self, inputs, state):
         """
@@ -60,6 +72,8 @@ class RNDAlgorithm(Algorithm):
                 info:
         """
         observation, _ = inputs
+        if self._observation_normalizer is not None:
+            observation = self._observation_normalizer.normalize(observation)
 
         pred_embedding, _ = self._predictor_net(observation)
         target_embedding, _ = self._target_net(observation)
