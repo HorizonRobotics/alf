@@ -18,23 +18,20 @@ import numpy as np
 
 import cv2
 
-import unittest
-from absl.testing import parameterized
-
 
 class NoisyArray(gym.Env):
     """
     A synthetic noisy array to test the agent's robustness to random noises. The
-    binary array has a length of (2K+1+M), where the subarray of length (2K+1)
-    is a onehot vector with 1 representing the agent's current location, and the
-    remaining M bits constitute a noise vector in {0,1}^M. For example (K=2,
+    binary array has a length of (K+M), where the subarray of length K is a
+    onehot vector with 1 representing the agent's current location, and the
+    remaining M bits constitute a noise vector in {0,1}^M. For example (K=5,
     M=3):
 
         0 0 1 0 0 | 0 1 1
 
     and the agent is at i==2 now.
 
-    The agent always starts from i==0. The goal is to reach i==2K (it cannot
+    The agent always starts from i==0. The goal is to reach i==K-1 (it cannot
     step on the noise vector). It has three actions: LEFT, RIGHT, and FIRE. The
     FIRE action changes the noise vector into some random M bits, without
     changing the agent's position. Both LEFT and RIGHT won't change the noise
@@ -57,19 +54,19 @@ class NoisyArray(gym.Env):
     FIRE = 1
     RIGHT = 2
 
-    def __init__(self, K=5, M=100):
+    def __init__(self, K=11, M=100):
         """
         Args:
-            K (int): 2K will be the minimum steps that take the agent from left
+            K (int): K-1 will be the minimum steps that take the agent from left
                 to right and get a reward of 1
             M (int): the length of the noisy vector. The total observation length
-                would be 2K+1+M
+                would be K+M
         """
         super().__init__()
         self.observation_space = spaces.Box(
-            low=0, high=1, shape=(2 * K + 1 + M, ), dtype=np.float32)
+            low=0, high=1, shape=(K + M, ), dtype=np.float32)
         self.action_space = spaces.Discrete(3)
-        self._K = 2 * K + 1
+        self._K = K
         self._M = M
         self.reset()
 
@@ -121,7 +118,6 @@ class NoisyArray(gym.Env):
 
         self._game_over = (self._position == self._K - 1)
 
-        # step type
         reward = 1 if self._game_over else 0
 
         if act == self.FIRE:
@@ -133,41 +129,3 @@ class NoisyArray(gym.Env):
         observation = np.concatenate((position_array,
                                       self._noise_vector.astype(np.float32)))
         return observation, reward
-
-
-class NoisyArrayTest(parameterized.TestCase, unittest.TestCase):
-    @parameterized.parameters((2, 3), (100, 100))
-    def test_noisy_array_environment(self, K, M):
-        array = NoisyArray(K, M)
-        array.reset()
-        for _ in range(2 * K):
-            done = array.step(NoisyArray.RIGHT)[2]
-        self.assertTrue(done)
-
-        array.reset()
-        array.step(NoisyArray.LEFT)  # cannot go beyond the left boundary
-        self.assertEqual(array._position, 0)
-
-        array.step(NoisyArray.RIGHT)
-        array.reset()
-
-        game_ends = 0
-        total_rewards = 0
-        done = False
-        for _ in range(4 * K + 1):
-            if done:
-                array.reset()
-                done = False
-            else:
-                _, r, done, _ = array.step(NoisyArray.RIGHT)
-                total_rewards += r
-                game_ends += int(done)
-
-        self.assertEqual(game_ends, 2)
-        self.assertEqual(total_rewards, 2)
-        self.assertEqual(r, 1.0)
-        self.assertTrue(done)
-
-
-if __name__ == "__main__":
-    unittest.main()
