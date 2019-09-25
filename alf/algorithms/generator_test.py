@@ -68,6 +68,12 @@ class GeneratorTest(parameterized.TestCase, unittest.TestCase):
         dict(mode='ML', mi_weight=1),
     )
     def test_generator_unconditional(self, mode='ML', mi_weight=None):
+        """
+        The generator is trained to match(STEIN)/maximize(ML) the likelihood
+        of a Gaussian distribution with zero mean and diagonal variance (1, 4).
+        After training, w^T w is the variance of the distribution implied by the
+        generator. So it should be diag(1,4) for STEIN and 0 for 'ML'.
+        """
         logging.info("mode: %s mi_weight: %s" % (mode, mi_weight))
         dim = 2
         batch_size = 512
@@ -115,6 +121,11 @@ class GeneratorTest(parameterized.TestCase, unittest.TestCase):
 
     @parameterized.parameters('STEIN', 'ML')
     def test_generator_conditional(self, mode='STEIN'):
+        """
+        The target conditional distribution is N(yu; diag(1, 4)). After training
+        net._u should be u for both STEIN and ML. And w^T*w should be diag(1, 4)
+        for STEIN and 0 for ML.
+        """
         logging.info("mode: %s" % mode)
         dim = 2
         batch_size = 512
