@@ -70,6 +70,17 @@ class EMAverager(tf.Module):
         """
         return self._average / tf.cast(self._mass, dtype=self._average.dtype)
 
+    def average(self, tensor):
+        """Combines self.update and self.get in one step. Can be handy in practice.
+
+        Args:
+            tensor (Tensor): a value for updating the average
+        Returns:
+            Tensor: the current average
+        """
+        self.update(tensor)
+        return self.get()
+
 
 @gin.configurable
 class ScalarEMAverager(EMAverager):
