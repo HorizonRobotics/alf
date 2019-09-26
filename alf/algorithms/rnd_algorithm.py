@@ -45,7 +45,21 @@ class RNDAlgorithm(Algorithm):
                  observation_adapt_speed=None,
                  observation_spec=None,
                  name="RNDAlgorithm"):
-
+        """
+        Args:
+            target_net (Network): the random fixed network that generates target
+                state embeddings to be fitted
+            predictor_net (Network): the trainable network that predicts target
+                embeddings. If fully trained given enough data, predictor_net
+                will become target_net eventually.
+            reward_adapt_speed (float): speed for adaptively normalizing intrinsic
+                rewards
+            observation_adapt_speed (float): speed for adaptively normalizing
+                observations. Only useful if `observation_spec` is not None.
+            observation_spec (TensorSpec): the observation tensor spec; used
+                for creating an adaptive observation normalizer
+            name (str):
+        """
         super(RNDAlgorithm, self).__init__(train_state_spec=(), name=name)
         self._target_net = target_net  # fixed
         self._predictor_net = predictor_net  # trainable
@@ -68,8 +82,8 @@ class RNDAlgorithm(Algorithm):
         Returns:
             TrainStep:
                 outputs: intrinsic reward
-                state:
-                info:
+                state: ()
+                info: loss info
         """
         observation, _ = inputs
         if self._observation_normalizer is not None:
@@ -88,4 +102,4 @@ class RNDAlgorithm(Algorithm):
         return AlgorithmStep(
             outputs=intrinsic_reward,
             state=(),
-            info=LossInfo(loss=loss, extra=dict(pred_loss=loss)))
+            info=LossInfo(loss=loss, extra=dict()))
