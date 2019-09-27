@@ -14,6 +14,7 @@
 import math
 
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from tf_agents.networks.utils import BatchSquash
 from tf_agents.utils.nest_utils import get_outer_rank
@@ -64,6 +65,9 @@ class MIEstimator(Algorithm):
     * 'shuffle': randomly shuffle batch y
     * 'shift': shift batch y by one sample, i.e.
       tf.concat([y[-1:, ...], y[0:-1, ...]], axis=0)
+    * direct sampling: You can also provide the marginal distribution of y to
+      train_step(). In this case, sampler is ignored and samples of y for
+      estimating E_Q(.) are sampled from y_distribution.
 
     If you need the gradient of y, you should use sampler 'shift' and 'shuffle'.
 
@@ -72,6 +76,11 @@ class MIEstimator(Algorithm):
     assumption that y samples from one batch are independent. If the additional
     memory is not a concern, we recommend 'buffer' sampler so that there is no
     need to worry about the assumption of independence.
+
+    MIEstimator can be also used to estimate conditional mutual information
+    MI(X,Y|Z). In this case, you should let `x` to represent X and Z, and `y` to
+    represent Y. And when calling train_step(), you need to provide `y_distribution`
+    which is the distribution P(Y|z). See mi_estimator_test.py for detail.
     """
 
     def __init__(self,
@@ -165,16 +174,21 @@ class MIEstimator(Algorithm):
 
         return x, tf.nest.map_structure(_shift, y)
 
-    def train_step(self, inputs, state=None):
+    def train_step(self, inputs, y_distribution=None, state=None):
         """Perform training on one batch of inputs.
 
         Args:
-            inputs (tuple(Tensor, Tensor)): tuple of x and y
+            inputs (tuple(nested Tensor, nested Tensor)): tuple of x and y
+            y_distribution (nested tfp.distributions.Distribution): distribution
+                for the marginal distribution of y. If None, will use the
+                sampling method `sampler` provided at constructor to generate
+                the samples for the marginal distribution of Y.
             state: not used
         Returns:
             AlgorithmStep
                 outputs (Tensor): shape=[batch_size], its mean is the estimated
-                    MI
+                    MI for estimator 'DV' or 'KLD', and Jensen-Shannon
+                    divergence for estimator 'JSD'
                 state: not used
                 info (LossInfo): info.loss is the loss
         """
@@ -183,7 +197,13 @@ class MIEstimator(Algorithm):
         batch_squash = BatchSquash(num_outer_dims)
         x = batch_squash.flatten(x)
         y = batch_squash.flatten(y)
-        x1, y1 = self._sampler(x, y)
+        if y_distribution is None:
+            x1, y1 = self._sampler(x, y)
+        else:
+            x1 = x
+            seed_stream = tfp.util.SeedStream(seed=None, salt='mi_estimator')
+            y1 = tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
+                                       y_distribution)
 
         log_ratio = self._model([x, y])[0]
         t1 = self._model([x1, y1])[0]
