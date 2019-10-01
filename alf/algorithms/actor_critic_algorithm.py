@@ -179,7 +179,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         return PolicyStep(
             action=action_distribution, state=actor_state, info=())
 
-    def rollout(self, time_step: ActionTimeStep, state=None):
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state=None,
+                with_experience=False):
         observation = self._encode(time_step)
 
         value, value_state = self._value_network(
@@ -200,13 +203,16 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             value=value, icm_reward=(), icm_info=(), entropy_target_info=())
         if self._icm is not None:
             icm_step = self._icm.train_step(
-                (observation, time_step.prev_action), state=state.icm_state)
+                inputs=(observation, time_step.prev_action),
+                state=state.icm_state,
+                calc_intrinsic_reward=not with_experience)
             info = info._replace(
                 icm_reward=icm_step.outputs, icm_info=icm_step.info)
             icm_state = icm_step.state
         else:
             icm_state = ()
 
+        # TODO: can avoid computing this when collecting exps
         if self._entropy_target_algorithm:
             et_step = self._entropy_target_algorithm.train_step(
                 action_distribution)
@@ -231,21 +237,19 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             reward used for training.
         """
         if self._icm is not None:
-            return (self._extrinsic_reward_coef * external_reward +
-                    self._intrinsic_reward_coef * info.icm_reward)
+            self.add_reward_summary("reward/intrinsic", info.icm_reward)
+            reward = (self._extrinsic_reward_coef * external_reward +
+                      self._intrinsic_reward_coef * info.icm_reward)
+            self.add_reward_summary("reward/overall", reward)
+            return reward
         else:
             return external_reward
 
     def calc_loss(self, training_info):
-        if self._icm is not None:
-            self.add_reward_summary("reward/intrinsic",
-                                    training_info.info.icm_reward)
-
+        if self._icm is not None and training_info.info.icm_reward != ():
             training_info = training_info._replace(
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
-
-            self.add_reward_summary("reward/overall", training_info.reward)
 
         ac_loss = self._loss(training_info, training_info.info.value)
         loss = ac_loss.loss

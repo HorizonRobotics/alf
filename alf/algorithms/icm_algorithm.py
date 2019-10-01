@@ -95,10 +95,12 @@ class ICMAlgorithm(Algorithm):
         else:
             return action
 
-    def train_step(self, inputs, state):
+    def train_step(self, inputs, state, calc_intrinsic_reward=True):
         """
         Args:
             inputs (tuple): observation and previous action
+            state (tf.Tensor):
+            calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
             TrainStep:
                 outputs: intrinsic reward
@@ -125,8 +127,11 @@ class ICMAlgorithm(Algorithm):
             inverse_loss = 0.5 * tf.reduce_mean(
                 tf.square(prev_action - action_pred), axis=-1)
 
-        intrinsic_reward = tf.stop_gradient(forward_loss)
-        intrinsic_reward = self._reward_normalizer.normalize(intrinsic_reward)
+        intrinsic_reward = ()
+        if calc_intrinsic_reward:
+            intrinsic_reward = tf.stop_gradient(forward_loss)
+            intrinsic_reward = self._reward_normalizer.normalize(
+                intrinsic_reward)
 
         return AlgorithmStep(
             outputs=intrinsic_reward,
