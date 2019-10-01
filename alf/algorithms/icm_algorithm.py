@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections import namedtuple
-
 import gin.tf
 import tensorflow as tf
 
@@ -22,21 +20,8 @@ from tf_agents.networks.network import Network
 import tf_agents.specs.tensor_spec as tensor_spec
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep
-from alf.utils.losses import element_wise_squared_loss
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
-
-
-def validate_specs(action_spec):
-    """Validates the spec contains a single action."""
-    flat_action_spec = tf.nest.flatten(action_spec)
-    if len(flat_action_spec) > 1:
-        raise ValueError(
-            'Network only supports action_specs with a single action.')
-
-    if flat_action_spec[0].shape not in [(), (1, )]:
-        raise ValueError(
-            'Network only supports action_specs with shape in [(), (1,)])')
 
 
 @gin.configurable
