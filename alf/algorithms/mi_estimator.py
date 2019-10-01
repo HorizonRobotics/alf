@@ -146,7 +146,7 @@ class MIEstimator(Algorithm):
             y1 = self._y_buffer.get_batch(batch_size)
         # It seems that tf.stop_gradient() should be unnesessary. But somehow
         # TF will crash without this stop_gradient
-        return x, tf.stop_gradient(y1)
+        return x, tf.nest.map_structure(tf.stop_gradient, y1)
 
     def _double_buffer_sampler(self, x, y):
         batch_size = get_nest_batch_size(y)

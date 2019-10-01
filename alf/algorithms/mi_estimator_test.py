@@ -22,7 +22,7 @@ import tensorflow as tf
 from alf.algorithms.mi_estimator import MIEstimator, ScalarAdaptiveAverager
 
 
-class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
+class MIEstimatorTest(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters(
         dict(estimator='DV', rho=0.0, eps=0.02),
         dict(estimator='KLD', rho=0.0, eps=0.02),
