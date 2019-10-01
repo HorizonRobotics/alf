@@ -23,7 +23,7 @@ from tf_agents.networks.network import Network
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.utils import common
-from alf.utils.averager import AdaptiveAverager, ScalarAdaptiveAverager
+from alf.utils.averager import AdaptiveAverager
 from alf.utils.encoding_network import EncodingNetwork
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
@@ -111,20 +111,23 @@ class Generator(Algorithm):
                 last_layer_size=output_dim)
 
         self._mi_estimator = None
+        self._input_tensor_spec = input_tensor_spec
         if mi_weight is not None:
             x_spec = noise_spec
             y_spec = tf.TensorSpec((output_dim, ))
             if input_tensor_spec is not None:
                 x_spec = [x_spec, input_tensor_spec]
-                y_spec = [y_spec, input_tensor_spec]
-            self._mi_estimator = mi_estimator_cls(x_spec, y_spec)
+            self._mi_estimator = mi_estimator_cls(
+                x_spec, y_spec, sampler='shift')
             self._mi_weight = mi_weight
         self._net = net
 
     def _predict(self, inputs, batch_size=None):
         if inputs is None:
+            assert self._input_tensor_spec is None
             assert batch_size is not None
         else:
+            tf.nest.assert_same_structure(inputs, self._input_tensor_spec)
             batch_size = tf.shape(tf.nest.flatten(inputs)[0])[0]
         shape = common.concat_shape([batch_size], [self._noise_dim])
         noise = tf.random.normal(shape=shape)
@@ -158,7 +161,7 @@ class Generator(Algorithm):
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None
             state: not used
-        returns:
+        Returns:
             AlgorithmStep:
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
@@ -170,7 +173,7 @@ class Generator(Algorithm):
 
         mi_loss = ()
         if self._mi_estimator is not None:
-            mi_step = self._mi_estimator.train_step([outputs, gen_inputs])
+            mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
             mi_loss = mi_step.info.loss
             loss_propagated += self._mi_weight * mi_loss
 
@@ -191,8 +194,7 @@ class Generator(Algorithm):
         return loss, grad
 
     def _kernel_func(self, x, y):
-        d = x - y
-        d = d * d
+        d = tf.square(x - y)
         self._kernel_width_averager.update(tf.reduce_mean(d, axis=0))
         d = tf.reduce_mean(d / self._kernel_width_averager.get(), axis=-1)
         w = tf.math.exp(-self._kernel_sharpness * d)

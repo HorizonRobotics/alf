@@ -31,7 +31,9 @@ class Net(Network):
             state_spec=(),
             name="Net")
         self._w = tf.Variable(
-            initial_value=[[1, 2], [1, 1]], shape=(dim, dim), dtype=tf.float32)
+            initial_value=[[1, 2], [-1, 1], [1, 1]],
+            shape=(3, dim),
+            dtype=tf.float32)
 
     def call(self, input):
         return tf.matmul(input, self._w), ()
@@ -80,7 +82,7 @@ class GeneratorTest(parameterized.TestCase, unittest.TestCase):
         net = Net(dim)
         generator = Generator(
             dim,
-            noise_dim=dim,
+            noise_dim=3,
             mode=mode,
             net=net,
             mi_weight=mi_weight,
@@ -119,14 +121,18 @@ class GeneratorTest(parameterized.TestCase, unittest.TestCase):
                 self.assertGreater(
                     float(tf.reduce_sum(tf.abs(learned_var))), 0.5)
 
-    @parameterized.parameters('STEIN', 'ML')
-    def test_generator_conditional(self, mode='STEIN'):
+    @parameterized.parameters(
+        dict(mode='STEIN'),
+        dict(mode='ML'),
+        dict(mode='ML', mi_weight=1),
+    )
+    def test_generator_conditional(self, mode='ML', mi_weight=None):
         """
         The target conditional distribution is N(yu; diag(1, 4)). After training
         net._u should be u for both STEIN and ML. And w^T*w should be diag(1, 4)
         for STEIN and 0 for ML.
         """
-        logging.info("mode: %s" % mode)
+        logging.info("mode: %s mi_weight: %s" % (mode, mi_weight))
         dim = 2
         batch_size = 512
         net = Net2(dim)
@@ -135,6 +141,8 @@ class GeneratorTest(parameterized.TestCase, unittest.TestCase):
             noise_dim=dim,
             mode=mode,
             net=net,
+            mi_weight=mi_weight,
+            input_tensor_spec=tf.TensorSpec((dim, )),
             optimizer=tf.optimizers.Adam(learning_rate=1e-3))
 
         var = tf.constant([1, 4], dtype=tf.float32)
@@ -166,10 +174,13 @@ class GeneratorTest(parameterized.TestCase, unittest.TestCase):
                 tf.print(i, "learned var=", learned_var)
                 tf.print("u=", net._u)
 
-        self.assertArrayEqual(net._u, u, 0.1)
-        if mode == 'STEIN':
+        if mi_weight is not None:
+            self.assertGreater(float(tf.reduce_sum(tf.abs(learned_var))), 0.5)
+        elif mode == 'STEIN':
+            self.assertArrayEqual(net._u, u, 0.1)
             self.assertArrayEqual(tf.linalg.diag(var), learned_var, 0.1)
         elif mode == 'ML':
+            self.assertArrayEqual(net._u, u, 0.1)
             self.assertArrayEqual(tf.zeros((dim, dim)), learned_var, 0.1)
 
 
