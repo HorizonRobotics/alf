@@ -19,6 +19,9 @@ import gym
 import numpy as np
 import cv2
 
+from tf_agents.environments import wrappers
+from tf_agents.trajectories.time_step import StepType
+
 
 @gin.configurable
 class FrameStack(gym.Wrapper):
@@ -334,3 +337,46 @@ class DMAtariPreprocessing(gym.Wrapper):
             interpolation=cv2.INTER_AREA)
         int_image = np.asarray(transformed_image, dtype=np.uint8)
         return np.expand_dims(int_image, axis=2)
+
+
+@gin.configurable
+class NonEpisodicAgent(wrappers.PyEnvironmentBaseWrapper):
+    """
+    Make the agent non-episodic by replacing all termination time steps with
+    a non-zero discount (essentially the same type as returned by the TimeLimit
+    wrapper).
+
+    This wrapper could be useful for pure intrinsic-motivated agent, as
+    suggested in the following paper:
+
+        EXPLORATION BY RANDOM NETWORK DISTILLATION, Burda et al. 2019,
+
+    "... We argue that this is a natural way to do exploration in simulated
+    environments, since the agent’s intrinsic return should be related to all
+    the novel states that it could find in the future, regardless of whether
+    they all occur in one episode or are spread over several.
+
+    ... If Alice is modelled as an episodic reinforcement learning agent, then
+    her future return will be exactly zero if she gets a game over, which might
+    make her overly risk averse. The real cost of a game over to Alice is the
+    opportunity cost incurred by having to play through the game from the
+    beginning."
+
+    NOTE: For PURE intrinsic-motivated agents only. If you use both extrinsic
+    and intrinsic rewards, then DO NOT use this wrapper! Because without
+    episodic setting, the agent could exploit extrinsic rewards by intentionally
+    die to get easy early rewards in the game.
+    """
+
+    def __init__(self, env, discount=1.0):
+        super().__init__(env)
+        self._discount = discount
+
+    def _step(self, action):
+        time_step = self._env.step(action)
+        if time_step.step_type == StepType.LAST:
+            # We set a non-zero discount so that the target value would not be
+            # zero (non-episodic).
+            time_step = time_step._replace(
+                discount=np.asarray(self._discount, np.float32))
+        return time_step
