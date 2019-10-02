@@ -24,6 +24,7 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from tf_agents.eval import metric_utils
 from tf_agents.utils import common as tfa_common
 
+from alf.algorithms.agent import Agent
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
@@ -314,8 +315,7 @@ class Trainer(object):
                 state_spec=self._algorithm.predict_state_spec,
                 action_fn=lambda time_step, state: common.algorithm_step(
                     algorithm_step_func=self._algorithm.greedy_predict,
-                    ob_transformer=self._driver.observation_transformer,
-                    time_step=time_step,
+                    time_step=self._algorithm.transform_timestep(time_step),
                     state=state),
                 num_episodes=self._num_eval_episodes,
                 step_metrics=self._driver.get_step_metrics(),

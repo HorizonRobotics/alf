@@ -34,11 +34,11 @@ value/ValueNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 
 ac/Adam.learning_rate=1e-4
 
-ActorCriticAlgorithm.action_spec=%action_spec
+Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-ActorCriticAlgorithm.optimizer=@ac/Adam()
-ActorCriticAlgorithm.gradient_clipping=None
+Agent.optimizer=@ac/Adam()
+Agent.gradient_clipping=None
 
 
 # tf has a bug which can be triggered by the default data_format 'channels_last'
@@ -56,13 +56,13 @@ tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
-TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=1
 
-PolicyDriver.observation_transformer=@image_scale_transformer
+Agent.observation_transformer=@image_scale_transformer
 
 

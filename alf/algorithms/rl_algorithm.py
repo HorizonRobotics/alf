@@ -132,6 +132,7 @@ class RLAlgorithm(tf.Module):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
+                 observation_transformer: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
                  name="RLAlgorithm"):
@@ -157,6 +158,8 @@ class RLAlgorithm(tf.Module):
                 clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
+            observation_transformer (Callable): transformation applied to
+                `time_step.observation`
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -188,11 +191,21 @@ class RLAlgorithm(tf.Module):
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
         self._reward_shaping_fn = reward_shaping_fn
+        self._observation_transformer = observation_transformer
         self._train_step_counter = alf.utils.common.get_global_counter(
             train_step_counter)
         self._debug_summaries = debug_summaries
         self._cached_var_sets = None
         self._use_rollout_state = False
+
+    @property
+    def optimizer(self):
+        """Return the optimizer for this algorithm."""
+        if len(self._optimizers) == 0:
+            return None
+        if len(self._optimizers) == 1:
+            return self._optimizers[0]
+        raise ValueError("There are multiple optimzers")
 
     @property
     def use_rollout_state(self):
@@ -320,6 +333,25 @@ class RLAlgorithm(tf.Module):
         """
         pass
 
+    def transform_timestep(self, time_step):
+        """Transform time_step.
+        Including tranforming observation and reward.
+
+        Args:
+            time_step (ActionTimeStep | Experience): time step
+        Returns:
+            ActionTimeStep | Experience: transformed time step
+        """
+        # reward shaping
+        if self._reward_shaping_fn is not None:
+            time_step = time_step._replace(
+                reward=self._reward_shaping_fn(time_step.reward))
+        if self._observation_transformer is not None:
+            time_step = time_step._replace(
+                observation=self._observation_transformer(time_step.
+                                                          observation))
+        return time_step
+
     # Subclass may override train_complete() to allow customized training
     def train_complete(self,
                        tape: tf.GradientTape,
@@ -346,13 +378,6 @@ class RLAlgorithm(tf.Module):
         """
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
-
-        # reward shaping
-        if self._reward_shaping_fn is not None:
-            # record unshaped extrinsic rewards given by the environment
-            self.add_reward_summary("reward/raw", training_info.reward)
-            training_info = training_info._replace(
-                reward=self._reward_shaping_fn(training_info.reward))
 
         # record shaped extrinsic rewards actually used for training
         self.add_reward_summary("reward/extrinsic", training_info.reward)

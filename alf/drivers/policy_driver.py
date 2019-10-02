@@ -196,7 +196,7 @@ class PolicyDriver(driver.Driver):
         return time_step, policy_state
 
     def _eval_loop_body(self, time_step, policy_state):
-        next_time_step, policy_step, _ = self._step(time_step, policy_state)
+        next_time_step, policy_step, _, _ = self._step(time_step, policy_state)
         return [next_time_step, policy_step.state]
 
     def _step(self, time_step, policy_state):
@@ -206,11 +206,9 @@ class PolicyDriver(driver.Driver):
         step_func = self._algorithm.rollout if self._training else (
             self._algorithm.greedy_predict
             if self._greedy_predict else self._algorithm.predict)
-        policy_step = common.algorithm_step(
-            step_func,
-            self._observation_transformer,
-            time_step,
-            state=policy_state)
+        transformed_time_step = self._algorithm.transform_timestep(time_step)
+        policy_step = common.algorithm_step(step_func, transformed_time_step,
+                                            policy_state)
         action = common.sample_action_distribution(policy_step.action)
         next_time_step = self._env_step(action)
         if self._observers:
@@ -230,7 +228,7 @@ class PolicyDriver(driver.Driver):
             for observer in self._exp_observers:
                 observer(exp)
 
-        return next_time_step, policy_step, action
+        return next_time_step, policy_step, action, transformed_time_step
 
     def _env_step(self, action):
         time_step = self._env.step(action)
