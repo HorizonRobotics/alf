@@ -22,7 +22,7 @@ import tensorflow as tf
 from alf.algorithms.mi_estimator import MIEstimator, ScalarAdaptiveAverager
 
 
-class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
+class MIEstimatorTest(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters(
         dict(estimator='DV', rho=0.0, eps=0.02),
         dict(estimator='KLD', rho=0.0, eps=0.02),
@@ -95,11 +95,17 @@ class MINEstimatorTest(parameterized.TestCase, unittest.TestCase):
         batch_size = 512
         info = "mi=%s estimator=%s buffer_size=%s sampler=%s dim=%s" % (
             float(mi), estimator, buffer_size, sampler, dim)
-        for i in range(5000):
+
+        @tf.function
+        def _train():
             x, y = _get_batch(batch_size)
             with tf.GradientTape() as tape:
                 alg_step = mi_estimator.train_step((x, y))
             mi_estimator.train_complete(tape, alg_step.info)
+            return alg_step
+
+        for i in range(5000):
+            alg_step = _train()
             if i % 1000 == 0:
                 _calc_estimated_mi(i, alg_step.outputs)
         x, y = _get_batch(16384)

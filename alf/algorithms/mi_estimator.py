@@ -65,6 +65,8 @@ class MIEstimator(Algorithm):
     * 'shift': shift batch y by one sample, i.e.
       tf.concat([y[-1:, ...], y[0:-1, ...]], axis=0)
 
+    If you need the gradient of y, you should use sampler 'shift' and 'shuffle'.
+
     Among these, 'buffer' and 'shift' seem to perform better and 'shuffle'
     performs worst. 'buffer' incurs additional storage cost. 'shift' has the
     assumption that y samples from one batch are independent. If the additional
@@ -142,7 +144,9 @@ class MIEstimator(Algorithm):
         else:
             self._y_buffer.add_batch(y)
             y1 = self._y_buffer.get_batch(batch_size)
-        return x, y1
+        # It seems that tf.stop_gradient() should be unnesessary. But somehow
+        # TF will crash without this stop_gradient
+        return x, tf.nest.map_structure(tf.stop_gradient, y1)
 
     def _double_buffer_sampler(self, x, y):
         batch_size = get_nest_batch_size(y)
