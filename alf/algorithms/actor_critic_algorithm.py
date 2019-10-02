@@ -11,8 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Actor critic algorithm."""
 
-from collections import namedtuple
 import functools
 from typing import Callable
 
@@ -20,7 +20,6 @@ import gin.tf
 
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.encoding_network import EncodingNetwork
@@ -34,17 +33,19 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
+from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo, namedtuple
 
-ActorCriticState = namedtuple("ActorCriticPolicyState",
-                              ["actor_state", "value_state", "icm_state"])
+import sys
+
+ActorCriticState = namedtuple(
+    "ActorCriticPolicyState", ["actor", "value", "icm"], default_value=())
 
 ActorCriticInfo = namedtuple(
-    "ActorCriticInfo",
-    ["value", "icm_reward", "icm_info", "entropy_target_info"])
+    "ActorCriticInfo", ["value", "icm", "entropy_target"], default_value=())
 
-ActorCriticAlgorithmLossInfo = namedtuple("ActorCriticAlgorithmLossInfo",
-                                          ["ac", "icm", "entropy_target"])
+ActorCriticAlgorithmLossInfo = namedtuple(
+    "ActorCriticAlgorithmLossInfo", ["ac", "icm", "entropy_target"],
+    default_value=())
 
 
 @gin.configurable
@@ -103,15 +104,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
-
-        icm_state_spec = ()
-        if intrinsic_curiosity_module is not None:
-            icm_state_spec = intrinsic_curiosity_module.train_state_spec
-        entropy_target_algorithm = None
-        if enforce_entropy_target:
-            entropy_target_algorithm = EntropyTargetAlgorithm(
-                action_spec, debug_summaries=debug_summaries)
-
         optimizers = [optimizer]
         module_sets = [[actor_network, value_network, encoding_network]]
 
@@ -123,8 +115,21 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 else:
                     module_sets[0].append(algorithm)
 
-        _add_algorithm(intrinsic_curiosity_module)
-        _add_algorithm(entropy_target_algorithm)
+        train_state_spec = ActorCriticState(
+            actor=actor_network.state_spec, value=value_network.state_spec)
+
+        predict_state_spec = ActorCriticState(actor=actor_network.state_spec)
+
+        if intrinsic_curiosity_module is not None:
+            train_state_spec = train_state_spec._replace(
+                icm=intrinsic_curiosity_module.train_state_spec)
+            _add_algorithm(intrinsic_curiosity_module)
+
+        entropy_target_algorithm = None
+        if enforce_entropy_target:
+            entropy_target_algorithm = EntropyTargetAlgorithm(
+                action_spec, debug_summaries=debug_summaries)
+            _add_algorithm(entropy_target_algorithm)
 
         def _collect_trainable_variables(modules):
             vars = []
@@ -140,11 +145,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         super(ActorCriticAlgorithm, self).__init__(
             action_spec=action_spec,
-            predict_state_spec=actor_network.state_spec,
-            train_state_spec=ActorCriticState(
-                actor_state=actor_network.state_spec,
-                value_state=value_network.state_spec,
-                icm_state=icm_state_spec),
+            predict_state_spec=predict_state_spec,
+            train_state_spec=train_state_spec,
             action_distribution_spec=actor_network.output_spec,
             optimizer=optimizers,
             get_trainable_variables_func=get_trainable_variables_funcs,
@@ -172,58 +174,61 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             observation, _ = self._encoding_network(observation)
         return observation
 
-    def predict(self, time_step: ActionTimeStep, state=None):
+    def predict(self, time_step: ActionTimeStep, state: ActorCriticState):
         observation = self._encode(time_step)
+
+        new_state = ActorCriticState()
+
         action_distribution, actor_state = self._actor_network(
-            observation, step_type=time_step.step_type, network_state=state)
-        return PolicyStep(
-            action=action_distribution, state=actor_state, info=())
+            observation,
+            step_type=time_step.step_type,
+            network_state=state.actor)
+        new_state = new_state._replace(actor=actor_state)
+
+        return PolicyStep(action=action_distribution, state=new_state, info=())
 
     def rollout(self,
                 time_step: ActionTimeStep,
                 state=None,
                 with_experience=False):
+        new_state = ActorCriticState()
+        info = ActorCriticInfo()
         observation = self._encode(time_step)
+
+        if self._icm is not None:
+            icm_step = self._icm.train_step(
+                (observation, time_step.prev_action),
+                state=state.icm,
+                calc_intrinsic_reward=not with_experience)
+            info = info._replace(icm=icm_step.info)
+            new_state = new_state._replace(icm=icm_step.state)
 
         value, value_state = self._value_network(
             observation,
             step_type=time_step.step_type,
-            network_state=state.value_state)
+            network_state=state.value)
         # ValueRnnNetwork will add a time dim to value
         # See value_rnn_network.py L153
         if isinstance(self._value_network, ValueRnnNetwork):
             value = tf.squeeze(value, axis=1)
 
+        new_state = new_state._replace(value=value_state)
+        info = info._replace(value=value)
+
         action_distribution, actor_state = self._actor_network(
             observation,
             step_type=time_step.step_type,
-            network_state=state.actor_state)
-
-        info = ActorCriticInfo(
-            value=value, icm_reward=(), icm_info=(), entropy_target_info=())
-        if self._icm is not None:
-            icm_step = self._icm.train_step(
-                inputs=(observation, time_step.prev_action),
-                state=state.icm_state,
-                calc_intrinsic_reward=not with_experience)
-            info = info._replace(
-                icm_reward=icm_step.outputs, icm_info=icm_step.info)
-            icm_state = icm_step.state
-        else:
-            icm_state = ()
+            network_state=state.actor)
+        new_state = new_state._replace(actor=actor_state)
 
         # TODO: can avoid computing this when collecting exps
         if self._entropy_target_algorithm:
             et_step = self._entropy_target_algorithm.train_step(
                 action_distribution)
-            info = info._replace(entropy_target_info=et_step.info)
+            info = info._replace(entropy_target=et_step.info)
 
-        state = ActorCriticState(
-            actor_state=actor_state,
-            value_state=value_state,
-            icm_state=icm_state)
-
-        return PolicyStep(action=action_distribution, state=state, info=info)
+        return PolicyStep(
+            action=action_distribution, state=new_state, info=info)
 
     def calc_training_reward(self, external_reward, info: ActorCriticInfo):
         """Calculate the reward actually used for training.
@@ -237,34 +242,49 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             reward used for training.
         """
         if self._icm is not None:
-            self.add_reward_summary("reward/intrinsic", info.icm_reward)
+            self.add_reward_summary("reward/icm", info.icm.reward)
             reward = (self._extrinsic_reward_coef * external_reward +
-                      self._intrinsic_reward_coef * info.icm_reward)
+                      self._intrinsic_reward_coef * info.icm.reward)
             self.add_reward_summary("reward/overall", reward)
-            return reward
         else:
-            return external_reward
+            reward = external_reward
+
+        return reward
 
     def calc_loss(self, training_info):
-        if self._icm is not None and training_info.info.icm_reward != ():
+        if self._icm is not None and isinstance(training_info.info.icm.reward,
+                                                tf.Tensor):
             training_info = training_info._replace(
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
 
+        def _add(x, y):
+            if not isinstance(y, tf.Tensor):
+                return x
+            elif not isinstance(x, tf.Tensor):
+                return y
+            else:
+                return x + y
+
+        def _update_loss(loss_info, training_info, name, algorithm):
+            if algorithm is None:
+                return loss_info
+            new_loss_info = algorithm.calc_loss(
+                getattr(training_info.info, name))
+            return LossInfo(
+                loss=_add(loss_info.loss, new_loss_info.loss),
+                scalar_loss=_add(loss_info.scalar_loss,
+                                 new_loss_info.scalar_loss),
+                extra=loss_info.extra._replace(**{name: new_loss_info.extra}))
+
         ac_loss = self._loss(training_info, training_info.info.value)
-        loss = ac_loss.loss
-        extra = ActorCriticAlgorithmLossInfo(
-            ac=ac_loss.extra, icm=(), entropy_target=())
+        loss_info = LossInfo(
+            loss=ac_loss.loss,
+            scalar_loss=ac_loss.scalar_loss,
+            extra=ActorCriticAlgorithmLossInfo(ac=ac_loss.extra))
 
-        if self._icm is not None:
-            icm_loss = self._icm.calc_loss(training_info.info.icm_info)
-            loss += icm_loss.loss
-            extra = extra._replace(icm=icm_loss.extra)
+        loss_info = _update_loss(loss_info, training_info, 'icm', self._icm)
+        loss_info = _update_loss(loss_info, training_info, 'entropy_target',
+                                 self._entropy_target_algorithm)
 
-        if self._entropy_target_algorithm:
-            et_loss = self._entropy_target_algorithm.calc_loss(
-                training_info.info.entropy_target_info)
-            loss += et_loss.loss
-            extra = extra._replace(entropy_target=et_loss.extra)
-
-        return LossInfo(loss=loss, extra=extra)
+        return loss_info

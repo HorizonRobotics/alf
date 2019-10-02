@@ -28,10 +28,10 @@ from tf_agents.networks.actor_distribution_network import ActorDistributionNetwo
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.network import Network
 from tf_agents.utils import common as tfa_common
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.trajectories.policy_step import PolicyStep
+
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
-from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep
+from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
 from alf.utils import losses, common, dist_utils
 from alf.algorithms.one_step_loss import OneStepTDLoss
 

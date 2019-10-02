@@ -11,17 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections import namedtuple
 
 import gin.tf
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.networks.network import Network
 import tf_agents.specs.tensor_spec as tensor_spec
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
+
+ICMInfo = namedtuple("ICMInfo", ["reward", "loss"])
 
 
 @gin.configurable
@@ -43,14 +45,38 @@ class ICMAlgorithm(Algorithm):
                  forward_net: Network = None,
                  inverse_net: Network = None,
                  name="ICMAlgorithm"):
+        """Create an ICMAlgorithm.
 
+        Args:
+            hidden_size (int|tuple): size of hidden layer(s)
+            reward_adapt_speed (float): how fast to adapt the reward normalizer.
+                rouphly speaking, the statistics for the normalization is
+                calculated mostly based on the most recent T/speed samples,
+                where T is the total number of samples.
+            encoding_net (Network): network for encoding observation into a
+                latent feature specified by feature_spec. Its input is same as
+                the input of this algorithm.
+            forward_net (Network): network for predicting next feature based on
+                previous feature and action. It should accept input with spec
+                [feature_spec, encoded_action_spec] and output a tensor of shape
+                feature_spec. For discrete action, encoded_action is an one-hot
+                representation of the action. For continuous action, encoded
+                action is same as the original action.
+            inverse_net (Network): network for predicting previous action given
+                the previous feature and current feature. It should accept input
+                with spec [feature_spec, feature_spec] and output tensor of
+                shape (num_actions,).
+        """
         super(ICMAlgorithm, self).__init__(
             train_state_spec=feature_spec, name=name)
 
         flat_action_spec = tf.nest.flatten(action_spec)
-        if len(flat_action_spec) > 1:
-            raise ValueError(
-                'ICM only supports action_specs with a single action.')
+        assert len(
+            flat_action_spec) == 1, "ICM doesn't suport nested action_spec"
+
+        flat_feature_spec = tf.nest.flatten(feature_spec)
+        assert len(
+            flat_feature_spec) == 1, "ICM doesn't support nested feature_spec"
 
         action_spec = flat_action_spec[0]
 
@@ -61,9 +87,12 @@ class ICMAlgorithm(Algorithm):
 
         self._action_spec = action_spec
 
-        feature_dim = tf.nest.flatten(feature_spec)[0].shape[-1]
+        feature_dim = flat_feature_spec[0].shape[-1]
 
         self._encoding_net = encoding_net
+
+        if isinstance(hidden_size, int):
+            hidden_size = (hidden_size, )
 
         if forward_net is None:
             encoded_action_spec = tensor_spec.TensorSpec((self._num_actions, ),
@@ -71,7 +100,7 @@ class ICMAlgorithm(Algorithm):
             forward_net = EncodingNetwork(
                 name="forward_net",
                 input_tensor_spec=[feature_spec, encoded_action_spec],
-                fc_layer_params=(hidden_size, ),
+                fc_layer_params=hidden_size,
                 last_layer_size=feature_dim)
 
         self._forward_net = forward_net
@@ -80,7 +109,7 @@ class ICMAlgorithm(Algorithm):
             inverse_net = EncodingNetwork(
                 name="inverse_net",
                 input_tensor_spec=[feature_spec, feature_spec],
-                fc_layer_params=(hidden_size, ),
+                fc_layer_params=hidden_size,
                 last_layer_size=self._num_actions,
                 last_kernel_initializer=tf.initializers.Zeros())
 
@@ -99,13 +128,13 @@ class ICMAlgorithm(Algorithm):
         """
         Args:
             inputs (tuple): observation and previous action
-            state (tf.Tensor):
+            state (Tensor):  state for ICM (previous feature)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
             TrainStep:
-                outputs: intrinsic reward
-                state:
-                info:
+                outputs: empty tuple ()
+                state: empty tuple ()
+                info (ICMInfo):
         """
         feature, prev_action = inputs
         if self._encoding_net is not None:
@@ -134,9 +163,15 @@ class ICMAlgorithm(Algorithm):
                 intrinsic_reward)
 
         return AlgorithmStep(
-            outputs=intrinsic_reward,
+            outputs=(),
             state=feature,
-            info=LossInfo(
-                loss=forward_loss + inverse_loss,
-                extra=dict(
-                    forward_loss=forward_loss, inverse_loss=inverse_loss)))
+            info=ICMInfo(
+                reward=intrinsic_reward,
+                loss=LossInfo(
+                    loss=forward_loss + inverse_loss,
+                    extra=dict(
+                        forward_loss=forward_loss,
+                        inverse_loss=inverse_loss))))
+
+    def calc_loss(self, info: ICMInfo):
+        return info.loss

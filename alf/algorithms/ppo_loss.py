@@ -16,11 +16,10 @@
 import gin
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 from tf_agents.specs import tensor_spec
 
-from alf.algorithms.rl_algorithm import TrainingInfo
+from alf.algorithms.rl_algorithm import TrainingInfo, LossInfo
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.losses import element_wise_squared_loss

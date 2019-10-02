@@ -14,7 +14,7 @@
 """Base class for RL algorithms."""
 
 from abc import abstractmethod
-from collections import namedtuple
+import collections
 import itertools
 from typing import Callable
 
@@ -27,10 +27,31 @@ from tf_agents.utils import eager_utils
 
 import alf.utils
 
+
+def namedtuple(typename, field_names, default_value=None, default_values=()):
+    T = collections.namedtuple(typename, field_names)
+    T.__new__.__defaults__ = (default_value, ) * len(T._fields)
+    if isinstance(default_values, collections.Mapping):
+        prototype = T(**default_values)
+    else:
+        prototype = T(*default_values)
+    T.__new__.__defaults__ = tuple(prototype)
+    return T
+
+
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
     "collect_info", "collect_action_distribution"
 ])
+
+LossInfo = namedtuple(
+    "LossInfo",
+    [
+        "loss",  # batch loss shape should be (T, B)
+        "scalar_loss",  # shape is ()
+        "extra"  # nested batch and/or scalar losses, for summary only
+    ],
+    default_value=())
 
 
 def make_training_info(action_distribution=(),
@@ -339,7 +360,12 @@ class RLAlgorithm(tf.Module):
         with tape:
             loss_info = self.calc_loss(training_info)
             loss_info = tf.nest.map_structure(
-                lambda l: tf.reduce_mean(l * valid_masks), loss_info)
+                lambda l: tf.reduce_mean(l * valid_masks)
+                if len(l.shape) == 2 else l, loss_info)
+            if isinstance(loss_info.scalar_loss, tf.Tensor):
+                assert len(loss_info.scalar_loss.shape) == 0
+                loss_info = loss_info._replace(
+                    loss=loss_info.loss + loss_info.scalar_loss)
             loss = weight * loss_info.loss
 
         var_sets = self._get_cached_var_sets()

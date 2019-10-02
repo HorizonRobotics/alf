@@ -18,9 +18,8 @@ import gin.tf
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
-from alf.algorithms.rl_algorithm import TrainingInfo
+from alf.algorithms.rl_algorithm import TrainingInfo, LossInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import common, dist_utils, value_ops
 
@@ -115,8 +114,9 @@ class ActorCriticLoss(object):
             with tf.name_scope('ActorCriticLoss'):
                 tf.summary.scalar("values", tf.reduce_mean(value))
                 tf.summary.scalar("returns", tf.reduce_mean(returns))
-                tf.summary.scalar("advantages", tf.reduce_mean(advantages))
-                tf.summary.histogram("advantages", advantages)
+                tf.summary.scalar("advantages/mean",
+                                  tf.reduce_mean(advantages))
+                tf.summary.histogram("advantages/value", advantages)
                 tf.summary.scalar("explained_variance_of_return_by_value",
                                   common.explained_variance(value, returns))
 
@@ -144,8 +144,8 @@ class ActorCriticLoss(object):
             loss -= self._entropy_regularization * entropy_for_gradient
 
         return LossInfo(
-            loss,
-            ActorCriticLossInfo(
+            loss=loss,
+            extra=ActorCriticLossInfo(
                 td_loss=td_loss, pg_loss=pg_loss, entropy_loss=entropy_loss))
 
     def _pg_loss(self, training_info, advantages):

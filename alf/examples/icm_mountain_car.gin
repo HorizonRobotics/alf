@@ -4,10 +4,6 @@ import alf.trainers.on_policy_trainer
 # environment config
 create_environment.num_parallel_environments=30
 create_environment.env_name='MountainCar-v0'
-create_environment.env_load_fn=@load_with_random_max_episode_steps
-load_with_random_max_episode_steps.min_steps=1000
-load_with_random_max_episode_steps.max_steps=1200
-suite_gym.load.max_episode_steps=1000
 
 # algorithm config
 observation_spec=@get_observation_spec()
@@ -15,25 +11,25 @@ action_spec=@get_action_spec()
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
-actor/ActorDistributionNetwork.fc_layer_params=(256,)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.relu
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
-value/ValueNetwork.fc_layer_params=(256,)
-value/ValueNetwork.activation_fn=@tf.nn.elu
+value/ValueNetwork.fc_layer_params=(256, 256)
+value/ValueNetwork.activation_fn=@tf.nn.relu
 
-ac/Adam.learning_rate=5e-5
-
-icm/encoding_net_fc_layer_params=(200,)
+ac/Adam.learning_rate=1e-3
+feature_size=200
+icm/encoding_net_fc_layer_params=(200, %feature_size)
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
-icm/EncodingNetwork.activation_fn=@tf.nn.elu
-icm/TensorSpec.shape=%icm/encoding_net_fc_layer_params
+icm/EncodingNetwork.activation_fn=@tf.nn.relu
+icm/TensorSpec.shape=(%feature_size,)
 
 ICMAlgorithm.action_spec=%action_spec
 ICMAlgorithm.feature_spec=@icm/TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
-ICMAlgorithm.hidden_size=200
+ICMAlgorithm.hidden_size=(200, 200)
 
 ActorCriticAlgorithm.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
@@ -41,6 +37,10 @@ ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 ActorCriticAlgorithm.optimizer=@ac/Adam()
 ActorCriticAlgorithm.intrinsic_curiosity_module=@ICMAlgorithm()
 ActorCriticLoss.entropy_regularization=0.1
+ActorCriticLoss.use_gae=True
+ActorCriticLoss.use_td_lambda_return=True
+
+EncodingNetwork.activation_fn=@tf.nn.relu
 
 # training config
 TrainerConfig.trainer=@on_policy_trainer
@@ -50,5 +50,3 @@ TrainerConfig.num_iterations=1000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
-
-

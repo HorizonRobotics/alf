@@ -127,7 +127,7 @@ def histogram_continuous(name,
             bucket_counts = tf.cast(
                 tf.reduce_sum(input_tensor=one_hots, axis=0), dtype=tf.float64)
             edges = tf.linspace(bucket_min, bucket_max, bucket_count + 1)
-            edges = tf.concat([edges[:-1], [bucket_max]], 0)
+            edges = tf.concat([edges[:-1], [float(bucket_max)]], 0)
             edges = tf.cast(edges, tf.float64)
             left_edges = edges[:-1]
             right_edges = edges[1:]
@@ -221,3 +221,32 @@ def summarize_action_dist(action_distributions,
                 data=log_scale[..., a])
             tf.summary.histogram(
                 name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
+
+
+def add_mean_hist_summary(name, value):
+    """Generate mean and histogram summary of value.
+
+    Args:
+        name (str): name of the summary
+        value (Tensor): tensor to be summarized
+    Returns:
+        None
+    """
+    tf.summary.histogram(name + "/value", value)
+    if not value.dtype.is_floating:
+        value = tf.cast(value, tf.float32)
+    tf.summary.scalar(name + "/mean", tf.reduce_mean(value))
+
+
+def add_mean_summary(name, value):
+    """Generate mean summary of value.
+
+    Args:
+        name (str): name of the summary
+        value (Tensor): tensor to be summarized
+    Returns:
+        None
+    """
+    if not value.dtype.is_floating:
+        value = tf.cast(value, tf.float32)
+    tf.summary.scalar(name, tf.reduce_mean(value))

@@ -15,11 +15,10 @@
 
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.networks.network import Network
 import tf_agents.specs.tensor_spec as tensor_spec
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.encoding_network import EncodingNetwork
 
 
@@ -65,4 +64,4 @@ class DecodingAlgorithm(Algorithm):
         return AlgorithmStep(
             outputs=pred,
             state=state,
-            info=LossInfo(self._loss_weight * loss, extra=()))
+            info=LossInfo(loss=self._loss_weight * loss, extra=()))
