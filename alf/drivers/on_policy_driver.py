@@ -43,11 +43,11 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
     ```python
     with GradientTape as tape:
         for _ in range(train_interval):
-            policy_step = algorithm.train_step(time_step, policy_step.state)
+            policy_step = algorithm.rollout(time_step, policy_step.state)
             action = sample action from policy_step.action
             collect necessary information and policy_step.info into training_info
             time_step = env.step(action)
-    final_policy_step = algorithm.train_step(training_info)
+    final_policy_step = algorithm.rollout(training_info)
     collect necessary information and final_policy_step.info into training_info
     algorithm.train_complete(tape, training_info)
     ```
@@ -124,8 +124,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             lambda spec: spec.input_params_spec,
             algorithm.action_distribution_spec)
 
-        policy_step = algorithm.train_step(self.get_initial_time_step(),
-                                           self._initial_state)
+        policy_step = algorithm.rollout(self.get_initial_time_step(),
+                                        self._initial_state)
         info_spec = tf.nest.map_structure(
             lambda t: tf.TensorSpec(t.shape[1:], t.dtype), policy_step.info)
 
