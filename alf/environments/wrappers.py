@@ -366,6 +366,10 @@ class NonEpisodicAgent(wrappers.PyEnvironmentBaseWrapper):
     and intrinsic rewards, then DO NOT use this wrapper! Because without
     episodic setting, the agent could exploit extrinsic rewards by intentionally
     die to get easy early rewards in the game.
+
+    Example usage:
+        suite_mario.load.env_wrappers=(@NonEpisodicAgent, )
+        suite_gym.load.env_wrappers=(@NonEpisodicAgent, )
     """
 
     def __init__(self, env, discount=1.0):
