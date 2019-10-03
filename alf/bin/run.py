@@ -188,7 +188,7 @@ def main(argv):
     task = get_task_class(gin_file_tag)
     train = "play" if FLAGS.play else "train"
     root_dir = FLAGS.path + "/" + run_tag
-    log_file = root_dir + "/log.txt"
+    log_file = root_dir + "/log-{}.txt".format(train)
 
     load_fn = get_env_load_fn(gin_file)
 
@@ -199,7 +199,7 @@ def main(argv):
         additional_flag = ""
     else:
         module = "main"
-        additional_flag = " --play"
+        additional_flag = " --play" if FLAGS.play else ""
     command = ((
         'python -m alf.bin.{module} --gin_file={gin_file} --root_dir={root_dir} '
         + args + additional_flag + ' 2> {log_file}').format(
