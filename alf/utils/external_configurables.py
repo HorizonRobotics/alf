@@ -26,13 +26,15 @@ tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
                                                    'tf.keras.layers.Conv2D')
 tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
                                                'tf.optimizers.Adam')
+gin.external_configurable(tf.keras.layers.Concatenate,
+                          'tf.keras.layers.Concatenate')
 
 # This allows the environment creation arguments to be configurable by supplying
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
 gym.envs.registration.EnvSpec.make = gin.external_configurable(
     gym.envs.registration.EnvSpec.make, 'gym.envs.registration.EnvSpec.make')
 
-tf.TensorSpec = gin.external_configurable(tf.TensorSpec, 'tf.TensorSpec')
-
 # Activation functions.
 gin.external_configurable(tf.math.exp, 'tf.math.exp')
+
+gin.external_configurable(tf.TensorSpec, 'tf.TensorSpec')

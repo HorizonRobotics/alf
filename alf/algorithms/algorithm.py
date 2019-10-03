@@ -16,10 +16,11 @@
 from abc import abstractmethod
 from collections import namedtuple
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.trajectories.time_step import StepType
 
 import tensorflow as tf
+
+from alf.algorithms.rl_algorithm import LossInfo
 
 AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
 

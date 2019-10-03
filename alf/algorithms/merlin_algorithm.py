@@ -20,7 +20,6 @@ import gin
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.networks.encoding_network import EncodingNetwork
 from tf_agents.networks.network import Network
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
@@ -36,7 +35,7 @@ from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep
+from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.utils.action_encoder import SimpleActionEncoder
 
@@ -328,8 +327,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         value, _ = self._value_net(
             latent_vector, step_type=time_step.step_type, network_state=None)
 
-        info = ActorCriticInfo(
-            value=value, icm_reward=(), icm_info=(), entropy_target_info=())
+        info = ActorCriticInfo(value=value)
         return PolicyStep(
             action=action_distribution, state=rnn_state, info=info)
 

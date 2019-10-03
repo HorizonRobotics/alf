@@ -18,9 +18,8 @@ import gin
 import numpy as np
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 
 from alf.utils import dist_utils
 from alf.utils.dist_utils import calc_default_target_entropy
@@ -45,6 +44,7 @@ class EntropyTargetAlgorithm(Algorithm):
                  initial_log_alpha=-3.0,
                  target_entropy=None,
                  optimizer=None,
+                 min_alpha=1e-4,
                  debug_summaries=False):
         """Create an EntropyTargetAlgorithm
 
@@ -72,6 +72,9 @@ class EntropyTargetAlgorithm(Algorithm):
 
         self._log_alpha = log_alpha
         self._action_spec = action_spec
+        self._min_log_alpha = -100.
+        if min_alpha >= 0.:
+            self._min_log_alpha = np.log(min_alpha)
 
         if target_entropy is None:
             flat_action_spec = tf.nest.flatten(self._action_spec)
@@ -106,11 +109,13 @@ class EntropyTargetAlgorithm(Algorithm):
             outputs=(),
             state=(),
             info=LossInfo(
-                loss,
+                loss=loss,
                 extra=EntropyTargetLossInfo(
                     alpha_loss=alpha_loss, entropy_loss=entropy_loss)))
 
     def calc_loss(self, training_info):
+        self._log_alpha.assign(
+            tf.maximum(self._log_alpha, self._min_log_alpha))
         if self._debug_summaries:
             tf.summary.scalar("EntropyTargetAlgorithm/alpha",
                               tf.exp(self._log_alpha))

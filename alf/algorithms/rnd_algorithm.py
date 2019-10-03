@@ -11,16 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from collections import namedtuple
 
 import gin.tf
 import tensorflow as tf
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.networks.network import Network
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.adaptive_normalizer import AdaptiveNormalizer
+
+RNDInfo = namedtuple("RNDInfo", ["reward", "loss"])
 
 
 @gin.configurable
@@ -81,9 +83,9 @@ class RNDAlgorithm(Algorithm):
             inputs (tuple): observation and previous action
         Returns:
             TrainStep:
-                outputs: intrinsic reward
-                state: ()
-                info: loss info
+                outputs: empty tuple ()
+                state: emplty tuple ()
+                info: RNDInfo
         """
         observation, _ = inputs
         if self._observation_normalizer is not None:
@@ -100,6 +102,9 @@ class RNDAlgorithm(Algorithm):
         intrinsic_reward = self._reward_normalizer.normalize(intrinsic_reward)
 
         return AlgorithmStep(
-            outputs=intrinsic_reward,
+            outputs=(),
             state=(),
-            info=LossInfo(loss=loss, extra=dict()))
+            info=RNDInfo(reward=intrinsic_reward, loss=LossInfo(loss=loss)))
+
+    def calc_loss(self, info: RNDInfo):
+        return LossInfo(scalar_loss=tf.reduce_mean(info.loss.loss))

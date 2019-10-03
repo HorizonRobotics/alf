@@ -25,11 +25,10 @@ from tf_agents.agents.ddpg.critic_rnn_network import CriticRnnNetwork
 
 from tf_agents.networks.network import Network
 from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
+from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
 from alf.utils import losses, common
 
