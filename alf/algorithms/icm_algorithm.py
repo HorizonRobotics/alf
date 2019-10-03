@@ -174,4 +174,5 @@ class ICMAlgorithm(Algorithm):
                         inverse_loss=inverse_loss))))
 
     def calc_loss(self, info: ICMInfo):
-        return info.loss
+        loss = tf.nest.map_structure(tf.reduce_mean, info.loss)
+        return LossInfo(scalar_loss=loss.loss, extra=loss.extra)

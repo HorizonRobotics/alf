@@ -189,7 +189,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
     def rollout(self,
                 time_step: ActionTimeStep,
-                state=None,
+                state: ActorCriticState,
                 with_experience=False):
         new_state = ActorCriticState()
         info = ActorCriticInfo()

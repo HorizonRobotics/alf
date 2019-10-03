@@ -233,9 +233,7 @@ def add_mean_hist_summary(name, value):
         None
     """
     tf.summary.histogram(name + "/value", value)
-    if not value.dtype.is_floating:
-        value = tf.cast(value, tf.float32)
-    tf.summary.scalar(name + "/mean", tf.reduce_mean(value))
+    add_mean_summary(name + "/mean", value)
 
 
 def add_mean_summary(name, value):

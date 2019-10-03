@@ -64,4 +64,4 @@ class DecodingAlgorithm(Algorithm):
         return AlgorithmStep(
             outputs=pred,
             state=state,
-            info=LossInfo(loss=self._loss_weight * loss, extra=()))
+            info=LossInfo(loss=self._loss_weight * loss))

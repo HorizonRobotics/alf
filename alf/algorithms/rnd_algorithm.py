@@ -102,9 +102,9 @@ class RNDAlgorithm(Algorithm):
         intrinsic_reward = self._reward_normalizer.normalize(intrinsic_reward)
 
         return AlgorithmStep(
-            outputs=intrinsic_reward,
+            outputs=(),
             state=(),
             info=RNDInfo(reward=intrinsic_reward, loss=LossInfo(loss=loss)))
 
     def calc_loss(self, info: RNDInfo):
-        return info.loss
+        return LossInfo(scalar_loss=tf.reduce_mean(info.loss.loss))
