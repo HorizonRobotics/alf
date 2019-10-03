@@ -188,6 +188,7 @@ def load(scene,
          discount=1.0,
          frame_skip=4,
          gym_env_wrappers=(),
+         env_wrappers=(),
          wrap_with_process=True,
          max_episode_steps=None):
     """Load deepmind lab envs.
@@ -198,6 +199,8 @@ def load(scene,
         frame_skip (int): the frequency at which the agent experiences the game
         gym_env_wrappers (list): Iterable with references to wrapper classes to use
             directly on the gym environment.
+        env_wrappers (list): Iterable with references to wrapper classes to use
+            directly on the tf_agents environment.
         wrap_with_process (bool): Whether wrap env in a process
         max_episode_steps (int): max episode step limit
     Returns:
@@ -211,7 +214,8 @@ def load(scene,
             DeepmindLabEnv(scene=scene, action_repeat=frame_skip),
             discount=discount,
             max_episode_steps=max_episode_steps,
-            gym_env_wrappers=gym_env_wrappers)
+            gym_env_wrappers=gym_env_wrappers,
+            env_wrappers=env_wrappers)
 
     if wrap_with_process:
         process_env = ProcessPyEnvironment(lambda: env_ctor())

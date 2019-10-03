@@ -49,6 +49,8 @@ def load(game,
          data_format='channels_last',
          record=False,
          crop=True,
+         gym_env_wrappers=(),
+         env_wrappers=(),
          max_episode_steps=4500,
          spec_dtype_map=None):
     """Loads the selected mario game and wraps it .
@@ -65,6 +67,8 @@ def load(game,
                `False` for not record otherwise record to current working directory or
                specified director
         crop: whether to crop frame to fixed size
+        gym_env_wrappers: list of gym env wrappers
+        env_wrappers: list of tf_agents env wrappers
         max_episode_steps: max episode step limit
         spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
             default dtype for the tensors. An easy way how to configure a custom
@@ -97,8 +101,8 @@ def load(game,
             env,
             discount=discount,
             max_episode_steps=max_episode_steps,
-            gym_env_wrappers=(),
-            env_wrappers=(),
+            gym_env_wrappers=gym_env_wrappers,
+            env_wrappers=env_wrappers,
             spec_dtype_map=spec_dtype_map,
             auto_reset=True)
 

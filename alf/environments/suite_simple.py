@@ -32,6 +32,8 @@ def load(game,
          wrap_with_process=True,
          frame_skip=None,
          frame_stack=None,
+         gym_env_wrappers=(),
+         env_wrappers=(),
          max_episode_steps=0,
          spec_dtype_map=None):
     """Loads the specified simple game and wraps it.
@@ -44,6 +46,8 @@ def load(game,
         frame_skip (int): the time interval at which the agent experiences the
             game.
         frame_stack (int): stack so many latest frames as the observation input.
+        gym_env_wrappers (list): list of gym env wrappers
+        env_wrappers (list): list of tf_agents env wrappers
         max_episode_steps (int): max number of steps for an episode.
         spec_dtype_map (dict): a dict that maps gym specs to tf dtypes to use as
             the default dtype for the tensors. An easy way how to configure a
@@ -71,8 +75,8 @@ def load(game,
             env,
             discount=discount,
             max_episode_steps=max_episode_steps,
-            gym_env_wrappers=(),
-            env_wrappers=(),
+            gym_env_wrappers=gym_env_wrappers,
+            env_wrappers=env_wrappers,
             spec_dtype_map=spec_dtype_map,
             auto_reset=True)
 
