@@ -14,6 +14,10 @@
 
 import itertools
 import json
+import os
+import time
+import random
+from collections import Iterable
 
 from absl import app
 from absl import flags
@@ -21,13 +25,15 @@ from absl import logging
 import gin
 
 # `pathos.multiprocessing` provides a consistent interface with std lib `multiprocessing`
-# and it's more  flexible
+# and it's more flexible
 from pathos import multiprocessing
+from multiprocessing import Queue, Manager
 from alf.bin.train import train_eval
 from alf.utils import common
 
 flags.DEFINE_string('search_config', None,
                     'Path to the grid search config file.')
+
 FLAGS = flags.FLAGS
 r"""Grid search.
 
@@ -51,6 +57,8 @@ class GridSearchConfig(object):
     For example:
     {
         "desc": "desc text",
+        "use_gpu": true,
+        "gpus": [0, 1],
         "max_worker_num": 8,
         "parameters": {
             "ac/Adam.learning_rate": [1e-3, 8e-4],
@@ -65,8 +73,15 @@ class GridSearchConfig(object):
     param_name is a gin configurable argument str and param_value must be an
     iterable python object or a str that can be evaluated to an iterable object.
 
+    If `use_gpu` is True, then the scheduling will only put jobs on devices
+    numbered `gpus`. `max_worker_num` jobs will be evenly divided among these
+    devices. It's the user's responsibility to make sure that each device's
+    resource is enough. If `use_gpu` is False, `gpus` will be ignored.
+
     See `ddpg_grid_search.json` for an example.
     """
+
+    _all_keys_ = ["desc", "use_gpu", "gpus", "max_worker_num", "parameters"]
 
     def __init__(self, conf_file):
         """
@@ -77,16 +92,33 @@ class GridSearchConfig(object):
             param_keys = []
             param_values = []
             conf = json.loads(f.read())
+            assert 'parameters' in conf, "JSON must contain 'parameters' key!"
             for key, value in conf['parameters'].items():
                 if isinstance(value, str):
                     value = eval(value)
                 param_keys.append(key)
                 param_values.append(value)
 
-        self._desc = conf['desc']
+        # check conf keys
+        for k in conf.keys():
+            assert k in self._all_keys_, "Invalid conf key: %s" % k
+
+        self._desc = conf.get('desc', "Grid search")
         self._param_keys = param_keys
         self._param_values = param_values
-        self._max_worker_num = conf['max_worker_num']
+        self._max_worker_num = conf.get('max_worker_num', 1)
+        self._use_gpu = conf.get("use_gpu", False)
+        self._gpus = conf.get("gpus", [0])
+
+        self._check_worker_options()
+
+    def _check_worker_options(self):
+        if not isinstance(self._gpus, Iterable):
+            self._gpus = [self._gpus]
+        for gpu in self._gpus:
+            assert isinstance(gpu, int), "gpu device must be an integer"
+        assert isinstance(self._max_worker_num, int)
+        assert isinstance(self._use_gpu, bool)
 
     @property
     def desc(self):
@@ -104,6 +136,14 @@ class GridSearchConfig(object):
     def max_worker_num(self):
         return self._max_worker_num
 
+    @property
+    def use_gpu(self):
+        return self._use_gpu
+
+    @property
+    def gpus(self):
+        return self._gpus
+
 
 class GridSearch(object):
     """Grid Search"""
@@ -115,6 +155,15 @@ class GridSearch(object):
         """
         self._conf = GridSearchConfig(conf_file)
 
+    def _init_device_queue(self, max_worker_num):
+        m = Manager()
+        device_queue = m.Queue()
+        num_gpus = len(self._conf.gpus)
+        for i in range(max_worker_num):
+            idx = i % num_gpus
+            device_queue.put(self._conf.gpus[idx])
+        return device_queue
+
     def run(self):
         """Run trainings with all possible parameter combinations in configured space
         """
@@ -125,6 +174,7 @@ class GridSearch(object):
 
         process_pool = multiprocessing.Pool(
             processes=max_worker_num, maxtasksperchild=1)
+        device_queue = self._init_device_queue(max_worker_num)
 
         task_count = 0
         for values in itertools.product(*param_values):
@@ -132,14 +182,26 @@ class GridSearch(object):
             root_dir = "%s/%d" % (FLAGS.root_dir, task_count)
             process_pool.apply_async(
                 func=self._worker,
-                args=[root_dir, parameters],
+                args=[root_dir, parameters, device_queue],
                 error_callback=lambda e: logging.error(e))
             task_count += 1
 
         process_pool.close()
         process_pool.join()
 
-    def _worker(self, root_dir, parameters):
+    def _worker(self, root_dir, parameters, device_queue):
+        # sleep for random seconds to avoid crowded launching
+        time.sleep(random.uniform(0, 3))
+
+        device = device_queue.get()
+        if self._conf.use_gpu:
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""  # run on cpu
+
+        from alf.utils.common import set_per_process_memory_growth
+        set_per_process_memory_growth()
+
         logging.set_verbosity(logging.INFO)
         gin_file = common.get_gin_file()
         if FLAGS.gin_file:
@@ -148,6 +210,8 @@ class GridSearch(object):
         with gin.unlock_config():
             gin.parse_config(['%s=%s' % (k, v) for k, v in parameters.items()])
         train_eval(root_dir)
+
+        device_queue.put(device)
 
 
 def main(_):
