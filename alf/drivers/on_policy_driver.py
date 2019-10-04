@@ -227,7 +227,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                  name='iter_loop')
 
         if self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP:
-            next_time_step, policy_step, action, tranformed_time_step = self._step(
+            next_time_step, policy_step, action, transformed_time_step = self._step(
                 time_step, policy_state)
             next_state = policy_step.state
         else:
@@ -245,9 +245,9 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         final_training_info = make_training_info(
             action_distribution=action_distribution_param,
             action=action,
-            reward=tranformed_time_step.reward,
-            discount=tranformed_time_step.discount,
-            step_type=tranformed_time_step.step_type,
+            reward=transformed_time_step.reward,
+            discount=transformed_time_step.discount,
+            step_type=transformed_time_step.step_type,
             info=policy_step.info)
 
         with tape:
