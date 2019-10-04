@@ -75,7 +75,7 @@ class PolicyDriver(driver.Driver):
             tf_metrics.EnvironmentSteps(),
         ]
         # This is a HACK.
-        # Due to tensorflow metric API change:
+        # Due to tf_agents metric API change:
         # https://github.com/tensorflow/agents/commit/b08a142edf180325b63441ec1b71119c393c4a64,
         # after tensorflow v20190807, these two metrics will cause error during
         # playing of the trained model, when num_parallel_envs > 1.
