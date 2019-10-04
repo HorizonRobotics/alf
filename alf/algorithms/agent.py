@@ -42,8 +42,7 @@ AgentLossInfo = namedtuple(
 class Agent(OnPolicyAlgorithm):
     """Agent
 
-    Agent is a master algorithm that integrate different different algorithms
-    together.
+    Agent is a master algorithm that integrates different algorithms together.
     """
 
     def __init__(self,

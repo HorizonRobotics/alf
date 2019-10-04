@@ -174,7 +174,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
     def _train_loop_body(self, counter, time_step, policy_state,
                          training_info_ta):
 
-        next_time_step, policy_step, action, time_step = self._step(
+        next_time_step, policy_step, action, transformed_time_step = self._step(
             time_step, policy_state)
         action = tf.nest.map_structure(tf.stop_gradient, action)
         action_distribution_param = common.get_distribution_params(
@@ -183,9 +183,9 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         training_info = make_training_info(
             action_distribution=action_distribution_param,
             action=action,
-            reward=time_step.reward,
-            discount=time_step.discount,
-            step_type=time_step.step_type,
+            reward=transformed_time_step.reward,
+            discount=transformed_time_step.discount,
+            step_type=transformed_time_step.step_type,
             info=policy_step.info)
 
         training_info_ta = tf.nest.map_structure(
@@ -231,9 +231,10 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 time_step, policy_state)
             next_state = policy_step.state
         else:
-            time_step = self._algorithm.transform_timestep(time_step)
-            policy_step = common.algorithm_step(self._algorithm.rollout,
-                                                time_step, policy_state)
+            transformed_time_step = self._algorithm.transform_timestep(
+                time_step)
+            policy_step = common.algorithm_step(
+                self._algorithm.rollout, transformed_time_step, policy_state)
             action = common.sample_action_distribution(policy_step.action)
             next_time_step = time_step
             next_state = policy_state
