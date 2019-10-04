@@ -28,7 +28,7 @@ setup(
         'pillow',
         'psutil',
         'pybullet == 2.5.0',
-        'tensorflow-gpu==2.0.0b1',
+        'tensorflow-gpu == 2.0.0',
     ],  # And any other dependencies foo needs
     packages=find_packages(),
 )

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM tensorflow/tensorflow:2.0.0rc0-py3-jupyter
+FROM tensorflow/tensorflow:2.0.0-py3
 
 #
 RUN apt install -y \
