@@ -304,7 +304,7 @@ class ActorThread(Thread):
 
         self._enqueue_actions(policy_step, action_dist_param, i,
                               action_return_queue)
-        return i + 1, env_ids, policy_step, action_dist_param
+        return [i + 1, env_ids, policy_step, action_dist_param]
 
     def _step(self, algorithm, time_step, state):
         time_step = algorithm.transform_timestep(time_step)
@@ -415,7 +415,7 @@ class EnvThread(Thread):
                 act_dist_param=act_dist_param,
                 next_time_step=next_time_step,
                 env_id=()))
-        return next_time_step, policy_step.state
+        return [next_time_step, policy_step.state]
 
     def _unroll_env(self, time_step, policy_state, unroll_length):
         time_step, policy_state = tf.while_loop(

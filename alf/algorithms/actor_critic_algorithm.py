@@ -103,10 +103,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state.value)
-        # ValueRnnNetwork will add a time dim to value
-        # See value_rnn_network.py L153
-        if isinstance(self._value_network, ValueRnnNetwork):
-            value = tf.squeeze(value, axis=1)
 
         action_distribution, actor_state = self._actor_network(
             time_step.observation,

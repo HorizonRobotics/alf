@@ -1,6 +1,11 @@
 {
   "desc": "Grid Search Example For DDPG",
-  "max_worker_num": 8,
+  "use_gpu": true,
+  "gpus": [
+    0,
+    1
+  ],
+  "max_worker_num": 6,
   "parameters": {
     "actor/Adam.learning_rate": [
       1e-3,

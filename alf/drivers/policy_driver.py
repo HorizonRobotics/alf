@@ -73,9 +73,21 @@ class PolicyDriver(driver.Driver):
         standard_metrics = [
             tf_metrics.NumberOfEpisodes(),
             tf_metrics.EnvironmentSteps(),
-            tf_metrics.AverageReturnMetric(buffer_size=metric_buf_size),
-            tf_metrics.AverageEpisodeLengthMetric(buffer_size=metric_buf_size),
         ]
+        # This is a HACK.
+        # Due to tf_agents metric API change:
+        # https://github.com/tensorflow/agents/commit/b08a142edf180325b63441ec1b71119c393c4a64,
+        # after tensorflow v20190807, these two metrics will cause error during
+        # playing of the trained model, when num_parallel_envs > 1.
+        # Somehow the restore_specs do not match restored metric tensors in
+        # tensorflow_core/python/training/saving/functional_saver.py
+        if training:
+            standard_metrics += [
+                tf_metrics.AverageReturnMetric(
+                    batch_size=env.batch_size, buffer_size=metric_buf_size),
+                tf_metrics.AverageEpisodeLengthMetric(
+                    batch_size=env.batch_size, buffer_size=metric_buf_size),
+            ]
         self._metrics = standard_metrics + metrics
         self._exp_observers = []
         self._use_rollout_state = use_rollout_state
