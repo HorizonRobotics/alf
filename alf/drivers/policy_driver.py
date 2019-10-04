@@ -82,16 +82,12 @@ class PolicyDriver(driver.Driver):
         # Somehow the restore_specs do not match restored metric tensors in
         # tensorflow_core/python/training/saving/functional_saver.py
         if training:
-            batch_size = env.batch_size
-        else:
-            batch_size = 1
-
-        standard_metrics += [
-            tf_metrics.AverageReturnMetric(
-                batch_size=batch_size, buffer_size=metric_buf_size),
-            tf_metrics.AverageEpisodeLengthMetric(
-                batch_size=batch_size, buffer_size=metric_buf_size),
-        ]
+            standard_metrics += [
+                tf_metrics.AverageReturnMetric(
+                    batch_size=env.batch_size, buffer_size=metric_buf_size),
+                tf_metrics.AverageEpisodeLengthMetric(
+                    batch_size=env.batch_size, buffer_size=metric_buf_size),
+            ]
         self._metrics = standard_metrics + metrics
         self._exp_observers = []
         self._use_rollout_state = use_rollout_state
