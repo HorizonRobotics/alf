@@ -204,8 +204,6 @@ class GridSearch(object):
 
         logging.set_verbosity(logging.INFO)
         gin_file = common.get_gin_file()
-        if FLAGS.gin_file:
-            common.copy_gin_configs(root_dir, gin_file)
         gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
         with gin.unlock_config():
             gin.parse_config(['%s=%s' % (k, v) for k, v in parameters.items()])

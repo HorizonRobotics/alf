@@ -167,6 +167,7 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
         """
         root_dir = os.path.expanduser(config.root_dir)
+        self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
 
@@ -286,6 +287,9 @@ class Trainer(object):
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
             if iter_num == 0:
+                # We need to wait for one iteration to get the operative args
+                # Right just give a fixed gin file name to store operative args
+                common.write_gin_configs(self._root_dir, "operative.gin")
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
                     tf.summary.text('commandline', ' '.join(sys.argv))

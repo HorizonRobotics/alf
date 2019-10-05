@@ -76,8 +76,6 @@ def train_eval(root_dir):
 
 def main(_):
     gin_file = common.get_gin_file()
-    if FLAGS.gin_file:
-        common.copy_gin_configs(FLAGS.root_dir, gin_file)
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     train_eval(FLAGS.root_dir)
 

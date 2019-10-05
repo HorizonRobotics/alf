@@ -721,3 +721,67 @@ def get_action_spec():
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     return _env.action_spec()
+
+
+def extract_spec(nest):
+    """
+    Extract tensor spec for each element of a nested structure.
+    It assumes that the first dimension of each element is the batch size.
+    """
+    return tf.nest.map_structure(lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
+                                 nest)
+
+
+@gin.configurable
+def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
+    """Automatically compute target entropy given the action spec. Currently
+    support discrete actions only.
+
+    The general idea is that we assume N*k actions having uniform probs for a good
+    policy. Thus the target entropy should be log(N*k), where N is the total
+    number of discrete actions and k is the active action portion.
+
+    TODO: incorporate this function into EntropyTargetAlgorithm if it proves
+    to be effective.
+
+    Args:
+        active_action_portion (float): a number in (0, 1]. Ideally, this value
+            should be greater than `1/num_actions`. If it's not, it will be
+            ignored.
+        min_entropy (float): the minimum possible entropy. If the auto-computed
+            entropy is smaller than this value, then it will be replaced.
+
+    Returns:
+        target_entropy (float): the target entropy for EntropyTargetAlgorithm
+    """
+    assert active_action_portion <= 1.0 and active_action_portion > 0
+    action_spec = get_action_spec()
+    assert tensor_spec.is_discrete(
+        action_spec), "only support discrete actions!"
+    num_actions = action_spec.maximum - action_spec.minimum + 1
+    return max(math.log(num_actions * active_action_portion), min_entropy)
+
+
+def write_gin_configs(root_dir, gin_file):
+    """
+    Write a gin configration to a file. Because the user can
+    1) manually change the gin confs after loading a conf file into the code, or
+    2) include a gin file in another gin file while only the latter might be
+       copied to `root_dir`.
+    So here we just dump the actual used gin conf string to a file.
+
+    Args:
+        root_dir (str): directory path
+        gin_file (str): a single file path for storing the gin configs. Only
+            the basename of the path will be used.
+    """
+    root_dir = os.path.expanduser(root_dir)
+    os.makedirs(root_dir, exist_ok=True)
+    file = os.path.join(root_dir, os.path.basename(gin_file))
+
+    operative_config_str = gin.operative_config_str()
+    operative_config_str = _markdownify_gin_config_str(operative_config_str)
+
+    # the mark-down string can just be safely written as a python file
+    with open(file, "w") as f:
+        f.write(operative_config_str)

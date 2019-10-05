@@ -49,11 +49,13 @@ class AdaptiveNormalizer(EMATensorNormalizer):
         super(AdaptiveNormalizer, self).__init__(
             tensor_spec, norm_update_rate=self._update_ema_rate)
 
-    def normalize(self, tensors):
+    def normalize(self, tensors, clip_value=1.0):
         """Normalized the reward
 
         Args:
             tensors (nested Tensor): tensors to be normalized
+            clip_value (float): the normalized reward will be clipped to +/-
+                this value
         Returns:
             normalized reward. with mean equal to 0 and variance equal to 1
               over the time.
@@ -61,7 +63,10 @@ class AdaptiveNormalizer(EMATensorNormalizer):
         if self._auto_update:
             self.update(tensors)
         n_tensors = super(AdaptiveNormalizer, self).normalize(
-            tensors, center_mean=True, variance_epsilon=self._variance_epsilon)
+            tensors,
+            clip_value=clip_value,
+            center_mean=True,
+            variance_epsilon=self._variance_epsilon)
         return n_tensors
 
     def update(self, tensors):
