@@ -195,6 +195,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
     def preprocess_experience(self, experience: Experience):
         """Preprocess experience.
 
+        preprocess_experience is called for the experiences got from replay
+        buffer. An example is to calculate advantages and returns in PPOAlgorithm.
+
         The shapes of tensors in experience are assumed to be (B, T, ...)
 
         Args:

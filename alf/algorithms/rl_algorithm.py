@@ -335,14 +335,20 @@ class RLAlgorithm(tf.Module):
 
     def transform_timestep(self, time_step):
         """Transform time_step.
-        Including tranforming observation and reward.
+
+        `transform_timestep` is called by driver for all raw time_step got from
+        the environment before passing to `predict`, 'rollout`. For off-policy
+        algorithms, the replay buffer stores the raw time_step. So when
+        experiences are retrieved from the replay buffer, they are tranformed by
+        `transform_timestep` in OffPolicyDriver before passing to `train_step`.
+
+        It includes tranforming observation and reward and should be stateless.
 
         Args:
             time_step (ActionTimeStep | Experience): time step
         Returns:
             ActionTimeStep | Experience: transformed time step
         """
-        # reward shaping
         if self._reward_shaping_fn is not None:
             time_step = time_step._replace(
                 reward=self._reward_shaping_fn(time_step.reward))
