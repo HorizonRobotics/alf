@@ -46,7 +46,7 @@ class OffPolicyTrainer(Trainer):
         Returns:
             exp (Experience): each item has the shape [B, T ...] where B = batch size, T = steps
         """
-        replay_buffer = self._driver.exp_replayer
+        replay_buffer = self._driver.algorithm.exp_replayer
         if self._mini_batch_size is None:
             self._mini_batch_size = replay_buffer.batch_size
         if self._clear_replay_buffer:
