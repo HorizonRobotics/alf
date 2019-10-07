@@ -194,7 +194,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             steps (int): the total number of unrolled steps
         """
         exp, env_id, steps = self.get_training_exps()
-        for ob in self._exp_observers:
+        for ob in self._algorithm.exp_observers:
             ob(exp, env_id)
         return steps
 

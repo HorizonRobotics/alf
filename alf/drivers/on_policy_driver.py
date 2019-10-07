@@ -84,7 +84,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            metrics (list[TFStepMetric]): An optional list of metrics.
+            # metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
@@ -136,6 +136,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
             info=info_spec)
+
+        algorithm.prepare_on_policy_specs(metrics=self._metrics)
 
     def _run(self, max_num_steps, time_step, policy_state):
         if self._training:
@@ -269,7 +271,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         del tape
 
-        self._training_summary(training_info, loss_info, grads_and_vars)
+        self._algorithm.training_summary(training_info, loss_info, grads_and_vars)
 
         self._train_step_counter.assign_add(1)
 

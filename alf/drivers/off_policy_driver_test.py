@@ -236,7 +236,7 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
                 actor_queue_cap=1,
                 debug_summaries=True,
                 summarize_grads_and_vars=True)
-        replayer = driver.exp_replayer
+        replayer = driver.algorithm.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
 

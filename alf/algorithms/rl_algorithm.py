@@ -14,6 +14,9 @@
 """Base class for RL algorithms."""
 
 from abc import abstractmethod
+import itertools
+import os
+import psutil
 from typing import Callable
 
 import tensorflow as tf
@@ -23,6 +26,11 @@ from tf_agents.trajectories.time_step import StepType
 
 from alf.algorithms.algorithm import Algorithm
 from alf.utils.common import ActionTimeStep, namedtuple, LossInfo, make_action_time_step
+from tf_agents.utils import eager_utils
+from tf_agents.metrics import tf_metrics
+
+import alf.utils
+# from alf.utils import common, summary_utils
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
@@ -78,6 +86,8 @@ class RLAlgorithm(Algorithm):
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="RLAlgorithm"):
         """Create a RLAlgorithm.
 
@@ -112,6 +122,13 @@ class RLAlgorithm(Algorithm):
         self._action_distribution_spec = action_distribution_spec
         self._reward_shaping_fn = reward_shaping_fn
         self._observation_transformer = observation_transformer
+        self._exp_observers = []
+        self._proc = psutil.Process(os.getpid())
+        self._train_step_counter = alf.utils.common.get_global_counter(
+            train_step_counter)
+        self._debug_summaries = debug_summaries
+        self._summarize_grads_and_vars = summarize_grads_and_vars
+        self._summarize_action_distributions = summarize_action_distributions
         self._use_rollout_state = False
 
     @property
@@ -132,10 +149,66 @@ class RLAlgorithm(Algorithm):
         """Return the action distribution spec for the action distributions."""
         return self._action_distribution_spec
 
+    @property
+    def exp_observers(self):
+        """Return experience observers."""
+        return self._exp_observers
+
+    # @abstractmethod
+    # def prepare_specs(self,
+    #                   env_batch_size,
+    #                   time_step:ActionTimeStep,
+    #                   exp_replayer: str,
+    #                   metrics,
+    #                   observation_transformer: Callable=None):
+    #     pass
+
     def add_reward_summary(self, name, rewards):
         if self._debug_summaries:
             tf.summary.histogram(name + "/value", rewards)
             tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards))
+
+    def add_experience_observer(self, observer: Callable):
+        """Add an observer to receive experience.
+
+        Args:
+            observer (Callable): callable which accept Experience as argument.
+        """
+        self._exp_observers.append(observer)
+
+    def training_summary(self, training_info, loss_info, grads_and_vars):
+        if self._summarize_grads_and_vars:
+            alf.utils.summary_utils.add_variables_summaries(grads_and_vars,
+                                                  self._train_step_counter)
+            alf.utils.summary_utils.add_gradients_summaries(grads_and_vars,
+                                                  self._train_step_counter)
+        if self._debug_summaries:
+            alf.utils.common.add_action_summaries(training_info.action,
+                                        self._action_spec)
+            alf.utils.common.add_loss_summaries(loss_info)
+
+        if self._summarize_action_distributions:
+            alf.utils.summary_utils.summarize_action_dist(
+                training_info.action_distribution, self._action_spec)
+            if training_info.collect_action_distribution:
+                alf.utils.summary_utils.summarize_action_dist(
+                    action_distributions=training_info.
+                    collect_action_distribution,
+                    action_specs=self._action_spec,
+                    name="collect_action_dist")
+
+        for metric in self._metrics:
+            metric.tf_summaries(
+                train_step=self._train_step_counter,
+                step_metrics=self._metrics[:2])
+
+        mem = tf.py_function(
+            lambda: self._proc.memory_info().rss // 1e6, [],
+            tf.float32,
+            name='memory_usage')
+        if not tf.executing_eagerly():
+            mem.set_shape(())
+        tf.summary.scalar(name='memory_usage', data=mem)
 
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         """Predict for one step of observation.
