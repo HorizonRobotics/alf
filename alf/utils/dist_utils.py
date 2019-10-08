@@ -47,6 +47,8 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
             entropy_for_gradient will have lower variance. We make the default
             to be False to be safe.
         num_samples (int): number of random samples used for estimating entropy.
+        check_numerics (bool): If true, adds tf.debugging.check_numerics to
+            help find NaN / Inf values. For debugging only.
     Returns:
         tuple of (entropy, entropy_for_gradient). entropy_for_gradient is for
         calculating gradient

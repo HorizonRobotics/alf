@@ -63,7 +63,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  gradient_clipping=None,
-                 train_step_counter=None,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """
@@ -89,10 +88,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             actor_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
             critic_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
             gradient_clipping (float): Norm length to clip gradients.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -110,12 +105,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             train_state_spec=train_state_spec,
             action_distribution_spec=action_spec,
             optimizer=[actor_optimizer, critic_optimizer],
-            get_trainable_variables_func=[
-                lambda: actor_network.trainable_variables, lambda:
-                critic_network.trainable_variables
-            ],
+            trainable_module_sets=[[actor_network], [critic_network]],
             gradient_clipping=gradient_clipping,
-            train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
             name=name)
 

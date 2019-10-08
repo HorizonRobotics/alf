@@ -13,10 +13,9 @@
 # limitations under the License.
 """Agent for integrating multiple algorithms."""
 
-import functools
 from typing import Callable
 
-import gin.tf
+import gin
 import tensorflow as tf
 
 from tf_agents.networks.network import Network
@@ -85,58 +84,30 @@ class Agent(OnPolicyAlgorithm):
                 immediate rewards
             observation_transformer (Callable): transformation applied to
                 `time_step.observation`
-            train_step_counter (tf.Variable): An optional counter to increment.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
-        optimizers = [optimizer]
-        module_sets = [[encoding_network]]
-
-        def _add_algorithm(algorithm: Algorithm):
-            if algorithm:
-                if algorithm.optimizer:
-                    optimizers.append(algorithm.optimizer)
-                    module_sets.append([algorithm])
-                else:
-                    module_sets[0].append(algorithm)
-
         rl_algorithm = rl_algorithm_cls(
             action_spec=action_spec, debug_summaries=debug_summaries)
         train_state_spec = AgentState(rl=rl_algorithm.train_state_spec)
         predict_state_spec = AgentState(rl=rl_algorithm.predict_state_spec)
 
-        _add_algorithm(rl_algorithm)
-
         if intrinsic_curiosity_module is not None:
             train_state_spec = train_state_spec._replace(
                 icm=intrinsic_curiosity_module.train_state_spec)
-            _add_algorithm(intrinsic_curiosity_module)
 
         entropy_target_algorithm = None
         if enforce_entropy_target:
             entropy_target_algorithm = EntropyTargetAlgorithm(
                 action_spec, debug_summaries=debug_summaries)
-            _add_algorithm(entropy_target_algorithm)
-
-        def _collect_trainable_variables(modules):
-            vars = []
-            for module in modules:
-                if module is not None:
-                    vars = vars + list(module.trainable_variables)
-            return vars
-
-        get_trainable_variables_funcs = [
-            functools.partial(_collect_trainable_variables, module_set)
-            for module_set in module_sets
-        ]
 
         super(Agent, self).__init__(
             action_spec=action_spec,
             predict_state_spec=predict_state_spec,
             train_state_spec=train_state_spec,
             action_distribution_spec=rl_algorithm.action_distribution_spec,
-            optimizer=optimizers,
-            get_trainable_variables_func=get_trainable_variables_funcs,
+            optimizer=[optimizer],
+            trainable_module_sets=[[encoding_network]],
             gradient_clipping=gradient_clipping,
             clip_by_global_norm=clip_by_global_norm,
             reward_shaping_fn=reward_shaping_fn,
@@ -225,8 +196,7 @@ class Agent(OnPolicyAlgorithm):
 
     def calc_loss(self, training_info):
         """Calculate loss."""
-        if self._icm is not None and isinstance(training_info.info.icm.reward,
-                                                tf.Tensor):
+        if training_info.collect_info == ():
             training_info = training_info._replace(
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
