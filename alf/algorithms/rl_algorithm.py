@@ -220,6 +220,9 @@ class RLAlgorithm(tf.Module):
         """Return experience observers."""
         return self._exp_observers
 
+    # def reset_exp_observers(self):
+    #     self._exp_observers = []
+
     # @abstractmethod
     # def prepare_specs(self,
     #                   env_batch_size,

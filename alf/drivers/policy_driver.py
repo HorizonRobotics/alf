@@ -186,6 +186,7 @@ class PolicyDriver(driver.Driver):
 
     def predict(self, max_num_steps, time_step, policy_state):
         maximum_iterations = math.ceil(max_num_steps / self._env.batch_size)
+        # import pdb; pdb.set_trace()
         [time_step, policy_state] = tf.while_loop(
             cond=lambda *_: True,
             body=self._eval_loop_body,
@@ -203,6 +204,7 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
+        # import pdb; pdb.set_trace()
         step_func = self._algorithm.rollout if self._training else (
             self._algorithm.greedy_predict
             if self._greedy_predict else self._algorithm.predict)
@@ -219,9 +221,10 @@ class PolicyDriver(driver.Driver):
                                    next_time_step)
             for observer in self._observers:
                 observer(traj)
-        if self._algorithm.exp_observers:
+        if self._algorithm.exp_observers and self._training:
             action_distribution_param = common.get_distribution_params(
                 policy_step.action)
+            # import pdb; pdb.set_trace()
             exp = make_experience(
                 time_step,
                 policy_step._replace(action=action),
