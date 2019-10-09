@@ -20,6 +20,8 @@ from tf_agents.environments import suite_gym, parallel_py_environment, tf_py_env
 from alf.environments import suite_mario
 from alf.environments import suite_socialbot
 
+parallel_py_environment.ProcessPyEnvironment = suite_socialbot.ProcessPyEnvironment
+
 
 @gin.configurable
 def create_environment(env_name='CartPole-v0',
