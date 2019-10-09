@@ -43,16 +43,16 @@ ICMAlgorithm.feature_spec=@icm/TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=256
 
-ActorCriticAlgorithm.action_spec=%action_spec
+Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-ActorCriticAlgorithm.optimizer=@ac/Adam()
-ActorCriticAlgorithm.intrinsic_curiosity_module=@ICMAlgorithm()
-ActorCriticAlgorithm.gradient_clipping=10.0
+Agent.optimizer=@ac/Adam()
+Agent.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.gradient_clipping=10.0
 
 # use only intrinsic reward for training policy
-ActorCriticAlgorithm.extrinsic_reward_coef=0.0
-ActorCriticAlgorithm.intrinsic_reward_coef=1.0
+Agent.extrinsic_reward_coef=0.0
+Agent.intrinsic_reward_coef=1.0
 
 PPOLoss.entropy_regularization=1e-2
 PPOLoss.gamma=0.99
@@ -76,5 +76,5 @@ TrainerConfig.summary_interval = 10
 TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
 
-PolicyDriver.observation_transformer=@image_scale_transformer
+Agent.observation_transformer=@image_scale_transformer
 TFUniformReplayBuffer.max_length=32
