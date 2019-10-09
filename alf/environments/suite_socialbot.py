@@ -45,7 +45,7 @@ class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
             env_constructor, flatten=flatten)
 
     def _worker(self, conn, env_constructor, flatten=False):
-        """It's a little different with `super()._worker`, it close environment when
+        """It's a little different with `super()._worker`, it closes environment when
         receives _CLOSE.
 
         Args:
@@ -84,8 +84,8 @@ class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
                     conn.send((self._RESULT, result))
                     continue
                 if message == self._CLOSE:
-                    env.close()
                     assert payload is None
+                    env.close()
                     break
                 raise KeyError(
                     'Received message of unknown type {}'.format(message))
