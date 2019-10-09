@@ -22,6 +22,8 @@ from alf.environments import suite_socialbot
 from alf.environments import suite_dmlab
 
 parallel_py_environment.ProcessPyEnvironment = suite_socialbot.ProcessPyEnvironment
+# This flag indicates whether there has been an unwrapped env in the main proc
+_unwrapped_env_in_main_process_ = False
 
 
 @gin.configurable
@@ -41,17 +43,25 @@ def create_environment(env_name='CartPole-v0',
     Returns:
         TFPyEnvironment
     """
+    global _unwrapped_env_in_main_process_
+
     wrappable = (env_load_fn in (suite_socialbot.load, suite_mario.load,
                                  suite_dmlab.load))
+    if wrappable:
+        assert not _unwrapped_env_in_main_process_, \
+            "You cannot create more envs once there has been an env in the main process!"
+
     xarg = dict()
     if force_unwrapped or num_parallel_environments == 1:
         if wrappable:
             xarg = dict(wrap_with_process=not force_unwrapped)
+            _unwrapped_env_in_main_process_ |= force_unwrapped
         py_env = env_load_fn(env_name, **xarg)
     else:
         py_env = parallel_py_environment.ParallelPyEnvironment(
             [lambda: env_load_fn(env_name, **xarg)
              ] * num_parallel_environments)
+
     return tf_py_environment.TFPyEnvironment(py_env)
 
 
