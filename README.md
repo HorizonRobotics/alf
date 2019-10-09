@@ -2,7 +2,7 @@
 
 [![Build Status](https://api.travis-ci.org/HorizonRobotics/alf.svg?branch=master)](https://travis-ci.org/HorizonRobotics/alf)
 
-Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility of writing complex model architectures. ALF is built on [Tensorflow 2.0](https://www.tensorflow.org/beta/).
+Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [Tensorflow 2.0](https://www.tensorflow.org/beta/).
 
 ## Algorithms
 
@@ -12,6 +12,9 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [SAC](alf/algorithms/sac_algorithm.py): Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)
 * [ICM](alf/algorithms/icm_algorithm.py): Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)
 * [MERLIN](alf/algorithms/merlin_algorithm.py): Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)
+* [Amortized SVGD](alf/algorithms/generator.py): Feng et al "Learning to Draw Samples with Amortized Stein Variational Gradient Descent"[arXiv:1707.06626](https://arxiv.org/abs/1707.06626)
+* [RND](alf/algorithms/rnd_algorithm.py): Burda et al "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)
+* [MINE](alf/algorithms/mi_estimator.py): Belghazi et al "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)
 
 ## Installation
 
