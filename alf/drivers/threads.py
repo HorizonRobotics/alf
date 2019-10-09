@@ -307,8 +307,9 @@ class ActorThread(Thread):
         return [i + 1, env_ids, policy_step, action_dist_param]
 
     def _step(self, algorithm, time_step, state):
-        policy_step = common.algorithm_step(
-            algorithm.rollout, self._ob_transformer, time_step, state)
+        time_step = algorithm.transform_timestep(time_step)
+        policy_step = common.algorithm_step(algorithm.rollout, time_step,
+                                            state)
         action_dist_param = common.get_distribution_params(policy_step.action)
         policy_step = common.sample_policy_action(policy_step)
         return policy_step, action_dist_param

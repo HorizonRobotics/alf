@@ -624,8 +624,7 @@ def get_initial_time_step(env):
     return make_action_time_step(time_step, action)
 
 
-def algorithm_step(algorithm_step_func, ob_transformer: Callable, time_step,
-                   state):
+def algorithm_step(algorithm_step_func, time_step, state):
     """
     Perform an algorithm step on a time step.
     1. If `ob_transformer` is not None, then apply the transformation to the
@@ -635,8 +634,6 @@ def algorithm_step(algorithm_step_func, ob_transformer: Callable, time_step,
     Args:
         algorithm_step_func (Callable): step function from algorithm. Can be
             algorithm.predict, algorithm.rollout or algorithm.train_step
-        ob_transformer (Callable): transformation applied to
-            `time_step.observation`
         time_step (ActionTimeStep):
         state (tf.nest): could be consistent with either
             `algorithm.train_state_spec` or `algorithm.predict_state_spec`
@@ -645,10 +642,6 @@ def algorithm_step(algorithm_step_func, ob_transformer: Callable, time_step,
         policy_step (PolicyStep): policy step should always have action
             distributions, even for deterministic ones
     """
-    if ob_transformer is not None:
-        time_step = time_step._replace(
-            observation=ob_transformer(time_step.observation))
-
     policy_step = algorithm_step_func(time_step, state)
     return policy_step._replace(action=to_distribution(policy_step.action))
 

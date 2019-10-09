@@ -47,13 +47,13 @@ ICMAlgorithm.feature_spec=@icm/TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=256
 
-ActorCriticAlgorithm.action_spec=%action_spec
+Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-ActorCriticAlgorithm.optimizer=@ac/Adam()
-ActorCriticAlgorithm.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.optimizer=@ac/Adam()
+Agent.intrinsic_curiosity_module=@ICMAlgorithm()
 ActorCriticLoss.entropy_regularization=0.01
-ActorCriticAlgorithm.gradient_clipping=10.0
+Agent.gradient_clipping=10.0
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
@@ -61,13 +61,13 @@ tf.keras.layers.Conv2D.padding="same"
 
 # training config
 TrainerConfig.unroll_length=32
-TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=10000000
 TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
 
-PolicyDriver.observation_transformer=@image_scale_transformer
+Agent.observation_transformer=@image_scale_transformer
 
 TrainerConfig.trainer=@on_policy_trainer

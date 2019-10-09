@@ -43,19 +43,20 @@ value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
 ac/Adam.learning_rate=1e-3
 
-ActorCriticAlgorithm.action_spec=%action_spec
+Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-ActorCriticAlgorithm.optimizer=@ac/Adam()
-ActorCriticAlgorithm.gradient_clipping=None
-ActorCriticAlgorithm.reward_shaping_fn=@reward_clipping
+Agent.optimizer=@ac/Adam()
+Agent.gradient_clipping=None
+
+Agent.reward_shaping_fn=@reward_clipping
 
 common.reward_clipping.minmax=(-1, 1)
 
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=8
-TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.use_tf_functions=True
 TrainerConfig.num_iterations=1000000
 TrainerConfig.evaluate=False
@@ -63,7 +64,7 @@ TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=10
 
-PolicyDriver.observation_transformer=@image_scale_transformer
+Agent.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
 
 

@@ -177,11 +177,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._processed_experience_spec = self._experience_spec._replace(
             info=common.extract_spec(processed_exp.info))
 
-        policy_step = common.algorithm_step(
-            algorithm_step_func=algorithm.train_step,
-            ob_transformer=self._observation_transformer,
-            time_step=exp,
-            state=initial_state)
+        policy_step = common.algorithm_step(algorithm.train_step, exp,
+                                            initial_state)
         info_spec = common.extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
             action=self._action_spec,
@@ -213,7 +210,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             train_steps (int): the actual number of time steps that have been
                 trained (a step might be trained multiple times)
         """
-
+        experience = self._algorithm.transform_timestep(experience)
         experience = self._algorithm.preprocess_experience(experience)
 
         length = experience.step_type.shape[1]
@@ -315,7 +312,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 tf.equal(exp.step_type, StepType.FIRST))
 
             policy_step = common.algorithm_step(self._algorithm.train_step,
-                                                self._observation_transformer,
                                                 exp, policy_state)
 
             action_dist_param = common.get_distribution_params(

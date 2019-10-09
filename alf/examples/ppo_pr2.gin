@@ -8,8 +8,8 @@ create_environment.num_parallel_environments=60
 create_environment.env_load_fn=@suite_socialbot.load
 
 # algorithm config
-# ActorCriticAlgorithm.gradient_clipping=0.5
-# ActorCriticAlgorithm.clip_by_global_norm=True
+# Agent.gradient_clipping=0.5
+# Agent.clip_by_global_norm=True
 
 PPOLoss.entropy_regularization=0.0
 PPOLoss.gamma=0.99
@@ -33,10 +33,10 @@ value/ValueNetwork.activation_fn=@tf.nn.softsign
 
 ac/Adam.learning_rate=2e-4
 
-ActorCriticAlgorithm.action_spec=%action_spec
+Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-ActorCriticAlgorithm.optimizer=@ac/Adam()
+Agent.optimizer=@ac/Adam()
 
 # training config
 TrainerConfig.mini_batch_length=1
