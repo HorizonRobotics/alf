@@ -11,3 +11,5 @@ psutil
 fasteners
 matplotlib
 Pillow
+absl-py==0.7.0
+gin-config==0.1.3
