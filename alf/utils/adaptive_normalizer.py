@@ -54,7 +54,7 @@ class AdaptiveNormalizer(EMATensorNormalizer):
 
         Args:
             tensors (nested Tensor): tensors to be normalized
-            clip_value (float): the normalized reward will be clipped to +/-
+            clip_value (float): the normalized values will be clipped to +/-
                 this value
         Returns:
             normalized reward. with mean equal to 0 and variance equal to 1

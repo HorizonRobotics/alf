@@ -119,16 +119,12 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
     def _prepare_specs(self, algorithm):
         """Prepare various tensor specs."""
 
-        def extract_spec(nest):
-            return tf.nest.map_structure(
-                lambda t: tf.TensorSpec(t.shape[1:], t.dtype), nest)
-
         time_step = self.get_initial_time_step()
-        self._time_step_spec = extract_spec(time_step)
+        self._time_step_spec = common.extract_spec(time_step)
         self._action_spec = self._env.action_spec()
 
         policy_step = algorithm.rollout(time_step, self._initial_state)
-        info_spec = extract_spec(policy_step.info)
+        info_spec = common.extract_spec(policy_step.info)
         self._policy_step_spec = PolicyStep(
             action=self._action_spec,
             state=algorithm.train_state_spec,
@@ -179,14 +175,14 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         processed_exp = algorithm.preprocess_experience(exp)
         self._processed_experience_spec = self._experience_spec._replace(
-            info=extract_spec(processed_exp.info))
+            info=common.extract_spec(processed_exp.info))
 
         policy_step = common.algorithm_step(
             algorithm_step_func=algorithm.train_step,
             ob_transformer=self._observation_transformer,
             time_step=exp,
             state=initial_state)
-        info_spec = extract_spec(policy_step.info)
+        info_spec = common.extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
             action=self._action_spec,
             action_distribution=self._action_dist_param_spec,

@@ -289,7 +289,7 @@ class Trainer(object):
             if iter_num == 0:
                 # We need to wait for one iteration to get the operative args
                 # Right just give a fixed gin file name to store operative args
-                common.write_gin_configs(self._root_dir, "operative.gin")
+                common.write_gin_configs(self._root_dir, "configured.gin")
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
                     tf.summary.text('commandline', ' '.join(sys.argv))

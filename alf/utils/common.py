@@ -16,6 +16,7 @@
 import glob
 import os
 import shutil
+import math
 from typing import Callable
 
 import tensorflow_probability as tfp
@@ -434,29 +435,42 @@ def _markdownify_gin_config_str(string, description=''):
     return '\n'.join(output_lines)
 
 
-def summarize_gin_config():
-    """Write the operative and inoperative gin config to Tensorboard summary.
+def get_gin_confg_strs():
+    """
+    Obtain both the operative and inoperative config strs from gin.
 
     The operative configuration consists of all parameter values used by
     configurable functions that are actually called during execution of the
     current program, and inoperative configuration consists of all parameter
     configured but not used by configurable functions. See `gin.operative_config_str()`
     and `gin_utils.inoperative_config_str` for more detail on how the config is generated.
+
+    Returns:
+        md_operative_config_str (str): a markdown-formatted operative str
+        md_inoperative_config_str (str): a markdown-formatted inoperative str
     """
     operative_config_str = gin.operative_config_str()
-    md_config_str = _markdownify_gin_config_str(
+    md_operative_config_str = _markdownify_gin_config_str(
         operative_config_str,
         'All parameter values used by configurable functions that are actually called'
     )
-    tf.summary.text('gin/operative_config', md_config_str)
-    inoperative_config_str = gin_utils.inoperative_config_str()
-    if inoperative_config_str:
-        md_config_str = _markdownify_gin_config_str(
-            inoperative_config_str,
+    md_inoperative_config_str = gin_utils.inoperative_config_str()
+    if md_inoperative_config_str:
+        md_inoperative_config_str = _markdownify_gin_config_str(
+            md_inoperative_config_str,
             "All parameter values configured but not used by program. The configured "
             "functions are either not called or called with explicit parameter values "
             "overriding the config.")
-        tf.summary.text('gin/inoperative_config', md_config_str)
+    return md_operative_config_str, md_inoperative_config_str
+
+
+def summarize_gin_config():
+    """Write the operative and inoperative gin config to Tensorboard summary.
+    """
+    md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
+    tf.summary.text('gin/operative_config', md_operative_config_str)
+    if md_inoperative_config_str:
+        tf.summary.text('gin/inoperative_config', md_inoperative_config_str)
 
 
 def copy_gin_configs(root_dir, gin_files):
@@ -727,6 +741,13 @@ def extract_spec(nest):
     """
     Extract tensor spec for each element of a nested structure.
     It assumes that the first dimension of each element is the batch size.
+
+    Args:
+        nest (nested structure): each leaf node of the nested structure is a
+            tensor of the same batch size
+    Returns:
+        spec (nested structure): each leaf node of the returned nested spec is the
+            corresponding spec (excluding batch size) of the element of `nest`
     """
     return tf.nest.map_structure(lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
                                  nest)
@@ -779,9 +800,9 @@ def write_gin_configs(root_dir, gin_file):
     os.makedirs(root_dir, exist_ok=True)
     file = os.path.join(root_dir, os.path.basename(gin_file))
 
-    operative_config_str = gin.operative_config_str()
-    operative_config_str = _markdownify_gin_config_str(operative_config_str)
+    md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
+    config_str = md_operative_config_str + '\n\n' + md_inoperative_config_str
 
     # the mark-down string can just be safely written as a python file
     with open(file, "w") as f:
-        f.write(operative_config_str)
+        f.write(config_str)
