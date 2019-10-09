@@ -219,8 +219,12 @@ class Trainer(object):
             not self._use_tf_functions)
         self._env = create_environment()
         common.set_global_env(self._env)
+        # Create an unwrapped env to expose subprocess gin confs which otherwise
+        # will be marked as "inoperative"
+        unwrapped_env = create_environment(force_unwrapped=True)
         if self._evaluate:
-            self._eval_env = create_environment(num_parallel_environments=1)
+            self._eval_env = unwrapped_env
+
         self._algorithm = self._algorithm_ctor(
             debug_summaries=self._debug_summaries)
         self._algorithm.use_rollout_state = self._config.use_rollout_state

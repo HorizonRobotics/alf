@@ -19,6 +19,7 @@ from tf_agents.environments import suite_gym, parallel_py_environment, tf_py_env
 
 from alf.environments import suite_mario
 from alf.environments import suite_socialbot
+from alf.environments import suite_dmlab
 
 parallel_py_environment.ProcessPyEnvironment = suite_socialbot.ProcessPyEnvironment
 
@@ -26,23 +27,26 @@ parallel_py_environment.ProcessPyEnvironment = suite_socialbot.ProcessPyEnvironm
 @gin.configurable
 def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
-                       num_parallel_environments=30):
+                       num_parallel_environments=30,
+                       force_unwrapped=False):
     """Create environment.
 
     Args:
         env_name (str): env name
         env_load_fn (Callable) : callable that create an environment
         num_parallel_environments (int): num of parallel environments
+        force_unwrapped (bool): force to create a single env in the current
+            process; use only when you are certain that multiple envs in the
+            current process can co-exist.
     Returns:
         TFPyEnvironment
     """
-    xarg = {}
-    if env_load_fn in (suite_socialbot.load, env_load_fn == suite_mario.load):
-        # No need to wrap with process if num_parallel_environments > 1,
-        # because ParallelPyEnvironment will do that.
-        xarg = dict(wrap_with_process=num_parallel_environments == 1)
-
-    if num_parallel_environments == 1:
+    wrappable = (env_load_fn in (suite_socialbot.load, suite_mario.load,
+                                 suite_dmlab.load))
+    xarg = dict()
+    if force_unwrapped or num_parallel_environments == 1:
+        if wrappable:
+            xarg = dict(wrap_with_process=not force_unwrapped)
         py_env = env_load_fn(env_name, **xarg)
     else:
         py_env = parallel_py_environment.ParallelPyEnvironment(
