@@ -40,7 +40,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
         """Compute advantages and put it into exp.info."""
         advantages = value_ops.generalized_advantage_estimation(
             rewards=exp.reward,
-            values=exp.info.rl.value,
+            values=exp.info.value,
             step_types=exp.step_type,
             discounts=exp.discount * self._loss._gamma,
             td_lambda=self._loss._lambda,
@@ -52,5 +52,5 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                 dtype=advantages.dtype)
         ],
                                axis=-1)
-        returns = exp.info.rl.value + advantages
+        returns = exp.info.value + advantages
         return exp._replace(info=PPOInfo(returns, advantages))

@@ -263,4 +263,4 @@ class Agent(OnPolicyAlgorithm):
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.info)
         return self._rl_algorithm.preprocess_experience(
-            exp._replace(reward=reward))
+            exp._replace(reward=reward, info=exp.info.rl))
