@@ -164,7 +164,7 @@ class GridSearch(object):
             device_queue.put(self._conf.gpus[idx])
         return device_queue
 
-    def _generate_run_name(self, parameters, id):
+    def _generate_run_name(self, parameters, id, trunc_len=3):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy curve comparison between different search runs without going
         into the gin texts.
@@ -172,6 +172,7 @@ class GridSearch(object):
         Args:
             parameters (dict): a dictionary of parameter configurations
             id (int): an integer id of the run
+            trunc_len (int): truncate each token for so many chars
 
         Returns:
             run_name (str): a string with parameters abbr encoded
@@ -180,7 +181,7 @@ class GridSearch(object):
         def _abbr_single(x):
             if isinstance(x, str):
                 tokens = x.split(".")
-                tokens = [t[:3] for t in tokens]
+                tokens = [t[:trunc_len] for t in tokens]
                 return ".".join(tokens)
             else:
                 return str(x)
@@ -198,7 +199,7 @@ class GridSearch(object):
             else:
                 return _abbr_single(x)
 
-        return "%02d" % id + "+" + _abbr(parameters)
+        return "%04d" % id + "+" + _abbr(parameters)
 
     def run(self):
         """Run trainings with all possible parameter combinations in configured space
