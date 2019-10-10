@@ -46,13 +46,21 @@ def create_environment(env_name='CartPole-v0',
     wrappable = (env_load_fn in (suite_socialbot.load, suite_mario.load,
                                  suite_dmlab.load))
 
+    global _unwrapped_env_in_main_process_
+    if wrappable:
+        assert not _unwrapped_env_in_main_process_, \
+            "You cannot create more envs once there has been an env in the main process!"
+
     xarg = dict()
     if force_unwrapped or num_parallel_environments == 1:
         if wrappable:
             xarg = dict(wrap_with_process=not force_unwrapped)
+            _unwrapped_env_in_main_process_ |= force_unwrapped
         # for unwrappable envs, there is no arg called "wrap_with_process"
         py_env = env_load_fn(env_name, **xarg)
     else:
+        # ParallelPyEnvironment will wrap; no need to wrap twice
+        xarg = dict(wrap_with_process=False)
         py_env = parallel_py_environment.ParallelPyEnvironment(
             [lambda: env_load_fn(env_name, **xarg)
              ] * num_parallel_environments)
