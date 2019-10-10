@@ -17,11 +17,10 @@ import os
 import io
 import subprocess
 from pathlib import Path
-import unittest
 import numpy as np
 
 from absl import logging
-from absl.testing import parameterized
+import tensorflow as tf
 
 from tensorboard.backend.event_processing import event_file_loader
 from tensorboard.util import tensor_util
@@ -82,18 +81,18 @@ def get_metrics_from_eval_tfevents(eval_dir):
     return episode_returns, episode_lengths
 
 
-class TrainTest(parameterized.TestCase, unittest.TestCase):
+class TrainTest(tf.test.TestCase):
     def test_ac_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-5:]), 198)
-            self.assertGreater(np.mean(lengths[-5:]), 198)
+            self.assertGreater(np.mean(returns[-2:]), 198)
+            self.assertGreater(np.mean(lengths[-2:]), 198)
 
         self._test_train('ac_cart_pole.gin', _test_func)
 
     def test_ppo_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-5:]), 198)
-            self.assertGreater(np.mean(lengths[-5:]), 198)
+            self.assertGreater(np.mean(returns[-2:]), 198)
+            self.assertGreater(np.mean(lengths[-2:]), 198)
 
         self._test_train('ppo_cart_pole.gin', _test_func)
 
@@ -113,9 +112,12 @@ class TrainTest(parameterized.TestCase, unittest.TestCase):
         with tempfile.TemporaryDirectory() as root_dir:
             eval_dir = os.path.join(root_dir, 'eval')
             cmd = [
-                'xvfb-run', 'python3', '-m', 'alf.bin.train',
+                'xvfb-run',
+                'python3',
+                '-m',
+                'alf.bin.train',
                 '--root_dir=%s' % root_dir,
-                '--gin_file=%s' % conf_file
+                '--gin_file=%s' % conf_file,
             ]
             run_and_stream(cmd=cmd, cwd=examples_dir)
             episode_returns, episode_lengths = get_metrics_from_eval_tfevents(
@@ -128,4 +130,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

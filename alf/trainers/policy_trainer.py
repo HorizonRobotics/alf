@@ -18,7 +18,10 @@ import time
 import abc
 from absl import logging
 import gin.tf
+import random
 import tensorflow as tf
+import numpy as np
+from tensorflow.python.framework import random_seed
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 from tf_agents.eval import metric_utils
@@ -51,7 +54,7 @@ class TrainerConfig(object):
                  root_dir,
                  trainer,
                  algorithm_ctor=None,
-                 random_seed=0,
+                 random_seed=None,
                  num_iterations=1000,
                  unroll_length=8,
                  use_rollout_state=False,
@@ -81,7 +84,8 @@ class TrainerConfig(object):
                 `async_off_policy_trainer`]
             algorithm_ctor (Callable): callable that create an
                 `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
-            random_seed (int): random seed
+            random_seed (None|int): random seed, if None DEFAULT_GRAPH_SEED will
+                be set
             num_iterations (int): number of update iterations
             unroll_length (int):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
@@ -212,8 +216,13 @@ class Trainer(object):
 
     def initialize(self):
         """Initializes the Trainer."""
+        seed = self._random_seed
+        if seed is None:
+            seed = random_seed.DEFAULT_GRAPH_SEED
 
-        tf.random.set_seed(self._random_seed)
+        random.seed(seed)
+        np.random.seed(seed)
+        random_seed.set_random_seed(seed)
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
         self._env = create_environment()
