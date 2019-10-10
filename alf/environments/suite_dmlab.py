@@ -22,6 +22,9 @@ from alf.environments.suite_socialbot import ProcessPyEnvironment
 # `DeepmindLab` are required,
 #   see `https://github.com/deepmind/lab` to build `DeepmindLab`
 
+# This flag indicates whether there has been an unwrapped env in the main proc
+_unwrapped_env_in_main_process_ = False
+
 try:
     import deepmind_lab
 except ImportError:
@@ -206,6 +209,11 @@ def load(scene,
     Returns:
         A PyEnvironmentBase instance.
     """
+    global _unwrapped_env_in_main_process_
+    assert not _unwrapped_env_in_main_process_, \
+        "You cannot create more envs once there has been an env in the main process!"
+    _unwrapped_env_in_main_process_ |= not wrap_with_process
+
     if max_episode_steps is None:
         max_episode_steps = 0
 
