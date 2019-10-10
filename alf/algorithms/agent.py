@@ -66,7 +66,7 @@ class Agent(OnPolicyAlgorithm):
             rl_algorithm_cls (type): The algorithm class for learning the policy.
             encoding_network (Network): A function that encodes the observation
             intrinsic_curiosity_module (Algorithm): an algorithm whose outputs
-                is a scalar intrinsid reward
+                is a scalar intrinsic reward
             intrinsic_reward_coef (float): Coefficient for intrinsic reward
             extrinsic_reward_coef (float): Coefficient for extrinsic reward
             enforce_entropy_target (bool): If True, use EntropyTargetAlgorithm
