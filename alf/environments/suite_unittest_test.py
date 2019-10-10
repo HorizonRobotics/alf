@@ -15,7 +15,6 @@
 from absl import logging
 import numpy as np
 
-import unittest
 from absl.testing import parameterized
 import tensorflow as tf
 
@@ -26,7 +25,7 @@ from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 from tf_agents.trajectories.time_step import TimeStep, StepType
 
 
-class SuiteUnittestEnvTest(parameterized.TestCase, unittest.TestCase):
+class SuiteUnittestEnvTest(parameterized.TestCase, tf.test.TestCase):
     def assertArrayEqual(self, x, y):
         self.assertEqual(x.shape, y.shape)
         self.assertEqual(float(tf.reduce_max(abs(x - y))), 0.)
@@ -154,4 +153,4 @@ class SuiteUnittestEnvTest(parameterized.TestCase, unittest.TestCase):
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

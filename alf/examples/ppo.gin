@@ -2,11 +2,11 @@
 
 import alf.algorithms.ppo_algorithm
 import alf.algorithms.ppo_loss
-import alf.algorithms.ddpg_algorithm
 import alf.trainers.off_policy_trainer
 
 TrainerConfig.trainer=@sync_off_policy_trainer
-TrainerConfig.algorithm_ctor=@PPOAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
+Agent.rl_algorithm_cls=@PPOAlgorithm
 ActorCriticAlgorithm.loss_class=@PPOLoss
 
 observation_spec=@get_observation_spec()

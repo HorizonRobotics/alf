@@ -13,12 +13,11 @@
 # limitations under the License.
 """Test for alf.algorithms.text_codec."""
 
-import unittest
 import tensorflow as tf
 import alf.algorithms.text_codec as text_codec
 
 
-class TestTextEncodeDecodeNetwork(unittest.TestCase):
+class TestTextEncodeDecodeNetwork(tf.test.TestCase):
     def test_encode_decode(self):
         vocab_size = 1000
         seq_len = 5
@@ -51,4 +50,4 @@ class TestTextEncodeDecodeNetwork(unittest.TestCase):
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

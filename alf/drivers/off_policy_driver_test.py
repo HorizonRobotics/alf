@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import collections
 from absl.testing import parameterized
 
@@ -56,7 +55,7 @@ def _create_sac_algorithm():
         critic_network=critic_net,
         actor_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
         critic_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
-        alpha_optimizer=tf.optimizers.Adam(learning_rate=5e-3))
+        alpha_optimizer=tf.optimizers.Adam(learning_rate=1e-1))
 
 
 def _create_ddpg_algorithm():
@@ -113,7 +112,7 @@ def _create_ac_algorithm():
         optimizer=optimizer)
 
 
-class ThreadQueueTest(parameterized.TestCase, unittest.TestCase):
+class ThreadQueueTest(parameterized.TestCase, tf.test.TestCase):
     def test_nest_fifo(self):
         NamedTuple = collections.namedtuple('tuple', 'x y')
         t0 = NamedTuple(x=tf.ones([2, 3]), y=tf.ones([2]))
@@ -145,7 +144,7 @@ class ThreadQueueTest(parameterized.TestCase, unittest.TestCase):
             nested, nested_)
 
 
-class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
+class AsyncOffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
     @parameterized.parameters((50, 20, 10, 5, 5, 10), (20, 10, 100, 10, 1, 20))
     def test_alf_metrics(self, num_envs, learn_queue_cap, unroll_length,
                          actor_queue_cap, num_actors, num_iterations):
@@ -183,11 +182,7 @@ class AsyncOffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
         self.assertEqual(episode_length, episode_length)
 
 
-class OffPolicyDriverTest(parameterized.TestCase, unittest.TestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        tf.random.set_seed(0)
-
+class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
     @parameterized.parameters((_create_sac_algorithm, False, True),
                               (_create_ddpg_algorithm, False, True),
                               (_create_ppo_algorithm, True, True),
@@ -288,4 +283,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

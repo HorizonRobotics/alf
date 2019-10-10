@@ -17,9 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import absltest
-
 import numpy as np
+import tensorflow as tf
 
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.policies import random_tf_policy
@@ -31,9 +30,9 @@ from alf.environments import suite_socialbot
 import gin.tf
 
 
-class SuiteSocialbotTest(absltest.TestCase):
+class SuiteSocialbotTest(tf.test.TestCase):
     def setUp(self):
-        super(SuiteSocialbotTest, self).setUp()
+        super().setUp()
         if not suite_socialbot.is_available():
             self.skipTest('suite_socialbot is not available.')
         else:
@@ -95,4 +94,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    absltest.main()
+    tf.test.main()
