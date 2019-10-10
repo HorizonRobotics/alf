@@ -16,7 +16,6 @@ from absl import logging
 import time
 import numpy as np
 
-import unittest
 import tensorflow as tf
 import gin.tf
 
@@ -33,14 +32,13 @@ from alf.environments.suite_unittest import ActionType
 from alf.utils import common
 
 
-class OnPolicyDriverTest(unittest.TestCase):
+class OnPolicyDriverTest(tf.test.TestCase):
     def setUp(self) -> None:
         gin.parse_config([
             "ActorDistributionRnnNetwork.lstm_size=(4,)",
             "ValueRnnNetwork.lstm_size=(4,)", "ActorCriticLoss.gamma=1.0"
         ])
         super().setUp()
-        tf.random.set_seed(0)
 
     def test_actor_critic_policy(self):
         batch_size = 100
@@ -147,4 +145,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

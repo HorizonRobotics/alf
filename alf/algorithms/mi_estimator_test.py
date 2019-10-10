@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-import unittest
 
 from absl import logging
 from absl.testing import parameterized
@@ -22,7 +21,7 @@ import tensorflow as tf
 from alf.algorithms.mi_estimator import MIEstimator, ScalarAdaptiveAverager
 
 
-class MIEstimatorTest(parameterized.TestCase, unittest.TestCase):
+class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
     @parameterized.parameters(
         dict(estimator='DV', rho=0.0, eps=0.02),
         dict(estimator='KLD', rho=0.0, eps=0.02),
@@ -123,4 +122,4 @@ if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

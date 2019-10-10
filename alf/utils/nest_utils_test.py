@@ -14,7 +14,7 @@
 """Unittests for nest_utils.py"""
 
 from collections import namedtuple
-import unittest
+import tensorflow as tf
 
 from absl import logging
 
@@ -27,7 +27,7 @@ class ListWrapper(list):
     pass
 
 
-class TestListNest(unittest.TestCase):
+class TestListNest(tf.test.TestCase):
     def test_list_nest(self):
         list_nest = ('a', NTuple(a=1, b=2), (3, 4), list([5, 6]),
                      ListWrapper([7, 8]), dict(a=9, b=10))
@@ -48,4 +48,4 @@ class TestListNest(unittest.TestCase):
 
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
-    unittest.main()
+    tf.test.main()

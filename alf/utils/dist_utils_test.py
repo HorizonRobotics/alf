@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 from absl import logging
 from absl.testing import parameterized
 
@@ -24,11 +22,7 @@ import tensorflow_probability as tfp
 import alf.utils.dist_utils as dist_utils
 
 
-class EstimatedEntropyTest(parameterized.TestCase, unittest.TestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        tf.random.set_seed(0)
-
+class EstimatedEntropyTest(parameterized.TestCase, tf.test.TestCase):
     def assertArrayAlmostEqual(self, x, y, eps):
         self.assertLess(tf.reduce_max(tf.abs(x - y)), eps)
 
@@ -73,4 +67,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

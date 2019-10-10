@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-import unittest
 
 from absl import logging
 from absl.testing import parameterized
@@ -59,7 +58,7 @@ class Net2(Network):
         return tf.matmul(input[0], self._w) + tf.matmul(input[1], self._u), ()
 
 
-class GeneratorTest(parameterized.TestCase, unittest.TestCase):
+class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
     def assertArrayEqual(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
         self.assertLessEqual(float(tf.reduce_max(abs(x - y))), eps)
@@ -188,4 +187,4 @@ if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

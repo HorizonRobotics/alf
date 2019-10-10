@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
 import tensorflow as tf
 import alf.algorithms.memory as memory
 
 
-class TestMemory(unittest.TestCase):
+class TestMemory(tf.test.TestCase):
     def assertArrayEqual(self, x, y, epsilon=1e-6):
         self.assertEqual(x.shape, y.shape)
         self.assertLess(tf.reduce_max(abs(x - y)), epsilon)
@@ -126,4 +125,4 @@ class TestMemory(unittest.TestCase):
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

@@ -17,7 +17,6 @@ import os
 import psutil
 import time
 
-import unittest
 import tensorflow as tf
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
@@ -27,13 +26,11 @@ from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
 
 
-@unittest.skipIf(
-    os.environ.get('SKIP_LONG_TIME_COST_TESTS', False),
-    "It takes very long to run this test.")
-class MerlinAlgorithmTest(unittest.TestCase):
-    def setUp(self) -> None:
+class MerlinAlgorithmTest(tf.test.TestCase):
+    def setUp(self):
         super().setUp()
-        tf.random.set_seed(0)
+        if os.environ.get('SKIP_LONG_TIME_COST_TESTS', False):
+            self.skipTest("It takes very long to run this test.")
 
     def test_merlin_algorithm(self):
         batch_size = 100
@@ -78,4 +75,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()
