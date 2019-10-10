@@ -183,7 +183,7 @@ class GridSearch(object):
 
         def _abbr_single(x):
             if isinstance(x, str):
-                tokens = x.split(".")
+                tokens = x.replace("/", "-").split(".")
                 tokens = [t[:token_len] for t in tokens]
                 return ".".join(tokens)
             else:
