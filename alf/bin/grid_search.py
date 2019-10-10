@@ -164,7 +164,7 @@ class GridSearch(object):
             device_queue.put(self._conf.gpus[idx])
         return device_queue
 
-    def _generate_run_name(self, parameters, id, trunc_len=3):
+    def _generate_run_name(self, parameters, id, token_len=3, max_len=255):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy curve comparison between different search runs without going
         into the gin texts.
@@ -172,7 +172,10 @@ class GridSearch(object):
         Args:
             parameters (dict): a dictionary of parameter configurations
             id (int): an integer id of the run
-            trunc_len (int): truncate each token for so many chars
+            token_len (int): truncate each token for so many chars
+            max_len (int): the maximal length of the generated name; make sure
+                that this value won't exceed the max allowed filename length in
+                the OS
 
         Returns:
             run_name (str): a string with parameters abbr encoded
@@ -181,7 +184,7 @@ class GridSearch(object):
         def _abbr_single(x):
             if isinstance(x, str):
                 tokens = x.split(".")
-                tokens = [t[:trunc_len] for t in tokens]
+                tokens = [t[:token_len] for t in tokens]
                 return ".".join(tokens)
             else:
                 return str(x)
@@ -199,7 +202,9 @@ class GridSearch(object):
             else:
                 return _abbr_single(x)
 
-        return "%04d" % id + "+" + _abbr(parameters)
+        name = "%04d" % id + "+" + _abbr(parameters)
+        # truncate the entire string if it's beyond the max length
+        return name[:max_len]
 
     def run(self):
         """Run trainings with all possible parameter combinations in configured space
