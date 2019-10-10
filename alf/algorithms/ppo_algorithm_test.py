@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
 from absl import logging
 import gin.tf
 import tensorflow as tf
@@ -72,11 +70,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         debug_summaries=DEBUGGING)
 
 
-class PpoTest(unittest.TestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        tf.random.set_seed(0)
-
+class PpoTest(tf.test.TestCase):
     def test_ppo(self):
         env_class = PolicyUnittestEnv
         learning_rate = 1e-1
@@ -131,4 +125,4 @@ if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

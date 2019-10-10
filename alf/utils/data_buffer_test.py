@@ -12,16 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import unittest
-
-from absl import logging
-from absl.testing import parameterized
 import tensorflow as tf
 
 from alf.utils.data_buffer import DataBuffer
 
 
-class DataBufferTest(unittest.TestCase):
+class DataBufferTest(tf.test.TestCase):
     def assertArrayEqual(self, x, y):
         self.assertEqual(x.shape, y.shape)
         self.assertEqual(float(tf.reduce_max(abs(x - y))), 0)
@@ -64,4 +60,4 @@ class DataBufferTest(unittest.TestCase):
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

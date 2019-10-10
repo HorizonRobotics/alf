@@ -17,7 +17,8 @@ from __future__ import division
 from __future__ import print_function
 
 import gin.tf
-from absl.testing import parameterized, absltest
+import tensorflow as tf
+from absl.testing import parameterized
 from tf_agents.policies import random_tf_policy
 from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import tf_py_environment
@@ -26,9 +27,9 @@ from alf.environments import wrappers
 from alf.environments import suite_dmlab
 
 
-class SuiteDMLabTest(parameterized.TestCase):
+class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
     def setUp(self):
-        super(SuiteDMLabTest, self).setUp()
+        super().setUp()
         if not suite_dmlab.is_available():
             self.skipTest('suite_dmlab is not available.')
         else:
@@ -93,4 +94,4 @@ class SuiteDMLabTest(parameterized.TestCase):
 
 
 if __name__ == '__main__':
-    absltest.main()
+    tf.test.main()

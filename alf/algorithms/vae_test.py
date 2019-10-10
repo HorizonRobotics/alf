@@ -14,7 +14,6 @@
 
 import os
 import tensorflow as tf
-import unittest
 import alf.algorithms.vae as vae
 import numpy as np
 
@@ -24,12 +23,11 @@ import matplotlib.pyplot as plt
 INTERACTIVE_MODE = False
 
 
-@unittest.skipIf(
-    os.environ.get('SKIP_LONG_TIME_COST_TESTS', False),
-    "It takes very long to run this test.")
-class VaeMnistTest(unittest.TestCase):
+class VaeMnistTest(tf.test.TestCase):
     def setUp(self):
-        tf.random.set_seed(0)
+        super().setUp()
+        if os.environ.get('SKIP_LONG_TIME_COST_TESTS', False):
+            self.skipTest("It takes very long to run this test.")
         # MNIST dataset
         (x_train, self.y_train), (x_test, self.y_test) = mnist.load_data()
         self.image_size = x_train.shape[1]
@@ -272,11 +270,7 @@ class VaePriorNetworkTest(VaeMnistTest):
             plt.show()
 
 
-class SimpleVaeTest(unittest.TestCase):
-    def setUp(self) -> None:
-        super().setUp()
-        tf.random.set_seed(0)
-
+class SimpleVaeTest(tf.test.TestCase):
     def test_gaussian(self):
         """Test for one dimensional Gaussion."""
         input_shape = (1, )
@@ -319,4 +313,4 @@ class SimpleVaeTest(unittest.TestCase):
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
     set_per_process_memory_growth()
-    unittest.main()
+    tf.test.main()

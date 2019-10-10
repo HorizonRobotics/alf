@@ -18,7 +18,7 @@ from __future__ import print_function
 
 import numpy as np
 import gin.tf
-from absl.testing import absltest
+import tensorflow as tf
 from tf_agents.policies import random_tf_policy
 from tf_agents.environments import parallel_py_environment
 from tf_agents.environments import tf_py_environment
@@ -29,9 +29,9 @@ from tf_agents.metrics.tf_metrics import \
 from alf.environments import suite_mario
 
 
-class SuiteMarioTest(absltest.TestCase):
+class SuiteMarioTest(tf.test.TestCase):
     def setUp(self):
-        super(SuiteMarioTest, self).setUp()
+        super().setUp()
         if not suite_mario.is_available():
             self.skipTest('suite_mario is not available.')
         else:
@@ -61,4 +61,4 @@ class SuiteMarioTest(absltest.TestCase):
 
 
 if __name__ == '__main__':
-    absltest.main()
+    tf.test.main()
