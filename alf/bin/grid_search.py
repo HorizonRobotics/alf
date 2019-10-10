@@ -164,6 +164,42 @@ class GridSearch(object):
             device_queue.put(self._conf.gpus[idx])
         return device_queue
 
+    def _generate_run_name(self, parameters, id):
+        """Generate a run name by writing abbr parameter key-value pairs in it,
+        for an easy curve comparison between different search runs without going
+        into the gin texts.
+
+        Args:
+            parameters (dict): a dictionary of parameter configurations
+            id (int): an integer id of the run
+
+        Returns:
+            run_name (str): a string with parameters abbr encoded
+        """
+
+        def _abbr_single(x):
+            if isinstance(x, str):
+                tokens = x.split(".")
+                tokens = [t[:3] for t in tokens]
+                return ".".join(tokens)
+            else:
+                return str(x)
+
+        def _abbr(x):
+            if isinstance(x, Iterable) and not isinstance(x, str):
+                strs = []
+                for key in x:
+                    try:
+                        val = x.get(key)
+                        strs.append("%s:%s" % (_abbr(key), _abbr(val)))
+                    except:
+                        strs.append("%s" % _abbr(key))
+                return "[" + "+".join(strs) + "]"
+            else:
+                return _abbr_single(x)
+
+        return "%02d" % id + "+" + _abbr(parameters)
+
     def run(self):
         """Run trainings with all possible parameter combinations in configured space
         """
@@ -179,7 +215,9 @@ class GridSearch(object):
         task_count = 0
         for values in itertools.product(*param_values):
             parameters = dict(zip(param_keys, values))
-            root_dir = "%s/%d" % (FLAGS.root_dir, task_count)
+            root_dir = "%s/%s" % (FLAGS.root_dir,
+                                  self._generate_run_name(
+                                      parameters, task_count))
             process_pool.apply_async(
                 func=self._worker,
                 args=[root_dir, parameters, device_queue],
