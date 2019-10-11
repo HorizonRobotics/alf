@@ -16,6 +16,7 @@
 import glob
 import os
 import shutil
+import math
 from typing import Callable
 
 import tensorflow_probability as tfp
@@ -434,29 +435,42 @@ def _markdownify_gin_config_str(string, description=''):
     return '\n'.join(output_lines)
 
 
-def summarize_gin_config():
-    """Write the operative and inoperative gin config to Tensorboard summary.
+def get_gin_confg_strs():
+    """
+    Obtain both the operative and inoperative config strs from gin.
 
     The operative configuration consists of all parameter values used by
     configurable functions that are actually called during execution of the
     current program, and inoperative configuration consists of all parameter
     configured but not used by configurable functions. See `gin.operative_config_str()`
     and `gin_utils.inoperative_config_str` for more detail on how the config is generated.
+
+    Returns:
+        md_operative_config_str (str): a markdown-formatted operative str
+        md_inoperative_config_str (str): a markdown-formatted inoperative str
     """
     operative_config_str = gin.operative_config_str()
-    md_config_str = _markdownify_gin_config_str(
+    md_operative_config_str = _markdownify_gin_config_str(
         operative_config_str,
         'All parameter values used by configurable functions that are actually called'
     )
-    tf.summary.text('gin/operative_config', md_config_str)
-    inoperative_config_str = gin_utils.inoperative_config_str()
-    if inoperative_config_str:
-        md_config_str = _markdownify_gin_config_str(
-            inoperative_config_str,
+    md_inoperative_config_str = gin_utils.inoperative_config_str()
+    if md_inoperative_config_str:
+        md_inoperative_config_str = _markdownify_gin_config_str(
+            md_inoperative_config_str,
             "All parameter values configured but not used by program. The configured "
             "functions are either not called or called with explicit parameter values "
             "overriding the config.")
-        tf.summary.text('gin/inoperative_config', md_config_str)
+    return md_operative_config_str, md_inoperative_config_str
+
+
+def summarize_gin_config():
+    """Write the operative and inoperative gin config to Tensorboard summary.
+    """
+    md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
+    tf.summary.text('gin/operative_config', md_operative_config_str)
+    if md_inoperative_config_str:
+        tf.summary.text('gin/inoperative_config', md_inoperative_config_str)
 
 
 def copy_gin_configs(root_dir, gin_files):
@@ -714,3 +728,74 @@ def get_action_spec():
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     return _env.action_spec()
+
+
+def extract_spec(nest):
+    """
+    Extract tensor spec for each element of a nested structure.
+    It assumes that the first dimension of each element is the batch size.
+
+    Args:
+        nest (nested structure): each leaf node of the nested structure is a
+            tensor of the same batch size
+    Returns:
+        spec (nested structure): each leaf node of the returned nested spec is the
+            corresponding spec (excluding batch size) of the element of `nest`
+    """
+    return tf.nest.map_structure(lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
+                                 nest)
+
+
+@gin.configurable
+def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
+    """Automatically compute target entropy given the action spec. Currently
+    support discrete actions only.
+
+    The general idea is that we assume N*k actions having uniform probs for a good
+    policy. Thus the target entropy should be log(N*k), where N is the total
+    number of discrete actions and k is the active action portion.
+
+    TODO: incorporate this function into EntropyTargetAlgorithm if it proves
+    to be effective.
+
+    Args:
+        active_action_portion (float): a number in (0, 1]. Ideally, this value
+            should be greater than `1/num_actions`. If it's not, it will be
+            ignored.
+        min_entropy (float): the minimum possible entropy. If the auto-computed
+            entropy is smaller than this value, then it will be replaced.
+
+    Returns:
+        target_entropy (float): the target entropy for EntropyTargetAlgorithm
+    """
+    assert active_action_portion <= 1.0 and active_action_portion > 0
+    action_spec = get_action_spec()
+    assert tensor_spec.is_discrete(
+        action_spec), "only support discrete actions!"
+    num_actions = action_spec.maximum - action_spec.minimum + 1
+    return max(math.log(num_actions * active_action_portion), min_entropy)
+
+
+def write_gin_configs(root_dir, gin_file):
+    """
+    Write a gin configration to a file. Because the user can
+    1) manually change the gin confs after loading a conf file into the code, or
+    2) include a gin file in another gin file while only the latter might be
+       copied to `root_dir`.
+    So here we just dump the actual used gin conf string to a file.
+
+    Args:
+        root_dir (str): directory path
+        gin_file (str): a single file path for storing the gin configs. Only
+            the basename of the path will be used.
+    """
+    root_dir = os.path.expanduser(root_dir)
+    os.makedirs(root_dir, exist_ok=True)
+    file = os.path.join(root_dir, os.path.basename(gin_file))
+
+    md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
+    config_str = md_operative_config_str + '\n\n' + md_inoperative_config_str
+
+    # the mark-down string can just be safely written as a python file
+    with open(file, "w") as f:
+        f.write(config_str)
