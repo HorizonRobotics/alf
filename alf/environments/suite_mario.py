@@ -22,7 +22,7 @@ from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
 from alf.environments.wrappers import FrameSkip, FrameStack
-from alf.environments.utils import UnwrappedEnvChecker
+from alf.environments.suite_socialbot import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
 

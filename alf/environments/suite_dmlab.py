@@ -18,7 +18,7 @@ import gin.tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from alf.environments.suite_socialbot import ProcessPyEnvironment
-from alf.environments.utils import UnwrappedEnvChecker
+from alf.environments.suite_socialbot import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
 
