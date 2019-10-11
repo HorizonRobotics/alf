@@ -63,7 +63,7 @@ value=@ValueRnnNetwork()
 ActorCriticAlgorithm.actor_network=%actor
 ActorCriticAlgorithm.value_network=%value
 
-ActorCriticAlgorithm.gradient_clipping=0.5
+Agent.gradient_clipping=0.5
 
 
 suite_socialbot.load.max_episode_steps=1000
