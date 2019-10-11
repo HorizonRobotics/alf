@@ -19,7 +19,6 @@ from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from alf.environments.suite_socialbot import ProcessPyEnvironment
 
-
 # This flag indicates whether there has been an unwrapped env in the process
 _unwrapped_env_in_process_ = False
 
