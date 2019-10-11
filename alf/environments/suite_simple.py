@@ -20,7 +20,6 @@ import gin
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 
-from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.simple.noisy_array import NoisyArray
 from alf.environments.wrappers import FrameSkip, FrameStack
 
