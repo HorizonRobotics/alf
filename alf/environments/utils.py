@@ -48,8 +48,7 @@ def create_environment(env_name='CartPole-v0',
         py_env = env_load_fn(env_name)
     else:
         py_env = parallel_py_environment.ParallelPyEnvironment(
-            [lambda: env_load_fn(env_name)
-             ] * num_parallel_environments)
+            [lambda: env_load_fn(env_name)] * num_parallel_environments)
 
     return tf_py_environment.TFPyEnvironment(py_env)
 
