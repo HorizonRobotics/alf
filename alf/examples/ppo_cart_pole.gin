@@ -34,11 +34,12 @@ TrainerConfig.mini_batch_length=1
 TrainerConfig.unroll_length=32
 TrainerConfig.mini_batch_size=128
 TrainerConfig.num_updates_per_train_step=4
-TrainerConfig.num_iterations=1000
+TrainerConfig.num_iterations=200
 TrainerConfig.checkpoint_interval=100000
 TrainerConfig.use_tf_functions=True
-TrainerConfig.evaluate=False
-TrainerConfig.debug_summaries=True
+TrainerConfig.evaluate=True
+TrainerConfig.eval_interval=50
+TrainerConfig.debug_summaries=False
 TrainerConfig.summary_interval=5
 
 TFUniformReplayBuffer.max_length = 2048

@@ -49,11 +49,11 @@ TrainerConfig.mini_batch_size=64
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.clear_replay_buffer=False
 TrainerConfig.algorithm_ctor=@SacAlgorithm
-TrainerConfig.num_iterations=20000
+TrainerConfig.num_iterations=10000
 TrainerConfig.checkpoint_interval=10000
 TrainerConfig.evaluate=1
-TrainerConfig.eval_interval=1000
-TrainerConfig.debug_summaries=1
+TrainerConfig.eval_interval=500
+TrainerConfig.debug_summaries=False
 TrainerConfig.summarize_grads_and_vars=0
 TrainerConfig.summary_interval=100
 
