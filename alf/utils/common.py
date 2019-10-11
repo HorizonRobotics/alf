@@ -721,7 +721,19 @@ def get_action_spec():
     return _env.action_spec()
 
 
-def get_image_processing_layers(conv_layer_params):
+@gin.configurable
+def get_vocab_size():
+    """Get the vocabulary size of observations provided by the global environment.
+
+    Returns:
+      vocab_size (int): size of the environment's/teacher's vocabulary
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    return _env.observation_spec()['sentence'].shape[0]
+
+
+@gin.configurable
+def get_conv_layers(conv_layer_params):
     layers = []
     for (filters, kernel_size, strides) in conv_layer_params:
         layers.append(
@@ -739,137 +751,47 @@ def get_image_processing_layers(conv_layer_params):
     return image_processing_layers
 
 
-def get_preprocessing_and_combining_layers(observation_spec,
-                                           action_spec,
-                                           conv_layer_params=((16, 3, 2),
-                                                              (32, 3, 2)),
-                                           num_embedding_dims=16):
-    """Generates layers as input to the Actor and Value Networks.
+@gin.configurable
+def generate_network(structure):
+    """A simple recursive function to generate a network based on input structure.
 
+    Args:
+        structure (nested tuple): first element of the tuple is name of a function,
+            and the rest elements are the input arguments to that function.  Each
+            input argument can be a nested tuple as well.
 
-    This function handles mixed inputs as well as single type of input.
+            For example, an input structure can be
+            ('tf.keras.Sequential',
+              ('tf.keras.Embedding', vocab_size, embedding_dim),
+              ('tf.keras.Pooling'))
+
+            Assumes that 'tf' package is already imported.
+
+    Returns:
+      the generated network.
     """
-    mixed_input = False
-    if (isinstance(observation_spec, dict)):
-        mixed_input = True
+    if type(structure) is str:
+        structure = (structure, )
+    assert len(list(structure)
+               ) >= 1, 'Input to generate_network cannot contain empty tuple.'
 
-    if mixed_input:
-        preprocessing_layers = OrderedDict()
-        for field in observation_spec.keys():
-            if field == 'image':
-                layers = get_image_processing_layers(conv_layer_params)
-            elif field == 'sentence':
-                vocab_size = observation_spec[field].shape[0]
-                layers = tf.keras.Sequential([
-                    tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
-                    tf.keras.layers.GlobalAveragePooling1D(),
-                ])
-            preprocessing_layers[field] = layers
-        preprocessing_combiner = tf.keras.layers.Concatenate(axis=-1)
-        # Note, these layers are copied into actor and value networks,
-        # so network structures are the same, but parameters are not shared.
-        actor_preprocessing_layers = preprocessing_layers
-        actor_preprocessing_combiner = preprocessing_combiner
-        value_preprocessing_layers = preprocessing_layers
-        value_preprocessing_combiner = preprocessing_combiner
-        actor_conv_layer_params = None
-        value_conv_layer_params = None
-    else:
-        actor_preprocessing_layers = None
-        actor_preprocessing_combiner = None
-        value_preprocessing_layers = None
-        value_preprocessing_combiner = None
-        actor_conv_layer_params = conv_layer_params
-        value_conv_layer_params = conv_layer_params
+    func_path_name = list(structure)[0]
+    module_name, func_name = func_path_name.split('.', 1)
+    module = globals()[module_name]
+    while '.' in func_name:
+        submodule_name, func_name = func_name.split('.', 1)
+        module = getattr(module, submodule_name)
+    func = getattr(module, func_name)
 
-    return (actor_preprocessing_layers, actor_preprocessing_combiner,
-            value_preprocessing_layers, value_preprocessing_combiner,
-            actor_conv_layer_params, value_conv_layer_params)
-
-
-@gin.configurable
-def get_actor_and_value_networks(observation_spec, action_spec,
-                                 conv_layer_params, fc_layer_params,
-                                 num_embedding_dims):
-    (actor_preprocessing_layers, actor_preprocessing_combiner,
-     value_preprocessing_layers, value_preprocessing_combiner,
-     actor_conv_layer_params,
-     value_conv_layer_params) = (get_preprocessing_and_combining_layers(
-         observation_spec, action_spec, conv_layer_params, num_embedding_dims))
-    actor_net = ActorDistributionNetwork(
-        observation_spec,
-        action_spec,
-        preprocessing_layers=actor_preprocessing_layers,
-        preprocessing_combiner=actor_preprocessing_combiner,
-        conv_layer_params=actor_conv_layer_params,
-        fc_layer_params=fc_layer_params)
-    value_net = ValueNetwork(
-        observation_spec,
-        preprocessing_layers=value_preprocessing_layers,
-        preprocessing_combiner=value_preprocessing_combiner,
-        conv_layer_params=value_conv_layer_params,
-        fc_layer_params=fc_layer_params)
-    return actor_net, value_net
-
-
-@gin.configurable
-def get_actor_network(observation_spec, action_spec, conv_layer_params,
-                      fc_layer_params, num_embedding_dims):
-    actor, value = (get_actor_and_value_networks(
-        observation_spec, action_spec, conv_layer_params, fc_layer_params,
-        num_embedding_dims))
-    return actor
-
-
-@gin.configurable
-def get_value_network(observation_spec, action_spec, conv_layer_params,
-                      fc_layer_params, num_embedding_dims):
-    actor, value = (get_actor_and_value_networks(
-        observation_spec, action_spec, conv_layer_params, fc_layer_params,
-        num_embedding_dims))
-    return value
-
-
-@gin.configurable
-def get_actor_and_value_rnn_networks(observation_spec, action_spec,
-                                     conv_layer_params, fc_layer_params,
-                                     num_embedding_dims):
-    (actor_preprocessing_layers, actor_preprocessing_combiner,
-     value_preprocessing_layers, value_preprocessing_combiner,
-     actor_conv_layer_params,
-     value_conv_layer_params) = (get_preprocessing_and_combining_layers(
-         observation_spec, action_spec, conv_layer_params, num_embedding_dims))
-    actor_net = ActorDistributionRnnNetwork(
-        observation_spec,
-        action_spec,
-        preprocessing_layers=actor_preprocessing_layers,
-        preprocessing_combiner=actor_preprocessing_combiner,
-        input_fc_layer_params=fc_layer_params,
-        conv_layer_params=actor_conv_layer_params,
-        output_fc_layer_params=None)
-    value_net = ValueRnnNetwork(
-        observation_spec,
-        preprocessing_layers=value_preprocessing_layers,
-        preprocessing_combiner=value_preprocessing_combiner,
-        input_fc_layer_params=fc_layer_params,
-        conv_layer_params=value_conv_layer_params,
-        output_fc_layer_params=None)
-    return actor_net, value_net
-
-
-@gin.configurable
-def get_actor_rnn_network(observation_spec, action_spec, conv_layer_params,
-                          fc_layer_params, num_embedding_dims):
-    actor, value = (get_actor_and_value_rnn_networks(
-        observation_spec, action_spec, conv_layer_params, fc_layer_params,
-        num_embedding_dims))
-    return actor
-
-
-@gin.configurable
-def get_value_rnn_network(observation_spec, action_spec, conv_layer_params,
-                          fc_layer_params, num_embedding_dims):
-    actor, value = (get_actor_and_value_rnn_networks(
-        observation_spec, action_spec, conv_layer_params, fc_layer_params,
-        num_embedding_dims))
-    return value
+    args = list(structure)[1:]
+    evaluated_args = []
+    for arg in args:
+        if type(arg) is tuple:
+            arg = generate_network(arg)
+        if type(arg) is list:
+            list_arg = []
+            for elem in arg:
+                list_arg.append(generate_network(elem))
+            arg = list_arg
+        evaluated_args.append(arg)
+    return func(*evaluated_args)
