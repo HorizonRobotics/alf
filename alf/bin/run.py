@@ -18,13 +18,13 @@ To run actor_critic on gym CartPole:
 ```bash
 cd ${PROJECT}/alf/examples;
 python -m alf.bin.run \
-  actargetnav-randgoal_False-goalname_ball_car^wheel-env_30-image_84_84-unroll_100-msteps_100-mepisteps_1000-faildist_5-rnn_True-lstm_128_128 \  # first parameter is the run tag, which will be parsed
+  actargetnav-randgoal_False-goalname_ball_car__wheel-env_30-image_84_84-unroll_100-msteps_100-mepisteps_1000-faildist_5-rnn_True-lstm_128_128 \  # first parameter is the run tag, which will be parsed
   --cluster=None \
   --path=~/tmp \  # path to store output logs
   --play
 ```
 
-Use '=' to replace '-', and '^' to replace '_' in argument values.
+Use '--' to replace '-', and '__' to replace '_' in argument values.
 
 Tips:
 
@@ -46,6 +46,7 @@ flags.DEFINE_string("path", os.path.join(os.path.expanduser("~"), "tmp"),
                     "Root directory for all runs and all root_dir's.")
 flags.DEFINE_string('cluster', None, 'idc, us or None for local.')
 flags.DEFINE_bool('play', False, 'Whether to play the model.')
+flags.DEFINE_bool('log_to_file', True, 'Whether to log to file or stdout.')
 
 FLAGS = flags.FLAGS
 
@@ -61,7 +62,21 @@ def get_env_load_fn(gin_file):
         m = re.search('create_environment\.env_load_fn\=\@(\S+)', data)
         if m:
             return m.group(1)
+        elif gin_file == 'ac_target_navigation.gin':
+            return "suite_socialbot.load"
     return "NO_ENV_LOAD_FN"
+
+
+def create_run_yaml(tag):
+    out_fn = None
+    with open('run.yaml', 'r') as f_in:
+        data = f_in.read()
+        out_data = data.replace('RUNTAG', tag)
+        out_fn = 'run-{}.yaml'.format(tag)
+        with open(out_fn, 'w') as f_out:
+            f_out.write(out_data)
+    assert out_fn, 'Cannot write out job yaml based on run.yaml'
+    return out_fn
 
 
 def gen_args(named_tags, task="NO_TASK", load_fn="NO_LOAD_FN"):
@@ -74,6 +89,7 @@ def gen_args(named_tags, task="NO_TASK", load_fn="NO_LOAD_FN"):
                 arg_names = [arg_name_or_list]
             for arg_name in arg_names:
                 args.append("--gin_param='{}={}'".format(arg_name, value))
+    print('\n'.join(args))
     return ' '.join(args)
 
 
@@ -112,7 +128,7 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
         'msteps':
             task + '.max_steps',
         'mepisteps':
-            load_fn + '.load.max_episode_steps',
+            load_fn + '.max_episode_steps',
         'randgoal':
             task + '.random_goal',
         'goalname':
@@ -123,8 +139,6 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             task + '.fail_distance_thresh',
         'image':
             get_parent_task(task) + '.resized_image_size',
-        'rnn':
-            'create_ac_algorithm.use_rnns',
         'lstm': [
             'ActorDistributionRnnNetwork.lstm_size',
             'ValueRnnNetwork.lstm_size'
@@ -147,9 +161,10 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
 def map_list_value(value):
     values = value.split(VALUE_SEP)
     translated = [
-        v.replace('=', ARG_SEP).replace('^', VALUE_SEP) for v in values
+        v.replace('=', ARG_SEP).replace('+', VALUE_SEP).replace(
+            '^', VALUE_SEP) for v in values
     ]
-    return ','.join(values)
+    return ','.join(translated)
 
 
 def brace_map_list_value(value):
@@ -160,7 +175,8 @@ def maybe_map_value(key, value=None):
     switcher = {
         'image': brace_map_list_value(value),  # 84_84 => (84,84)
         'lstm': brace_map_list_value(value),
-        'goalname': map_list_value(value),  # ball_car^wheel => ball,car_wheel
+        'goalname': '"' + map_list_value(value) +
+                    '"',  # ball_car+wheel => ball,car_wheel
     }
     return switcher.get(key, value)
 
@@ -168,7 +184,11 @@ def maybe_map_value(key, value=None):
 def main(argv):
     # parse tag:
     run_tag = argv[1]
-    tags = run_tag.split(ARG_SEP)
+    # externally, -- means literal -, and __ is literal _, but
+    # internally we use = to represent literal -, and + for literal _
+    _run_tag = run_tag.replace(ARG_SEP + ARG_SEP, '=')
+    _run_tag = _run_tag.replace(VALUE_SEP + VALUE_SEP, '+')
+    tags = _run_tag.split(ARG_SEP)
     named_tags = {}
     i = 0
     for tag in tags:
@@ -200,21 +220,36 @@ def main(argv):
     else:
         module = "main"
         additional_flag = " --play" if FLAGS.play else ""
-    command = ((
-        'python -m alf.bin.{module} --gin_file={gin_file} --root_dir={root_dir} '
-        + args + additional_flag + ' 2> {log_file}').format(
-            module=module,
-            gin_file=gin_file,
-            root_dir=root_dir,
-            log_file=log_file))
-
-    print(command)
-    if FLAGS.cluster:
-        pass
+    if FLAGS.log_to_file:
+        log_cmd = " 2> {log_file}".format(log_file=log_file)
     else:
+        log_cmd = ""
+    if FLAGS.play:
+        additional_flag += " --greedy_predict=False"
+    command = (
+        "python3 -m alf.bin.{module} --gin_file={gin_file} --root_dir={root_dir} "
+        + args + additional_flag + log_cmd).format(
+            module=module, gin_file=gin_file, root_dir=root_dir)
+
+    if FLAGS.cluster:
+        os.chdir('/home/users/le.zhao/jobs/gail')
+        run_yaml = create_run_yaml(run_tag)
+        print("========================================")
+        print('Submitting:\n' + command)
+        command = 'traincli submit -f {}'.format(run_yaml)
+        print('via:\n' + command)
+        ret = os.system(command)
+        print("========================================")
+        feedback = "Failed" if ret else "Succeeded"
+        print(feedback)
+    else:
+        print(command)
         if not os.path.exists(root_dir):
             os.mkdir(root_dir)
-        os.system(command)
+        ret = os.system(command)
+        if ret and FLAGS.log_to_file:
+            print("========================================")
+            os.system('tail -n 100 {}'.format(log_file))
 
 
 if __name__ == '__main__':
