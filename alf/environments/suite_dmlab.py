@@ -18,9 +18,9 @@ import gin.tf
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from alf.environments.suite_socialbot import ProcessPyEnvironment
+from alf.environments.utils import UnwrappedEnvChecker
 
-# This flag indicates whether there has been an unwrapped env in the process
-_unwrapped_env_in_process_ = False
+_unwrapped_env_checker_ = UnwrappedEnvChecker()
 
 # `DeepmindLab` are required,
 #   see `https://github.com/deepmind/lab` to build `DeepmindLab`
@@ -209,10 +209,8 @@ def load(scene,
     Returns:
         A PyEnvironmentBase instance.
     """
-    global _unwrapped_env_in_process_
-    assert not _unwrapped_env_in_process_, \
-        "You cannot create more envs once there has been an env in the main process!"
-    _unwrapped_env_in_process_ |= not wrap_with_process
+    global _unwrapped_env_checker_
+    _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     if max_episode_steps is None:
         max_episode_steps = 0

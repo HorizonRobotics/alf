@@ -17,9 +17,39 @@ import gin.tf
 
 from tf_agents.environments import suite_gym, parallel_py_environment, tf_py_environment
 
-from alf.environments import suite_mario
-from alf.environments import suite_socialbot
-from alf.environments import suite_dmlab
+
+class UnwrappedEnvChecker(object):
+    """
+    A class for checking if there is already an unwrapped env in the current
+    process. For some games, if the check is True, then we should stop creating
+    more envs (multiple envs cannot coexist in a process).
+
+    See suite_socialbot.py for an example usage of this class.
+    """
+
+    def __init__(self):
+        self._unwrapped_env_in_process = False
+
+    def check(self):
+        assert not self._unwrapped_env_in_process, \
+            "You cannot create more envs once there has been an env in the main process!"
+
+    def update(self, wrap_with_process):
+        """
+        Update the flag.
+
+        Args:
+            wrap_with_process (bool): if False, an env is being created without
+                being wrapped by a subprocess.
+        """
+        self._unwrapped_env_in_process |= not wrap_with_process
+
+    def check_and_update(self, wrap_with_process):
+        """
+        Combine self.check() and self.update()
+        """
+        self.check()
+        self.update(wrap_with_process)
 
 parallel_py_environment.ProcessPyEnvironment = suite_socialbot.ProcessPyEnvironment
 # This flag indicates whether there has been an unwrapped env in the main proc

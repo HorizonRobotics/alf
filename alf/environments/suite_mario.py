@@ -22,9 +22,9 @@ from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
 from alf.environments.wrappers import FrameSkip, FrameStack
+from alf.environments.utils import UnwrappedEnvChecker
 
-# This flag indicates whether there has been an unwrapped env in the process
-_unwrapped_env_in_process_ = False
+_unwrapped_env_checker_ = UnwrappedEnvChecker()
 
 try:
     import retro
@@ -82,10 +82,8 @@ def load(game,
     Returns:
         A PyEnvironmentBase instance.
     """
-    global _unwrapped_env_in_process_
-    assert not _unwrapped_env_in_process_, \
-        "You cannot create more envs once there has been an env in the main process!"
-    _unwrapped_env_in_process_ |= not wrap_with_process
+    global _unwrapped_env_checker_
+    _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     if spec_dtype_map is None:
         spec_dtype_map = {gym.spaces.Box: np.float32}

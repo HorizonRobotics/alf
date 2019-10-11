@@ -30,10 +30,11 @@ import gin.tf
 import tensorflow as tf
 from absl import logging
 
-# This flag indicates whether there has been an unwrapped env in the process
-_unwrapped_env_in_process_ = False
+from alf.environments.utils import UnwrappedEnvChecker
 
 DEFAULT_SOCIALBOT_PORT = 11345
+
+_unwrapped_env_checker_ = UnwrappedEnvChecker()
 
 
 def is_available():
@@ -152,10 +153,8 @@ def load(environment_name,
     Returns:
         A PyEnvironmentBase instance.
     """
-    global _unwrapped_env_in_process_
-    assert not _unwrapped_env_in_process_, \
-        "You cannot create more envs once there has been an env in the main process!"
-    _unwrapped_env_in_process_ |= not wrap_with_process
+    global _unwrapped_env_checker_
+    _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     gym_spec = gym.spec(environment_name)
     if max_episode_steps is None:
