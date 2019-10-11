@@ -221,7 +221,7 @@ class Trainer(object):
         common.set_global_env(self._env)
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative"
-        unwrapped_env = create_environment(force_unwrapped=True)
+        unwrapped_env = create_environment(nonparallel=True)
         if self._evaluate:
             self._eval_env = unwrapped_env
 

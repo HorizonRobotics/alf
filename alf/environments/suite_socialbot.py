@@ -30,6 +30,10 @@ import gin.tf
 import tensorflow as tf
 from absl import logging
 
+# This flag indicates whether there has been an unwrapped env in the process
+_unwrapped_env_in_process_ = False
+
+
 DEFAULT_SOCIALBOT_PORT = 11345
 
 
@@ -117,7 +121,7 @@ class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
 @gin.configurable
 def load(environment_name,
          port=None,
-         wrap_with_process=True,
+         wrap_with_process=False,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
@@ -149,6 +153,10 @@ def load(environment_name,
     Returns:
         A PyEnvironmentBase instance.
     """
+    global _unwrapped_env_in_process_
+    assert not _unwrapped_env_in_process_, \
+        "You cannot create more envs once there has been an env in the main process!"
+    _unwrapped_env_in_process_ |= not wrap_with_process
 
     gym_spec = gym.spec(environment_name)
     if max_episode_steps is None:

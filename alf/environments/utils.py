@@ -30,39 +30,25 @@ _unwrapped_env_in_main_process_ = False
 def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
                        num_parallel_environments=30,
-                       force_unwrapped=False):
+                       nonparallel=False):
     """Create environment.
 
     Args:
         env_name (str): env name
         env_load_fn (Callable) : callable that create an environment
         num_parallel_environments (int): num of parallel environments
-        force_unwrapped (bool): force to create a single env in the current
-            process; use only when you are certain that multiple envs in the
-            current process can co-exist.
+        nonparallel (bool): force to create a single env in the current
+            process. Used for correctly exposing game gin confs to tensorboard.
+
     Returns:
         TFPyEnvironment
     """
-    wrappable = (env_load_fn in (suite_socialbot.load, suite_mario.load,
-                                 suite_dmlab.load))
-
-    global _unwrapped_env_in_main_process_
-    if wrappable:
-        assert not _unwrapped_env_in_main_process_, \
-            "You cannot create more envs once there has been an env in the main process!"
-
-    xarg = dict()
-    if force_unwrapped or num_parallel_environments == 1:
-        if wrappable:
-            xarg = dict(wrap_with_process=not force_unwrapped)
-            _unwrapped_env_in_main_process_ |= force_unwrapped
-        # for unwrappable envs, there is no arg called "wrap_with_process"
-        py_env = env_load_fn(env_name, **xarg)
+    if nonparallel:
+        # Each time we can only create one unwrapped env at most
+        py_env = env_load_fn(env_name)
     else:
-        # ParallelPyEnvironment will wrap; no need to wrap twice
-        xarg = dict(wrap_with_process=False)
         py_env = parallel_py_environment.ParallelPyEnvironment(
-            [lambda: env_load_fn(env_name, **xarg)
+            [lambda: env_load_fn(env_name)
              ] * num_parallel_environments)
 
     return tf_py_environment.TFPyEnvironment(py_env)

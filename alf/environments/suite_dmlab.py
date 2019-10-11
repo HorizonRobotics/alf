@@ -19,6 +19,10 @@ from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 from alf.environments.suite_socialbot import ProcessPyEnvironment
 
+
+# This flag indicates whether there has been an unwrapped env in the process
+_unwrapped_env_in_process_ = False
+
 # `DeepmindLab` are required,
 #   see `https://github.com/deepmind/lab` to build `DeepmindLab`
 
@@ -189,7 +193,7 @@ def load(scene,
          frame_skip=4,
          gym_env_wrappers=(),
          env_wrappers=(),
-         wrap_with_process=True,
+         wrap_with_process=False,
          max_episode_steps=None):
     """Load deepmind lab envs.
     Args:
@@ -206,6 +210,10 @@ def load(scene,
     Returns:
         A PyEnvironmentBase instance.
     """
+    global _unwrapped_env_in_process_
+    assert not _unwrapped_env_in_process_, \
+        "You cannot create more envs once there has been an env in the main process!"
+    _unwrapped_env_in_process_ |= not wrap_with_process
 
     if max_episode_steps is None:
         max_episode_steps = 0
