@@ -18,10 +18,12 @@ import gin
 
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
-from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
 from alf.environments.wrappers import FrameSkip, FrameStack
+from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
+
+_unwrapped_env_checker_ = UnwrappedEnvChecker()
 
 try:
     import retro
@@ -43,7 +45,7 @@ def is_available():
 def load(game,
          state=None,
          discount=1.0,
-         wrap_with_process=True,
+         wrap_with_process=False,
          frame_skip=4,
          frame_stack=4,
          data_format='channels_last',
@@ -79,6 +81,8 @@ def load(game,
     Returns:
         A PyEnvironmentBase instance.
     """
+    _unwrapped_env_checker_.check_and_update(wrap_with_process)
+
     if spec_dtype_map is None:
         spec_dtype_map = {gym.spaces.Box: np.float32}
 

@@ -20,7 +20,6 @@ import gin
 from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 
-from alf.environments.suite_socialbot import ProcessPyEnvironment
 from alf.environments.simple.noisy_array import NoisyArray
 from alf.environments.wrappers import FrameSkip, FrameStack
 
@@ -29,7 +28,6 @@ from alf.environments.wrappers import FrameSkip, FrameStack
 def load(game,
          env_args=dict(),
          discount=1.0,
-         wrap_with_process=True,
          frame_skip=None,
          frame_stack=None,
          gym_env_wrappers=(),
@@ -42,7 +40,6 @@ def load(game,
             defined in the sub-directory './simple/'.
         env_args (dict): extra args for creating the game.
         discount (float): discount to use for the environment.
-        wrap_with_process (bool): whether wrap env in a process.
         frame_skip (int): the time interval at which the agent experiences the
             game.
         frame_stack (int): stack so many latest frames as the observation input.
@@ -62,30 +59,19 @@ def load(game,
     if spec_dtype_map is None:
         spec_dtype_map = {gym.spaces.Box: np.float32}
 
-    def env_ctor():
-        if game == "NoisyArray":
-            env = NoisyArray(**env_args)
-        else:
-            assert False, "No such simple environment!"
-        if frame_skip:
-            env = FrameSkip(env, frame_skip)
-        if frame_stack:
-            env = FrameStack(env, stack_size=frame_stack)
-        return suite_gym.wrap_env(
-            env,
-            discount=discount,
-            max_episode_steps=max_episode_steps,
-            gym_env_wrappers=gym_env_wrappers,
-            env_wrappers=env_wrappers,
-            spec_dtype_map=spec_dtype_map,
-            auto_reset=True)
-
-    # wrap each env in a new process when parallel envs are used
-    # since it cannot create multiple emulator instances per process
-    if wrap_with_process:
-        process_env = ProcessPyEnvironment(lambda: env_ctor())
-        process_env.start()
-        py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
+    if game == "NoisyArray":
+        env = NoisyArray(**env_args)
     else:
-        py_env = env_ctor()
-    return py_env
+        assert False, "No such simple environment!"
+    if frame_skip:
+        env = FrameSkip(env, frame_skip)
+    if frame_stack:
+        env = FrameStack(env, stack_size=frame_stack)
+    return suite_gym.wrap_env(
+        env,
+        discount=discount,
+        max_episode_steps=max_episode_steps,
+        gym_env_wrappers=gym_env_wrappers,
+        env_wrappers=env_wrappers,
+        spec_dtype_map=spec_dtype_map,
+        auto_reset=True)
