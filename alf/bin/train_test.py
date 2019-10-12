@@ -115,12 +115,10 @@ class TrainTest(tf.test.TestCase):
         with tempfile.TemporaryDirectory() as root_dir:
             eval_dir = os.path.join(root_dir, 'eval')
             cmd = [
-                'xvfb-run',
-                'python3',
-                '-m',
-                'alf.bin.train',
+                'xvfb-run', 'python3', '-m', 'alf.bin.train',
                 '--root_dir=%s' % root_dir,
                 '--gin_file=%s' % conf_file,
+                '--gin_param=TrainerConfig.random_seed=0'
             ]
             run_and_stream(cmd=cmd, cwd=examples_dir)
             episode_returns, episode_lengths = get_metrics_from_eval_tfevents(

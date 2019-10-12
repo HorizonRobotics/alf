@@ -21,7 +21,6 @@ import gin.tf
 import random
 import tensorflow as tf
 import numpy as np
-from tensorflow.python.framework import random_seed
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 from tf_agents.eval import metric_utils
@@ -84,8 +83,7 @@ class TrainerConfig(object):
                 `async_off_policy_trainer`]
             algorithm_ctor (Callable): callable that create an
                 `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
-            random_seed (None|int): random seed, if None DEFAULT_GRAPH_SEED will
-                be set
+            random_seed (None|int): random seed, a random seed is used if None
             num_iterations (int): number of update iterations
             unroll_length (int):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
@@ -216,13 +214,11 @@ class Trainer(object):
 
     def initialize(self):
         """Initializes the Trainer."""
-        seed = self._random_seed
-        if seed is None:
-            seed = random_seed.DEFAULT_GRAPH_SEED
+        if self._random_seed is not None:
+            random.seed(self._random_seed)
+            np.random.seed(self._random_seed)
+            tf.random.set_seed(self._random_seed)
 
-        random.seed(seed)
-        np.random.seed(seed)
-        random_seed.set_random_seed(seed)
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
         self._env = create_environment()
@@ -340,7 +336,7 @@ def play(root_dir,
          algorithm,
          checkpoint_name=None,
          greedy_predict=True,
-         random_seed=0,
+         random_seed=None,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
@@ -361,7 +357,7 @@ def play(root_dir,
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
             If None, the latest checkpoint under train_dir will be used.
         greedy_predict (bool): use greedy action for evaluation.
-        random_seed (int): random seed
+        random_seed (None|int): random seed, a random seed is used if None
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
@@ -371,7 +367,11 @@ def play(root_dir,
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
-    tf.random.set_seed(random_seed)
+    if random_seed is not None:
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+        tf.random.set_seed(random_seed)
+
     global_step = get_global_counter()
 
     driver = OnPolicyDriver(
