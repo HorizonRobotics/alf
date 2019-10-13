@@ -62,7 +62,7 @@ def main(_):
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     algorithm_ctor = gin.query_parameter(
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
-    env = create_environment(num_parallel_environments=1)
+    env = create_environment(nonparallel=True)
     common.set_global_env(env)
     algorithm = algorithm_ctor()
     policy_trainer.play(

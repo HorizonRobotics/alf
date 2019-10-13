@@ -195,10 +195,10 @@ class GridSearch(object):
                 for key in x:
                     try:
                         val = x.get(key)
-                        strs.append("%s:%s" % (_abbr(key), _abbr(val)))
+                        strs.append("%s=%s" % (_abbr(key), _abbr(val)))
                     except:
                         strs.append("%s" % _abbr(key))
-                return "[" + "+".join(strs) + "]"
+                return "+".join(strs)
             else:
                 return _abbr_single(x)
 
