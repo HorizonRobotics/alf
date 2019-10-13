@@ -98,7 +98,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  gradient_clipping=None,
-                 train_step_counter=None,
                  debug_summaries=False,
                  name="SacAlgorithm"):
         """Create a SacAlgorithm
@@ -124,10 +123,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_optimizer (tf.optimizers.Optimizer): The optimizer for critic.
             alpha_optimizer (tf.optimizers.Optimizer): The optimizer for alpha.
             gradient_clipping (float): Norm length to clip gradients.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -152,13 +147,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     target_critic2=critic_network.state_spec)),
             action_distribution_spec=actor_network.output_spec,
             optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
-            get_trainable_variables_func=[
-                lambda: actor_network.trainable_variables, lambda:
-                (critic_network1.trainable_variables + critic_network2.
-                 trainable_variables), lambda: [log_alpha]
-            ],
+            trainable_module_sets=[[actor_network],
+                                   [critic_network1, critic_network2],
+                                   [log_alpha]],
             gradient_clipping=gradient_clipping,
-            train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
             name=name)
 

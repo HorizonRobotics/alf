@@ -14,13 +14,15 @@
 """Algorithm base class."""
 
 from abc import abstractmethod
-from collections import namedtuple
-
-from tf_agents.trajectories.time_step import StepType
+from absl import logging
+import copy
 
 import tensorflow as tf
 
-from alf.algorithms.rl_algorithm import LossInfo
+from tf_agents.utils import eager_utils
+
+import alf.utils
+from alf.utils.common import namedtuple, LossInfo
 
 AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
 
@@ -59,16 +61,51 @@ class Algorithm(tf.Module):
                  train_state_spec=None,
                  predict_state_spec=None,
                  optimizer=None,
+                 trainable_module_sets=None,
+                 gradient_clipping=None,
+                 clip_by_global_norm=False,
                  debug_summaries=False,
                  name="Algorithm"):
         """Create an Algorithm.
+
+        Each algorithm can have zero, one or multiple optimizers. Each optimizer
+        is responsible for optimizing a set of modules. The `optimizer` can be
+        in one of the following 3 forms:
+
+        None or empty list: there is no default Optimizer. There cannot be any
+            non-algorithm child modules, or this algorithm should be a child
+            algorithm of another algorithm so that these non-algorithm child
+            modules can be optimized by that parent algorithm.
+
+        Optimizer: this is the default Optimizer. All the non-algorithm
+            child modules will be optimized by this optimizer.
+
+        non-empty list of Optimizer: `trainable_module_sets` should be a list of
+            list of modules. Each optimizer will optimize one list of modules.
+            optimizer[0] is the default optimizer. And all the non-algorithm
+            child modules which are not in the `trainable_module_sets` will be
+            optimized by optimzer[0].
+
+        The child algorithms will be optimized by their own optimizers if they
+        have. If a child algorithm does not have optimizer, it will be optimized
+        by the default optimizer.
+
+        A requirement for this optimizer structure to work is that there is no
+        algorithm which is a submodule of a non-algorithm module. Currently,
+        this is not checked by the framework. It's up to the user to make sure
+        this is true.
 
         Args:
             train_state_spec (nested TensorSpec): for the network state of
                 `train_step()`
             predict_state_spec (nested TensorSpec): for the network state of
                 `predict()`. If None, it's assume to be same as train_state_spec
-            optimizer (tf.optimizers.Optimizer): The optimizer for training.
+            optimizer (None|Optimizer|list[Optimizer]): The optimizer for
+                training. See comments above for detail.
+            trainable_module_sets (list[list]): See comments above for detail.
+            gradient_clipping (float): If not None, serve as a positive threshold
+            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to
+                clip gradient. If False, use tf.clip_by_norm for each grad.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
         """
@@ -78,13 +115,111 @@ class Algorithm(tf.Module):
         if predict_state_spec is None:
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
-        self._optimizer = optimizer
+        self._is_rnn = len(tf.nest.flatten(train_state_spec)) > 0
+
+        if not optimizer:
+            assert trainable_module_sets is None
+            self._init_optimizers = [None]
+            self._init_module_sets = [[]]
+        elif isinstance(optimizer, tf.optimizers.Optimizer):
+            assert trainable_module_sets is None
+            self._init_optimizers = [optimizer]
+            self._init_module_sets = [[]]
+        else:
+            assert isinstance(optimizer, list)
+            assert isinstance(trainable_module_sets, list)
+            assert len(trainable_module_sets) == len(optimizer), (
+                "`optimizer` and `trainable_module_sets`"
+                "should have same length")
+            self._init_optimizers = optimizer
+            self._init_module_sets = trainable_module_sets
+
+        self._cached_opt_and_var_sets = None
+        self._gradient_clipping = gradient_clipping
+        self._clip_by_global_norm = clip_by_global_norm
         self._debug_summaries = debug_summaries
 
     @property
-    def optimizer(self):
-        """Return the optimizer for this algorithm."""
-        return self._optimizer
+    def trainable_variables(self):
+        return sum([var_set for _, var_set in self._get_opt_and_var_sets()],
+                   [])
+
+    def get_optimizer_and_module_sets(self):
+        """Get the optimizers and the corresponding module sets.
+
+        Returns:
+            list[tuple(Opimizer, list[Module])]: optimizer can be None, which
+                means that no optimizer is specified for the corresponding
+                modules.
+        """
+
+        def _is_alg(obj):
+            return isinstance(obj, Algorithm)
+
+        def _is_module_or_var(obj):
+            return (isinstance(obj, (tf.Variable, tf.Module))
+                    and not isinstance(obj, Algorithm))
+
+        module_sets = [copy.copy(s) for s in self._init_module_sets]
+        optimizers = copy.copy(self._init_optimizers)
+        module_ids = set(map(id, sum(module_sets, [])))
+
+        for alg in self._get_children(_is_alg):
+            for opt, module_set in alg.get_optimizer_and_module_sets():
+                if opt is not None:
+                    optimizers.append(opt)
+                    module_sets.append(module_set)
+                else:
+                    module_sets[0].extend(module_set)
+
+        for module in self._get_children(_is_module_or_var):
+            if id(module) not in module_ids:
+                module_sets[0].append(module)
+
+        return list(zip(optimizers, module_sets))
+
+    def _get_children(self, predicate):
+        module_dict = vars(self)
+        children = []
+        ids = set()
+        for key in sorted(module_dict):
+            attr = module_dict[key]
+            if key in [
+                    '_init_optimizers', '_cached_opt_and_var_sets',
+                    '_init_module_sets'
+            ]:
+                continue
+            for leaf in tf.nest.flatten(attr):
+                if predicate(leaf) and not id(leaf) in ids:
+                    children.append(leaf)
+                    ids.add(id(leaf))
+        return children
+
+    def _get_cached_opt_and_var_sets(self):
+        if self._cached_opt_and_var_sets is None:
+            self._cached_opt_and_var_sets = self._get_opt_and_var_sets()
+        return self._cached_opt_and_var_sets
+
+    def _get_opt_and_var_sets(self):
+        opt_and_var_sets = []
+        optimizer_and_module_sets = self.get_optimizer_and_module_sets()
+        for opt, module_set in optimizer_and_module_sets:
+            logging.info(
+                "optimizer %s: modules %s" % (opt.get_config(), ' '.join(
+                    [m.name for m in module_set if m is not None])))
+            vars = []
+            for module in module_set:
+                if module is None:
+                    continue
+                assert id(module) != id(self)
+                if isinstance(module, tf.Variable):
+                    vars.append(module)
+                elif isinstance(module, tf.Module):
+                    vars += list(module.trainable_variables)
+                else:
+                    raise ValueError("Unsupported module type %s" % module)
+            opt_and_var_sets.append((opt, vars))
+        return opt_and_var_sets
 
     @property
     def predict_state_spec(self):
@@ -140,7 +275,8 @@ class Algorithm(tf.Module):
     def train_complete(self,
                        tape: tf.GradientTape,
                        training_info,
-                       valid_masks=None):
+                       valid_masks=None,
+                       weight=1.0):
         """Complete one iteration of training.
 
         `train_complete` should calculate gradients and update parameters using
@@ -154,25 +290,51 @@ class Algorithm(tf.Module):
                 It is batched from each `info` returned bt `train_step()`
             valid_masks (tf.Tensor): masks indicating which samples are valid.
                 shape=(T, B), dtype=tf.float32
+            weight (float): weight for this batch. Loss will be multiplied with
+                this weight before calculating gradient
         Returns:
             loss_info (LossInfo): loss information
             grads_and_vars (list[tuple]): list of gradient and variable tuples
         """
-
         with tape:
             loss_info = self.calc_loss(training_info)
             if valid_masks is not None:
                 loss_info = tf.nest.map_structure(
-                    lambda l: tf.reduce_mean(l * valid_masks), loss_info)
+                    lambda l: tf.reduce_mean(l * valid_masks)
+                    if len(l.shape) == 2 else l, loss_info)
             else:
                 loss_info = tf.nest.map_structure(lambda l: tf.reduce_mean(l),
                                                   loss_info)
+            if isinstance(loss_info.scalar_loss, tf.Tensor):
+                assert len(loss_info.scalar_loss.shape) == 0
+                loss_info = loss_info._replace(
+                    loss=loss_info.loss + loss_info.scalar_loss)
+            loss = weight * loss_info.loss
 
-        vars = self.trainable_variables
-        grads = tape.gradient(loss_info.loss, vars)
-        grads_and_vars = tuple(zip(grads, vars))
-        self._optimizer.apply_gradients(grads_and_vars)
-        return loss_info, grads_and_vars
+        opt_and_var_sets = self._get_cached_opt_and_var_sets()
+        all_grads_and_vars = ()
+        for i, (optimizer, vars) in enumerate(opt_and_var_sets):
+            if len(vars) == 0:
+                continue
+            assert optimizer is not None, "optimizer needs to be provides at __init__()"
+            grads = tape.gradient(loss, vars)
+            grads_and_vars = tuple(zip(grads, vars))
+            all_grads_and_vars = all_grads_and_vars + grads_and_vars
+            if self._gradient_clipping is not None:
+                if self._clip_by_global_norm:
+                    grads, global_norm = tf.clip_by_global_norm(
+                        grads, self._gradient_clipping)
+                    grads_and_vars = tuple(zip(grads, vars))
+                    alf.utils.common.run_if(
+                        alf.utils.common.should_record_summaries(), lambda: tf.
+                        summary.scalar("global_grad_norm/%s" % i, global_norm))
+                else:
+                    grads_and_vars = eager_utils.clip_gradient_norms(
+                        grads_and_vars, self._gradient_clipping)
+
+            optimizer.apply_gradients(grads_and_vars)
+
+        return loss_info, all_grads_and_vars
 
     # Subclass may override calc_loss() to allow more sophisticated loss
     def calc_loss(self, training_info):

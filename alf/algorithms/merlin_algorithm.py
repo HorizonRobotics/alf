@@ -366,7 +366,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  memory_size=100,
                  rl_loss=None,
                  optimizer=None,
-                 train_step_counter=None,
                  debug_summaries=False,
                  name="Merlin"):
         """Create MerlinAlgorithm.
@@ -408,7 +407,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 mba_state=mba.train_state_spec),
             action_distribution_spec=mba.action_distribution_spec,
             optimizer=optimizer,
-            train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
             name=name)
 

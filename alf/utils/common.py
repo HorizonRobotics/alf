@@ -13,24 +13,89 @@
 # limitations under the License.
 """Various functions used by different alf modules."""
 
+import collections
 import glob
 import os
 import shutil
 import math
 from typing import Callable
 
-import tensorflow_probability as tfp
 from absl import flags
 import gin
+import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 
-from tf_agents.agents.tf_agent import LossInfo
 from tf_agents.specs import tensor_spec
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories import trajectory
 from tf_agents.trajectories.policy_step import PolicyStep
+from tf_agents.trajectories.time_step import StepType
+
 from alf.utils import summary_utils, gin_utils
-from alf.algorithms.rl_algorithm import make_action_time_step
+
+
+def namedtuple(typename, field_names, default_value=None, default_values=()):
+    """namedtuple with default value.
+
+    Args:
+        typename (str): type name of this namedtuple
+        field_names (list[str]): name of each field
+        default_value (Any): the default value for all fields
+        default_values (list|dict): default value for each field
+    Returns:
+        the type for the namedtuple
+    """
+    T = collections.namedtuple(typename, field_names)
+    T.__new__.__defaults__ = (default_value, ) * len(T._fields)
+    if isinstance(default_values, collections.Mapping):
+        prototype = T(**default_values)
+    else:
+        prototype = T(*default_values)
+    T.__new__.__defaults__ = tuple(prototype)
+    return T
+
+
+class ActionTimeStep(
+        namedtuple(
+            'ActionTimeStep',
+            ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
+):
+    """TimeStep with action."""
+
+    def is_first(self):
+        if tf.is_tensor(self.step_type):
+            return tf.equal(self.step_type, StepType.FIRST)
+        return np.equal(self.step_type, StepType.FIRST)
+
+    def is_mid(self):
+        if tf.is_tensor(self.step_type):
+            return tf.equal(self.step_type, StepType.MID)
+        return np.equal(self.step_type, StepType.MID)
+
+    def is_last(self):
+        if tf.is_tensor(self.step_type):
+            return tf.equal(self.step_type, StepType.LAST)
+        return np.equal(self.step_type, StepType.LAST)
+
+
+def make_action_time_step(time_step, prev_action):
+    return ActionTimeStep(
+        step_type=time_step.step_type,
+        reward=time_step.reward,
+        discount=time_step.discount,
+        observation=time_step.observation,
+        prev_action=prev_action)
+
+
+LossInfo = namedtuple(
+    "LossInfo",
+    [
+        "loss",  # batch loss shape should be (T, B)
+        "scalar_loss",  # shape is ()
+        "extra"  # nested batch and/or scalar losses, for summary only
+    ],
+    default_value=())
 
 
 def zero_tensor_from_nested_spec(nested_spec, batch_size):
@@ -700,7 +765,7 @@ _env = None
 
 
 def set_global_env(env):
-    """Set global env"""
+    """Set global env."""
     global _env
     _env = env
 

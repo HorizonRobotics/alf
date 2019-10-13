@@ -14,44 +14,20 @@
 """Base class for RL algorithms."""
 
 from abc import abstractmethod
-import collections
-import itertools
 from typing import Callable
 
-import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.trajectories.time_step import StepType
-from tf_agents.utils import eager_utils
 
-import alf.utils
-
-
-def namedtuple(typename, field_names, default_value=None, default_values=()):
-    T = collections.namedtuple(typename, field_names)
-    T.__new__.__defaults__ = (default_value, ) * len(T._fields)
-    if isinstance(default_values, collections.Mapping):
-        prototype = T(**default_values)
-    else:
-        prototype = T(*default_values)
-    T.__new__.__defaults__ = tuple(prototype)
-    return T
-
+from alf.algorithms.algorithm import Algorithm
+from alf.utils.common import ActionTimeStep, namedtuple, LossInfo, make_action_time_step
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
     "collect_info", "collect_action_distribution"
 ])
-
-LossInfo = namedtuple(
-    "LossInfo",
-    [
-        "loss",  # batch loss shape should be (T, B)
-        "scalar_loss",  # shape is ()
-        "extra"  # nested batch and/or scalar losses, for summary only
-    ],
-    default_value=())
 
 
 def make_training_info(action_distribution=(),
@@ -74,39 +50,7 @@ def make_training_info(action_distribution=(),
         collect_action_distribution=collect_action_distribution)
 
 
-class ActionTimeStep(
-        namedtuple(
-            'ActionTimeStep',
-            ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
-):
-    """TimeStep with action."""
-
-    def is_first(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.FIRST)
-        return np.equal(self.step_type, StepType.FIRST)
-
-    def is_mid(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.MID)
-        return np.equal(self.step_type, StepType.MID)
-
-    def is_last(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.LAST)
-        return np.equal(self.step_type, StepType.LAST)
-
-
-def make_action_time_step(time_step, prev_action):
-    return ActionTimeStep(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        prev_action=prev_action)
-
-
-class RLAlgorithm(tf.Module):
+class RLAlgorithm(Algorithm):
     """Abstract base class for  RL Algorithms.
 
     RLAlgorithm provide basic functions and generic interface for rl algorithms.
@@ -128,12 +72,11 @@ class RLAlgorithm(tf.Module):
                  action_distribution_spec,
                  predict_state_spec=None,
                  optimizer=None,
-                 get_trainable_variables_func=None,
+                 trainable_module_sets=None,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
-                 train_step_counter=None,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """Create a RLAlgorithm.
@@ -148,64 +91,28 @@ class RLAlgorithm(tf.Module):
                 `predict()`. If None, it's assume to be same as train_state_spec
             optimizer (tf.optimizers.Optimizer | list[Optimizer]): The
                 optimizer(s) for training.
-            get_trainable_variables_func (Callable | list[Callable]): each one
-                corresponds to one optimizer in `optimizer`. When called, it
-                should return the variables for the corresponding optimizer. If
-                there is only one optimizer, this can be None and
-                `self.trainable_variables` will be used.
-            gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to
-                clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             observation_transformer (Callable): transformation applied to
                 `time_step.observation`
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
-        super(RLAlgorithm, self).__init__(name=name)
+        super(RLAlgorithm, self).__init__(
+            train_state_spec=train_state_spec,
+            predict_state_spec=predict_state_spec,
+            optimizer=optimizer,
+            trainable_module_sets=trainable_module_sets,
+            gradient_clipping=gradient_clipping,
+            clip_by_global_norm=clip_by_global_norm,
+            debug_summaries=debug_summaries,
+            name=name)
 
         self._action_spec = action_spec
-        self._train_state_spec = train_state_spec
-        self._is_rnn = len(tf.nest.flatten(train_state_spec)) > 0
-        if predict_state_spec is None:
-            predict_state_spec = train_state_spec
-        self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
-        self._optimizers = alf.utils.common.as_list(optimizer)
-        if get_trainable_variables_func is None:
-            get_trainable_variables_func = lambda: super(RLAlgorithm, self
-                                                         ).trainable_variables
-        self._get_trainable_variables_funcs = alf.utils.common.as_list(
-            get_trainable_variables_func)
-        if optimizer:
-            assert (len(self._optimizers) == len(
-                self._get_trainable_variables_funcs)), (
-                    "`optimizer` and `get_trainable_variables_func`"
-                    "should have same length")
-
-        self._gradient_clipping = gradient_clipping
-        self._clip_by_global_norm = clip_by_global_norm
         self._reward_shaping_fn = reward_shaping_fn
         self._observation_transformer = observation_transformer
-        self._train_step_counter = alf.utils.common.get_global_counter(
-            train_step_counter)
-        self._debug_summaries = debug_summaries
-        self._cached_var_sets = None
         self._use_rollout_state = False
-
-    @property
-    def optimizer(self):
-        """Return the optimizer for this algorithm."""
-        if len(self._optimizers) == 0:
-            return None
-        if len(self._optimizers) == 1:
-            return self._optimizers[0]
-        raise ValueError("There are multiple optimzers")
 
     @property
     def use_rollout_state(self):
@@ -225,34 +132,10 @@ class RLAlgorithm(tf.Module):
         """Return the action distribution spec for the action distributions."""
         return self._action_distribution_spec
 
-    @property
-    def predict_state_spec(self):
-        """Return the RNN state spec for predict()."""
-        return self._predict_state_spec
-
-    @property
-    def train_state_spec(self):
-        """Return the RNN state spec for train_step()."""
-        return self._train_state_spec
-
-    @property
-    def trainable_variables(self):
-        return list(itertools.chain(*self._get_cached_var_sets()))
-
-    def _get_cached_var_sets(self):
-        if self._cached_var_sets is None:
-            # Cache it because trainable_variables is an expensive operation
-            # according to the documentation.
-            self._cached_var_sets = []
-            for f in self._get_trainable_variables_funcs:
-                self._cached_var_sets.append(f())
-        return self._cached_var_sets
-
     def add_reward_summary(self, name, rewards):
         if self._debug_summaries:
-            step = self._train_step_counter
-            tf.summary.histogram(name + "/value", rewards, step)
-            tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards), step)
+            tf.summary.histogram(name + "/value", rewards)
+            tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards))
 
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         """Predict for one step of observation.
@@ -388,39 +271,7 @@ class RLAlgorithm(tf.Module):
         # record shaped extrinsic rewards actually used for training
         self.add_reward_summary("reward/extrinsic", training_info.reward)
 
-        with tape:
-            loss_info = self.calc_loss(training_info)
-            loss_info = tf.nest.map_structure(
-                lambda l: tf.reduce_mean(l * valid_masks)
-                if len(l.shape) == 2 else l, loss_info)
-            if isinstance(loss_info.scalar_loss, tf.Tensor):
-                assert len(loss_info.scalar_loss.shape) == 0
-                loss_info = loss_info._replace(
-                    loss=loss_info.loss + loss_info.scalar_loss)
-            loss = weight * loss_info.loss
-
-        var_sets = self._get_cached_var_sets()
-        all_grads_and_vars = ()
-        for i, vars, optimizer in zip(
-                range(len(var_sets)), var_sets, self._optimizers):
-            grads = tape.gradient(loss, vars)
-            grads_and_vars = tuple(zip(grads, vars))
-            all_grads_and_vars = all_grads_and_vars + grads_and_vars
-            if self._gradient_clipping is not None:
-                if self._clip_by_global_norm:
-                    grads, global_norm = tf.clip_by_global_norm(
-                        grads, self._gradient_clipping)
-                    grads_and_vars = tuple(zip(grads, vars))
-                    alf.utils.common.run_if(
-                        alf.utils.common.should_record_summaries(), lambda: tf.
-                        summary.scalar("global_grad_norm/%s" % i, global_norm))
-                else:
-                    grads_and_vars = eager_utils.clip_gradient_norms(
-                        grads_and_vars, self._gradient_clipping)
-
-            optimizer.apply_gradients(grads_and_vars)
-
-        return loss_info, all_grads_and_vars
+        return super().train_complete(tape, training_info, valid_masks, weight)
 
     @abstractmethod
     def calc_loss(self, training_info: TrainingInfo):
