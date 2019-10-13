@@ -73,8 +73,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                  greedy_predict=False,
                  train_interval=20,
                  final_step_mode=FINAL_STEP_REDO,
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
                  train_step_counter=None):
         """Create an OnPolicyDriver.
 
@@ -92,9 +90,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for
                 training. See the class comment for explanation.
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -107,8 +102,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             metrics=metrics,
             training=training,
             greedy_predict=greedy_predict,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=train_step_counter)
 
         self._final_step_mode = final_step_mode
