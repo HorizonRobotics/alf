@@ -97,11 +97,11 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         self._driver_started = False
 
     def init_driver(self):
-        envs = [self._env]
-        for i in range(1, self._config.num_envs):
-            envs.append(create_environment())
+        self._envs = [self._env]
+        for _ in range(1, self._config.num_envs):
+            self._envs.append(create_environment())
         driver = AsyncOffPolicyDriver(
-            envs=envs,
+            envs=self._envs,
             algorithm=self._algorithm,
             use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length,

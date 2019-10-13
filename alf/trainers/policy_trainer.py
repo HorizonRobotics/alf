@@ -261,7 +261,12 @@ class Trainer(object):
         self._save_checkpoint()
         if self._evaluate:
             self._eval_env.pyenv.close()
-        self._env.pyenv.close()
+        try:
+            # async off-policy driver has several envs, including self._env
+            for env in self._envs:
+                env.pyenv.close()
+        except:
+            self._env.pyenv.close()
 
     @abc.abstractmethod
     def train_iter(self, iter_num, policy_state, time_step):
