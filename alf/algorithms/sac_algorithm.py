@@ -100,6 +100,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  gradient_clipping=None,
                  train_step_counter=None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="SacAlgorithm"):
         """Create a SacAlgorithm
 
@@ -129,6 +131,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
             name (str): The name of this algorithm.
         """
         critic_network1 = critic_network
@@ -160,6 +165,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             gradient_clipping=gradient_clipping,
             train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name=name)
 
         self._log_alpha = log_alpha

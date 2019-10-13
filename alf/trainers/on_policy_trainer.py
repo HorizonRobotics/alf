@@ -31,9 +31,7 @@ class OnPolicyTrainer(Trainer):
         return OnPolicyDriver(
             env=self._env,
             algorithm=self._algorithm,
-            train_interval=self._unroll_length,
-            debug_summaries=self._debug_summaries,
-            summarize_grads_and_vars=self._summarize_grads_and_vars)
+            train_interval=self._unroll_length)
 
     def train_iter(self, iter_num, policy_state, time_step):
         time_step, policy_state = self._driver.run(

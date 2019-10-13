@@ -56,8 +56,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  use_rollout_state=False,
                  metrics=[],
                  exp_replayer="one_time",
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
                  train_step_counter=None):
         """
         Args:
@@ -82,9 +80,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -97,8 +92,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             observers=observers,
             use_rollout_state=use_rollout_state,
             metrics=metrics,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=train_step_counter)
 
         # create threads

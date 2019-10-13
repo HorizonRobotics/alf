@@ -66,6 +66,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  reward_shaping_fn: Callable = None,
                  train_step_counter=None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="ActorCriticAlgorithm"):
         """Create an ActorCriticAlgorithm
 
@@ -102,6 +104,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             train_step_counter (tf.Variable): An optional counter to increment.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
             """
 
         icm_state_spec = ()
@@ -153,6 +159,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             reward_shaping_fn=reward_shaping_fn,
             train_step_counter=train_step_counter,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name=name)
 
         self._entropy_target_algorithm = entropy_target_algorithm

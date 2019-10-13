@@ -14,7 +14,6 @@
 """Base class for on-policy RL algorithms."""
 
 from abc import abstractmethod
-# from typing import Callable
 
 import tensorflow as tf
 
@@ -71,12 +70,6 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             prev_action=exp.prev_action)
         return self.rollout(time_step, state)
 
-    # def prepare_specs(self,
-    #                   env_batch_size=None,
-    #                   time_step:ActionTimeStep=None,
-    #                   exp_replayer: str=None,
-    #                   metrics=[],
-    #                   observation_transformer: Callable=None):
     def prepare_on_policy_specs(self, metrics=[]):
         """ Prepare metrics.""" 
 

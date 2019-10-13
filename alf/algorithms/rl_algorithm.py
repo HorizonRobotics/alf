@@ -29,7 +29,6 @@ from tf_agents.utils import eager_utils
 from tf_agents.metrics import tf_metrics
 
 import alf.utils
-# from alf.utils import common, summary_utils
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
@@ -148,6 +147,10 @@ class RLAlgorithm(tf.Module):
                 counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
         """
         super(RLAlgorithm, self).__init__(name=name)
 
@@ -219,18 +222,6 @@ class RLAlgorithm(tf.Module):
     def exp_observers(self):
         """Return experience observers."""
         return self._exp_observers
-
-    # def reset_exp_observers(self):
-    #     self._exp_observers = []
-
-    # @abstractmethod
-    # def prepare_specs(self,
-    #                   env_batch_size,
-    #                   time_step:ActionTimeStep,
-    #                   exp_replayer: str,
-    #                   metrics,
-    #                   observation_transformer: Callable=None):
-    #     pass
 
     def _get_cached_var_sets(self):
         if self._cached_var_sets is None:

@@ -41,9 +41,6 @@ class PolicyDriver(driver.Driver):
                  metrics=[],
                  training=True,
                  greedy_predict=False,
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
-                 summarize_action_distributions=False,
                  train_step_counter=None):
         """Create a PolicyDriver.
 
@@ -59,11 +56,6 @@ class PolicyDriver(driver.Driver):
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
-            summarize_action_distributions (bool): If True, generate summaris
-                for the action distributions.
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -77,7 +69,6 @@ class PolicyDriver(driver.Driver):
             tf_metrics.AverageEpisodeLengthMetric(buffer_size=metric_buf_size),
         ]
         self._metrics = standard_metrics + metrics
-        # self._exp_observers = []
         self._use_rollout_state = use_rollout_state
 
         super(PolicyDriver, self).__init__(env, None,
@@ -86,60 +77,14 @@ class PolicyDriver(driver.Driver):
         self._algorithm = algorithm
         self._training = training
         self._greedy_predict = greedy_predict
-        self._debug_summaries = debug_summaries
-        self._summarize_grads_and_vars = summarize_grads_and_vars
-        self._summarize_action_distributions = summarize_action_distributions
         self._observation_transformer = observation_transformer
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
-        # self._proc = psutil.Process(os.getpid())
         if training:
             self._policy_state_spec = algorithm.train_state_spec
         else:
             self._policy_state_spec = algorithm.predict_state_spec
         self._initial_state = self.get_initial_policy_state()
-
-    # def add_experience_observer(self, observer: Callable):
-    #     """Add an observer to receive experience.
-
-    #     Args:
-    #         observer (Callable): callable which accept Experience as argument.
-    #     """
-    #     self._exp_observers.append(observer)
-
-    # def _training_summary(self, training_info, loss_info, grads_and_vars):
-    #     if self._summarize_grads_and_vars:
-    #         summary_utils.add_variables_summaries(grads_and_vars,
-    #                                               self._train_step_counter)
-    #         summary_utils.add_gradients_summaries(grads_and_vars,
-    #                                               self._train_step_counter)
-    #     if self._debug_summaries:
-    #         common.add_action_summaries(training_info.action,
-    #                                     self.env.action_spec())
-    #         common.add_loss_summaries(loss_info)
-
-    #     if self._summarize_action_distributions:
-    #         summary_utils.summarize_action_dist(
-    #             training_info.action_distribution, self.env.action_spec())
-    #         if training_info.collect_action_distribution:
-    #             summary_utils.summarize_action_dist(
-    #                 action_distributions=training_info.
-    #                 collect_action_distribution,
-    #                 action_specs=self.env.action_spec(),
-    #                 name="collect_action_dist")
-
-    #     for metric in self.get_metrics():
-    #         metric.tf_summaries(
-    #             train_step=self._train_step_counter,
-    #             step_metrics=self.get_metrics()[:2])
-
-    #     mem = tf.py_function(
-    #         lambda: self._proc.memory_info().rss // 1e6, [],
-    #         tf.float32,
-    #         name='memory_usage')
-    #     if not tf.executing_eagerly():
-    #         mem.set_shape(())
-    #     tf.summary.scalar(name='memory_usage', data=mem)
 
     @property
     def algorithm(self):
@@ -186,7 +131,6 @@ class PolicyDriver(driver.Driver):
 
     def predict(self, max_num_steps, time_step, policy_state):
         maximum_iterations = math.ceil(max_num_steps / self._env.batch_size)
-        # import pdb; pdb.set_trace()
         [time_step, policy_state] = tf.while_loop(
             cond=lambda *_: True,
             body=self._eval_loop_body,
@@ -204,7 +148,6 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        # import pdb; pdb.set_trace()
         step_func = self._algorithm.rollout if self._training else (
             self._algorithm.greedy_predict
             if self._greedy_predict else self._algorithm.predict)
@@ -224,7 +167,6 @@ class PolicyDriver(driver.Driver):
         if self._algorithm.exp_observers and self._training:
             action_distribution_param = common.get_distribution_params(
                 policy_step.action)
-            # import pdb; pdb.set_trace()
             exp = make_experience(
                 time_step,
                 policy_step._replace(action=action),
@@ -275,27 +217,3 @@ class PolicyDriver(driver.Driver):
     def _run(self, max_num_steps, time_step, policy_state):
         """Different drivers implement different runs."""
         raise NotImplementedError()
-
-    # def train(self,
-    #           experience: Experience,
-    #           num_updates=1,
-    #           mini_batch_size=None,
-    #           mini_batch_length=None):
-    #     """Train using `experience`.
-
-    #     Args:
-    #         experience (Experience): experience from replay_buffer. It is
-    #             assumed to be batch major.
-    #         num_updates (int): number of optimization steps
-    #         mini_batch_size (int): number of sequences for each minibatch
-    #         mini_batch_length (int): the length of the sequence for each
-    #             sample in the minibatch
-
-    #     Returns:
-    #         train_steps (int): the actual number of time steps that have been
-    #             trained (a step might be trained multiple times)
-    #     """
-    #     return self._algorithm.train(experience,
-    #             num_updates=num_updates,
-    #             mini_batch_size=mini_batch_size,
-    #             mini_batch_length=mini_batch_length)
