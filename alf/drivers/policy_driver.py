@@ -35,7 +35,6 @@ class PolicyDriver(driver.Driver):
     def __init__(self,
                  env,
                  algorithm,
-                 observation_transformer: Callable = None,
                  observers=[],
                  use_rollout_state=False,
                  metrics=[],
@@ -101,7 +100,6 @@ class PolicyDriver(driver.Driver):
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
         self._summarize_action_distributions = summarize_action_distributions
-        self._observation_transformer = observation_transformer
         self._train_step_counter = common.get_global_counter(
             train_step_counter)
         self._proc = psutil.Process(os.getpid())
@@ -156,10 +154,6 @@ class PolicyDriver(driver.Driver):
     @property
     def algorithm(self):
         return self._algorithm
-
-    @property
-    def observation_transformer(self):
-        return self._observation_transformer
 
     @abc.abstractmethod
     def _prepare_specs(self, algorithm):

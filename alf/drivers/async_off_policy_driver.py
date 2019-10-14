@@ -120,9 +120,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 coord=self._coord,
                 algorithm=self._algorithm,
                 tf_queues=self._tfq,
-                id=i,
-                observation_transformer=self._observation_transformer)
-            for i in range(num_actor_queues)
+                id=i) for i in range(num_actor_queues)
         ]
         env_threads = [
             EnvThread(
