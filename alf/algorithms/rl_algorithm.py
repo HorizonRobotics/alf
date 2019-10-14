@@ -268,9 +268,6 @@ class RLAlgorithm(Algorithm):
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
 
-        # record shaped extrinsic rewards actually used for training
-        self.add_reward_summary("reward/extrinsic", training_info.reward)
-
         return super().train_complete(tape, training_info, valid_masks, weight)
 
     @abstractmethod
