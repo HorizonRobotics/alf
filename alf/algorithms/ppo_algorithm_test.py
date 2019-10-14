@@ -69,7 +69,8 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         loss=PPOLoss(
             action_spec=action_spec, gamma=1.0, debug_summaries=DEBUGGING),
         optimizer=optimizer,
-        debug_summaries=DEBUGGING)
+        debug_summaries=DEBUGGING,
+        summarize_grads_and_vars=DEBUGGING)
 
 
 class PpoTest(unittest.TestCase):
@@ -90,12 +91,8 @@ class PpoTest(unittest.TestCase):
         eval_env = TFPyEnvironment(eval_env)
 
         algorithm = create_algorithm(env, learning_rate=learning_rate)
-        driver = SyncOffPolicyDriver(
-            env,
-            algorithm,
-            debug_summaries=DEBUGGING,
-            summarize_grads_and_vars=DEBUGGING)
-        replayer = driver.exp_replayer
+        driver = SyncOffPolicyDriver(env, algorithm)
+        replayer = driver.algorithm.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
 

@@ -115,6 +115,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             action_spec,
             train_state_spec=train_state_spec,
+            # TODO: the following line leads to a spec conflict in off_policy_driver.py
+            #       when preparing self._action_dist_param_spec: BoundedTensorSpec has no 
+            #       'input_params_spec' attribute
             action_distribution_spec=action_spec,
             optimizer=[actor_optimizer, critic_optimizer],
             get_trainable_variables_func=[

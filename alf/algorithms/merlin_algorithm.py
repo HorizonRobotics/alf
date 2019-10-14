@@ -459,7 +459,10 @@ def create_merlin_algorithm(env,
                             latent_dim=3,
                             lstm_size=(4, ),
                             memory_size=20,
-                            learning_rate=1e-1):
+                            learning_rate=1e-1,
+                            debug_summaries=True,
+                            summarize_grads_and_vars=False,
+                            summarize_action_distributions=False):
     """Create a simple MerlinAlgorithm
 
     Args:
@@ -498,6 +501,8 @@ def create_merlin_algorithm(env,
         lstm_size=lstm_size,
         memory_size=memory_size,
         optimizer=optimizer,
-        debug_summaries=True)
+        debug_summaries=debug_summaries,
+        summarize_grads_and_vars=summarize_grads_and_vars,
+        summarize_action_distributions=summarize_action_distributions)
 
     return algorithm
