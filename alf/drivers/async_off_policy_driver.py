@@ -26,7 +26,6 @@ from tf_agents.environments.tf_environment import TFEnvironment
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.drivers.threads import TFQueues, ActorThread, EnvThread, LogThread
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.environments.utils import create_environment
 
 
 @gin.configurable

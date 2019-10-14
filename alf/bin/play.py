@@ -75,6 +75,7 @@ def main(_):
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
         record_file=FLAGS.record_file)
+    env.pyenv.close()
 
 
 if __name__ == '__main__':

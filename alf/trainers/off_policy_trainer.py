@@ -20,7 +20,6 @@ import tensorflow as tf
 
 from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
 from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
-from alf.environments.utils import create_environment
 from alf.trainers.policy_trainer import Trainer
 
 
@@ -65,14 +64,14 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
 
     def init_driver(self):
         return SyncOffPolicyDriver(
-            env=self._env,
+            env=self._envs[0],
             use_rollout_state=self._config.use_rollout_state,
             algorithm=self._algorithm,
             debug_summaries=self._debug_summaries,
             summarize_grads_and_vars=self._summarize_grads_and_vars)
 
     def train_iter(self, iter_num, policy_state, time_step):
-        max_num_steps = self._unroll_length * self._env.batch_size
+        max_num_steps = self._unroll_length * self._envs[0].batch_size
         if iter_num == 0 and self._initial_collect_steps != 0:
             max_num_steps = self._initial_collect_steps
         time_step, policy_state = self._driver.run(
@@ -97,9 +96,8 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         self._driver_started = False
 
     def init_driver(self):
-        self._envs = [self._env]
         for _ in range(1, self._config.num_envs):
-            self._envs.append(create_environment())
+            self._create_environment()
         driver = AsyncOffPolicyDriver(
             envs=self._envs,
             algorithm=self._algorithm,
