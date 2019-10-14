@@ -181,6 +181,9 @@ class Agent(OnPolicyAlgorithm):
         Returns:
             reward used for training.
         """
+        # record shaped extrinsic rewards actually used for training
+        self.add_reward_summary("reward/extrinsic", external_reward)
+
         reward = external_reward
         if self._extrinsic_reward_coef != 1.0:
             reward *= self._extrinsic_reward_coef
