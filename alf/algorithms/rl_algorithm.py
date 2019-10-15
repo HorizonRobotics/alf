@@ -14,6 +14,9 @@
 """Base class for RL algorithms."""
 
 from abc import abstractmethod
+import itertools
+import os
+import psutil
 from typing import Callable
 
 import tensorflow as tf
@@ -23,6 +26,10 @@ from tf_agents.trajectories.time_step import StepType
 
 from alf.algorithms.algorithm import Algorithm
 from alf.utils.common import ActionTimeStep, namedtuple, LossInfo, make_action_time_step
+from tf_agents.utils import eager_utils
+from tf_agents.metrics import tf_metrics
+
+import alf.utils
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
@@ -77,7 +84,10 @@ class RLAlgorithm(Algorithm):
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
+                 train_step_counter=None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="RLAlgorithm"):
         """Create a RLAlgorithm.
 
@@ -95,8 +105,16 @@ class RLAlgorithm(Algorithm):
                 immediate rewards
             observation_transformer (Callable): transformation applied to
                 `time_step.observation`
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time a new iteration is started. If None, it will use 
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
         """
         super(RLAlgorithm, self).__init__(
             train_state_spec=train_state_spec,
@@ -112,6 +130,13 @@ class RLAlgorithm(Algorithm):
         self._action_distribution_spec = action_distribution_spec
         self._reward_shaping_fn = reward_shaping_fn
         self._observation_transformer = observation_transformer
+        self._exp_observers = []
+        self._proc = psutil.Process(os.getpid())
+        self._train_step_counter = alf.utils.common.get_global_counter(
+            train_step_counter)
+        self._debug_summaries = debug_summaries
+        self._summarize_grads_and_vars = summarize_grads_and_vars
+        self._summarize_action_distributions = summarize_action_distributions
         self._use_rollout_state = False
 
     @property
@@ -132,10 +157,59 @@ class RLAlgorithm(Algorithm):
         """Return the action distribution spec for the action distributions."""
         return self._action_distribution_spec
 
+    @property
+    def exp_observers(self):
+        """Return experience observers."""
+        return self._exp_observers
+
     def add_reward_summary(self, name, rewards):
         if self._debug_summaries:
             tf.summary.histogram(name + "/value", rewards)
             tf.summary.scalar(name + "/mean", tf.reduce_mean(rewards))
+
+    def add_experience_observer(self, observer: Callable):
+        """Add an observer to receive experience.
+
+        Args:
+            observer (Callable): callable which accept Experience as argument.
+        """
+        self._exp_observers.append(observer)
+
+    def training_summary(self, training_info, loss_info, grads_and_vars):
+        """Generate summaries for training & loss info."""
+
+        if self._summarize_grads_and_vars:
+            alf.utils.summary_utils.add_variables_summaries(
+                grads_and_vars, self._train_step_counter)
+            alf.utils.summary_utils.add_gradients_summaries(
+                grads_and_vars, self._train_step_counter)
+        if self._debug_summaries:
+            alf.utils.common.add_action_summaries(training_info.action,
+                                                  self._action_spec)
+            alf.utils.common.add_loss_summaries(loss_info)
+
+        if self._summarize_action_distributions:
+            alf.utils.summary_utils.summarize_action_dist(
+                training_info.action_distribution, self._action_spec)
+            if training_info.collect_action_distribution:
+                alf.utils.summary_utils.summarize_action_dist(
+                    action_distributions=training_info.
+                    collect_action_distribution,
+                    action_specs=self._action_spec,
+                    name="collect_action_dist")
+
+        for metric in self._metrics:
+            metric.tf_summaries(
+                train_step=self._train_step_counter,
+                step_metrics=self._metrics[:2])
+
+        mem = tf.py_function(
+            lambda: self._proc.memory_info().rss // 1e6, [],
+            tf.float32,
+            name='memory_usage')
+        if not tf.executing_eagerly():
+            mem.set_shape(())
+        tf.summary.scalar(name='memory_usage', data=mem)
 
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         """Predict for one step of observation.

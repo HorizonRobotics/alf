@@ -73,8 +73,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                  greedy_predict=False,
                  train_interval=20,
                  final_step_mode=FINAL_STEP_REDO,
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
                  train_step_counter=None):
         """Create an OnPolicyDriver.
 
@@ -84,7 +82,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            metrics (list[TFStepMetric]): An optional list of metrics.
+            # metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
@@ -92,9 +90,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for
                 training. See the class comment for explanation.
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
             train_step_counter (tf.Variable): An optional counter to increment
                 every time the a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
@@ -107,8 +102,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             metrics=metrics,
             training=training,
             greedy_predict=greedy_predict,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
             train_step_counter=train_step_counter)
 
         self._final_step_mode = final_step_mode
@@ -137,6 +130,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
             info=info_spec)
+
+        algorithm.prepare_on_policy_specs(metrics=self._metrics)
 
     def _run(self, max_num_steps, time_step, policy_state):
         if self._training:
@@ -268,7 +263,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         del tape
 
-        self._training_summary(training_info, loss_info, grads_and_vars)
+        self._algorithm.training_summary(training_info, loss_info,
+                                         grads_and_vars)
 
         self._train_step_counter.assign_add(1)
 

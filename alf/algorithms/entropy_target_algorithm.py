@@ -45,7 +45,9 @@ class EntropyTargetAlgorithm(Algorithm):
                  target_entropy=None,
                  optimizer=None,
                  min_alpha=1e-4,
-                 debug_summaries=False):
+                 debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False):
         """Create an EntropyTargetAlgorithm
 
         Args:
@@ -59,6 +61,10 @@ class EntropyTargetAlgorithm(Algorithm):
                 not provided, will use the same optimizer of the parent
                 algorithm.
             debug_summaries (bool): True if debug summaries should be created.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
         """
         log_alpha = tfa_common.create_variable(
             name='log_alpha',
@@ -68,6 +74,8 @@ class EntropyTargetAlgorithm(Algorithm):
         super().__init__(
             optimizer=optimizer,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name="EntropyTargetAlgorithm")
 
         self._log_alpha = log_alpha

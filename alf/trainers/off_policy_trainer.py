@@ -45,7 +45,7 @@ class OffPolicyTrainer(Trainer):
         Returns:
             exp (Experience): each item has the shape [B, T ...] where B = batch size, T = steps
         """
-        replay_buffer = self._driver.exp_replayer
+        replay_buffer = self._driver.algorithm.exp_replayer
         if self._mini_batch_size is None:
             self._mini_batch_size = replay_buffer.batch_size
         if self._clear_replay_buffer:
@@ -66,9 +66,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
         return SyncOffPolicyDriver(
             env=self._envs[0],
             use_rollout_state=self._config.use_rollout_state,
-            algorithm=self._algorithm,
-            debug_summaries=self._debug_summaries,
-            summarize_grads_and_vars=self._summarize_grads_and_vars)
+            algorithm=self._algorithm)
 
     def train_iter(self, iter_num, policy_state, time_step):
         max_num_steps = self._unroll_length * self._envs[0].batch_size
@@ -102,9 +100,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             envs=self._envs,
             algorithm=self._algorithm,
             use_rollout_state=self._config.use_rollout_state,
-            unroll_length=self._unroll_length,
-            debug_summaries=self._debug_summaries,
-            summarize_grads_and_vars=self._summarize_grads_and_vars)
+            unroll_length=self._unroll_length)
         return driver
 
     def train_iter(self, iter_num, policy_state, time_step):

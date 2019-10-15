@@ -64,6 +64,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  gradient_clipping=None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="DdpgAlgorithm"):
         """
         Args:
@@ -89,6 +91,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
             gradient_clipping (float): Norm length to clip gradients.
             debug_summaries (bool): True if debug summaries should be created.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
             name (str): The name of this algorithm.
         """
         train_state_spec = DdpgState(
@@ -108,6 +114,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             trainable_module_sets=[[actor_network], [critic_network]],
             gradient_clipping=gradient_clipping,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name=name)
 
         self._actor_network = actor_network

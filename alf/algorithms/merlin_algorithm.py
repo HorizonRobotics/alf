@@ -367,6 +367,8 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  rl_loss=None,
                  optimizer=None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="Merlin"):
         """Create MerlinAlgorithm.
 
@@ -383,6 +385,10 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 will be used.
             optimizer (tf.optimizers.Optimizer): The optimizer for training.
             debug_summaries: True if debug summaries should be created.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
             name (str): name of the algorithm.
         """
         mbp = MemoryBasedPredictor(
@@ -408,6 +414,8 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             action_distribution_spec=mba.action_distribution_spec,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name=name)
 
         self._mbp = mbp
@@ -447,7 +455,10 @@ def create_merlin_algorithm(env,
                             latent_dim=3,
                             lstm_size=(4, ),
                             memory_size=20,
-                            learning_rate=1e-1):
+                            learning_rate=1e-1,
+                            debug_summaries=True,
+                            summarize_grads_and_vars=False,
+                            summarize_action_distributions=False):
     """Create a simple MerlinAlgorithm
 
     Args:
@@ -486,6 +497,8 @@ def create_merlin_algorithm(env,
         lstm_size=lstm_size,
         memory_size=memory_size,
         optimizer=optimizer,
-        debug_summaries=True)
+        debug_summaries=debug_summaries,
+        summarize_grads_and_vars=summarize_grads_and_vars,
+        summarize_action_distributions=summarize_action_distributions)
 
     return algorithm

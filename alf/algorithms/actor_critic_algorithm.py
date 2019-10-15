@@ -45,6 +45,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  loss_class=ActorCriticLoss,
                  optimizer=None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="ActorCriticAlgorithm"):
         """Create an ActorCriticAlgorithm
 
@@ -63,6 +65,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
+            summarize_grads_and_vars (bool): If True, gradient and network
+                variable summaries will be written during training.
+            summarize_action_distributions (bool): If True, generate summaris
+                for the action distributions.
             """
         super(ActorCriticAlgorithm, self).__init__(
             action_spec=action_spec,
@@ -74,6 +80,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             action_distribution_spec=actor_network.output_spec,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name=name)
 
         self._actor_network = actor_network
