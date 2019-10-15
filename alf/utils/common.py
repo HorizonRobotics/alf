@@ -33,6 +33,7 @@ from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 
 from alf.utils import summary_utils, gin_utils
+from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -729,36 +730,6 @@ def sample_policy_action(policy_step):
 def flatten_once(t):
     """Flatten a tensor along axis=0 and axis=1."""
     return tf.reshape(t, [-1] + list(t.shape[2:]))
-
-
-def run_if(cond, func):
-    """Run a function if `cond` Tensor is True.
-
-
-    This function is useful for conditionally executing a function only when
-    a condition given by a tf Tensor is True. It is equivalent to the following
-    code if `cond` is a python bool value:
-    ```python
-    if cond:
-        func()
-    ```
-    However, when `cond` is tf bool scalar tensor, the above code does not
-    always do what we want because tensorflow does not allow bool scalar tensor
-    to be used in the same way as python bool. So we have to use tf.cond to do
-    the job.
-
-    Args:
-        cond (tf.Tensor): scalar bool Tensor
-        func (Callable): function to be run
-    Reutrns:
-        None
-    """
-
-    def _if_true():
-        func()
-        return tf.constant(True)
-
-    tf.cond(cond, _if_true, lambda: tf.constant(False))
 
 
 _env = None
