@@ -17,6 +17,7 @@ import traceback
 import tensorflow as tf
 import gin.tf
 from absl import logging
+import numpy as np
 
 from tf_agents.environments import suite_gym, parallel_py_environment, tf_py_environment
 
@@ -155,9 +156,16 @@ def create_environment(env_name='CartPole-v0',
     if nonparallel:
         # Each time we can only create one unwrapped env at most
         py_env = env_load_fn(env_name)
+        py_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
     else:
         py_env = parallel_py_environment.ParallelPyEnvironment(
             [lambda: env_load_fn(env_name)] * num_parallel_environments)
+
+        py_env.seed([
+            np.random.randint(0,
+                              np.iinfo(np.int32).max)
+            for i in range(num_parallel_environments)
+        ])
 
     return tf_py_environment.TFPyEnvironment(py_env)
 
