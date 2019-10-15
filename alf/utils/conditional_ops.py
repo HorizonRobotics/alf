@@ -89,7 +89,7 @@ def run_if(cond, func):
     Args:
         cond (tf.Tensor): scalar bool Tensor
         func (Callable): function to be run
-    Reutrns:
+    Returns:
         None
     """
 
