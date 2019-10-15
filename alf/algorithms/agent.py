@@ -27,7 +27,7 @@ from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.on_policy_algorithm import Experience, OnPolicyAlgorithm, RLAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo, namedtuple
-from alf.utils.math_ops import smart_add
+from alf.utils.math_ops import add_ignore_empty
 
 AgentState = namedtuple("AgentState", ["rl", "icm"], default_value=())
 
@@ -211,9 +211,9 @@ class Agent(OnPolicyAlgorithm):
             new_loss_info = algorithm.calc_loss(
                 getattr(training_info.info, name))
             return LossInfo(
-                loss=smart_add(loss_info.loss, new_loss_info.loss),
-                scalar_loss=smart_add(loss_info.scalar_loss,
-                                      new_loss_info.scalar_loss),
+                loss=add_ignore_empty(loss_info.loss, new_loss_info.loss),
+                scalar_loss=add_ignore_empty(loss_info.scalar_loss,
+                                             new_loss_info.scalar_loss),
                 extra=loss_info.extra._replace(**{name: new_loss_info.extra}))
 
         rl_loss_info = self._rl_algorithm.calc_loss(

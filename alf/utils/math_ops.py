@@ -31,10 +31,12 @@ def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
     return tf.exp(value)
 
 
-def smart_add(x, y):
+def add_ignore_empty(x, y):
     """Add two Tensors which may be None or ().
 
-     If x or y is None, the other tensor is returned.
+     If x or y is None, they are assumed to be zero and the other tensor is
+     returned.
+
      Args:
           x (Tensor|None|()):
           y (Tensor(|None|())):
