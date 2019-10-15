@@ -29,6 +29,9 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 vocab_size=@get_vocab_size()  # must have sentence as part of observation
 
+RLAlgorithm.enable_mixed_precision=True
+PolicyDriver.use_xla=True
+
 num_embedding_dims=16
 fc_layer_params=(256,)
 get_conv_layers.conv_layer_params=((16, 3, 2), (32, 3, 2))
@@ -85,3 +88,4 @@ GroceryGroundGoalTask.percent_full_range_in_curriculum=0.2
 TrainerConfig.use_tf_functions=1
 TrainerConfig.checkpoint_interval=100
 TrainerConfig.unroll_length=50
+TrainerConfig.evaluate=True

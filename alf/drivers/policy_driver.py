@@ -39,6 +39,7 @@ class PolicyDriver(driver.Driver):
                  observers=[],
                  use_rollout_state=False,
                  metrics=[],
+                 use_xla=False,
                  training=True,
                  greedy_predict=False,
                  debug_summaries=False,
@@ -69,6 +70,7 @@ class PolicyDriver(driver.Driver):
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
+        tf.config.optimizer.set_jit(use_xla)
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
             tf_metrics.NumberOfEpisodes(),

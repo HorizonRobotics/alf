@@ -15,6 +15,7 @@
 
 from abc import abstractmethod
 import collections
+import gin
 import itertools
 from typing import Callable
 
@@ -106,6 +107,7 @@ def make_action_time_step(time_step, prev_action):
         prev_action=prev_action)
 
 
+@gin.configurable
 class RLAlgorithm(tf.Module):
     """Abstract base class for  RL Algorithms.
 
@@ -128,6 +130,7 @@ class RLAlgorithm(tf.Module):
                  action_distribution_spec,
                  predict_state_spec=None,
                  optimizer=None,
+                 enable_mixed_precision=False,
                  get_trainable_variables_func=None,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
@@ -148,6 +151,7 @@ class RLAlgorithm(tf.Module):
                 `predict()`. If None, it's assume to be same as train_state_spec
             optimizer (tf.optimizers.Optimizer | list[Optimizer]): The
                 optimizer(s) for training.
+            enable_mixed_precision (bool): Whether allow float16 in training.
             get_trainable_variables_func (Callable | list[Callable]): each one
                 corresponds to one optimizer in `optimizer`. When called, it
                 should return the variables for the corresponding optimizer. If
@@ -177,6 +181,13 @@ class RLAlgorithm(tf.Module):
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
         self._optimizers = alf.utils.common.as_list(optimizer)
+        self._enable_mixed_precision = enable_mixed_precision
+        if self._optimizers and self._enable_mixed_precision:
+            self._optimizers = [
+                tf.compat.v1.train.experimental.
+                enable_mixed_precision_graph_rewrite(opt)
+                for opt in self._optimizers
+            ]
         if get_trainable_variables_func is None:
             get_trainable_variables_func = lambda: super(RLAlgorithm, self
                                                          ).trainable_variables
