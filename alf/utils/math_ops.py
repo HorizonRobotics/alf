@@ -29,3 +29,25 @@ def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
     """
     value = tf.clip_by_value(value, clip_value_min, clip_value_max)
     return tf.exp(value)
+
+
+def smart_add(x, y):
+    """Add two Tensors which may be None or ().
+
+     If x or y is None, the other tensor is returned.
+     Args:
+          x (Tensor|None|()):
+          y (Tensor(|None|())):
+     Returns:
+          x + y
+     """
+
+    def _ignore(t):
+        return t is None or (isinstance(t, tuple) and len(t) == 0)
+
+    if _ignore(y):
+        return x
+    elif _ignore(x):
+        return y
+    else:
+        return x + y
