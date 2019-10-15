@@ -58,6 +58,8 @@ class Agent(OnPolicyAlgorithm):
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
                  debug_summaries=False,
+                 summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  name="ActorCriticAlgorithm"):
         """Create an Agent
 
@@ -113,6 +115,8 @@ class Agent(OnPolicyAlgorithm):
             reward_shaping_fn=reward_shaping_fn,
             observation_transformer=observation_transformer,
             debug_summaries=debug_summaries,
+            summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             name=name)
 
         self._rl_algorithm = rl_algorithm

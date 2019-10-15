@@ -223,8 +223,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                       env_batch_size,
                       time_step:ActionTimeStep,
                       exp_replayer: str,
-                      metrics,
-                      observation_transformer: Callable=None):
+                      metrics):
         """Prepare various tensor specs."""
 
         def extract_spec(nest):
@@ -232,7 +231,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 lambda t: tf.TensorSpec(t.shape[1:], t.dtype), nest)
 
         self._metrics = metrics
-        self._observation_transformer = observation_transformer
         self._time_step_spec = extract_spec(time_step)
         initial_state = common.get_initial_policy_state(
             env_batch_size, self.train_state_spec)
@@ -296,7 +294,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         policy_step = common.algorithm_step(
             algorithm_step_func=self.train_step,
-            ob_transformer=self._observation_transformer,
             time_step=exp,
             state=initial_state)
         info_spec = extract_spec(policy_step.info)
@@ -332,6 +329,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 trained (a step might be trained multiple times)
         """
 
+        experience = self.transform_timestep(experience)
         experience = self.preprocess_experience(experience)
 
         length = experience.step_type.shape[1]
@@ -433,7 +431,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 tf.equal(exp.step_type, StepType.FIRST))
 
             policy_step = common.algorithm_step(self.train_step,
-                                                self._observation_transformer,
                                                 exp, policy_state)
 
             action_dist_param = common.get_distribution_params(

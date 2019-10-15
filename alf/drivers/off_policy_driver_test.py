@@ -55,7 +55,9 @@ def _create_sac_algorithm():
         critic_network=critic_net,
         actor_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
         critic_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
-        alpha_optimizer=tf.optimizers.Adam(learning_rate=1e-1))
+        alpha_optimizer=tf.optimizers.Adam(learning_rate=1e-1),
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
 
 
 def _create_ddpg_algorithm():
@@ -70,7 +72,9 @@ def _create_ddpg_algorithm():
         actor_network=actor_net,
         critic_network=critic_net,
         actor_optimizer=tf.optimizers.Adam(learning_rate=1e-2),
-        critic_optimizer=tf.optimizers.Adam(learning_rate=1e-1))
+        critic_optimizer=tf.optimizers.Adam(learning_rate=1e-1),
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
 
 
 def _create_ppo_algorithm():
@@ -93,7 +97,9 @@ def _create_ppo_algorithm():
         actor_network=actor_net,
         value_network=value_net,
         loss_class=PPOLoss,
-        optimizer=optimizer)
+        optimizer=optimizer,
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
 
 
 def _create_ac_algorithm():
@@ -109,7 +115,9 @@ def _create_ac_algorithm():
         actor_network=actor_net,
         value_network=value_net,
         loss_class=ActorCriticLoss,
-        optimizer=optimizer)
+        optimizer=optimizer,
+        debug_summaries=True,
+        summarize_grads_and_vars=True)
 
 
 class ThreadQueueTest(parameterized.TestCase, tf.test.TestCase):
@@ -222,9 +230,7 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
             driver = SyncOffPolicyDriver(
                 env,
                 algorithm,
-                use_rollout_state=use_rollout_state,
-                debug_summaries=True,
-                summarize_grads_and_vars=True)
+                use_rollout_state=use_rollout_state)
         else:
             driver = AsyncOffPolicyDriver(
                 [env],
@@ -233,9 +239,7 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
                 num_actor_queues=1,
                 unroll_length=unroll_length,
                 learn_queue_cap=1,
-                actor_queue_cap=1,
-                debug_summaries=True,
-                summarize_grads_and_vars=True)
+                actor_queue_cap=1)
         replayer = driver.algorithm.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)

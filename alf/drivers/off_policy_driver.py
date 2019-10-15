@@ -21,9 +21,11 @@ from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.environments.tf_environment import TFEnvironment
 from tf_agents.specs.distribution_spec import DistributionSpec
+from tf_agents.specs.tensor_spec import TensorSpec
 
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
 from alf.drivers import policy_driver
+from alf.utils import common
 
 
 def warning_once(msg, *args):
@@ -107,7 +109,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             info=info_spec)
 
         def _to_distribution_spec(spec):
-            if isinstance(spec, tf.TensorSpec):
+            if isinstance(spec, TensorSpec):
                 return DistributionSpec(
                     tfp.distributions.Deterministic,
                     input_params_spec={"loc": spec},
@@ -123,8 +125,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         algorithm.prepare_off_policy_specs(self._env.batch_size,
                                            time_step,
                                            self._exp_replayer,
-                                           self._metrics,
-                                           observation_transformer=self._observation_transformer)
+                                           self._metrics)
 
     @tf.function
     def train(self,

@@ -84,6 +84,7 @@ class RLAlgorithm(Algorithm):
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
+                 train_step_counter=None,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
@@ -104,6 +105,10 @@ class RLAlgorithm(Algorithm):
                 immediate rewards
             observation_transformer (Callable): transformation applied to
                 `time_step.observation`
+            train_step_counter (tf.Variable): An optional counter to increment
+                every time a new iteration is started. If None, it will use 
+                tf.summary.experimental.get_step(). If this is still None, a
+                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             summarize_grads_and_vars (bool): If True, gradient and network
