@@ -262,13 +262,7 @@ class ActorThread(Thread):
     stop (from another thread).
     """
 
-    def __init__(self,
-                 name,
-                 coord,
-                 algorithm,
-                 tf_queues,
-                 id,
-                 observation_transformer: Callable = None):
+    def __init__(self, name, coord, algorithm, tf_queues, id):
         """
         Args:
             name (str): the name of the actor thread
@@ -277,14 +271,11 @@ class ActorThread(Thread):
             tf_queues (TFQueues): for storing all the tf.FIFOQueues for
                 communicating between threads
             id (int): thread id
-            observation_transformer (Callable): transformation applied to
-                `time_step.observation`
         """
         super().__init__(name=name, target=self._run, args=(coord, algorithm))
         self._tfq = tf_queues
         self._id = id
         self._actor_q = self._tfq.actor_queues[id]
-        self._ob_transformer = observation_transformer
 
     @tf.function
     def _enqueue_actions(self, policy_step, action_dist_param, i, return_q):

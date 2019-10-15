@@ -26,7 +26,6 @@ from tf_agents.environments.tf_environment import TFEnvironment
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.drivers.threads import TFQueues, ActorThread, EnvThread, LogThread
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.environments.utils import create_environment
 
 
 @gin.configurable
@@ -121,9 +120,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 coord=self._coord,
                 algorithm=self._algorithm,
                 tf_queues=self._tfq,
-                id=i,
-                observation_transformer=self._observation_transformer)
-            for i in range(num_actor_queues)
+                id=i) for i in range(num_actor_queues)
         ]
         env_threads = [
             EnvThread(

@@ -47,7 +47,6 @@ from absl import flags
 from absl import logging
 
 import gin.tf.external_configurables
-from alf.environments.utils import create_environment
 from alf.utils import common
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer

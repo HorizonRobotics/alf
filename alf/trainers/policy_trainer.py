@@ -174,7 +174,7 @@ class Trainer(object):
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
 
-        self._env = None
+        self._envs = []
         self._algorithm_ctor = config.algorithm_ctor
         self._algorithm = None
         self._driver = None
@@ -222,19 +222,35 @@ class Trainer(object):
 
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
-        self._env = create_environment()
-        common.set_global_env(self._env)
-        # Create an unwrapped env to expose subprocess gin confs which otherwise
-        # will be marked as "inoperative"
-        unwrapped_env = create_environment(nonparallel=True)
-        if self._evaluate:
-            self._eval_env = unwrapped_env
+        env = self._create_environment()
+        common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(
             debug_summaries=self._debug_summaries)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         self._driver = self.init_driver()
+
+        # Create an unwrapped env to expose subprocess gin confs which otherwise
+        # will be marked as "inoperative". This env should be created last.
+        unwrapped_env = self._create_environment(nonparallel=True)
+        if self._evaluate:
+            self._eval_env = unwrapped_env
+
+    def _create_environment(self, nonparallel=False):
+        """Create and register an env"""
+        env = create_environment(nonparallel=nonparallel)
+        self._register_env(env)
+        return env
+
+    def _register_env(self, env):
+        """Register env so that later its resource will be recycled"""
+        self._envs.append(env)
+
+    def _close_envs(self):
+        """Close all envs to release their resources"""
+        for env in self._envs:
+            env.pyenv.close()
 
     @abc.abstractmethod
     def init_driver(self):
@@ -249,8 +265,8 @@ class Trainer(object):
 
     def train(self):
         """Perform training."""
-        assert None not in (self._env, self._algorithm,
-                            self._driver), "Trainer not initialized"
+        assert (None not in (self._algorithm, self._driver)) and self._envs, \
+            "Trainer not initialized"
         self._restore_checkpoint()
         run_under_record_context(
             self._train,
@@ -259,9 +275,7 @@ class Trainer(object):
             flush_millis=self._summaries_flush_mills,
             summary_max_queue=self._summary_max_queue)
         self._save_checkpoint()
-        if self._evaluate:
-            self._eval_env.pyenv.close()
-        self._env.pyenv.close()
+        self._close_envs()
 
     @abc.abstractmethod
     def train_iter(self, iter_num, policy_state, time_step):
@@ -279,7 +293,8 @@ class Trainer(object):
         pass
 
     def _train(self):
-        self._env.reset()
+        for env in self._envs:
+            env.reset()
         time_step = self._driver.get_initial_time_step()
         policy_state = self._driver.get_initial_policy_state()
         for iter_num in range(self._num_iterations):

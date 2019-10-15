@@ -29,7 +29,7 @@ class OnPolicyTrainer(Trainer):
 
     def init_driver(self):
         return OnPolicyDriver(
-            env=self._env,
+            env=self._envs[0],
             algorithm=self._algorithm,
             train_interval=self._unroll_length,
             debug_summaries=self._debug_summaries,
