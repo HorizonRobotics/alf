@@ -60,6 +60,7 @@ class GridSearchConfig(object):
         "use_gpu": true,
         "gpus": [0, 1],
         "max_worker_num": 8,
+        "repeats": 3,
         "parameters": {
             "ac/Adam.learning_rate": [1e-3, 8e-4],
             "OneStepTDLoss.gamma":"(0.995, 0.99)",
@@ -72,6 +73,8 @@ class GridSearchConfig(object):
     `parameters` is a dict(param_name=param_value,) of configured search space .
     param_name is a gin configurable argument str and param_value must be an
     iterable python object or a str that can be evaluated to an iterable object.
+    When `parameters` is empty, the original gin conf won't be changed and it
+    will be independently run for `repeats` times.
 
     If `use_gpu` is True, then the scheduling will only put jobs on devices
     numbered `gpus`. `max_worker_num` jobs will be evenly divided among these
@@ -81,7 +84,9 @@ class GridSearchConfig(object):
     See `ddpg_grid_search.json` for an example.
     """
 
-    _all_keys_ = ["desc", "use_gpu", "gpus", "max_worker_num", "parameters"]
+    _all_keys_ = [
+        "desc", "use_gpu", "gpus", "max_worker_num", "repeats", "parameters"
+    ]
 
     def __init__(self, conf_file):
         """
@@ -92,8 +97,8 @@ class GridSearchConfig(object):
             param_keys = []
             param_values = []
             conf = json.loads(f.read())
-            assert 'parameters' in conf, "JSON must contain 'parameters' key!"
-            for key, value in conf['parameters'].items():
+            parameters = conf.get("parameters", dict())
+            for key, value in parameters.items():
                 if isinstance(value, str):
                     value = eval(value)
                 param_keys.append(key)
@@ -109,6 +114,7 @@ class GridSearchConfig(object):
         self._max_worker_num = conf.get('max_worker_num', 1)
         self._use_gpu = conf.get("use_gpu", False)
         self._gpus = conf.get("gpus", [0])
+        self._repeats = conf.get("repeats", 1)
 
         self._check_worker_options()
 
@@ -118,6 +124,7 @@ class GridSearchConfig(object):
         for gpu in self._gpus:
             assert isinstance(gpu, int), "gpu device must be an integer"
         assert isinstance(self._max_worker_num, int)
+        assert isinstance(self._repeats, int)
         assert isinstance(self._use_gpu, bool)
 
     @property
@@ -144,6 +151,10 @@ class GridSearchConfig(object):
     def gpus(self):
         return self._gpus
 
+    @property
+    def repeats(self):
+        return self._repeats
+
 
 class GridSearch(object):
     """Grid Search"""
@@ -164,7 +175,12 @@ class GridSearch(object):
             device_queue.put(self._conf.gpus[idx])
         return device_queue
 
-    def _generate_run_name(self, parameters, id, token_len=3, max_len=255):
+    def _generate_run_name(self,
+                           parameters,
+                           id,
+                           repeat,
+                           token_len=3,
+                           max_len=255):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy curve comparison between different search runs without going
         into the gin texts.
@@ -172,6 +188,7 @@ class GridSearch(object):
         Args:
             parameters (dict): a dictionary of parameter configurations
             id (int): an integer id of the run
+            repeat (int): an integer id of the repeats of the run
             token_len (int): truncate each token for so many chars
             max_len (int): the maximal length of the generated name; make sure
                 that this value won't exceed the max allowed filename length in
@@ -202,7 +219,10 @@ class GridSearch(object):
             else:
                 return _abbr_single(x)
 
-        name = "%04d" % id + "+" + _abbr(parameters)
+        name = "%04dr%d" % (id, repeat)
+        abbr = _abbr(parameters)
+        if abbr:
+            name += "+" + abbr
         # truncate the entire string if it's beyond the max length
         return name[:max_len]
 
@@ -221,13 +241,14 @@ class GridSearch(object):
         task_count = 0
         for values in itertools.product(*param_values):
             parameters = dict(zip(param_keys, values))
-            root_dir = "%s/%s" % (FLAGS.root_dir,
-                                  self._generate_run_name(
-                                      parameters, task_count))
-            process_pool.apply_async(
-                func=self._worker,
-                args=[root_dir, parameters, device_queue],
-                error_callback=lambda e: logging.error(e))
+            for repeat in range(self._conf.repeats):
+                root_dir = "%s/%s" % (FLAGS.root_dir,
+                                      self._generate_run_name(
+                                          parameters, task_count, repeat))
+                process_pool.apply_async(
+                    func=self._worker,
+                    args=[root_dir, parameters, device_queue],
+                    error_callback=lambda e: logging.error(e))
             task_count += 1
 
         process_pool.close()
