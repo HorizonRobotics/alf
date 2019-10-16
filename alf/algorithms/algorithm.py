@@ -157,8 +157,9 @@ class Algorithm(tf.Module):
             return isinstance(obj, Algorithm)
 
         def _is_module_or_var(obj):
-            return (isinstance(obj, (tf.Variable, tf.Module))
-                    and not isinstance(obj, Algorithm))
+            return ((isinstance(obj, tf.Variable) and obj.trainable)
+                    or (isinstance(obj, tf.Module)
+                        and not isinstance(obj, Algorithm)))
 
         module_sets = [copy.copy(s) for s in self._init_module_sets]
         optimizers = copy.copy(self._init_optimizers)
