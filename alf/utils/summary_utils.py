@@ -245,7 +245,7 @@ def get_current_scope():
 
 
 def add_mean_hist_summary(name, value):
-    """Generate mean and histogram summary of value.
+    """Generate mean and histogram summary of `value`.
 
     Args:
         name (str): name of the summary
@@ -258,9 +258,9 @@ def add_mean_hist_summary(name, value):
 
 
 def safe_mean_hist_summary(name, value):
-    """Generate mean and histogram summary of value.
+    """Generate mean and histogram summary of `value`.
 
-    It skip the summary if value is empty.
+    It skips the summary if `value` is empty.
 
     Args:
         name (str): name of the summary
@@ -277,7 +277,7 @@ def safe_mean_hist_summary(name, value):
 
 
 def add_mean_summary(name, value):
-    """Generate mean summary of value.
+    """Generate mean summary of `value`.
 
     Args:
         name (str): name of the summary
@@ -291,9 +291,9 @@ def add_mean_summary(name, value):
 
 
 def safe_mean_summary(name, value):
-    """Generate mean summary of value.
+    """Generate mean summary of `value`.
 
-    It skip the summary if value is empty.
+    It skips the summary if `value` is empty.
 
     Args:
         name (str): name of the summary
