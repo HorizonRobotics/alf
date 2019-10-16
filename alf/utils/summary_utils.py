@@ -16,6 +16,7 @@
 import tensorflow as tf
 from tensorboard.plugins.histogram import metadata
 from tensorflow.python.ops import summary_ops_v2
+from alf.utils.conditional_ops import run_if
 
 DEFAULT_BUCKET_COUNT = 30
 
@@ -223,8 +224,28 @@ def summarize_action_dist(action_distributions,
                 name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
 
 
+def get_current_scope():
+    """Returns the current name scope in the default_graph.
+
+    For example:
+    ```python
+    with tf.name_scope('scope1'):
+        with tf.name_scope('scope2'):
+            print(get_current_scope())
+    ```
+    would print the string `scope1/scope2/`.
+
+    Returns:
+        A string representing the current name scope.
+    """
+    with tf.name_scope("foo") as scope:
+        # With the above example, scope is "scope1/scope2/foo_1/".
+        # We want to return "scope1/scope2/".
+        return scope[:scope.rfind('/', 0, -1) + 1]
+
+
 def add_mean_hist_summary(name, value):
-    """Generate mean and histogram summary of value.
+    """Generate mean and histogram summary of `value`.
 
     Args:
         name (str): name of the summary
@@ -236,8 +257,27 @@ def add_mean_hist_summary(name, value):
     add_mean_summary(name + "/mean", value)
 
 
+def safe_mean_hist_summary(name, value):
+    """Generate mean and histogram summary of `value`.
+
+    It skips the summary if `value` is empty.
+
+    Args:
+        name (str): name of the summary
+        value (Tensor): tensor to be summarized
+    Returns:
+        None
+    """
+    current_scope = get_current_scope()
+    # The reason of prefixing name with current_scope is that inside run_if,
+    # somehow get_current_scope() is '', which makes summary tag unscoped.
+    run_if(
+        tf.reduce_prod(tf.shape(value)) >
+        0, lambda: add_mean_hist_summary(current_scope + name, value))
+
+
 def add_mean_summary(name, value):
-    """Generate mean summary of value.
+    """Generate mean summary of `value`.
 
     Args:
         name (str): name of the summary
@@ -248,3 +288,22 @@ def add_mean_summary(name, value):
     if not value.dtype.is_floating:
         value = tf.cast(value, tf.float32)
     tf.summary.scalar(name, tf.reduce_mean(value))
+
+
+def safe_mean_summary(name, value):
+    """Generate mean summary of `value`.
+
+    It skips the summary if `value` is empty.
+
+    Args:
+        name (str): name of the summary
+        value (Tensor): tensor to be summarized
+    Returns:
+        None
+    """
+    current_scope = get_current_scope()
+    # The reason of prefixing name with current_scope is that inside run_if,
+    # somehow get_current_scope() is '', which makes summary tag unscoped.
+    run_if(
+        tf.reduce_prod(tf.shape(value)) >
+        0, lambda: add_mean_summary(current_scope + name, value))
