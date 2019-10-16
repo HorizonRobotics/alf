@@ -64,25 +64,28 @@ class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
         self.assertLessEqual(float(tf.reduce_max(abs(x - y))), eps)
 
     @parameterized.parameters(
-        dict(mode='STEIN'),
-        dict(mode='ML'),
-        dict(mode='ML', mi_weight=1),
+        dict(entropy_regularization=1.0),
+        dict(entropy_regularization=0.0),
+        dict(entropy_regularization=0.0, mi_weight=1),
     )
-    def test_generator_unconditional(self, mode='ML', mi_weight=None):
+    def test_generator_unconditional(self,
+                                     entropy_regularization=0.0,
+                                     mi_weight=None):
         """
         The generator is trained to match(STEIN)/maximize(ML) the likelihood
         of a Gaussian distribution with zero mean and diagonal variance (1, 4).
         After training, w^T w is the variance of the distribution implied by the
         generator. So it should be diag(1,4) for STEIN and 0 for 'ML'.
         """
-        logging.info("mode: %s mi_weight: %s" % (mode, mi_weight))
+        logging.info("entropy_regularization: %s mi_weight: %s" %
+                     (entropy_regularization, mi_weight))
         dim = 2
         batch_size = 512
         net = Net(dim)
         generator = Generator(
             dim,
             noise_dim=3,
-            mode=mode,
+            entropy_regularization=entropy_regularization,
             net=net,
             mi_weight=mi_weight,
             optimizer=tf.optimizers.Adam(learning_rate=1e-3))
@@ -111,9 +114,9 @@ class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
             if i % 500 == 0:
                 tf.print(i, "learned var=", learned_var)
 
-        if mode == 'STEIN':
+        if entropy_regularization == 1.0:
             self.assertArrayEqual(tf.linalg.diag(var), learned_var, 0.1)
-        elif mode == 'ML':
+        else:
             if mi_weight is None:
                 self.assertArrayEqual(tf.zeros((dim, dim)), learned_var, 0.1)
             else:
@@ -121,24 +124,27 @@ class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
                     float(tf.reduce_sum(tf.abs(learned_var))), 0.5)
 
     @parameterized.parameters(
-        dict(mode='STEIN'),
-        dict(mode='ML'),
-        dict(mode='ML', mi_weight=1),
+        dict(entropy_regularization=1.0),
+        dict(entropy_regularization=0.0),
+        dict(entropy_regularization=0.0, mi_weight=1),
     )
-    def test_generator_conditional(self, mode='ML', mi_weight=None):
+    def test_generator_conditional(self,
+                                   entropy_regularization=0.0,
+                                   mi_weight=None):
         """
         The target conditional distribution is N(yu; diag(1, 4)). After training
         net._u should be u for both STEIN and ML. And w^T*w should be diag(1, 4)
         for STEIN and 0 for ML.
         """
-        logging.info("mode: %s mi_weight: %s" % (mode, mi_weight))
+        logging.info("entropy_regularization: %s mi_weight: %s" %
+                     (entropy_regularization, mi_weight))
         dim = 2
         batch_size = 512
         net = Net2(dim)
         generator = Generator(
             dim,
             noise_dim=dim,
-            mode=mode,
+            entropy_regularization=entropy_regularization,
             net=net,
             mi_weight=mi_weight,
             input_tensor_spec=tf.TensorSpec((dim, )),
@@ -175,10 +181,10 @@ class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
 
         if mi_weight is not None:
             self.assertGreater(float(tf.reduce_sum(tf.abs(learned_var))), 0.5)
-        elif mode == 'STEIN':
+        elif entropy_regularization == 1.0:
             self.assertArrayEqual(net._u, u, 0.1)
             self.assertArrayEqual(tf.linalg.diag(var), learned_var, 0.1)
-        elif mode == 'ML':
+        else:
             self.assertArrayEqual(net._u, u, 0.1)
             self.assertArrayEqual(tf.zeros((dim, dim)), learned_var, 0.1)
 

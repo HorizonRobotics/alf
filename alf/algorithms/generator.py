@@ -36,20 +36,41 @@ class Generator(Algorithm):
 
     Generator generates outputs given `inputs` (can be None) by transforming
     a random noise and input using `net`:
-        outputs = net([noise, inputs]) if input is not None
+
+        outputs = net([noise, input]) if input is not None
                   else net(noise)
 
-    It has two modes:
-    ML: net is trained to minized loss_func([outputs, inputs])
-    STEIN: net is trained to generate outputs to match the distribution whose
-        (unnormalized) negative probability is given by loss_func([outputs, inputs]).
-        The matching is achieved by using amortized Stein variational gradient
-        descent (SVGD). See the following paper for reference
-        Feng et al "Learning to Draw Samples with Amortized Stein Variational
-        Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+    The generator is trained to minimize the following objective:
+
+        E(loss_func(net([noise, input]))) - entropy_regulariztion * H(P)
+
+    where P is the (conditional) distribution of outputs given the inputs
+    implied by `net` and H(P) is the (conditional) entropy of P.
+
+    If the loss is the (unnormalized) negative log probability of some
+    distribution Q and the entropy_regularization is 1, this objective is
+    equivalent to minimizing KL(P||Q).
+
+    It uses two different ways to optimize `net` depending on
+    entropy_regularization:
+
+    * entropy_regularization = 0: the minimization is achieved by simply
+      minimizing loss_func(net([noise, inputs]))
+
+    * entropy_regularization > 0: the minimization is achieved using amortized
+      Stein variational gradient descent (SVGD). See the following paper for
+      reference:
+
+      Feng et al "Learning to Draw Samples with Amortized Stein Variational
+      Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
 
     It also supports an additional optional objective of maximizing the mutual
-    information between [inputs, noise] and outputs by using mi_estimator
+    information between [noise, inputs] and outputs by using mi_estimator to
+    prevent mode collapse. This might be useful for entropy_regulariztion = 0
+    as suggested in section 5.1 of the following paper:
+
+    Hjelm et al "Learning Deep Representations by Mutual Information Estimation
+    and Maximization" https://arxiv.org/pdf/1808.06670.pdf
     """
 
     def __init__(self,
@@ -58,7 +79,7 @@ class Generator(Algorithm):
                  input_tensor_spec=None,
                  hidden_layers=(256, ),
                  net: Network = None,
-                 mode='ML',
+                 entropy_regularization=0.,
                  kernel_sharpness=2.,
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
@@ -75,9 +96,9 @@ class Generator(Algorithm):
             net (Network): network for generating outputs from [noise, inputs]
                 or noise (if inputs is None). If None, a default one with
                 hidden_layers will be created
-            mode (str): one of ('ML', 'STEIN')
-            kernel_sharpness (float): Used only for mode 'STEIN'. The kernel
-                for SVGD is calcualted as:
+            entropy_regularization (float): weight of entropy regularization
+            kernel_sharpness (float): Used only for entropy_regularization > 0.
+                We calcualte the kernel in SVGD as:
                     exp(-kernel_sharpness * reduce_mean((x-y)^2/width)),
                 where width is the elementwise moving average of (x-y)^2
             mi_estimator_cls (type): the class of mutual information estimator
@@ -88,15 +109,14 @@ class Generator(Algorithm):
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
         self._noise_dim = noise_dim
-        if mode == 'ML':
+        self._entropy_regularization = entropy_regularization
+        if entropy_regularization == 0:
             self._grad_func = self._ml_grad
-        elif mode == 'STEIN':
+        else:
             self._grad_func = self._stein_grad
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=tf.TensorSpec(shape=(output_dim, )))
             self._kernel_sharpness = kernel_sharpness
-        else:
-            raise ValueError("Unsupported mode %s" % mode)
 
         noise_spec = tf.TensorSpec(shape=[noise_dim])
 
@@ -148,7 +168,7 @@ class Generator(Algorithm):
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
         outputs, _ = self._predict(inputs, batch_size)
-        return AlgorithmStep(outputs=outputs)
+        return AlgorithmStep(outputs=outputs, state=(), info=())
 
     def train_step(self, inputs, loss_func, batch_size=None, state=None):
         """
@@ -205,7 +225,8 @@ class Generator(Algorithm):
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(outputs2)
             kernel_weight = self._kernel_func(outputs, outputs2)
-            weight_sum = tf.reduce_sum(kernel_weight)
+            weight_sum = self._entropy_regularization * tf.reduce_sum(
+                kernel_weight)
 
         kernel_grad = tape.gradient(weight_sum, outputs2)
 
