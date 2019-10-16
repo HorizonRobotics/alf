@@ -16,6 +16,78 @@
 import gin
 import tensorflow as tf
 
+from alf.utils.data_buffer import DataBuffer
+
+
+@gin.configurable
+class WindowAverager(tf.Module):
+    def __init__(self,
+                 tensor_spec: tf.TensorSpec,
+                 window_size,
+                 name="WindowAverager"):
+        """Create a WindowAverager.
+
+        WindowAverager calculate the average of the past `window_size` samples.
+        Args:
+            tensor_spec (TensorSpec): the TensorSpec for the value to be
+                averaged
+            window_size (int): the size of the window
+            name (str): name of this averager
+        """
+        super().__init__(name=name)
+        self._buf = DataBuffer(tensor_spec, window_size)
+
+    def update(self, tensor):
+        """Update the average.
+
+        Args:
+            tensor (Tensor): a value for updating the average
+        Returns:
+            None
+        """
+        self._buf.add_batch(tf.expand_dims(tensor, axis=0))
+
+    def get(self):
+        """Get the current average.
+
+        Returns:
+            Tensor: the current average
+        """
+        n = tf.cast(tf.maximum(self._buf.current_size, 1), tf.float32)
+        return tf.reduce_sum(self._buf.get_all(), axis=0) * (1. / n)
+
+    def average(self, tensor):
+        """Combines self.update and self.get in one step. Can be handy in practice.
+
+        Args:
+            tensor (Tensor): a value for updating the average
+        Returns:
+            Tensor: the current average
+        """
+        self.update(tensor)
+        return self.get()
+
+
+@gin.configurable
+class ScalarWindowAverager(WindowAverager):
+    """WindowAverager for scalar value"""
+
+    def __init__(self,
+                 window_size,
+                 dtype=tf.float32,
+                 name="ScalarWindowAverager"):
+        """Create a ScalarWindowAverager.
+
+        Args:
+            window_size (int): the size of the window
+            dtype (tf.dtype): dtype of the scalar
+            name (str): name of this averager
+        """
+        super().__init__(
+            tensor_spec=tf.TensorSpec(shape=(), dtype=dtype),
+            window_size=window_size,
+            name=name)
+
 
 @gin.configurable
 class EMAverager(tf.Module):
@@ -30,15 +102,19 @@ class EMAverager(tf.Module):
     a Variable, the update_rate can be changed by the user.
     """
 
-    def __init__(self, tensor_spec: tf.TensorSpec, update_rate):
+    def __init__(self,
+                 tensor_spec: tf.TensorSpec,
+                 update_rate,
+                 name="EMAverager"):
         """Create an EMAverager.
 
         Args:
             tensor_spec (TensorSpec): the TensorSpec for the value to be
                 averaged
             update_rate (float|Variable): the update rate
+            name (str): name of this averager
         """
-        super().__init__()
+        super().__init__(name=name)
         self._tensor_spec = tensor_spec
         self._update_rate = update_rate
         self._average = tf.Variable(
@@ -86,16 +162,18 @@ class EMAverager(tf.Module):
 class ScalarEMAverager(EMAverager):
     """EMAverager for scalar value"""
 
-    def __init__(self, update_rate, dtype=tf.float32):
+    def __init__(self, update_rate, dtype=tf.float32, name="ScalarEMAverager"):
         """Create a ScalarEMAverager.
 
         Args:
             udpate_rate (float|Variable): update rate
             dtype (tf.dtype): dtype of the scalar
+            name (str): name of this averager
         """
         super().__init__(
             tensor_spec=tf.TensorSpec(shape=(), dtype=dtype),
-            update_rate=update_rate)
+            update_rate=update_rate,
+            name=name)
 
 
 @gin.configurable
@@ -107,15 +185,20 @@ class AdaptiveAverager(EMAverager):
     proportional to (t/T)^(speed-1), where T is the current time step.
     """
 
-    def __init__(self, tensor_spec: tf.TensorSpec, speed=10.):
+    def __init__(self,
+                 tensor_spec: tf.TensorSpec,
+                 speed=10.,
+                 name="AdaptiveAverager"):
         """Create an AdpativeAverager.
 
         Args:
             tensor_spec (TensorSpec): the TensorSpec for the value to be
                 averaged
             speed (float): speed of updating mean and variance.
+            name (str): name of this averager
         """
-        update_rate = tf.Variable(1.0, dtype=tf.float64, trainable=False)
+        update_rate = tf.Variable(
+            1.0, dtype=tf.float64, trainable=False, name=name)
         super().__init__(tensor_spec, update_rate)
         self._update_ema_rate = update_rate
         self._total_steps = tf.Variable(
@@ -140,12 +223,18 @@ class AdaptiveAverager(EMAverager):
 class ScalarAdaptiveAverager(AdaptiveAverager):
     """AdaptiveAverager for scalar value."""
 
-    def __init__(self, speed=10, dtype=tf.float32):
+    def __init__(self,
+                 speed=10,
+                 dtype=tf.float32,
+                 name="ScalarAdaptiveAverager"):
         """Create a ScalarAdpativeAverager.
 
         Args:
             speed (float): speed of updating mean and variance.
             dtype (tf.dtype): dtype of the scalar
+            name (str): name of this averager
         """
         super().__init__(
-            tensor_spec=tf.TensorSpec(shape=(), dtype=dtype), speed=speed)
+            tensor_spec=tf.TensorSpec(shape=(), dtype=dtype),
+            speed=speed,
+            name=name)
