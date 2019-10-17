@@ -204,8 +204,9 @@ class Algorithm(tf.Module):
     def _get_opt_and_var_sets(self):
         opt_and_var_sets = []
         optimizer_and_module_sets = self.get_optimizer_and_module_sets()
+        optimizer_info = []
         for opt, module_set in optimizer_and_module_sets:
-            logging.info(
+            optimizer_info.append(
                 "optimizer %s: modules %s" % (opt.get_config(), ' '.join(
                     [m.name for m in module_set if m is not None])))
             vars = []
@@ -220,6 +221,7 @@ class Algorithm(tf.Module):
                 else:
                     raise ValueError("Unsupported module type %s" % module)
             opt_and_var_sets.append((opt, vars))
+        self._optimizer_info = '\n\n'.join(optimizer_info)
         return opt_and_var_sets
 
     @property

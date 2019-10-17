@@ -36,8 +36,8 @@ class OnPolicyTrainer(Trainer):
             summarize_grads_and_vars=self._summarize_grads_and_vars)
 
     def train_iter(self, iter_num, policy_state, time_step):
-        time_step, policy_state = self._driver.run(
+        time_step, policy_state, num_steps = self._driver.run(
             max_num_steps=self._num_steps_per_iter,
             time_step=time_step,
             policy_state=policy_state)
-        return time_step, policy_state, self._num_steps_per_iter
+        return time_step, policy_state, num_steps

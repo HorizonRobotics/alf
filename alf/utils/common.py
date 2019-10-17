@@ -429,7 +429,8 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
     def _transform_image(obs):
         # tf_agent changes all gym.spaces.Box observation to tf.float32.
         # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
-        if len(obs.shape) == 4:
+        # TODO: this shape check is not a good one!
+        if len(obs.shape) >= 4:
             if obs.dtype == tf.uint8:
                 obs = tf.cast(obs, tf.float32)
             return ((max - min) / 255.) * obs + min

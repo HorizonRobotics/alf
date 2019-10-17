@@ -59,7 +59,7 @@ class Agent(OnPolicyAlgorithm):
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
                  debug_summaries=False,
-                 name="ActorCriticAlgorithm"):
+                 name="AgentAlgorithm"):
         """Create an Agent
 
         Args:
