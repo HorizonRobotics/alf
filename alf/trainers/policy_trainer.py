@@ -71,6 +71,7 @@ class TrainerConfig(object):
                  mini_batch_length=None,
                  mini_batch_size=None,
                  clear_replay_buffer=True,
+                 keras_floatx='float32',
                  num_envs=1):
         """Configuration for Trainers
 
@@ -113,6 +114,8 @@ class TrainerConfig(object):
                 sample in the minibatch. If None, it's set to `unroll_length`.
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
+            keras_floatx (str): float type for keras backend, can be float16 or
+                float32 (default) etc.
             num_envs (int): the number of environments to run asynchronously.
         """
 
@@ -142,6 +145,7 @@ class TrainerConfig(object):
             mini_batch_length=mini_batch_length,
             mini_batch_size=mini_batch_size,
             clear_replay_buffer=clear_replay_buffer,
+            keras_floatx=keras_floatx,
             num_envs=num_envs)
 
         self._trainer = trainer
@@ -209,6 +213,7 @@ class Trainer(object):
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
+        tf.keras.backend.set_floatx(config.keras_floatx)
 
     def initialize(self):
         """Initializes the Trainer."""

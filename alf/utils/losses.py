@@ -16,6 +16,7 @@
 import tensorflow as tf
 import gin
 from tf_agents.utils import common as tfa_common
+from alf.utils import common
 
 
 @gin.configurable
@@ -28,8 +29,10 @@ def element_wise_huber_loss(x, y):
     Returns:
         loss (tf.Tensor)
     """
-    return tf.compat.v1.losses.huber_loss(
-        x, y, reduction=tf.compat.v1.losses.Reduction.NONE)
+    return tf.cast(
+        tf.compat.v1.losses.huber_loss(
+            x, y, reduction=tf.compat.v1.losses.Reduction.NONE),
+        common.get_dtype())
 
 
 @gin.configurable
@@ -42,5 +45,7 @@ def element_wise_squared_loss(x, y):
     Returns:
         loss (tf.Tensor)
     """
-    return tf.compat.v1.losses.mean_squared_error(
-        x, y, reduction=tf.compat.v1.losses.Reduction.NONE)
+    return tf.cast(
+        tf.compat.v1.losses.mean_squared_error(
+            x, y, reduction=tf.compat.v1.losses.Reduction.NONE),
+        common.get_dtype())

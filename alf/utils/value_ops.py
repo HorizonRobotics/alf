@@ -156,12 +156,13 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     values = values[:-1]
 
     step_types = step_types[:-1]
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), common.get_dtype())
 
     def discounted_return_fn(acc_discounted_reward, args):
         (reward, value, is_last, discount) = args
         acc_discounted_value = acc_discounted_reward * discount + reward
-        return is_last * value + (1 - is_last) * acc_discounted_value
+        return is_last * value + (
+            tf.cast(1, common.get_dtype()) - is_last) * acc_discounted_value
 
     returns = tf.scan(
         fn=discounted_return_fn,
@@ -196,8 +197,9 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     values = values[1:]
     step_types = step_types[:-1]
 
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
-    returns = rewards + (1 - is_lasts) * discounts * values
+    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), common.get_dtype())
+    returns = rewards + (
+        tf.cast(1, common.get_dtype()) - is_lasts) * discounts * values
 
     return returns
 
@@ -249,14 +251,15 @@ def generalized_advantage_estimation(rewards,
     values = values[:-1]
     discounts = discounts[1:]
     step_types = step_types[:-1]
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), common.get_dtype())
 
     delta = rewards + discounts * next_values - values
     weighted_discounts = discounts * td_lambda
 
     def weighted_cumulative_td_fn(accumulated_td, weights_td_is_last):
         weighted_discount, td, is_last = weights_td_is_last
-        return (1 - is_last) * (td + weighted_discount * accumulated_td)
+        return (tf.cast(1, common.get_dtype()) - is_last) * (
+            td + weighted_discount * accumulated_td)
 
     advantages = tf.scan(
         fn=weighted_cumulative_td_fn,

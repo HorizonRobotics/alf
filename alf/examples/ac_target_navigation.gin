@@ -29,8 +29,15 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 vocab_size=@get_vocab_size()  # must have sentence as part of observation
 
+#PolicyDriver.use_xla=True
+
 RLAlgorithm.enable_mixed_precision=True
-PolicyDriver.use_xla=True
+get_dtype.dtype=%tf.float16
+suite_socialbot.load.spec_dtype_map = @gym_space_to_float16_mapping()
+ActorDistributionRnnNetwork.dtype=%tf.float16
+ValueRnnNetwork.dtype=%tf.float16
+TrainerConfig.keras_floatx='float16'
+# make sure image scale transformer is applied, so input to nets will be in float16
 
 num_embedding_dims=16
 fc_layer_params=(256,)
@@ -85,7 +92,8 @@ GroceryGroundGoalTask.reward_thresh_to_increase_range=0.9
 GroceryGroundGoalTask.increase_range_by_percent=0.1
 GroceryGroundGoalTask.percent_full_range_in_curriculum=0.2
 
-TrainerConfig.use_tf_functions=1
 TrainerConfig.checkpoint_interval=100
 TrainerConfig.unroll_length=50
-TrainerConfig.evaluate=True
+TrainerConfig.evaluate=False
+
+TrainerConfig.use_tf_functions=0

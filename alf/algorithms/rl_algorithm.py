@@ -26,7 +26,7 @@ import tensorflow_probability as tfp
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import eager_utils
 
-import alf.utils
+from alf.utils import common
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -64,7 +64,7 @@ def make_training_info(action_distribution=(),
                        collect_info=(),
                        collect_action_distribution=()):
     """Create an instance of TrainingInfo."""
-    return TrainingInfo(
+    training_info = TrainingInfo(
         action_distribution=action_distribution,
         action=action,
         step_type=step_type,
@@ -73,6 +73,12 @@ def make_training_info(action_distribution=(),
         info=info,
         collect_info=collect_info,
         collect_action_distribution=collect_action_distribution)
+    training_info = tf.nest.map_structure(
+        lambda x: tf.cast(x, common.get_dtype(input_dtype=x.dtype))
+        if isinstance(x, tf.Tensor) else tf.TensorSpec(
+            x.shape, dtype=common.get_dtype(input_dtype=x.dtype))
+        if isinstance(x, tf.TensorSpec) else x, training_info)
+    return training_info
 
 
 class ActionTimeStep(
@@ -180,7 +186,7 @@ class RLAlgorithm(tf.Module):
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
-        self._optimizers = alf.utils.common.as_list(optimizer)
+        self._optimizers = common.as_list(optimizer)
         self._enable_mixed_precision = enable_mixed_precision
         if self._optimizers and self._enable_mixed_precision:
             self._optimizers = [
@@ -191,7 +197,7 @@ class RLAlgorithm(tf.Module):
         if get_trainable_variables_func is None:
             get_trainable_variables_func = lambda: super(RLAlgorithm, self
                                                          ).trainable_variables
-        self._get_trainable_variables_funcs = alf.utils.common.as_list(
+        self._get_trainable_variables_funcs = common.as_list(
             get_trainable_variables_func)
         if optimizer:
             assert (len(self._optimizers) == len(
@@ -203,7 +209,7 @@ class RLAlgorithm(tf.Module):
         self._clip_by_global_norm = clip_by_global_norm
         self._reward_shaping_fn = reward_shaping_fn
         self._observation_transformer = observation_transformer
-        self._train_step_counter = alf.utils.common.get_global_counter(
+        self._train_step_counter = common.get_global_counter(
             train_step_counter)
         self._debug_summaries = debug_summaries
         self._cached_var_sets = None
@@ -394,7 +400,8 @@ class RLAlgorithm(tf.Module):
             grads_and_vars (list[tuple]): list of gradient and variable tuples
         """
         valid_masks = tf.cast(
-            tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
+            tf.not_equal(training_info.step_type, StepType.LAST),
+            common.get_dtype())
 
         # record shaped extrinsic rewards actually used for training
         self.add_reward_summary("reward/extrinsic", training_info.reward)
@@ -408,7 +415,7 @@ class RLAlgorithm(tf.Module):
                 assert len(loss_info.scalar_loss.shape) == 0
                 loss_info = loss_info._replace(
                     loss=loss_info.loss + loss_info.scalar_loss)
-            loss = weight * loss_info.loss
+            loss = tf.cast(weight, common.get_dtype()) * loss_info.loss
 
         var_sets = self._get_cached_var_sets()
         all_grads_and_vars = ()
@@ -422,9 +429,9 @@ class RLAlgorithm(tf.Module):
                     grads, global_norm = tf.clip_by_global_norm(
                         grads, self._gradient_clipping)
                     grads_and_vars = tuple(zip(grads, vars))
-                    alf.utils.common.run_if(
-                        alf.utils.common.should_record_summaries(), lambda: tf.
-                        summary.scalar("global_grad_norm/%s" % i, global_norm))
+                    common.run_if(
+                        common.should_record_summaries(), lambda: tf.summary.
+                        scalar("global_grad_norm/%s" % i, global_norm))
                 else:
                     grads_and_vars = eager_utils.clip_gradient_norms(
                         grads_and_vars, self._gradient_clipping)

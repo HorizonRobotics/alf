@@ -78,17 +78,20 @@ class ActorCriticLoss(object):
         """
 
         self._action_spec = action_spec
-        self._td_loss_weight = td_loss_weight
-        self._gamma = gamma
+        self._td_loss_weight = tf.cast(td_loss_weight, common.get_dtype())
+        self._gamma = tf.cast(gamma, common.get_dtype())
         self._td_error_loss_fn = td_error_loss_fn
         self._use_gae = use_gae
-        self._lambda = td_lambda
+        self._lambda = tf.cast(td_lambda, common.get_dtype())
         self._use_td_lambda_return = use_td_lambda_return
         self._normalize_advantages = normalize_advantages
         assert advantage_clip is None or advantage_clip > 0, (
             "Clipping value should be positive!")
-        self._advantage_clip = advantage_clip
-        self._entropy_regularization = entropy_regularization
+        self._advantage_clip = tf.cast(
+            advantage_clip, common.get_dtype()) if advantage_clip else None
+        self._entropy_regularization = tf.cast(
+            entropy_regularization,
+            common.get_dtype()) if entropy_regularization else None
         self._debug_summaries = debug_summaries
 
     def __call__(self, training_info: TrainingInfo, value):

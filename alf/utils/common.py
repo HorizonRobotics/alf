@@ -22,6 +22,9 @@ import tensorflow_probability as tfp
 from absl import flags
 from collections import OrderedDict
 import gin
+import gym
+import numpy as np
+
 import tensorflow as tf
 
 from tf_agents.agents.tf_agent import LossInfo
@@ -363,6 +366,7 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
     Returns:
         Transfromed observation
     """
+    dtype = get_dtype()
 
     def _transform_image(obs):
         # tf_agent changes all gym.spaces.Box observation to tf.float32.
@@ -370,9 +374,9 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
         if len(obs.shape) == 4:
             if obs.dtype == tf.uint8:
                 obs = tf.cast(obs, tf.float32)
-            return ((max - min) / 255.) * obs + min
+            return tf.cast(((max - min) / 255.) * obs + min, dtype)
         else:
-            return obs
+            return tf.cast(obs, dtype)
 
     return tf.nest.map_structure(_transform_image, observation)
 
@@ -733,6 +737,19 @@ def get_vocab_size():
 
 
 @gin.configurable
+def gym_space_to_float16_mapping():
+    return {gym.spaces.Box: np.float16}
+
+
+@gin.configurable
+def get_dtype(dtype=tf.float32, input_dtype=None):
+    # Only transforms float32 to float16.  All other types just pass by.
+    if input_dtype and input_dtype != tf.float32:
+        return input_dtype
+    return dtype
+
+
+@gin.configurable
 def get_conv_layers(conv_layer_params):
     layers = []
     for (filters, kernel_size, strides) in conv_layer_params:
@@ -744,7 +761,7 @@ def get_conv_layers(conv_layer_params):
                 activation=tf.keras.activations.softsign,
                 kernel_initializer=tf.compat.v1.keras.initializers.
                 glorot_uniform(),
-                dtype=tf.float32,
+                dtype=get_dtype(),
                 name='ConvLayer'))
     layers.append(tf.keras.layers.Flatten())
     image_processing_layers = tf.keras.Sequential(layers)
@@ -782,7 +799,7 @@ def generate_network(structure):
         submodule_name, func_name = func_name.split('.', 1)
         module = getattr(module, submodule_name)
     func = getattr(module, func_name)
-
+    assert func, 'Cannot find {} in module {}'.format(func_name, str(module))
     args = list(structure)[1:]
     evaluated_args = []
     for arg in args:
@@ -794,4 +811,10 @@ def generate_network(structure):
                 list_arg.append(generate_network(elem))
             arg = list_arg
         evaluated_args.append(arg)
-    return func(*evaluated_args)
+    if func_name != 'Sequential':
+        # using func_name only because
+        # isinstance(func, tf.keras.layers.Layer) is always false
+        kwargs = {'dtype': get_dtype()}
+    else:
+        kwargs = {}
+    return func(*evaluated_args, **kwargs)

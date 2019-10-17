@@ -101,6 +101,10 @@ def histogram_continuous(name,
             `tf.summary.experimental.get_step()`
         description (str): Optional long-form description for this summary
     """
+    if bucket_min is not None:
+        bucket_min = tf.cast(bucket_min, tf.float64)
+    if bucket_max is not None:
+        bucket_max = tf.cast(bucket_max, tf.float64)
     summary_metadata = metadata.create_summary_metadata(
         display_name=None, description=description)
     summary_scope = (getattr(tf.summary.experimental, 'summary_scope', None)
