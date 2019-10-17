@@ -56,7 +56,7 @@ class MerlinAlgorithmTest(tf.test.TestCase):
         time_step = driver.get_initial_time_step()
         for i in range(100):
             t0 = time.time()
-            time_step, policy_state = driver.run(
+            time_step, policy_state, _ = driver.run(
                 max_num_steps=150 * batch_size,
                 time_step=time_step,
                 policy_state=policy_state)

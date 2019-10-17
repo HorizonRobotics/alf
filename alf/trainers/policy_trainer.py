@@ -318,8 +318,9 @@ class Trainer(object):
                 with tf.summary.record_if(True):
                     common.summarize_gin_config()
                     tf.summary.text('commandline', ' '.join(sys.argv))
+
                     tf.summary.text('optimizers',
-                                    self._algorithm._optimizer_info)
+                                    self._algorithm.get_optimizer_info())
 
     def _restore_checkpoint(self):
         global_step = get_global_counter()
