@@ -162,7 +162,9 @@ class Algorithm(tf.Module):
                         and not isinstance(obj, Algorithm)))
 
         module_sets = [copy.copy(s) for s in self._init_module_sets]
-        optimizers = copy.copy(self._init_optimizers)
+        optimizers = [
+            copy.copy(opt) for opt in self._init_optimizers if opt is not None
+        ]
         module_ids = set(map(id, sum(module_sets, [])))
 
         for alg in self._get_children(_is_alg):
@@ -176,6 +178,10 @@ class Algorithm(tf.Module):
         for module in self._get_children(_is_module_or_var):
             if id(module) not in module_ids:
                 module_sets[0].append(module)
+
+        assert len(
+            optimizers
+        ) > 0, "no optimizer found, need to specify an optimizer for learning"
 
         return list(zip(optimizers, module_sets))
 
