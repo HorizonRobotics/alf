@@ -57,8 +57,9 @@ class FrameStack(gym.Wrapper):
 
         raw_space = self.env.observation_space
         if field_to_stack:
-            assert hasattr(raw_space, 'spaces'), 'observation is not dict'
-            assert raw_space.spaces[field_to_stack], (
+            assert isinstance(raw_space,
+                              gym.spaces.Dict), 'observation is not dict'
+            assert field_to_stack in raw_space.spaces, (
                 '{} not in observation.spaces'.format(field_to_stack))
             space = raw_space.spaces[field_to_stack]
         else:

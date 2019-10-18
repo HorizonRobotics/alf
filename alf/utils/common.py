@@ -832,6 +832,7 @@ def get_vocab_size():
       vocab_size (int): size of the environment's/teacher's vocabulary
     """
     assert _env, "set a global env by `set_global_env` before using the function"
+    assert 'sentence' in _env.observation_spec()
     return _env.observation_spec()['sentence'].shape[0]
 
 
@@ -908,6 +909,16 @@ def write_gin_configs(root_dir, gin_file):
 
 @gin.configurable
 def get_conv_layers(conv_layer_params):
+    """Generate conv2d layers constructed from input parameters,
+    flattened and wrapped in a Sequential model.
+
+    Args:
+      conv_layer_params (list of 3 tuples): e.g. ((16, 3, 2), (32, 3, 2))
+        for two layers of conv2d.
+
+    Returns:
+      the constructed Conv2D network model.
+    """
     layers = []
     for (filters, kernel_size, strides) in conv_layer_params:
         layers.append(
