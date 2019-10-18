@@ -31,12 +31,9 @@ vocab_size=@get_vocab_size()  # must have sentence as part of observation
 
 #PolicyDriver.use_xla=True
 
-RLAlgorithm.enable_mixed_precision=True
-get_dtype.dtype=%tf.float16
-suite_socialbot.load.spec_dtype_map = @gym_space_to_float16_mapping()
-ActorDistributionRnnNetwork.dtype=%tf.float16
-ValueRnnNetwork.dtype=%tf.float16
-TrainerConfig.keras_floatx='float16'
+#get_dtype.dtype=%tf.float16
+#ActorDistributionRnnNetwork.dtype=%tf.float16
+#ValueRnnNetwork.dtype=%tf.float16
 # make sure image scale transformer is applied, so input to nets will be in float16
 
 num_embedding_dims=16

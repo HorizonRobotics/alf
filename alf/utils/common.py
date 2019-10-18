@@ -737,11 +737,6 @@ def get_vocab_size():
 
 
 @gin.configurable
-def gym_space_to_float16_mapping():
-    return {gym.spaces.Box: np.float16}
-
-
-@gin.configurable
 def get_dtype(dtype=tf.float32, input_dtype=None):
     # Only transforms float32 to float16.  All other types just pass by.
     if input_dtype and input_dtype != tf.float32:

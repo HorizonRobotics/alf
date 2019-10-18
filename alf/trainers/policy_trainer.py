@@ -213,7 +213,8 @@ class Trainer(object):
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
-        tf.keras.backend.set_floatx(config.keras_floatx)
+        if (common.get_dtype() == tf.float16):
+            tf.keras.backend.set_floatx('float16')
 
     def initialize(self):
         """Initializes the Trainer."""

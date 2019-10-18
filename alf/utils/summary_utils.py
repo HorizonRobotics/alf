@@ -101,10 +101,12 @@ def histogram_continuous(name,
             `tf.summary.experimental.get_step()`
         description (str): Optional long-form description for this summary
     """
+    bucket_min_t = None
+    bucket_max_t = None
     if bucket_min is not None:
-        bucket_min = tf.cast(bucket_min, tf.float64)
+        bucket_min_t = tf.cast(bucket_min, tf.float64)
     if bucket_max is not None:
-        bucket_max = tf.cast(bucket_max, tf.float64)
+        bucket_max_t = tf.cast(bucket_max, tf.float64)
     summary_metadata = metadata.create_summary_metadata(
         display_name=None, description=description)
     summary_scope = (getattr(tf.summary.experimental, 'summary_scope', None)
@@ -116,13 +118,13 @@ def histogram_continuous(name,
                                                                            _):
         with tf.name_scope('buckets'):
             data = tf.cast(tf.reshape(data, shape=[-1]), tf.float64)
-            if bucket_min is None:
-                bucket_min = tf.reduce_min(data)
-            if bucket_max is None:
-                bucket_max = tf.reduce_min(data)
-            range_ = bucket_max - bucket_min
+            if bucket_min_t is None:
+                bucket_min_t = tf.reduce_min(data)
+            if bucket_max_t is None:
+                bucket_max_t = tf.reduce_max(data)
+            range_ = bucket_max_t - bucket_min_t
             bucket_width = range_ / tf.cast(bucket_count, tf.float64)
-            offsets = data - bucket_min
+            offsets = data - bucket_min_t
             bucket_indices = tf.cast(
                 tf.floor(offsets / bucket_width), dtype=tf.int32)
             clamped_indices = tf.clip_by_value(bucket_indices, 0,
@@ -130,7 +132,7 @@ def histogram_continuous(name,
             one_hots = tf.one_hot(clamped_indices, depth=bucket_count)
             bucket_counts = tf.cast(
                 tf.reduce_sum(input_tensor=one_hots, axis=0), dtype=tf.float64)
-            edges = tf.linspace(bucket_min, bucket_max, bucket_count + 1)
+            edges = tf.linspace(bucket_min_t, bucket_max_t, bucket_count + 1)
             edges = tf.concat([edges[:-1], [float(bucket_max)]], 0)
             edges = tf.cast(edges, tf.float64)
             left_edges = edges[:-1]

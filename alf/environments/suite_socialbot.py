@@ -24,11 +24,14 @@ import traceback
 import contextlib
 import socket
 import gym
+import numpy as np
 from fasteners.process_lock import InterProcessLock
 from tf_agents.environments import suite_gym, wrappers, parallel_py_environment
 import gin.tf
 import tensorflow as tf
 from absl import logging
+
+from alf.utils import common
 
 DEFAULT_SOCIALBOT_PORT = 11345
 
@@ -156,6 +159,12 @@ def load(environment_name,
             max_episode_steps = gym_spec.max_episode_steps
         else:
             max_episode_steps = 0
+
+    if not spec_dtype_map:
+        spec_dtype_map = {}
+
+    if common.get_dtype() == tf.float16:
+        spec_dtype_map[gym.spaces.Box] = np.float16
 
     def env_ctor(port):
         gym_env = gym_spec.make(port=port)

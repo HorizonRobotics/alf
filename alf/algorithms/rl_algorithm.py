@@ -136,7 +136,6 @@ class RLAlgorithm(tf.Module):
                  action_distribution_spec,
                  predict_state_spec=None,
                  optimizer=None,
-                 enable_mixed_precision=False,
                  get_trainable_variables_func=None,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
@@ -157,7 +156,6 @@ class RLAlgorithm(tf.Module):
                 `predict()`. If None, it's assume to be same as train_state_spec
             optimizer (tf.optimizers.Optimizer | list[Optimizer]): The
                 optimizer(s) for training.
-            enable_mixed_precision (bool): Whether allow float16 in training.
             get_trainable_variables_func (Callable | list[Callable]): each one
                 corresponds to one optimizer in `optimizer`. When called, it
                 should return the variables for the corresponding optimizer. If
@@ -187,8 +185,7 @@ class RLAlgorithm(tf.Module):
         self._predict_state_spec = predict_state_spec
         self._action_distribution_spec = action_distribution_spec
         self._optimizers = common.as_list(optimizer)
-        self._enable_mixed_precision = enable_mixed_precision
-        if self._optimizers and self._enable_mixed_precision:
+        if self._optimizers and common.get_dtype() == tf.float16:
             self._optimizers = [
                 tf.compat.v1.train.experimental.
                 enable_mixed_precision_graph_rewrite(opt)
