@@ -27,25 +27,11 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-<<<<<<< HEAD
-=======
-from tf_agents.agents.tf_agent import LossInfo
-from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
-from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
-from tf_agents.networks.value_network import ValueNetwork
-from tf_agents.networks.value_rnn_network import ValueRnnNetwork
->>>>>>> RNN for target navigation
 from tf_agents.specs import tensor_spec
-from tf_agents.trajectories import trajectory
-from tf_agents.trajectories.policy_step import PolicyStep
-<<<<<<< HEAD
 from tf_agents.trajectories.time_step import StepType
 
-=======
 from tf_agents.utils import common as tfa_common
->>>>>>> RNN for target navigation
 from alf.utils import summary_utils, gin_utils
-from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
