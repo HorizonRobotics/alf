@@ -31,8 +31,8 @@ vocab_size=@get_vocab_size()  # must have sentence as part of observation
 
 num_embedding_dims=16
 fc_layer_params=(256,)
-get_conv_layers.conv_layer_params=((16, 3, 2), (32, 3, 2))
-conv_layers = @get_conv_layers()
+common.get_conv_layers.conv_layer_params=((16, 3, 2), (32, 3, 2))
+conv_layers = @common.get_conv_layers()
 sentence/generate_network.structure=(
     'tf.keras.Sequential',
         [('tf.keras.layers.Embedding', %vocab_size, %num_embedding_dims),
