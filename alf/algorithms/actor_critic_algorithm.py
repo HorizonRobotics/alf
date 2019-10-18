@@ -23,7 +23,6 @@ from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, namedtuple
 
-
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
 

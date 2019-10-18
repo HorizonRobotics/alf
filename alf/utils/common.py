@@ -29,9 +29,10 @@ import tensorflow_probability as tfp
 
 from tf_agents.specs import tensor_spec
 from tf_agents.trajectories.time_step import StepType
-
 from tf_agents.utils import common as tfa_common
+
 from alf.utils import summary_utils, gin_utils
+from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
