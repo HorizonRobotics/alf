@@ -14,7 +14,6 @@
 """Base class for RL algorithms."""
 
 from abc import abstractmethod
-import itertools
 import os
 import psutil
 from typing import Callable
@@ -84,7 +83,6 @@ class RLAlgorithm(Algorithm):
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  observation_transformer: Callable = None,
-                 train_step_counter=None,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
@@ -105,10 +103,6 @@ class RLAlgorithm(Algorithm):
                 immediate rewards
             observation_transformer (Callable): transformation applied to
                 `time_step.observation`
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time a new iteration is started. If None, it will use 
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             summarize_grads_and_vars (bool): If True, gradient and network
@@ -132,8 +126,6 @@ class RLAlgorithm(Algorithm):
         self._observation_transformer = observation_transformer
         self._exp_observers = []
         self._proc = psutil.Process(os.getpid())
-        self._train_step_counter = alf.utils.common.get_global_counter(
-            train_step_counter)
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
         self._summarize_action_distributions = summarize_action_distributions
@@ -162,6 +154,18 @@ class RLAlgorithm(Algorithm):
         """Return experience observers."""
         return self._exp_observers
 
+    @abstractmethod
+    def observe(self):
+        """An algorithm can decide what to do with experience."""
+        pass
+
+    def set_summary_settings(self,
+                             summarize_grads_and_vars=False,
+                             summarize_action_distributions=False):
+        """Set summary flags."""
+        self._summarize_grads_and_vars = summarize_grads_and_vars
+        self._summarize_action_distributions = summarize_action_distributions
+
     def add_reward_summary(self, name, rewards):
         if self._debug_summaries:
             tf.summary.histogram(name + "/value", rewards)
@@ -179,10 +183,8 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for training & loss info."""
 
         if self._summarize_grads_and_vars:
-            alf.utils.summary_utils.add_variables_summaries(
-                grads_and_vars, self._train_step_counter)
-            alf.utils.summary_utils.add_gradients_summaries(
-                grads_and_vars, self._train_step_counter)
+            alf.utils.summary_utils.add_variables_summaries(grads_and_vars)
+            alf.utils.summary_utils.add_gradients_summaries(grads_and_vars)
         if self._debug_summaries:
             alf.utils.common.add_action_summaries(training_info.action,
                                                   self._action_spec)
@@ -199,9 +201,7 @@ class RLAlgorithm(Algorithm):
                     name="collect_action_dist")
 
         for metric in self._metrics:
-            metric.tf_summaries(
-                train_step=self._train_step_counter,
-                step_metrics=self._metrics[:2])
+            metric.tf_summaries(step_metrics=self._metrics[:2])
 
         mem = tf.py_function(
             lambda: self._proc.memory_info().rss // 1e6, [],

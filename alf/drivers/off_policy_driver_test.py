@@ -56,8 +56,7 @@ def _create_sac_algorithm():
         actor_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
         critic_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
         alpha_optimizer=tf.optimizers.Adam(learning_rate=1e-1),
-        debug_summaries=True,
-        summarize_grads_and_vars=True)
+        debug_summaries=True)
 
 
 def _create_ddpg_algorithm():
@@ -73,8 +72,7 @@ def _create_ddpg_algorithm():
         critic_network=critic_net,
         actor_optimizer=tf.optimizers.Adam(learning_rate=1e-2),
         critic_optimizer=tf.optimizers.Adam(learning_rate=1e-1),
-        debug_summaries=True,
-        summarize_grads_and_vars=True)
+        debug_summaries=True)
 
 
 def _create_ppo_algorithm():
@@ -98,8 +96,7 @@ def _create_ppo_algorithm():
         value_network=value_net,
         loss_class=PPOLoss,
         optimizer=optimizer,
-        debug_summaries=True,
-        summarize_grads_and_vars=True)
+        debug_summaries=True)
 
 
 def _create_ac_algorithm():
@@ -116,8 +113,7 @@ def _create_ac_algorithm():
         value_network=value_net,
         loss_class=ActorCriticLoss,
         optimizer=optimizer,
-        debug_summaries=True,
-        summarize_grads_and_vars=True)
+        debug_summaries=True)
 
 
 class ThreadQueueTest(parameterized.TestCase, tf.test.TestCase):
@@ -224,6 +220,7 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
 
         common.set_global_env(env)
         algorithm = algorithm_ctor()
+        algorithm.set_summary_settings(summarize_grads_and_vars=True)
         algorithm.use_rollout_state = use_rollout_state
 
         if sync_driver:
@@ -259,16 +256,15 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
                     max_num_steps=batch_size * mini_batch_length * 2,
                     time_step=time_step,
                     policy_state=policy_state)
-                experience, _ = replayer.replay(
-                    sample_batch_size=128, mini_batch_length=mini_batch_length)
+                clear_replay_buffer = False
             else:
                 driver.run_async()
-                experience = replayer.replay_all()
+                clear_replay_buffer = True
 
-            driver.train(
-                experience,
+            driver.algorithm.train(
                 mini_batch_size=128,
-                mini_batch_length=mini_batch_length)
+                mini_batch_length=mini_batch_length,
+                clear_replay_buffer=clear_replay_buffer)
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)

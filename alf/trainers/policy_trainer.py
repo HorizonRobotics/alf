@@ -226,7 +226,8 @@ class Trainer(object):
         common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(
-            debug_summaries=self._debug_summaries,
+            debug_summaries=self._debug_summaries)
+        self._algorithm.set_summary_settings(
             summarize_grads_and_vars=self._summarize_grads_and_vars)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 

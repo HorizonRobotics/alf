@@ -54,8 +54,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  observers=[],
                  use_rollout_state=False,
                  metrics=[],
-                 exp_replayer="one_time",
-                 train_step_counter=None):
+                 exp_replayer="one_time"):
         """
         Args:
             envs (list[TFEnvironment]):  list of TFEnvironment
@@ -79,10 +78,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
         """
         super(AsyncOffPolicyDriver, self).__init__(
             env=envs[0],
@@ -90,8 +85,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             exp_replayer=exp_replayer,
             observers=observers,
             use_rollout_state=use_rollout_state,
-            metrics=metrics,
-            train_step_counter=train_step_counter)
+            metrics=metrics)
 
         # create threads
         self._coord = tf.train.Coordinator()

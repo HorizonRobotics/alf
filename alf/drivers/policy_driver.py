@@ -16,7 +16,6 @@ import abc
 import os
 from typing import Callable
 
-# import psutil
 import math
 import gin.tf
 import tensorflow as tf
@@ -39,8 +38,7 @@ class PolicyDriver(driver.Driver):
                  use_rollout_state=False,
                  metrics=[],
                  training=True,
-                 greedy_predict=False,
-                 train_step_counter=None):
+                 greedy_predict=False):
         """Create a PolicyDriver.
 
         Args:
@@ -55,10 +53,6 @@ class PolicyDriver(driver.Driver):
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
         """
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
@@ -88,8 +82,6 @@ class PolicyDriver(driver.Driver):
         self._algorithm = algorithm
         self._training = training
         self._greedy_predict = greedy_predict
-        self._train_step_counter = common.get_global_counter(
-            train_step_counter)
         if training:
             self._policy_state_spec = algorithm.train_state_spec
         else:

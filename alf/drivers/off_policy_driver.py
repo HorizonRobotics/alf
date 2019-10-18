@@ -49,8 +49,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  exp_replayer: str,
                  observers=[],
                  use_rollout_state=False,
-                 metrics=[],
-                 train_step_counter=None):
+                 metrics=[]):
         """Create an OffPolicyDriver.
 
         Args:
@@ -62,10 +61,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optional list of metrics.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
         """
         super(OffPolicyDriver, self).__init__(
             env=env,
@@ -74,8 +69,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             use_rollout_state=use_rollout_state,
             metrics=metrics,
             training=True,
-            greedy_predict=False,  # always use OnPolicyDriver for play/eval!
-            train_step_counter=train_step_counter)
+            greedy_predict=False)  # always use OnPolicyDriver for play/eval!
 
         self._exp_replayer = exp_replayer
         self._prepare_specs(algorithm)
@@ -125,29 +119,3 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
 
         algorithm.prepare_off_policy_specs(self._env.batch_size, time_step,
                                            self._exp_replayer, self._metrics)
-
-    @tf.function
-    def train(self,
-              experience: Experience,
-              num_updates=1,
-              mini_batch_size=None,
-              mini_batch_length=None):
-        """Train using `experience`.
-
-        Args:
-            experience (Experience): experience from replay_buffer. It is
-                assumed to be batch major.
-            num_updates (int): number of optimization steps
-            mini_batch_size (int): number of sequences for each minibatch
-            mini_batch_length (int): the length of the sequence for each
-                sample in the minibatch
-
-        Returns:
-            train_steps (int): the actual number of time steps that have been
-                trained (a step might be trained multiple times)
-        """
-        return self._algorithm.train(
-            experience,
-            num_updates=num_updates,
-            mini_batch_size=mini_batch_size,
-            mini_batch_length=mini_batch_length)

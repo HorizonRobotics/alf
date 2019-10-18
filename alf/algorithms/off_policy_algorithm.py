@@ -309,26 +309,35 @@ class OffPolicyAlgorithm(RLAlgorithm):
             collect_info=self._processed_experience_spec.info,
             collect_action_distribution=self._action_dist_param_spec)
 
-    @tf.function
     def train(self,
-              experience: Experience,
               num_updates=1,
               mini_batch_size=None,
-              mini_batch_length=None):
-        """Train using `experience`.
+              mini_batch_length=None,
+              clear_replay_buffer=True):
+        """Train algorithm.
 
         Args:
-            experience (Experience): experience from replay_buffer. It is
-                assumed to be batch major.
             num_updates (int): number of optimization steps
             mini_batch_size (int): number of sequences for each minibatch
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch
+            clear_replay_buffer (bool): whether use all data in replay buffer to
+                perform one update and then wiped clean
 
         Returns:
             train_steps (int): the actual number of time steps that have been
                 trained (a step might be trained multiple times)
         """
+
+        if mini_batch_size is None:
+            mini_batch_size = self._exp_replayer.batch_size
+        if clear_replay_buffer:
+            experience = self._exp_replayer.replay_all()
+            self._exp_replayer.clear()
+        else:
+            experience, _ = self._exp_replayer.replay(
+                sample_batch_size=mini_batch_size,
+                mini_batch_length=mini_batch_length)
 
         experience = self.transform_timestep(experience)
         experience = self.preprocess_experience(experience)
@@ -354,6 +363,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
             lambda x: tf.reshape(
                 x, common.concat_shape([-1, mini_batch_length],
                                        tf.shape(x)[2:])), experience)
+
+        return self._train(experience, num_updates, mini_batch_size,
+                           mini_batch_length)
+
+    @tf.function
+    def _train(self, experience, num_updates, mini_batch_size,
+               mini_batch_length):
+        """Train using experience."""
 
         batch_size = tf.shape(experience.step_type)[0]
         mini_batch_size = (mini_batch_size or batch_size)
@@ -386,7 +403,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     self.training_summary(training_info, loss_info,
                                           grads_and_vars)
 
-        self._train_step_counter.assign_add(1)
+        common.get_global_counter().assign_add(1)
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 

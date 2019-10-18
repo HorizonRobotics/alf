@@ -139,7 +139,7 @@ def histogram_continuous(name,
 
 
 @_summary_wrapper
-def add_variables_summaries(grads_and_vars, step):
+def add_variables_summaries(grads_and_vars, step=None):
     """Add summaries for variables.
 
     Args:
@@ -165,7 +165,7 @@ def add_variables_summaries(grads_and_vars, step):
 
 
 @_summary_wrapper
-def add_gradients_summaries(grads_and_vars, step):
+def add_gradients_summaries(grads_and_vars, step=None):
     """Add summaries to gradients.
 
     Args:

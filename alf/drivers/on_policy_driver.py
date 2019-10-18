@@ -72,8 +72,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                  training=True,
                  greedy_predict=False,
                  train_interval=20,
-                 final_step_mode=FINAL_STEP_REDO,
-                 train_step_counter=None):
+                 final_step_mode=FINAL_STEP_REDO):
         """Create an OnPolicyDriver.
 
         Args:
@@ -82,7 +81,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            # metrics (list[TFStepMetric]): An optional list of metrics.
+            metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
@@ -90,10 +89,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             final_step_mode (int): FINAL_STEP_REDO for redo the final step for
                 training. FINAL_STEP_SKIP for skipping the final step for
                 training. See the class comment for explanation.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
         """
         super(OnPolicyDriver, self).__init__(
             env=env,
@@ -101,8 +96,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             observers=observers,
             metrics=metrics,
             training=training,
-            greedy_predict=greedy_predict,
-            train_step_counter=train_step_counter)
+            greedy_predict=greedy_predict)
 
         self._final_step_mode = final_step_mode
 
@@ -265,7 +259,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         self._algorithm.training_summary(training_info, loss_info,
                                          grads_and_vars)
-
-        self._train_step_counter.assign_add(1)
+        common.get_global_counter().assign_add(1)
 
         return [next_time_step, next_state]

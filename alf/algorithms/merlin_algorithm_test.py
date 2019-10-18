@@ -41,10 +41,7 @@ class MerlinAlgorithmTest(tf.test.TestCase):
         env = TFPyEnvironment(env)
 
         algorithm = create_merlin_algorithm(
-            env,
-            learning_rate=1e-3,
-            debug_summaries=False,
-            summarize_grads_and_vars=False)
+            env, learning_rate=1e-3, debug_summaries=False)
         driver = OnPolicyDriver(env, algorithm, train_interval=6)
 
         eval_driver = OnPolicyDriver(env, algorithm, training=False)

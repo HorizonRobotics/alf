@@ -67,8 +67,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         loss=PPOLoss(
             action_spec=action_spec, gamma=1.0, debug_summaries=DEBUGGING),
         optimizer=optimizer,
-        debug_summaries=DEBUGGING,
-        summarize_grads_and_vars=DEBUGGING)
+        debug_summaries=DEBUGGING)
 
 
 class PpoTest(tf.test.TestCase):
@@ -85,8 +84,8 @@ class PpoTest(tf.test.TestCase):
         eval_env = TFPyEnvironment(eval_env)
 
         algorithm = create_algorithm(env, learning_rate=learning_rate)
+        algorithm.set_summary_settings(summarize_grads_and_vars=DEBUGGING)
         driver = SyncOffPolicyDriver(env, algorithm)
-        replayer = driver.algorithm.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
 
@@ -100,9 +99,7 @@ class PpoTest(tf.test.TestCase):
                 time_step=time_step,
                 policy_state=policy_state)
 
-            experience = replayer.replay_all()
-            driver.train(experience, num_updates=4, mini_batch_size=25)
-            replayer.clear()
+            algorithm.train(num_updates=4, mini_batch_size=25)
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)
