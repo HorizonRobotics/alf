@@ -417,7 +417,6 @@ def get_global_counter(default_counter=None):
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max)
 
-    Note: it treats an observation with len(shape)==4 as image
     Args:
         observation (nested Tensor): If observation is a nested structure, only
             namedtuple is supported for now.
