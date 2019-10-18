@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from absl import logging
-
-import gin.tf
 import tensorflow as tf
 
 import alf.utils.common as common
@@ -47,7 +44,6 @@ class ImageScaleTransformerTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
     from alf.utils.common import set_per_process_memory_growth
 
     set_per_process_memory_growth()
