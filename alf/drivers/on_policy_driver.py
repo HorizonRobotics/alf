@@ -157,11 +157,9 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         Returns:
             None
         """
-        maximum_iterations = math.ceil(
-            max_num_steps /
-            (self._env.batch_size *
-             (self._train_interval +
-              (self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP))))
+        steps_per_unroll = (self._env.batch_size * (self._train_interval + (
+            self._final_step_mode == OnPolicyDriver.FINAL_STEP_SKIP)))
+        maximum_iterations = math.ceil(max_num_steps / steps_per_unroll)
         [time_step, policy_state] = tf.while_loop(
             cond=lambda *_: True,
             body=self._iter,
@@ -169,7 +167,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             maximum_iterations=maximum_iterations,
             back_prop=False,
             name="")
-        return time_step, policy_state
+        return time_step, policy_state, maximum_iterations * steps_per_unroll
 
     def _train_loop_body(self, counter, time_step, policy_state,
                          training_info_ta):
