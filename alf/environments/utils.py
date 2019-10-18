@@ -19,7 +19,8 @@ import gin.tf
 from absl import logging
 import numpy as np
 
-from tf_agents.environments import suite_gym, parallel_py_environment, tf_py_environment
+from alf.environments import suite_gym
+from tf_agents.environments import parallel_py_environment, tf_py_environment
 
 
 class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):

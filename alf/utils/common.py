@@ -414,12 +414,16 @@ def get_global_counter(default_counter=None):
 
 
 @gin.configurable
-def image_scale_transformer(observation, min=-1.0, max=1.0):
+def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max)
 
     Note: it treats an observation with len(shape)==4 as image
     Args:
-        observation (nested Tensor): observations
+        observation (nested Tensor): If observation is a nested structure, only
+            namedtuple is supported for now.
+        fields (list[str]): the fields to be applied with the transformation. If
+            None, then `observation` must be a tf.Tensor with dtype uint8. A
+            field str can be a multi-step path denoted by "A.B.C".
         min (float): normalize minimum to this value
         max (float): normalize maximum to this value
     Returns:
@@ -427,17 +431,25 @@ def image_scale_transformer(observation, min=-1.0, max=1.0):
     """
 
     def _transform_image(obs):
-        # tf_agent changes all gym.spaces.Box observation to tf.float32.
-        # See _spec_from_gym_space() in tf_agents/environments/gym_wrapper.py
-        # TODO: this shape check is not a good one!
-        if len(obs.shape) >= 4:
-            if obs.dtype == tf.uint8:
-                obs = tf.cast(obs, tf.float32)
-            return ((max - min) / 255.) * obs + min
-        else:
-            return obs
+        assert isinstance(obs, tf.Tensor)
+        assert obs.dtype == tf.uint8, "Image must have dtype uint8!"
+        obs = tf.cast(obs, tf.float32)
+        return ((max - min) / 255.) * obs + min
 
-    return tf.nest.map_structure(_transform_image, observation)
+    def _traverse_path(obs, path):
+        """Traverse `path` and transform the image at the path end"""
+        if not path:
+            return _transform_image(obs)
+        step = path[0]
+        return obs._replace(
+            **{step: _traverse_path(getattr(obs, step), path[1:])})
+
+    fields = fields or [""]
+    for field in fields:
+        # remove '' in the path
+        path = [step for step in field.split(".") if step]
+        observation = _traverse_path(observation, path)
+    return observation
 
 
 @gin.configurable

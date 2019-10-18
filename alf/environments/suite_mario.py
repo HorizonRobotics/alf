@@ -16,7 +16,8 @@ import gym
 import numpy as np
 import gin
 
-from tf_agents.environments import suite_gym
+from alf.environments import suite_gym
+
 from tf_agents.environments import wrappers
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
@@ -82,9 +83,6 @@ def load(game,
         A PyEnvironmentBase instance.
     """
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
-
-    if spec_dtype_map is None:
-        spec_dtype_map = {gym.spaces.Box: np.float32}
 
     if max_episode_steps is None:
         max_episode_steps = 0

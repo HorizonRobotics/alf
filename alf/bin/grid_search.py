@@ -85,7 +85,8 @@ class GridSearchConfig(object):
     """
 
     _all_keys_ = [
-        "desc", "use_gpu", "gpus", "max_worker_num", "repeats", "parameters"
+        "desc", "comment", "use_gpu", "gpus", "max_worker_num", "repeats",
+        "parameters"
     ]
 
     def __init__(self, conf_file):

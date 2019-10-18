@@ -15,8 +15,8 @@
 import numpy as np
 import gym
 import gin.tf
-from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
+from alf.environments import suite_gym
 from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()

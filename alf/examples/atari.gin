@@ -1,5 +1,5 @@
 # environment config
-import tf_agents.environments.suite_gym
+import alf.environments.suite_gym
 import alf.environments.wrappers
 
 # Do not use suite_atari.load as it has some resetting issue!
