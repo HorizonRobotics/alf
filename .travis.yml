@@ -20,8 +20,8 @@ script:
   - travis_wait 30 sleep infinity & docker run
     -v $PWD:/ALF
     -w /ALF/
-    -e PYTHONPATH=/ALF
-    -it horizonrobotics/alf:dev_20190826
+    -e PYTHONPATH=/ALF/tf_agents:/ALF
+    -it horizonrobotics/alf:latest
     /ALF/.ci-cd/build.sh ${JOB}
 
 notifications:
