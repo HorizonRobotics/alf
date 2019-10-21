@@ -1,5 +1,6 @@
 import alf.algorithms.actor_critic_algorithm
 import alf.trainers.on_policy_trainer
+import alf.environments.suite_socialbot
 
 # environment config
 import alf.environments.wrappers

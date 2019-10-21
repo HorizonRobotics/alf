@@ -1,7 +1,5 @@
 include 'ppo.gin'
 
-
-
 # environment config
 
 # baseline ppo2 training command:

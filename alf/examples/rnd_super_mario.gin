@@ -4,11 +4,12 @@ import alf.algorithms.actor_critic_algorithm
 import alf.trainers.on_policy_trainer
 import alf.algorithms.rnd_algorithm
 
+import alf.environments.suite_mario
+
 # environment config
 # gym-retro>=0.7.0 is required for this experiment and also
 #  a suitable `SuperMarioBros-Nes` rom should be obtain and imported (roms are not included in gym-retro)
 #   see `https://retro.readthedocs.io/en/latest/getting_started.html#importing-roms` to import roms
-import alf.environments.suite_mario
 create_environment.env_load_fn=@suite_mario.load
 create_environment.env_name="SuperMarioBros-Nes"
 create_environment.num_parallel_environments=30

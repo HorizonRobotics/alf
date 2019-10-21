@@ -1,5 +1,7 @@
 include 'ppo.gin'
 
+import alf.environments.suite_socialbot
+
 # environment config
 
 # "SocialBot-ICubWalk-v0"

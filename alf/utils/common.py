@@ -755,14 +755,23 @@ def set_global_env(env):
 
 @gin.configurable
 def get_observation_spec():
-    """Get the `TensorSpec` of observations provided by the global environment
+    """Get the `TensorSpec` of observations provided by the global environment.
+
+    This spec is used for creating models only! All uint8 dtype will be converted
+    to tf.float32 as a temporary solution, to be consistent with
+    `image_scale_transformer()`. See
+
+    https://github.com/HorizonRobotics/alf/pull/239#issuecomment-544644558
 
     Returns:
       A `TensorSpec`, or a nested dict, list or tuple of
       `TensorSpec` objects, which describe the observation.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
-    return _env.observation_spec()
+    specs = _env.observation_spec()
+    return tf.nest.map_structure(
+        lambda spec: (tf.TensorSpec(spec.shape, tf.float32)
+                      if spec.dtype == tf.uint8 else spec), specs)
 
 
 @gin.configurable
