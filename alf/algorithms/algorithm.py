@@ -141,6 +141,9 @@ class Algorithm(tf.Module):
 
     @property
     def trainable_variables(self):
+        """Returns all trainable variables including child algorithms/modules.
+        Some variables might be optimized by optimizers of child algorithms.
+        """
         return sum([var_set for _, var_set in self._get_opt_and_var_sets()],
                    [])
 
@@ -156,28 +159,72 @@ class Algorithm(tf.Module):
         def _is_alg(obj):
             return isinstance(obj, Algorithm)
 
-        def _is_module_or_var(obj):
-            return ((isinstance(obj, tf.Variable) and obj.trainable)
-                    or (isinstance(obj, tf.Module)
-                        and not isinstance(obj, Algorithm)))
+        def _is_trainable_module(obj):
+            """Only return True if the module or var is trainable, to avoid
+            possible confusions shown in the optimizer info"""
+            return (isinstance(obj, tf.Module)
+                    and not isinstance(obj, Algorithm)
+                    and obj.trainable_variables)
+
+        def _is_trainable_var(obj):
+            """Only return True if the module or var is trainable, to avoid
+            possible confusions shown in the optimizer info"""
+            return isinstance(obj, tf.Variable) and obj.trainable
+
+        def _get_trainable_vars(obj):
+            if obj is None:
+                return []
+            if _is_trainable_module(obj):
+                return obj.trainable_variables
+            elif _is_trainable_var(obj):
+                return [obj]
+            else:
+                assert "%s is not a trainble module or variable!" % obj.name
 
         module_sets = [copy.copy(s) for s in self._init_module_sets]
         optimizers = copy.copy(self._init_optimizers)
-        module_ids = set(map(id, sum(module_sets, [])))
+        algorithm_names = [self.__class__.__name__] * len(optimizers)
+
+        # This set stores all the seen distinct variables so far in this alg
+        var_ids = set(
+            map(
+                id,
+                tf.nest.flatten(
+                    tf.nest.map_structure(_get_trainable_vars, module_sets))))
 
         for alg in self._get_children(_is_alg):
-            for opt, module_set in alg.get_optimizer_and_module_sets():
+            opt_and_module, child_var_ids = alg.get_optimizer_and_module_sets()
+            for alg_name, opt, module_set in opt_and_module:
                 if opt is not None:
                     optimizers.append(opt)
+                    algorithm_names.append(alg_name)
                     module_sets.append(module_set)
                 else:
                     module_sets[0].extend(module_set)
+                # The reason for updating module_ids set is that in the child
+                # alg modules, we might have members that point to their network
+                # variables
+            var_ids.update(child_var_ids)
 
-        for module in self._get_children(_is_module_or_var):
-            if id(module) not in module_ids:
+        # Module has a higher priority than Variable
+        for module in self._get_children(_is_trainable_module):
+            ids = set(map(id, module.trainable_variables))
+            new_ids = ids - var_ids
+            # all ids not appeared in var_ids; add the entire module (better info)
+            if new_ids == ids:
                 module_sets[0].append(module)
+            else:  # some variables have been added; the rest are added individually
+                module_sets[0].extend([
+                    v for v in module.trainable_variables if id(v) in new_ids
+                ])
+            var_ids.update(new_ids)
 
-        return list(zip(optimizers, module_sets))
+        for var in self._get_children(_is_trainable_var):
+            if id(var) not in var_ids:
+                module_sets[0].append(var)
+                var_ids.add(id(var))
+
+        return list(zip(algorithm_names, optimizers, module_sets)), var_ids
 
     def _get_children(self, predicate):
         module_dict = vars(self)
@@ -203,8 +250,8 @@ class Algorithm(tf.Module):
 
     def _get_opt_and_var_sets(self):
         opt_and_var_sets = []
-        optimizer_and_module_sets = self.get_optimizer_and_module_sets()
-        for opt, module_set in optimizer_and_module_sets:
+        optimizer_and_module_sets, _ = self.get_optimizer_and_module_sets()
+        for _, opt, module_set in optimizer_and_module_sets:
             vars = []
             for module in module_set:
                 if module is None:
@@ -217,17 +264,24 @@ class Algorithm(tf.Module):
                 else:
                     raise ValueError("Unsupported module type %s" % module)
             opt_and_var_sets.append((opt, vars))
+        # Check that each variable is optimized by only one optimizer
+        var_ids = [i for _, vars in opt_and_var_sets for i in map(id, vars)]
+        for _, vars in opt_and_var_sets:
+            for v in vars:
+                assert var_ids.count(id(v)) == 1, \
+                    ("Variable '%s' is optimized by multiple optimizers!" % v.name)
         return opt_and_var_sets
 
     def get_optimizer_info(self):
         """Return the optimizer info for all the modules in a string.
         """
-        optimizer_and_module_sets = self.get_optimizer_and_module_sets()
+        optimizer_and_module_sets, _ = self.get_optimizer_and_module_sets()
         optimizer_info = []
-        for opt, module_set in optimizer_and_module_sets:
+        for alg_name, opt, module_set in optimizer_and_module_sets:
             optimizer_info.append(
-                "optimizer %s: modules %s" % (opt.get_config(), ' '.join(
-                    [m.name for m in module_set if m is not None])))
+                "Algorithm: \"%s\" Optimizer: \"%s\" Modules: \"%s\"" \
+                    % (alg_name, opt.get_config(), '; '.join(
+                        sorted([m.name for m in module_set if m is not None]))))
         return '\n\n'.join(optimizer_info)
 
     @property
