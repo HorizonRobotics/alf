@@ -266,7 +266,8 @@ class Algorithm(tf.Module):
                 else:
                     raise ValueError("Unsupported module type %s" % module)
             opt_and_var_sets.append((opt, vars))
-        # Check that each variable is optimized by at one and only one optimizer
+        # Check that each trainable variable is handled by one and only one
+        # optimizer (although it might not have any gradient).
         var_ids = sum([list(map(id, vars)) for _, vars in opt_and_var_sets],
                       [])
         for opt, vars in opt_and_var_sets:
