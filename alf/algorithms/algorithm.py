@@ -154,6 +154,9 @@ class Algorithm(tf.Module):
             list[tuple(Opimizer, list[Module])]: optimizer can be None, which
                 means that no optimizer is specified for the corresponding
                 modules.
+            var_ids (set[int]): a set of variable ids including all distinct
+                trainable variables from the current algorithm towards the
+                hierarchy below; used to check duplicates
         """
 
         def _is_alg(obj):
@@ -263,12 +266,14 @@ class Algorithm(tf.Module):
                 else:
                     raise ValueError("Unsupported module type %s" % module)
             opt_and_var_sets.append((opt, vars))
-        # Check that each variable is optimized by only one optimizer
-        var_ids = [i for _, vars in opt_and_var_sets for i in map(id, vars)]
-        for _, vars in opt_and_var_sets:
+        # Check that each variable is optimized by at one and only one optimizer
+        var_ids = sum([list(map(id, vars)) for _, vars in opt_and_var_sets],
+                      [])
+        for opt, vars in opt_and_var_sets:
             for v in vars:
                 assert var_ids.count(id(v)) == 1, \
-                    ("Variable '%s' is optimized by multiple optimizers!" % v.name)
+                    ("Variable '%s' is optimized by %d optimizers!" %
+                        (v.name, var_ids.count(id(v))))
         return opt_and_var_sets
 
     def get_optimizer_info(self):
