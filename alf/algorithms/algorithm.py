@@ -201,9 +201,8 @@ class Algorithm(tf.Module):
                     module_sets.append(module_set)
                 else:
                     module_sets[0].extend(module_set)
-                # The reason for updating module_ids set is that in the child
-                # alg modules, we might have members that point to their network
-                # variables
+            # The reason for updating var_ids set is that we might have members
+            # referring to network variables in children
             var_ids.update(child_var_ids)
 
         # Module has a higher priority than Variable
