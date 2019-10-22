@@ -177,8 +177,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         processed_exp = algorithm.preprocess_experience(
             algorithm.transform_timestep(exp))
         self._processed_experience_spec = self._experience_spec._replace(
-            info=common.extract_spec(processed_exp.info))._replace(
-                observation=common.extract_spec(processed_exp.observation))
+            info=common.extract_spec(processed_exp.info),
+            observation=common.extract_spec(processed_exp.observation))
 
         policy_step = common.algorithm_step(algorithm.train_step,
                                             processed_exp, initial_state)
