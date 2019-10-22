@@ -419,7 +419,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
 
     Args:
         observation (nested Tensor): If observation is a nested structure, only
-            namedtuple is supported for now.
+            namedtuple and dict are supported for now.
         fields (list[str]): the fields to be applied with the transformation. If
             None, then `observation` must be a tf.Tensor with dtype uint8. A
             field str can be a multi-step path denoted by "A.B.C".
@@ -440,8 +440,16 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         if not path:
             return _transform_image(obs)
         step = path[0]
-        return obs._replace(
-            **{step: _traverse_path(getattr(obs, step), path[1:])})
+        if isinstance(obs, tuple) and hasattr(obs, '_fields'):
+            new_val = _traverse_path(getattr(obs, step), path[1:])
+            return obs._replace(**{step: new_val})
+        elif isinstance(obs, dict):
+            new_obs = obs.copy()
+            new_obs[step] = _traverse_path(obs[step], path[1:])
+            return new_obs
+        else:
+            raise TypeError(("If observation is a nest, it must be either " +
+                             "a dict or namedtuple!"))
 
     fields = fields or [""]
     for field in fields:

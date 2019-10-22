@@ -42,6 +42,9 @@ class ImageScaleTransformerTest(tf.test.TestCase):
             common.image_scale_transformer(
                 observation, fields=["x.b.m"])  # empty ()
 
+        observation = dict(x=dict(a=observation.x.a))
+        common.image_scale_transformer(observation, fields=["x.a"])
+
 
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
