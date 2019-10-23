@@ -151,9 +151,9 @@ class Algorithm(tf.Module):
         """Get the optimizers and the corresponding module sets.
 
         Returns:
-            list[tuple(Opimizer, list[Module])]: optimizer can be None, which
-                means that no optimizer is specified for the corresponding
-                modules.
+            list[tuple(Algorithm_name, Opimizer, list[Module])]: optimizer
+                can be None, which means that no optimizer is specified for the
+                corresponding modules.
             var_ids (set[int]): a set of variable ids including all distinct
                 trainable variables from the current algorithm towards the
                 hierarchy below; used to check duplicates
@@ -186,7 +186,7 @@ class Algorithm(tf.Module):
 
         module_sets = [copy.copy(s) for s in self._init_module_sets]
         optimizers = copy.copy(self._init_optimizers)
-        algorithm_names = [self.__class__.__name__] * len(optimizers)
+        algorithm_names = [self.name] * len(optimizers)
 
         # This set stores all the seen distinct variables so far in this alg
         var_ids = set(
@@ -216,9 +216,15 @@ class Algorithm(tf.Module):
             if new_ids == ids:
                 module_sets[0].append(module)
             else:  # some variables have been added; the rest are added individually
-                module_sets[0].extend([
+                rest_vars = [
                     v for v in module.trainable_variables if id(v) in new_ids
-                ])
+                ]
+                rest_var_names = [v.name for v in rest_vars]
+                logging.warning(
+                    ("Variables %s might have an optimizer different from" +
+                     " what their parent module %s does") % (rest_var_names,
+                                                             module.name))
+                module_sets[0].extend(rest_vars)
             var_ids.update(new_ids)
 
         for var in self._get_children(_is_trainable_var):
@@ -285,8 +291,9 @@ class Algorithm(tf.Module):
         for alg_name, opt, module_set in optimizer_and_module_sets:
             optimizer_info.append(
                 "Algorithm: \"%s\" Optimizer: \"%s\" Modules: \"%s\"" \
-                    % (alg_name, opt.get_config(), '; '.join(
-                        sorted([m.name for m in module_set if m is not None]))))
+                    % (alg_name,
+                       opt.get_config() if opt is not None else None,
+                       '; '.join(sorted([m.name for m in module_set if m is not None]))))
         return '\n\n'.join(optimizer_info)
 
     @property
