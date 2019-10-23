@@ -123,7 +123,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         self._time_step_spec = common.extract_spec(time_step)
         self._action_spec = self._env.action_spec()
 
-        policy_step = algorithm.rollout(time_step, self._initial_state)
+        policy_step = algorithm.rollout(
+            algorithm.transform_timestep(time_step), self._initial_state)
         info_spec = common.extract_spec(policy_step.info)
         self._policy_step_spec = PolicyStep(
             action=self._action_spec,
@@ -173,12 +174,14 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             action_distribution=action_dist,
             state=initial_state if self._use_rollout_state else ())
 
-        processed_exp = algorithm.preprocess_experience(exp)
+        processed_exp = algorithm.preprocess_experience(
+            algorithm.transform_timestep(exp))
         self._processed_experience_spec = self._experience_spec._replace(
-            info=common.extract_spec(processed_exp.info))
+            info=common.extract_spec(processed_exp.info),
+            observation=common.extract_spec(processed_exp.observation))
 
-        policy_step = common.algorithm_step(algorithm.train_step, exp,
-                                            initial_state)
+        policy_step = common.algorithm_step(algorithm.train_step,
+                                            processed_exp, initial_state)
         info_spec = common.extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
             action=self._action_spec,

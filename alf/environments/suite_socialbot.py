@@ -23,9 +23,10 @@ import contextlib
 import socket
 import gym
 from fasteners.process_lock import InterProcessLock
-from tf_agents.environments import suite_gym, wrappers
+from tf_agents.environments import wrappers
 import gin.tf
 
+from alf.environments import suite_gym
 from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
 
 DEFAULT_SOCIALBOT_PORT = 11345

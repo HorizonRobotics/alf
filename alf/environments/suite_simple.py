@@ -17,9 +17,9 @@ import gym
 import numpy as np
 import gin
 
-from tf_agents.environments import suite_gym
 from tf_agents.environments import wrappers
 
+from alf.environments import suite_gym
 from alf.environments.simple.noisy_array import NoisyArray
 from alf.environments.wrappers import FrameSkip, FrameStack
 
