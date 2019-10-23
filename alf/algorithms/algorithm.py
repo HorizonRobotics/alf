@@ -290,7 +290,7 @@ class Algorithm(tf.Module):
         optimizer_info = []
         for alg_name, opt, module_set in optimizer_and_module_sets:
             optimizer_info.append(
-                "Algorithm: \"%s\" Optimizer: \"%s\" Modules: \"%s\"" \
+                'Algorithm: "%s" Optimizer: "%s" Modules: "%s"' \
                     % (alg_name,
                        opt.get_config() if opt is not None else None,
                        '; '.join(sorted([m.name for m in module_set if m is not None]))))
