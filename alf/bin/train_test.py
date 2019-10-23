@@ -18,7 +18,9 @@ import io
 import subprocess
 from pathlib import Path
 import numpy as np
+import sys
 
+import logging as sys_logging
 from absl import logging
 import tensorflow as tf
 
@@ -34,17 +36,22 @@ def run_and_stream(cmd, cwd):
         cwd (str): working directory for the process
     """
     logging.info("Running %s", " ".join(cmd))
+
+    logger = logging.ABSLLogger('')
+    handler = sys_logging.StreamHandler(sys.stderr)
+    handler.setFormatter(sys_logging.Formatter('%(message)s'))
+    logger.addHandler(handler)
+
     process = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
 
     while process.poll() is None:
         with io.TextIOWrapper(process.stdout, encoding="utf-8") as text_io:
             for line in text_io:
-                logging.info(line.strip())
+                logger.info(line.strip())
 
-    if process.returncode != 0:
-        logging.error("cmd: {0} exited with code {1}".format(
-            " ".join(cmd), process.returncode))
+    assert process.returncode == 0, ("cmd: {0} exit abnormally".format(
+        " ".join(cmd)))
 
 
 def get_metrics_from_eval_tfevents(eval_dir):
