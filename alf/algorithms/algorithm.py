@@ -172,9 +172,6 @@ class Algorithm(tf.Module):
             list[tuple(Algorithm_name, Opimizer, list[Module])]: optimizer
                 can be None, which means that no optimizer is specified for the
                 corresponding modules.
-            vars (list[tf.Variable]): a list of variables including all distinct
-                trainable variables from the current algorithm towards the
-                hierarchy below; used to check duplicates
         """
 
         def _is_alg(obj):
@@ -208,25 +205,30 @@ class Algorithm(tf.Module):
         init_module_ids = set(map(id, sum(module_sets, [])))
 
         # This set stores all the seen distinct variables so far in this alg
-        vars = tf.nest.flatten(
-            tf.nest.map_structure(_get_trainable_vars, module_sets))
-        var_ids = set(map(id, vars))
+        var_ids = set(
+            map(
+                id,
+                tf.nest.flatten(
+                    tf.nest.map_structure(_get_trainable_vars, module_sets))))
 
-        def _check_vars(new_vars):
+        def _check_module_or_var(new_module_or_var):
+            if isinstance(new_module_or_var, tf.Module):
+                new_vars = new_module_or_var.trainable_variables
+            else:
+                new_vars = [new_module_or_var]
             new_var_ids = set(map(id, new_vars))
             dup_ids = var_ids & new_var_ids
-            dup_vars = [v for v in new_vars if id(v) in dup_ids]
-            assert not dup_vars, \
+            assert not dup_ids, \
                 (("Variables %s might have multiple optimizers! Consider "
                  + "specifying attributes in _trainable_attributes_to_ignore()")
-                 % [v.name for v in dup_vars])
+                 % new_module_or_var.name)
             var_ids.update(new_var_ids)
-            vars.extend(new_vars)
 
         for alg in self._get_children(_is_alg):
-            opt_and_module, child_vars = alg.get_optimizer_and_module_sets()
-            _check_vars(child_vars)
+            opt_and_module = alg.get_optimizer_and_module_sets()
             for alg_name, opt, module_set in opt_and_module:
+                for m in module_set:
+                    _check_module_or_var(m)
                 if opt is not None:
                     optimizers.append(opt)
                     algorithm_names.append(alg_name)
@@ -234,17 +236,18 @@ class Algorithm(tf.Module):
                 else:
                     module_sets[0].extend(module_set)
 
-        for module in self._get_children(_is_trainable_module):
-            if id(module) not in init_module_ids:  # exclude already set
-                _check_vars(module.trainable_variables)
-                module_sets[0].append(module)
-
         for var in self._get_children(_is_trainable_var):
-            if id(var) not in init_module_ids:  # exclude already set
-                _check_vars([var])
+            if id(var) not in init_module_ids:  # exclude already init-ed
+                _check_module_or_var(var)
                 module_sets[0].append(var)
 
-        return list(zip(algorithm_names, optimizers, module_sets)), vars
+        # Prefer to report errors on module level
+        for module in self._get_children(_is_trainable_module):
+            if id(module) not in init_module_ids:  # exclude already init-ed
+                _check_module_or_var(module)
+                module_sets[0].append(module)
+
+        return list(zip(algorithm_names, optimizers, module_sets))
 
     def _get_children(self, predicate):
         module_dict = vars(self)
@@ -252,12 +255,11 @@ class Algorithm(tf.Module):
         ids = set()
         for key in sorted(module_dict):
             attr = module_dict[key]
-            if key in [
+            if (key in [
                     '_init_optimizers', '_cached_opt_and_var_sets',
-                    '_init_module_sets',
-                    "_self_unconditional_checkpoint_dependencies",
-                    "_self_unconditional_dependency_names"
-            ] or key in self._trainable_attributes_to_ignore():
+                    '_init_module_sets'
+            ] or key in self._TF_MODULE_IGNORED_PROPERTIES
+                    or key in self._trainable_attributes_to_ignore()):
                 continue
             for leaf in tf.nest.flatten(attr):
                 if predicate(leaf) and not id(leaf) in ids:
@@ -272,7 +274,7 @@ class Algorithm(tf.Module):
 
     def _get_opt_and_var_sets(self):
         opt_and_var_sets = []
-        optimizer_and_module_sets, _ = self.get_optimizer_and_module_sets()
+        optimizer_and_module_sets = self.get_optimizer_and_module_sets()
         for _, opt, module_set in optimizer_and_module_sets:
             vars = []
             for module in module_set:
@@ -300,7 +302,7 @@ class Algorithm(tf.Module):
     def get_optimizer_info(self):
         """Return the optimizer info for all the modules in a string.
         """
-        optimizer_and_module_sets, _ = self.get_optimizer_and_module_sets()
+        optimizer_and_module_sets = self.get_optimizer_and_module_sets()
         optimizer_info = []
         for alg_name, opt, module_set in optimizer_and_module_sets:
             optimizer_info.append(
