@@ -220,11 +220,21 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """
         return experience
 
-    def prepare_off_policy_specs(self, env_batch_size,
-                                 time_step: ActionTimeStep, exp_replayer: str,
-                                 metrics):
+    def prepare_exp_replayer(self, exp_replayer: str):
+        """Prepare experience replayer."""
+
+        if exp_replayer == "one_time":
+            self._exp_replayer = OnetimeExperienceReplayer()
+        elif exp_replayer == "uniform":
+            self._exp_replayer = SyncUniformExperienceReplayer(
+                self._experience_spec, self._env_batch_size)
+        else:
+            raise ValueError("invalid experience replayer name")
+        self.add_experience_observer(self._exp_replayer.observe)
+
+    def prepare_off_policy_specs(self, time_step: ActionTimeStep):
         """Prepare various tensor specs for off_policy training.
-        
+
         prepare_off_policy_specs is called by OffPolicyDriver._prepare_spec().
 
         """
@@ -233,10 +243,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
             return tf.nest.map_structure(
                 lambda t: tf.TensorSpec(t.shape[1:], t.dtype), nest)
 
-        self._metrics = metrics
+        self._env_batch_size = time_step.step_type.shape[0]
         self._time_step_spec = extract_spec(time_step)
         initial_state = common.get_initial_policy_state(
-            env_batch_size, self.train_state_spec)
+            self._env_batch_size, self.train_state_spec)
         policy_step = self.rollout(time_step, initial_state)
         info_spec = extract_spec(policy_step.info)
 
@@ -265,17 +275,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
             action_distribution=self._action_dist_param_spec,
             state=self.train_state_spec if self._use_rollout_state else ())
 
-        if exp_replayer == "one_time":
-            self._exp_replayer = OnetimeExperienceReplayer()
-        elif exp_replayer == "uniform":
-            self._exp_replayer = SyncUniformExperienceReplayer(
-                self._experience_spec, env_batch_size)
-        else:
-            raise ValueError("invalid experience replayer name")
-        self.add_experience_observer(self._exp_replayer.observe)
-
         action_dist_params = common.zero_tensor_from_nested_spec(
-            self._experience_spec.action_distribution, env_batch_size)
+            self._experience_spec.action_distribution, self._env_batch_size)
         action_dist = nested_distributions_from_specs(
             self._action_distribution_spec, action_dist_params)
 
@@ -339,6 +340,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 sample_batch_size=mini_batch_size,
                 mini_batch_length=mini_batch_length)
 
+        return self._train(experience, num_updates, mini_batch_size,
+                           mini_batch_length)
+
+    @tf.function
+    def _train(self, experience, num_updates, mini_batch_size,
+               mini_batch_length):
+        """Train using experience."""
+
         experience = self.transform_timestep(experience)
         experience = self.preprocess_experience(experience)
 
@@ -363,14 +372,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
             lambda x: tf.reshape(
                 x, common.concat_shape([-1, mini_batch_length],
                                        tf.shape(x)[2:])), experience)
-
-        return self._train(experience, num_updates, mini_batch_size,
-                           mini_batch_length)
-
-    @tf.function
-    def _train(self, experience, num_updates, mini_batch_size,
-               mini_batch_length):
-        """Train using experience."""
 
         batch_size = tf.shape(experience.step_type)[0]
         mini_batch_size = (mini_batch_size or batch_size)

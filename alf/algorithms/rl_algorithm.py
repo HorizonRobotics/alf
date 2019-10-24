@@ -159,6 +159,10 @@ class RLAlgorithm(Algorithm):
         """An algorithm can decide what to do with experience."""
         pass
 
+    def prepare_metrics(self, metrics=[]):
+        """ Prepare metrics."""
+        self._metrics = metrics
+
     def set_summary_settings(self,
                              summarize_grads_and_vars=False,
                              summarize_action_distributions=False):

@@ -101,6 +101,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         self._final_step_mode = final_step_mode
 
         if training:
+            algorithm.prepare_metrics(self._metrics)
             self._prepare_specs(algorithm)
             self._trainable_variables = algorithm.trainable_variables
             self._train_interval = train_interval
@@ -124,8 +125,6 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
             info=info_spec)
-
-        algorithm.prepare_on_policy_specs(metrics=self._metrics)
 
     def _run(self, max_num_steps, time_step, policy_state):
         if self._training:

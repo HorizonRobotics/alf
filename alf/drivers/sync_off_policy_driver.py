@@ -80,6 +80,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             observers=observers,
             use_rollout_state=use_rollout_state,
             metrics=metrics)
+        algorithm.prepare_metrics(self.get_metrics())
 
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""

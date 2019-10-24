@@ -69,8 +69,3 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             observation=exp.observation,
             prev_action=exp.prev_action)
         return self.rollout(time_step, state, with_experience=True)
-
-    def prepare_on_policy_specs(self, metrics=[]):
-        """ Prepare metrics."""
-
-        self._metrics = metrics

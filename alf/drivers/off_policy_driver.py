@@ -71,8 +71,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             training=True,
             greedy_predict=False)  # always use OnPolicyDriver for play/eval!
 
-        self._exp_replayer = exp_replayer
         self._prepare_specs(algorithm)
+        algorithm.prepare_exp_replayer(exp_replayer)
 
     def start(self):
         """
@@ -117,5 +117,4 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             lambda spec: spec.input_params_spec,
             self._action_distribution_spec)
 
-        algorithm.prepare_off_policy_specs(self._env.batch_size, time_step,
-                                           self._exp_replayer, self._metrics)
+        algorithm.prepare_off_policy_specs(time_step)
