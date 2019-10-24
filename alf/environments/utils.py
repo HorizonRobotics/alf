@@ -59,6 +59,8 @@ class ThreadPyEnvironment(py_environment.PyEnvironment):
 
     def close(self):
         self._apply('close')
+        self._pool.close()
+        self._pool.join()
 
     def render(self, mode='rgb_array'):
         return self._apply('render', (mode, ))
