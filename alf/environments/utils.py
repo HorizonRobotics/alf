@@ -11,6 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# multiprocessing.dummy provides a pure *multithreaded* threadpool that works
+# in both python2 and python3 (concurrent.futures isn't available in python2).
+#   https://docs.python.org/2/library/multiprocessing.html#module-multiprocessing.dummy
+from multiprocessing import dummy as mp_threads
+
 import random
 import sys
 import traceback
@@ -20,7 +26,52 @@ from absl import logging
 import numpy as np
 
 from alf.environments import suite_gym
-from tf_agents.environments import parallel_py_environment, tf_py_environment
+from tf_agents.environments import parallel_py_environment
+from tf_agents.environments import tf_py_environment
+from tf_agents.environments import py_environment
+
+
+class ThreadPyEnvironment(py_environment.PyEnvironment):
+    """Create, Step a single env in a separate thread
+    """
+
+    def __init__(self, env_constructor):
+        """Create a ThreadPyEnvironment
+
+        Args:
+            env_constructor (Callable): env_constructor for the OpenAI Gym environment
+        """
+        super().__init__()
+        self._pool = mp_threads.Pool(1)
+        self._env = self._pool.apply(env_constructor)
+
+    def observation_spec(self):
+        return self._apply('observation_spec')
+
+    def action_spec(self):
+        return self._apply('action_spec')
+
+    def _step(self, action):
+        return self._apply('step', (action, ))
+
+    def _reset(self):
+        return self._apply('reset')
+
+    def close(self):
+        self._apply('close')
+
+    def render(self, mode='rgb_array'):
+        return self._apply('render', (mode, ))
+
+    def seed(self, seed):
+        self._apply('seed', (seed, ))
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def _apply(self, name, args=()):
+        func = getattr(self._env, name)
+        return self._pool.apply(func, args)
 
 
 class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
@@ -156,7 +207,11 @@ def create_environment(env_name='CartPole-v0',
     """
     if nonparallel:
         # Each time we can only create one unwrapped env at most
-        py_env = env_load_fn(env_name)
+
+        # Create and step the env in a separate thread, env `step` and `reset` must
+        #   run in the same thread which the env created in for some simulation
+        #   environments such as social_bot(gazebo)
+        py_env = ThreadPyEnvironment(lambda: env_load_fn(env_name))
         py_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
     else:
         py_env = parallel_py_environment.ParallelPyEnvironment(
