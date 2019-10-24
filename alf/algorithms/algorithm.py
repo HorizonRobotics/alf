@@ -147,6 +147,24 @@ class Algorithm(tf.Module):
         return sum([var_set for _, var_set in self._get_opt_and_var_sets()],
                    [])
 
+    def _trainable_attributes_to_ignore(self):
+        """Algorithms can overwrite this function to provide which class
+        member names should be ignored when getting trainable variables, to
+        avoid being assigned with multiple optimizers.
+
+        For example, if in your algorithm you've created a member self._vars
+        pointing to the variables of a module for some purpose, you can avoid
+        assigning an optimizer to self._vars (because the module will be assigned
+        with one) by doing:
+
+            def _trainable_attributes_to_ignore(self):
+                return ["_vars"]
+
+        Returns:
+            names (list[str]): a list of attribute names to ignore
+        """
+        return []
+
     def get_optimizer_and_module_sets(self):
         """Get the optimizers and the corresponding module sets.
 
@@ -154,7 +172,7 @@ class Algorithm(tf.Module):
             list[tuple(Algorithm_name, Opimizer, list[Module])]: optimizer
                 can be None, which means that no optimizer is specified for the
                 corresponding modules.
-            var_ids (set[int]): a set of variable ids including all distinct
+            vars (list[tf.Variable]): a list of variables including all distinct
                 trainable variables from the current algorithm towards the
                 hierarchy below; used to check duplicates
         """
@@ -187,16 +205,27 @@ class Algorithm(tf.Module):
         module_sets = [copy.copy(s) for s in self._init_module_sets]
         optimizers = copy.copy(self._init_optimizers)
         algorithm_names = [self.name] * len(optimizers)
+        init_module_ids = set(map(id, sum(module_sets, [])))
 
         # This set stores all the seen distinct variables so far in this alg
-        var_ids = set(
-            map(
-                id,
-                tf.nest.flatten(
-                    tf.nest.map_structure(_get_trainable_vars, module_sets))))
+        vars = tf.nest.flatten(
+            tf.nest.map_structure(_get_trainable_vars, module_sets))
+        var_ids = set(map(id, vars))
+
+        def _check_vars(new_vars):
+            new_var_ids = set(map(id, new_vars))
+            dup_ids = var_ids & new_var_ids
+            dup_vars = [v for v in new_vars if id(v) in dup_ids]
+            assert not dup_vars, \
+                (("Variables %s might have multiple optimizers! Consider "
+                 + "specifying attributes in _trainable_attributes_to_ignore()")
+                 % [v.name for v in dup_vars])
+            var_ids.update(new_var_ids)
+            vars.extend(new_vars)
 
         for alg in self._get_children(_is_alg):
-            opt_and_module, child_var_ids = alg.get_optimizer_and_module_sets()
+            opt_and_module, child_vars = alg.get_optimizer_and_module_sets()
+            _check_vars(child_vars)
             for alg_name, opt, module_set in opt_and_module:
                 if opt is not None:
                     optimizers.append(opt)
@@ -204,35 +233,18 @@ class Algorithm(tf.Module):
                     module_sets.append(module_set)
                 else:
                     module_sets[0].extend(module_set)
-            # The reason for updating var_ids set is that we might have members
-            # referring to network variables in children
-            var_ids.update(child_var_ids)
 
-        # Module has a higher priority than Variable
         for module in self._get_children(_is_trainable_module):
-            ids = set(map(id, module.trainable_variables))
-            new_ids = ids - var_ids
-            # all ids not appeared in var_ids; add the entire module (better info)
-            if new_ids == ids:
+            if id(module) not in init_module_ids:  # exclude already set
+                _check_vars(module.trainable_variables)
                 module_sets[0].append(module)
-            else:  # some variables have been added; the rest are added individually
-                rest_vars = [
-                    v for v in module.trainable_variables if id(v) in new_ids
-                ]
-                rest_var_names = [v.name for v in rest_vars]
-                logging.warning(
-                    ("Variables %s might have an optimizer different from" +
-                     " what their parent module %s does") % (rest_var_names,
-                                                             module.name))
-                module_sets[0].extend(rest_vars)
-            var_ids.update(new_ids)
 
         for var in self._get_children(_is_trainable_var):
-            if id(var) not in var_ids:
+            if id(var) not in init_module_ids:  # exclude already set
+                _check_vars([var])
                 module_sets[0].append(var)
-                var_ids.add(id(var))
 
-        return list(zip(algorithm_names, optimizers, module_sets)), var_ids
+        return list(zip(algorithm_names, optimizers, module_sets)), vars
 
     def _get_children(self, predicate):
         module_dict = vars(self)
@@ -242,8 +254,10 @@ class Algorithm(tf.Module):
             attr = module_dict[key]
             if key in [
                     '_init_optimizers', '_cached_opt_and_var_sets',
-                    '_init_module_sets'
-            ]:
+                    '_init_module_sets',
+                    "_self_unconditional_checkpoint_dependencies",
+                    "_self_unconditional_dependency_names"
+            ] or key in self._trainable_attributes_to_ignore():
                 continue
             for leaf in tf.nest.flatten(attr):
                 if predicate(leaf) and not id(leaf) in ids:
