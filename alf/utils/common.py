@@ -799,6 +799,21 @@ def get_observation_spec():
 
 
 @gin.configurable
+def get_states_shape():
+    """Get the tensor shape of internal states of the agent provided by
+      the global environment
+
+    Returns:
+      list of ints.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    assert isinstance(_env.observation_spec(), dict), "observation not a dict"
+    assert 'states' in _env.observation_spec(
+    ), "set a global env by `set_global_env` before using the function"
+    return _env.observation_spec()['states'].shape
+
+
+@gin.configurable
 def get_action_spec():
     """Get the specs of the Tensors expected by `step(action)` of the global environment.
 
@@ -921,6 +936,24 @@ def get_conv_layers(conv_layer_params):
     layers.append(tf.keras.layers.Flatten())
     image_processing_layers = tf.keras.Sequential(layers)
     return image_processing_layers
+
+
+@gin.configurable
+def get_identity_layer(input_shape, batch_size):
+    """Generate an Identity Layer of input_shape and batch_size.
+
+    Args:
+      input_shape (list of ints): input tensor shape.
+      batch_size (int): batch size.
+
+    Returns:
+      A network that passes input directly to output.
+    """
+    x = tf.keras.Sequential()
+    x.add(
+        tf.keras.layers.Lambda(
+            lambda x: x + 0, input_shape=input_shape, batch_size=batch_size))
+    return x
 
 
 @gin.configurable

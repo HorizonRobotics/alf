@@ -2,12 +2,15 @@ include 'ac_simple_navigation.gin'
 
 CHANNEL_ORDER='channels_last'
 FrameStack.channel_order=%CHANNEL_ORDER
-FrameStack.field_to_stack='image'  # due to observation including image and sentence
 
-create_environment.num_parallel_environments=30
+batch_size=30
+create_environment.num_parallel_environments=%batch_size
 
-create_environment.env_name='SocialBot-GroceryGroundImageLanguage-v0'
-GroceryGround.resized_image_size=(128, 128)
+create_environment.env_name='SocialBot-GroceryGround-v0'
+GroceryGround.use_image_observation=True
+GroceryGround.image_with_internal_states=True
+GroceryGround.with_language=True
+GroceryGround.resized_image_size=(84, 84)
 
 GroceryGround.image_data_format=%CHANNEL_ORDER
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
@@ -23,9 +26,10 @@ ActorDistributionRnnNetwork.lstm_size=(128, 128)
 ValueRnnNetwork.activation_fn=@tf.nn.elu
 ValueRnnNetwork.lstm_size=(128, 128)
 
-ac/Adam.learning_rate=2e-4
+ac/Adam.learning_rate=4e-4
 
 observation_spec=@get_observation_spec()
+states_shape=@get_states_shape()
 action_spec=@get_action_spec()
 vocab_size=@get_vocab_size()  # must have sentence as part of observation
 
@@ -33,6 +37,11 @@ num_embedding_dims=16
 fc_layer_params=(256,)
 common.get_conv_layers.conv_layer_params=((16, 3, 2), (32, 3, 2))
 conv_layers = @common.get_conv_layers()
+
+states/get_identity_layer.input_shape=%states_shape
+states/get_identity_layer.batch_size=%batch_size
+state_layers = @states/get_identity_layer()
+
 sentence/generate_network.structure=(
     'tf.keras.Sequential',
         [('tf.keras.layers.Embedding', %vocab_size, %num_embedding_dims),
@@ -41,7 +50,10 @@ sentence_layers = @sentence/generate_network()
 
 preprocessing_layers={
     'image': %conv_layers,
+    'states': %state_layers,
     'sentence': %sentence_layers}
+
+FrameStack.fields_to_stack=['image', 'states']  # must be a subset of preprocessing_layers
 
 combiner/generate_network.structure=('tf.keras.layers.Concatenate',)
 preprocessing_combiner=@combiner/generate_network()

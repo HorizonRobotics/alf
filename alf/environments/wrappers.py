@@ -19,6 +19,8 @@ import gym
 import numpy as np
 import cv2
 
+from absl import logging
+
 from tf_agents.environments import wrappers
 from tf_agents.trajectories.time_step import StepType
 
@@ -32,7 +34,7 @@ class FrameStack(gym.Wrapper):
             env,
             stack_size=4,
             channel_order='channels_last',
-            field_to_stack=None,
+            fields_to_stack=None,
     ):
         """Create a FrameStack object.
 
@@ -45,47 +47,100 @@ class FrameStack(gym.Wrapper):
                 `(height, width, channels)` (Atari's default) while
                 `channels_first` corresponds to images with shape
                 `(channels, height, width)`.
-            field_to_stack (str): optional name of the key to the
+            fields_to_stack (list of str): optional names of the keys to the
                 Dict env.observation_space.  If specified, only use the
-                space corresponding to the key in FrameStack.
+                spaces corresponding to the keys in FrameStack.  If is None,
+                stack all recognized spaces.  For any space which isn't in the
+                white list, FrameStack will skip stacking such a space.
+                When input space is not a Dict, we assume it's image, and 
+                fields_to_stack doesn't apply anymore.
         """
         super().__init__(env)
+        self._white_list_fields = ['image', 'sentence', 'states']
         self._frames = collections.deque(maxlen=stack_size)
         self._channel_order = channel_order
         self._stack_size = stack_size
-        self._field_to_stack = field_to_stack
-
         raw_space = self.env.observation_space
-        if field_to_stack:
+
+        if not fields_to_stack and isinstance(raw_space, gym.spaces.Dict):
+            fields_to_stack = raw_space.spaces.keys()
+
+        self._fields_to_stack = fields_to_stack
+
+        space = {}
+        if fields_to_stack:
             assert isinstance(raw_space,
                               gym.spaces.Dict), 'observation is not dict'
-            assert field_to_stack in raw_space.spaces, (
-                '{} not in observation.spaces'.format(field_to_stack))
-            space = raw_space.spaces[field_to_stack]
-        else:
-            space = raw_space
+            for field in fields_to_stack:
+                assert field in raw_space.spaces, (
+                    '{} not in observation.spaces'.format(field))
+                space[field] = raw_space.spaces[field]
+            for name, sp in space.items():
+                if name in fields_to_stack:
+                    if name in ['image', 'states']:
+                        # box spaces that need stacking
+                        assert isinstance(sp, gym.spaces.Box)
+                        # Shape of stacked_space is determined by low.shape
+                        low = np.concatenate([sp.low] * stack_size)
+                        high = np.concatenate([sp.high] * stack_size)
+                        if name == 'image':
+                            assert channel_order in [
+                                'channels_last', 'channels_first'
+                            ]
+                        if (name == 'image'
+                                and channel_order == 'channels_last'):
+                            low = np.transpose(
+                                np.concatenate(
+                                    [np.transpose(sp.low)] * stack_size))
+                            high = np.transpose(
+                                np.concatenate(
+                                    [np.transpose(sp.high)] * stack_size))
+                        stacked_space = gym.spaces.Box(
+                            low=np.array(low),
+                            high=np.array(high),
+                            dtype=sp.dtype)
 
-        assert channel_order in ['channels_last', 'channels_first']
+                    elif name == 'sentence':
+                        assert isinstance(sp, gym.spaces.MultiDiscrete)
+                        nvec = [
+                            stack_size * sp.nvec[0],
+                        ] + list(sp.nvec[1:])
+                        stacked_space = gym.spaces.MultiDiscrete(nvec)
 
-        if channel_order == 'channels_last':
-            shape = list(space.shape[0:-1]) + [stack_size * space.shape[-1]]
-        else:
-            shape = [
-                stack_size * space.shape[0],
-            ] + list(space.shape[1:])
-        box_space = gym.spaces.Box(
-            low=0, high=255, shape=shape, dtype=np.uint8)
-        if field_to_stack:
-            self.observation_space.spaces[field_to_stack] = box_space
-        else:
-            self.observation_space = box_space
+                    else:
+                        assert name not in self._white_list_fields, (
+                            'Please' + ' update _white_list_fields.')
+                        logging.warning(
+                            'Stacking of {} field' +
+                            ' is not supported.  Not stacking.'.format(name))
+                        stacked_space = sp
+                    self.observation_space.spaces[name] = stacked_space
+
+                else:  # name not in fields_to_stack:
+                    self.observation_space.spaces[name] = sp
+
+        else:  # raw_space is a simple gym.spaces.Box, not a dict
+            assert isinstance(raw_space, gym.spaces.Box)
+            sp = raw_space
+            low = np.concatenate([sp.low] * stack_size)
+            high = np.concatenate([sp.high] * stack_size)
+            # Assuming we are processing image input
+            assert channel_order in ['channels_last', 'channels_first']
+            if channel_order == 'channels_last':
+                low = np.transpose(
+                    np.concatenate([np.transpose(sp.low)] * stack_size))
+                high = np.transpose(
+                    np.concatenate([np.transpose(sp.high)] * stack_size))
+            stacked_space = gym.spaces.Box(
+                low=np.array(low), high=np.array(high), dtype=sp.dtype)
+            self.observation_space = stacked_space
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
         return getattr(self.env, name)
 
     def _generate_observation(self):
-        if self._field_to_stack:
+        if self._fields_to_stack:
             result = collections.OrderedDict()
             for frame in self._frames:
                 for key, field in frame.items():
@@ -93,16 +148,21 @@ class FrameStack(gym.Wrapper):
                         result[key] = collections.deque(
                             maxlen=self._stack_size)
                     result[key].append(field)
-            for key, fields in result.items():
-                if key == self._field_to_stack:
-                    if self._channel_order == 'channels_last':
+            for key in result:
+                if key in self._fields_to_stack:
+                    if (key == 'image'
+                            and self._channel_order == 'channels_last'):
                         result[key] = np.concatenate(result[key], axis=-1)
-                    else:
+                    elif key in self._white_list_fields:
                         result[key] = np.concatenate(result[key], axis=0)
-                else:
-                    result[key] = result[key][-1]  # take last frame
+                    else:  # key not in self._white_list_fields:
+                        result[key] = result[key][
+                            -1]  # take last/current frame
+                else:  # not stacking field
+                    result[key] = result[key][-1]  # take last/current frame
             return result
-        else:
+        else:  # Assuming input is image space
+            # Always stacks regardless of _fields_to_stack
             if self._channel_order == 'channels_last':
                 return np.concatenate(self._frames, axis=-1)
             else:
