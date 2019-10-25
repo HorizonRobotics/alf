@@ -219,7 +219,7 @@ class Algorithm(tf.Module):
             new_var_ids = set(map(id, new_vars))
             dup_ids = var_ids & new_var_ids
             assert not dup_ids, \
-                (("Variables %s might have multiple optimizers! Consider "
+                (("Modules/variables %s might have multiple optimizers! Consider "
                  + "specifying attributes in _trainable_attributes_to_ignore()")
                  % new_module_or_var.name)
             var_ids.update(new_var_ids)
@@ -288,15 +288,6 @@ class Algorithm(tf.Module):
                 else:
                     raise ValueError("Unsupported module type %s" % module)
             opt_and_var_sets.append((opt, vars))
-        # Check that each trainable variable is handled by one and only one
-        # optimizer (although it might not have any gradient).
-        var_ids = sum([list(map(id, vars)) for _, vars in opt_and_var_sets],
-                      [])
-        for opt, vars in opt_and_var_sets:
-            for v in vars:
-                assert var_ids.count(id(v)) == 1, \
-                    ("Variable '%s' is optimized by %d optimizers!" %
-                        (v.name, var_ids.count(id(v))))
         return opt_and_var_sets
 
     def get_optimizer_info(self):
