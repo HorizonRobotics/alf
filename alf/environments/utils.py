@@ -207,8 +207,8 @@ def create_environment(env_name='CartPole-v0',
     if nonparallel:
         # Each time we can only create one unwrapped env at most
 
-        # Create and step the env in a separate thread, env `step` and `reset` must
-        #   run in the same thread which the env created in for some simulation
+        # Create and step the env in a separate thread. env `step` and `reset` must
+        #   run in the same thread which the env is created in for some simulation
         #   environments such as social_bot(gazebo)
         py_env = ThreadPyEnvironment(lambda: env_load_fn(env_name))
         py_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
