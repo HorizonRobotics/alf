@@ -63,7 +63,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             envs (list[TFEnvironment]):  list of TFEnvironment
             algorithm (OffPolicyAlgorithm):
             num_actor_queues (int): number of actor queues. Each queue is
-                exclusivly owned by just one actor thread.
+                exclusively owned by just one actor thread.
             unroll_length (int): number of time steps each environment proceeds
                 before sending the steps to the learner queue
             learn_queue_cap (int): the learner queue capacity determines how many
@@ -78,7 +78,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                 callable(time_step.Trajectory).
             use_rollout_state (bool): Include the RNN state for the experiences
                 used for off-policy training
-            metrics (list[TFStepMetric]): An optiotional list of metrics.
+            metrics (list[TFStepMetric]): An optional list of metrics.
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
             debug_summaries (bool): A bool to gather debug summaries.

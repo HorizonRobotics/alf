@@ -48,7 +48,7 @@ class PolicyDriver(driver.Driver):
 
         Args:
             env (TFEnvironment): A TFEnvoronmnet
-            algorithm (OnPolicyAlgorith): The algorithm for training
+            algorithm (OnPolicyAlgorithm): The algorithm for training
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
@@ -61,10 +61,10 @@ class PolicyDriver(driver.Driver):
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network
                 variable summaries will be written during training.
-            summarize_action_distributions (bool): If True, generate summaris
+            summarize_action_distributions (bool): If True, generate summaries
                 for the action distributions.
             train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
+                every time a new iteration is started. If None, it will use
                 tf.summary.experimental.get_step(). If this is still None, a
                 counter will be created.
         """
