@@ -128,7 +128,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             coord=self._coord,
             queue=self._tfq.log_queue)
         self._threads = actor_threads + env_threads + [self._log_thread]
-        algorithm.prepare_metrics(self.get_metrics())
+        algorithm.set_metrics(self.get_metrics())
 
     def get_step_metrics(self):
         """See PolicyDriver.get_step_metrics()"""

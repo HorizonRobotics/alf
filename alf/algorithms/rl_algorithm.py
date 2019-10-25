@@ -154,13 +154,12 @@ class RLAlgorithm(Algorithm):
         """Return experience observers."""
         return self._exp_observers
 
-    @abstractmethod
-    def observe(self):
-        """An algorithm can decide what to do with experience."""
-        pass
+    def set_metrics(self, metrics=[]):
+        """Set metrics.
 
-    def prepare_metrics(self, metrics=[]):
-        """ Prepare metrics."""
+        metrics (list[TFStepMetric]): An optional list of metrics
+            len(metrics) >= 2 as required by calling "self._metrics[:2]" in training_summary()
+        """
         self._metrics = metrics
 
     def set_summary_settings(self,
@@ -204,8 +203,9 @@ class RLAlgorithm(Algorithm):
                     action_specs=self._action_spec,
                     name="collect_action_dist")
 
-        for metric in self._metrics:
-            metric.tf_summaries(step_metrics=self._metrics[:2])
+        if self._metrics:
+            for metric in self._metrics:
+                metric.tf_summaries(step_metrics=self._metrics[:2])
 
         mem = tf.py_function(
             lambda: self._proc.memory_info().rss // 1e6, [],

@@ -220,8 +220,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """
         return experience
 
-    def prepare_exp_replayer(self, exp_replayer: str):
-        """Prepare experience replayer."""
+    def set_exp_replayer(self, exp_replayer: str):
+        """Set experience replayer."""
 
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
@@ -231,6 +231,11 @@ class OffPolicyAlgorithm(RLAlgorithm):
         else:
             raise ValueError("invalid experience replayer name")
         self.add_experience_observer(self._exp_replayer.observe)
+
+    def observe(self, exp: Experience):
+        """An algorithm can override to manipulate experience."""
+        for observer in self._exp_observers:
+            observer(exp)
 
     def prepare_off_policy_specs(self, time_step: ActionTimeStep):
         """Prepare various tensor specs for off_policy training.

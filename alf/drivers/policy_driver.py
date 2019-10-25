@@ -49,7 +49,7 @@ class PolicyDriver(driver.Driver):
                 callable(time_step.Trajectory).
             use_rollout_state (bool): Include the RNN state for the experiences
                 used for off-policy training
-            metrics (list[TFStepMetric]): An optiotional list of metrics.
+            metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
@@ -168,8 +168,7 @@ class PolicyDriver(driver.Driver):
                 policy_step._replace(action=action),
                 action_distribution=action_distribution_param,
                 state=policy_state if self._use_rollout_state else ())
-            for observer in self._algorithm.exp_observers:
-                observer(exp)
+            self._algorithm.observe(exp)
 
         return next_time_step, policy_step, action, transformed_time_step
 

@@ -72,7 +72,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             greedy_predict=False)  # always use OnPolicyDriver for play/eval!
 
         self._prepare_specs(algorithm)
-        algorithm.prepare_exp_replayer(exp_replayer)
+        algorithm.set_exp_replayer(exp_replayer)
 
     def start(self):
         """

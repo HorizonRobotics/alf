@@ -101,7 +101,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         self._final_step_mode = final_step_mode
 
         if training:
-            algorithm.prepare_metrics(self._metrics)
+            algorithm.set_metrics(self._metrics)
             self._prepare_specs(algorithm)
             self._trainable_variables = algorithm.trainable_variables
             self._train_interval = train_interval
