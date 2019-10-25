@@ -37,6 +37,11 @@ def run_and_stream(cmd, cwd):
     """
     logging.info("Running %s", " ".join(cmd))
 
+    # create a logger for sub process outputs
+    # 1. logging all outputs of sub process to sys.stderr to make it traceable when an error
+    #   occurs (ci suppresses stdout output to prevent producing a big log file than 4 MB)
+    # 2. set a simple formatter without prefix for the logger, because a log_prefix
+    #   already exists for sub process log
     logger = logging.ABSLLogger('')
     handler = sys_logging.StreamHandler(sys.stderr)
     handler.setFormatter(sys_logging.Formatter('%(message)s'))
