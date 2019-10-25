@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# multiprocessing.dummy provides a pure *multithreaded* threadpool that works
-# in both python2 and python3 (concurrent.futures isn't available in python2).
-#   https://docs.python.org/2/library/multiprocessing.html#module-multiprocessing.dummy
 from multiprocessing import dummy as mp_threads
 
 import random
