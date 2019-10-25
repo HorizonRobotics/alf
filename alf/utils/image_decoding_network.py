@@ -29,7 +29,8 @@ class ImageDecodingNetwork(tf.keras.models.Model):
                  padding="same",
                  preprocess_fc_layer_params=None,
                  activation_fn=tf.nn.relu,
-                 output_activation_fn=tf.nn.tanh):
+                 output_activation_fn=tf.nn.tanh,
+                 name="image_decoding_network"):
         """
         Initialize the layers for decoding a latent vector into an image.
 
@@ -59,8 +60,9 @@ class ImageDecodingNetwork(tf.keras.models.Model):
             output_activation_fn (tf.nn.activation): activation for the output
                 layer. Usually our image inputs are normalized to [0, 1] or [-1, 1],
                 so this function should be tf.nn.sigmoid or tf.nn.tanh.
+            name (str): network name
         """
-        super().__init__()
+        super().__init__(name=name)
 
         assert isinstance(deconv_layer_params, list)
         assert len(deconv_layer_params) > 0

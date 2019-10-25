@@ -357,7 +357,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     """
 
     def __init__(self,
-                 observation_spec,
                  action_spec,
                  encoders,
                  decoders,
@@ -371,7 +370,6 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         """Create MerlinAlgorithm.
 
         Args:
-            observation_spec (nested TensorSpec): spec for observation
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
             decoders (nested Algorithm): the nest should match observation_spec
@@ -478,7 +476,6 @@ def create_merlin_algorithm(env,
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
     algorithm = MerlinAlgorithm(
-        observation_spec=observation_spec,
         action_spec=action_spec,
         encoders=encoder,
         decoders=decoder,
