@@ -19,6 +19,7 @@ import subprocess
 from pathlib import Path
 import numpy as np
 import sys
+import time
 
 import logging as sys_logging
 from absl import logging
@@ -37,23 +38,11 @@ def run_and_stream(cmd, cwd):
     """
     logging.info("Running %s", " ".join(cmd))
 
-    # create a logger for sub process outputs
-    # 1. logging all outputs of sub process to sys.stderr to make it traceable when an error
-    #   occurs (ci suppresses stdout output to prevent producing a big log file than 4 MB)
-    # 2. set a simple formatter without prefix for the logger, because a log_prefix
-    #   already exists for sub process log
-    logger = logging.ABSLLogger('')
-    handler = sys_logging.StreamHandler(sys.stderr)
-    handler.setFormatter(sys_logging.Formatter('%(message)s'))
-    logger.addHandler(handler)
-
     process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
+        cmd, stdout=sys.stdout, stderr=sys.stderr, cwd=cwd)
 
     while process.poll() is None:
-        with io.TextIOWrapper(process.stdout, encoding="utf-8") as text_io:
-            for line in text_io:
-                logger.info(line.strip())
+        time.sleep(0.1)
 
     assert process.returncode == 0, ("cmd: {0} exit abnormally".format(
         " ".join(cmd)))
