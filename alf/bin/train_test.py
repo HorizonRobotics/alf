@@ -14,14 +14,12 @@
 
 import tempfile
 import os
-import io
 import subprocess
 from pathlib import Path
 import numpy as np
 import sys
 import time
 
-import logging as sys_logging
 from absl import logging
 import tensorflow as tf
 
