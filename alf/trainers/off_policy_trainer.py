@@ -39,24 +39,6 @@ class OffPolicyTrainer(Trainer):
         self._mini_batch_size = config.mini_batch_size
         self._clear_replay_buffer = config.clear_replay_buffer
 
-    def get_exp(self):
-        """Get experience from replay buffer for training
-
-        Returns:
-            exp (Experience): each item has the shape [B, T ...] where B = batch size, T = steps
-        """
-        replay_buffer = self._driver.exp_replayer
-        if self._mini_batch_size is None:
-            self._mini_batch_size = replay_buffer.batch_size
-        if self._clear_replay_buffer:
-            experience = replay_buffer.replay_all()
-            replay_buffer.clear()
-        else:
-            experience, _ = replay_buffer.replay(
-                sample_batch_size=self._mini_batch_size,
-                mini_batch_length=self._mini_batch_length)
-        return experience
-
 
 @gin.configurable("sync_off_policy_trainer")
 class SyncOffPolicyTrainer(OffPolicyTrainer):
@@ -66,9 +48,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
         return SyncOffPolicyDriver(
             env=self._envs[0],
             use_rollout_state=self._config.use_rollout_state,
-            algorithm=self._algorithm,
-            debug_summaries=self._debug_summaries,
-            summarize_grads_and_vars=self._summarize_grads_and_vars)
+            algorithm=self._algorithm)
 
     def train_iter(self, iter_num, policy_state, time_step):
         max_num_steps = self._unroll_length * self._envs[0].batch_size
@@ -79,11 +59,11 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             time_step=time_step,
             policy_state=policy_state)
         # `train_steps` might be different from `max_num_steps`!
-        train_steps = self._driver.train(
-            self.get_exp(),
+        train_steps = self._algorithm.train(
             num_updates=self._num_updates_per_train_step,
+            mini_batch_size=self._mini_batch_size,
             mini_batch_length=self._mini_batch_length,
-            mini_batch_size=self._mini_batch_size)
+            clear_replay_buffer=self._clear_replay_buffer)
         return time_step, policy_state, train_steps
 
 
@@ -102,9 +82,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             envs=self._envs,
             algorithm=self._algorithm,
             use_rollout_state=self._config.use_rollout_state,
-            unroll_length=self._unroll_length,
-            debug_summaries=self._debug_summaries,
-            summarize_grads_and_vars=self._summarize_grads_and_vars)
+            unroll_length=self._unroll_length)
         return driver
 
     def train_iter(self, iter_num, policy_state, time_step):
@@ -118,9 +96,9 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         else:
             self._driver.run_async()
         # `train_steps` might be different from `steps`!
-        train_steps = self._driver.train(
-            self.get_exp(),
+        train_steps = self._algorithm.train(
             num_updates=self._num_updates_per_train_step,
+            mini_batch_size=self._mini_batch_size,
             mini_batch_length=self._mini_batch_length,
-            mini_batch_size=self._mini_batch_size)
+            clear_replay_buffer=self._clear_replay_buffer)
         return time_step, policy_state, train_steps

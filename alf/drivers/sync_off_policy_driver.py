@@ -54,10 +54,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
                  exp_replayer="uniform",
                  observers=[],
                  use_rollout_state=False,
-                 metrics=[],
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
-                 train_step_counter=None):
+                 metrics=[]):
         """Create an OffPolicyDriver.
 
         Args:
@@ -71,13 +68,6 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             use_rollout_state (bool): Include the RNN state for the experiences
                 used for off-policy training
             metrics (list[TFStepMetric]): An optiotional list of metrics.
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
         """
         # training=False because training info is always obtained from
         # replayed exps instead of current time_step prediction. So _step() in
@@ -89,10 +79,8 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             exp_replayer=exp_replayer,
             observers=observers,
             use_rollout_state=use_rollout_state,
-            metrics=metrics,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
-            train_step_counter=train_step_counter)
+            metrics=metrics)
+        algorithm.set_metrics(self.get_metrics())
 
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""

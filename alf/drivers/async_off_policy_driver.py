@@ -54,10 +54,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  observers=[],
                  use_rollout_state=False,
                  metrics=[],
-                 exp_replayer="one_time",
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
-                 train_step_counter=None):
+                 exp_replayer="one_time"):
         """
         Args:
             envs (list[TFEnvironment]):  list of TFEnvironment
@@ -81,13 +78,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             metrics (list[TFStepMetric]): An optiotional list of metrics.
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
-            train_step_counter (tf.Variable): An optional counter to increment
-                every time the a new iteration is started. If None, it will use
-                tf.summary.experimental.get_step(). If this is still None, a
-                counter will be created.
         """
         super(AsyncOffPolicyDriver, self).__init__(
             env=envs[0],
@@ -95,10 +85,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             exp_replayer=exp_replayer,
             observers=observers,
             use_rollout_state=use_rollout_state,
-            metrics=metrics,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
-            train_step_counter=train_step_counter)
+            metrics=metrics)
 
         # create threads
         self._coord = tf.train.Coordinator()
@@ -141,6 +128,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             coord=self._coord,
             queue=self._tfq.log_queue)
         self._threads = actor_threads + env_threads + [self._log_thread]
+        algorithm.set_metrics(self.get_metrics())
 
     def get_step_metrics(self):
         """See PolicyDriver.get_step_metrics()"""
@@ -194,7 +182,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             steps (int): the total number of unrolled steps
         """
         exp, env_id, steps = self.get_training_exps()
-        for ob in self._exp_observers:
+        for ob in self._algorithm.exp_observers:
             ob(exp, env_id)
         return steps
 
