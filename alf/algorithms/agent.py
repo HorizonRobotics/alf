@@ -141,20 +141,28 @@ class Agent(OnPolicyAlgorithm):
 
         return PolicyStep(action=rl_step.action, state=new_state, info=())
 
-    def rollout(self,
-                time_step: ActionTimeStep,
-                state: AgentState,
-                with_experience=False):
+    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
+        observation = self._encode(time_step)
+
+        new_state = AgentState()
+
+        rl_step = self._rl_algorithm.greedy_predict(
+            time_step._replace(observation=observation), state.rl)
+        new_state = new_state._replace(rl=rl_step.state)
+
+        return PolicyStep(action=rl_step.action, state=new_state, info=())
+
+    def rollout(self, time_step: ActionTimeStep, state: AgentState):
         """Rollout for one step."""
         new_state = AgentState()
         info = AgentInfo()
         observation = self._encode(time_step)
 
+        # TODO
+        # avoid computing this when rl_algorithm do not need preprocess experience
         if self._icm is not None:
             icm_step = self._icm.train_step(
-                (observation, time_step.prev_action),
-                state=state.icm,
-                calc_intrinsic_reward=not with_experience)
+                (observation, time_step.prev_action), state=state.icm)
             info = info._replace(icm=icm_step.info)
             new_state = new_state._replace(icm=icm_step.state)
 
@@ -164,7 +172,31 @@ class Agent(OnPolicyAlgorithm):
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
-        # TODO: can avoid computing this when collecting exps
+        # TODO
+        # avoid computing this when collecting exps (off policy train)
+        if self._entropy_target_algorithm:
+            et_step = self._entropy_target_algorithm.train_step(rl_step.action)
+            info = info._replace(entropy_target=et_step.info)
+
+        return PolicyStep(action=rl_step.action, state=new_state, info=info)
+
+    def train_step(self, exp: Experience, state):
+        new_state = AgentState()
+        info = AgentInfo()
+        observation = self._encode(exp)
+
+        if self._icm is not None:
+            icm_step = self._icm.train_step((observation, exp.prev_action),
+                                            state=state.icm)
+            info = info._replace(icm=icm_step.info)
+            new_state = new_state._replace(icm=icm_step.state)
+
+        rl_step = self._rl_algorithm.train_step(
+            exp._replace(observation=observation), state.rl)
+
+        new_state = new_state._replace(rl=rl_step.state)
+        info = info._replace(rl=rl_step.info)
+
         if self._entropy_target_algorithm:
             et_step = self._entropy_target_algorithm.train_step(rl_step.action)
             info = info._replace(entropy_target=et_step.info)
@@ -225,6 +257,9 @@ class Agent(OnPolicyAlgorithm):
                                  self._entropy_target_algorithm)
 
         return loss_info
+
+    def after_train(self):
+        self._rl_algorithm.after_train()
 
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.info)

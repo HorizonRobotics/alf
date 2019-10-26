@@ -236,16 +236,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             extra=DdpgLossInfo(
                 critic=critic_loss.extra, actor=actor_loss.extra))
 
-    def train_complete(self,
-                       tape: tf.GradientTape,
-                       training_info: TrainingInfo,
-                       weight: float = 1.0):
-        ret = super().train_complete(
-            tape=tape, training_info=training_info, weight=weight)
-
+    def after_train(self):
         self._update_target()
-
-        return ret
 
     def _create_ou_process(self, ou_stddev, ou_damping):
         # todo with seed None

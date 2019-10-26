@@ -349,14 +349,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
         return PolicyStep(action_distribution, state, info)
 
-    def train_complete(self,
-                       tape: tf.GradientTape,
-                       training_info: TrainingInfo,
-                       weight=1.0):
-        ret = super().train_complete(
-            tape=tape, training_info=training_info, weight=weight)
+    def after_train(self):
         self._update_target()
-        return ret
 
     def calc_loss(self, training_info: TrainingInfo):
         critic_loss = self._calc_critic_loss(training_info)

@@ -33,6 +33,9 @@ SacAlgorithm.target_update_tau=0.01
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 OneStepTDLoss.gamma=0.98
 
+Agent.action_spec = %action_spec
+Agent.rl_algorithm_cls=@SacAlgorithm
+
 # training config
 TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=1000
@@ -41,7 +44,7 @@ TrainerConfig.unroll_length=1
 TrainerConfig.mini_batch_size=64
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.clear_replay_buffer=False
-TrainerConfig.algorithm_ctor=@SacAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=10000
 TrainerConfig.checkpoint_interval=10000
 TrainerConfig.evaluate=1

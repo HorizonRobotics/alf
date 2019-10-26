@@ -102,10 +102,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
         policy_step = self._rollout_partial_state(time_step, state)
         return policy_step._replace(info=())
 
-    def rollout(self,
-                time_step: ActionTimeStep,
-                state=None,
-                with_experience=False):
+    def rollout(self, time_step: ActionTimeStep, state=None):
         """Base implementation of rollout for OffPolicyAlgorithm.
 
         Calls _rollout_full_state or _rollout_partial_state based on
@@ -116,11 +113,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
         Args:
             time_step (ActionTimeStep):
             state (nested Tensor): should be consistent with train_state_spec
-            with_experience (bool): a boolean flag indicating whether the current
-                rollout is with sampled experiences or not. By default this flag
-                is ignored. See ActorCriticAlgorithm's rollout for an example of
-                usage to avoid computing intrinsic rewards if
-                `with_experience=True`.
         Returns:
             policy_step (PolicyStep):
               action (nested tf.distribution): should be consistent with

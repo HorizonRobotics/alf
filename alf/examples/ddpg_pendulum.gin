@@ -28,6 +28,9 @@ DdpgAlgorithm.critic_optimizer=@critic/Adam()
 DdpgAlgorithm.target_update_period=5
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_huber_loss
 
+Agent.action_spec = %action_spec
+Agent.rl_algorithm_cls=@DdpgAlgorithm
+
 # training config
 TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=1000
@@ -36,7 +39,7 @@ TrainerConfig.mini_batch_length=2
 TrainerConfig.unroll_length=1
 TrainerConfig.mini_batch_size=64
 TrainerConfig.clear_replay_buffer=False
-TrainerConfig.algorithm_ctor=@DdpgAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.checkpoint_interval=100000
 TrainerConfig.num_iterations=20000
 TrainerConfig.evaluate=1
@@ -44,6 +47,7 @@ TrainerConfig.eval_interval=1000
 TrainerConfig.debug_summaries=0
 TrainerConfig.summarize_grads_and_vars=0
 TrainerConfig.summary_interval=100
+
 
 TFUniformReplayBuffer.max_length=100000
 
