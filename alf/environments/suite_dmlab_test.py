@@ -35,6 +35,10 @@ class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
         else:
             gin.clear_config()
 
+    def tearDown(self):
+        super().tearDown()
+        self._env.close()
+
     @parameterized.parameters(
         dict(
             scene='nav_maze_random_goal_03',
@@ -52,9 +56,8 @@ class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
         with gin.unlock_config():
             gin.clear_config()
             gin.parse_config(action_config)
-        env = suite_dmlab.DeepmindLabEnv(scene=scene)
-        assert env.action_space.n == action_length
-        env.close()
+        self._env = suite_dmlab.DeepmindLabEnv(scene=scene)
+        self.assertEqual(self._env.action_space.n, action_length)
 
     def test_dmlab_env(self):
         ctor = lambda: suite_dmlab.load(
@@ -64,10 +67,9 @@ class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
                 FrameStack
             ],
             wrap_with_process=False)
-        env = parallel_py_environment.ParallelPyEnvironment([ctor] * 2)
-        env = tf_py_environment.TFPyEnvironment(env)
+        self._env = parallel_py_environment.ParallelPyEnvironment([ctor] * 2)
+        env = tf_py_environment.TFPyEnvironment(self._env)
         self.assertEqual((84, 84, 4), env.observation_spec().shape)
-        env.pyenv.close()
 
     @parameterized.parameters([
         'nav_maze_random_goal_03', 'contributed/dmlab30/rooms_watermaze',
@@ -79,8 +81,8 @@ class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
             gym_env_wrappers=[wrappers.FrameResize],
             wrap_with_process=False)
 
-        env = parallel_py_environment.ParallelPyEnvironment([ctor] * 4)
-        env = tf_py_environment.TFPyEnvironment(env)
+        self._env = parallel_py_environment.ParallelPyEnvironment([ctor] * 4)
+        env = tf_py_environment.TFPyEnvironment(self._env)
         self.assertEqual((84, 84, 3), env.observation_spec().shape)
 
         random_policy = random_tf_policy.RandomTFPolicy(
@@ -90,7 +92,6 @@ class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
             env=env, policy=random_policy, observers=None, num_steps=10)
 
         driver.run(maximum_iterations=10)
-        env.pyenv.close()
 
 
 if __name__ == '__main__':
