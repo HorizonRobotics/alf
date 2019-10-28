@@ -399,7 +399,7 @@ def get_global_counter(default_counter=None):
         default_counter (Variable): If not None, this counter will be returned.
     Returns:
         If default_counter is not None, it will be returned. Otherwise,
-        If tf.summary.experimental.get_step() is not None, it will be returned.
+        if tf.summary.experimental.get_step() is not None, it will be returned.
         Othewise, a counter will be created and returned.
         tf.summary.experimental.set_step() will be set to the created counter.
 
@@ -663,7 +663,7 @@ def to_distribution(action_or_distribution):
     """Convert action_or_distribution to to Distribution.
 
     Args:
-        action_or_distribution (tf.Tensor|Distribution):
+        action_or_distribution (nested tf.Tensor|nested Distribution]):
             tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
             and others for tfp.distributions.Distribution instance
     Returns:
@@ -713,9 +713,7 @@ def get_initial_time_step(env):
 def algorithm_step(algorithm_step_func, time_step, state):
     """
     Perform an algorithm step on a time step.
-    1. If `ob_transformer` is not None, then apply the transformation to the
-       observation before stepping.
-    2. Always convert the output `policy_step.action` to an action distribution
+    Always convert the output `policy_step.action` to an action distribution
 
     Args:
         algorithm_step_func (Callable): step function from algorithm. Can be

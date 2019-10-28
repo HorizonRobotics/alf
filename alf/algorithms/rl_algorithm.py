@@ -96,7 +96,7 @@ class RLAlgorithm(Algorithm):
             action_distribution_spec (nested DistributionSpec): for the action
                 distributions.
             predict_state_spec (nested TensorSpec): for the network state of
-                `predict()`. If None, it's assume to be same as train_state_spec
+                `predict()`. If None, it's assumed to be the same as train_state_spec
             optimizer (tf.optimizers.Optimizer | list[Optimizer]): The
                 optimizer(s) for training.
             reward_shaping_fn (Callable): a function that transforms extrinsic

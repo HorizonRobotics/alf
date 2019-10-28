@@ -138,7 +138,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         Args:
             max_num_steps (int): stops after so many environment steps. Is the
                 total number of steps from all the individual environment in
-                the bached environments including StepType.LAST steps.
+                the batched environments including StepType.LAST steps.
             time_step (ActionTimeStep): optional initial time_step. If None, it
                 will use self.get_initial_time_step(). Elements should be shape
                 [batch_size, ...].

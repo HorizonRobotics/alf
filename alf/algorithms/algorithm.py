@@ -38,7 +38,7 @@ class Algorithm(tf.Module):
     It also needs to generate necessary information for training.
 
     train_complete() is called every train_interval steps (specified in
-    TrainingPolicy). All the training information collected at each previous
+    PolicyDriver). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
     The following is the pseudo code to illustrate how Algorithm is for
@@ -87,7 +87,7 @@ class Algorithm(tf.Module):
             optimized by optimzer[0].
 
         The child algorithms will be optimized by their own optimizers if they
-        have. If a child algorithm does not have optimizer, it will be optimized
+        have. If a child algorithm does not have an optimizer, it will be optimized
         by the default optimizer.
 
         A requirement for this optimizer structure to work is that there is no
@@ -366,7 +366,7 @@ class Algorithm(tf.Module):
 
         Args:
             tape (tf.GradientTape): the tape which are used for calculating
-                gradient. All the previous `train_interval` `train_step()` for
+                gradient. All the previous `train_interval` `train_step()`
                 are called under the context of this tape.
             training_info (nested Tensor): information collected for training.
                 It is batched from each `info` returned bt `train_step()`
@@ -424,7 +424,7 @@ class Algorithm(tf.Module):
 
         Args:
             training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned bt `train_step()`
+                It is batched from each `info` returned by `train_step()`
         Returns:
             loss_info (LossInfo): loss at each time step for each sample in the
                 batch. The shapes of the tensors in loss_info should be (T, B)
