@@ -17,6 +17,7 @@ from abc import abstractmethod
 import os
 import psutil
 from typing import Callable
+from collections import Iterable
 
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -85,7 +86,7 @@ class RLAlgorithm(Algorithm):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer: Callable = cast_transformer,
+                 observation_transformer=cast_transformer,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
@@ -104,8 +105,8 @@ class RLAlgorithm(Algorithm):
                 optimizer(s) for training.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
-            observation_transformer (Callable): transformation applied to
-                `time_step.observation`
+            observation_transformer (Callable | list[Callable]): transformation(s)
+                applied to `time_step.observation`
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             summarize_grads_and_vars (bool): If True, gradient and network
@@ -126,7 +127,11 @@ class RLAlgorithm(Algorithm):
         self._action_spec = action_spec
         self._action_distribution_spec = action_distribution_spec
         self._reward_shaping_fn = reward_shaping_fn
-        self._observation_transformer = observation_transformer
+        if isinstance(observation_transformer, Iterable):
+            observation_transformers = list(observation_transformer)
+        else:
+            observation_transformers = [observation_transformer]
+        self._observation_transformers = observation_transformers
         self._exp_observers = []
         self._proc = psutil.Process(os.getpid())
         self._debug_summaries = debug_summaries
@@ -316,10 +321,10 @@ class RLAlgorithm(Algorithm):
         if self._reward_shaping_fn is not None:
             time_step = time_step._replace(
                 reward=self._reward_shaping_fn(time_step.reward))
-        if self._observation_transformer is not None:
-            time_step = time_step._replace(
-                observation=self._observation_transformer(time_step.
-                                                          observation))
+        if self._observation_transformers is not None:
+            for observation_transformer in self._observation_transformers:
+                time_step = time_step._replace(
+                    observation=observation_transformer(time_step.observation))
         return time_step
 
     # Subclass may override train_complete() to allow customized training

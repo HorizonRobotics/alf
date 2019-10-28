@@ -423,7 +423,13 @@ def cast_transformer(observation, dtype=tf.float32):
     Returns:
         casted observation
     """
-    return tf.nest.map_structure(lambda o: tf.cast(o, dtype), observation)
+
+    def _cast(obs):
+        if isinstance(obs, tf.Tensor):
+            return tf.cast(obs, dtype)
+        return obs
+
+    return tf.nest.map_structure(lambda o: _cast, observation)
 
 
 @gin.configurable
@@ -474,7 +480,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         # remove '' in the path
         path = [step for step in field.split(".") if step]
         observation = _traverse_path(observation, path)
-    return cast_transformer(observation, tf.float32)
+    return observation
 
 
 @gin.configurable

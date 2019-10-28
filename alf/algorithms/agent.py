@@ -58,7 +58,7 @@ class Agent(OnPolicyAlgorithm):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer: Callable = cast_transformer,
+                 observation_transformer=cast_transformer,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
         """Create an Agent
@@ -84,8 +84,8 @@ class Agent(OnPolicyAlgorithm):
                 clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
-            observation_transformer (Callable): transformation applied to
-                `time_step.observation`
+            observation_transformer (Callable | list[Callable]): transformation(s)
+                applied to `time_step.observation`
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
