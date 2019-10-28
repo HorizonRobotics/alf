@@ -17,7 +17,7 @@ env:
   - JOB=check_style
   - JOB=test
 script:
-  - docker run
+  - travis_wait 30 sleep infinity & docker run
     -v $PWD:/ALF
     -w /ALF/
     -e PYTHONPATH=/ALF/tf_agents:/ALF

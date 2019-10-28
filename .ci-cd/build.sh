@@ -41,7 +41,7 @@ function check_style() {
 
 function test() {
     cd alf
-    python3 -m unittest discover -p "*_test.py" -v 
+    python3 -m unittest discover -p "*_test.py" -v
     cd ..
 }
 
