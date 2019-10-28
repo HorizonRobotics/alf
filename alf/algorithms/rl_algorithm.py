@@ -24,6 +24,7 @@ import tensorflow_probability as tfp
 from tf_agents.trajectories.time_step import StepType
 
 from alf.algorithms.algorithm import Algorithm
+import alf.utils.common as common
 from alf.utils.common import ActionTimeStep, namedtuple, LossInfo, make_action_time_step
 from tf_agents.utils import eager_utils
 from tf_agents.metrics import tf_metrics
@@ -205,7 +206,9 @@ class RLAlgorithm(Algorithm):
 
         if self._metrics:
             for metric in self._metrics:
-                metric.tf_summaries(step_metrics=self._metrics[:2])
+                metric.tf_summaries(
+                    train_step=common.get_global_counter(),
+                    step_metrics=self._metrics[:2])
 
         mem = tf.py_function(
             lambda: self._proc.memory_info().rss // 1e6, [],

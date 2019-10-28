@@ -67,6 +67,7 @@ class TrainerConfig(object):
                  summary_max_queue=10,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
+                 summarize_action_distributions=False,
                  num_steps_per_iter=10000,
                  initial_collect_steps=0,
                  num_updates_per_train_step=4,
@@ -138,6 +139,7 @@ class TrainerConfig(object):
             summary_max_queue=summary_max_queue,
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
+            summarize_action_distributions=summarize_action_distributions,
             num_steps_per_iter=num_steps_per_iter,
             initial_collect_steps=initial_collect_steps,
             num_updates_per_train_step=num_updates_per_train_step,
@@ -228,7 +230,9 @@ class Trainer(object):
         self._algorithm = self._algorithm_ctor(
             debug_summaries=self._debug_summaries)
         self._algorithm.set_summary_settings(
-            summarize_grads_and_vars=self._summarize_grads_and_vars)
+            summarize_grads_and_vars=self._summarize_grads_and_vars,
+            summarize_action_distributions=self._config.
+            summarize_action_distributions)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         self._driver = self.init_driver()
