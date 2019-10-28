@@ -56,7 +56,6 @@ class FrameStack(gym.Wrapper):
                 fields_to_stack doesn't apply anymore.
         """
         super().__init__(env)
-        self._white_list_fields = ['image', 'sentence', 'states']
         self._frames = collections.deque(maxlen=stack_size)
         self._channel_order = channel_order
         self._stack_size = stack_size
@@ -77,18 +76,14 @@ class FrameStack(gym.Wrapper):
                 space[field] = raw_space.spaces[field]
             for name, sp in space.items():
                 if name in fields_to_stack:
-                    if name in ['image', 'states']:
-                        # box spaces that need stacking
-                        assert isinstance(sp, gym.spaces.Box)
+                    if isinstance(sp, gym.spaces.Box):
                         # Shape of stacked_space is determined by low.shape
                         low = np.concatenate([sp.low] * stack_size)
                         high = np.concatenate([sp.high] * stack_size)
-                        if name == 'image':
-                            assert channel_order in [
-                                'channels_last', 'channels_first'
-                            ]
-                        if (name == 'image'
-                                and channel_order == 'channels_last'):
+                        assert channel_order in [
+                            'channels_last', 'channels_first'
+                        ]
+                        if channel_order == 'channels_last':
                             low = np.transpose(
                                 np.concatenate(
                                     [np.transpose(sp.low)] * stack_size))
@@ -100,19 +95,11 @@ class FrameStack(gym.Wrapper):
                             high=np.array(high),
                             dtype=sp.dtype)
 
-                    elif name == 'sentence':
-                        assert isinstance(sp, gym.spaces.MultiDiscrete)
-                        nvec = [
-                            stack_size * sp.nvec[0],
-                        ] + list(sp.nvec[1:])
+                    elif isinstance(sp, gym.spaces.MultiDiscrete):
+                        nvec = [sp.nvec] * stack_size
                         stacked_space = gym.spaces.MultiDiscrete(nvec)
 
                     else:
-                        assert name not in self._white_list_fields, (
-                            'Please' + ' update _white_list_fields.')
-                        logging.warning(
-                            'Stacking of {} field' +
-                            ' is not supported.  Not stacking.'.format(name))
                         stacked_space = sp
                     self.observation_space.spaces[name] = stacked_space
 
@@ -150,14 +137,10 @@ class FrameStack(gym.Wrapper):
                     result[key].append(field)
             for key in result:
                 if key in self._fields_to_stack:
-                    if (key == 'image'
-                            and self._channel_order == 'channels_last'):
+                    if (self._channel_order == 'channels_last'):
                         result[key] = np.concatenate(result[key], axis=-1)
-                    elif key in self._white_list_fields:
+                    else:
                         result[key] = np.concatenate(result[key], axis=0)
-                    else:  # key not in self._white_list_fields:
-                        result[key] = result[key][
-                            -1]  # take last/current frame
                 else:  # not stacking field
                     result[key] = result[key][-1]  # take last/current frame
             return result

@@ -939,21 +939,13 @@ def get_conv_layers(conv_layer_params):
 
 
 @gin.configurable
-def get_identity_layer(input_shape, batch_size):
-    """Generate an Identity Layer of input_shape and batch_size.
-
-    Args:
-      input_shape (list of ints): input tensor shape.
-      batch_size (int): batch size.
+def get_identity_layer():
+    """Generate an Identity layer.
 
     Returns:
       A network that passes input directly to output.
     """
-    x = tf.keras.Sequential()
-    x.add(
-        tf.keras.layers.Lambda(
-            lambda x: x + 0, input_shape=input_shape, batch_size=batch_size))
-    return x
+    return tf.keras.layers.Lambda(lambda x: x)
 
 
 @gin.configurable
