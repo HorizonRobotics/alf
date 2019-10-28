@@ -25,10 +25,12 @@ from tf_agents.trajectories.time_step import StepType
 
 from alf.algorithms.algorithm import Algorithm
 from alf.utils.common import ActionTimeStep, namedtuple, LossInfo, make_action_time_step
+from alf.utils.common import cast_transformer
 from tf_agents.utils import eager_utils
 from tf_agents.metrics import tf_metrics
 
 import alf.utils
+import gin.tf
 
 TrainingInfo = namedtuple("TrainingInfo", [
     "action_distribution", "action", "step_type", "reward", "discount", "info",
@@ -56,6 +58,7 @@ def make_training_info(action_distribution=(),
         collect_action_distribution=collect_action_distribution)
 
 
+@gin.configurable
 class RLAlgorithm(Algorithm):
     """Abstract base class for  RL Algorithms.
 
@@ -82,7 +85,7 @@ class RLAlgorithm(Algorithm):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer: Callable = None,
+                 observation_transformer: Callable = cast_transformer,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,

@@ -17,6 +17,8 @@ import gin
 import gin.tf.external_configurables
 import gym
 import tensorflow as tf
+from tf_agents.networks.utils import mlp_layers
+from tf_agents.networks.sequential_layer import SequentialLayer
 
 from tf_agents.environments import atari_wrappers
 
@@ -38,3 +40,7 @@ gym.envs.registration.EnvSpec.make = gin.external_configurable(
 gin.external_configurable(tf.math.exp, 'tf.math.exp')
 
 gin.external_configurable(tf.TensorSpec, 'tf.TensorSpec')
+
+gin.external_configurable(SequentialLayer, 'SequentialLayer')
+
+gin.external_configurable(mlp_layers, 'mlp_layers')

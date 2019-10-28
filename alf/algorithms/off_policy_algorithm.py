@@ -252,7 +252,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
         self._time_step_spec = extract_spec(time_step)
         initial_state = common.get_initial_policy_state(
             self._env_batch_size, self.train_state_spec)
-        policy_step = self.rollout(time_step, initial_state)
+        transformed_timestep = self.transform_timestep(time_step)
+        policy_step = self.rollout(transformed_timestep, initial_state)
         info_spec = extract_spec(policy_step.info)
 
         def _to_distribution_spec(spec):
@@ -302,7 +303,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         policy_step = common.algorithm_step(
             algorithm_step_func=self.train_step,
-            time_step=exp,
+            time_step=self.transform_timestep(exp),
             state=initial_state)
         info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(
@@ -353,7 +354,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
                mini_batch_length):
         """Train using experience."""
 
-        experience = self.transform_timestep(experience)
         experience = self.preprocess_experience(experience)
 
         length = experience.step_type.shape[1]
@@ -454,7 +454,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
 
-            policy_step = common.algorithm_step(self.train_step, exp,
+            policy_step = common.algorithm_step(self.train_step,
+                                                self.transform_timestep(exp),
                                                 policy_state)
 
             action_dist_param = common.get_distribution_params(
