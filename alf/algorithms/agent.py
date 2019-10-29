@@ -157,9 +157,6 @@ class Agent(OnPolicyAlgorithm):
         new_state = AgentState()
         info = AgentInfo()
         observation = self._encode(time_step)
-
-        # TODO
-        # avoid computing this when rl_algorithm do not need preprocess experience
         if self._icm is not None:
             icm_step = self._icm.train_step(
                 (observation, time_step.prev_action), state=state.icm)
@@ -173,7 +170,7 @@ class Agent(OnPolicyAlgorithm):
         info = info._replace(rl=rl_step.info)
 
         # TODO
-        # avoid computing this when collecting exps (off policy train)
+        # avoid computing this when rollout (off policy train)
         if self._entropy_target_algorithm:
             et_step = self._entropy_target_algorithm.train_step(rl_step.action)
             info = info._replace(entropy_target=et_step.info)

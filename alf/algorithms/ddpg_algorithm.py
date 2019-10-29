@@ -240,7 +240,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):
-        return ['target_actor_network', 'target_critic_network']
+        return ['_target_actor_network', '_target_critic_network']
 
     def _create_ou_process(self, ou_stddev, ou_damping):
         # todo with seed None
