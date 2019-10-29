@@ -459,21 +459,16 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         if not path:
             return _transform_image(obs)
         step = path[0]
-        if isinstance(obs, tuple):
-            if hasattr(obs, '_fields'):
-                new_val = _traverse_path(getattr(obs, step), path[1:])
-                return obs._replace(**{step: new_val})
-            else:
-                step = int(step)
-                transformed = _traverse_path(obs[step], path[1:])
-                return obs[:step] + (transformed, ) + obs[step + 1:]
+        if isinstance(obs, tuple) and hasattr(obs, '_fields'):
+            new_val = _traverse_path(getattr(obs, step), path[1:])
+            return obs._replace(**{step: new_val})
         elif isinstance(obs, dict):
             new_obs = obs.copy()
             new_obs[step] = _traverse_path(obs[step], path[1:])
             return new_obs
         else:
             raise TypeError(("If observation is a nest, it must be either " +
-                             "a dict or tuple!"))
+                             "a dict or namedtuple!"))
 
     fields = fields or [""]
     for field in fields:

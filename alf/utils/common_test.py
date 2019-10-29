@@ -23,16 +23,15 @@ class ImageScaleTransformerTest(tf.test.TestCase):
         observation = tf.zeros(shape, dtype=tf.uint8)
         common.image_scale_transformer(observation)
 
-        T1 = common.namedtuple('T1', ['x'])
+        T1 = common.namedtuple('T1', ['x', 'y'])
         T2 = common.namedtuple('T2', ['a', 'b', 'c'])
-        T3 = common.namedtuple('T3', ['l'])
+        T3 = common.namedtuple('T3', ['l', 'm'])
         observation = T1(
             x=T2(
                 a=tf.ones(shape, dtype=tf.uint8) * 255,
-                b=T3(l=tf.zeros(shape, dtype=tf.uint8)),
-                c=(tf.zeros(shape, dtype=tf.uint8), )))
+                b=T3(l=tf.zeros(shape, dtype=tf.uint8))))
         transformed_observation = common.image_scale_transformer(
-            observation, fields=["x.a", "x.b.l", "x.c.0"])
+            observation, fields=["x.a", "x.b.l"])
 
         tf.debugging.assert_equal(transformed_observation.x.a,
                                   tf.ones(shape, dtype=tf.float32))
