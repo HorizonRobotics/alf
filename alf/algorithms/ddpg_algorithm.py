@@ -239,6 +239,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def after_train(self):
         self._update_target()
 
+    def _trainable_attributes_to_ignore(self):
+        return ['target_actor_network', 'target_critic_network']
+
     def _create_ou_process(self, ou_stddev, ou_damping):
         # todo with seed None
         seed_stream = tfd.SeedStream(seed=None, salt='ou_noise')

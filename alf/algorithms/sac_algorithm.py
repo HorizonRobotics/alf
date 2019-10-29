@@ -159,9 +159,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._critic_network1 = critic_network1
         self._critic_network2 = critic_network2
         self._target_critic_network1 = self._critic_network1.copy(
-            name='TargetCriticNetwork1')
+            name='target_critic_network1')
         self._target_critic_network2 = self._critic_network2.copy(
-            name='TargetCriticNetwork2')
+            name='target_critic_network2')
         self._actor_optimizer = actor_optimizer
         self._critic_optimizer = critic_optimizer
         self._alpha_optimizer = alpha_optimizer
@@ -380,3 +380,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
         return LossInfo(loss=critic_loss, extra=critic_loss)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['target_critic_network1', 'target_critic_network2']
