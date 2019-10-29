@@ -429,7 +429,7 @@ def cast_transformer(observation, dtype=tf.float32):
             return tf.cast(obs, dtype)
         return obs
 
-    return tf.nest.map_structure(lambda o: _cast, observation)
+    return tf.nest.map_structure(_cast, observation)
 
 
 @gin.configurable
