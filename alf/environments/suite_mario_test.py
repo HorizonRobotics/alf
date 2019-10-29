@@ -37,21 +37,25 @@ class SuiteMarioTest(tf.test.TestCase):
         else:
             gin.clear_config()
 
+    def tearDown(self):
+        super().tearDown()
+        self._env.close()
+
     def test_mario_env(self):
         ctor = lambda: suite_mario.load(
             'SuperMarioBros-Nes', 'Level1-1', wrap_with_process=False)
 
-        env = parallel_py_environment.ParallelPyEnvironment([ctor] * 4)
-        env = tf_py_environment.TFPyEnvironment(env)
-        self.assertEqual(np.float32, env.observation_spec().dtype)
+        self._env = parallel_py_environment.ParallelPyEnvironment([ctor] * 4)
+        env = tf_py_environment.TFPyEnvironment(self._env)
+        self.assertEqual(np.uint8, env.observation_spec().dtype)
         self.assertEqual((84, 84, 4), env.observation_spec().shape)
 
         random_policy = random_tf_policy.RandomTFPolicy(
             env.time_step_spec(), env.action_spec())
 
         metrics = [
-            AverageReturnMetric(),
-            AverageEpisodeLengthMetric(),
+            AverageReturnMetric(batch_size=4),
+            AverageEpisodeLengthMetric(batch_size=4),
             EnvironmentSteps(),
             NumberOfEpisodes()
         ]

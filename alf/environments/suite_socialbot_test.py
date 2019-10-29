@@ -38,19 +38,26 @@ class SuiteSocialbotTest(tf.test.TestCase):
         else:
             gin.clear_config()
 
+    def tearDown(self):
+        super().tearDown()
+        self._env.close()
+
     def test_socialbot_env_registered(self):
-        env = suite_socialbot.load('SocialBot-CartPole-v0')
-        self.assertIsInstance(env, py_environment.PyEnvironment)
+        self._env = suite_socialbot.load(
+            'SocialBot-CartPole-v0', wrap_with_process=True)
+        self.assertIsInstance(self._env, py_environment.PyEnvironment)
 
     def test_observation_spec(self):
-        env = suite_socialbot.load('SocialBot-CartPole-v0')
-        self.assertEqual(np.float32, env.observation_spec().dtype)
-        self.assertEqual((4, ), env.observation_spec().shape)
+        self._env = suite_socialbot.load(
+            'SocialBot-CartPole-v0', wrap_with_process=True)
+        self.assertEqual(np.float32, self._env.observation_spec().dtype)
+        self.assertEqual((4, ), self._env.observation_spec().shape)
 
     def test_action_spec(self):
-        env = suite_socialbot.load('SocialBot-CartPole-v0')
-        self.assertEqual(np.float32, env.action_spec().dtype)
-        self.assertEqual((1, ), env.action_spec().shape)
+        self._env = suite_socialbot.load(
+            'SocialBot-CartPole-v0', wrap_with_process=True)
+        self.assertEqual(np.float32, self._env.action_spec().dtype)
+        self.assertEqual((1, ), self._env.action_spec().shape)
 
     def test_parallel_envs(self):
         env_num = 5
@@ -60,9 +67,9 @@ class SuiteSocialbotTest(tf.test.TestCase):
                 'SocialBot-CartPole-v0', wrap_with_process=False)
         ] * env_num
 
-        parallel_envs = parallel_py_environment.ParallelPyEnvironment(
+        self._env = parallel_py_environment.ParallelPyEnvironment(
             env_constructors=ctors, start_serially=False)
-        tf_env = tf_py_environment.TFPyEnvironment(parallel_envs)
+        tf_env = tf_py_environment.TFPyEnvironment(self._env)
 
         self.assertTrue(tf_env.batched)
         self.assertEqual(tf_env.batch_size, env_num)
@@ -86,8 +93,6 @@ class SuiteSocialbotTest(tf.test.TestCase):
         step_driver.run()
 
         self.assertIsNotNone(replay_buffer.get_next())
-
-        parallel_envs.close()
 
 
 if __name__ == '__main__':

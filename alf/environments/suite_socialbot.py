@@ -118,6 +118,7 @@ def _get_unused_port(start, end=65536):
             process_lock = InterProcessLock(
                 path='/tmp/socialbot/{}.lock'.format(port))
             if not process_lock.acquire(blocking=False):
+                process_lock.lockfile.close()
                 process_lock = None
                 continue
             try:
