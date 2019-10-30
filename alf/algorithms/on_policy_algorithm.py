@@ -68,4 +68,4 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             discount=exp.discount,
             observation=exp.observation,
             prev_action=exp.prev_action)
-        return self.rollout(time_step, state, with_experience=True)
+        return self.rollout(time_step, state)

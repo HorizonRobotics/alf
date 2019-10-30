@@ -77,14 +77,16 @@ class RNDAlgorithm(Algorithm):
             self._observation_normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec, speed=observation_adapt_speed)
 
-    def train_step(self, inputs, state):
+    def train_step(self, inputs, state, calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple): observation and previous action
+            inputs (tuple): observation
+            state (tuple):  empty tuple ()
+            calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
             TrainStep:
                 outputs: empty tuple ()
-                state: emplty tuple ()
+                state: empty tuple ()
                 info: RNDInfo
         """
         observation, _ = inputs
@@ -98,8 +100,11 @@ class RNDAlgorithm(Algorithm):
             tf.square(pred_embedding - tf.stop_gradient(target_embedding)),
             axis=-1)
 
-        intrinsic_reward = tf.stop_gradient(loss)
-        intrinsic_reward = self._reward_normalizer.normalize(intrinsic_reward)
+        intrinsic_reward = ()
+        if calc_intrinsic_reward:
+            intrinsic_reward = tf.stop_gradient(loss)
+            intrinsic_reward = self._reward_normalizer.normalize(
+                intrinsic_reward)
 
         return AlgorithmStep(
             outputs=(),

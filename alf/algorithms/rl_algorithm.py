@@ -357,7 +357,15 @@ class RLAlgorithm(Algorithm):
         valid_masks = tf.cast(
             tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
 
-        return super().train_complete(tape, training_info, valid_masks, weight)
+        ret = super().train_complete(tape, training_info, valid_masks, weight)
+        self.after_train()
+        return ret
+
+    def after_train(self):
+        """Do things after complete one iteration of training, such as update
+        target network.
+        """
+        pass
 
     @abstractmethod
     def calc_loss(self, training_info: TrainingInfo):
