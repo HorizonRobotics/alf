@@ -27,6 +27,7 @@ from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.on_policy_algorithm import Experience, OnPolicyAlgorithm, RLAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo, namedtuple
+from alf.utils.common import cast_transformer
 from alf.utils.math_ops import add_ignore_empty
 
 AgentState = namedtuple("AgentState", ["rl", "icm"], default_value=())
@@ -57,7 +58,7 @@ class Agent(OnPolicyAlgorithm):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer: Callable = None,
+                 observation_transformer=cast_transformer,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
         """Create an Agent
@@ -83,8 +84,8 @@ class Agent(OnPolicyAlgorithm):
                 clip gradient. If False, use tf.clip_by_norm for each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
-            observation_transformer (Callable): transformation applied to
-                `time_step.observation`
+            observation_transformer (Callable | list[Callable]): transformation(s)
+                applied to `time_step.observation`
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """

@@ -252,7 +252,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
         self._time_step_spec = extract_spec(time_step)
         initial_state = common.get_initial_policy_state(
             self._env_batch_size, self.train_state_spec)
-        policy_step = self.rollout(time_step, initial_state)
+        transformed_timestep = self.transform_timestep(time_step)
+        policy_step = self.rollout(transformed_timestep, initial_state)
         info_spec = extract_spec(policy_step.info)
 
         def _to_distribution_spec(spec):
@@ -296,13 +297,15 @@ class OffPolicyAlgorithm(RLAlgorithm):
             action_distribution=action_dist,
             state=initial_state if self._use_rollout_state else ())
 
-        processed_exp = self.preprocess_experience(exp)
+        transformed_exp = self.transform_timestep(exp)
+        processed_exp = self.preprocess_experience(transformed_exp)
         self._processed_experience_spec = self._experience_spec._replace(
+            observation=extract_spec(processed_exp.observation),
             info=extract_spec(processed_exp.info))
 
         policy_step = common.algorithm_step(
             algorithm_step_func=self.train_step,
-            time_step=exp,
+            time_step=processed_exp,
             state=initial_state)
         info_spec = extract_spec(policy_step.info)
         self._training_info_spec = make_training_info(

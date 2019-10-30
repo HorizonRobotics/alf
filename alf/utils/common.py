@@ -414,6 +414,25 @@ def get_global_counter(default_counter=None):
 
 
 @gin.configurable
+def cast_transformer(observation, dtype=tf.float32):
+    """Cast observation
+
+    Args:
+         observation (nested Tensor): observation
+         dtype (Dtype): The destination type.
+    Returns:
+        casted observation
+    """
+
+    def _cast(obs):
+        if isinstance(obs, tf.Tensor):
+            return tf.cast(obs, dtype)
+        return obs
+
+    return tf.nest.map_structure(_cast, observation)
+
+
+@gin.configurable
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max)
 
