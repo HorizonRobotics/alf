@@ -39,8 +39,17 @@ def select_from_mask(data, mask):
 def conditional_update(target, cond, func, *args, **kwargs):
     """Update target according to cond mask
 
-    target[row] is changed to func(*args[row], **kwargs[row]) if cond[row]
-    is True, otherwise target[row] remains unchanged.
+    Compute result as an update of `target` based on `cond`. To be specific,
+    result[row] is func(*args[row], **kwargs[row]) if cond[row] is True,
+    otherwise result[row] will be target[row]. Note that target will not be
+    changed.
+
+    If you simply want to do some conditional computation wihtout actually
+    returning any results. You can use conditional_update in the following way:
+    ```
+    # func needs to return an empty tuple ()
+    condititional_update((), cond, func, *args, **kwargs)
+    ```
 
     Args:
         target (nested Tensor): target to be updated

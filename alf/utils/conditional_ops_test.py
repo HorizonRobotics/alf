@@ -48,6 +48,19 @@ class ConditionalOpsTest(tf.test.TestCase):
             select_from_mask(updated_target[1], cond),
             select_from_mask(y - 1, cond))
 
+        vx = tf.Variable(initial_value=0.)
+        vy = tf.Variable(initial_value=0.)
+
+        def _func1(x, y):
+            vx.assign(tf.reduce_sum(x))
+            vy.assign(tf.reduce_sum(y))
+            return ()
+
+        # test empty return
+        conditional_update((), cond, _func1, x, y)
+        self.assertEqual(vx, tf.reduce_sum(select_from_mask(x, cond)))
+        self.assertEqual(vy, tf.reduce_sum(select_from_mask(y, cond)))
+
     def test_select_from_mask(self):
         data = tf.constant([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [10, 11]])
         cond = tf.constant([False, True, True, False, False, True])
