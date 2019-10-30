@@ -19,6 +19,7 @@ import gin
 import tensorflow as tf
 
 from tf_agents.networks.network import Network
+from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.algorithms.mi_estimator import MIEstimator
@@ -79,6 +80,7 @@ class Generator(Algorithm):
                  input_tensor_spec=None,
                  hidden_layers=(256, ),
                  net: Network = None,
+                 net_moving_average_rate=None,
                  entropy_regularization=0.,
                  kernel_sharpness=2.,
                  mi_weight=None,
@@ -96,6 +98,9 @@ class Generator(Algorithm):
             net (Network): network for generating outputs from [noise, inputs]
                 or noise (if inputs is None). If None, a default one with
                 hidden_layers will be created
+            net_moving_average_rate (float): If provided, use a moving average
+                version of net to do prediction. This has been shown to be
+                effective for GAN training (arXiv:1907.02544, arXiv:1812.04948).
             entropy_regularization (float): weight of entropy regularization
             kernel_sharpness (float): Used only for entropy_regularization > 0.
                 We calcualte the kernel in SVGD as:
@@ -141,8 +146,17 @@ class Generator(Algorithm):
                 x_spec, y_spec, sampler='shift')
             self._mi_weight = mi_weight
         self._net = net
+        self._predict_net = None
+        self._net_moving_average_rate = net_moving_average_rate
+        if net_moving_average_rate:
+            self._predict_net = net.copy(name="Genrator_average")
+            tfa_common.soft_variables_update(
+                self._net.variables, self._predict_net.variables, tau=1.0)
 
-    def _predict(self, inputs, batch_size=None):
+    def _trainable_attributes_to_ignore(self):
+        return ["_predict_net"]
+
+    def _predict(self, inputs, batch_size=None, training=True):
         if inputs is None:
             assert self._input_tensor_spec is None
             assert batch_size is not None
@@ -152,7 +166,10 @@ class Generator(Algorithm):
         shape = common.concat_shape([batch_size], [self._noise_dim])
         noise = tf.random.normal(shape=shape)
         gen_inputs = noise if inputs is None else [noise, inputs]
-        outputs = self._net(gen_inputs)[0]
+        if self._predict_net and not training:
+            outputs = self._predict_net(gen_inputs)[0]
+        else:
+            outputs = self._net(gen_inputs)[0]
         return outputs, gen_inputs
 
     def predict(self, inputs, batch_size=None, state=None):
@@ -167,7 +184,7 @@ class Generator(Algorithm):
         Returns:
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
-        outputs, _ = self._predict(inputs, batch_size)
+        outputs, _ = self._predict(inputs, batch_size, training=False)
         return AlgorithmStep(outputs=outputs, state=(), info=())
 
     def train_step(self, inputs, loss_func, batch_size=None, state=None):
@@ -239,3 +256,10 @@ class Generator(Algorithm):
 
         loss_grad = tape.gradient(scalar_loss, outputs2)
         return loss, loss_grad - kernel_grad
+
+    def after_train(self):
+        if self._predict_net:
+            tfa_common.soft_variables_update(
+                self._net.variables,
+                self._predict_net.variables,
+                tau=self._net_moving_average_rate)
