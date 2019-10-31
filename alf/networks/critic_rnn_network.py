@@ -146,15 +146,12 @@ class CriticRnnNetwork(network.Network):
         observation, _ = self._obs_encoder(
             observation, step_type=step_type, network_state=network_state)
 
-        observation = batch_squash.flatten(observation)
-        action = tf.cast(tf.nest.flatten(action)[0], tf.float32)
-        action = batch_squash.flatten(action)
-
         output, network_state = self._lstm_encoder(
             inputs=(observation, action),
             step_type=step_type,
             network_state=network_state)
 
+        output = batch_squash.flatten(output)
         for layer in self._output_layers:
             output = layer(output)
 
