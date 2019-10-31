@@ -40,11 +40,11 @@ class EntropyTargetAlgorithm(Algorithm):
     1. init stage. During this stage, the alpha is not changed. It transitions
        to fast_stage once entropy drops below `target_entropy`.
     2. adjust stage. During this stage, log_alpha is adjusted using this formula:
-       ((above + 0.5 * below) * increasing - (below + 0.5 * above) * decreasing) * update_rate.
-       Note that log_alpha will always be increased if entropy is increasing
+       ((below + 0.5 * above) * decreasing - (above + 0.5 * below) * increasing) * update_rate
+       Note that log_alpha will always be decreased if entropy is increasing
        even when the entropy is below the target entropy. This is to prevent
        overshooting log_alpha to a too big value. Same reason for always
-       decreasing log_alpha when the entropy is above the target entropy.
+       increasing log_alpha even when the entropy is above the target entropy.
        `update_rate` is initialized to `fast_update_rate` and is reduced by a
        factor of 0.9 whenever the entropy crosses `target_entropy`. `udpate_rate`
        is reset to `fast_update_rate` if entropy drops too much below
