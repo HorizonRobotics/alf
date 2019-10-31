@@ -416,7 +416,15 @@ class Algorithm(tf.Module):
 
             optimizer.apply_gradients(grads_and_vars)
 
+        self.after_train()
+
         return loss_info, all_grads_and_vars
+
+    def after_train(self):
+        """Do things after complete one iteration of training, such as update
+        target network.
+        """
+        pass
 
     # Subclass may override calc_loss() to allow more sophisticated loss
     def calc_loss(self, training_info):
