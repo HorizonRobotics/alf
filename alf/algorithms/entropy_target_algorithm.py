@@ -65,12 +65,12 @@ class EntropyTargetAlgorithm(Algorithm):
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            initial_log_alpha (float): initial value for alpha.
+            initial_alpha (float): initial value for alpha.
             target_entropy (float): the lower bound of the entropy. If not
                 provided, a default value proportional to the action dimension
                 is used.
-            slow_update_rate (float):
-            fast_update_rate (float):
+            slow_update_rate (float): minimal update rate for log_alpha
+            fast_update_rate (float): maximum update rate for log_alpha
             min_alpha (float): the minimal value of alpha. If <=0, exp(-100) is
                 used.
             optimizer (tf.optimizers.Optimizer): The optimizer for training. If
