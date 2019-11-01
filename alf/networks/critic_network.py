@@ -127,18 +127,16 @@ class CriticNetwork(network.Network):
         self._single_action_spec = flat_action_spec[0]
 
         self._action_layers = utils.mlp_layers(
-            None,
-            action_fc_layer_params,
-            action_dropout_layer_params,
+            fc_layer_params=action_fc_layer_params,
+            dropout_layer_params=action_dropout_layer_params,
             activation_fn=activation_fn,
             kernel_initializer=tf.compat.v1.keras.initializers.VarianceScaling(
                 scale=1. / 3., mode='fan_in', distribution='uniform'),
             name='action_encoding')
 
         self._joint_layers = utils.mlp_layers(
-            None,
-            joint_fc_layer_params,
-            joint_dropout_layer_params,
+            fc_layer_params=joint_fc_layer_params,
+            dropout_layer_params=joint_dropout_layer_params,
             activation_fn=activation_fn,
             kernel_initializer=tf.compat.v1.keras.initializers.VarianceScaling(
                 scale=1. / 3., mode='fan_in', distribution='uniform'),

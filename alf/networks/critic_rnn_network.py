@@ -99,8 +99,7 @@ class CriticRnnNetwork(network.Network):
 
         action_layers = sequential_layer.SequentialLayer(
             utils.mlp_layers(
-                None,
-                action_fc_layer_params,
+                fc_layer_params=action_fc_layer_params,
                 activation_fn=activation_fn,
                 kernel_initializer=tf.compat.v1.keras.initializers.
                 VarianceScaling(
