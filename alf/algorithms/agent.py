@@ -197,7 +197,8 @@ class Agent(OnPolicyAlgorithm):
         info = info._replace(rl=rl_step.info)
 
         if self._entropy_target_algorithm:
-            et_step = self._entropy_target_algorithm.train_step(rl_step.action)
+            et_step = self._entropy_target_algorithm.train_step(
+                rl_step.action, step_type=time_step.step_type)
             info = info._replace(entropy_target=et_step.info)
 
         return PolicyStep(action=rl_step.action, state=new_state, info=info)

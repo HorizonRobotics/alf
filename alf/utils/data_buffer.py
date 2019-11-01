@@ -74,7 +74,8 @@ class DataBuffer(tf.Module):
                            self._current_pos + n) % self._capacity
         indices = tf.expand_dims(indices, axis=-1)
         tf.nest.map_structure(
-            lambda buf, bat: buf.scatter_nd_update(indices, bat[-n:]),
+            lambda buf, bat: buf.scatter_nd_update(indices,
+                                                   tf.stop_gradient(bat[-n:])),
             self._buffer, batch)
 
         self._current_pos.assign((self._current_pos + n) % self._capacity)
@@ -99,3 +100,6 @@ class DataBuffer(tf.Module):
     def get_batch_by_indices(self, indices):
         return tf.nest.map_structure(
             lambda buffer: tf.gather(buffer, indices, axis=0), self._buffer)
+
+    def get_all(self):
+        return self._buffer
