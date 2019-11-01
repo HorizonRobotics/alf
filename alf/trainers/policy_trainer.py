@@ -451,6 +451,9 @@ def play(root_dir,
         else:
             env.pyenv.envs[0].render(mode='human')
             time.sleep(sleep_time_per_step)
+
+        episode_reward += float(time_step.reward)
+
         if time_step.is_last():
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
@@ -458,7 +461,6 @@ def play(root_dir,
             episode_length = 0.
             episodes += 1
         else:
-            episode_reward += float(time_step.reward)
             episode_length += 1
     if recorder:
         recorder.close()
