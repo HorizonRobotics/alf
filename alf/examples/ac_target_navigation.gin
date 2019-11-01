@@ -12,6 +12,9 @@ PlayGround.image_with_internal_states=True
 PlayGround.with_language=True
 PlayGround.resized_image_size=(84, 84)
 
+FrameStack.fields_to_stack=['image', 'states']  # must be a subset of preprocessing_layers
+image_scale_transformer.fields=['image']
+
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 ActorDistributionRnnNetwork.continuous_projection_net=@NormalProjectionNetwork
@@ -25,71 +28,49 @@ ActorDistributionRnnNetwork.lstm_size=(128, 128)
 ValueRnnNetwork.activation_fn=@tf.nn.elu
 ValueRnnNetwork.lstm_size=(128, 128)
 
-ac/Adam.learning_rate=4e-4
+ac/Adam.learning_rate=2e-4
 
-observation_spec=@get_observation_spec()
-states_shape=@get_states_shape()
-action_spec=@get_action_spec()
-vocab_size=@get_vocab_size()  # must have sentence as part of observation
-
+conv_layer_params=((16, 3, 2), (32, 3, 2))
 num_embedding_dims=16
 fc_layer_params=(256,)
-common.get_conv_layers.conv_layer_params=((16, 3, 2), (32, 3, 2))
-conv_layers = @common.get_conv_layers()
+num_state_tiles=800
+num_sentence_tiles=800
 
-state_layers = @states/get_identity_layer()
+import alf.networks.target_navigation
 
-sentence/generate_network.structure=(
-    'tf.keras.Sequential',
-        [('tf.keras.layers.Embedding', %vocab_size, %num_embedding_dims),
-         ('tf.keras.layers.GlobalAveragePooling1D')])
-sentence_layers = @sentence/generate_network()
+target_navigation.get_actor_network.conv_layer_params=%conv_layer_params
+target_navigation.get_actor_network.num_embedding_dims=%num_embedding_dims
+target_navigation.get_actor_network.fc_layer_params=%fc_layer_params
+target_navigation.get_actor_network.num_state_tiles=%num_state_tiles
+target_navigation.get_actor_network.num_sentence_tiles=%num_sentence_tiles
 
-preprocessing_layers={
-    'image': %conv_layers,
-    'states': %state_layers,
-    'sentence': %sentence_layers}
+target_navigation.get_value_network.conv_layer_params=%conv_layer_params
+target_navigation.get_value_network.num_embedding_dims=%num_embedding_dims
+target_navigation.get_value_network.fc_layer_params=%fc_layer_params
+target_navigation.get_value_network.num_state_tiles=%num_state_tiles
+target_navigation.get_value_network.num_sentence_tiles=%num_sentence_tiles
 
-FrameStack.fields_to_stack=['image', 'states']  # must be a subset of preprocessing_layers
-
-combiner/generate_network.structure=('tf.keras.layers.Concatenate',)
-preprocessing_combiner=@combiner/generate_network()
-
-ActorDistributionRnnNetwork.input_tensor_spec=%observation_spec
-ActorDistributionRnnNetwork.output_tensor_spec=%action_spec
-ActorDistributionRnnNetwork.preprocessing_layers=%preprocessing_layers
-ActorDistributionRnnNetwork.preprocessing_combiner=%preprocessing_combiner
-ActorDistributionRnnNetwork.input_fc_layer_params=%fc_layer_params
-
-ValueRnnNetwork.input_tensor_spec=%observation_spec
-ValueRnnNetwork.preprocessing_layers=%preprocessing_layers
-ValueRnnNetwork.preprocessing_combiner=%preprocessing_combiner
-ValueRnnNetwork.input_fc_layer_params=%fc_layer_params
-
-actor=@ActorDistributionRnnNetwork()
-value=@ValueRnnNetwork()
-
-ActorCriticAlgorithm.actor_network=%actor
-ActorCriticAlgorithm.value_network=%value
+ActorCriticAlgorithm.actor_network=@target_navigation.get_actor_network()
+ActorCriticAlgorithm.value_network=@target_navigation.get_value_network()
 
 Agent.gradient_clipping=0.5
 
 
 suite_socialbot.load.max_episode_steps=1000
-GoalWithDistractionTask.max_steps=200
+GoalTask.max_steps=200
 
-GoalWithDistractionTask.fail_distance_thresh=10
-GoalWithDistractionTask.random_goal=False
-#GoalWithDistractionTask.random_range=2
-GoalWithDistractionTask.goal_name='ball'
+GoalTask.fail_distance_thresh=10
+GoalTask.random_goal=False
+#GoalTask.random_range=2
+GoalTask.goal_name='ball'
 
 #Curriculum
-GoalWithDistractionTask.use_curriculum_training=True
-GoalWithDistractionTask.start_range=1
-GoalWithDistractionTask.max_reward_q_length=100
-GoalWithDistractionTask.reward_thresh_to_increase_range=0.9
-GoalWithDistractionTask.increase_range_by_percent=0.1
-GoalWithDistractionTask.percent_full_range_in_curriculum=0.2
+GoalTask.use_curriculum_training=True
+GoalTask.start_range=1
+GoalTask.max_reward_q_length=100
+GoalTask.reward_thresh_to_increase_range=0.9
+GoalTask.increase_range_by_percent=0.1
+GoalTask.percent_full_range_in_curriculum=0.2
 
 TrainerConfig.use_tf_functions=1
 TrainerConfig.checkpoint_interval=100

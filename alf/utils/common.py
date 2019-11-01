@@ -448,7 +448,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """
 
     def _transform_image(obs):
-        assert isinstance(obs, tf.Tensor)
+        assert isinstance(obs, tf.Tensor), str(type(obs)) + ' is not Tensor'
         assert obs.dtype == tf.uint8, "Image must have dtype uint8!"
         obs = tf.cast(obs, tf.float32)
         return ((max - min) / 255.) * obs + min
