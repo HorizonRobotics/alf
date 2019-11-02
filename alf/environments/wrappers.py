@@ -47,13 +47,12 @@ class FrameStack(gym.Wrapper):
                 `(height, width, channels)` (Atari's default) while
                 `channels_first` corresponds to images with shape
                 `(channels, height, width)`.
-            fields_to_stack (list of str): optional names of the keys to the
+            fields_to_stack (list of str): optional paths to the fields of the
                 Dict env.observation_space.  If specified, only use the
                 spaces corresponding to the keys in FrameStack.  If is None,
-                stack all recognized spaces.  For any space which isn't in the
-                white list, FrameStack will skip stacking such a space.
-                When input space is not a Dict, we assume it's image, and 
-                fields_to_stack doesn't apply anymore.
+                stack all recognized spaces.
+                When input space is not a Dict, we just try to stack if we can.
+                Fields_to_stack doesn't apply anymore.
         """
         super().__init__(env)
         self._frames = collections.deque(maxlen=stack_size)
@@ -66,61 +65,53 @@ class FrameStack(gym.Wrapper):
 
         self._fields_to_stack = fields_to_stack
 
-        space = {}
-        if fields_to_stack:
-            assert isinstance(raw_space,
-                              gym.spaces.Dict), 'observation is not dict'
-            for field in fields_to_stack:
-                assert field in raw_space.spaces, (
-                    '{} not in observation.spaces'.format(field))
-                space[field] = raw_space.spaces[field]
-            for name, sp in space.items():
-                if name in fields_to_stack:
-                    if isinstance(sp, gym.spaces.Box):
-                        # Shape of stacked_space is determined by low.shape
-                        low = np.concatenate([sp.low] * stack_size)
-                        high = np.concatenate([sp.high] * stack_size)
-                        assert channel_order in [
-                            'channels_last', 'channels_first'
+        def _stack_field(sp):
+            if isinstance(sp, gym.spaces.Box):
+                # Shape of stacked_space is determined by low.shape
+                low = np.concatenate([sp.low] * stack_size)
+                high = np.concatenate([sp.high] * stack_size)
+                assert channel_order in ['channels_last', 'channels_first']
+                if channel_order == 'channels_last':
+                    low = np.transpose(
+                        np.concatenate([np.transpose(sp.low)] * stack_size))
+                    high = np.transpose(
+                        np.concatenate([np.transpose(sp.high)] * stack_size))
+                stacked_space = gym.spaces.Box(
+                    low=np.array(low), high=np.array(high), dtype=sp.dtype)
+
+            elif isinstance(sp, gym.spaces.MultiDiscrete):
+                nvec = [sp.nvec] * stack_size
+                stacked_space = gym.spaces.MultiDiscrete(nvec)
+
+            else:
+                stacked_space = sp
+            return stacked_space
+
+        def _traverse(d, fields_to_stack=None, prefix=""):
+            assert isinstance(d, gym.spaces.Dict), 'input is not dict'
+            res = d
+            for name, sp in d.spaces.items():
+                path = prefix + name
+                transformed = sp
+                if isinstance(sp, gym.spaces.Dict):
+                    transformed, fields_to_stack = _traverse(
+                        sp, fields_to_stack, path)
+                else:
+                    if fields_to_stack is None or path in fields_to_stack:
+                        transformed = _stack_field(sp)
+                        fields_to_stack = [
+                            item for item in fields_to_stack
+                            if item is not path
                         ]
-                        if channel_order == 'channels_last':
-                            low = np.transpose(
-                                np.concatenate(
-                                    [np.transpose(sp.low)] * stack_size))
-                            high = np.transpose(
-                                np.concatenate(
-                                    [np.transpose(sp.high)] * stack_size))
-                        stacked_space = gym.spaces.Box(
-                            low=np.array(low),
-                            high=np.array(high),
-                            dtype=sp.dtype)
+                res.spaces[name] = transformed
+            return res, fields_to_stack
 
-                    elif isinstance(sp, gym.spaces.MultiDiscrete):
-                        nvec = [sp.nvec] * stack_size
-                        stacked_space = gym.spaces.MultiDiscrete(nvec)
-
-                    else:
-                        stacked_space = sp
-                    self.observation_space.spaces[name] = stacked_space
-
-                else:  # name not in fields_to_stack:
-                    self.observation_space.spaces[name] = sp
-
-        else:  # raw_space is a simple gym.spaces.Box, not a dict
+        if isinstance(raw_space, gym.spaces.Dict):
+            self.observation_space, remain_fields = _traverse(
+                raw_space, fields_to_stack)
+        else:
             assert isinstance(raw_space, gym.spaces.Box)
-            sp = raw_space
-            low = np.concatenate([sp.low] * stack_size)
-            high = np.concatenate([sp.high] * stack_size)
-            # Assuming we are processing image input
-            assert channel_order in ['channels_last', 'channels_first']
-            if channel_order == 'channels_last':
-                low = np.transpose(
-                    np.concatenate([np.transpose(sp.low)] * stack_size))
-                high = np.transpose(
-                    np.concatenate([np.transpose(sp.high)] * stack_size))
-            stacked_space = gym.spaces.Box(
-                low=np.array(low), high=np.array(high), dtype=sp.dtype)
-            self.observation_space = stacked_space
+            self.observation_space = _stack_field(raw_space)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
