@@ -138,6 +138,28 @@ def histogram_continuous(name,
             tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
 
 
+def unique_var_names(vars):
+    """Generate unique names for `vars`
+
+    Variable names may not be not unique, which can create problems for summary.
+    This function add a suffix when the names duplicate.
+
+    Args:
+        vars (iterable of Varaible): the list of Variables
+    Returns:
+        iterator of the unique variable names in the same order as vars.
+    """
+    count = {}
+    for var in vars:
+        var_name = var.name.replace(':', '_')
+        if var_name in count:
+            count[var_name] += 1
+            var_name += "_" + str(count[var_name])
+        else:
+            count[var_name] = 0
+        yield var_name
+
+
 @_summary_wrapper
 def add_variables_summaries(grads_and_vars, step=None):
     """Add summaries for variables.
@@ -146,28 +168,22 @@ def add_variables_summaries(grads_and_vars, step=None):
       grads_and_vars (list): A list of (gradient, variable) pairs.
       step (tf.Variable): Variable to use for summaries.
     """
-    count = {}
-    for grad, var in grads_and_vars:
-        if grad is not None:
-            if isinstance(var, tf.IndexedSlices):
-                var_values = var.values
-            else:
-                var_values = var
-            var_name = var.name.replace(':', '_')
-            if var_name in count:
-                # variable names are not unique, add a suffix
-                count[var_name] += 1
-                var_name += "_" + str(count[var_name])
-            else:
-                count[var_name] = 0
-            tf.summary.histogram(
-                name='summarize_vars/' + var_name + '_value',
-                data=var_values,
-                step=step)
-            tf.summary.scalar(
-                name='summarize_vars/' + var_name + '_value_norm',
-                data=tf.linalg.global_norm([var_values]),
-                step=step)
+    if not grads_and_vars:
+        return
+    vars = [v for g, v in grads_and_vars]
+    for var, var_name in zip(vars, unique_var_names(vars)):
+        if isinstance(var, tf.IndexedSlices):
+            var_values = var.values
+        else:
+            var_values = var
+        tf.summary.histogram(
+            name='summarize_vars/' + var_name + '_value',
+            data=var_values,
+            step=step)
+        tf.summary.scalar(
+            name='summarize_vars/' + var_name + '_value_norm',
+            data=tf.linalg.global_norm([var_values]),
+            step=step)
 
 
 @_summary_wrapper
@@ -178,20 +194,15 @@ def add_gradients_summaries(grads_and_vars, step=None):
       grads_and_vars (list): A list of gradient to variable pairs (tuples).
       step (tf.Variable): Variable to use for summaries.
     """
-    count = {}
-    for grad, var in grads_and_vars:
+    if not grads_and_vars:
+        return
+    grads, vars = zip(*grads_and_vars)
+    for grad, var_name in zip(grads, unique_var_names(vars)):
         if grad is not None:
             if isinstance(grad, tf.IndexedSlices):
                 grad_values = grad.values
             else:
                 grad_values = grad
-            var_name = var.name.replace(':', '_')
-            if var_name in count:
-                # variable names are not unique, add a suffix
-                count[var_name] += 1
-                var_name += "_" + str(count[var_name])
-            else:
-                count[var_name] = 0
             tf.summary.histogram(
                 name='summarize_grads/' + var_name + '_gradient',
                 data=grad_values,

@@ -15,7 +15,6 @@
 from absl import logging
 from absl.testing import parameterized
 
-import gin.tf
 import tensorflow as tf
 import tensorflow_probability as tfp
 

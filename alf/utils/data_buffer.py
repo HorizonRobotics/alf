@@ -98,8 +98,28 @@ class DataBuffer(tf.Module):
         return self.get_batch_by_indices(indices)
 
     def get_batch_by_indices(self, indices):
+        """Get the samples by indices
+
+        index=0 corresponds to the earliest added sample in the DataBuffer.
+        Args:
+            indices (Tensor): indices of the samples
+        Returns:
+            Tensor of shape [batch_size] + tensor_spec.shape, where batch_size
+                is indices.shape[0]
+        """
+        indices = (indices +
+                   (self._current_pos - self._current_size)) % self._capacity
         return tf.nest.map_structure(
             lambda buffer: tf.gather(buffer, indices, axis=0), self._buffer)
 
     def get_all(self):
         return self._buffer
+
+    def clear(self):
+        """Clear the buffer.
+
+        Returns:
+            None
+        """
+        self._current_pos.assign(0)
+        self._current_size.assign(0)

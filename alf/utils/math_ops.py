@@ -11,10 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Various math ops."""
 
 import gin
 import tensorflow as tf
-"""Various math ops."""
 
 
 @gin.configurable
@@ -53,3 +53,31 @@ def add_ignore_empty(x, y):
         return y
     else:
         return x + y
+
+
+@gin.configurable
+def swish(x):
+    """Swish activation.
+
+    This is suggested in arXiv:1710.05941
+
+    Args:
+        x (Tensor): input
+    Returns:
+        Tensor
+    """
+    return x * tf.math.sigmoid(x)
+
+
+def max_n(inputs):
+    """Calculate the maximum of n Tensors
+
+    Args:
+        inputs (list[Tensor]): list of Tensors, should have the shape
+    Returns:
+        the elementwise maximum of all the tensors in `inputs`
+    """
+    ret = inputs.pop()
+    for x in inputs:
+        ret = tf.maximum(ret, x)
+    return ret
