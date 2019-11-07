@@ -17,10 +17,21 @@ import tensorflow as tf
 
 from alf.environments import suite_socialbot
 from alf.environments.wrappers import FrameStack
-from social_bot.envs import PlayGround
 
 
 class FrameStackTest(tf.test.TestCase):
+    def setUp(self):
+        super().setUp()
+        if not suite_socialbot.is_available():
+            self.skipTest('suite_socialbot is not available.')
+        else:
+            gin.clear_config()
+            from social_bot.envs.play_ground import PlayGround
+
+    def tearDown(self):
+        super().tearDown()
+        self._env.close()
+
     def test_framestack_all_fields(self):
         gin.bind_parameter('suite_socialbot.load.gym_env_wrappers',
                            (FrameStack, ))
@@ -29,8 +40,8 @@ class FrameStackTest(tf.test.TestCase):
         gin.bind_parameter('PlayGround.image_with_internal_states', True)
         gin.bind_parameter('PlayGround.with_language', False)
         gin.bind_parameter('PlayGround.resized_image_size', (2, 2))
-        env = suite_socialbot.load('SocialBot-PlayGround-v0')
-        obs = env.reset().observation
+        self._env = suite_socialbot.load('SocialBot-PlayGround-v0')
+        obs = self._env.reset().observation
         assert (
             obs['image'].shape,
             obs['states'].shape,
@@ -38,7 +49,6 @@ class FrameStackTest(tf.test.TestCase):
             (2, 2, 3 * 4),  # 3 channels * 4
             (4 * 4, ),  # 4 dimensions * 4 == 16
         )
-        env.close()
 
     def test_framestack_some_fields(self):
         gin.bind_parameter('suite_socialbot.load.gym_env_wrappers',
@@ -49,8 +59,8 @@ class FrameStackTest(tf.test.TestCase):
         gin.bind_parameter('PlayGround.image_with_internal_states', True)
         gin.bind_parameter('PlayGround.with_language', False)
         gin.bind_parameter('PlayGround.resized_image_size', (2, 2))
-        env = suite_socialbot.load('SocialBot-PlayGround-v0')
-        obs = env.reset().observation
+        self._env = suite_socialbot.load('SocialBot-PlayGround-v0')
+        obs = self._env.reset().observation
         assert (
             obs['image'].shape,
             obs['states'].shape,
@@ -58,7 +68,6 @@ class FrameStackTest(tf.test.TestCase):
             (2, 2, 3 * 4),  # 3 channels * 4
             (4, ),  # not stacking
         )
-        env.close()
 
     # TODO: once nested observation fields are implemented, add tests
     # for FrameStacking nested fields here.
