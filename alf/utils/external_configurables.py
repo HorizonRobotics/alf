@@ -19,7 +19,6 @@ import gym
 import tensorflow as tf
 from tf_agents.networks.utils import mlp_layers
 from tf_agents.networks.sequential_layer import SequentialLayer
-import tf_agents
 
 from tf_agents.environments import atari_wrappers
 
@@ -31,8 +30,6 @@ tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
                                                'tf.optimizers.Adam')
 gin.external_configurable(tf.keras.layers.Concatenate,
                           'tf.keras.layers.Concatenate')
-gin.external_configurable(tf_agents.networks.utils.mlp_layers,
-                          'tf_agents.networks.utils.mlp_layers')
 
 # This allows the environment creation arguments to be configurable by supplying
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
