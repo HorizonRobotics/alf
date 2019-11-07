@@ -12,18 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from absl.testing import parameterized
-from collections import OrderedDict
 import gin
 import tensorflow as tf
 
 from alf.environments import suite_socialbot
 from alf.environments.wrappers import FrameStack
-from alf.trainers.policy_trainer import TrainerConfig
-from alf.utils import common
+from social_bot.envs import PlayGround
 
 
-class FrameStackTest(parameterized.TestCase, tf.test.TestCase):
+class FrameStackTest(tf.test.TestCase):
     def test_framestack_all_fields(self):
         gin.bind_parameter('suite_socialbot.load.gym_env_wrappers',
                            (FrameStack, ))
@@ -31,7 +28,6 @@ class FrameStackTest(parameterized.TestCase, tf.test.TestCase):
         gin.bind_parameter('PlayGround.use_image_observation', True)
         gin.bind_parameter('PlayGround.image_with_internal_states', True)
         gin.bind_parameter('PlayGround.with_language', False)
-        gin.bind_parameter('TrainerConfig.unroll_length', 50)
         gin.bind_parameter('PlayGround.resized_image_size', (2, 2))
         env = suite_socialbot.load('SocialBot-PlayGround-v0')
         obs = env.reset().observation
@@ -52,7 +48,6 @@ class FrameStackTest(parameterized.TestCase, tf.test.TestCase):
         gin.bind_parameter('PlayGround.use_image_observation', True)
         gin.bind_parameter('PlayGround.image_with_internal_states', True)
         gin.bind_parameter('PlayGround.with_language', False)
-        gin.bind_parameter('TrainerConfig.unroll_length', 50)
         gin.bind_parameter('PlayGround.resized_image_size', (2, 2))
         env = suite_socialbot.load('SocialBot-PlayGround-v0')
         obs = env.reset().observation
