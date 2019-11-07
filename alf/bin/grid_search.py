@@ -276,7 +276,7 @@ class GridSearch(object):
             with gin.unlock_config():
                 gin.parse_config(
                     ['%s=%s' % (k, v) for k, v in parameters.items()])
-            # train_eval(root_dir)
+            train_eval(root_dir)
 
             device_queue.put(device)
         except Exception as e:
