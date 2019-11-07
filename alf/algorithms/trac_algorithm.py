@@ -13,8 +13,6 @@
 # limitations under the License.
 """Trusted Region Actor critic algorithm."""
 
-from typing import Callable
-
 import gin
 import tensorflow as tf
 
@@ -24,87 +22,15 @@ from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm, ActorCriticState
 from alf.algorithms.rl_algorithm import ActionTimeStep, StepType
+from alf.optimizers.trusted_updater import TrustedUpdater
 from alf.utils import common
 from alf.utils.common import namedtuple, run_if
 from alf.utils.data_buffer import DataBuffer
-from alf.utils import math_ops
 
 nest_map = tf.nest.map_structure
 
 TracExperience = namedtuple(
     "TracExperience", ["observation", "step_type", "state", "action_param"])
-
-
-class TrustedUpdater(object):
-    """Adjust variables based on the change calculated by `change_f()`
-
-    The motivation is that if some quatity changes too much after an SGD update,
-    the SGD step might be too big. We want to shink that step so that the
-    concerned quatity does not change too much. We can also monitor multiple
-    quantities to make sure none of them has sudden big jump.
-
-    It adjusts variables provided at `__init__` if the change calculated by
-    `change_f` is too big:
-    ```
-    change = change_f()
-    if change > max_change:
-        var <= old_var + 0.9 * (max_change/change) * (var - old_var)
-    ```
-    The above procedure is repeated until `change` is not bigger than
-    `max_change`. Note that `change` and `max_change` can be nests of
-    scalars. In this case, the inequality is understood as if any one of the
-    changes is greater than its corresponding max_change.
-    """
-
-    def __init__(self, variables):
-        """Create a TrustedUpdater instance.
-
-        Args:
-            varialbes (list[Variables]): variables to be monitored.
-        """
-        self._variables = variables
-        assert len(self._variables) > 0
-        self._prev_variables = [
-            tf.Variable(initial_value=v, dtype=v.dtype) for v in variables
-        ]
-
-    @tf.function
-    def adjust_step(self, change_f: Callable, max_change):
-        """Adjust `variables` based change calculated by change_f
-
-        This function will copy the new values of the variables to
-        a backup to be used for the next call of adjust_step.
-        Args:
-            change_f (Callable): a function calculate a (nested) change based on
-                current variable.
-            max_change (float): (nested) max change allowed.
-        Returns:
-            the actual change after variables are adjusted
-            the number of step to adjust variables
-        """
-
-        def _adjust_step(ratio):
-            # 0.9 is to prevent infinite loop when `actual_change` is close to
-            # `max_change`
-            r = 0.9 / ratio
-            for var, prev_var in zip(self._variables, self._prev_variables):
-                var.assign(prev_var + r * (var - prev_var))
-
-        counter = tf.zeros((), tf.int32)
-        ratio = tf.constant(2.)
-        change = max_change  # TF require `change` to be defined before the loop
-        while ratio > 1.:
-            change = change_f()
-            ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
-            ratio = math_ops.max_n(tf.nest.flatten(ratio))
-            if ratio > 1.:
-                _adjust_step(ratio)
-            counter += 1
-
-        for var, prev_var in zip(self._variables, self._prev_variables):
-            prev_var.assign(var)
-
-        return change, counter
 
 
 @gin.configurable
@@ -169,7 +95,8 @@ class TracAlgorithm(ActorCriticAlgorithm):
             step_type=tf.TensorSpec((), tf.int32),
             state=self.train_state_spec,
             action_param=action_param_spec)
-        self._buffer = DataBuffer(spec, capacity=buffer_size * batch_size)
+        self._buffer = DataBuffer(
+            spec, capacity=(buffer_size + 1) * batch_size)
         self._trusted_updater = None
         self._kl_clips = nest_map(lambda _: kl_clip, self.action_spec)
         self._batch_size = batch_size
@@ -214,13 +141,17 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
         Equation: KL(d1||d2) + KL(d2||d1)
         """
-        # Here we use stored states to calculate action. It might be better
-        # to use the states calculated using the new weights.
+        # Remove the samples from the last step from the buffer because it may
+        # repeated if the final_step_mode of OnPolicyDriver is FINAL_STEP_REDO.
+        # See comment of OnPolicyDriver for detail.
+        self._buffer.pop(self._batch_size)
         size = self._buffer.current_size
         total_kls = nest_map(lambda _: tf.zeros(()), self.action_spec)
         for t in tf.range(0, size, self._batch_size):
             exp = self._buffer.get_batch_by_indices(
                 tf.range(t, t + self._batch_size))
+            # Here we use stored states to calculate action. It might be better
+            # to use the states calculated using the new weights.
             new_action, _ = self._actor_network(
                 exp.observation,
                 step_type=exp.step_type,

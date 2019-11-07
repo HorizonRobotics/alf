@@ -73,11 +73,12 @@ def max_n(inputs):
     """Calculate the maximum of n Tensors
 
     Args:
-        inputs (list[Tensor]): list of Tensors, should have the shape
+        inputs (list[Tensor]): list of Tensors, should have the same shape
     Returns:
         the elementwise maximum of all the tensors in `inputs`
     """
-    ret = inputs.pop()
+    ret = inputs[0]
+    inputs = inputs[1:]
     for x in inputs:
         ret = tf.maximum(ret, x)
     return ret

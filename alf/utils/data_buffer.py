@@ -123,3 +123,8 @@ class DataBuffer(tf.Module):
         """
         self._current_pos.assign(0)
         self._current_size.assign(0)
+
+    def pop(self, n):
+        n = tf.minimum(self._current_size, n)
+        self._current_size.assign_sub(n)
+        self._current_pos.assign((self._current_pos - n) % self._capacity)
