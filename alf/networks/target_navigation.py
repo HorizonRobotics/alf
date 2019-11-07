@@ -16,10 +16,12 @@
 import collections
 import gin
 import tensorflow as tf
+import tf_agents
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 
 from alf.utils import common
+from alf.layers import get_identity_layer
 
 
 def get_ac_networks(conv_layer_params=None,
@@ -29,15 +31,39 @@ def get_ac_networks(conv_layer_params=None,
                     num_sentence_tiles=None):
     """
     Generate the actor and value networks
+
+    Args:
+        conv_layer_params (list[int 3 tuple]): optional convolution layers
+            parameters, where each item is a length-three tuple indicating
+            (filters, kernel_size, stride).
+        num_embedding_dims (int): optional number of dimensions of the
+            vocabulary embedding space.
+        fc_layer_params (list[int]): optional fully_connected parameters, where
+            each item is the number of units in the layer.
+        num_state_tiles (int): optional number of times to repeat the
+            internal state tensor before concatenation with other inputs.
+            The rationale is to match the number of dimentions of the image
+            input, so that the final concatenation will have roughly equal
+            representation from different sources of input.  Without this,
+            typically image input, due to its large input size, will take over
+            and trump all other small dimensional inputs.
+        num_sentence_tiles (int): optional number of times to repeat the
+            sentence embedding tensor before concatenation with other inputs,
+            so that sentence input won't be trumped by other high dimensional
+            inputs like image observation.
     """
     observation_spec = common.get_observation_spec()
-    states_shape = common.get_states_shape()
     action_spec = common.get_action_spec()
     vocab_size = common.get_vocab_size(
     )  # must have sentence as part of observation
 
-    conv_layers = common.get_conv_layers(conv_layer_params)
-    state_layers = common.get_identity_layer()
+    conv_layers = tf.keras.Sequential(
+        tf_agents.networks.utils.mlp_layers(
+            conv_layer_params=conv_layer_params,
+            activation_fn=tf.keras.activations.softsign,
+            kernel_initializer=tf.compat.v1.keras.initializers.
+            glorot_uniform()))
+    state_layers = get_identity_layer()
     sentence_layers = tf.keras.Sequential([
         tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
         tf.keras.layers.GlobalAveragePooling1D()
@@ -46,7 +72,6 @@ def get_ac_networks(conv_layer_params=None,
     # Here, we tile along the last dimension of the input.
     if num_state_tiles:
         state_layers = tf.keras.Sequential([
-            state_layers,
             tf.keras.layers.Lambda(lambda x: tf.tile(
                 x, multiples=[1, num_state_tiles]))
         ])

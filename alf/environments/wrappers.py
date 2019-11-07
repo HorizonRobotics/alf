@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import collections
+from collections import OrderedDict, deque
 
 import gin
 import gym
@@ -55,7 +56,7 @@ class FrameStack(gym.Wrapper):
                 Fields_to_stack doesn't apply anymore.
         """
         super().__init__(env)
-        self._frames = collections.deque(maxlen=stack_size)
+        self._frames = deque(maxlen=stack_size)
         self._channel_order = channel_order
         self._stack_size = stack_size
         raw_space = self.env.observation_space
@@ -65,7 +66,7 @@ class FrameStack(gym.Wrapper):
 
         self._fields_to_stack = fields_to_stack
 
-        def _stack_field(sp):
+        def _stack_space(sp):
             if isinstance(sp, gym.spaces.Box):
                 # Shape of stacked_space is determined by low.shape
                 low = np.concatenate([sp.low] * stack_size)
@@ -91,6 +92,8 @@ class FrameStack(gym.Wrapper):
             assert isinstance(d, gym.spaces.Dict), 'input is not dict'
             res = d
             for name, sp in d.spaces.items():
+                if prefix:
+                    prefix += "."
                 path = prefix + name
                 transformed = sp
                 if isinstance(sp, gym.spaces.Dict):
@@ -98,42 +101,83 @@ class FrameStack(gym.Wrapper):
                         sp, fields_to_stack, path)
                 else:
                     if fields_to_stack is None or path in fields_to_stack:
-                        transformed = _stack_field(sp)
-                        fields_to_stack = [
-                            item for item in fields_to_stack
-                            if item is not path
-                        ]
+                        transformed = _stack_space(sp)
+                        if fields_to_stack:
+                            fields_to_stack = [
+                                item for item in fields_to_stack
+                                if item != path
+                            ]
                 res.spaces[name] = transformed
             return res, fields_to_stack
 
         if isinstance(raw_space, gym.spaces.Dict):
             self.observation_space, remain_fields = _traverse(
                 raw_space, fields_to_stack)
+            assert not remain_fields, "These paths are not in input: " + str(
+                remain_fields)
         else:
             assert isinstance(raw_space, gym.spaces.Box)
-            self.observation_space = _stack_field(raw_space)
+            self.observation_space = _stack_space(raw_space)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
         return getattr(self.env, name)
 
+    def _get_space_for_path(self, path):
+        segments = path.split(".")
+        space = self.observation_space
+        if segments:
+            for name in segments:
+                space = space.spaces[name]
+        return space
+
     def _generate_observation(self):
-        if self._fields_to_stack:
-            result = collections.OrderedDict()
-            for frame in self._frames:
-                for key, field in frame.items():
+        def _traverse_append(result, data, path_prefix=""):
+            assert isinstance(result, OrderedDict)
+            if path_prefix:
+                path_prefix += "."
+            for key, field in data.items():
+                path = path_prefix + key
+                if isinstance(field, dict):
                     if key not in result:
-                        result[key] = collections.deque(
-                            maxlen=self._stack_size)
+                        result[key] = OrderedDict()
+                    result[key] = _traverse_append(result[key], field, path)
+                else:
+                    if key not in result:
+                        result[key] = deque(maxlen=self._stack_size)
                     result[key].append(field)
-            for key in result:
-                if key in self._fields_to_stack:
-                    if (self._channel_order == 'channels_last'):
-                        result[key] = np.concatenate(result[key], axis=-1)
+            return result
+
+        def _traverse_stack(result, path_prefix=""):
+            if not path_prefix or isinstance(result, OrderedDict):
+                for key, field in result.items():
+                    if path_prefix:
+                        path_prefix += "."
+                    path = path_prefix + key
+                    result[key] = _traverse_stack(field, path)
+            else:
+                if not self._fields_to_stack or (
+                        path_prefix in self._fields_to_stack):
+                    space = self._get_space_for_path(path_prefix)
+                    if isinstance(space, gym.spaces.Box):
+                        if (self._channel_order == 'channels_last'):
+                            result = np.concatenate(result, axis=-1)
+                        else:
+                            result = np.concatenate(result, axis=0)
+                    elif isinstance(space, gym.spaces.MultiDiscrete):
+                        result = np.concatenate(result, axis=-1)
                     else:
-                        result[key] = np.concatenate(result[key], axis=0)
+                        assert False, ("space with path {} not recognized: " +
+                                       "{}").format(path_prefix, str(space))
                 else:  # not stacking field
-                    result[key] = result[key][-1]  # take last/current frame
+                    result = result[-1]  # take last/current frame
+            return result
+
+        if isinstance(self.observation_space, gym.spaces.Dict):
+            result = OrderedDict()
+            for frame in self._frames:
+                result = _traverse_append(result, frame)
+            result = _traverse_stack(result)
             return result
         else:  # Assuming input is image space
             # Always stacks regardless of _fields_to_stack
