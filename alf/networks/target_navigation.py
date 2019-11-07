@@ -54,8 +54,6 @@ def get_ac_networks(conv_layer_params=None,
     """
     observation_spec = common.get_observation_spec()
     action_spec = common.get_action_spec()
-    vocab_size = common.get_vocab_size(
-    )  # must have sentence as part of observation
 
     conv_layers = tf.keras.Sequential(
         tf_agents.networks.utils.mlp_layers(
@@ -63,28 +61,32 @@ def get_ac_networks(conv_layer_params=None,
             activation_fn=tf.keras.activations.softsign,
             kernel_initializer=tf.compat.v1.keras.initializers.
             glorot_uniform()))
-    state_layers = get_identity_layer()
-    sentence_layers = tf.keras.Sequential([
-        tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
-        tf.keras.layers.GlobalAveragePooling1D()
-    ])
-    # [image: (1, 12800), sentence: (1, 16 * 800), states: (1, 16 * 800)]
-    # Here, we tile along the last dimension of the input.
-    if num_state_tiles:
-        state_layers = tf.keras.Sequential([
-            tf.keras.layers.Lambda(lambda x: tf.tile(
-                x, multiples=[1, num_state_tiles]))
-        ])
-    if num_sentence_tiles:
-        sentence_layers.add(
-            tf.keras.layers.Lambda(lambda x: tf.tile(
-                x, multiples=[1, num_sentence_tiles])))
 
     preprocessing_layers = {
         'image': conv_layers,
-        'states': state_layers,
-        'sentence': sentence_layers
     }
+    if common.get_states_shape():
+        state_layers = get_identity_layer()
+        # [image: (1, 12800), sentence: (1, 16 * 800), states: (1, 16 * 800)]
+        # Here, we tile along the last dimension of the input.
+        if num_state_tiles:
+            state_layers = tf.keras.Sequential([
+                tf.keras.layers.Lambda(lambda x: tf.tile(
+                    x, multiples=[1, num_state_tiles]))
+            ])
+        preprocessing_layers['states'] = state_layers
+
+    vocab_size = common.get_vocab_size()
+    if vocab_size:
+        sentence_layers = tf.keras.Sequential([
+            tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
+            tf.keras.layers.GlobalAveragePooling1D()
+        ])
+        if num_sentence_tiles:
+            sentence_layers.add(
+                tf.keras.layers.Lambda(lambda x: tf.tile(
+                    x, multiples=[1, num_sentence_tiles])))
+        preprocessing_layers['sentence'] = sentence_layers
 
     preprocessing_combiner = tf.keras.layers.Concatenate()
 
