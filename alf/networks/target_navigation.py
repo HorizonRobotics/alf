@@ -57,10 +57,7 @@ def get_ac_networks(conv_layer_params=None,
 
     conv_layers = tf.keras.Sequential(
         tf_agents.networks.utils.mlp_layers(
-            conv_layer_params=conv_layer_params,
-            activation_fn=tf.keras.activations.softsign,
-            kernel_initializer=tf.compat.v1.keras.initializers.
-            glorot_uniform()))
+            conv_layer_params=conv_layer_params))
 
     preprocessing_layers = {
         'image': conv_layers,

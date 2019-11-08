@@ -14,6 +14,7 @@
 
 import collections
 from collections import OrderedDict, deque
+from copy import deepcopy
 
 import gin
 import gym
@@ -59,12 +60,8 @@ class FrameStack(gym.Wrapper):
         self._frames = deque(maxlen=stack_size)
         self._channel_order = channel_order
         self._stack_size = stack_size
-        raw_space = self.env.observation_space
-
-        if not fields_to_stack and isinstance(raw_space, gym.spaces.Dict):
-            fields_to_stack = raw_space.spaces.keys()
-
         self._fields_to_stack = fields_to_stack
+        raw_space = self.env.observation_space
 
         def _stack_space(sp):
             if isinstance(sp, gym.spaces.Box):
@@ -90,7 +87,7 @@ class FrameStack(gym.Wrapper):
 
         def _traverse(d, fields_to_stack=None, prefix=""):
             assert isinstance(d, gym.spaces.Dict), 'input is not dict'
-            res = d
+            res = deepcopy(d)
             for name, sp in d.spaces.items():
                 if prefix:
                     prefix += "."
@@ -114,7 +111,7 @@ class FrameStack(gym.Wrapper):
             self.observation_space, remain_fields = _traverse(
                 raw_space, fields_to_stack)
             assert not remain_fields, "These paths are not in input: " + str(
-                remain_fields)
+                remain_fields) + ", but in " + str(fields_to_stack)
         else:
             assert isinstance(raw_space, gym.spaces.Box)
             self.observation_space = _stack_space(raw_space)

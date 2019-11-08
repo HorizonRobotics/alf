@@ -36,6 +36,9 @@ fc_layer_params=(256,)
 num_state_tiles=800
 num_sentence_tiles=800
 
+mlp_layers.activation_fn=@tf.keras.activations.softsign
+mlp_layers.kernel_initializer=@tf.compat.v1.keras.initializers.glorot_uniform()
+
 import alf.networks.target_navigation
 
 target_navigation.get_actor_network.conv_layer_params=%conv_layer_params
