@@ -48,5 +48,5 @@ gin.external_configurable(mlp_layers, 'mlp_layers')
 gin.external_configurable(tf.keras.activations.softsign,
                           'tf.keras.activations.softsign')
 
-gin.external_configurable(tf.compat.v1.keras.initializers.glorot_uniform,
-                          'tf.compat.v1.keras.initializers.glorot_uniform')
+gin.external_configurable(tf.keras.initializers.GlorotUniform,
+                          'tf.keras.initializers.GlorotUniform')
