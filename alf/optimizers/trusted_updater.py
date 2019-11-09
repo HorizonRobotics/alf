@@ -67,7 +67,7 @@ class TrustedUpdater(object):
             max_change (float): (nested) max change allowed.
         Returns:
             the actual change after variables are adjusted
-            the number of step to adjust variables
+            the number of steps to adjust variables. 0 for no adjustment
         """
 
         def _adjust_step(ratio):
@@ -77,7 +77,7 @@ class TrustedUpdater(object):
             for var, prev_var in zip(self._variables, self._prev_variables):
                 var.assign(prev_var + r * (var - prev_var))
 
-        counter = tf.zeros((), tf.int32)
+        counter = tf.constant(-1, tf.int32)
         ratio = tf.constant(2.)
         change = max_change  # TF require `change` to be defined before the loop
         while ratio > 1. and counter < 100:

@@ -15,6 +15,7 @@
 
 import gin
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
@@ -38,9 +39,17 @@ class TracAlgorithm(ActorCriticAlgorithm):
     """Trust-region actor-critic.
 
     It compares the action distributions after the SGD with the action
-    distributions from the previous model. If the KL-divergence is too big,
+    distributions from the previous model. If the average distance is too big,
     the new parameters are shrinked as:
         w_new' = old_w + max_kl / kl * (w_new - w_old)
+
+    If the distribution is Categorical, the distance is ||logits_1 - logits_2||^2,
+    otherwise it's KL(d1||d2) + KL(d2||d1).
+
+    The reason of using ||logits_1 - logits_2||^2 for Categorical distribution
+    is that KL can be small even if there are large differences in logits when
+    the entropy is small. This means that KL cannot fully capture how much the
+    change is.
     """
 
     def __init__(self,
@@ -50,7 +59,7 @@ class TracAlgorithm(ActorCriticAlgorithm):
                  buffer_size,
                  actor_network: DistributionNetwork,
                  value_network: Network,
-                 kl_clip=0.1,
+                 action_dist_clip=0.1,
                  loss=None,
                  loss_class=ActorCriticLoss,
                  optimizer=None,
@@ -64,7 +73,8 @@ class TracAlgorithm(ActorCriticAlgorithm):
             batch_size (int): batch size of the parallel evironment batch.
             buffer_size (int): use the past so many steps for estimating KL
                 divergence.
-            kl_clip (float): adjust step if KL divergence exceeds this value.
+            action_dist_clip (float): adjust step if the average distance between
+                the old and new action distributions exceeds this value.
             actor_network (DistributionNetwork): A network that returns nested
                 tensor of action distribution for each observation given observation
                 and network state.
@@ -93,25 +103,27 @@ class TracAlgorithm(ActorCriticAlgorithm):
         spec = TracExperience(
             observation=observation_spec,
             step_type=tf.TensorSpec((), tf.int32),
-            state=self.train_state_spec,
+            state=self.train_state_spec.actor,
             action_param=action_param_spec)
         self._buffer = DataBuffer(
             spec, capacity=(buffer_size + 1) * batch_size)
         self._trusted_updater = None
-        self._kl_clips = nest_map(lambda _: kl_clip, self.action_spec)
+        self._action_dist_clips = nest_map(lambda _: action_dist_clip,
+                                           self.action_spec)
         self._batch_size = batch_size
 
     def rollout(self, time_step: ActionTimeStep, state: ActorCriticState):
+        """Rollout for one step."""
         policy_step = super().rollout(time_step, state)
         action_param = common.get_distribution_params(policy_step.action)
         exp = TracExperience(
             observation=time_step.observation,
             step_type=time_step.step_type,
-            state=state,
+            state=state.actor,
             action_param=action_param)
 
         # run_if() is unnecessary. But TF has error if run_if is removed.
-        # TODO: find the minimum condition to reproduce this bug.
+        # See TF issue: https://github.com/tensorflow/tensorflow/issues/34090
         run_if(
             tf.shape(time_step.step_type)[0] >
             0, lambda: self._buffer.add_batch(exp))
@@ -123,8 +135,8 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
     def after_train(self):
         """Adjust actor parameter according to KL-divergence."""
-        kls, steps = self._trusted_updater.adjust_step(self._calc_kl,
-                                                       self._kl_clips)
+        kls, steps = self._trusted_updater.adjust_step(self._calc_change,
+                                                       self._action_dist_clips)
 
         def _summarize():
             with self.name_scope:
@@ -136,36 +148,62 @@ class TracAlgorithm(ActorCriticAlgorithm):
         super().after_train()
 
     @tf.function
-    def _calc_kl(self):
-        """Calculate the symmetrical KL-devengence between old/new action dist.
+    def _calc_change(self):
+        """Calculate the distance between old/new action distributions.
 
-        Equation: KL(d1||d2) + KL(d2||d1)
+        The distance is:
+        ||logits_1 - logits_2||^2 for Categorical distribution
+        KL(d1||d2) + KL(d2||d1) for others
         """
         # Remove the samples from the last step from the buffer because it may
         # repeated if the final_step_mode of OnPolicyDriver is FINAL_STEP_REDO.
         # See comment of OnPolicyDriver for detail.
         self._buffer.pop(self._batch_size)
         size = self._buffer.current_size
-        total_kls = nest_map(lambda _: tf.zeros(()), self.action_spec)
-        for t in tf.range(0, size, self._batch_size):
-            exp = self._buffer.get_batch_by_indices(
-                tf.range(t, t + self._batch_size))
-            # Here we use stored states to calculate action. It might be better
-            # to use the states calculated using the new weights.
-            new_action, _ = self._actor_network(
-                exp.observation,
-                step_type=exp.step_type,
-                network_state=exp.state)
+        total_dists = nest_map(lambda _: tf.zeros(()), self.action_spec)
+
+        def _dist(d1, d2):
+            if isinstance(d1, tfp.distributions.Categorical):
+                return tf.reduce_sum(tf.square(d1.logits - d2.logits), axis=-1)
+            else:
+                return d1.kl_divergence(d2) + d2.kl_divergence(d1)
+
+        def _update_total_dists(new_action, exp, total_dists):
             old_action = nested_distributions_from_specs(
                 self.action_distribution_spec, exp.action_param)
-            kls = nest_map(
-                lambda d1, d2: d1.kl_divergence(d2) + d2.kl_divergence(d1),
-                old_action, new_action)
+            dists = nest_map(_dist, old_action, new_action)
             valid_masks = tf.cast(
                 tf.not_equal(exp.step_type, StepType.LAST), tf.float32)
-            kls = nest_map(lambda kl: tf.reduce_sum(kl * valid_masks), kls)
-            total_kls = nest_map(lambda x, y: x + y, total_kls, kls)
+            dists = nest_map(lambda kl: tf.reduce_sum(kl * valid_masks), dists)
+            return nest_map(lambda x, y: x + y, total_dists, dists)
+
+        if len(tf.nest.flatten(self.train_state_spec)) == 0:
+            # Not RNN
+            for t in tf.range(0, size, self._batch_size):
+                exp = self._buffer.get_batch_by_indices(
+                    tf.range(t, t + self._batch_size))
+                new_action, state = self._actor_network(
+                    exp.observation,
+                    step_type=exp.step_type,
+                    network_state=exp.state)
+                total_dists = _update_total_dists(new_action, exp, total_dists)
+        else:
+            # RNN
+            exp = self._buffer.get_batch_by_indices(tf.range(self._batch_size))
+            initial_state = common.zero_tensor_from_nested_spec(
+                self.train_state_spec.actor, self._batch_size)
+            state = exp.state
+            for t in tf.range(0, size, self._batch_size):
+                exp = self._buffer.get_batch_by_indices(
+                    tf.range(t, t + self._batch_size))
+                state = common.reset_state_if_necessary(
+                    state, initial_state, exp.step_type == StepType.FIRST)
+                new_action, state = self._actor_network(
+                    exp.observation,
+                    step_type=exp.step_type,
+                    network_state=state)
+                total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(size, tf.float32)
-        total_kls = nest_map(lambda total_kl: total_kl / size, total_kls)
-        return total_kls
+        total_dists = nest_map(lambda d: d / size, total_dists)
+        return total_dists

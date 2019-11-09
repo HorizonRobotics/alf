@@ -60,7 +60,7 @@ TracAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 TracAlgorithm.value_network=@value/ValueNetwork()
 TracAlgorithm.batch_size=%batch_size
 TracAlgorithm.buffer_size=%unroll_length
-TracAlgorithm.kl_clip=0.1
+TracAlgorithm.action_dist_clip=0.05
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
 
