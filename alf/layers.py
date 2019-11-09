@@ -103,3 +103,8 @@ class NestConcatenate(tf.keras.layers.Concatenate):
 
     def compute_mask(self, inputs, mask):
         return super().compute_mask(tf.nest.flatten(inputs), mask)
+
+
+@gin.configurable
+def get_identity_layer():
+    return tf.keras.layers.Lambda(lambda x: x)

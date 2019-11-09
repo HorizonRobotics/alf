@@ -21,16 +21,15 @@ import math
 from typing import Callable
 
 from absl import flags
+from collections import OrderedDict
 import gin
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.specs import tensor_spec
-from tf_agents.utils import common as tfa_common
-from tf_agents.trajectories import trajectory
-from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
+from tf_agents.utils import common as tfa_common
 
 from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
@@ -449,7 +448,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """
 
     def _transform_image(obs):
-        assert isinstance(obs, tf.Tensor)
+        assert isinstance(obs, tf.Tensor), str(type(obs)) + ' is not Tensor'
         assert obs.dtype == tf.uint8, "Image must have dtype uint8!"
         obs = tf.cast(obs, tf.float32)
         return ((max - min) / 255.) * obs + min
@@ -800,6 +799,23 @@ def get_observation_spec():
 
 
 @gin.configurable
+def get_states_shape():
+    """Get the tensor shape of internal states of the agent provided by
+      the global environment
+
+    Returns:
+      list of ints.
+      Returns 0 if internal states is not part of observation.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    assert isinstance(_env.observation_spec(), dict), "observation not a dict"
+    if 'states' in _env.observation_spec():
+        return _env.observation_spec()['states'].shape
+    else:
+        return 0
+
+
+@gin.configurable
 def get_action_spec():
     """Get the specs of the Tensors expected by `step(action)` of the global environment.
 
@@ -810,6 +826,21 @@ def get_action_spec():
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     return _env.action_spec()
+
+
+@gin.configurable
+def get_vocab_size():
+    """Get the vocabulary size of observations provided by the global environment.
+
+    Returns:
+      vocab_size (int): size of the environment's/teacher's vocabulary.
+      Returns 0 if language is not part of observation.
+    """
+    assert _env, "set a global env by `set_global_env` before using the function"
+    if 'sentence' in _env.observation_spec():
+        return _env.observation_spec()['sentence'].shape[0]
+    else:
+        return 0
 
 
 def extract_spec(nest):

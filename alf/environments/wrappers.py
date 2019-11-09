@@ -13,11 +13,15 @@
 # limitations under the License.
 
 import collections
+from collections import OrderedDict, deque
+from copy import deepcopy
 
 import gin
 import gym
 import numpy as np
 import cv2
+
+from absl import logging
 
 from tf_agents.environments import wrappers
 from tf_agents.trajectories.time_step import StepType
@@ -27,10 +31,17 @@ from tf_agents.trajectories.time_step import StepType
 class FrameStack(gym.Wrapper):
     """Stack previous `stack_size` frames, applied to Gym env."""
 
-    def __init__(self, env, stack_size=4, channel_order='channels_last'):
+    def __init__(
+            self,
+            env,
+            stack_size=4,
+            channel_order='channels_last',
+            fields_to_stack=None,
+    ):
         """Create a FrameStack object.
 
         Args:
+            env (gym.Space): gym environment.
             stack_size (int):
             channel_order (str): one of `channels_last` or `channels_first`.
                 The ordering of the dimensions in the images.
@@ -38,33 +49,139 @@ class FrameStack(gym.Wrapper):
                 `(height, width, channels)` (Atari's default) while
                 `channels_first` corresponds to images with shape
                 `(channels, height, width)`.
+            fields_to_stack (list of str): optional paths to the fields of the
+                Dict env.observation_space.  If specified, only use the
+                spaces corresponding to the keys in FrameStack.  If is None,
+                stack all recognized spaces.
+                When input space is not a Dict, we just try to stack if we can.
+                Fields_to_stack doesn't apply anymore.
         """
         super().__init__(env)
-        self._frames = collections.deque(maxlen=stack_size)
+        self._frames = deque(maxlen=stack_size)
         self._channel_order = channel_order
         self._stack_size = stack_size
+        self._fields_to_stack = fields_to_stack
+        raw_space = self.env.observation_space
 
-        space = self.env.observation_space
-        assert channel_order in ['channels_last', 'channels_first']
+        def _stack_space(sp):
+            if isinstance(sp, gym.spaces.Box):
+                # Shape of stacked_space is determined by low.shape
+                low = np.concatenate([sp.low] * stack_size)
+                high = np.concatenate([sp.high] * stack_size)
+                assert channel_order in ['channels_last', 'channels_first']
+                if channel_order == 'channels_last':
+                    low = np.transpose(
+                        np.concatenate([np.transpose(sp.low)] * stack_size))
+                    high = np.transpose(
+                        np.concatenate([np.transpose(sp.high)] * stack_size))
+                stacked_space = gym.spaces.Box(
+                    low=np.array(low), high=np.array(high), dtype=sp.dtype)
 
-        if channel_order == 'channels_last':
-            shape = list(space.shape[0:-1]) + [stack_size * space.shape[-1]]
+            elif isinstance(sp, gym.spaces.MultiDiscrete):
+                nvec = [sp.nvec] * stack_size
+                stacked_space = gym.spaces.MultiDiscrete(nvec)
+
+            else:
+                stacked_space = sp
+            return stacked_space
+
+        def _traverse(d, fields_to_stack=None, prefix=""):
+            assert isinstance(d, gym.spaces.Dict), 'input is not dict'
+            res = deepcopy(d)
+            for name, sp in d.spaces.items():
+                if prefix:
+                    prefix += "."
+                path = prefix + name
+                transformed = sp
+                if isinstance(sp, gym.spaces.Dict):
+                    transformed, fields_to_stack = _traverse(
+                        sp, fields_to_stack, path)
+                else:
+                    if fields_to_stack is None or path in fields_to_stack:
+                        transformed = _stack_space(sp)
+                        if fields_to_stack:
+                            fields_to_stack = [
+                                item for item in fields_to_stack
+                                if item != path
+                            ]
+                res.spaces[name] = transformed
+            return res, fields_to_stack
+
+        if isinstance(raw_space, gym.spaces.Dict):
+            self.observation_space, remain_fields = _traverse(
+                raw_space, fields_to_stack)
+            assert not remain_fields, "These paths are not in input: " + str(
+                remain_fields) + ", but in " + str(fields_to_stack)
         else:
-            shape = [
-                stack_size * space.shape[0],
-            ] + list(space.shape[1:])
-        self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=shape, dtype=np.uint8)
+            assert isinstance(raw_space, gym.spaces.Box)
+            self.observation_space = _stack_space(raw_space)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
         return getattr(self.env, name)
 
+    def _get_space_for_path(self, path):
+        segments = path.split(".")
+        space = self.observation_space
+        if segments:
+            for name in segments:
+                space = space.spaces[name]
+        return space
+
     def _generate_observation(self):
-        if self._channel_order == 'channels_last':
-            return np.concatenate(self._frames, axis=-1)
-        else:
-            return np.concatenate(self._frames, axis=0)
+        def _traverse_append(result, data, path_prefix=""):
+            assert isinstance(result, OrderedDict)
+            if path_prefix:
+                path_prefix += "."
+            for key, field in data.items():
+                path = path_prefix + key
+                if isinstance(field, dict):
+                    if key not in result:
+                        result[key] = OrderedDict()
+                    result[key] = _traverse_append(result[key], field, path)
+                else:
+                    if key not in result:
+                        result[key] = deque(maxlen=self._stack_size)
+                    result[key].append(field)
+            return result
+
+        def _traverse_stack(result, path_prefix=""):
+            if not path_prefix or isinstance(result, OrderedDict):
+                for key, field in result.items():
+                    if path_prefix:
+                        path_prefix += "."
+                    path = path_prefix + key
+                    result[key] = _traverse_stack(field, path)
+            else:
+                if not self._fields_to_stack or (
+                        path_prefix in self._fields_to_stack):
+                    space = self._get_space_for_path(path_prefix)
+                    if isinstance(space, gym.spaces.Box):
+                        if (self._channel_order == 'channels_last'):
+                            result = np.concatenate(result, axis=-1)
+                        else:
+                            result = np.concatenate(result, axis=0)
+                    elif isinstance(space, gym.spaces.MultiDiscrete):
+                        result = np.concatenate(result, axis=-1)
+                    else:
+                        assert False, ("space with path {} not recognized: " +
+                                       "{}").format(path_prefix, str(space))
+                else:  # not stacking field
+                    result = result[-1]  # take last/current frame
+            return result
+
+        if isinstance(self.observation_space, gym.spaces.Dict):
+            result = OrderedDict()
+            for frame in self._frames:
+                result = _traverse_append(result, frame)
+            result = _traverse_stack(result)
+            return result
+        else:  # Assuming input is image space
+            # Always stacks regardless of _fields_to_stack
+            if self._channel_order == 'channels_last':
+                return np.concatenate(self._frames, axis=-1)
+            else:
+                return np.concatenate(self._frames, axis=0)
 
     def reset(self):
         observation = self.env.reset()

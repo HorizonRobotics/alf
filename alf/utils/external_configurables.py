@@ -44,3 +44,9 @@ gin.external_configurable(tf.TensorSpec, 'tf.TensorSpec')
 gin.external_configurable(SequentialLayer, 'SequentialLayer')
 
 gin.external_configurable(mlp_layers, 'mlp_layers')
+
+gin.external_configurable(tf.keras.activations.softsign,
+                          'tf.keras.activations.softsign')
+
+gin.external_configurable(tf.keras.initializers.GlorotUniform,
+                          'tf.keras.initializers.GlorotUniform')
