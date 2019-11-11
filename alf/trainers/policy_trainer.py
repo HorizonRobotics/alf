@@ -59,6 +59,7 @@ class TrainerConfig(object):
                  use_rollout_state=False,
                  use_tf_functions=True,
                  checkpoint_interval=1000,
+                 checkpoint_max_to_keep=20,
                  evaluate=False,
                  eval_interval=10,
                  num_eval_episodes=10,
@@ -94,6 +95,9 @@ class TrainerConfig(object):
                 used for off-policy training
             use_tf_functions (bool): whether to use tf.function
             checkpoint_interval (int): checkpoint every so many iterations
+            checkpoint_max_to_keep (int): Maximum number of checkpoints to keep
+                (if greater than the max are saved, the oldest checkpoints are
+                deleted). If None, all checkpoints will be kept.
             evaluate (bool): A bool to evaluate when training
             eval_interval (int): evaluate every so many iteration
             num_eval_episodes (int) : number of episodes for one evaluation
@@ -131,6 +135,7 @@ class TrainerConfig(object):
             use_rollout_state=use_rollout_state,
             use_tf_functions=use_tf_functions,
             checkpoint_interval=checkpoint_interval,
+            checkpoint_max_to_keep=checkpoint_max_to_keep,
             evaluate=evaluate,
             eval_interval=eval_interval,
             num_eval_episodes=num_eval_episodes,
@@ -187,6 +192,7 @@ class Trainer(object):
         self._use_tf_functions = config.use_tf_functions
 
         self._checkpoint_interval = config.checkpoint_interval
+        self._checkpoint_max_to_keep = config.checkpoint_max_to_keep
         self._checkpointer = None
 
         self._evaluate = config.evaluate
@@ -331,6 +337,7 @@ class Trainer(object):
         global_step = get_global_counter()
         checkpointer = tfa_common.Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
+            max_to_keep=self._checkpoint_max_to_keep,
             algorithm=self._algorithm,
             metrics=metric_utils.MetricsGroup(self._driver.get_metrics(),
                                               'metrics'),
