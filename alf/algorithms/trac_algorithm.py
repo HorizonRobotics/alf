@@ -151,8 +151,8 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
         def _summarize():
             with self.name_scope:
-                for i, kl in enumerate(tf.nest.flatten(dists)):
-                    tf.summary.scalar("action_dist/%s" % i, kl)
+                for i, d in enumerate(tf.nest.flatten(dists)):
+                    tf.summary.scalar("unadjusted_action_dist/%s" % i, d)
                 tf.summary.scalar("adjust_steps", steps)
 
         common.run_if(common.should_record_summaries(), _summarize)
