@@ -66,7 +66,7 @@ class TrustedUpdater(object):
                 current variable.
             max_change (float): (nested) max change allowed.
         Returns:
-            the actual change after variables are adjusted
+            the initial change before variables are adjusted
             the number of steps to adjust variables. 0 for no adjustment
         """
 
@@ -77,22 +77,23 @@ class TrustedUpdater(object):
             for var, prev_var in zip(self._variables, self._prev_variables):
                 var.assign(prev_var + r * (var - prev_var))
 
-        counter = tf.constant(-1, tf.int32)
-        ratio = tf.constant(2.)
-        change = max_change  # TF require `change` to be defined before the loop
-        while ratio > 1. and counter < 100:
+        steps = tf.zeros(())
+        change0 = change_f()
+        change = change0
+        ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
+        ratio = math_ops.max_n(tf.nest.flatten(ratio))
+        while ratio > 1. and steps < 100:
+            _adjust_step(ratio)
             change = change_f()
             ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
             ratio = math_ops.max_n(tf.nest.flatten(ratio))
-            if ratio > 1.:
-                _adjust_step(ratio)
-            counter += 1
+            steps += 1
 
         # This suggest something wrong. change cannot be reduced by making
         # the step smaller.
-        tf.Assert(counter < 100, [counter])
+        tf.Assert(steps < 100, [steps])
 
         for var, prev_var in zip(self._variables, self._prev_variables):
             prev_var.assign(var)
 
-        return change, counter
+        return change0, steps

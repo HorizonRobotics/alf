@@ -35,9 +35,13 @@ class TrustedUpdaterTest(tf.test.TestCase):
 
         # Test for correctly adjusting the variables
         changes, steps = updater.adjust_step(_change_f1, (1., 2.))
+        self.assertEqual(changes[0].numpy(), 2.)
+        self.assertEqual(changes[1].numpy(), 8.)
+        self.assertEqual(1, steps.numpy())
+
+        changes = _change_f1()
         self.assertLess(changes[0].numpy(), 1.)
         self.assertLess(changes[1].numpy(), 2.)
-        self.assertEqual(1, steps.numpy())
 
         def _change_f2():
             return (8., 8.)

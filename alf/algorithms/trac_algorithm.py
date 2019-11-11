@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Trusted Region Actor critic algorithm."""
+import numbers
 
 import gin
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
+from tf_agents.specs import tensor_spec
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm, ActorCriticState
@@ -59,7 +62,7 @@ class TracAlgorithm(ActorCriticAlgorithm):
                  buffer_size,
                  actor_network: DistributionNetwork,
                  value_network: Network,
-                 action_dist_clip=0.1,
+                 action_dist_clip_per_dim=0.01,
                  loss=None,
                  loss_class=ActorCriticLoss,
                  optimizer=None,
@@ -73,8 +76,9 @@ class TracAlgorithm(ActorCriticAlgorithm):
             batch_size (int): batch size of the parallel evironment batch.
             buffer_size (int): use the past so many steps for estimating KL
                 divergence.
-            action_dist_clip (float): adjust step if the average distance between
-                the old and new action distributions exceeds this value.
+            action_dist_clip_per_dim (float): adjust step if the average
+                distance between the old and new action distributions exceeds
+                this value multiplied with dimension.
             actor_network (DistributionNetwork): A network that returns nested
                 tensor of action distribution for each observation given observation
                 and network state.
@@ -108,8 +112,14 @@ class TracAlgorithm(ActorCriticAlgorithm):
         self._buffer = DataBuffer(
             spec, capacity=(buffer_size + 1) * batch_size)
         self._trusted_updater = None
-        self._action_dist_clips = nest_map(lambda _: action_dist_clip,
-                                           self.action_spec)
+
+        def _get_clip(spec):
+            dims = np.product(spec.shape.as_list())
+            if tensor_spec.is_discrete(spec):
+                dims *= spec.maximum - spec.minimum + 1
+            return float(action_dist_clip_per_dim * dims)
+
+        self._action_dist_clips = nest_map(_get_clip, self.action_spec)
         self._batch_size = batch_size
 
     def rollout(self, time_step: ActionTimeStep, state: ActorCriticState):
@@ -124,6 +134,7 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
         # run_if() is unnecessary. But TF has error if run_if is removed.
         # See TF issue: https://github.com/tensorflow/tensorflow/issues/34090
+        # The bug seems to be fixed by the latest tf-nightly build.
         run_if(
             tf.shape(time_step.step_type)[0] >
             0, lambda: self._buffer.add_batch(exp))
@@ -135,13 +146,13 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
     def after_train(self):
         """Adjust actor parameter according to KL-divergence."""
-        kls, steps = self._trusted_updater.adjust_step(self._calc_change,
-                                                       self._action_dist_clips)
+        dists, steps = self._trusted_updater.adjust_step(
+            self._calc_change, self._action_dist_clips)
 
         def _summarize():
             with self.name_scope:
-                for i, kl in enumerate(tf.nest.flatten(kls)):
-                    tf.summary.scalar("action_kl/%s" % i, kl)
+                for i, kl in enumerate(tf.nest.flatten(dists)):
+                    tf.summary.scalar("action_dist/%s" % i, kl)
                 tf.summary.scalar("adjust_steps", steps)
 
         common.run_if(common.should_record_summaries(), _summarize)
