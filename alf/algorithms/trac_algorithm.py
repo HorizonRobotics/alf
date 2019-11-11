@@ -53,6 +53,10 @@ class TracAlgorithm(ActorCriticAlgorithm):
     is that KL can be small even if there are large differences in logits when
     the entropy is small. This means that KL cannot fully capture how much the
     change is.
+
+    LIMIT: for RNN models, currently it can work with only 1 batched envirentment.
+    This is because the information about eviroments which the observations
+    belong to is not avaible when storing them to DataBuffer.
     """
 
     def __init__(self,
