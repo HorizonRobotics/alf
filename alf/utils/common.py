@@ -14,14 +14,15 @@
 """Various functions used by different alf modules."""
 
 import collections
+from collections import OrderedDict
 import glob
+import math
 import os
 import shutil
-import math
 from typing import Callable
 
 from absl import flags
-from collections import OrderedDict
+from absl import logging
 import gin
 import numpy as np
 import tensorflow as tf
@@ -454,7 +455,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         return ((max - min) / 255.) * obs + min
 
     def _traverse_path(obs, path):
-        """Traverse `path` and transform the image at the path end"""
+        """Traverse `path` and transform the image at the path end."""
         if not path:
             return _transform_image(obs)
         step = path[0]
@@ -912,3 +913,13 @@ def write_gin_configs(root_dir, gin_file):
     # the mark-down string can just be safely written as a python file
     with open(file, "w") as f:
         f.write(config_str)
+
+
+def warning_once(msg, *args):
+    """Generate warning message once
+
+    Args:
+        msg: str, the message to be logged.
+        *args: The args to be substitued into the msg.
+    """
+    logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)

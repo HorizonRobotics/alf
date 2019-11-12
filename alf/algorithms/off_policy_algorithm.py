@@ -17,6 +17,7 @@ import abc
 from collections import namedtuple
 from typing import Callable
 
+from absl import logging
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -364,7 +365,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     "Should use TrainerConfig.use_rollout_state=True "
                     "for off-policy training of RNN when minibatch_length==1.")
             else:
-                warning_once(
+                common.warning_once(
                     "Consider using TrainerConfig.use_rollout_state=True "
                     "for off-policy training of RNN.")
 
