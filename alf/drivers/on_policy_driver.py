@@ -28,7 +28,7 @@ from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 
 import alf.utils.common as common
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import make_training_info
+from alf.algorithms.rl_algorithm import TrainingInfo
 from alf.drivers import policy_driver
 
 
@@ -118,7 +118,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         info_spec = tf.nest.map_structure(
             lambda t: tf.TensorSpec(t.shape[1:], t.dtype), policy_step.info)
 
-        self._training_info_spec = make_training_info(
+        self._training_info_spec = TrainingInfo(
             action_distribution=action_distribution_param_spec,
             action=self._env.action_spec(),
             step_type=time_step_spec.step_type,
@@ -167,7 +167,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         action_distribution_param = common.get_distribution_params(
             policy_step.action)
 
-        training_info = make_training_info(
+        training_info = TrainingInfo(
             action_distribution=action_distribution_param,
             action=action,
             reward=transformed_time_step.reward,
@@ -229,7 +229,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         action_distribution_param = common.get_distribution_params(
             policy_step.action)
 
-        final_training_info = make_training_info(
+        final_training_info = TrainingInfo(
             action_distribution=action_distribution_param,
             action=action,
             reward=transformed_time_step.reward,

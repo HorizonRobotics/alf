@@ -236,7 +236,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             extra=DdpgLossInfo(
                 critic=critic_loss.extra, actor=actor_loss.extra))
 
-    def after_train(self):
+    def after_train(self, training_info):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):

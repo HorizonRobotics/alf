@@ -349,7 +349,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
         return PolicyStep(action_distribution, state, info)
 
-    def after_train(self):
+    def after_train(self, training_info):
         self._update_target()
 
     def calc_loss(self, training_info: TrainingInfo):

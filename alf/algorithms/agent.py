@@ -259,8 +259,9 @@ class Agent(OnPolicyAlgorithm):
 
         return loss_info
 
-    def after_train(self):
-        self._rl_algorithm.after_train()
+    def after_train(self, training_info):
+        self._rl_algorithm.after_train(
+            training_info._replace(info=training_info.info.rl))
 
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.info)

@@ -416,13 +416,19 @@ class Algorithm(tf.Module):
 
             optimizer.apply_gradients(grads_and_vars)
 
-        self.after_train()
+        self.after_train(training_info)
 
         return loss_info, all_grads_and_vars
 
-    def after_train(self):
+    def after_train(self, training_info):
         """Do things after complete one iteration of training, such as update
         target network.
+
+        Args:
+            training_info (nested Tensor): information collected for training.
+                It is batched from each `info` returned bt `train_step()`
+        Returns:
+            None
         """
         pass
 

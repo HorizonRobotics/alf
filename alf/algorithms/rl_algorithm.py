@@ -34,30 +34,12 @@ from tf_agents.metrics import tf_metrics
 import alf.utils
 import gin.tf
 
-TrainingInfo = namedtuple("TrainingInfo", [
-    "action_distribution", "action", "step_type", "reward", "discount", "info",
-    "collect_info", "collect_action_distribution"
-])
-
-
-def make_training_info(action_distribution=(),
-                       action=(),
-                       step_type=(),
-                       reward=(),
-                       discount=(),
-                       info=(),
-                       collect_info=(),
-                       collect_action_distribution=()):
-    """Create an instance of TrainingInfo."""
-    return TrainingInfo(
-        action_distribution=action_distribution,
-        action=action,
-        step_type=step_type,
-        reward=reward,
-        discount=discount,
-        info=info,
-        collect_info=collect_info,
-        collect_action_distribution=collect_action_distribution)
+TrainingInfo = namedtuple(
+    "TrainingInfo", [
+        "action_distribution", "action", "step_type", "reward", "discount",
+        "info", "collect_info", "collect_action_distribution"
+    ],
+    default_value=())
 
 
 @gin.configurable

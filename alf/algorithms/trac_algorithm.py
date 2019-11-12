@@ -36,6 +36,8 @@ nest_map = tf.nest.map_structure
 TracExperience = namedtuple(
     "TracExperience", ["observation", "step_type", "state", "action_param"])
 
+TracInfo = namedtuple("TracInfo", ["observation", "state", "ac"])
+
 
 @gin.configurable
 class TracAlgorithm(ActorCriticAlgorithm):
@@ -61,9 +63,6 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
     def __init__(self,
                  action_spec,
-                 observation_spec,
-                 batch_size,
-                 buffer_size,
                  actor_network: DistributionNetwork,
                  value_network: Network,
                  action_dist_clip_per_dim=0.01,
@@ -76,10 +75,6 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            observation_spec (nested TensorSpec): spec of the observation.
-            batch_size (int): batch size of the parallel evironment batch.
-            buffer_size (int): use the past so many steps for estimating KL
-                divergence.
             action_dist_clip_per_dim (float): adjust step if the average
                 distance between the old and new action distributions exceeds
                 this value multiplied with dimension.
@@ -106,15 +101,6 @@ class TracAlgorithm(ActorCriticAlgorithm):
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
-        action_param_spec = nest_map(lambda spec: spec.input_params_spec,
-                                     actor_network.output_spec)
-        spec = TracExperience(
-            observation=observation_spec,
-            step_type=tf.TensorSpec((), tf.int32),
-            state=self.train_state_spec.actor,
-            action_param=action_param_spec)
-        self._buffer = DataBuffer(
-            spec, capacity=(buffer_size + 1) * batch_size)
         self._trusted_updater = None
 
         def _get_clip(spec):
@@ -124,34 +110,34 @@ class TracAlgorithm(ActorCriticAlgorithm):
             return float(action_dist_clip_per_dim * dims)
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
-        self._batch_size = batch_size
 
     def rollout(self, time_step: ActionTimeStep, state: ActorCriticState):
         """Rollout for one step."""
         policy_step = super().rollout(time_step, state)
-        action_param = common.get_distribution_params(policy_step.action)
-        exp = TracExperience(
-            observation=time_step.observation,
-            step_type=time_step.step_type,
-            state=state.actor,
-            action_param=action_param)
-
-        # run_if() is unnecessary. But TF has error if run_if is removed.
-        # See TF issue: https://github.com/tensorflow/tensorflow/issues/34090
-        # The bug seems to be fixed by the latest tf-nightly build.
-        run_if(
-            tf.shape(time_step.step_type)[0] >
-            0, lambda: self._buffer.add_batch(exp))
-
         if self._trusted_updater is None:
             self._trusted_updater = TrustedUpdater(
                 self._actor_network.trainable_variables)
-        return policy_step
+        return policy_step._replace(
+            info=TracInfo(
+                observation=time_step.observation,
+                state=state.actor,
+                ac=policy_step.info))
 
-    def after_train(self):
+    def calc_loss(self, training_info):
+        return super().calc_loss(
+            training_info._replace(info=training_info.info.ac))
+
+    def after_train(self, training_info):
         """Adjust actor parameter according to KL-divergence."""
+        exp_array = TracExperience(
+            observation=training_info.info.observation,
+            step_type=training_info.step_type,
+            action_param=common.get_distribution_params(
+                training_info.action_distribution),
+            state=training_info.info.state)
+
         dists, steps = self._trusted_updater.adjust_step(
-            self._calc_change, self._action_dist_clips)
+            lambda: self._calc_change(exp_array), self._action_dist_clips)
 
         def _summarize():
             with self.name_scope:
@@ -160,21 +146,17 @@ class TracAlgorithm(ActorCriticAlgorithm):
                 tf.summary.scalar("adjust_steps", steps)
 
         common.run_if(common.should_record_summaries(), _summarize)
-        super().after_train()
+        super().after_train(training_info._replace(info=training_info.info.ac))
 
     @tf.function
-    def _calc_change(self):
+    def _calc_change(self, exp_array):
         """Calculate the distance between old/new action distributions.
 
         The distance is:
         ||logits_1 - logits_2||^2 for Categorical distribution
         KL(d1||d2) + KL(d2||d1) for others
         """
-        # Remove the samples from the last step from the buffer because it may
-        # repeated if the final_step_mode of OnPolicyDriver is FINAL_STEP_REDO.
-        # See comment of OnPolicyDriver for detail.
-        self._buffer.pop(self._batch_size)
-        size = self._buffer.current_size
+        num_steps = tf.shape(exp_array.step_type)[0]
         total_dists = nest_map(lambda _: tf.zeros(()), self.action_spec)
 
         def _dist(d1, d2):
@@ -192,33 +174,20 @@ class TracAlgorithm(ActorCriticAlgorithm):
             dists = nest_map(lambda kl: tf.reduce_sum(kl * valid_masks), dists)
             return nest_map(lambda x, y: x + y, total_dists, dists)
 
-        if len(tf.nest.flatten(self.train_state_spec)) == 0:
-            # Not RNN
-            for t in tf.range(0, size, self._batch_size):
-                exp = self._buffer.get_batch_by_indices(
-                    tf.range(t, t + self._batch_size))
-                new_action, state = self._actor_network(
-                    exp.observation,
-                    step_type=exp.step_type,
-                    network_state=exp.state)
-                total_dists = _update_total_dists(new_action, exp, total_dists)
-        else:
-            # RNN
-            exp = self._buffer.get_batch_by_indices(tf.range(self._batch_size))
-            initial_state = common.zero_tensor_from_nested_spec(
-                self.train_state_spec.actor, self._batch_size)
-            state = exp.state
-            for t in tf.range(0, size, self._batch_size):
-                exp = self._buffer.get_batch_by_indices(
-                    tf.range(t, t + self._batch_size))
-                state = common.reset_state_if_necessary(
-                    state, initial_state, exp.step_type == StepType.FIRST)
-                new_action, state = self._actor_network(
-                    exp.observation,
-                    step_type=exp.step_type,
-                    network_state=state)
-                total_dists = _update_total_dists(new_action, exp, total_dists)
+        state = tf.nest.map_structure(lambda x: x[0, ...], exp_array.state)
+        batch_size = tf.shape(exp_array.step_type)[1]
+        exp_array = exp_array._replace(state=())
+        initial_state = common.zero_tensor_from_nested_spec(
+            self.train_state_spec.actor, batch_size)
+        for t in tf.range(num_steps):
+            exp = tf.nest.map_structure(lambda x: x[t, ...], exp_array)
+            state = common.reset_state_if_necessary(
+                state, initial_state, exp.step_type == StepType.FIRST)
+            new_action, state = self._actor_network(
+                exp.observation, step_type=exp.step_type, network_state=state)
+            total_dists = _update_total_dists(new_action, exp, total_dists)
 
-        size = tf.cast(size, tf.float32)
+        size = tf.cast(
+            tf.reduce_prod(tf.shape(exp_array.step_type)), tf.float32)
         total_dists = nest_map(lambda d: d / size, total_dists)
         return total_dists
