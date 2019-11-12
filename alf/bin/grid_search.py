@@ -231,6 +231,11 @@ class GridSearch(object):
         """Run trainings with all possible parameter combinations in configured space
         """
 
+        # parsing gin configuration here to make all jobs have same copy
+        #   of base configuration (gin file may be changed occasionally)
+        gin_file = common.get_gin_file()
+        gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+
         param_keys = self._conf.param_keys
         param_values = self._conf.param_values
         max_worker_num = self._conf.max_worker_num
@@ -270,8 +275,7 @@ class GridSearch(object):
             set_per_process_memory_growth()
 
             logging.set_verbosity(logging.INFO)
-            gin_file = common.get_gin_file()
-            gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+
             logging.info("parameters %s" % parameters)
             with gin.unlock_config():
                 gin.parse_config(
