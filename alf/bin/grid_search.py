@@ -257,25 +257,31 @@ class GridSearch(object):
 
     def _worker(self, root_dir, parameters, device_queue):
         # sleep for random seconds to avoid crowded launching
-        time.sleep(random.uniform(0, 3))
+        try:
+            time.sleep(random.uniform(0, 3))
 
-        device = device_queue.get()
-        if self._conf.use_gpu:
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
-        else:
-            os.environ["CUDA_VISIBLE_DEVICES"] = ""  # run on cpu
+            device = device_queue.get()
+            if self._conf.use_gpu:
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(device)
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = ""  # run on cpu
 
-        from alf.utils.common import set_per_process_memory_growth
-        set_per_process_memory_growth()
+            from alf.utils.common import set_per_process_memory_growth
+            set_per_process_memory_growth()
 
-        logging.set_verbosity(logging.INFO)
-        gin_file = common.get_gin_file()
-        gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-        with gin.unlock_config():
-            gin.parse_config(['%s=%s' % (k, v) for k, v in parameters.items()])
-        train_eval(root_dir)
+            logging.set_verbosity(logging.INFO)
+            gin_file = common.get_gin_file()
+            gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+            logging.info("parameters %s" % parameters)
+            with gin.unlock_config():
+                gin.parse_config(
+                    ['%s=%s' % (k, v) for k, v in parameters.items()])
+            train_eval(root_dir)
 
-        device_queue.put(device)
+            device_queue.put(device)
+        except Exception as e:
+            logging.info(e)
+            raise e
 
 
 def main(_):

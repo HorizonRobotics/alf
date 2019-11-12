@@ -43,15 +43,14 @@ class DataBufferTest(tf.test.TestCase):
         batch = _get_batch(1000)
         data_buffer.add_batch(batch)
         self.assertEqual(int(data_buffer.current_size), capacity)
-        ret = data_buffer.get_batch_by_indices(
-            (data_buffer._current_pos + tf.range(-capacity, 0)) % capacity)
+        ret = data_buffer.get_batch_by_indices(tf.range(capacity))
         self.assertArrayEqual(ret[0], batch[0][-capacity:])
         self.assertArrayEqual(ret[1], batch[1][-capacity:])
         self.assertArrayEqual(ret[2], batch[2][-capacity:])
         batch = _get_batch(100)
         data_buffer.add_batch(batch)
         ret = data_buffer.get_batch_by_indices(
-            (data_buffer._current_pos + tf.range(-100, 0)) % capacity)
+            tf.range(data_buffer.current_size - 100, data_buffer.current_size))
         self.assertArrayEqual(ret[0], batch[0])
         self.assertArrayEqual(ret[1], batch[1])
         self.assertArrayEqual(ret[2], batch[2][-capacity:])

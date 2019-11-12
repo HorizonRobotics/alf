@@ -1,0 +1,85 @@
+# You need to install following packages
+# pip3 install atari-py opencv-python
+
+import alf.algorithms.actor_critic_algorithm
+import alf.trainers.on_policy_trainer
+
+include 'atari.gin'
+# From OpenAI gym wiki:
+# "v0 vs v4: v0 has repeat_action_probability of 0.25
+#  (meaning 25% of the time the previous action will be used instead of the new action),
+#   while v4 has 0 (always follow your issued action)
+# Because we already implements frame_skip in AtariPreprocessing, we should always
+# use 'NoFrameSkip' Atari environments from OpenAI gym
+create_environment.env_name='BreakoutNoFrameskip-v4'
+# Do not use suite_atari.load as it has some resetting issue!
+batch_size=64
+unroll_length=8
+create_environment.num_parallel_environments=%batch_size
+
+# algorithm config
+ActorCriticLoss.entropy_regularization=0.01
+ActorCriticLoss.use_gae=True
+ActorCriticLoss.use_td_lambda_return=True
+ActorCriticLoss.td_lambda=0.95
+ActorCriticLoss.td_loss_weight=0.5
+ActorCriticLoss.normalize_advantages=False
+ActorCriticLoss.advantage_clip=None
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+CONV_LAYER_PARAMS=((32, 8, 4), (64, 4, 2), (64, 3, 1))
+
+tf.nn.leaky_relu.alpha=0.01
+ACT=@tf.nn.relu
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(512,)
+actor/ActorDistributionNetwork.activation_fn=%ACT
+actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+actor/CategoricalProjectionNetwork.logits_init_output_factor=1e-10
+actor/ActorDistributionNetwork.discrete_projection_net=@actor/CategoricalProjectionNetwork
+
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(512,)
+value/ValueNetwork.activation_fn=%ACT
+value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+
+ac/Adam.learning_rate=1e-3
+
+# Agent.enforce_entropy_target=True
+# EntropyTargetAlgorithm.initial_alpha=0.01
+
+import alf.algorithms.trac_algorithm
+Agent.rl_algorithm_cls=@TracAlgorithm
+Agent.action_spec=%action_spec
+TracAlgorithm.observation_spec=%observation_spec
+TracAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+TracAlgorithm.value_network=@value/ValueNetwork()
+TracAlgorithm.batch_size=%batch_size
+TracAlgorithm.buffer_size=%unroll_length
+TracAlgorithm.action_dist_clip_per_dim=0.01
+Agent.optimizer=@ac/Adam()
+Agent.gradient_clipping=None
+
+Agent.reward_shaping_fn=@reward_clipping
+
+common.reward_clipping.minmax=(-1, 1)
+
+# training config
+TrainerConfig.trainer=@on_policy_trainer
+TrainerConfig.unroll_length=%unroll_length
+TrainerConfig.algorithm_ctor=@Agent
+TrainerConfig.use_tf_functions=True
+TrainerConfig.num_iterations=1000
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=1
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summary_interval=10
+
+Agent.observation_transformer=@image_scale_transformer
+common.image_scale_transformer.min=0.0
+
+TrainerConfig.summarize_action_distributions=True
