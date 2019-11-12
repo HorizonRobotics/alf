@@ -28,16 +28,6 @@ from alf.drivers import policy_driver
 from alf.utils import common
 
 
-def warning_once(msg, *args):
-    """Generate warning message once
-
-    Args:
-        msg: str, the message to be logged.
-        *args: The args to be substitued into the msg.
-    """
-    logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
-
-
 class OffPolicyDriver(policy_driver.PolicyDriver):
     """
     A base class for SyncOffPolicyDriver and AsyncOffPolicyDriver
