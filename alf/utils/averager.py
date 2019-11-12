@@ -182,7 +182,8 @@ class AdaptiveAverager(EMAverager):
 
     This averager gives higher weight to more recent samples for calculating the
     average. Roughly speaking, the weight for each sample at time t is roughly
-    proportional to (t/T)^(speed-1), where T is the current time step.
+    proportional to (t/T)^(speed-1), where T is the current time step. See
+    docs/streaming_averaging_amd_sampling.py for detail.
     """
 
     def __init__(self,

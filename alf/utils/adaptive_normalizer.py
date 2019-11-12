@@ -29,7 +29,8 @@ class AdaptiveNormalizer(EMATensorNormalizer):
         This normalizer gives higher weight to more recent samples for
         calculating mean and variance. Roughly speaking, the weight for each
         sample at time t is proportional to (t/T)^(speed-1), where T is the
-        current time step.
+        current time step. See docs/streaming_averaging_amd_sampling.py for
+        detail.
 
         Args:
             tensor_spec (TensorSpec): spec of the mean of tensors to be
