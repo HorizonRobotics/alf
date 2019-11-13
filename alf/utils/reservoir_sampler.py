@@ -28,29 +28,29 @@ class ReservoirSampler(DataBuffer):
     Suppose the maximal time step is T, usually a reservoir sampler will keep
     every item with the same probability of K/T. Here we make some changes so that
     each item t can be kept with a probability roughly in proportional to
-    t^s, where s is an integer speed defined by the user.
+    t^(s-1), where s is a positive integer speed defined by the user.
 
     You can use this sampler as a replay buffer. One big difference between this
     sampler and a uniform replay buffer is that samples overflown by a replay
     buffer will never be sampled again (probability hard cutting-off).
 
     Probability computation:
-    - The probability of the t-th sample being selected in the set is (s+1)*K/t
+    - The probability of the t-th sample being selected in the set is s*K/t
     - The probability of the t-th sample not being replaced by the sample at time
-      t+m is (1 - (s+1)*K/(t+m) * 1/K) = (t+m-s-1) / (t+m)
+      t+m is (1 - s*K/(t+m) * 1/K) = (t+m-s) / (t+m)
     - The over probability of the t-th sample still being kept in the set at time
       T is
 
-      (s+1)*K/t * (t+1-s-1)/(t+1) * (t+2-s-1)/(t+2) * ... * (T-s-1)/T
+      s*K/t * (t+1-s)/(t+1) * (t+2-s)/(t+2) * ... * (T-s)/T
 
-      which is proportional to (t-1)(t-2)..(t-s) / ((T-1)(T-2)...(T-s)) and is
-      roughly proportional to t^s, when t,T >> (s+1)*K
+      which is proportional to t(t-1)..(t-s+1) / ((T-1)(T-2)...(T-s+1)) and is
+      roughly proportional to t^(s-1), when t,T >> s*K
     """
 
     def __init__(self,
                  data_spec: tf.TensorSpec,
                  K,
-                 speed=0,
+                 speed=1,
                  name="ReservoirSampler"):
         """
         Create a reservoir sampler.
@@ -59,13 +59,13 @@ class ReservoirSampler(DataBuffer):
             data_spec (nested TensorSpec): spec for the data item
             K (int): the size of the reservoir set
             speed (int): a bigger speed results in a faster decay of old samples.
-                When `speed` is 0, it results in the original reservoir sampling.
+                When `speed` is 1, it results in the original reservoir sampling.
             name (str): name of the sampler
         """
         super(ReservoirSampler, self).__init__(
             data_spec=data_spec, capacity=K, name=name)
         assert isinstance(K, int) and K > 0
-        assert isinstance(speed, int) and speed >= 0
+        assert isinstance(speed, int) and speed > 0
         self._s = speed
         self._K = K
         self._t = tf.Variable(
@@ -125,7 +125,7 @@ class ReservoirSampler(DataBuffer):
         """
         Add a batch with certain probabilities to the buffer. For every sample
         in the batch, the probability is computed as:
-        p = min((s + 1)K / (t+i), 1), where i is the sample index in the batch.
+        p = min(s*K/(t+i), 1), where i is the sample index in the batch.
 
         Note that the entire batch will advance the time step by batch_size
 
@@ -138,7 +138,7 @@ class ReservoirSampler(DataBuffer):
         batch_size = tf.cast(batch_size, tf.float32)
 
         ts = tf.range(self._t, self._t + batch_size, dtype=tf.float32)
-        threshold = (self._s + 1) * self._K / ts
+        threshold = self._s * self._K / ts
         selected_idx = tf.reshape(tf.where(ps < threshold), [-1])
         # the unselected samples will be discarded
         selected_batch = tf.nest.map_structure(
