@@ -180,7 +180,7 @@ class GridSearch(object):
                            parameters,
                            id,
                            repeat,
-                           token_len=3,
+                           token_len=6,
                            max_len=255):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy curve comparison between different search runs without going
@@ -200,9 +200,14 @@ class GridSearch(object):
         """
 
         def _abbr_single(x):
+            def _initials(t):
+                words = [w for w in t.split('_') if w]
+                len_per_word = max(token_len // len(words), 1)
+                return '_'.join([w[:len_per_word] for w in words])
+
             if isinstance(x, str):
-                tokens = x.replace("/", "-").split(".")
-                tokens = [t[:token_len] for t in tokens]
+                tokens = x.replace("/", "_").split(".")
+                tokens = [_initials(t) for t in tokens]
                 return ".".join(tokens)
             else:
                 return str(x)
