@@ -51,7 +51,6 @@ class ReservoirSamplerTest(parameterized.TestCase, tf.test.TestCase):
             for t2, c2 in selected.items():
                 # t1 and t2 should be large enough for accurate c1 and c2
                 if t1 >= K * (s + 1) and t2 >= K * (s + 1):
-                    total += 1
                     q1, q2 = 1, 1
                     for j in range(s - 1):
                         q1 *= (t1 - j) / (T - j - 1)  # theoretical probability
