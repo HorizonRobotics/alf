@@ -21,13 +21,13 @@ NormalProjectionNetwork.mean_transform=None
 NormalProjectionNetwork.scale_distribution=True
 NormalProjectionNetwork.std_transform=@clipped_exp
 
-actor/Adam.learning_rate=1e-3
+actor/Adam.learning_rate=5e-4
 
 critic/CriticNetwork.input_tensor_spec=(%observation_spec, %action_spec)
 critic/CriticNetwork.joint_fc_layer_params=(100, 100)
-critic/Adam.learning_rate=1e-3
+critic/Adam.learning_rate=5e-4
 
-alpha/Adam.learning_rate=1e-3
+alpha/Adam.learning_rate=5e-4
 
 SacAlgorithm.action_spec=%action_spec
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()

@@ -37,7 +37,7 @@ def run_and_stream(cmd, cwd):
     logging.info("Running %s", " ".join(cmd))
 
     process = subprocess.Popen(
-        cmd, stdout=subprocess.DEVNULL, stderr=sys.stderr, cwd=cwd)
+        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd)
 
     while process.poll() is None:
         time.sleep(0.1)

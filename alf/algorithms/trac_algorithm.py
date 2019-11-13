@@ -135,7 +135,8 @@ class TracAlgorithm(ActorCriticAlgorithm):
             action_param=common.get_distribution_params(
                 training_info.action_distribution),
             state=training_info.info.state)
-
+        exp_array = common.create_and_unstack_tensor_array(
+            exp_array, clear_after_read=False)
         dists, steps = self._trusted_updater.adjust_step(
             lambda: self._calc_change(exp_array), self._action_dist_clips)
 
@@ -156,8 +157,6 @@ class TracAlgorithm(ActorCriticAlgorithm):
         ||logits_1 - logits_2||^2 for Categorical distribution
         KL(d1||d2) + KL(d2||d1) for others
         """
-        num_steps = tf.shape(exp_array.step_type)[0]
-        total_dists = nest_map(lambda _: tf.zeros(()), self.action_spec)
 
         def _dist(d1, d2):
             if isinstance(d1, tfp.distributions.Categorical):
@@ -174,20 +173,22 @@ class TracAlgorithm(ActorCriticAlgorithm):
             dists = nest_map(lambda kl: tf.reduce_sum(kl * valid_masks), dists)
             return nest_map(lambda x, y: x + y, total_dists, dists)
 
-        state = tf.nest.map_structure(lambda x: x[0, ...], exp_array.state)
-        batch_size = tf.shape(exp_array.step_type)[1]
+        num_steps = exp_array.step_type.size()
+        state = tf.nest.map_structure(lambda x: x.read(0), exp_array.state)
+        batch_size = exp_array.step_type.element_shape[0]
+        # exp_array.state is no longer needed
         exp_array = exp_array._replace(state=())
         initial_state = common.zero_tensor_from_nested_spec(
             self.train_state_spec.actor, batch_size)
+        total_dists = nest_map(lambda _: tf.zeros(()), self.action_spec)
         for t in tf.range(num_steps):
-            exp = tf.nest.map_structure(lambda x: x[t, ...], exp_array)
+            exp = tf.nest.map_structure(lambda x: x.read(t), exp_array)
             state = common.reset_state_if_necessary(
                 state, initial_state, exp.step_type == StepType.FIRST)
             new_action, state = self._actor_network(
                 exp.observation, step_type=exp.step_type, network_state=state)
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
-        size = tf.cast(
-            tf.reduce_prod(tf.shape(exp_array.step_type)), tf.float32)
+        size = tf.cast(num_steps * batch_size, tf.float32)
         total_dists = nest_map(lambda d: d / size, total_dists)
         return total_dists
