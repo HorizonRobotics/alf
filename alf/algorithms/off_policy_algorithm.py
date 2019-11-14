@@ -26,8 +26,7 @@ from tf_agents.trajectories.time_step import StepType
 from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 
-from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm
-from alf.algorithms.rl_algorithm import make_training_info
+from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm, TrainingInfo
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
 from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
 from alf.utils import common
@@ -237,17 +236,13 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         """
 
-        def extract_spec(nest):
-            return tf.nest.map_structure(
-                lambda t: tf.TensorSpec(t.shape[1:], t.dtype), nest)
-
         self._env_batch_size = time_step.step_type.shape[0]
-        self._time_step_spec = extract_spec(time_step)
+        self._time_step_spec = common.extract_spec(time_step)
         initial_state = common.get_initial_policy_state(
             self._env_batch_size, self.train_state_spec)
         transformed_timestep = self.transform_timestep(time_step)
         policy_step = self.rollout(transformed_timestep, initial_state)
-        info_spec = extract_spec(policy_step.info)
+        info_spec = common.extract_spec(policy_step.info)
 
         def _to_distribution_spec(spec):
             if isinstance(spec, tf.TensorSpec):
@@ -293,23 +288,16 @@ class OffPolicyAlgorithm(RLAlgorithm):
         transformed_exp = self.transform_timestep(exp)
         processed_exp = self.preprocess_experience(transformed_exp)
         self._processed_experience_spec = self._experience_spec._replace(
-            observation=extract_spec(processed_exp.observation),
-            info=extract_spec(processed_exp.info))
+            observation=common.extract_spec(processed_exp.observation),
+            info=common.extract_spec(processed_exp.info))
 
         policy_step = common.algorithm_step(
             algorithm_step_func=self.train_step,
             time_step=processed_exp,
             state=initial_state)
-        info_spec = extract_spec(policy_step.info)
-        self._training_info_spec = make_training_info(
-            action=self._action_spec,
-            action_distribution=self._action_dist_param_spec,
-            step_type=self._time_step_spec.step_type,
-            reward=self._time_step_spec.reward,
-            discount=self._time_step_spec.discount,
-            info=info_spec,
-            collect_info=self._processed_experience_spec.info,
-            collect_action_distribution=self._action_dist_param_spec)
+        info_spec = common.extract_spec(policy_step.info)
+        self._training_info_spec = TrainingInfo(
+            action_distribution=self._action_dist_param_spec, info=info_spec)
 
     def train(self,
               num_updates=1,
@@ -456,15 +444,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
             action_dist_param = common.get_distribution_params(
                 policy_step.action)
 
-            training_info = make_training_info(
-                action=exp.action,
-                action_distribution=action_dist_param,
-                reward=exp.reward,
-                discount=exp.discount,
-                step_type=exp.step_type,
-                info=policy_step.info,
-                collect_info=exp.info,
-                collect_action_distribution=collect_action_distribution_param)
+            training_info = TrainingInfo(
+                action_distribution=action_dist_param, info=policy_step.info)
 
             training_info_ta = tf.nest.map_structure(
                 lambda ta, x: ta.write(counter, x), training_info_ta,
@@ -485,6 +466,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 name="train_loop")
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),
                                                   training_info_ta)
+            training_info = training_info._replace(
+                action=experience.action,
+                reward=experience.reward,
+                discount=experience.discount,
+                step_type=experience.step_type,
+                collect_info=experience.info,
+                collect_action_distribution=experience.action_distribution)
+
             action_distribution = nested_distributions_from_specs(
                 self._action_distribution_spec,
                 training_info.action_distribution)

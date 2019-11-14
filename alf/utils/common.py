@@ -789,8 +789,8 @@ def get_observation_spec():
     https://github.com/HorizonRobotics/alf/pull/239#issuecomment-544644558
 
     Returns:
-      A `TensorSpec`, or a nested dict, list or tuple of
-      `TensorSpec` objects, which describe the observation.
+        A `TensorSpec`, or a nested dict, list or tuple of
+        `TensorSpec` objects, which describe the observation.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
@@ -805,8 +805,8 @@ def get_states_shape():
       the global environment
 
     Returns:
-      list of ints.
-      Returns 0 if internal states is not part of observation.
+        list of ints.
+        Returns 0 if internal states is not part of observation.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     assert isinstance(_env.observation_spec(), dict), "observation not a dict"
@@ -834,8 +834,8 @@ def get_vocab_size():
     """Get the vocabulary size of observations provided by the global environment.
 
     Returns:
-      vocab_size (int): size of the environment's/teacher's vocabulary.
-      Returns 0 if language is not part of observation.
+        vocab_size (int): size of the environment's/teacher's vocabulary.
+        Returns 0 if language is not part of observation.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     if 'sentence' in _env.observation_spec():
@@ -844,20 +844,21 @@ def get_vocab_size():
         return 0
 
 
-def extract_spec(nest):
+def extract_spec(nest, from_dim=1):
     """
     Extract tensor spec for each element of a nested structure.
     It assumes that the first dimension of each element is the batch size.
 
     Args:
+        from_dim (int): ignore dimension before this when constructing the spec.
         nest (nested structure): each leaf node of the nested structure is a
             tensor of the same batch size
     Returns:
         spec (nested structure): each leaf node of the returned nested spec is the
             corresponding spec (excluding batch size) of the element of `nest`
     """
-    return tf.nest.map_structure(lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
-                                 nest)
+    return tf.nest.map_structure(
+        lambda t: tf.TensorSpec(t.shape[from_dim:], t.dtype), nest)
 
 
 @gin.configurable
@@ -923,3 +924,53 @@ def warning_once(msg, *args):
         *args: The args to be substitued into the msg.
     """
     logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
+
+
+def create_tensor_array(spec, num_steps, batch_size, clear_after_read=None):
+    """Create nested TensorArray based spec.
+
+    Args:
+        spec (nested TensorSpec): spec for each step (without batch dimension)
+        num_steps (int): size (length) of the TensorArray to be created
+        batch_size (int): batch size of each element
+        clear_after_read (bool): If True, clear TensorArray values after reading
+            them. This disables read-many semantics, but allows early release of
+            memory.
+    Returns:
+        nested TensorArray with the same structure as spec
+
+    """
+
+    def _create_ta(s):
+        return tf.TensorArray(
+            dtype=s.dtype,
+            size=num_steps,
+            clear_after_read=clear_after_read,
+            element_shape=tf.TensorShape([batch_size]).concatenate(s.shape))
+
+    return tf.nest.map_structure(_create_ta, spec)
+
+
+def create_and_unstack_tensor_array(tensors, clear_after_read=True):
+    """Create tensor array from nested tensors.
+
+    Args:
+        tensors (nestd Tensor): nested Tensors
+        clear_after_read (bool): If True, clear TensorArray values after reading
+            them. This disables read-many semantics, but allows early release of
+            memory.
+    Returns:
+        nested TensorArray with the same structure as tensors
+    """
+    flattened = tf.nest.flatten(tensors)
+    if len(flattened) == 0:
+        return tf.nest.map_structure(lambda a: a, tensors)
+    spec = extract_spec(tensors, from_dim=2)
+    # element_shape of TensorArray must be explicit shape (i.e., known)
+    batch_size = flattened[0].shape[1]
+    # size of TensorArray cannot be None, though it can be a Tensor
+    num_steps = tf.shape(flattened[0])[0]
+    ta = create_tensor_array(
+        spec, num_steps, batch_size, clear_after_read=clear_after_read)
+    ta = tf.nest.map_structure(lambda elem, ta: ta.unstack(elem), tensors, ta)
+    return ta

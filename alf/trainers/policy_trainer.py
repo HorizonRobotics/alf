@@ -250,17 +250,17 @@ class Trainer(object):
             self._eval_env = unwrapped_env
 
     def _create_environment(self, nonparallel=False):
-        """Create and register an env"""
+        """Create and register an env."""
         env = create_environment(nonparallel=nonparallel)
         self._register_env(env)
         return env
 
     def _register_env(self, env):
-        """Register env so that later its resource will be recycled"""
+        """Register env so that later its resource will be recycled."""
         self._envs.append(env)
 
     def _close_envs(self):
-        """Close all envs to release their resources"""
+        """Close all envs to release their resources."""
         for env in self._envs:
             env.pyenv.close()
 
@@ -316,8 +316,11 @@ class Trainer(object):
                 policy_state=policy_state,
                 time_step=time_step)
             t = time.time() - t0
-            logging.info('%s time=%.3f throughput=%0.2f' %
-                         (iter_num, t, int(train_steps) / t))
+            logging.log_every_n_seconds(
+                logging.INFO,
+                '%s time=%.3f throughput=%0.2f' % (iter_num, t,
+                                                   int(train_steps) / t),
+                n_seconds=1)
             tf.summary.scalar("time/train_iter", t)
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()

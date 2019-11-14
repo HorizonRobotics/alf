@@ -257,7 +257,7 @@ class Generator(Algorithm):
         loss_grad = tape.gradient(scalar_loss, outputs2)
         return loss, loss_grad - kernel_grad
 
-    def after_train(self):
+    def after_train(self, training_info):
         if self._predict_net:
             tfa_common.soft_variables_update(
                 self._net.variables,
