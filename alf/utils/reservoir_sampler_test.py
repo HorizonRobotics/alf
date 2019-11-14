@@ -34,7 +34,7 @@ class ReservoirSamplerTest(parameterized.TestCase, tf.test.TestCase):
             x = [tf.range(i, i + batch_size, dtype=tf.int32), x]
             return x
 
-        sampler = ReservoirSampler(data_spec=data_spec, K=K, speed=s)
+        sampler = ReservoirSampler(data_spec=data_spec, capacity=K, speed=s)
         sampler.add_batch = tf.function(sampler.add_batch)
         selected = dict()
         repeats = 10000

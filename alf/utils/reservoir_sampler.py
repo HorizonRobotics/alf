@@ -28,7 +28,7 @@ class ReservoirSampler(DataBuffer):
     Suppose the maximal time step is T, usually a reservoir sampler will keep
     every item with the same probability of K/T. Here we make some changes so that
     each item t can be kept with a probability roughly in proportional to
-    t^(s-1), where s is a positive integer speed defined by the user.
+    t^(s-1), where s is a positive speed (>=1) defined by the user.
 
     You can use this sampler as a replay buffer. One big difference between this
     sampler and a uniform replay buffer is that samples overflown by a replay
@@ -43,13 +43,13 @@ class ReservoirSampler(DataBuffer):
 
       s*K/t * (t+1-s)/(t+1) * (t+2-s)/(t+2) * ... * (T-s)/T
 
-      which is proportional to t(t-1)..(t-s+1) / ((T-1)(T-2)...(T-s+1)) and is
+      which is proportional to (t-1)..(t-s+1) / ((T-1)...(T-s+1)) and is
       roughly proportional to t^(s-1), when t,T >> s*K
     """
 
     def __init__(self,
                  data_spec: tf.TensorSpec,
-                 K,
+                 capacity,
                  speed=1,
                  name="ReservoirSampler"):
         """
@@ -57,17 +57,17 @@ class ReservoirSampler(DataBuffer):
 
         Args:
             data_spec (nested TensorSpec): spec for the data item
-            K (int): the size of the reservoir set
-            speed (int): a bigger speed results in a faster decay of old samples.
+            capacity (int): the size of the reservoir set
+            speed (float): a bigger speed results in a faster decay of old samples.
                 When `speed` is 1, it results in the original reservoir sampling.
             name (str): name of the sampler
         """
         super(ReservoirSampler, self).__init__(
-            data_spec=data_spec, capacity=K, name=name)
-        assert isinstance(K, int) and K > 0
-        assert isinstance(speed, int) and speed > 0
+            data_spec=data_spec, capacity=capacity, name=name)
+        assert isinstance(capacity, int) and capacity > 0
+        assert speed >= 1
         self._s = speed
-        self._K = K
+        self._K = capacity
         self._t = tf.Variable(
             tf.ones((), tf.float32), trainable=False, name="t")
 
