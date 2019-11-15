@@ -19,7 +19,7 @@ from alf.utils.reservoir_sampler import ReservoirSampler
 
 
 class ReservoirSamplerTest(parameterized.TestCase, tf.test.TestCase):
-    @parameterized.parameters((1, 40, 100), (2, 30, 100), (3, 40, 200))
+    @parameterized.parameters((1, 40, 100), (2, 30, 100), (3, 45, 200))
     def test_data_buffer(self, s, K, T):
         dim = 1
         batch_size = T
@@ -47,15 +47,18 @@ class ReservoirSamplerTest(parameterized.TestCase, tf.test.TestCase):
             for x in kept:
                 selected[x] = selected.get(x, 0) + 1
 
+        total = 0
         for t1, c1 in selected.items():
             for t2, c2 in selected.items():
                 # t1 and t2 should be large enough for accurate c1 and c2
                 if t1 >= K * (s + 1) and t2 >= K * (s + 1):
+                    total += (t1 != t2)
                     q1, q2 = 1, 1
                     for j in range(s - 1):
                         q1 *= (t1 - j) / (T - j - 1)  # theoretical probability
                         q2 *= (t2 - j) / (T - j - 1)
                     self.assertAlmostEqual(c1 / c2, q1 / q2, places=1)
+        print("%d time step pairs were tested" % total)
 
 
 if __name__ == '__main__':
