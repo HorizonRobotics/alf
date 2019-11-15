@@ -68,8 +68,7 @@ class ReservoirSampler(DataBuffer):
         assert speed >= 1
         self._s = speed
         self._K = capacity
-        self._t = tf.Variable(
-            tf.ones((), tf.float32), trainable=False, name="t")
+        self._t = tf.Variable(tf.ones((), tf.int64), trainable=False, name="t")
 
     def _add_batch(self, batch):
         """
@@ -135,10 +134,9 @@ class ReservoirSampler(DataBuffer):
         batch_size = get_nest_batch_size(batch, tf.int32)
         ps = tf.random.uniform(
             shape=(batch_size, ), dtype=tf.float32, maxval=1.0)
-        batch_size = tf.cast(batch_size, tf.float32)
 
-        ts = tf.range(self._t, self._t + batch_size, dtype=tf.float32)
-        threshold = self._s * self._K / ts
+        ts = tf.range(self._t, self._t + batch_size, dtype=tf.int64)
+        threshold = self._s * self._K / tf.cast(ts, tf.float32)
         selected_idx = tf.reshape(tf.where(ps < threshold), [-1])
         # the unselected samples will be discarded
         selected_batch = tf.nest.map_structure(
