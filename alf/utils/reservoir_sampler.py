@@ -131,7 +131,7 @@ class ReservoirSampler(DataBuffer):
         Args:
             batch (nest Tensor): shape should be [batch_size] + data_spec.shape
         """
-        batch_size = get_nest_batch_size(batch, tf.int32)
+        batch_size = get_nest_batch_size(batch, tf.int64)
         ps = tf.random.uniform(
             shape=(batch_size, ), dtype=tf.float32, maxval=1.0)
 
