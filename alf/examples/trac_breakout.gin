@@ -55,8 +55,9 @@ ac/Adam.learning_rate=1e-3
 import alf.algorithms.trac_algorithm
 Agent.rl_algorithm_cls=@TracAlgorithm
 Agent.action_spec=%action_spec
-TracAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-TracAlgorithm.value_network=@value/ValueNetwork()
+TracAlgorithm.ac_algorithm_cls=@ActorCriticAlgorithm
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 TracAlgorithm.action_dist_clip_per_dim=0.01
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
