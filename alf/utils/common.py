@@ -31,6 +31,7 @@ import tensorflow_probability as tfp
 from tf_agents.specs import tensor_spec
 from tf_agents.trajectories.time_step import StepType
 from tf_agents.utils import common as tfa_common
+from tf_agents.specs.distribution_spec import DistributionSpec
 
 from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
@@ -676,6 +677,20 @@ def sample_action_distribution(actions_or_distributions, seed=None):
     seed_stream = tfp.distributions.SeedStream(seed=seed, salt='sample')
     return tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
                                  distributions)
+
+
+def to_distribution_spec(spec):
+    """Convert spec to to DistributionSpec.
+
+    Args:
+        spec (tf.TensorSpec | DistributionSpec): spec
+    """
+    if isinstance(spec, tf.TensorSpec):
+        return DistributionSpec(
+            tfp.distributions.Deterministic,
+            input_params_spec={"loc": spec},
+            sample_spec=spec)
+    return spec
 
 
 def to_distribution(action_or_distribution):

@@ -93,16 +93,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             state=algorithm.train_state_spec,
             info=info_spec)
 
-        def _to_distribution_spec(spec):
-            if isinstance(spec, TensorSpec):
-                return DistributionSpec(
-                    tfp.distributions.Deterministic,
-                    input_params_spec={"loc": spec},
-                    sample_spec=spec)
-            return spec
-
         self._action_distribution_spec = tf.nest.map_structure(
-            _to_distribution_spec, algorithm.action_distribution_spec)
+            common.to_distribution_spec, algorithm.action_distribution_spec)
         self._action_dist_param_spec = tf.nest.map_structure(
             lambda spec: spec.input_params_spec,
             self._action_distribution_spec)

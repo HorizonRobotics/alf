@@ -50,6 +50,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
         w_new' = old_w + max_kl / kl * (w_new - w_old)
 
     If the distribution is Categorical, the distance is ||logits_1 - logits_2||^2,
+    and if the distribution is Deterministic, the distance is ||loc_1 - loc_2||^2,
     otherwise it's KL(d1||d2) + KL(d2||d1).
 
     The reason of using ||logits_1 - logits_2||^2 for Categorical distribution
@@ -68,7 +69,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            ac_algorithm_cls (type): Actor Critic Algorithm cls (AC, PPO, SAC...)
+            ac_algorithm_cls (type): Actor Critic Algorithm cls.
             action_dist_clip_per_dim (float): action dist clip per dimension
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
@@ -76,7 +77,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
         ac_algorithm = ac_algorithm_cls(
             action_spec=action_spec, debug_summaries=debug_summaries)
 
-        assert isinstance(ac_algorithm._actor_network, DistributionNetwork)
+        assert hasattr(ac_algorithm, '_actor_network')
 
         super().__init__(
             action_spec=action_spec,
@@ -114,6 +115,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return policy_step._replace(
             info=TracInfo(
                 observation=exp.observation, state=state, ac=policy_step.info))
+
+    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
+        return self._ac_algorithm.greedy_predict(time_step, state)
 
     def calc_loss(self, training_info):
         return self._ac_algorithm.calc_loss(
@@ -154,20 +158,21 @@ class TracAlgorithm(OnPolicyAlgorithm):
         def _dist(d1, d2):
             if isinstance(d1, tfp.distributions.Categorical):
                 return tf.reduce_sum(tf.square(d1.logits - d2.logits), axis=-1)
-            elif isinstance(d1, SquashToSpecNormal):
-                # TODO spec means and magnitudes equal check fails in graph mode
-                return tf.reduce_sum(
-                    d1.input_distribution.kl_divergence(d2.input_distribution)
-                    + d2.input_distribution.kl_divergence(
-                        d1.input_distribution),
-                    axis=-1)
+            elif isinstance(d1, tfp.distributions.Deterministic):
+                return tf.reduce_sum(tf.square(d1.loc - d2.loc), axis=-1)
             else:
+                if isinstance(d1, SquashToSpecNormal):
+                    # TODO `SquashToSpecNormal.kl_divergence` checks that  two distributions should have
+                    #  same action mean and magnitude, but this check fails in graph mode
+                    d1 = d1.input_distribution
+                    d2 = d2.input_distribution
                 return tf.reduce_sum(
-                    d1.kl_divergence(d2) + d2.kl_divergence(d1), )
+                    d1.kl_divergence(d2) + d2.kl_divergence(d1), axis=-1)
 
         def _update_total_dists(new_action, exp, total_dists):
             old_action = nested_distributions_from_specs(
-                self.action_distribution_spec, exp.action_param)
+                common.to_distribution_spec(self.action_distribution_spec),
+                exp.action_param)
             dists = nest_map(_dist, old_action, new_action)
             valid_masks = tf.cast(
                 tf.not_equal(exp.step_type, StepType.LAST), tf.float32)
@@ -187,14 +192,12 @@ class TracAlgorithm(OnPolicyAlgorithm):
             exp = tf.nest.map_structure(lambda x: x.read(t), exp_array)
             state = common.reset_state_if_necessary(
                 state, initial_state, exp.step_type == StepType.FIRST)
-            time_step = ActionTimeStep()
-            time_step = time_step._replace(
-                observation=exp.observation,
-                step_type=exp.step_type,
-            )
-            policy_step = self._ac_algorithm.predict(
+            time_step = ActionTimeStep(
+                observation=exp.observation, step_type=exp.step_type)
+            policy_step = self._ac_algorithm.rollout(
                 time_step=time_step, state=state)
             new_action, state = policy_step.action, policy_step.state
+            new_action = common.to_distribution(new_action)
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(num_steps * batch_size, tf.float32)

@@ -244,16 +244,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
         policy_step = self.rollout(transformed_timestep, initial_state)
         info_spec = common.extract_spec(policy_step.info)
 
-        def _to_distribution_spec(spec):
-            if isinstance(spec, tf.TensorSpec):
-                return DistributionSpec(
-                    tfp.distributions.Deterministic,
-                    input_params_spec={"loc": spec},
-                    sample_spec=spec)
-            return spec
-
         self._action_distribution_spec = tf.nest.map_structure(
-            _to_distribution_spec, self.action_distribution_spec)
+            common.to_distribution_spec, self.action_distribution_spec)
         self._action_dist_param_spec = tf.nest.map_structure(
             lambda spec: spec.input_params_spec,
             self._action_distribution_spec)
