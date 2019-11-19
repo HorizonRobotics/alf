@@ -107,14 +107,16 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return policy_step._replace(
             info=TracInfo(
                 observation=time_step.observation,
-                state=state,
+                state=self._ac_algorithm.train_state_2_predict_state(state),
                 ac=policy_step.info))
 
     def train_step(self, exp: Experience, state):
         policy_step = self._ac_algorithm.train_step(exp, state)
         return policy_step._replace(
             info=TracInfo(
-                observation=exp.observation, state=state, ac=policy_step.info))
+                observation=exp.observation,
+                state=self._ac_algorithm.train_state_2_predict_state(state),
+                ac=policy_step.info))
 
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
         return self._ac_algorithm.greedy_predict(time_step, state)
@@ -186,7 +188,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
         # exp_array.state is no longer needed
         exp_array = exp_array._replace(state=())
         initial_state = common.zero_tensor_from_nested_spec(
-            self.train_state_spec, batch_size)
+            self.predict_state_spec, batch_size)
         total_dists = nest_map(lambda _: tf.zeros(()), self.action_spec)
         for t in tf.range(num_steps):
             exp = tf.nest.map_structure(lambda x: x.read(t), exp_array)
@@ -194,7 +196,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 state, initial_state, exp.step_type == StepType.FIRST)
             time_step = ActionTimeStep(
                 observation=exp.observation, step_type=exp.step_type)
-            policy_step = self._ac_algorithm.rollout(
+            policy_step = self._ac_algorithm.predict(
                 time_step=time_step, state=state)
             new_action, state = policy_step.action, policy_step.state
             new_action = common.to_distribution(new_action)
