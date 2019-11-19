@@ -23,11 +23,12 @@ def _gather_nest(nest, indices):
 def select_from_mask(data, mask):
     """Select the items from data based on mask.
 
-    data[i,...] will be selected to form a new tensor if mask[i] is True
+    data[i,...] will be selected to form a new tensor if mask[i] is True or
+    non-zero
 
     Args:
         data (nested Tensor): source tensor
-        mask (Tensor): dtype is tf.bool
+        mask (Tensor): 1D Tensor mask.shape[0] should be same as data.shape[0]
     Returns:
         nested Tensor with the same structure as data
     """

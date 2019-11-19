@@ -57,6 +57,12 @@ class DataBuffer(tf.Module):
             dtype=tf.int32,
             shape=(),
             trainable=False)
+        # TF 2.0 checkpoint does not handle tuple. We have to convert
+        # _buffer to a flattened list in order to make the checkpointer save the
+        # content in self._buffer. This seems to be fixed in
+        # tf-nightly-gpu 2.1.0.dev20191119
+        # TODO: remove this after upgrading tensorflow
+        self._flattened_buffer = tf.nest.flatten(self._buffer)
 
     @property
     def current_size(self):
