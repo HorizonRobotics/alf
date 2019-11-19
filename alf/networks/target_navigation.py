@@ -25,7 +25,7 @@ from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
 
 
-def attend_layer(image_layers, input):
+def attend_layer(input):
     """
     Generate the attention layer output
 
@@ -37,18 +37,8 @@ def attend_layer(image_layers, input):
         key: the output of the conv_layers, which will be flattened into
             tensor of shape (batch, h * w, channels).
     """
-    assert isinstance(input, collections.OrderedDict)
-    assert 'sentence' in input, 'attention implies using sentence input'
-    query = input['sentence']
-    image_shape = input['image'].shape
-    key = input['image']
-    print(key.shape)
-    key1 = tf.keras.layers.Conv2D(16, kernel_size=3, strides=2)(key)
-    print(key1.shape)
-    key2 = tf.keras.layers.Conv2D(32, kernel_size=3, strides=2)(key)
-    print(key2.shape)
-    for layer in image_layers:
-        key = layer(key)
+    query = input[1]  # 'sentence'
+    key = input[0]  # 'image'
     # reshape [batches, height, width, channels] tensor
     # into [batches, height * width, channels] tensor
     # Assumes channels_last.
@@ -128,6 +118,9 @@ def get_ac_networks(conv_layer_params=None,
     observation_spec = common.get_observation_spec()
     action_spec = common.get_action_spec()
 
+    if attention:
+        num_embedding_dims = conv_layer_params[-1][0]
+
     vocab_size = common.get_vocab_size()
     if vocab_size:
         sentence_layers = tf.keras.Sequential([
@@ -152,19 +145,10 @@ def get_ac_networks(conv_layer_params=None,
         for (filters, kernel_size, strides) in conv_layer_params
     ])
 
-    if attention:
-        attention_layers = [
-            tf.keras.layers.Lambda(lambda input: attend_layer(
-                conv_layers, input))
-        ]
-        layers = attention_layers
-    else:
-        layers = conv_layers
-
-    layers.append(tf.keras.layers.Flatten())
-    image_layers = tf.keras.Sequential(layers)
-    if attention:
-        attend_layers = image_layers
+    image_layers = conv_layers
+    if not attention:
+        image_layers.append(tf.keras.layers.Flatten())
+    image_layers = tf.keras.Sequential(image_layers)
 
     preprocessing_layers = {}
     obs_spec = common.get_observation_spec()
@@ -185,25 +169,19 @@ def get_ac_networks(conv_layer_params=None,
     if isinstance(obs_spec, dict) and 'sentence' in obs_spec:
         preprocessing_layers['sentence'] = sentence_layers
 
-    # we assume, grouped image-sentence input implies attention
-    # mechanism is used.
-    if isinstance(obs_spec, dict) and 'image_sentence' in obs_spec:
-        preprocessing_layers['image_sentence'] = attend_layers
-
     # This makes the code work with internal states input alone as well.
     if not preprocessing_layers:
         preprocessing_layers = get_identity_layer()
 
     preprocessing_combiner = tf.keras.layers.Concatenate()
+
+    if attention:
+        attention_combiner = tf.keras.layers.Lambda(lambda input: attend_layer(
+            input))
+        preprocessing_combiner = attention_combiner
+
     if not isinstance(preprocessing_layers, dict):
         preprocessing_combiner = None
-    elif len(preprocessing_layers) <= 1:
-        # attention has to have a combiner, otherwise EncodingNetwork complains
-        # due to flattened input containing two fields: 'image' and 'sentence'.
-        # This cannot be a Concatenate, as input is an array of a single
-        # tensor.  This cannot be identity, as input is a list while Flatten
-        # postprocessing layer expects a tensor as input.
-        preprocessing_combiner = get_first_element_layer()
 
     actor = ActorDistributionRnnNetwork(
         input_tensor_spec=observation_spec,
