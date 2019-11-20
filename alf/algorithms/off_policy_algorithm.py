@@ -381,19 +381,13 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
                     experience)
                 batch = _make_time_major(batch)
-                is_last_mini_batch = tf.logical_and(
-                    tf.equal(u, num_updates - 1),
-                    tf.greater_equal(b + mini_batch_size, batch_size))
-                common.enable_summary(is_last_mini_batch)
                 training_info, loss_info, grads_and_vars = self._update(
                     batch,
                     weight=tf.cast(tf.shape(batch.step_type)[1], tf.float32) /
                     float(mini_batch_size))
-                if is_last_mini_batch:
-                    self.training_summary(training_info, loss_info,
-                                          grads_and_vars)
+                common.get_global_counter().assign_add(1)
+                self.training_summary(training_info, loss_info, grads_and_vars)
 
-        common.get_global_counter().assign_add(1)
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 
