@@ -1,0 +1,70 @@
+
+
+import alf.environments.suite_socialbot
+import alf.algorithms.ppo_algorithm
+import alf.algorithms.ppo_loss
+import alf.trainers.off_policy_trainer
+
+
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+# environment config
+
+# "SocialBot-ICubWalk-v0"
+create_environment.env_name="SocialBot-Pr2Gripper-v0"
+create_environment.num_parallel_environments=60
+create_environment.env_load_fn=@suite_socialbot.load
+
+# algorithm config
+# Agent.gradient_clipping=0.5
+# Agent.clip_by_global_norm=True
+
+PPOLoss.entropy_regularization=0.0
+PPOLoss.gamma=0.99
+PPOLoss.normalize_advantages=True
+PPOLoss.td_lambda=0.95
+PPOLoss.td_error_loss_fn=@element_wise_squared_loss
+PPOLoss.check_numerics=True
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(100, 50, 25)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.softsign
+# actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+# NormalProjectionNetwork.init_means_output_factor=1e-10
+# NormalProjectionNetwork.std_bias_initializer_value=0.0
+# NormalProjectionNetwork.std_transform=@tf.math.exp
+
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(100, 50, 25)
+value/ValueNetwork.activation_fn=@tf.nn.softsign
+
+ac/Adam.learning_rate=2e-4
+
+import alf.algorithms.trac_algorithm
+Agent.action_spec=%action_spec
+Agent.rl_algorithm_cls=@TracAlgorithm
+TracAlgorithm.ac_algorithm_cls=@PPOAlgorithm
+TracAlgorithm.action_dist_clip_per_dim=0.02
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.loss_class=@PPOLoss
+Agent.optimizer=@ac/Adam()
+
+
+# training config
+TrainerConfig.mini_batch_length=1
+TrainerConfig.unroll_length=100
+TrainerConfig.mini_batch_size=6000
+TrainerConfig.num_iterations=100000
+TrainerConfig.num_updates_per_train_step=25
+TrainerConfig.eval_interval=1000
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.summary_interval=5
+TrainerConfig.trainer=@sync_off_policy_trainer
+TrainerConfig.algorithm_ctor=@Agent
+
+TFUniformReplayBuffer.max_length=2048

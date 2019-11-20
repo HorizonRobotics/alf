@@ -19,17 +19,18 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from tf_agents.networks.network import Network, DistributionNetwork
+from tf_agents.networks.network import DistributionNetwork
 from tf_agents.specs.distribution_spec import nested_distributions_from_specs
 from tf_agents.specs import tensor_spec
+from tf_agents.distributions.utils import SquashToSpecNormal
 
-from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm, ActorCriticState
+from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
+from alf.algorithms.off_policy_algorithm import Experience
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, StepType
 from alf.optimizers.trusted_updater import TrustedUpdater
 from alf.utils import common
-from alf.utils.common import namedtuple, run_if
-from alf.utils.data_buffer import DataBuffer
+from alf.utils.common import namedtuple
 
 nest_map = tf.nest.map_structure
 
@@ -40,7 +41,7 @@ TracInfo = namedtuple("TracInfo", ["observation", "state", "ac"])
 
 
 @gin.configurable
-class TracAlgorithm(ActorCriticAlgorithm):
+class TracAlgorithm(OnPolicyAlgorithm):
     """Trust-region actor-critic.
 
     It compares the action distributions after the SGD with the action
@@ -49,6 +50,7 @@ class TracAlgorithm(ActorCriticAlgorithm):
         w_new' = old_w + max_kl / kl * (w_new - w_old)
 
     If the distribution is Categorical, the distance is ||logits_1 - logits_2||^2,
+    and if the distribution is Deterministic, the distance is ||loc_1 - loc_2||^2,
     otherwise it's KL(d1||d2) + KL(d2||d1).
 
     The reason of using ||logits_1 - logits_2||^2 for Categorical distribution
@@ -59,44 +61,33 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
     def __init__(self,
                  action_spec,
-                 actor_network: DistributionNetwork,
-                 value_network: Network,
+                 ac_algorithm_cls=ActorCriticAlgorithm,
                  action_dist_clip_per_dim=0.01,
-                 loss=None,
-                 loss_class=ActorCriticLoss,
-                 optimizer=None,
                  debug_summaries=False,
                  name="TracAlgorithm"):
         """Create an instance TracAlgorithm.
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            action_dist_clip_per_dim (float): adjust step if the average
-                distance between the old and new action distributions exceeds
-                this value multiplied with dimension.
-            actor_network (DistributionNetwork): A network that returns nested
-                tensor of action distribution for each observation given observation
-                and network state.
-            value_network (Network): A function that returns value tensor from neural
-                net predictions for each observation given observation and nwtwork
-                state.
-            loss (None|ActorCriticLoss): an object for calculating loss. If
-                None, a default loss of class loss_class will be used.
-            loss_class (type): the class of the loss. The signature of its
-                constructor: loss_class(action_spec, debug_summaries)
-            optimizer (tf.optimizers.Optimizer): The optimizer for training
+            ac_algorithm_cls (type): Actor Critic Algorithm cls.
+            action_dist_clip_per_dim (float): action dist clip per dimension
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
+        ac_algorithm = ac_algorithm_cls(
+            action_spec=action_spec, debug_summaries=debug_summaries)
+
+        assert hasattr(ac_algorithm, '_actor_network')
+
         super().__init__(
             action_spec=action_spec,
-            actor_network=actor_network,
-            value_network=value_network,
-            loss=loss,
-            loss_class=loss_class,
-            optimizer=optimizer,
+            train_state_spec=ac_algorithm.train_state_spec,
+            predict_state_spec=ac_algorithm.predict_state_spec,
+            action_distribution_spec=ac_algorithm.action_distribution_spec,
             debug_summaries=debug_summaries,
             name=name)
+
+        self._ac_algorithm = ac_algorithm
         self._trusted_updater = None
 
         def _get_clip(spec):
@@ -107,20 +98,33 @@ class TracAlgorithm(ActorCriticAlgorithm):
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
 
-    def rollout(self, time_step: ActionTimeStep, state: ActorCriticState):
+    def rollout(self, time_step: ActionTimeStep, state):
         """Rollout for one step."""
-        policy_step = super().rollout(time_step, state)
+        policy_step = self._ac_algorithm.rollout(time_step, state)
         if self._trusted_updater is None:
             self._trusted_updater = TrustedUpdater(
-                self._actor_network.trainable_variables)
+                self._ac_algorithm._actor_network.trainable_variables)
         return policy_step._replace(
             info=TracInfo(
                 observation=time_step.observation,
-                state=state.actor,
+                state=self._ac_algorithm.convert_train_state_to_predict_state(
+                    state),
                 ac=policy_step.info))
 
+    def train_step(self, exp: Experience, state):
+        policy_step = self._ac_algorithm.train_step(exp, state)
+        return policy_step._replace(
+            info=TracInfo(
+                observation=exp.observation,
+                state=self._ac_algorithm.convert_train_state_to_predict_state(
+                    state),
+                ac=policy_step.info))
+
+    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
+        return self._ac_algorithm.greedy_predict(time_step, state)
+
     def calc_loss(self, training_info):
-        return super().calc_loss(
+        return self._ac_algorithm.calc_loss(
             training_info._replace(info=training_info.info.ac))
 
     def after_train(self, training_info):
@@ -143,7 +147,8 @@ class TracAlgorithm(ActorCriticAlgorithm):
                 tf.summary.scalar("adjust_steps", steps)
 
         common.run_if(common.should_record_summaries(), _summarize)
-        super().after_train(training_info._replace(info=training_info.info.ac))
+        self._ac_algorithm.after_train(
+            training_info._replace(info=training_info.info.ac))
 
     @tf.function
     def _calc_change(self, exp_array):
@@ -157,12 +162,21 @@ class TracAlgorithm(ActorCriticAlgorithm):
         def _dist(d1, d2):
             if isinstance(d1, tfp.distributions.Categorical):
                 return tf.reduce_sum(tf.square(d1.logits - d2.logits), axis=-1)
+            elif isinstance(d1, tfp.distributions.Deterministic):
+                return tf.reduce_sum(tf.square(d1.loc - d2.loc), axis=-1)
             else:
-                return d1.kl_divergence(d2) + d2.kl_divergence(d1)
+                if isinstance(d1, SquashToSpecNormal):
+                    # TODO `SquashToSpecNormal.kl_divergence` checks that  two distributions should have
+                    #  same action mean and magnitude, but this check fails in graph mode
+                    d1 = d1.input_distribution
+                    d2 = d2.input_distribution
+                return tf.reduce_sum(
+                    d1.kl_divergence(d2) + d2.kl_divergence(d1), axis=-1)
 
         def _update_total_dists(new_action, exp, total_dists):
             old_action = nested_distributions_from_specs(
-                self.action_distribution_spec, exp.action_param)
+                common.to_distribution_spec(self.action_distribution_spec),
+                exp.action_param)
             dists = nest_map(_dist, old_action, new_action)
             valid_masks = tf.cast(
                 tf.not_equal(exp.step_type, StepType.LAST), tf.float32)
@@ -170,21 +184,30 @@ class TracAlgorithm(ActorCriticAlgorithm):
             return nest_map(lambda x, y: x + y, total_dists, dists)
 
         num_steps = exp_array.step_type.size()
+        # element_shape for `TensorArray` can be (None, ...)
+        batch_size = tf.shape(exp_array.step_type.read(0))[0]
         state = tf.nest.map_structure(lambda x: x.read(0), exp_array.state)
-        batch_size = exp_array.step_type.element_shape[0]
         # exp_array.state is no longer needed
         exp_array = exp_array._replace(state=())
         initial_state = common.zero_tensor_from_nested_spec(
-            self.train_state_spec.actor, batch_size)
+            self.predict_state_spec, batch_size)
         total_dists = nest_map(lambda _: tf.zeros(()), self.action_spec)
         for t in tf.range(num_steps):
             exp = tf.nest.map_structure(lambda x: x.read(t), exp_array)
             state = common.reset_state_if_necessary(
                 state, initial_state, exp.step_type == StepType.FIRST)
-            new_action, state = self._actor_network(
-                exp.observation, step_type=exp.step_type, network_state=state)
+            time_step = ActionTimeStep(
+                observation=exp.observation, step_type=exp.step_type)
+            policy_step = self._ac_algorithm.predict(
+                time_step=time_step, state=state)
+            new_action, state = policy_step.action, policy_step.state
+            new_action = common.to_distribution(new_action)
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(num_steps * batch_size, tf.float32)
         total_dists = nest_map(lambda d: d / size, total_dists)
         return total_dists
+
+    def preprocess_experience(self, exp: Experience):
+        return self._ac_algorithm.preprocess_experience(
+            exp._replace(info=exp.info.ac))

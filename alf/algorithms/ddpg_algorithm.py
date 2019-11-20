@@ -152,18 +152,18 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         action, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
-            network_state=state)
-        return PolicyStep(action=action, state=state, info=())
-
-    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
-        policy_step = self.greedy_predict(time_step, state.actor.actor)
-        action = tf.nest.map_structure(lambda a, ou: a + ou(),
-                                       policy_step.action, self._ou_process)
+            network_state=state.actor.actor)
         empty_state = tf.nest.map_structure(lambda x: (),
                                             self.train_state_spec)
         state = empty_state._replace(
-            actor=DdpgActorState(actor=policy_step.state, critic=()))
-        return policy_step._replace(action=action, state=state)
+            actor=DdpgActorState(actor=state, critic=()))
+        return PolicyStep(action=action, state=state, info=())
+
+    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
+        policy_step = self.greedy_predict(time_step, state)
+        action = tf.nest.map_structure(lambda a, ou: a + ou(),
+                                       policy_step.action, self._ou_process)
+        return policy_step._replace(action=action)
 
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(

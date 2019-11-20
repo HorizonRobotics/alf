@@ -313,6 +313,12 @@ class Algorithm(tf.Module):
         """Returns the RNN state spec for train_step()."""
         return self._train_state_spec
 
+    def convert_train_state_to_predict_state(self, state):
+        """Convert RNN state for train_step() to RNN state for predict()"""
+        tf.nest.assert_same_structure(self._train_state_spec,
+                                      self._predict_state_spec)
+        return state
+
     #------------- User need to implement the following functions -------
 
     # Subclass may override predict() to allow more efficient implementation
