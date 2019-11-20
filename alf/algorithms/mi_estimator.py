@@ -17,13 +17,16 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.networks.utils import BatchSquash
+from tf_agents.specs import tensor_spec
 from tf_agents.utils.nest_utils import get_outer_rank
+from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.averager import ScalarAdaptiveAverager
 from alf.utils.data_buffer import DataBuffer
-from alf.utils.encoding_network import EncodingNetwork
+from alf.utils.encoding_network import EncodingNetwork, TFAEncodingNetwork
 from alf.utils.nest_utils import get_nest_batch_size
+from alf.layers import NestConcatenate
 
 
 class MIEstimator(Algorithm):
@@ -40,6 +43,7 @@ class MIEstimator(Algorithm):
     * 'DV':  sup_T E_P(T) - log E_Q(exp(T))
     * 'KLD': sup_T E_P(T) - E_Q(exp(T)) + 1
     * 'JSD': sup_T -E_P(softplus(-T))) - E_Q(solftplus(T)) + log(4)
+    * 'ML': sup_q E_P(log(q(y|x)) - log(P(y)))
 
     where P is the joint distribution of X and Y, and Q is the product marginal
     distribution of P. Both DV and KLD are lower bounds for KLD(P||Q)=MI(X, Y).
@@ -47,12 +51,18 @@ class MIEstimator(Algorithm):
     bound for JSD(P||Q), which is closely correlated with MI as pointed out in
     Hjelm et al.
 
+    For ML, P(y) is the margianl distribution of y, and it needs to be provided.
+    The current implementation uses a normal distribution with diagonal variance
+    for q(y|x). So it only support continous `y`. If P(y|x) can be reasonably
+    approximated as an diagonal normal distribution and P(y) is known, then 'ML'
+    may give better estimation for the mutual information.
+
     Assumming the function class of T is rich enough to represent any function,
     for KLD and JSD, T will converge to log(P/Q) and hence E_P(T) can also be
     used as an estimator of KLD(P||Q)=MI(X,Y). For DV, T will converge to
     log(P/Q) + c, where c=log E_Q(exp(T)).
 
-    Among these 3 estimators, 'DV' and 'KLD' seems to give a better estimation
+    Among 'DV', 'KLD' and 'JSD',  'DV' and 'KLD' seem to give a better estimation
     of PMI than 'JSD'. But 'JSD' might be numerically more stable than 'DV' and
     'KLD' because of the use of softplus instead of exp. And 'DV' is more stable
     than 'KLD' because of the logarithm.
@@ -115,17 +125,24 @@ class MIEstimator(Algorithm):
                 of exp(T). Only used for 'DV' estimator
             name (str): name of this estimator
         """
-        assert estimator_type in ['DV', 'KLD', 'JSD'
+        assert estimator_type in ['ML', 'DV', 'KLD', 'JSD'
                                   ], "Wrong estimator_type %s" % estimator_type
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
         self._x_spec = x_spec
         self._y_spec = y_spec
         if model is None:
-            model = EncodingNetwork(
-                name="MIEstimator",
-                input_tensor_spec=[x_spec, y_spec],
-                fc_layer_params=fc_layers,
-                last_layer_size=1)
+            if estimator_type == 'ML':
+                model = TFAEncodingNetwork(
+                    name="MIEstimator",
+                    input_tensor_spec=x_spec,
+                    fc_layer_params=fc_layers,
+                    preprocessing_combiner=NestConcatenate(axis=-1))
+            else:
+                model = EncodingNetwork(
+                    name="MIEstimator",
+                    input_tensor_spec=[x_spec, y_spec],
+                    fc_layer_params=fc_layers,
+                    last_layer_size=1)
         self._model = model
         self._type = estimator_type
         if sampler == 'buffer':
@@ -144,6 +161,25 @@ class MIEstimator(Algorithm):
 
         if estimator_type == 'DV':
             self._mean_averager = averager
+        if estimator_type == 'ML':
+            assert isinstance(
+                y_spec,
+                tf.TensorSpec), ("Currently, 'ML' does "
+                                 "not support nested y_spec: %s" % y_spec)
+            assert tensor_spec.is_continuous(y_spec), (
+                "Currently, 'ML' does "
+                "not support discreted y_spec: %s" % y_spec)
+            self._delta_loc_layer = tf.keras.layers.Dense(
+                y_spec.shape[-1],
+                kernel_initializer=tf.initializers.Zeros(),
+                bias_initializer=tf.initializers.Zeros(),
+                name='delta_loc_layer')
+            self._delta_scale_layer = tf.keras.layers.Dense(
+                y_spec.shape[-1],
+                kernel_initializer=tf.initializers.Zeros(),
+                bias_initializer=tf.keras.initializers.Constant(
+                    value=math.log(math.e - 1)),
+                name='delta_scale_layer')
 
     def _buffer_sampler(self, x, y):
         batch_size = get_nest_batch_size(y)
@@ -187,12 +223,16 @@ class MIEstimator(Algorithm):
         Returns:
             AlgorithmStep
                 outputs (Tensor): shape=[batch_size], its mean is the estimated
-                    MI for estimator 'DV' or 'KLD', and Jensen-Shannon
+                    MI for estimator 'KL', 'DV' and 'KLD', and Jensen-Shannon
                     divergence for estimator 'JSD'
                 state: not used
                 info (LossInfo): info.loss is the loss
         """
         x, y = inputs
+
+        if self._type == 'ML':
+            return self._ml_step(x, y, y_distribution)
+
         num_outer_dims = get_outer_rank(x, self._x_spec)
         batch_squash = BatchSquash(num_outer_dims)
         x = batch_squash.flatten(x)
@@ -201,9 +241,8 @@ class MIEstimator(Algorithm):
             x1, y1 = self._sampler(x, y)
         else:
             x1 = x
-            seed_stream = tfp.util.SeedStream(seed=None, salt='mi_estimator')
-            y1 = tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
-                                       y_distribution)
+            y1 = y_distribution.sample()
+            y1 = batch_squash.flatten(y1)
 
         log_ratio = self._model([x, y])[0]
         t1 = self._model([x1, y1])[0]
@@ -229,14 +268,44 @@ class MIEstimator(Algorithm):
         elif self._type == 'JSD':
             mi = -tf.nn.softplus(-log_ratio) - tf.nn.softplus(t1) + math.log(4)
             loss = -mi
-
         mi = batch_squash.unflatten(mi)
         loss = batch_squash.unflatten(loss)
 
         return AlgorithmStep(
             outputs=mi, state=(), info=LossInfo(loss, extra=()))
 
-    def calc_pmi(self, x, y):
+    def _ml_pmi(self, x, y, y_distribution, debug=False):
+        num_outer_dims = get_outer_rank(x, self._x_spec)
+        batch_squash = BatchSquash(num_outer_dims)
+        hidden = self._model(x)[0]
+        hidden = batch_squash.flatten(hidden)
+        delta_loc = self._delta_loc_layer(hidden)
+        delta_scale = tf.nn.softplus(self._delta_scale_layer(hidden))
+        delta_loc = batch_squash.unflatten(delta_loc)
+        delta_scale = batch_squash.unflatten(delta_scale)
+
+        y_given_x_dist = tfp.distributions.Normal(
+            loc=y_distribution.loc + delta_loc,
+            scale=y_distribution.scale * delta_scale)
+
+        # Because Normal.event_shape is [], the result of Normal.log_prob() is
+        # the probabilities of individual dimensions. So we need to use
+        # tfa_common.log_probability() instead.
+        # TODO: implement a normal distribution with non-scalar event shape.
+        pmi = tfa_common.log_probability(y_given_x_dist, y, self._y_spec)
+        pmi -= tf.stop_gradient(
+            tfa_common.log_probability(y_distribution, y, self._y_spec))
+        if debug:
+            tf.print(
+                '(z,x,y,delta_loc,delta_scale):\n',
+                tf.concat([x[0], x[1], y, delta_loc, delta_scale], axis=-1))
+        return pmi
+
+    def _ml_step(self, x, y, y_distribution):
+        pmi = self._ml_pmi(x, y, y_distribution)
+        return AlgorithmStep(outputs=pmi, state=(), info=LossInfo(loss=-pmi))
+
+    def calc_pmi(self, x, y, y_distribution=None, debug=False):
         """Return estimated pointwise mutual information.
 
         The pointwise mutual information is defined as:
@@ -245,10 +314,17 @@ class MIEstimator(Algorithm):
         Args:
             x (tf.Tensor): x
             y (tf.Tensor): y
+            y_distribution (tfp.distributions.Normal): needs to be provided for
+                'ML' estimator.
+            debug (bool): If True, tf.print some debug information
         Returns:
             tf.Tensor: pointwise mutual information between x and y
         """
+        if self._type == 'ML':
+            assert y_distribution is not None, "y_distribution needs to be provided"
+            return self._ml_pmi(x, y, y_distribution, debug=debug)
         log_ratio = self._model([x, y])[0]
+        log_ratio = tf.squeeze(log_ratio, axis=-1)
         if self._type == 'DV':
             log_ratio -= tf.math.log(self._mean_averager.get())
         return log_ratio
