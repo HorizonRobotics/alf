@@ -1,0 +1,87 @@
+# Training & playing the default goal task with Agent Learning Framework (Alf)
+# python -m alf.bin.train --root_dir=~/tmp/gro_ppo --gin_file=grocery_alf_ppo.gin --alsologtostderr
+# python -m alf.bin.play --root_dir=~/tmp/gro_ppo --gin_file=grocery_alf_ppo.gin --record_file=grocery.mp4
+
+# Training with other task, 'kickball' for example:
+# python -m alf.bin.train --root_dir=~/tmp/gro_ppo --gin_file=grocery_alf_ppo.gin --alsologtostderr --gin_param="GroceryGround.task_name='kickball'"
+
+# If you are not recording video and observation does not contain image, you can add 'DISPLAY=null' to skip camera rendering, which will speedup the simulation a lot:
+# DISPLAY=null python -m alf.bin.train ...
+
+include 'alf/examples/ppo.gin'
+import social_bot
+import alf.environments.suite_socialbot
+
+# environment config
+create_environment.env_name="SocialBot-PlayGround-v0"
+create_environment.num_parallel_environments=16
+create_environment.env_load_fn=@suite_socialbot.load
+# misc
+GoalTask.move_goal_during_episode=False
+GoalTask.success_with_angle_requirement=False
+
+# algorithm config
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
+actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.fc_layer_params=(128, 64)
+actor/ActorDistributionNetwork.activation_fn=@tf.nn.tanh
+actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.init_means_output_factor=1e-10
+NormalProjectionNetwork.std_bias_initializer_value=0.0
+
+value/ValueNetwork.input_tensor_spec=%observation_spec
+value/ValueNetwork.fc_layer_params=(128, 64)
+value/ValueNetwork.activation_fn=@tf.nn.tanh
+
+ac/Adam.learning_rate=3e-4
+
+# misc
+misc/TensorSpec.shape=(21,) # state size + action size
+misc/soi/TensorSpec.shape=(None, None, 3) # state of interest size
+misc/soc/TensorSpec.shape=(None, None, 2) # state of context size
+misc/traj/TensorSpec.shape=(16, 21)
+MISCAlgorithm.feature_spec=@misc/TensorSpec()
+MISCAlgorithm.traj_spec=@misc/traj/TensorSpec()
+MISCAlgorithm.soi_spec=@misc/soi/TensorSpec()
+MISCAlgorithm.soc_spec=@misc/soc/TensorSpec()
+MISCAlgorithm.empowerment=True
+MISCAlgorithm.hidden_size=128
+Agent.intrinsic_curiosity_module=@MISCAlgorithm()
+Agent.extrinsic_reward_coef=0.0
+Agent.intrinsic_reward_coef=1.0
+# #
+
+
+# ActorCriticAlgorithm
+Agent.action_spec=%action_spec
+ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+Agent.optimizer=@ac/Adam()
+Agent.gradient_clipping=0.5
+Agent.clip_by_global_norm=True
+
+
+PPOLoss.entropy_regularization=5e-3
+PPOLoss.gamma=0.99
+PPOLoss.normalize_advantages=True
+PPOLoss.td_lambda=0.95
+PPOLoss.td_error_loss_fn=@element_wise_squared_loss
+
+TrainerConfig.mini_batch_length=1
+TrainerConfig.unroll_length=1024
+TrainerConfig.mini_batch_size=4096
+TrainerConfig.num_iterations= 500
+TrainerConfig.summary_interval=1
+TrainerConfig.num_updates_per_train_step=20
+TrainerConfig.eval_interval=100
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.debug_summaries=True
+TrainerConfig.checkpoint_interval=1
+TrainerConfig.use_rollout_state=True
+TrainerConfig.use_tf_functions = True
+TrainerConfig.random_seed = None
+
+TFUniformReplayBuffer.max_length=2048
