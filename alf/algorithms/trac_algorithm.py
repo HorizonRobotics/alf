@@ -107,7 +107,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return policy_step._replace(
             info=TracInfo(
                 observation=time_step.observation,
-                state=self._ac_algorithm.train_state_2_predict_state(state),
+                state=self._ac_algorithm.convert_train_state_to_predict_state(
+                    state),
                 ac=policy_step.info))
 
     def train_step(self, exp: Experience, state):
@@ -115,7 +116,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return policy_step._replace(
             info=TracInfo(
                 observation=exp.observation,
-                state=self._ac_algorithm.train_state_2_predict_state(state),
+                state=self._ac_algorithm.convert_train_state_to_predict_state(
+                    state),
                 ac=policy_step.info))
 
     def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
