@@ -48,15 +48,19 @@ def attend_layer(input):
 
     # create position input tensor
     # np.asarray is to avoid ValueError: Argument must be a dense tensor: range(0, 400) - got shape [400], but wanted [].
-    p = tf.constant(np.asarray(range(h * w)))
-    p = tf.reshape(p, (h * w, 1))
-    p = tf.keras.backend.repeat(p, n=b)
+    x = tf.reshape(tf.constant(np.asarray(range(w)), dtype=tf.float32), (1, w))
+    x = tf.reshape(tf.keras.backend.repeat(x, n=h), (h * w, 1))
+    y = tf.reshape(tf.constant(np.asarray(range(h)), dtype=tf.float32), (1, h))
+    y = tf.reshape(tf.transpose(tf.keras.backend.repeat(y, n=w)), (h * w, 1))
+    p = tf.concat([x, y], -1)  # (h * w, 2)
+    p = tf.keras.backend.repeat(tf.reshape(p, (h * w * 2, 1)), n=b)
     p = tf.transpose(p)
-    p = tf.reshape(p, flatten_shape[0:-1])
+    p = tf.reshape(p, (b, h * w, 2))
 
     # create position embedding (value) tensor
-    pos_embeddings = tf.keras.layers.Embedding(flatten_shape[1], c)(
-        p)  # p: b, h * w; output: b, h * w, c
+    # pos_embeddings = tf.keras.layers.Embedding(flatten_shape[1], c)(
+    #     p)  # p: (b, h * w); output: (b, h * w, c)
+    pos_embeddings = p  # value: b, h*w, 2
 
     # inner product (Luong style) attention
 

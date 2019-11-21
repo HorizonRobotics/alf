@@ -9,10 +9,6 @@ target_navigation.get_ac_networks.attention=True
 
 num_state_tiles=0
 num_sentence_tiles=0
-# number of filters in first conv2d layer has to be 12 to match
-# input number of channels 3 (channels/frame) x 4 (frames).
-# Otherwise, expect to see ValueError: number of input channels does not match corresponding dimension of filter.
-# But Why?
 conv_layer_params=((16, 3, 2), (32, 3, 2))
 
 import alf.networks.target_navigation

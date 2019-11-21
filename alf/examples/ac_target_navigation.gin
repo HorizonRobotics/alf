@@ -11,6 +11,8 @@ PlayGround.use_image_observation=True
 PlayGround.with_language=True
 PlayGround.resized_image_size=(84, 84)
 
+GoalTask.polar_coord=False
+
 FrameStack.fields_to_stack=['image']  # must be a subset of input observations
 image_scale_transformer.fields=['image']
 
