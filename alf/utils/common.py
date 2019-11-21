@@ -744,7 +744,9 @@ def get_vocab_size():
     assert _env, "set a global env by `set_global_env` before using the function"
     if isinstance(_env.observation_spec(),
                   dict) and ('sentence' in _env.observation_spec()):
-        return _env.observation_spec()['sentence'].shape[0]
+        # _env.observation_spec()['sentence'].shape[0] is the sequence length
+        # of the sentence.
+        return _env.observation_spec()['sentence'].maximum + 1
     else:
         return 0
 
