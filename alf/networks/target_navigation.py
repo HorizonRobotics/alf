@@ -25,17 +25,21 @@ from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
 
 
-def attend_layer(input):
+def attend_layer(input, vocab_size):
     """
     Generate the attention layer output
 
     Args:
-        query: sentence input tensor of shape (batch, seq_length -- 20 from
-            PlayGround.vocab_sequence_length), which will be transformed
-            into an embedding of shape (batch, seq_length, num_embedding_dim), the same
-            dimensionality as that of position embedding (value).
-        key: the output of the conv_layers, which will be flattened into
-            tensor of shape (batch, h * w, channels).
+        input: a list of two tensors:
+                image: the output of the conv_layers, which will be flattened
+                    into tensor of shape (batch, h * w, channels),
+                sentence: integer encoded raw sentence input of shape (batch,
+                    seq_length -- 20 from PlayGround.vocab_sequence_length),
+                    which will be embedded into shape (batch, seq_length,
+                    num_embedding_dim), where num_embedding_dim == channels
+                    from the image input (key) in order to do inner product in
+                    attention layer.
+        vocab_size: vocabulary size of sentence input.
     """
     query = input[1]  # 'sentence'
     key = input[0]  # 'image'
@@ -67,8 +71,8 @@ def attend_layer(input):
     # c will be the number of embedding dimensions for the sentence input,
     # and num_embedding_dims parameter is ignored.  This is because we do
     # inner product of image and sentence embedding vectors to compute attention.
-    query_embeddings = tf.keras.layers.Embedding(query.shape[1],
-                                                 c)(query)  # seq_len, c
+    # query_embeddings shape: (seq_len, c)
+    query_embeddings = tf.keras.layers.Embedding(vocab_size, c)(query)
 
     # generates the position attention of shape (batch, h*w, c)
     pos_attention_seq = tf.keras.layers.Attention()(
@@ -127,14 +131,17 @@ def get_ac_networks(conv_layer_params=None,
 
     vocab_size = common.get_vocab_size()
     if vocab_size:
-        sentence_layers = tf.keras.Sequential([
-            tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
-            tf.keras.layers.GlobalAveragePooling1D()
-        ])
-        if num_sentence_tiles:
-            sentence_layers.add(
-                tf.keras.layers.Lambda(lambda x: tf.tile(
-                    x, multiples=[1, num_sentence_tiles])))
+        if not attention:
+            sentence_layers = tf.keras.Sequential([
+                tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
+                tf.keras.layers.GlobalAveragePooling1D()
+            ])
+            if num_sentence_tiles:
+                sentence_layers.add(
+                    tf.keras.layers.Lambda(lambda x: tf.tile(
+                        x, multiples=[1, num_sentence_tiles])))
+        else:  # attention
+            sentence_layers = get_identity_layer()
 
     # image:
     conv_layers = []
@@ -181,7 +188,7 @@ def get_ac_networks(conv_layer_params=None,
 
     if attention:
         attention_combiner = tf.keras.layers.Lambda(lambda input: attend_layer(
-            input))
+            input, vocab_size))
         preprocessing_combiner = attention_combiner
 
     if not isinstance(preprocessing_layers, dict):
