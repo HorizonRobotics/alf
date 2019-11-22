@@ -224,8 +224,6 @@ class MISCAlgorithm(Algorithm):
             loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
             loss = loss_1 + loss_2
 
-        neg_loss = -loss
-
         intrinsic_reward = ()
         if calc_intrinsic_reward:
             # scale/normalize the MISC intrinsic reward
@@ -238,10 +236,7 @@ class MISCAlgorithm(Algorithm):
                         self.mi_r_scale * loss_2, *(0, 1))
 
         return AlgorithmStep(
-            outputs=(),
-            state=feature,
-            info=MISCInfo(
-                reward=intrinsic_reward, loss=LossInfo(loss=neg_loss)))
+            outputs=(), state=feature, info=MISCInfo(reward=intrinsic_reward))
 
     def calc_loss(self, info: MISCInfo):
         feature_tau_sampled = self._buffer.get_batch(
