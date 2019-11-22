@@ -147,8 +147,15 @@ class MISCAlgorithm(Algorithm):
             exit()
 
     def mine(self, x_in, y_in):
+        """Mutual Infomation Neural Estimator.
 
-        # Mutual Information Neural Estimation
+        Implement mutual information neural estimator from
+        Belghazi et al "Mutual Information Neural Estimation"
+        http://proceedings.mlr.press/v80/belghazi18a/belghazi18a.pdf
+        'DV':  sup_T E_P(T) - log E_Q(exp(T))
+        where P is the joint distribution of X and Y, and Q is the product marginal distribution of P. DV is a lower bound for KLD(P||Q)=MI(X, Y).
+
+        """
         y_in_tran = tf.transpose(y_in, perm=[1, 0, 2])
         y_shuffle_tran = tf.gather(
             y_in_tran, tf.random.shuffle(tf.range(tf.shape(y_in_tran)[0])))
