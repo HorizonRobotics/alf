@@ -160,7 +160,9 @@ class MISCAlgorithm(Algorithm):
         """
         y_in_tran = tf.transpose(y_in, perm=[1, 0, 2])
         y_shuffle_tran = tf.gather(
-            y_in_tran, tf.random.shuffle(tf.range(tf.shape(y_in_tran)[0])))
+            y_in_tran, tf.random.shuffle(tf.range(
+                tf.shape(y_in_tran)
+                [0])))  # here tf.random.shuffle(y_in_tran) does not work
         y_shuffle = tf.transpose(y_shuffle_tran, perm=[1, 0, 2])
         x_conc = tf.concat([x_in, x_in], axis=-2)
         y_conc = tf.concat([y_in, y_shuffle], axis=-2)
