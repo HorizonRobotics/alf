@@ -276,14 +276,13 @@ class MIEstimator(Algorithm):
 
     def _ml_pmi(self, x, y, y_distribution, debug=False):
         num_outer_dims = get_outer_rank(x, self._x_spec)
-        batch_squash = BatchSquash(num_outer_dims)
         hidden = self._model(x)[0]
+        batch_squash = BatchSquash(num_outer_dims)
         hidden = batch_squash.flatten(hidden)
         delta_loc = self._delta_loc_layer(hidden)
         delta_scale = tf.nn.softplus(self._delta_scale_layer(hidden))
         delta_loc = batch_squash.unflatten(delta_loc)
         delta_scale = batch_squash.unflatten(delta_scale)
-
         y_given_x_dist = tfp.distributions.Normal(
             loc=y_distribution.loc + delta_loc,
             scale=y_distribution.scale * delta_scale)

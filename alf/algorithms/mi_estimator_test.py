@@ -163,24 +163,24 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
         return mi, estimated_mi
 
     @parameterized.parameters(
-        dict(estimator='JSD', switch_xy=False, use_default_model=True),
-        dict(estimator='JSD', switch_xy=False, use_default_model=False),
-        dict(estimator='JSD', switch_xy=True, use_default_model=True),
-        dict(estimator='JSD', switch_xy=True, use_default_model=False),
         dict(
-            estimator='ML', switch_xy=False, use_default_model=True, eps=0.05),
+            estimator='JSD', switch_xy=False, use_default_model=True, eps=0.2),
         dict(
-            estimator='ML', switch_xy=False, use_default_model=False,
-            eps=0.05),
-        dict(estimator='ML', switch_xy=True, use_default_model=True, eps=0.05),
+            estimator='JSD', switch_xy=False, use_default_model=False,
+            eps=0.2),
+        dict(estimator='JSD', switch_xy=True, use_default_model=True, eps=0.2),
         dict(
-            estimator='ML', switch_xy=True, use_default_model=False, eps=0.05),
+            estimator='JSD', switch_xy=True, use_default_model=False, eps=0.2),
+        dict(estimator='ML', switch_xy=False, use_default_model=True),
+        dict(estimator='ML', switch_xy=False, use_default_model=False),
+        dict(estimator='ML', switch_xy=True, use_default_model=True),
+        dict(estimator='ML', switch_xy=True, use_default_model=False),
     )
     def test_conditional_mi_estimator(self,
                                       estimator='ML',
                                       switch_xy=False,
                                       use_default_model=True,
-                                      eps=0.06,
+                                      eps=0.02,
                                       dim=2):
         """Estimate the conditional mutual information MI(X;Y|Z)
 
@@ -188,13 +188,14 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
             Z ~ N(0, 1)
             X|z ~ N(z, 1)
             if z >= 0:
-                Y|x,z ~ N(z + xz, 1)
+                Y|x,z ~ N(z + xz, e^2)
             else:
                 Y|x,z ~ N(0, 1)
         When z>0,
-            [X, Y] ~ N([z, z+z^2], [[1, z], [z, 1+z^2]])
-            MI(X;Y|z) = 0.5 * log(1+z^2)
+            [X, Y] ~ N([z, z+z^2], [[1, z], [z, e^2+z^2]])
+            MI(X;Y|z) = 0.5 * log(1+z^2/e^2)
         """
+        tf.random.set_seed(123)
         x_spec = [
             tf.TensorSpec(shape=(dim, ), dtype=tf.float32),
             tf.TensorSpec(shape=(dim, ), dtype=tf.float32)
@@ -215,7 +216,8 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
             optimizer=tf.optimizers.Adam(learning_rate=2e-4))
 
         z = tf.random.normal((10000, ))
-        mi = 0.25 * dim * tf.reduce_mean(tf.math.log(1 + z * z))
+        e = 0.5
+        mi = 0.25 * dim * tf.reduce_mean(tf.math.log(1 + (z / e)**2))
 
         def _get_batch(batch_size, z=None):
             if z is None:
@@ -223,9 +225,11 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
             x_dist = tfp.distributions.Normal(loc=z, scale=tf.ones_like(z))
             mask = tf.cast(z > 0, tf.float32)
             y_dist = tfp.distributions.Normal(
-                loc=(z + z * z) * mask, scale=tf.sqrt(1 + z * z * mask))
+                loc=(z + z * z) * mask,
+                scale=1 - mask + mask * tf.sqrt(e * e + z * z))
             x = x_dist.sample()
-            y = (z + x * z) * mask + tf.random.normal(shape=(batch_size, dim))
+            y = (z + x * z) * mask + (1 - mask + e * mask) * tf.random.normal(
+                shape=(batch_size, dim))
             if not switch_xy:
                 X = [z, x]
                 Y = y
@@ -241,8 +245,9 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
                                                   batch['Y_dist'])
             batch_size = estimated_pmi.shape[0]
             x, y, z = batch['x'], batch['y'], batch['z']
-            pmi = 0.5 * (tf.square(y - z - z * z) / (1 + z * z) -
-                         tf.square(y - z - x * z) + tf.math.log(1 + z * z))
+            pmi = 0.5 * (tf.square(y - z - z * z) /
+                         (e * e + z * z) - tf.square(y - z - x * z) /
+                         (e * e) + tf.math.log(1 + (z / e)**2))
             pmi = pmi * tf.cast(z > 0, tf.float32)
             pmi = tf.reduce_sum(pmi, axis=-1)
             pmi_rmse = tf.sqrt(tf.reduce_mean(tf.square(pmi - estimated_pmi)))
@@ -285,7 +290,8 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
                 batch = _get_batch(batch_size, z * tf.ones((batch_size, dim)))
                 info = "z={z} mi={mi}".format(
                     z=float(z),
-                    mi=float(0.5 * tf.math.log(1 + tf.square(tf.nn.relu(z)))))
+                    mi=float(
+                        0.5 * tf.math.log(1 + tf.square(tf.nn.relu(z / e)))))
                 _estimate_mi(info, batch)
 
         return mi, estimated_mi
