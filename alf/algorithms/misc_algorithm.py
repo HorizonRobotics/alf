@@ -52,6 +52,7 @@ class MISCAlgorithm(Algorithm):
                  buffer_size=100,
                  n_objects=1,
                  empowerment=False,
+                 env_name='SocialBot-PlayGround-v0',
                  name="MISCAlgorithm"):
         """Create an MISCAlgorithm.
         
@@ -94,12 +95,13 @@ class MISCAlgorithm(Algorithm):
         self.mi_r_scale = mi_r_scale
         self.n_objects = n_objects
         self.empowerment = empowerment
+        self.env_name = env_name
 
-    def split_observation_tf(self, o, env_name='SocialBot-PlayGround-v0'):
+    def split_observation_tf(self, o):
 
         dimo = o.get_shape().as_list()[-1]
 
-        if env_name in ['SocialBot-PlayGround-v0']:
+        if self.env_name in ['SocialBot-PlayGround-v0']:
             if dimo == 21:
                 task_specific_ob, agent_pose, agent_vel, internal_states, action = tf.split(
                     o, [3, 6, 6, 4, 2], axis=-1)
