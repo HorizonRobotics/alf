@@ -164,8 +164,8 @@ class MISCAlgorithm(Algorithm):
                 tf.shape(y_in_tran)
                 [0])))  # here tf.random.shuffle(y_in_tran) does not work
         y_shuffle = tf.transpose(y_shuffle_tran, perm=[1, 0, 2])
-        x_conc = tf.concat([x_in, x_in], axis=-2)
-        y_conc = tf.concat([y_in, y_shuffle], axis=-2)
+        x_conc = tf.concat([x_in, x_in], axis=1)
+        y_conc = tf.concat([y_in, y_shuffle], axis=1)
 
         # propagate the forward pass
         layerx = self._misc_layerx(inputs=x_conc)
@@ -175,13 +175,13 @@ class MISCAlgorithm(Algorithm):
         output = tf.nn.tanh(output)
 
         # split in T_xy and T_x_y predictions
-        N_samples = tf.shape(x_in)[-2]
+        N_samples = tf.shape(x_in)[1]
         T_xy = output[:, :N_samples, :]
         T_x_y = output[:, N_samples:, :]
 
         # compute the negative loss (maximize loss == minimize -loss)
-        mean_exp_T_x_y = tf.reduce_mean(tf.math.exp(T_x_y), axis=-2)
-        loss = tf.reduce_mean(T_xy, axis=-2) - tf.math.log(mean_exp_T_x_y)
+        mean_exp_T_x_y = tf.reduce_mean(tf.math.exp(T_x_y), axis=1)
+        loss = tf.reduce_mean(T_xy, axis=1) - tf.math.log(mean_exp_T_x_y)
         loss = tf.squeeze(loss)  # Mutual Information
 
         return loss
