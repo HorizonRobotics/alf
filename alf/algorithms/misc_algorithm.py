@@ -179,7 +179,7 @@ class MISCAlgorithm(Algorithm):
         T_xy = output[:, :N_samples, :]
         T_x_y = output[:, N_samples:, :]
 
-        # compute the negative loss (maximise loss == minimise -loss)
+        # compute the negative loss (maximize loss == minimize -loss)
         mean_exp_T_x_y = tf.reduce_mean(tf.math.exp(T_x_y), axis=-2)
         loss = tf.reduce_mean(T_xy, axis=-2) - tf.math.log(mean_exp_T_x_y)
         loss = tf.squeeze(loss)  # Mutual Information
