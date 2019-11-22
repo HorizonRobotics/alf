@@ -25,6 +25,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
+from alf.algorithms.misc_algorithm import MISCAlgorithm
 from alf.algorithms.on_policy_algorithm import Experience, OnPolicyAlgorithm, RLAlgorithm
 from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo, namedtuple
 from alf.utils.common import cast_transformer
