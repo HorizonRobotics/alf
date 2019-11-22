@@ -53,6 +53,23 @@ class MISCAlgorithm(Algorithm):
                  n_objects=1,
                  empowerment=False,
                  name="MISCAlgorithm"):
+        """Create an MISCAlgorithm.
+        
+        Args:
+            feature_spec: size of the state and the action
+            traj_spec: (num_parallel_environments, feature_spec)
+            soi_spec: (None, None, state of interest size)
+            soc_spec: (None, None, state of context size)
+            mi_r_scale: scale factor of mi estimation
+            hidden_size: number of hidden units in neural nets
+            misc_layerx: input layer with context states as input, output dimension is of hidden_size
+            misc_layery: input layer with states of interest as input, output dimension is of hidden_size
+            misc_layero: output layer with with input shape (None, None, hidden_size), output dimension is of 1
+            buffer_size: buffer size for the data buffer storing the trajectories for training the Mutual Information Neural Estimator
+            n_objects: number of objects for estimating the mutual information
+            empowerment: if empowerment is true, then use action instead of the context states
+            name: the algorithm name, "MISCAlgorithm"
+        """
 
         super(MISCAlgorithm, self).__init__(
             train_state_spec=feature_spec, name=name)
