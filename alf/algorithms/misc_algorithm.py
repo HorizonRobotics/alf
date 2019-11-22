@@ -200,12 +200,13 @@ class MISCAlgorithm(Algorithm):
 
         feature_reshaped = tf.expand_dims(feature, axis=1)
         prev_feature_reshaped = tf.expand_dims(prev_feature, axis=1)
-        feature_pair = tf.concat([prev_feature_reshaped, feature_reshaped], -2)
+        feature_pair = tf.concat([prev_feature_reshaped, feature_reshaped], 1)
         feature_reshaped_tran = tf.transpose(feature_reshaped, perm=[1, 0, 2])
 
         def add_batch():
             self._buffer.add_batch(feature_reshaped_tran)
 
+        # run add_batch function, if there are new trajectories being rollouted
         run_if(
             tf.reduce_all(
                 tf.equal(
