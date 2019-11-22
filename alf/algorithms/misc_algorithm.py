@@ -92,16 +92,16 @@ class MISCAlgorithm(Algorithm):
         self._traj_spec = traj_spec
         self._buffer_size = buffer_size
         self._buffer = DataBuffer(self._traj_spec, capacity=self._buffer_size)
-        self.mi_r_scale = mi_r_scale
-        self.n_objects = n_objects
-        self.empowerment = empowerment
-        self.env_name = env_name
+        self._mi_r_scale = mi_r_scale
+        self._n_objects = n_objects
+        self._empowerment = empowerment
+        self._env_name = env_name
 
     def split_observation_tf(self, o):
 
         dimo = o.get_shape().as_list()[-1]
 
-        if self.env_name in ['SocialBot-PlayGround-v0']:
+        if self._env_name in ['SocialBot-PlayGround-v0']:
             if dimo == 21:
                 task_specific_ob, agent_pose, agent_vel, internal_states, action = tf.split(
                     o, [3, 6, 6, 4, 2], axis=-1)
@@ -113,18 +113,18 @@ class MISCAlgorithm(Algorithm):
                 joint_1 = tf.concat([joint_pose_1, joint_vel_1], axis=-1)
                 joint_2 = tf.concat([joint_pose_2, joint_vel_2], axis=-1)
 
-                if self.n_objects == 1:
+                if self._n_objects == 1:
                     obs_achieved_goal = task_specific_ob
                     obs_excludes_goal = agent_pose_1
-                    if self.empowerment:
+                    if self._empowerment:
                         obs_excludes_goal = action
-                elif self.n_objects == 0:
+                elif self._n_objects == 0:
                     obs_achieved_goal = joint_1
                     obs_excludes_goal = joint_2
 
                 return (obs_excludes_goal, obs_achieved_goal)
 
-            elif (dimo == 24) and (self.n_objects == 2):
+            elif (dimo == 24) and (self._n_objects == 2):
                 task_specific_ob_1, task_specific_ob_2, agent_pose, agent_vel, internal_states, action = tf.split(
                     o, [3, 3, 6, 6, 4, 2], axis=-1)
 
@@ -215,11 +215,11 @@ class MISCAlgorithm(Algorithm):
                     tf.shape(feature),
                     tf.constant(self._traj_spec.shape.as_list()))), add_batch)
 
-        if self.n_objects < 2:
+        if self._n_objects < 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal = self.split_observation_tf(
                 feature_pair)
             loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
-        elif self.n_objects == 2:
+        elif self._n_objects == 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self.split_observation_tf(
                 feature_pair)
             loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
@@ -229,13 +229,13 @@ class MISCAlgorithm(Algorithm):
         intrinsic_reward = ()
         if calc_intrinsic_reward:
             # scale/normalize the MISC intrinsic reward
-            if self.n_objects < 2:
-                intrinsic_reward = tf.clip_by_value(self.mi_r_scale * loss,
+            if self._n_objects < 2:
+                intrinsic_reward = tf.clip_by_value(self._mi_r_scale * loss,
                                                     *(0, 1))
-            elif self.n_objects == 2:
+            elif self._n_objects == 2:
                 intrinsic_reward = tf.clip_by_value(
-                    self.mi_r_scale * loss_1, *(0, 1)) + 1 * tf.clip_by_value(
-                        self.mi_r_scale * loss_2, *(0, 1))
+                    self._mi_r_scale * loss_1, *(0, 1)) + 1 * tf.clip_by_value(
+                        self._mi_r_scale * loss_2, *(0, 1))
 
         return AlgorithmStep(
             outputs=(), state=feature, info=MISCInfo(reward=intrinsic_reward))
@@ -245,11 +245,11 @@ class MISCAlgorithm(Algorithm):
             batch_size=self._buffer_size)
         feature_tau_sampled_tran = tf.transpose(
             feature_tau_sampled, perm=[1, 0, 2])
-        if self.n_objects < 2:
+        if self._n_objects < 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal = self.split_observation_tf(
                 feature_tau_sampled_tran)
             loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
-        elif self.n_objects == 2:
+        elif self._n_objects == 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self.split_observation_tf(
                 feature_tau_sampled_tran)
             loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
