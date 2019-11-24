@@ -258,6 +258,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         self._algorithm.training_summary(training_info, loss_info,
                                          grads_and_vars)
+        self._algorithm.metric_summary()
+
         common.get_global_counter().assign_add(1)
 
         return [next_time_step, next_state]

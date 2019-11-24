@@ -388,6 +388,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 common.get_global_counter().assign_add(1)
                 self.training_summary(training_info, loss_info, grads_and_vars)
 
+        self.metric_summary()
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 
