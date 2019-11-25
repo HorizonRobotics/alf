@@ -194,6 +194,9 @@ class RLAlgorithm(Algorithm):
                     action_specs=self._action_spec,
                     name="collect_action_dist")
 
+    def metric_summary(self):
+        """Generate summaries for metrics `AverageEpisodeLength`, `AverageReturn`..."""
+
         if self._metrics:
             for metric in self._metrics:
                 metric.tf_summaries(
