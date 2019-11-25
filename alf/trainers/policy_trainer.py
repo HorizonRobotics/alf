@@ -55,6 +55,7 @@ class TrainerConfig(object):
                  algorithm_ctor=None,
                  random_seed=None,
                  num_iterations=1000,
+                 num_env_steps=0,
                  unroll_length=8,
                  use_rollout_state=False,
                  use_tf_functions=True,
@@ -86,7 +87,10 @@ class TrainerConfig(object):
             algorithm_ctor (Callable): callable that create an
                 `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
             random_seed (None|int): random seed, a random seed is used if None
-            num_iterations (int): number of update iterations
+            num_iterations (int): number of update iterations (ignored if 0)
+            num_env_steps (int): number of environment steps (ignored if 0). The
+                total number of FRAMES will be (`num_env_steps`*`frame_skip`) for
+                calculating sample efficiency.
             unroll_length (int):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: `num_envs` * `env_batch_size`
@@ -131,6 +135,7 @@ class TrainerConfig(object):
             algorithm_ctor=algorithm_ctor,
             random_seed=random_seed,
             num_iterations=num_iterations,
+            num_env_steps=num_env_steps,
             unroll_length=unroll_length,
             use_rollout_state=use_rollout_state,
             use_tf_functions=use_tf_functions,
@@ -188,6 +193,9 @@ class Trainer(object):
 
         self._random_seed = config.random_seed
         self._num_iterations = config.num_iterations
+        self._num_env_steps = config.num_env_steps
+        assert self._num_iterations + self._num_env_steps > 0, \
+            "Must provide #iterations or #env_steps for training!"
         self._unroll_length = config.unroll_length
         self._use_tf_functions = config.use_tf_functions
 
@@ -309,7 +317,8 @@ class Trainer(object):
             env.reset()
         time_step = self._driver.get_initial_time_step()
         policy_state = self._driver.get_initial_policy_state()
-        for iter_num in range(self._num_iterations):
+        iter_num = 0
+        while True:
             t0 = time.time()
             time_step, policy_state, train_steps = self.train_iter(
                 iter_num=iter_num,
@@ -335,6 +344,14 @@ class Trainer(object):
                     tf.summary.text('commandline', ' '.join(sys.argv))
                     tf.summary.text('optimizers',
                                     self._algorithm.get_optimizer_info())
+
+            # check termination
+            env_steps_metric = self._driver.get_step_metrics()[1]
+            total_time_steps = env_steps_metric.result().numpy()
+            iter_num += 1
+            if (self._num_iterations and iter_num >= self._num_iterations) \
+                or (self._num_env_steps and total_time_steps >= self._num_env_steps):
+                break
 
     def _restore_checkpoint(self):
         global_step = get_global_counter()
