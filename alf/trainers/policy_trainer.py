@@ -90,7 +90,8 @@ class TrainerConfig(object):
             num_iterations (int): number of update iterations (ignored if 0)
             num_env_steps (int): number of environment steps (ignored if 0). The
                 total number of FRAMES will be (`num_env_steps`*`frame_skip`) for
-                calculating sample efficiency.
+                calculating sample efficiency. See alf/environments/wrappers.py
+                for the definition of FrameSkip.
             unroll_length (int):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: `num_envs` * `env_batch_size`
