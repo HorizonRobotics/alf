@@ -64,13 +64,13 @@ class MISCAlgorithm(Algorithm):
             soi_spec (tf.TensorSpec): state of interest size
             soc_spec (tf.TensorSpec): state of context size
             split_observation_fn (Callable): split observation function. 
-            The input is observation and action concatenated.
-            The outputs are the context states and states of interest
+                The input is observation and action concatenated.
+                The outputs are the context states and states of interest
             network (Network): network for estimating mutual information (MI)
             mi_r_scale (float): scale factor of MI estimation
             hidden_size (int): number of hidden units in neural nets
             buffer_size (int): buffer size for the data buffer storing the trajectories 
-            for training the Mutual Information Neural Estimator
+                for training the Mutual Information Neural Estimator
             n_objects: number of objects for estimating the mutual information reward
             name (str): the algorithm name, "MISCAlgorithm"
         """
@@ -79,19 +79,25 @@ class MISCAlgorithm(Algorithm):
             train_state_spec=[observation_spec, action_spec], name=name)
 
         assert isinstance(observation_spec, tf.TensorSpec), \
-        "does not support nested observation_spec"
+            "does not support nested observation_spec"
         assert isinstance(action_spec, tf.TensorSpec), \
-        "does not support nested action_spec"
+            "does not support nested action_spec"
 
         if network is None:
-            network = EncodingNetwork(input_tensor_spec=[soc_spec, soi_spec], \
-                fc_layer_params=(hidden_size,), activation_fn='relu', \
-                last_layer_size=1, last_activation_fn='tanh')
+            network = EncodingNetwork(
+                input_tensor_spec=[soc_spec, soi_spec],
+                fc_layer_params=(hidden_size, ),
+                activation_fn='relu',
+                last_layer_size=1,
+                last_activation_fn='tanh')
 
         self._network = network
 
-        self._traj_spec = tf.TensorSpec(shape=[batch_size] + \
-            [observation_spec.shape.as_list()[0] + action_spec.shape.as_list()[0]], \
+        self._traj_spec = tf.TensorSpec(
+            shape=[batch_size] + [
+                observation_spec.shape.as_list()[0] +
+                action_spec.shape.as_list()[0]
+            ],
             dtype=observation_spec.dtype)
         self._buffer_size = buffer_size
         self._buffer = DataBuffer(self._traj_spec, capacity=self._buffer_size)
@@ -99,7 +105,7 @@ class MISCAlgorithm(Algorithm):
         self._n_objects = n_objects
         self._split_observation_fn = split_observation_fn
 
-    def mine(self, x_in, y_in):
+    def _mine(self, x_in, y_in):
         """Mutual Infomation Neural Estimator.
 
         Implement mutual information neural estimator from
@@ -157,14 +163,14 @@ class MISCAlgorithm(Algorithm):
 
         if self._n_objects < 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal = \
-            self._split_observation_fn(feature_pair)
-            loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
+                self._split_observation_fn(feature_pair)
+            loss = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 \
             = self._split_observation_fn(
                 feature_pair)
-            loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
-            loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
+            loss_1 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
+            loss_2 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
             loss = loss_1 + loss_2
 
         intrinsic_reward = ()
@@ -189,13 +195,13 @@ class MISCAlgorithm(Algorithm):
         if self._n_objects < 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal = self._split_observation_fn(
                 feature_tau_sampled_tran)
-            loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
+            loss = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
             obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = \
             self._split_observation_fn(
                 feature_tau_sampled_tran)
-            loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
-            loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
+            loss_1 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
+            loss_2 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
             loss = loss_1 + loss_2
 
         neg_loss = -loss
