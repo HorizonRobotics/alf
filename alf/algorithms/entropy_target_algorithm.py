@@ -37,7 +37,7 @@ class EntropyTargetAlgorithm(Algorithm):
     It tries to adjust the entropy regularization (i.e. alpha) so that the
     the entropy is not smaller than `target_entropy`.
 
-    The algorithm has two stages:
+    The algorithm has three stages:
     0. init stage. This is an optional stage. If the initial entropy is already
        below `max_entropy`, then this stage is skipped. Otherwise, the alpha will
        be slowly decreased so that the entropy will land at `max_entropy` to
@@ -169,7 +169,6 @@ class EntropyTargetAlgorithm(Algorithm):
 
         def _init():
             below = avg_entropy < self._max_entropy
-            # only change alpha when the entropy is increasing to avoid overshooting
             increasing = tf.cast(avg_entropy > prev_avg_entropy, tf.float32)
             # -1 * increasing + 0.5 * (1 - increasing)
             update_rate = (
