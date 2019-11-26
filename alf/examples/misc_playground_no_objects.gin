@@ -8,13 +8,16 @@
 # If you are not recording video and observation does not contain image, you can add 'DISPLAY=null' to skip camera rendering, which will speedup the simulation a lot:
 # DISPLAY=null python -m alf.bin.train ...
 
+# python alf/bin/train.py --gin_file=alf/examples/misc_playground_no_objects.gin --root_dir=logs/misc_playground_no_objects-tmp
+
 include 'alf/examples/ppo.gin'
 import social_bot
 import alf.environments.suite_socialbot
 
 # environment config
+batch_size=3 # 16
 create_environment.env_name="SocialBot-PlayGround-v0"
-create_environment.num_parallel_environments=16
+create_environment.num_parallel_environments=%batch_size
 create_environment.env_load_fn=@suite_socialbot.load
 # misc
 GoalTask.move_goal_during_episode=False
@@ -39,22 +42,20 @@ value/ValueNetwork.activation_fn=@tf.nn.tanh
 ac/Adam.learning_rate=3e-4
 
 # misc
-misc/TensorSpec.shape=(21,) # state size
-misc/soi/TensorSpec.shape=(None, None, 2) # 6 state of interest size
-misc/soc/TensorSpec.shape=(None, None, 2) # 4 state of context size
-misc/traj/TensorSpec.shape=(16, 21)
-MISCAlgorithm.feature_spec=@misc/TensorSpec()
-MISCAlgorithm.traj_spec=@misc/traj/TensorSpec()
+misc/soi/TensorSpec.shape=(3,)
+misc/soc/TensorSpec.shape=(3,)
+MISCAlgorithm.observation_spec=%observation_spec
+MISCAlgorithm.action_spec=%action_spec
+MISCAlgorithm.batch_size=%batch_size
 MISCAlgorithm.soi_spec=@misc/soi/TensorSpec()
 MISCAlgorithm.soc_spec=@misc/soc/TensorSpec()
-MISCAlgorithm.hidden_size=128
-MISCAlgorithm.n_objects=0
-MISCAlgorithm.mi_r_scale=5000
+MISCAlgorithm.hidden_size=128 # 256
+import alf.examples.misc_playground_no_objects
+MISCAlgorithm.split_observation_fn=@misc_playground_no_objects.split_observation_fn
 Agent.intrinsic_curiosity_module=@MISCAlgorithm()
 Agent.extrinsic_reward_coef=0.0
 Agent.intrinsic_reward_coef=1.0
 # #
-
 
 # ActorCriticAlgorithm
 Agent.action_spec=%action_spec
@@ -70,7 +71,6 @@ PPOLoss.gamma=0.99
 PPOLoss.normalize_advantages=True
 PPOLoss.td_lambda=0.95
 PPOLoss.td_error_loss_fn=@element_wise_squared_loss
-
 
 TrainerConfig.mini_batch_length=1
 TrainerConfig.unroll_length=1024
