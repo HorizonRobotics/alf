@@ -166,10 +166,11 @@ def calc_default_max_entropy(spec):
     Returns:
         A default max entropy for adjusting the entropy weight
     """
+    dims = np.product(spec.shape.as_list())
     if tensor_spec.is_continuous(spec):
-        # pick a very conservative high value in the continuous case
+        # pick a conservative high value in the continuous case
         # (upper bound for free; better than nothing)
-        e = 100
+        e = 2 * dims
     else:
         e = 0
         for m, M in zip(spec.minimum.flatten(), spec.maximum.flatten()):

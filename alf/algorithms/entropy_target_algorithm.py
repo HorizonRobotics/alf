@@ -173,12 +173,10 @@ class EntropyTargetAlgorithm(Algorithm):
             # -1 * increasing + 0.5 * (1 - increasing)
             update_rate = (
                 0.5 - 1.5 * increasing) * self._very_slow_update_rate
-            # cannot use tf.cond because the two return types are different
-            run_if(below, lambda: self._stage.assign(-1))
-            run_if(
-                tf.logical_not(below), lambda: self._log_alpha.assign(
-                    tf.maximum(self._log_alpha + update_rate,
-                               np.float32(self._min_log_alpha))))
+            self._stage.assign_add(tf.cast(below, tf.int32))
+            self._log_alpha.assign(
+                tf.maximum(self._log_alpha + update_rate,
+                           np.float32(self._min_log_alpha)))
 
         def _free():
             crossing = avg_entropy < self._target_entropy
