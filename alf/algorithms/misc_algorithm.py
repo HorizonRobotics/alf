@@ -36,7 +36,8 @@ class MISCAlgorithm(Algorithm):
     Work done during a research internship at Horizon Robotics. 
     The paper is currently under review in a conference.
 
-    This algorithm generates the intrinsic reward based on the mutual information estimation between the states of interests and the context states.
+    This algorithm generates the intrinsic reward based on the mutual information 
+    estimation between the states of interests and the context states.
 
     See Zhao et al "Self-Supervised State-Control through Intrinsic Mutual Information Rewards"
     """
@@ -62,11 +63,14 @@ class MISCAlgorithm(Algorithm):
             action_spec (tf.TensorSpec): action size
             soi_spec (tf.TensorSpec): state of interest size
             soc_spec (tf.TensorSpec): state of context size
-            split_observation_fn (Callable): split observation function
+            split_observation_fn (Callable): split observation function. 
+            The input is observation and action concatenated.
+            The outputs are the context states and states of interest
             network (Network): network for estimating mutual information (MI)
             mi_r_scale (float): scale factor of MI estimation
             hidden_size (int): number of hidden units in neural nets
-            buffer_size (int): buffer size for the data buffer storing the trajectories for training the Mutual Information Neural Estimator
+            buffer_size (int): buffer size for the data buffer storing the trajectories 
+            for training the Mutual Information Neural Estimator
             n_objects: number of objects for estimating the mutual information reward
             name (str): the algorithm name, "MISCAlgorithm"
         """
@@ -74,27 +78,20 @@ class MISCAlgorithm(Algorithm):
         super(MISCAlgorithm, self).__init__(
             train_state_spec=[observation_spec, action_spec], name=name)
 
-        assert isinstance(
-            observation_spec,
-            tf.TensorSpec), "does not support nested observation_spec"
-        assert isinstance(action_spec,
-                          tf.TensorSpec), "does not support nested action_spec"
+        assert isinstance(observation_spec, tf.TensorSpec), \
+        "does not support nested observation_spec"
+        assert isinstance(action_spec, tf.TensorSpec), \
+        "does not support nested action_spec"
 
         if network is None:
-            network = EncodingNetwork(
-                input_tensor_spec=[soc_spec, soi_spec],
-                fc_layer_params=(hidden_size, ),
-                activation_fn='relu',
-                last_layer_size=1,
-                last_activation_fn='tanh')
+            network = EncodingNetwork(input_tensor_spec=[soc_spec, soi_spec], \
+                fc_layer_params=(hidden_size,), activation_fn='relu', \
+                last_layer_size=1, last_activation_fn='tanh')
 
         self._network = network
 
-        self._traj_spec = tf.TensorSpec(
-            shape=[batch_size] + [
-                observation_spec.shape.as_list()[0] +
-                action_spec.shape.as_list()[0]
-            ],
+        self._traj_spec = tf.TensorSpec(shape=[batch_size] + \
+            [observation_spec.shape.as_list()[0] + action_spec.shape.as_list()[0]], \
             dtype=observation_spec.dtype)
         self._buffer_size = buffer_size
         self._buffer = DataBuffer(self._traj_spec, capacity=self._buffer_size)
@@ -109,7 +106,9 @@ class MISCAlgorithm(Algorithm):
         Belghazi et al "Mutual Information Neural Estimation"
         http://proceedings.mlr.press/v80/belghazi18a/belghazi18a.pdf
         'DV':  sup_T E_P(T) - log E_Q(exp(T))
-        where P is the joint distribution of X and Y, and Q is the product marginal distribution of P. DV is a lower bound for KLD(P||Q)=MI(X, Y).
+        where P is the joint distribution of X and Y, and Q is the product
+         marginal distribution of P. DV is a lower bound for 
+         KLD(P||Q)=MI(X, Y).
 
         """
         y_in_tran = transpose2(y_in, 1, 0)
@@ -157,11 +156,12 @@ class MISCAlgorithm(Algorithm):
             add_batch()
 
         if self._n_objects < 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal = self._split_observation_fn(
-                feature_pair)
+            obs_tau_excludes_goal, obs_tau_achieved_goal = \
+            self._split_observation_fn(feature_pair)
             loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self._split_observation_fn(
+            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 \
+            = self._split_observation_fn(
                 feature_pair)
             loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
             loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
@@ -179,8 +179,7 @@ class MISCAlgorithm(Algorithm):
                     1) + 1 * tf.clip_by_value(self._mi_r_scale * loss_2, 0, 1)
 
         return AlgorithmStep(
-            outputs=(),
-            state=[feature_state, prev_action],
+            outputs=(), state=[feature_state, prev_action], \
             info=MISCInfo(reward=intrinsic_reward))
 
     def calc_loss(self, info: MISCInfo):
@@ -192,7 +191,8 @@ class MISCAlgorithm(Algorithm):
                 feature_tau_sampled_tran)
             loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self._split_observation_fn(
+            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = \
+            self._split_observation_fn(
                 feature_tau_sampled_tran)
             loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
             loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
