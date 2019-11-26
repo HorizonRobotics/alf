@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import namedtuple
+from typing import Callable
 
 import gin.tf
 import tensorflow as tf
@@ -22,9 +23,10 @@ import tf_agents.specs.tensor_spec as tensor_spec
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.data_buffer import DataBuffer
 from tf_agents.trajectories.time_step import StepType
-from alf.utils.conditional_ops import conditional_update, run_if
+from alf.utils.encoding_network import EncodingNetwork
+from alf.utils.common import transpose2
 
-MISCInfo = namedtuple("MISCInfo", ["reward", "loss"])
+MISCInfo = namedtuple("MISCInfo", ["reward"])
 
 
 @gin.configurable
@@ -40,113 +42,65 @@ class MISCAlgorithm(Algorithm):
     """
 
     def __init__(self,
-                 feature_spec,
-                 traj_spec,
+                 batch_size,
+                 observation_spec,
+                 action_spec,
                  soi_spec,
                  soc_spec,
-                 mi_r_scale=5000,
-                 hidden_size=256,
-                 misc_layerx: Network = None,
-                 misc_layery: Network = None,
-                 misc_layero: Network = None,
+                 split_observation_fn: Callable,
+                 network: Network = None,
+                 mi_r_scale=5000.0,
+                 hidden_size=128,
                  buffer_size=100,
                  n_objects=1,
-                 empowerment=False,
-                 env_name='SocialBot-PlayGround-v0',
                  name="MISCAlgorithm"):
         """Create an MISCAlgorithm.
         
         Args:
-            feature_spec: size of the state and the action
-            traj_spec: (num_parallel_environments, feature_spec)
-            soi_spec: (None, None, state of interest size)
-            soc_spec: (None, None, state of context size)
-            mi_r_scale: scale factor of mi estimation
-            hidden_size: number of hidden units in neural nets
-            misc_layerx: input layer with context states as input, output dimension is of hidden_size
-            misc_layery: input layer with states of interest as input, output dimension is of hidden_size
-            misc_layero: output layer with with input shape (None, None, hidden_size), output dimension is of 1
-            buffer_size: buffer size for the data buffer storing the trajectories for training the Mutual Information Neural Estimator
-            n_objects: number of objects for estimating the mutual information
-            empowerment: if empowerment is true, then use action instead of the context states
-            name: the algorithm name, "MISCAlgorithm"
+            batch_size (int): batch size
+            observation_spec (tf.TensorSpec): observation size
+            action_spec (tf.TensorSpec): action size
+            soi_spec (tf.TensorSpec): state of interest size
+            soc_spec (tf.TensorSpec): state of context size
+            split_observation_fn (Callable): split observation function
+            network (Network): network for estimating mutual information (MI)
+            mi_r_scale (float): scale factor of MI estimation
+            hidden_size (int): number of hidden units in neural nets
+            buffer_size (int): buffer size for the data buffer storing the trajectories for training the Mutual Information Neural Estimator
+            n_objects: number of objects for estimating the mutual information reward
+            name (str): the algorithm name, "MISCAlgorithm"
         """
 
         super(MISCAlgorithm, self).__init__(
-            train_state_spec=feature_spec, name=name)
+            train_state_spec=[observation_spec, action_spec], name=name)
 
-        feature_dim = tf.nest.flatten(feature_spec)[0].shape[-1]
+        assert isinstance(
+            observation_spec,
+            tf.TensorSpec), "does not support nested observation_spec"
+        assert isinstance(action_spec,
+                          tf.TensorSpec), "does not support nested action_spec"
 
-        if misc_layerx is None:
-            misc_layerx = tf.keras.layers.Dense(
-                hidden_size, input_shape=soc_spec.shape, activation=None)
-            misc_layery = tf.keras.layers.Dense(
-                hidden_size, input_shape=soi_spec.shape, activation=None)
-            misc_layero = tf.keras.layers.Dense(
-                1, input_shape=(None, None, hidden_size), activation=None)
+        if network is None:
+            network = EncodingNetwork(
+                input_tensor_spec=[soc_spec, soi_spec],
+                fc_layer_params=(hidden_size, ),
+                activation_fn='relu',
+                last_layer_size=1,
+                last_activation_fn='tanh')
 
-        self._misc_layerx = misc_layerx
-        self._misc_layery = misc_layery
-        self._misc_layero = misc_layero
+        self._network = network
 
-        self._traj_spec = traj_spec
+        self._traj_spec = tf.TensorSpec(
+            shape=[batch_size] + [
+                observation_spec.shape.as_list()[0] +
+                action_spec.shape.as_list()[0]
+            ],
+            dtype=observation_spec.dtype)
         self._buffer_size = buffer_size
         self._buffer = DataBuffer(self._traj_spec, capacity=self._buffer_size)
         self._mi_r_scale = mi_r_scale
         self._n_objects = n_objects
-        self._empowerment = empowerment
-        self._env_name = env_name
-
-    def split_observation_tf(self, o):
-
-        dimo = o.get_shape().as_list()[-1]
-
-        if self._env_name in ['SocialBot-PlayGround-v0']:
-            if dimo == 21:
-                task_specific_ob, agent_pose, agent_vel, internal_states, action = tf.split(
-                    o, [3, 6, 6, 4, 2], axis=-1)
-
-                agent_pose_1, agent_pose_2 = tf.split(
-                    agent_pose, [3, 3], axis=-1)
-                joint_pose_1, joint_pose_2, joint_vel_1, joint_vel_2 = tf.split(
-                    internal_states, [1, 1, 1, 1], axis=-1)
-                joint_1 = tf.concat([joint_pose_1, joint_vel_1], axis=-1)
-                joint_2 = tf.concat([joint_pose_2, joint_vel_2], axis=-1)
-
-                if self._n_objects == 1:
-                    obs_achieved_goal = task_specific_ob
-                    obs_excludes_goal = agent_pose_1
-                    if self._empowerment:
-                        obs_excludes_goal = action
-                elif self._n_objects == 0:
-                    obs_achieved_goal = joint_1
-                    obs_excludes_goal = joint_2
-
-                return (obs_excludes_goal, obs_achieved_goal)
-
-            elif (dimo == 24) and (self._n_objects == 2):
-                task_specific_ob_1, task_specific_ob_2, agent_pose, agent_vel, internal_states, action = tf.split(
-                    o, [3, 3, 6, 6, 4, 2], axis=-1)
-
-                agent_pose_1, agent_pose_2 = tf.split(
-                    agent_pose, [3, 3], axis=-1)
-
-                obs_achieved_goal_1 = task_specific_ob_1
-                obs_achieved_goal_2 = task_specific_ob_2
-                obs_excludes_goal = agent_pose_1
-
-                return (obs_excludes_goal, obs_achieved_goal_1,
-                        obs_achieved_goal_2)
-            else:
-                print(
-                    'Please specify the state of interests and the context state in the misc_alorighm.py first.'
-                )
-                exit()
-        else:
-            print(
-                'Please specify the state of interests and the context state in the misc_alorighm.py first.'
-            )
-            exit()
+        self._split_observation_fn = split_observation_fn
 
     def mine(self, x_in, y_in):
         """Mutual Infomation Neural Estimator.
@@ -158,31 +112,20 @@ class MISCAlgorithm(Algorithm):
         where P is the joint distribution of X and Y, and Q is the product marginal distribution of P. DV is a lower bound for KLD(P||Q)=MI(X, Y).
 
         """
-        y_in_tran = tf.transpose(y_in, perm=[1, 0, 2])
+        y_in_tran = transpose2(y_in, 1, 0)
+        # tf.random.shuffle() has no gradient defined, so use tf.gather()
         y_shuffle_tran = tf.gather(
-            y_in_tran, tf.random.shuffle(tf.range(
-                tf.shape(y_in_tran)
-                [0])))  # here tf.random.shuffle(y_in_tran) does not work
-        y_shuffle = tf.transpose(y_shuffle_tran, perm=[1, 0, 2])
-        x_conc = tf.concat([x_in, x_in], axis=1)
-        y_conc = tf.concat([y_in, y_shuffle], axis=1)
+            y_in_tran, tf.random.shuffle(tf.range(tf.shape(y_in_tran)[0])))
+        y_shuffle = transpose2(y_shuffle_tran, 1, 0)
 
         # propagate the forward pass
-        layerx = self._misc_layerx(inputs=x_conc)
-        layery = self._misc_layery(inputs=y_conc)
-        layer2 = tf.nn.relu(layerx + layery)
-        output = self._misc_layero(inputs=layer2)
-        output = tf.nn.tanh(output)
-
-        # split in T_xy and T_x_y predictions
-        N_samples = tf.shape(x_in)[1]
-        T_xy = output[:, :N_samples, :]
-        T_x_y = output[:, N_samples:, :]
+        T_xy, _ = self._network([x_in, y_in])
+        T_x_y, _ = self._network([x_in, y_shuffle])
 
         # compute the negative loss (maximize loss == minimize -loss)
         mean_exp_T_x_y = tf.reduce_mean(tf.math.exp(T_x_y), axis=1)
         loss = tf.reduce_mean(T_xy, axis=1) - tf.math.log(mean_exp_T_x_y)
-        loss = tf.squeeze(loss)  # Mutual Information
+        loss = tf.squeeze(loss, axis=-1)  # Mutual Information
 
         return loss
 
@@ -200,29 +143,25 @@ class MISCAlgorithm(Algorithm):
         """
         feature_state, prev_action = inputs
         feature = tf.concat([feature_state, prev_action], axis=-1)
-        prev_feature = state
+        prev_feature = tf.concat(state, axis=-1)
 
         feature_reshaped = tf.expand_dims(feature, axis=1)
         prev_feature_reshaped = tf.expand_dims(prev_feature, axis=1)
         feature_pair = tf.concat([prev_feature_reshaped, feature_reshaped], 1)
-        feature_reshaped_tran = tf.transpose(feature_reshaped, perm=[1, 0, 2])
+        feature_reshaped_tran = transpose2(feature_reshaped, 1, 0)
 
         def add_batch():
             self._buffer.add_batch(feature_reshaped_tran)
 
-        # run add_batch function, if there are new trajectories being rollouted
-        run_if(
-            tf.reduce_all(
-                tf.equal(
-                    tf.shape(feature),
-                    tf.constant(self._traj_spec.shape.as_list()))), add_batch)
+        if calc_intrinsic_reward:
+            add_batch()
 
         if self._n_objects < 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal = self.split_observation_tf(
+            obs_tau_excludes_goal, obs_tau_achieved_goal = self._split_observation_fn(
                 feature_pair)
             loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self.split_observation_tf(
+            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self._split_observation_fn(
                 feature_pair)
             loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
             loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
@@ -232,27 +171,28 @@ class MISCAlgorithm(Algorithm):
         if calc_intrinsic_reward:
             # scale/normalize the MISC intrinsic reward
             if self._n_objects < 2:
-                intrinsic_reward = tf.clip_by_value(self._mi_r_scale * loss,
-                                                    *(0, 1))
+                intrinsic_reward = tf.clip_by_value(self._mi_r_scale * loss, 0,
+                                                    1)
             elif self._n_objects == 2:
                 intrinsic_reward = tf.clip_by_value(
-                    self._mi_r_scale * loss_1, *(0, 1)) + 1 * tf.clip_by_value(
-                        self._mi_r_scale * loss_2, *(0, 1))
+                    self._mi_r_scale * loss_1, 0,
+                    1) + 1 * tf.clip_by_value(self._mi_r_scale * loss_2, 0, 1)
 
         return AlgorithmStep(
-            outputs=(), state=feature, info=MISCInfo(reward=intrinsic_reward))
+            outputs=(),
+            state=[feature_state, prev_action],
+            info=MISCInfo(reward=intrinsic_reward))
 
     def calc_loss(self, info: MISCInfo):
         feature_tau_sampled = self._buffer.get_batch(
             batch_size=self._buffer_size)
-        feature_tau_sampled_tran = tf.transpose(
-            feature_tau_sampled, perm=[1, 0, 2])
+        feature_tau_sampled_tran = transpose2(feature_tau_sampled, 1, 0)
         if self._n_objects < 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal = self.split_observation_tf(
+            obs_tau_excludes_goal, obs_tau_achieved_goal = self._split_observation_fn(
                 feature_tau_sampled_tran)
             loss = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self.split_observation_tf(
+            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = self._split_observation_fn(
                 feature_tau_sampled_tran)
             loss_1 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
             loss_2 = self.mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
