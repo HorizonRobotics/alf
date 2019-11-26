@@ -20,17 +20,11 @@ import tensorflow as tf
 def split_observation_fn(o):
 
     dimo = o.get_shape().as_list()[-1]
-    assert dimo == 26, (
-        "Please specify the state of interests and the context state from the obsevation."
-    )
+    assert dimo == 26, ("The dimension does not match.")
 
     task_specific_ob_1, task_specific_ob_2, agent_pose, agent_vel, internal_states, action = tf.split(
         o, [3, 3, 6, 6, 6, 2], axis=-1)
 
     agent_pose_1, agent_pose_2 = tf.split(agent_pose, [3, 3], axis=-1)
 
-    obs_achieved_goal_1 = task_specific_ob_1
-    obs_achieved_goal_2 = task_specific_ob_2
-    obs_excludes_goal = agent_pose_1
-
-    return (obs_excludes_goal, obs_achieved_goal_1, obs_achieved_goal_2)
+    return (agent_pose_1, task_specific_ob_1, task_specific_ob_2)
