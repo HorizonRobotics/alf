@@ -26,7 +26,7 @@ def split_observation_fn(o):
         o, [3, 6, 6, 6, 2], axis=-1)
 
     joint_pose_sin_1, joint_pose_sin_2, joint_pose_cos_1, joint_pose_cos_2, \
-    joint_vel_1, joint_vel_2 = tf.split(internal_states, [1, 1, 1, 1, 1, 1], axis=-1)
+        joint_vel_1, joint_vel_2 = tf.split(internal_states, [1, 1, 1, 1, 1, 1], axis=-1)
     joint_1 = tf.concat([joint_pose_sin_1, joint_pose_cos_1, joint_vel_1],
                         axis=-1)
     joint_2 = tf.concat([joint_pose_sin_2, joint_pose_cos_2, joint_vel_2],
