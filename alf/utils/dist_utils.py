@@ -157,3 +157,23 @@ def calc_default_target_entropy(spec):
         q = 1 - p
         e = -p * np.log(p) - q * np.log(q)
     return e * dims
+
+
+def calc_default_max_entropy(spec):
+    """Calc default max entropy
+    Args:
+        spec (TensorSpec): action spec
+    Returns:
+        A default max entropy for adjusting the entropy weight
+    """
+    if tensor_spec.is_continuous(spec):
+        # pick a very conservative high value in the continuous case
+        # (upper bound for free; better than nothing)
+        e = 100
+    else:
+        e = 0
+        for m, M in zip(spec.minimum.flatten(), spec.maximum.flatten()):
+            num_actions = M - m + 1
+            e += np.log(num_actions)  # uniform distribution
+        e *= 0.8
+    return e

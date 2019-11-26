@@ -24,6 +24,7 @@ from alf.utils import dist_utils
 from alf.utils.averager import ScalarWindowAverager
 from alf.utils.common import namedtuple, run_if, should_record_summaries
 from alf.utils.dist_utils import calc_default_target_entropy
+from alf.utils.dist_utils import calc_default_max_entropy
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["entropy_loss"])
 EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
@@ -37,7 +38,12 @@ class EntropyTargetAlgorithm(Algorithm):
     the entropy is not smaller than `target_entropy`.
 
     The algorithm has two stages:
-    1. init stage. During this stage, the alpha is not changed. It transitions
+    0. init stage. This is an optional stage. If the initial entropy is already
+       below `max_entropy`, then this stage is skipped. Otherwise, the alpha will
+       be slowly decreased so that the entropy will land at `max_entropy` to
+       trigger the next `free stage`. Basically, this stage let the user to choose
+       an arbitrary large init alpha without considering every specific case.
+    1. free stage. During this stage, the alpha is not changed. It transitions
        to adjust_stage once entropy drops below `target_entropy`.
     2. adjust stage. During this stage, log_alpha is adjusted using this formula:
        ((below + 0.5 * above) * decreasing - (above + 0.5 * below) * increasing) * update_rate
@@ -55,8 +61,10 @@ class EntropyTargetAlgorithm(Algorithm):
 
     def __init__(self,
                  action_spec,
-                 initial_alpha=0.01,
+                 initial_alpha=0.1,
+                 max_entropy=None,
                  target_entropy=None,
+                 very_slow_update_rate=0.001,
                  slow_update_rate=0.01,
                  fast_update_rate=np.log(2),
                  min_alpha=1e-4,
@@ -65,12 +73,19 @@ class EntropyTargetAlgorithm(Algorithm):
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            initial_alpha (float): initial value for alpha.
+            initial_alpha (float): initial value for alpha; make sure that it's
+                large enough for initial meaningful exploration
+            max_entropy (float): the upper bound of the entropy. If not provided,
+                a default value proportional to the action dimension is used.
             target_entropy (float): the lower bound of the entropy. If not
                 provided, a default value proportional to the action dimension
-                is used.
-            slow_update_rate (float): minimal update rate for log_alpha
-            fast_update_rate (float): maximum update rate for log_alpha
+                is used. This value should be less or equal than `max_entropy`.
+            very_slow_update_rate (float): a tiny update rate for log_alpha; used
+                in stage 0
+            slow_update_rate (float): minimal update rate for log_alpha; used in
+                stage 2
+            fast_update_rate (float): maximum update rate for log_alpha; used in
+                state 2
             min_alpha (float): the minimal value of alpha. If <=0, exp(-100) is
                 used.
             optimizer (tf.optimizers.Optimizer): The optimizer for training. If
@@ -87,7 +102,7 @@ class EntropyTargetAlgorithm(Algorithm):
             dtype=tf.float32,
             trainable=False)
         self._stage = tf.Variable(
-            name='stage', initial_value=-1, dtype=tf.int32, trainable=False)
+            name='stage', initial_value=-2, dtype=tf.int32, trainable=False)
         self._avg_entropy = ScalarWindowAverager(2)
         self._update_rate = tf.Variable(
             name='update_rate',
@@ -99,18 +114,27 @@ class EntropyTargetAlgorithm(Algorithm):
         if min_alpha >= 0.:
             self._min_log_alpha = np.log(min_alpha)
 
+        flat_action_spec = tf.nest.flatten(self._action_spec)
         if target_entropy is None:
-            flat_action_spec = tf.nest.flatten(self._action_spec)
             target_entropy = np.sum(
                 list(map(calc_default_target_entropy, flat_action_spec)))
+        if max_entropy is None:
+            max_entropy = np.sum(
+                list(map(calc_default_max_entropy, flat_action_spec)))
+        assert target_entropy <= max_entropy, \
+            ("Target entropy %s should be less or equal than max entropy %s!"
+             % (target_entropy, max_entropy))
         if target_entropy > 0:
             self._fast_stage_thresh = 0.5 * target_entropy
         else:
             self._fast_stage_thresh = 2.0 * target_entropy
         self._target_entropy = target_entropy
+        self._max_entropy = max_entropy
+        self._very_slow_update_rate = very_slow_update_rate
         self._slow_update_rate = slow_update_rate
         self._fast_update_rate = fast_update_rate
         logging.info("target_entropy=%s" % target_entropy)
+        logging.info("max_entropy=%s" % max_entropy)
 
     def train_step(self, distribution, step_type):
         """Train step.
@@ -144,6 +168,20 @@ class EntropyTargetAlgorithm(Algorithm):
         avg_entropy = self._avg_entropy.average(entropy)
 
         def _init():
+            below = avg_entropy < self._max_entropy
+            # only change alpha when the entropy is increasing to avoid overshooting
+            increasing = tf.cast(avg_entropy > prev_avg_entropy, tf.float32)
+            # -1 * increasing + 0.5 * (1 - increasing)
+            update_rate = (
+                0.5 - 1.5 * increasing) * self._very_slow_update_rate
+            # cannot use tf.cond because the two return types are different
+            run_if(below, lambda: self._stage.assign(-1))
+            run_if(
+                tf.logical_not(below), lambda: self._log_alpha.assign(
+                    tf.maximum(self._log_alpha + update_rate,
+                               np.float32(self._min_log_alpha))))
+
+        def _free():
             crossing = avg_entropy < self._target_entropy
             self._stage.assign_add(tf.cast(crossing, tf.int32))
 
@@ -169,7 +207,8 @@ class EntropyTargetAlgorithm(Algorithm):
             log_alpha = tf.maximum(log_alpha, np.float32(self._min_log_alpha))
             self._log_alpha.assign(log_alpha)
 
-        run_if(self._stage == -1, _init)
+        run_if(self._stage == -2, _init)
+        run_if(self._stage == -1, _free)
         run_if(self._stage >= 0, _adjust)
         alpha = tf.exp(self._log_alpha)
 
