@@ -8,13 +8,16 @@
 # If you are not recording video and observation does not contain image, you can add 'DISPLAY=null' to skip camera rendering, which will speedup the simulation a lot:
 # DISPLAY=null python -m alf.bin.train ...
 
+# python alf/bin/train.py --gin_file=alf/examples/misc_playground_empowerment.gin --root_dir=logs/misc_playground_empowerment-tmp
+
 include 'alf/examples/ppo.gin'
 import social_bot
 import alf.environments.suite_socialbot
 
 # environment config
+batch_size=3 # 16
 create_environment.env_name="SocialBot-PlayGround-v0"
-create_environment.num_parallel_environments=16
+create_environment.num_parallel_environments=%batch_size
 create_environment.env_load_fn=@suite_socialbot.load
 # misc
 GoalTask.move_goal_during_episode=False
@@ -39,21 +42,20 @@ value/ValueNetwork.activation_fn=@tf.nn.tanh
 ac/Adam.learning_rate=3e-4
 
 # misc
-misc/TensorSpec.shape=(21,) # state size + action size
-misc/soi/TensorSpec.shape=(None, None, 3) # state of interest size
-misc/soc/TensorSpec.shape=(None, None, 2) # state of context size
-misc/traj/TensorSpec.shape=(16, 21)
-MISCAlgorithm.feature_spec=@misc/TensorSpec()
-MISCAlgorithm.traj_spec=@misc/traj/TensorSpec()
+misc/soi/TensorSpec.shape=(3,)
+misc/soc/TensorSpec.shape=(2,)
+MISCAlgorithm.observation_spec=%observation_spec
+MISCAlgorithm.action_spec=%action_spec
+MISCAlgorithm.batch_size=%batch_size
 MISCAlgorithm.soi_spec=@misc/soi/TensorSpec()
 MISCAlgorithm.soc_spec=@misc/soc/TensorSpec()
-MISCAlgorithm.empowerment=True
-MISCAlgorithm.hidden_size=128
+MISCAlgorithm.hidden_size=128 # 256
+import alf.examples.misc_playground_empowerment
+MISCAlgorithm.split_observation_fn=@misc_playground_empowerment.split_observation_fn
 Agent.intrinsic_curiosity_module=@MISCAlgorithm()
 Agent.extrinsic_reward_coef=0.0
 Agent.intrinsic_reward_coef=1.0
 # #
-
 
 # ActorCriticAlgorithm
 Agent.action_spec=%action_spec
