@@ -161,16 +161,21 @@ def calc_default_target_entropy(spec):
     return e
 
 
-def calc_default_max_entropy(spec):
+def calc_default_max_entropy(spec, fraction=0.8):
     """Calc default max entropy
     Args:
         spec (TensorSpec): action spec
+        fraction (float): this fraction of the theoretical entropy upper bound
+            will be used as the max entropy
     Returns:
         A default max entropy for adjusting the entropy weight
     """
+    assert fraction <= 1.0 and fraction > 0
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
     cont = tensor_spec.is_continuous(spec)
     # use uniform distributions to compute upper bounds
-    e = np.sum([np.log(M - m if cont else M - m + 1) for m, M, _ in min_max])
-    return e * 0.8
+    e = np.sum([(np.log(M - m) * (fraction if M - m > 1 else 1.0 / fraction)
+                 if cont else np.log(M - m + 1) * fraction)
+                for m, M, _ in min_max])
+    return e
