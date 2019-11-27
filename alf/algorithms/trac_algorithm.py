@@ -47,11 +47,11 @@ class TracAlgorithm(OnPolicyAlgorithm):
     It compares the action distributions after the SGD with the action
     distributions from the previous model. If the average distance is too big,
     the new parameters are shrinked as:
-        w_new' = old_w + max_kl / kl * (w_new - w_old)
+        w_new' = old_w + 0.9 * distance_clip / distance * (w_new - w_old)
 
-    If the distribution is Categorical, the distance is ||logits_1 - logits_2||^2,
-    and if the distribution is Deterministic, the distance is ||loc_1 - loc_2||^2,
-    otherwise it's KL(d1||d2) + KL(d2||d1).
+    If the distribution is Categorical, the squared distance is
+    ||logits_1 - logits_2||^2, and if the distribution is Deterministic, it is
+    ||loc_1 - loc_2||^2,  otherwise it's KL(d1||d2) + KL(d2||d1).
 
     The reason of using ||logits_1 - logits_2||^2 for Categorical distribution
     is that KL can be small even if there are large differences in logits when
@@ -94,16 +94,13 @@ class TracAlgorithm(OnPolicyAlgorithm):
             dims = np.product(spec.shape.as_list())
             if tensor_spec.is_discrete(spec):
                 dims *= spec.maximum - spec.minimum + 1
-            return float(action_dist_clip_per_dim * dims)
+            return np.sqrt(action_dist_clip_per_dim * dims)
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
 
     def rollout(self, time_step: ActionTimeStep, state):
         """Rollout for one step."""
         policy_step = self._ac_algorithm.rollout(time_step, state)
-        if self._trusted_updater is None:
-            self._trusted_updater = TrustedUpdater(
-                self._ac_algorithm._actor_network.trainable_variables)
         return policy_step._replace(
             info=TracInfo(
                 observation=time_step.observation,
@@ -124,6 +121,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return self._ac_algorithm.greedy_predict(time_step, state)
 
     def calc_loss(self, training_info):
+        if self._trusted_updater is None:
+            self._trusted_updater = TrustedUpdater(
+                self._ac_algorithm._actor_network.trainable_variables)
         return self._ac_algorithm.calc_loss(
             training_info._replace(info=training_info.info.ac))
 
@@ -154,24 +154,31 @@ class TracAlgorithm(OnPolicyAlgorithm):
     def _calc_change(self, exp_array):
         """Calculate the distance between old/new action distributions.
 
-        The distance is:
+        The squared distance is:
         ||logits_1 - logits_2||^2 for Categorical distribution
+        ||loc_1 - loc_2||^2 for Deterministic distribution
         KL(d1||d2) + KL(d2||d1) for others
         """
 
         def _dist(d1, d2):
             if isinstance(d1, tfp.distributions.Categorical):
-                return tf.reduce_sum(tf.square(d1.logits - d2.logits), axis=-1)
+                dist = tf.square(d1.logits - d2.logits)
             elif isinstance(d1, tfp.distributions.Deterministic):
-                return tf.reduce_sum(tf.square(d1.loc - d2.loc), axis=-1)
+                dist = tf.square(d1.loc - d2.loc)
             else:
                 if isinstance(d1, SquashToSpecNormal):
-                    # TODO `SquashToSpecNormal.kl_divergence` checks that  two distributions should have
-                    #  same action mean and magnitude, but this check fails in graph mode
+                    # TODO `SquashToSpecNormal.kl_divergence` checks that two
+                    # distributions should have same action mean and magnitude,
+                    # but this check fails in graph mode
                     d1 = d1.input_distribution
                     d2 = d2.input_distribution
-                return tf.reduce_sum(
-                    d1.kl_divergence(d2) + d2.kl_divergence(d1), axis=-1)
+                dist = d1.kl_divergence(d2) + d2.kl_divergence(d1)
+
+            if len(dist.shape) > 1:
+                # reduce to shape [B]
+                reduce_dims = list(range(1, len(dist.shape)))
+                dist = tf.reduce_sum(dist, axis=reduce_dims)
+            return dist
 
         def _update_total_dists(new_action, exp, total_dists):
             old_action = nested_distributions_from_specs(
@@ -205,7 +212,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(num_steps * batch_size, tf.float32)
-        total_dists = nest_map(lambda d: d / size, total_dists)
+        total_dists = nest_map(lambda d: tf.sqrt(d / size), total_dists)
         return total_dists
 
     def preprocess_experience(self, exp: Experience):
