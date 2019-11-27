@@ -88,9 +88,11 @@ class MIEstimator(Algorithm):
     need to worry about the assumption of independence.
 
     MIEstimator can be also used to estimate conditional mutual information
-    MI(X,Y|Z). In this case, you should let `x` to represent X and Z, and `y` to
-    represent Y. And when calling train_step(), you need to provide `y_distribution`
-    which is the distribution P(Y|z). See mi_estimator_test.py for detail.
+    MI(X,Y|Z) using 'KLD', 'JSD' or 'ML'. In this case, you should let `x` to
+    represent X and Z, and `y` to represent Y. And when calling train_step(),
+    you need to provide `y_distribution` which is the distribution P(Y|z).
+    Note that 'DV' cannot be used for estimating conditional mutual information.
+    See mi_estimator_test.py for example.
     """
 
     def __init__(self,
@@ -274,7 +276,7 @@ class MIEstimator(Algorithm):
         return AlgorithmStep(
             outputs=mi, state=(), info=LossInfo(loss, extra=()))
 
-    def _ml_pmi(self, x, y, y_distribution, debug=False):
+    def _ml_pmi(self, x, y, y_distribution):
         num_outer_dims = get_outer_rank(x, self._x_spec)
         hidden = self._model(x)[0]
         batch_squash = BatchSquash(num_outer_dims)
@@ -294,17 +296,13 @@ class MIEstimator(Algorithm):
         pmi = tfa_common.log_probability(y_given_x_dist, y, self._y_spec)
         pmi -= tf.stop_gradient(
             tfa_common.log_probability(y_distribution, y, self._y_spec))
-        if debug:
-            tf.print(
-                '(z,x,y,delta_loc,delta_scale):\n',
-                tf.concat([x[0], x[1], y, delta_loc, delta_scale], axis=-1))
         return pmi
 
     def _ml_step(self, x, y, y_distribution):
         pmi = self._ml_pmi(x, y, y_distribution)
         return AlgorithmStep(outputs=pmi, state=(), info=LossInfo(loss=-pmi))
 
-    def calc_pmi(self, x, y, y_distribution=None, debug=False):
+    def calc_pmi(self, x, y, y_distribution=None):
         """Return estimated pointwise mutual information.
 
         The pointwise mutual information is defined as:
@@ -315,13 +313,12 @@ class MIEstimator(Algorithm):
             y (tf.Tensor): y
             y_distribution (tfp.distributions.Normal): needs to be provided for
                 'ML' estimator.
-            debug (bool): If True, tf.print some debug information
         Returns:
             tf.Tensor: pointwise mutual information between x and y
         """
         if self._type == 'ML':
             assert y_distribution is not None, "y_distribution needs to be provided"
-            return self._ml_pmi(x, y, y_distribution, debug=debug)
+            return self._ml_pmi(x, y, y_distribution)
         log_ratio = self._model([x, y])[0]
         log_ratio = tf.squeeze(log_ratio, axis=-1)
         if self._type == 'DV':
