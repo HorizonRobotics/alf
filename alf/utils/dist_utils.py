@@ -148,15 +148,17 @@ def calc_default_target_entropy(spec):
         spec (TensorSpec): action spec
     Returns:
     """
-    dims = np.product(spec.shape.as_list())
-    if tensor_spec.is_continuous(spec):
-        e = -1
-    else:
-        min_prob = 0.01
-        p = min_prob
-        q = 1 - p
-        e = -p * np.log(p) - q * np.log(q)
-    return e * dims
+    zeros = np.zeros(spec.shape)
+    min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
+    cont = tensor_spec.is_continuous(spec)
+    min_prob = 0.01
+    log_mp = np.log(min_prob)
+    # continuous: suppose the prob concentrates on a delta of 0.01*(M-m)
+    # discrete: ignore the entry of 0.99 and uniformly distribute probs on rest
+    e = np.sum([(np.log(M - m) + log_mp
+                 if cont else min_prob * (np.log(M - m) - log_mp))
+                for m, M, _ in min_max])
+    return e
 
 
 def calc_default_max_entropy(spec):
@@ -166,15 +168,9 @@ def calc_default_max_entropy(spec):
     Returns:
         A default max entropy for adjusting the entropy weight
     """
-    dims = np.product(spec.shape.as_list())
-    if tensor_spec.is_continuous(spec):
-        # pick a conservative high value in the continuous case
-        # (upper bound for free; better than nothing)
-        e = 2 * dims
-    else:
-        e = 0
-        for m, M in zip(spec.minimum.flatten(), spec.maximum.flatten()):
-            num_actions = M - m + 1
-            e += np.log(num_actions)  # uniform distribution
-        e *= 0.8
-    return e
+    zeros = np.zeros(spec.shape)
+    min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
+    cont = tensor_spec.is_continuous(spec)
+    # use uniform distributions to compute upper bounds
+    e = np.sum([np.log(M - m if cont else M - m + 1) for m, M, _ in min_max])
+    return e * 0.8
