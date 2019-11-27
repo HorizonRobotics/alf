@@ -385,8 +385,8 @@ def run_under_record_context(func,
     summary_writer.set_as_default()
     global_step = get_global_counter()
     with tf.summary.record_if(lambda: tf.logical_and(
-            is_summary_enabled(),
-            tf.equal((global_step + 1) % summary_interval, 0))):
+            is_summary_enabled(), tf.equal(global_step % summary_interval, 0)
+    )):
         func()
 
 
