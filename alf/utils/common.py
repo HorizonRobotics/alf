@@ -205,7 +205,7 @@ def _get_summary_enabled_var():
     global _summary_enabled_var
     if _summary_enabled_var is None:
         _summary_enabled_var = tf.Variable(
-            False, dtype=tf.bool, name="summary_enabled")
+            False, dtype=tf.bool, trainable=False, name="summary_enabled")
     return _summary_enabled_var
 
 
@@ -744,8 +744,8 @@ def get_vocab_size():
     assert _env, "set a global env by `set_global_env` before using the function"
     if isinstance(_env.observation_spec(),
                   dict) and ('sentence' in _env.observation_spec()):
-        # _env.observation_spec()['sentence'].shape[0] is the sequence length
-        # of the sentence.
+        # return _env.observation_spec()['sentence'].shape[0]
+        # is the sequence length of the sentence.
         return _env.observation_spec()['sentence'].maximum + 1
     else:
         return 0

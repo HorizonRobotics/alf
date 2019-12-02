@@ -136,7 +136,8 @@ def histogram_continuous(name,
             bucket_counts = tf.cast(
                 tf.reduce_sum(input_tensor=one_hots, axis=0), dtype=tf.float64)
             edges = tf.linspace(bucket_min, bucket_max, bucket_count + 1)
-            edges = tf.concat([edges[:-1], [float(bucket_max)]], 0)
+            edges = tf.concat([edges[:-1], [tf.cast(bucket_max, tf.float64)]],
+                              0)
             edges = tf.cast(edges, tf.float64)
             left_edges = edges[:-1]
             right_edges = edges[1:]
