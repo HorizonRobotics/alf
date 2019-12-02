@@ -25,67 +25,110 @@ from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
 
 
-def attend_layer(input, vocab_size):
-    """
-    Generate the attention layer output
+# followed https://www.tensorflow.org/guide/keras/custom_layers_and_models
+class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
+    def __init__(self, vocab_size, **kwargs):
+        super().__init__(**kwargs)
+        self._vocab_size = vocab_size
 
-    Args:
-        input: a list of two tensors:
-                image: the output of the conv_layers, which will be flattened
-                    into tensor of shape (batch, h * w, channels),
-                sentence: integer encoded raw sentence input of shape (batch,
-                    seq_length -- 20 from PlayGround.vocab_sequence_length),
-                    which will be embedded into shape (batch, seq_length,
-                    num_embedding_dim), where num_embedding_dim == channels
-                    from the image input (key) in order to do inner product in
-                    attention layer.
-        vocab_size: vocabulary size of sentence input.
-    """
-    query = input[1]  # 'sentence'
-    key = input[0]  # 'image'
-    # reshape [batches, height, width, channels] tensor
-    # into [batches, height * width, channels] tensor
-    # Assumes channels_last.
-    (b, h, w, c) = key.shape
-    flatten_shape = (b, h * w, c)
-    key_embeddings = tf.reshape(key, flatten_shape)
+    def build(self, input_shape):
+        assert isinstance(input_shape, list)
+        [key_shape, query_shape] = input_shape
+        (b, h, w, c) = key_shape  # channels last
+        self._embedding = tf.keras.layers.Embedding(self._vocab_size, c)
+        self._embedding.build(input_shape[1])
 
-    # create position input tensor
-    # np.asarray is to avoid ValueError: Argument must be a dense tensor: range(0, 400) - got shape [400], but wanted [].
-    x = tf.reshape(tf.constant(np.asarray(range(w)), dtype=tf.float32), (1, w))
-    x = tf.reshape(tf.keras.backend.repeat(x, n=h), (h * w, 1))
-    y = tf.reshape(tf.constant(np.asarray(range(h)), dtype=tf.float32), (1, h))
-    y = tf.reshape(tf.transpose(tf.keras.backend.repeat(y, n=w)), (h * w, 1))
-    p = tf.concat([x, y], -1)  # (h * w, 2)
-    p = tf.keras.backend.repeat(tf.reshape(p, (h * w * 2, 1)), n=b)
-    p = tf.transpose(p)
-    p = tf.reshape(p, (b, h * w, 2))
+        self._attention = tf.keras.layers.Attention(use_scale=True)
+        query_emb_shape = self._embedding.compute_output_shape(query_shape)
+        key_value_shape = (b, h * w, c + 2)
+        key_emb_shape = (b, h * w, c)
+        self._attention.build(
+            input_shape=[query_emb_shape, key_value_shape, key_emb_shape])
+        super().build(input_shape)
 
-    # create position embedding (value) tensor
-    # pos_embeddings = tf.keras.layers.Embedding(flatten_shape[1], c)(
-    #     p)  # p: (b, h * w); output: (b, h * w, c)
-    pos_embeddings = p  # value: b, h*w, 2
+    def compute_output_shape(self, input_shape):
+        assert isinstance(input_shape, list)
+        key_shape = input_shape[0]
+        b = key_shape[0]
+        c = key_shape[-1]  # channels last
+        # Output per batch contains query: c num_embedding_dims, image: c channels, position: 2 dims
+        return (b, 3 * c)  # 2 * c + 2 if not tiling position tensor
 
-    # inner product (Luong style) attention
+    def get_config(self):
+        config = super().get_config()
+        config.update({'vocab_size': self._vocab_size})
+        return config
 
-    # c will be the number of embedding dimensions for the sentence input,
-    # and num_embedding_dims parameter is ignored.  This is because we do
-    # inner product of image and sentence embedding vectors to compute attention.
-    # query_embeddings shape: (seq_len, c)
-    query_embeddings = tf.keras.layers.Embedding(vocab_size, c)(query)
+    def call(self, input):
+        """
+        Generate the attention layer output
 
-    # generates the position attention of shape (batch, h*w, c)
-    pos_attention_seq = tf.keras.layers.Attention()(
-        [query_embeddings, pos_embeddings, key_embeddings])
+        Args:
+            input: a list of two tensors:
+                    image: the output of the conv_layers, which will be flattened
+                        into tensor of shape (batch, h * w, channels),
+                    sentence: integer encoded raw sentence input of shape (batch,
+                        seq_length -- 20 from PlayGround.vocab_sequence_length),
+                        which will be embedded into shape (batch, seq_length,
+                        num_embedding_dim), where num_embedding_dim == channels
+                        from the image input (key) in order to do inner product in
+                        attention layer.
+        """
+        assert isinstance(input, list)
+        [key, query] = input  # ['image', 'sentence']
 
-    img_attention_seq = tf.keras.layers.Attention()(
-        [query_embeddings, key_embeddings])
+        # flatten image tensor [batches, height, width, channels]
+        # into [batches, height * width, channels].
+        # Assumes channels_last.
+        (b, h, w, c) = key.shape
+        flatten_shape = (b, h * w, c)
+        key_embeddings = tf.reshape(key, flatten_shape)
 
-    query_encoding = tf.keras.layers.GlobalAveragePooling1D()(query_embeddings)
-    pos_attention = tf.keras.layers.GlobalAveragePooling1D()(pos_attention_seq)
-    img_attention = tf.keras.layers.GlobalAveragePooling1D()(img_attention_seq)
-    return tf.keras.layers.Concatenate()(
-        [query_encoding, pos_attention, img_attention])
+        # create position input tensor
+        x = tf.reshape(
+            tf.constant(np.asarray(range(w)), dtype=tf.float32), (1, w))
+        x = tf.reshape(tf.keras.backend.repeat(x, n=h), (h * w, 1))
+        y = tf.reshape(
+            tf.constant(np.asarray(range(h)), dtype=tf.float32), (1, h))
+        y = tf.reshape(
+            tf.transpose(tf.keras.backend.repeat(y, n=w)), (h * w, 1))
+        p = tf.concat([x, y], -1)  # (h * w, 2)
+        p = tf.keras.backend.repeat(tf.reshape(p, (h * w * 2, 1)), n=b)
+        p = tf.transpose(p)
+        p = tf.reshape(p,
+                       (b, h * w, 2)) / w  # divide by w to normalize input pos
+
+        # value: (b, h*w, 2 * c/2)
+        pos_embeddings = tf.tile(p, multiples=[1, 1, int(c / 2)])
+        # inner product (Luong style) attention
+
+        # c will be the number of embedding dimensions for the sentence input,
+        # and num_embedding_dims parameter is ignored.  This is because we do
+        # inner product of image and sentence embedding vectors to compute attention.
+        # query_embeddings shape: (seq_len, c)
+        query_embeddings = self._embedding(query)
+
+        key_value = tf.concat([key_embeddings, pos_embeddings], axis=-1)
+
+        # generates the position attention of shape (batch, seq_len, c+c)  or c+2 if not tiling
+        pos_attention_seq = self._attention(
+            [query_embeddings, key_value, key_embeddings])
+
+        if tf.executing_eagerly():  # summary doesn't work under graph mode!
+            # shape (batch, seq_len, h*w)
+            attn_scores = tf.matmul(
+                query_embeddings, key_embeddings, transpose_b=True)
+            attn_scores = tf.keras.layers.GlobalAveragePooling1D()(attn_scores)
+            attn_scores = tf.nn.softmax(attn_scores)
+            tf.summary.histogram(
+                name=self.name + "/attention/value", data=attn_scores)
+
+        query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
+            query_embeddings)
+        pos_attention = tf.keras.layers.GlobalAveragePooling1D()(
+            pos_attention_seq)
+
+        return tf.keras.layers.Concatenate()([query_encoding, pos_attention])
 
 
 @gin.configurable
@@ -187,8 +230,8 @@ def get_ac_networks(conv_layer_params=None,
     preprocessing_combiner = tf.keras.layers.Concatenate()
 
     if attention:
-        attention_combiner = tf.keras.layers.Lambda(lambda input: attend_layer(
-            input, vocab_size))
+        attention_combiner = ImageLanguageAttentionLayer(
+            vocab_size=vocab_size, name=name)
         preprocessing_combiner = attention_combiner
 
     if not isinstance(preprocessing_layers, dict):
