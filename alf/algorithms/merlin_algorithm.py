@@ -27,6 +27,9 @@ from tf_agents.networks.value_network import ValueNetwork
 from tf_agents.specs import TensorSpec
 from tf_agents.specs.tensor_spec import TensorSpec
 from tf_agents.trajectories.policy_step import PolicyStep
+from tf_agents.networks import network
+from tf_agents.networks import utils
+from tf_agents.utils import nest_utils
 
 import alf
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
@@ -38,6 +41,8 @@ from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.utils.action_encoder import SimpleActionEncoder
+from alf.utils import common
+from alf.utils import resnet50
 
 MBPState = namedtuple(
     "MBPState",
@@ -93,17 +98,16 @@ class MemoryBasedPredictor(Algorithm):
     Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
     """
 
-    def __init__(
-            self,
-            action_spec,
-            encoders,
-            decoders,
-            num_read_keys=3,
-            lstm_size=(100, 100),  # not sure what Merlin uses
-            latent_dim=20,
-            memory_size=100,
-            loss_weight=1.0,
-            name="mbp"):
+    def __init__(self,
+                 action_spec,
+                 encoders,
+                 decoders,
+                 num_read_keys=3,
+                 lstm_size=(256, 256),
+                 latent_dim=200,
+                 memory_size=1350,
+                 loss_weight=1.0,
+                 name="mbp"):
         """Create a MemoryBasedPredictor.
 
         Args:
@@ -242,16 +246,15 @@ class MemoryBasedPredictor(Algorithm):
 class MemoryBasedActor(OnPolicyAlgorithm):
     """The policy module for MERLIN model."""
 
-    def __init__(
-            self,
-            action_spec,
-            memory: MemoryWithUsage,
-            num_read_keys=1,
-            lstm_size=(100, 100),  # not sure what Merlin uses
-            latent_dim=20,
-            loss=None,
-            loss_weight=1.0,
-            name="mba"):
+    def __init__(self,
+                 action_spec,
+                 memory: MemoryWithUsage,
+                 num_read_keys=1,
+                 lstm_size=(256, 256),
+                 latent_dim=200,
+                 loss=None,
+                 loss_weight=1.0,
+                 name="mba"):
         """Create the policy module of MERLIN.
 
         Args:
@@ -360,9 +363,9 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  action_spec,
                  encoders,
                  decoders,
-                 latent_dim=20,
-                 lstm_size=(100, 100),
-                 memory_size=100,
+                 latent_dim=200,
+                 lstm_size=(256, 256),
+                 memory_size=1350,
                  rl_loss=None,
                  optimizer=None,
                  debug_summaries=False,
@@ -440,50 +443,89 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
 
 
 @gin.configurable
-def create_merlin_algorithm(env,
-                            encoder_fc_layers=(3, ),
-                            latent_dim=3,
-                            lstm_size=(4, ),
-                            memory_size=20,
-                            learning_rate=1e-1,
-                            debug_summaries=True):
-    """Create a simple MerlinAlgorithm
+class ResnetEncodingNetwork(network.Network):
+    """Image encoding network
 
-    Args:
-        env (TFEnvironment): A TFEnvironment
-        encoder_fc_layers (list[int]): list of fc layers parameters for encoder
-        latent_dim (int): the dimension of the hidden representation of VAE.
-        lstm_size (list[int]): size of lstm layers for MBP and MBA
-        memory_size (int): number of memory slots
-        learning_rate (float): learning rate for training
+    This is not a generic network, it implements `ImageEncoder` described in
+    2.1.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
-    observation_spec = env.observation_spec()
-    action_spec = env.action_spec()
 
-    encoder = EncodingNetwork(
-        input_tensor_spec=observation_spec,
-        fc_layer_params=encoder_fc_layers,
-        activation_fn=None,
-        name="ObsEncoder")
+    def __init__(self, input_tensor_spec, name='ResnetEncodingNetwork'):
+        """Create a `ResnetEncodingNetwork` instance
 
-    decoder = DecodingAlgorithm(
-        decoder=EncodingNetwork(
-            input_tensor_spec=TensorSpec((latent_dim, ), dtype=tf.float32),
-            fc_layer_params=encoder_fc_layers,
-            activation_fn=None,
-            name="ObsDecoder"),
-        loss_weight=100.)
+        Args:
+            input_tensor_spec (TensorSpec|nested TensorSpec): input observations spec.
+        """
+        super().__init__(input_tensor_spec, (), name)
 
-    optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
+        def _create_model():
+            input = tf.keras.layers.Input(shape=self.input_tensor_spec.shape)
+            block = input
+            for i, stride in enumerate([2, 1, 2, 1, 2, 1]):
+                block = resnet50.conv_block(
+                    input_tensor=block,
+                    kernel_size=(3, 3),
+                    filters=(64, 32, 64),
+                    stage=i,
+                    block='block',
+                    strides=stride)
 
-    algorithm = MerlinAlgorithm(
-        action_spec=action_spec,
-        encoders=encoder,
-        decoders=decoder,
-        latent_dim=latent_dim,
-        lstm_size=lstm_size,
-        memory_size=memory_size,
-        optimizer=optimizer,
-        debug_summaries=debug_summaries)
+            flatten = tf.keras.layers.Flatten()(block)
+            output = tf.keras.layers.Dense(500, activation='tanh')(flatten)
+            return tf.keras.Model(inputs=input, outputs=output)
 
-    return algorithm
+        self._model = _create_model()
+
+    def call(self, observation, step_type=None, network_state=()):
+        outer_rank = nest_utils.get_outer_rank(observation,
+                                               self.input_tensor_spec)
+        batch_squash = utils.BatchSquash(outer_rank)
+        output = batch_squash.flatten(observation)
+        output = self._model(output)
+        return batch_squash.unflatten(output), network_state
+
+
+@gin.configurable
+class ResnetDecodingNetwork(network.Network):
+    """Image decoding network
+
+    This is not a generic network, it implements `ImageDecoder` described in
+    2.2.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
+    """
+
+    def __init__(self, input_tensor_spec, name='ResnetDecodingNetwork'):
+        """Create a `ResnetDecodingNetwork` instance
+
+        Args:
+             input_tensor_spec (TensorSpec): input latent spec.
+        """
+        super().__init__(input_tensor_spec, (), name)
+
+        def _create_model():
+            input = tf.keras.layers.Input(shape=self.input_tensor_spec.shape)
+            fc1 = tf.keras.layers.Dense(500, activation='relu')(input)
+            fc2 = tf.keras.layers.Dense(8 * 8 * 64, activation='relu')(fc1)
+            block = tf.keras.layers.Reshape((8, 8, 64))(fc2)
+            for i, stride in enumerate(reversed([2, 1, 2, 1, 2, 1])):
+                block = resnet50.conv_block(
+                    input_tensor=block,
+                    kernel_size=(3, 3),
+                    filters=(64, 32, 64),
+                    strides=stride,
+                    stage=i,
+                    block='deconv',
+                    transpose=True)
+            output = tf.keras.layers.Conv2DTranspose(
+                filters=3, kernel_size=1, activation='sigmoid')(block)
+
+            return tf.keras.Model(inputs=input, outputs=output)
+
+        self._model = _create_model()
+
+    def call(self, observation, step_type=None, network_state=()):
+        outer_rank = nest_utils.get_outer_rank(observation,
+                                               self.input_tensor_spec)
+        batch_squash = utils.BatchSquash(outer_rank)
+        output = batch_squash.flatten(observation)
+        output = self._model(output)
+        return batch_squash.unflatten(output), network_state

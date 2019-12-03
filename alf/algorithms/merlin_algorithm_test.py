@@ -20,10 +20,45 @@ import time
 import tensorflow as tf
 
 from tf_agents.environments.tf_py_environment import TFPyEnvironment
-
-from alf.algorithms.merlin_algorithm import create_merlin_algorithm
+from tf_agents.networks.encoding_network import EncodingNetwork
+from tf_agents.specs.tensor_spec import TensorSpec
+from alf.algorithms.merlin_algorithm import MerlinAlgorithm
+from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.drivers.on_policy_driver import OnPolicyDriver
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
+from alf.utils import common
+
+
+def _create_merlin_algorithm(
+        encoder_fc_layers=(3, ),
+        latent_dim=3,
+        lstm_size=(4, ),
+        memory_size=20,
+        learning_rate=1e-3,
+        debug_summaries=True):
+    observation_spec = common.get_observation_spec()
+    action_spec = common.get_action_spec()
+    algorithm = MerlinAlgorithm(
+        action_spec=action_spec,
+        encoders=EncodingNetwork(
+            input_tensor_spec=observation_spec,
+            fc_layer_params=encoder_fc_layers,
+            activation_fn=None,
+            name="ObsEncoder"),
+        decoders=DecodingAlgorithm(
+            decoder=EncodingNetwork(
+                input_tensor_spec=TensorSpec((latent_dim, ), dtype=tf.float32),
+                fc_layer_params=encoder_fc_layers,
+                activation_fn=None,
+                name="ObsDecoder"),
+            loss_weight=100.),
+        latent_dim=latent_dim,
+        lstm_size=lstm_size,
+        memory_size=memory_size,
+        optimizer=tf.optimizers.Adam(learning_rate=learning_rate),
+        debug_summaries=debug_summaries)
+
+    return algorithm
 
 
 class MerlinAlgorithmTest(tf.test.TestCase):
@@ -40,8 +75,10 @@ class MerlinAlgorithmTest(tf.test.TestCase):
             batch_size, steps_per_episode, gap, obs_dim=3)
         env = TFPyEnvironment(env)
 
-        algorithm = create_merlin_algorithm(
-            env, learning_rate=1e-3, debug_summaries=False)
+        common.set_global_env(env)
+
+        algorithm = _create_merlin_algorithm(
+            learning_rate=1e-3, debug_summaries=False)
         driver = OnPolicyDriver(env, algorithm, train_interval=6)
 
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
