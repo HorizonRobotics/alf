@@ -2,6 +2,7 @@
 <p align="center">
     <img src="docs/images/logo.png" width = "500" alt="ALF-logo"/>
 </p>
+
 [![Build Status](https://api.travis-ci.org/HorizonRobotics/alf.svg?branch=master)](https://travis-ci.org/HorizonRobotics/alf)
 
 Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [Tensorflow 2.0](https://www.tensorflow.org/beta/).
