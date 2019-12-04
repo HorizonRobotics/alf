@@ -42,7 +42,7 @@ from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.utils.action_encoder import SimpleActionEncoder
 from alf.utils import common
-from alf.utils import resnet50
+from alf.utils import resnet50_block
 
 MBPState = namedtuple(
     "MBPState",
@@ -456,32 +456,34 @@ class ResnetEncodingNetwork(network.Network):
         Args:
             input_tensor_spec (TensorSpec|nested TensorSpec): input observations spec.
         """
-        super().__init__(input_tensor_spec, (), name)
+        super().__init__(input_tensor_spec, state_spec=(), name=name)
 
-        def _create_model():
-            input = tf.keras.layers.Input(shape=self.input_tensor_spec.shape)
-            block = input
-            for i, stride in enumerate([2, 1, 2, 1, 2, 1]):
-                block = resnet50.conv_block(
-                    input_tensor=block,
+        enc_layers = []
+
+        for i, stride in enumerate([2, 1, 2, 1, 2, 1]):
+            enc_layers.append(
+                resnet50_block.BottleneckBlock(
                     kernel_size=(3, 3),
                     filters=(64, 32, 64),
                     stage=i,
                     block='block',
-                    strides=stride)
+                    strides=stride,
+                    name='block%d' % i))
 
-            flatten = tf.keras.layers.Flatten()(block)
-            output = tf.keras.layers.Dense(500, activation='tanh')(flatten)
-            return tf.keras.Model(inputs=input, outputs=output)
+        enc_layers.extend([
+            tf.keras.layers.Flatten(),
+            tf.keras.layers.Dense(500, activation='tanh')
+        ])
 
-        self._model = _create_model()
+        self._layers = enc_layers
 
     def call(self, observation, step_type=None, network_state=()):
         outer_rank = nest_utils.get_outer_rank(observation,
                                                self.input_tensor_spec)
         batch_squash = utils.BatchSquash(outer_rank)
         output = batch_squash.flatten(observation)
-        output = self._model(output)
+        for l in self._layers:
+            output = l(output)
         return batch_squash.unflatten(output), network_state
 
 
@@ -499,33 +501,39 @@ class ResnetDecodingNetwork(network.Network):
         Args:
              input_tensor_spec (TensorSpec): input latent spec.
         """
-        super().__init__(input_tensor_spec, (), name)
+        super().__init__(input_tensor_spec, state_spec=(), name=name)
 
-        def _create_model():
-            input = tf.keras.layers.Input(shape=self.input_tensor_spec.shape)
-            fc1 = tf.keras.layers.Dense(500, activation='relu')(input)
-            fc2 = tf.keras.layers.Dense(8 * 8 * 64, activation='relu')(fc1)
-            block = tf.keras.layers.Reshape((8, 8, 64))(fc2)
-            for i, stride in enumerate(reversed([2, 1, 2, 1, 2, 1])):
-                block = resnet50.conv_block(
-                    input_tensor=block,
+        dec_layers = []
+        dec_layers.extend([
+            tf.keras.layers.Dense(500, activation='relu'),
+            tf.keras.layers.Dense(8 * 8 * 64, activation='relu'),
+            tf.keras.layers.Reshape((8, 8, 64))
+        ])
+
+        for i, stride in enumerate(reversed([2, 1, 2, 1, 2, 1])):
+            dec_layers.append(
+                resnet50_block.BottleneckBlock(
                     kernel_size=(3, 3),
                     filters=(64, 32, 64),
                     strides=stride,
                     stage=i,
                     block='deconv',
-                    transpose=True)
-            output = tf.keras.layers.Conv2DTranspose(
-                filters=3, kernel_size=1, activation='sigmoid')(block)
+                    transpose=True,
+                    name='block%d' % i))
 
-            return tf.keras.Model(inputs=input, outputs=output)
+        dec_layers.append(
+            tf.keras.layers.Conv2DTranspose(
+                filters=3, kernel_size=1, activation='sigmoid'))
 
-        self._model = _create_model()
+        self._layers = dec_layers
 
     def call(self, observation, step_type=None, network_state=()):
         outer_rank = nest_utils.get_outer_rank(observation,
                                                self.input_tensor_spec)
         batch_squash = utils.BatchSquash(outer_rank)
         output = batch_squash.flatten(observation)
-        output = self._model(output)
+
+        for l in self._layers:
+            output = l(output)
+
         return batch_squash.unflatten(output), network_state

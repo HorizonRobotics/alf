@@ -5,7 +5,11 @@ import alf.algorithms.decoding_algorithm
 import alf.trainers.on_policy_trainer
 
 # `DeepmindLab` are required,
-#   see `https://github.com/deepmind/lab` to build `DeepmindLab`
+#   see `https://github.com/deepmind/lab/blob/master/python/pip_package/README.md`
+#   to build `DeepmindLab` Python module
+#  Stimuli dataset should downloaded
+#   follow instructions `https://github.com/deepmind/lab/blob \
+#     /master/data/brady_konkle_oliva2008/README.md`
 
 # environment config
 import alf.environments.suite_dmlab
@@ -14,6 +18,9 @@ import alf.environments.wrappers
 # environment config
 create_environment.env_load_fn=@suite_dmlab.load
 create_environment.env_name="contributed/dmlab30/rooms_collect_good_objects_train"
+# test performance on `rooms_collect_good_objects_test`, just enable the following two lines
+# create_environment.env_name="contributed/dmlab30/rooms_collect_good_objects_test"
+# DeepmindLabEnv.config={'allowHoldOutLevels':'true'}
 create_environment.num_parallel_environments=16
 suite_dmlab.load.wrap_with_process=0
 suite_dmlab.load.gym_env_wrappers=(@FrameResize, )
