@@ -465,14 +465,12 @@ class ResnetEncodingNetwork(network.Network):
                 resnet50_block.BottleneckBlock(
                     kernel_size=(3, 3),
                     filters=(64, 32, 64),
-                    stage=i,
-                    block='block',
                     strides=stride,
                     name='block%d' % i))
 
         enc_layers.extend([
             tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(500, activation='tanh')
+            tf.keras.layers.Dense(500, activation='tanh', name='fc1')
         ])
 
         self._layers = enc_layers
@@ -505,8 +503,8 @@ class ResnetDecodingNetwork(network.Network):
 
         dec_layers = []
         dec_layers.extend([
-            tf.keras.layers.Dense(500, activation='relu'),
-            tf.keras.layers.Dense(8 * 8 * 64, activation='relu'),
+            tf.keras.layers.Dense(500, activation='relu', name='fc1'),
+            tf.keras.layers.Dense(8 * 8 * 64, activation='relu', name='fc2'),
             tf.keras.layers.Reshape((8, 8, 64))
         ])
 
@@ -516,14 +514,13 @@ class ResnetDecodingNetwork(network.Network):
                     kernel_size=(3, 3),
                     filters=(64, 32, 64),
                     strides=stride,
-                    stage=i,
-                    block='deconv',
                     transpose=True,
                     name='block%d' % i))
 
         dec_layers.append(
             tf.keras.layers.Conv2DTranspose(
-                filters=3, kernel_size=1, activation='sigmoid'))
+                filters=3, kernel_size=1, activation='sigmoid',
+                name='deconv6'))
 
         self._layers = dec_layers
 

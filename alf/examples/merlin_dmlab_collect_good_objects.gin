@@ -5,11 +5,11 @@ import alf.algorithms.decoding_algorithm
 import alf.trainers.on_policy_trainer
 
 # `DeepmindLab` are required,
-#   see `https://github.com/deepmind/lab/blob/master/python/pip_package/README.md`
-#   to build `DeepmindLab` Python module
-#  Stimuli dataset should downloaded
+#  Stimuli dataset should be downloaded before building the python module.
 #   follow instructions `https://github.com/deepmind/lab/blob \
 #     /master/data/brady_konkle_oliva2008/README.md`
+#   And see `https://github.com/deepmind/lab/blob/master/python/pip_package/README.md`
+#   to build `DeepmindLab` Python module
 
 # environment config
 import alf.environments.suite_dmlab
@@ -54,6 +54,8 @@ MerlinAlgorithm.latent_dim=%LATENT_DIM
 MerlinAlgorithm.lstm_size=(256, 256)
 MerlinAlgorithm.memory_size=1350
 
+# these are default hyper parameter used in the paper
+#   we do not use them in this experiment
 # ActorCriticLoss.gamma = 0.96
 # ActorCriticLoss.use_gae=True
 # ActorCriticLoss.use_td_lambda_return=True

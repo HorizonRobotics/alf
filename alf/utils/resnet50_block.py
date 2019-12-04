@@ -20,8 +20,6 @@ class BottleneckBlock(tf.keras.models.Model):
     def __init__(self,
                  kernel_size,
                  filters,
-                 stage,
-                 block,
                  strides=(2, 2),
                  transpose=False,
                  name='BottleneckBlock'):
@@ -34,8 +32,6 @@ class BottleneckBlock(tf.keras.models.Model):
         Args:
             kernel_size (tuple[int]|int): the kernel size of middle layer at main path
             filters (tuple[int]): the filters of 3 layer at main path
-            stage (int): current stage label, used for generating layer names
-            block (str): current block label, used for generating layer names
             strides (tuple[int]|int): stride for first layer in the block
             transpose (bool): a bool indicate using Conv2D or Conv2DTranspose
             name (str): block name
@@ -48,8 +44,8 @@ class BottleneckBlock(tf.keras.models.Model):
             bn_axis = 3
         else:
             bn_axis = 1
-        conv_name_base = 'res' + str(stage) + block + '_branch'
-        bn_name_base = 'bn' + str(stage) + block + '_branch'
+        conv_name_base = 'res_branch'
+        bn_name_base = 'bn_branch'
 
         conv_fn = layers.Conv2DTranspose if transpose else layers.Conv2D
 
