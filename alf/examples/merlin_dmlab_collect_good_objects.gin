@@ -4,11 +4,11 @@ import alf.algorithms.merlin_algorithm
 import alf.algorithms.decoding_algorithm
 import alf.trainers.on_policy_trainer
 
-# `DeepmindLab` are required,
+# `DeepmindLab` is required,
 #  Stimuli dataset should be downloaded before building the python module.
 #   follow instructions `https://github.com/deepmind/lab/blob \
 #     /master/data/brady_konkle_oliva2008/README.md`
-#   And see `https://github.com/deepmind/lab/blob/master/python/pip_package/README.md`
+#  And see `https://github.com/deepmind/lab/blob/master/python/pip_package/README.md`
 #   to build `DeepmindLab` Python module
 
 # environment config
