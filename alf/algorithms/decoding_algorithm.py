@@ -14,7 +14,7 @@
 """Decoding algorithm."""
 
 import tensorflow as tf
-
+import gin.tf
 from tf_agents.networks.network import Network
 import tf_agents.specs.tensor_spec as tensor_spec
 
@@ -22,6 +22,7 @@ from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.encoding_network import EncodingNetwork
 
 
+@gin.configurable
 class DecodingAlgorithm(Algorithm):
     """Generic decoding algorithm for 1-D continous output."""
 
@@ -61,6 +62,11 @@ class DecodingAlgorithm(Algorithm):
         pred, state = self._decoder(input, network_state=state)
         assert pred.shape == target.shape
         loss = self._loss(target, pred)
+
+        if len(loss.shape) > 1:
+            # reduce to (B,)
+            reduce_dims = list(range(1, len(loss.shape)))
+            loss = tf.reduce_sum(loss, axis=reduce_dims)
         return AlgorithmStep(
             outputs=pred,
             state=state,

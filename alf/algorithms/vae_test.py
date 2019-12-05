@@ -49,7 +49,9 @@ class VaeMnistTest(tf.test.TestCase):
         ncols = 2
 
         if with_priors:
-            test_inputs = [self.y_test[:nrows], self.x_test[:nrows]]
+            test_inputs = [
+                self.y_test[:nrows].astype('float32'), self.x_test[:nrows]
+            ]
         else:
             test_inputs = self.x_test[:nrows]
 
@@ -61,10 +63,12 @@ class VaeMnistTest(tf.test.TestCase):
             fig.add_subplot(nrows, ncols, idx)
             plt.imshow(
                 np.reshape(self.x_test[i], (self.image_size, self.image_size)))
+            plt.axis('off')
             fig.add_subplot(nrows, ncols, idx + 1)
             plt.imshow(
                 np.reshape(decoded_output[i],
                            (self.image_size, self.image_size)))
+            plt.axis('off')
             idx += 2
         plt.show()
 
@@ -83,6 +87,7 @@ class VaeMnistTest(tf.test.TestCase):
                 plt.imshow(
                     np.reshape(sampled_outputs[idx],
                                (self.image_size, self.image_size)))
+                plt.axis('off')
                 idx += 1
 
         plt.show()
@@ -186,6 +191,7 @@ class CVaeTest(VaeMnistTest):
                     plt.imshow(
                         np.reshape(sampled_outputs[j],
                                    (self.image_size, self.image_size)))
+                    plt.axis('off')
                     idx += 1
 
             plt.show()
@@ -265,6 +271,7 @@ class VaePriorNetworkTest(VaeMnistTest):
                     plt.imshow(
                         np.reshape(sampled_outputs[j],
                                    (self.image_size, self.image_size)))
+                    plt.axis('off')
                     idx += 1
 
             plt.show()
@@ -312,5 +319,6 @@ class SimpleVaeTest(tf.test.TestCase):
 
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
+
     set_per_process_memory_growth()
     tf.test.main()
