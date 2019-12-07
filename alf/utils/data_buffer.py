@@ -23,17 +23,23 @@ class DataBuffer(tf.Module):
     """A simple circular buffer supporting random sampling.
     """
 
-    def __init__(self, data_spec: tf.TensorSpec, capacity, name="DataBuffer"):
+    def __init__(self,
+                 data_spec: tf.TensorSpec,
+                 capacity,
+                 device='cpu:*',
+                 name="DataBuffer"):
         """Create a DataBuffer.
 
         Args:
             data_spec (nested TensorSpec): spec for the data item (without batch
                 dimension) to be stored.
             capacity (int): capacity of the buffer.
+            device (str): which device to store the data
             name (str): name of the buffer
         """
         super().__init__()
         self._capacity = capacity
+        self._device = device
 
         def _create_buffer(tensor_spec):
             shape = [capacity] + tensor_spec.shape.as_list()
@@ -44,7 +50,6 @@ class DataBuffer(tf.Module):
                 shape=shape,
                 trainable=False)
 
-        self._buffer = tf.nest.map_structure(_create_buffer, data_spec)
         self._current_size = tfa_common.create_variable(
             name=name + "/size",
             initializer=0,
@@ -57,12 +62,15 @@ class DataBuffer(tf.Module):
             dtype=tf.int32,
             shape=(),
             trainable=False)
-        # TF 2.0 checkpoint does not handle tuple. We have to convert
-        # _buffer to a flattened list in order to make the checkpointer save the
-        # content in self._buffer. This seems to be fixed in
-        # tf-nightly-gpu 2.1.0.dev20191119
-        # TODO: remove this after upgrading tensorflow
-        self._flattened_buffer = tf.nest.flatten(self._buffer)
+
+        with tf.device(self._device):
+            self._buffer = tf.nest.map_structure(_create_buffer, data_spec)
+            # TF 2.0 checkpoint does not handle tuple. We have to convert
+            # _buffer to a flattened list in order to make the checkpointer save the
+            # content in self._buffer. This seems to be fixed in
+            # tf-nightly-gpu 2.1.0.dev20191119
+            # TODO: remove this after upgrading tensorflow
+            self._flattened_buffer = tf.nest.flatten(self._buffer)
 
     @property
     def current_size(self):
@@ -74,15 +82,17 @@ class DataBuffer(tf.Module):
         Args:
             batch (Tensor): shape should be [batch_size] + tensor_space.shape
         """
+
         batch_size = get_nest_batch_size(batch, tf.int32)
         n = tf.minimum(batch_size, self._capacity)
         indices = tf.range(self._current_pos,
                            self._current_pos + n) % self._capacity
         indices = tf.expand_dims(indices, axis=-1)
-        tf.nest.map_structure(
-            lambda buf, bat: buf.scatter_nd_update(indices,
-                                                   tf.stop_gradient(bat[-n:])),
-            self._buffer, batch)
+
+        with tf.device(self._device):
+            tf.nest.map_structure(
+                lambda buf, bat: buf.scatter_nd_update(
+                    indices, tf.stop_gradient(bat[-n:])), self._buffer, batch)
 
         self._current_pos.assign((self._current_pos + n) % self._capacity)
         self._current_size.assign(
@@ -115,11 +125,14 @@ class DataBuffer(tf.Module):
         """
         indices = (indices +
                    (self._current_pos - self._current_size)) % self._capacity
-        return tf.nest.map_structure(
-            lambda buffer: tf.gather(buffer, indices, axis=0), self._buffer)
+        with tf.device(self._device):
+            return tf.nest.map_structure(
+                lambda buffer: tf.gather(buffer, indices, axis=0),
+                self._buffer)
 
     def get_all(self):
-        return self._buffer
+        with tf.device(self._device):
+            return self._buffer
 
     def clear(self):
         """Clear the buffer.
