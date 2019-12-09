@@ -15,7 +15,10 @@
 
 import collections
 import gin
+import matplotlib.pyplot as plt
 import numpy as np
+import PIL
+from io import StringIO
 import tensorflow as tf
 import tf_agents
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
@@ -30,6 +33,7 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
     def __init__(self, vocab_size, **kwargs):
         super().__init__(**kwargs)
         self._vocab_size = vocab_size
+        self.fig = None
 
     def build(self, input_shape):
         assert isinstance(input_shape, list)
@@ -114,19 +118,48 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
         pos_attention_seq = self._attention(
             [query_embeddings, key_value, key_embeddings])
 
-        if tf.executing_eagerly():  # summary doesn't work under graph mode!
-            # shape (batch, seq_len, h*w)
-            attn_scores = tf.matmul(
-                query_embeddings, key_embeddings, transpose_b=True)
-            attn_scores = tf.keras.layers.GlobalAveragePooling1D()(attn_scores)
-            attn_scores = tf.nn.softmax(attn_scores)
-            tf.summary.histogram(
-                name=self.name + "/attention/value", data=attn_scores)
+        # print('query ', query_embeddings, '\nkey_val ', key_value, '\nkey ', key_embeddings)
+
+        attn_scores = tf.matmul(
+            query_embeddings, key_embeddings, transpose_b=True)
+        attn_scores = tf.keras.layers.GlobalAveragePooling1D()(
+            attn_scores)  # across seq_len
+        attn_score_max = tf.reduce_max(
+            tf.nn.softmax(attn_scores))  # across h*w
+        if tf.executing_eagerly():
+            # shape (batch, )
+            tf.summary.scalar(
+                name=self.name + "/attention/value-max", data=attn_score_max)
+
+            obs = key[0][:][:][9:]
+
+            def tensor_to_image(tensor):
+                tensor = tf.cast(tensor * 255, dtype=tf.uint8)
+                try:
+                    tensor = tensor.numpy()
+                except:
+                    tf.print("exception")
+                    return [[[1, 2, 3]]]
+                if np.ndim(tensor) > 3:
+                    assert tensor.shape[0] == 1
+                    tensor = tensor[0]
+                return tensor
+
+            img = tensor_to_image(obs)
+            if self.fig is None:
+                self.fig = plt.imshow(img)
+                tf.print("show")
+                #plt.show()
+            else:
+                tf.print("set_data")
+                self.fig.set_data(img)
+            plt.pause(.00001)
 
         query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
             query_embeddings)
         pos_attention = tf.keras.layers.GlobalAveragePooling1D()(
             pos_attention_seq)
+        # tf.print(self.name, " pos: ", pos_attention[0][-4:], " attn_max", attn_score_max)
 
         return tf.keras.layers.Concatenate()([query_encoding, pos_attention])
 

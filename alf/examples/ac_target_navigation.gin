@@ -63,6 +63,7 @@ Agent.gradient_clipping=0.5
 
 suite_socialbot.load.max_episode_steps=100
 GoalTask.max_steps=1000
+PlayGround.max_steps=1000
 
 GoalTask.fail_distance_thresh=1000
 GoalTask.random_goal=False
