@@ -12,7 +12,7 @@ PlayGround.image_with_internal_states=True
 PlayGround.with_language=True
 PlayGround.resized_image_size=(84, 84)
 
-FrameStack.fields_to_stack=['image', 'states']  # must be a subset of input observations
+FrameStack.fields=['image', 'states']  # must be a subset of input observations
 image_scale_transformer.fields=['image']
 
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER

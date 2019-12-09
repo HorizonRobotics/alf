@@ -12,187 +12,166 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import collections
-from collections import OrderedDict, deque
-from copy import deepcopy
-
-import gin
+import copy
+from collections import deque
 import gym
 import numpy as np
 import cv2
-
-from absl import logging
-
+import gin
 from tf_agents.environments import wrappers
 from tf_agents.trajectories.time_step import StepType
+from alf.utils import common
+
+
+def traverse_transform_space(space, levels, field, func):
+    """Transform space
+
+    Args:
+         space (gym.Space): space to be transformed
+         levels (list[str]): levels
+         field (str): filed name, a multi-step path denoted by "A.B.C"
+         func (Callable): transform func
+    """
+    if not levels:
+        return func(space, field)
+
+    assert isinstance(space, gym.spaces.Dict)
+    level = levels[0]
+
+    new_val = copy.deepcopy(space)
+    new_val.spaces[level] = traverse_transform_space(
+        space=space.spaces[level], levels=levels[1:], field=field, func=func)
+    return new_val
 
 
 @gin.configurable
-class FrameStack(gym.Wrapper):
+class BaseObservationWrapper(gym.ObservationWrapper):
+    """Base observation Wrapper
+
+    BaseObservationWrapper provide basic functions and generic interface for transformation.
+
+    The key interface functions are:
+    1. transform_space(): transform space.
+    2. transform_observation(): transform observation.
+    """
+
+    def __init__(self, env, fields=None):
+        """
+        Args:
+            env (gym.Env): the gym environment
+            fields (list[str]): fields to be applied transformation
+        """
+        super().__init__(env)
+        paths = []
+        for field in fields or [""]:
+            # remove '' in the path
+            paths.append(([step for step in field.split(".") if step], field))
+        self._paths = paths
+        observation_space = env.observation_space
+        for levels, field in self._paths:
+            observation_space = traverse_transform_space(
+                space=observation_space,
+                levels=levels,
+                field=field,
+                func=self.transform_space)
+        self.observation_space = observation_space
+
+    def observation(self, observation):
+        for levels, field in self._paths:
+            observation = common.traverse_transform_observation(
+                obs=observation,
+                levels=levels,
+                field=field,
+                func=self.transform_observation)
+        return observation
+
+    def transform_space(self, observation_space, field=None):
+        """Transform space
+
+        Subclass should override this to perform transformation
+
+        Args:
+             observation_space (gym.Space): space to be transformed
+             field (str): field to be transformed
+        """
+        return observation_space
+
+    def transform_observation(self, observation, field=None):
+        """Transform observation
+
+        Subclass should override this to perform transformation
+
+        Args:
+             observation (ndarray): observation to be transformed
+             field (str): field to be transformed
+        """
+        return observation
+
+
+@gin.configurable
+class FrameStack(BaseObservationWrapper):
     """Stack previous `stack_size` frames, applied to Gym env."""
 
-    def __init__(
-            self,
-            env,
-            stack_size=4,
-            channel_order='channels_last',
-            fields_to_stack=None,
-    ):
+    def __init__(self,
+                 env,
+                 stack_size=4,
+                 channel_order='channels_last',
+                 fields=None):
         """Create a FrameStack object.
 
         Args:
             env (gym.Space): gym environment.
             stack_size (int):
-            channel_order (str): one of `channels_last` or `channels_first`.
-                The ordering of the dimensions in the images.
-                `channels_last` corresponds to images with shape
-                `(height, width, channels)` (Atari's default) while
-                `channels_first` corresponds to images with shape
-                `(channels, height, width)`.
-            fields_to_stack (list of str): optional paths to the fields of the
+            channel_order (str): The ordering of the dimensions in the images.
+                should be one of `channels_last` or `channels_first`.
+            fields (list[str]): optional paths to the fields of the
                 Dict env.observation_space.  If specified, only use the
-                spaces corresponding to the keys in FrameStack.  If is None,
-                stack all recognized spaces.
-                When input space is not a Dict, we just try to stack if we can.
-                Fields_to_stack doesn't apply anymore.
+                spaces corresponding to the keys in FrameStack.
         """
-        super().__init__(env)
-        self._frames = deque(maxlen=stack_size)
         self._channel_order = channel_order
-        self._stack_size = stack_size
-        self._fields_to_stack = fields_to_stack
-        raw_space = self.env.observation_space
-
-        def _stack_space(sp):
-            if isinstance(sp, gym.spaces.Box):
-                # Shape of stacked_space is determined by low.shape
-                low = np.concatenate([sp.low] * stack_size)
-                high = np.concatenate([sp.high] * stack_size)
-                assert channel_order in ['channels_last', 'channels_first']
-                if channel_order == 'channels_last':
-                    low = np.transpose(
-                        np.concatenate([np.transpose(sp.low)] * stack_size))
-                    high = np.transpose(
-                        np.concatenate([np.transpose(sp.high)] * stack_size))
-                stacked_space = gym.spaces.Box(
-                    low=np.array(low), high=np.array(high), dtype=sp.dtype)
-
-            elif isinstance(sp, gym.spaces.MultiDiscrete):
-                nvec = [sp.nvec] * stack_size
-                stacked_space = gym.spaces.MultiDiscrete(nvec)
-
-            else:
-                stacked_space = sp
-            return stacked_space
-
-        def _traverse(d, fields_to_stack=None, prefix=""):
-            assert isinstance(d, gym.spaces.Dict), 'input is not dict'
-            res = deepcopy(d)
-            for name, sp in d.spaces.items():
-                if prefix:
-                    prefix += "."
-                path = prefix + name
-                transformed = sp
-                if isinstance(sp, gym.spaces.Dict):
-                    transformed, fields_to_stack = _traverse(
-                        sp, fields_to_stack, path)
-                else:
-                    if fields_to_stack is None or path in fields_to_stack:
-                        transformed = _stack_space(sp)
-                        if fields_to_stack:
-                            fields_to_stack = [
-                                item for item in fields_to_stack
-                                if item != path
-                            ]
-                res.spaces[name] = transformed
-            return res, fields_to_stack
-
-        if isinstance(raw_space, gym.spaces.Dict):
-            self.observation_space, remain_fields = _traverse(
-                raw_space, fields_to_stack)
-            assert not remain_fields, "These paths are not in input: " + str(
-                remain_fields) + ", but in " + str(fields_to_stack)
+        if self._channel_order == 'channels_last':
+            stack_axis = -1
         else:
-            assert isinstance(raw_space, gym.spaces.Box)
-            self.observation_space = _stack_space(raw_space)
+            stack_axis = 0
+        self._stack_axis = stack_axis
+        self._stack_size = stack_size
+        self._frames = dict()
+        super().__init__(env, fields=fields)
 
-    def __getattr__(self, name):
-        """Forward all other calls to the base environment."""
-        return getattr(self.env, name)
+    def transform_space(self, observation_space, fields=None):
+        if isinstance(observation_space, gym.spaces.Box):
+            low = np.repeat(
+                observation_space.low,
+                repeats=self._stack_size,
+                axis=self._stack_axis)
+            high = np.repeat(
+                observation_space.high,
+                repeats=self._stack_size,
+                axis=self._stack_axis)
+            return gym.spaces.Box(
+                low=np.array(low),
+                high=np.array(high),
+                dtype=observation_space.dtype)
+        elif isinstance(observation_space, gym.spaces.MultiDiscrete):
+            return gym.spaces.MultiDiscrete(
+                [observation_space.nvec] * self._stack_size)
+        else:
+            raise ValueError("Unsupported space:%s" % observation_space)
 
-    def _get_space_for_path(self, path):
-        segments = path.split(".")
-        space = self.observation_space
-        if segments:
-            for name in segments:
-                space = space.spaces[name]
-        return space
-
-    def _generate_observation(self):
-        def _traverse_append(result, data, path_prefix=""):
-            assert isinstance(result, OrderedDict)
-            if path_prefix:
-                path_prefix += "."
-            for key, field in data.items():
-                path = path_prefix + key
-                if isinstance(field, dict):
-                    if key not in result:
-                        result[key] = OrderedDict()
-                    result[key] = _traverse_append(result[key], field, path)
-                else:
-                    if key not in result:
-                        result[key] = deque(maxlen=self._stack_size)
-                    result[key].append(field)
-            return result
-
-        def _traverse_stack(result, path_prefix=""):
-            if not path_prefix or isinstance(result, OrderedDict):
-                for key, field in result.items():
-                    if path_prefix:
-                        path_prefix += "."
-                    path = path_prefix + key
-                    result[key] = _traverse_stack(field, path)
-            else:
-                if not self._fields_to_stack or (
-                        path_prefix in self._fields_to_stack):
-                    space = self._get_space_for_path(path_prefix)
-                    if isinstance(space, gym.spaces.Box):
-                        if (self._channel_order == 'channels_last'):
-                            result = np.concatenate(result, axis=-1)
-                        else:
-                            result = np.concatenate(result, axis=0)
-                    elif isinstance(space, gym.spaces.MultiDiscrete):
-                        result = np.concatenate(result, axis=-1)
-                    else:
-                        assert False, ("space with path {} not recognized: " +
-                                       "{}").format(path_prefix, str(space))
-                else:  # not stacking field
-                    result = result[-1]  # take last/current frame
-            return result
-
-        if isinstance(self.observation_space, gym.spaces.Dict):
-            result = OrderedDict()
-            for frame in self._frames:
-                result = _traverse_append(result, frame)
-            result = _traverse_stack(result)
-            return result
-        else:  # Assuming input is image space
-            # Always stacks regardless of _fields_to_stack
-            if self._channel_order == 'channels_last':
-                return np.concatenate(self._frames, axis=-1)
-            else:
-                return np.concatenate(self._frames, axis=0)
+    def transform_observation(self, observation, fields=None):
+        queue = self._frames.get(fields, None)
+        if not queue:
+            queue = deque(maxlen=self._stack_size)
+            for _ in range(self._stack_size):
+                queue.append(observation)
+            self._frames[fields] = queue
+        else:
+            queue.append(observation)
+        return np.concatenate(queue, axis=self._stack_axis)
 
     def reset(self):
-        observation = self.env.reset()
-        for _ in range(self._stack_size):
-            self._frames.append(observation)
-        return self._generate_observation()
-
-    def step(self, action):
-        observation, reward, done, info = self.env.step(action)
-        self._frames.append(observation)
-        return self._generate_observation(), reward, done, info
+        self._frames = dict()
+        return super().reset()
 
 
 @gin.configurable
@@ -206,6 +185,7 @@ class FrameSkip(gym.Wrapper):
         """Create a FrameSkip object
 
         Args:
+            env (gym.Env): the gym environment
             skip (int): skip `skip` frames (skip=1 means no skip)
         """
         super().__init__(env)
@@ -231,20 +211,30 @@ class FrameSkip(gym.Wrapper):
 
 
 @gin.configurable
-class FrameResize(gym.ObservationWrapper):
-    def __init__(self, env, width=84, height=84):
-        super().__init__(env)
+class FrameResize(BaseObservationWrapper):
+    def __init__(self, env, width=84, height=84, fields=None):
+        """Create a FrameResize instance
+
+        Args:
+             env (gym.Env): the gym environment
+             width (int): resize width
+             height (int): resize height
+             fields (list[str]):  the fields to be resize
+        """
         self._width = width
         self._height = height
-        obs_shape = env.observation_space.shape
+        super().__init__(env, fields=fields)
+
+    def transform_space(self, observation_space, field=None):
+        obs_shape = observation_space.shape
         assert len(obs_shape) == 3, "observation shape should be (H,W,C)"
-        self.observation_space = gym.spaces.Box(
+        return gym.spaces.Box(
             low=0,
             high=255,
-            shape=[width, height] + list(obs_shape[2:]),
+            shape=[self._width, self._height] + list(obs_shape[2:]),
             dtype=np.uint8)
 
-    def observation(self, observation):
+    def transform_observation(self, observation, field=None):
         obs = cv2.resize(
             observation, (self._width, self._height),
             interpolation=cv2.INTER_AREA)
@@ -254,18 +244,26 @@ class FrameResize(gym.ObservationWrapper):
 
 
 @gin.configurable
-class FrameGrayScale(gym.ObservationWrapper):
+class FrameGrayScale(BaseObservationWrapper):
     """Gray scale image observation"""
 
-    def __init__(self, env):
-        super().__init__(env)
-        obs_shape = env.observation_space.shape
+    def __init__(self, env, fields=None):
+        """Create a FrameGrayScale instance
+
+        Args:
+             env (gym.Env): the gym environment
+             fields (list[str]):  the fields to be gray scaled.
+        """
+        super().__init__(env, fields=fields)
+
+    def transform_space(self, observation_space, field=None):
+        obs_shape = observation_space.shape
         assert len(obs_shape) == 3 and obs_shape[-1] == 3, \
             "observation shape should be (H, W, C) where C=3"
-        self.observation_space = gym.spaces.Box(
+        return gym.spaces.Box(
             low=0, high=255, shape=list(obs_shape[:-1]) + [1], dtype=np.uint8)
 
-    def observation(self, obs):
+    def transform_observation(self, obs, field=None):
         obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         return np.expand_dims(obs, -1)
 
