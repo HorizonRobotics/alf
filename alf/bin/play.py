@@ -53,6 +53,7 @@ flags.DEFINE_string(
     "to a file instead of shown on the screen.")
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+flags.DEFINE_bool('use_tf_functions', True, "use graph mode instead of eager.")
 
 FLAGS = flags.FLAGS
 
@@ -75,7 +76,8 @@ def main(_):
         random_seed=FLAGS.random_seed,
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
-        record_file=FLAGS.record_file)
+        record_file=FLAGS.record_file,
+        use_tf_functions=FLAGS.use_tf_functions)
     env.pyenv.close()
 
 

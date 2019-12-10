@@ -406,7 +406,6 @@ class Trainer(object):
             metric_utils.log_metrics(self._eval_metrics)
 
 
-@gin.configurable
 def play(root_dir,
          env,
          algorithm,
