@@ -23,25 +23,32 @@ from tf_agents.trajectories.time_step import StepType
 from alf.utils import common
 
 
-def traverse_transform_space(space, levels, field, func):
+def transform_space(observation_space, field, func):
     """Transform space
 
     Args:
-         space (gym.Space): space to be transformed
-         levels (list[str]): levels
-         field (str): filed name, a multi-step path denoted by "A.B.C"
-         func (Callable): transform func
+        observation_space (gym.Space): space to be transformed
+        field (str): field of the space to be transformed, multi-level path denoted by "A.B.C"
+        func (Callable): transform function. The function will be called as
+            func(observation_space, level) and should return new observation_space.
+    Returns:
+        transformed space
     """
-    if not levels:
-        return func(space, field)
 
-    assert isinstance(space, gym.spaces.Dict)
-    level = levels[0]
+    def _traverse_transform(space, levels):
+        if not levels:
+            return func(space, field)
 
-    new_val = copy.deepcopy(space)
-    new_val.spaces[level] = traverse_transform_space(
-        space=space.spaces[level], levels=levels[1:], field=field, func=func)
-    return new_val
+        assert isinstance(space, gym.spaces.Dict)
+        level = levels[0]
+
+        new_val = copy.deepcopy(space)
+        new_val.spaces[level] = _traverse_transform(
+            space=space.spaces[level], levels=levels[1:])
+        return new_val
+
+    return _traverse_transform(
+        space=observation_space, levels=field.split('.') if field else [])
 
 
 @gin.configurable
@@ -59,28 +66,24 @@ class BaseObservationWrapper(gym.ObservationWrapper):
         """
         Args:
             env (gym.Env): the gym environment
-            fields (list[str]): fields to be applied transformation
+            fields (list[str]): fields to be applied transformation, A field str is a multi-level
+                path denoted by "A.B.C".
         """
         super().__init__(env)
-        paths = []
-        for field in fields or [""]:
-            # remove '' in the path
-            paths.append(([step for step in field.split(".") if step], field))
-        self._paths = paths
+
+        self._fields = fields or [None]
         observation_space = env.observation_space
-        for levels, field in self._paths:
-            observation_space = traverse_transform_space(
-                space=observation_space,
-                levels=levels,
+        for field in self._fields:
+            observation_space = transform_space(
+                observation_space=observation_space,
                 field=field,
                 func=self.transform_space)
         self.observation_space = observation_space
 
     def observation(self, observation):
-        for levels, field in self._paths:
-            observation = common.traverse_transform_observation(
-                obs=observation,
-                levels=levels,
+        for field in self._fields:
+            observation = common.transform_observation(
+                observation=observation,
                 field=field,
                 func=self.transform_observation)
         return observation
@@ -88,24 +91,28 @@ class BaseObservationWrapper(gym.ObservationWrapper):
     def transform_space(self, observation_space, field=None):
         """Transform space
 
-        Subclass should override this to perform transformation
+        Subclass should implement this to perform transformation
 
         Args:
              observation_space (gym.Space): space to be transformed
-             field (str): field to be transformed
+             field (str): field to be transformed, it's a multi-level path denoted by "A.B.C"
+        Returns:
+            transformed space
         """
-        return observation_space
+        raise NotImplementedError("transform_space is not implemented")
 
     def transform_observation(self, observation, field=None):
         """Transform observation
 
-        Subclass should override this to perform transformation
+        Subclass should implement this to perform transformation
 
         Args:
              observation (ndarray): observation to be transformed
-             field (str): field to be transformed
+             field (str): field to be transformed, it's a multi-level path denoted by "A.B.C"
+        Returns:
+            transformed space
         """
-        return observation
+        raise NotImplementedError("transform_observation is not implemented")
 
 
 @gin.configurable
@@ -121,12 +128,11 @@ class FrameStack(BaseObservationWrapper):
 
         Args:
             env (gym.Space): gym environment.
-            stack_size (int):
+            stack_size (int): stack so many frames
             channel_order (str): The ordering of the dimensions in the images.
                 should be one of `channels_last` or `channels_first`.
-            fields (list[str]): optional paths to the fields of the
-                Dict env.observation_space.  If specified, only use the
-                spaces corresponding to the keys in FrameStack.
+            fields (list[str]): fields to be stacked, A field str is a multi-level
+                path denoted by "A.B.C".
         """
         self._channel_order = channel_order
         if self._channel_order == 'channels_last':
@@ -138,7 +144,7 @@ class FrameStack(BaseObservationWrapper):
         self._frames = dict()
         super().__init__(env, fields=fields)
 
-    def transform_space(self, observation_space, fields=None):
+    def transform_space(self, observation_space, field=None):
         if isinstance(observation_space, gym.spaces.Box):
             low = np.repeat(
                 observation_space.low,
@@ -149,22 +155,20 @@ class FrameStack(BaseObservationWrapper):
                 repeats=self._stack_size,
                 axis=self._stack_axis)
             return gym.spaces.Box(
-                low=np.array(low),
-                high=np.array(high),
-                dtype=observation_space.dtype)
+                low=low, high=high, dtype=observation_space.dtype)
         elif isinstance(observation_space, gym.spaces.MultiDiscrete):
             return gym.spaces.MultiDiscrete(
                 [observation_space.nvec] * self._stack_size)
         else:
             raise ValueError("Unsupported space:%s" % observation_space)
 
-    def transform_observation(self, observation, fields=None):
-        queue = self._frames.get(fields, None)
+    def transform_observation(self, observation, field=None):
+        queue = self._frames.get(field, None)
         if not queue:
             queue = deque(maxlen=self._stack_size)
             for _ in range(self._stack_size):
                 queue.append(observation)
-            self._frames[fields] = queue
+            self._frames[field] = queue
         else:
             queue.append(observation)
         return np.concatenate(queue, axis=self._stack_axis)
@@ -219,7 +223,8 @@ class FrameResize(BaseObservationWrapper):
              env (gym.Env): the gym environment
              width (int): resize width
              height (int): resize height
-             fields (list[str]):  the fields to be resize
+             fields (list[str]):  fields to be resize, A field str is a multi-level
+                path denoted by "A.B.C".
         """
         self._width = width
         self._height = height
@@ -252,7 +257,8 @@ class FrameGrayScale(BaseObservationWrapper):
 
         Args:
              env (gym.Env): the gym environment
-             fields (list[str]):  the fields to be gray scaled.
+             fields (list[str]):  fields to be gray scaled, A field str is a multi-level
+                path denoted by "A.B.C".
         """
         super().__init__(env, fields=fields)
 
