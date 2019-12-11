@@ -50,20 +50,19 @@ class DataBuffer(tf.Module):
                 shape=shape,
                 trainable=False)
 
-        self._current_size = tfa_common.create_variable(
-            name=name + "/size",
-            initializer=0,
-            dtype=tf.int32,
-            shape=(),
-            trainable=False)
-        self._current_pos = tfa_common.create_variable(
-            name=name + "/pos",
-            initializer=0,
-            dtype=tf.int32,
-            shape=(),
-            trainable=False)
-
         with tf.device(self._device):
+            self._current_size = tfa_common.create_variable(
+                name=name + "/size",
+                initializer=0,
+                dtype=tf.int32,
+                shape=(),
+                trainable=False)
+            self._current_pos = tfa_common.create_variable(
+                name=name + "/pos",
+                initializer=0,
+                dtype=tf.int32,
+                shape=(),
+                trainable=False)
             self._buffer = tf.nest.map_structure(_create_buffer, data_spec)
             # TF 2.0 checkpoint does not handle tuple. We have to convert
             # _buffer to a flattened list in order to make the checkpointer save the
@@ -83,20 +82,20 @@ class DataBuffer(tf.Module):
             batch (Tensor): shape should be [batch_size] + tensor_space.shape
         """
 
-        batch_size = get_nest_batch_size(batch, tf.int32)
-        n = tf.minimum(batch_size, self._capacity)
-        indices = tf.range(self._current_pos,
-                           self._current_pos + n) % self._capacity
-        indices = tf.expand_dims(indices, axis=-1)
-
         with tf.device(self._device):
+            batch_size = get_nest_batch_size(batch, tf.int32)
+            n = tf.minimum(batch_size, self._capacity)
+            indices = tf.range(self._current_pos,
+                               self._current_pos + n) % self._capacity
+            indices = tf.expand_dims(indices, axis=-1)
+
             tf.nest.map_structure(
                 lambda buf, bat: buf.scatter_nd_update(
                     indices, tf.stop_gradient(bat[-n:])), self._buffer, batch)
 
-        self._current_pos.assign((self._current_pos + n) % self._capacity)
-        self._current_size.assign(
-            tf.minimum(self._current_size + n, self._capacity))
+            self._current_pos.assign((self._current_pos + n) % self._capacity)
+            self._current_size.assign(
+                tf.minimum(self._current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
         """Get batsh_size random samples in the buffer.
@@ -123,9 +122,9 @@ class DataBuffer(tf.Module):
             Tensor of shape [batch_size] + tensor_spec.shape, where batch_size
                 is indices.shape[0]
         """
-        indices = (indices +
-                   (self._current_pos - self._current_size)) % self._capacity
         with tf.device(self._device):
+            indices = (indices + (self._current_pos - self._current_size)
+                       ) % self._capacity
             return tf.nest.map_structure(
                 lambda buffer: tf.gather(buffer, indices, axis=0),
                 self._buffer)
