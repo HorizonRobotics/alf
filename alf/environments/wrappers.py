@@ -24,7 +24,7 @@ from alf.utils import common
 
 
 def transform_space(observation_space, field, func):
-    """Transform space
+    """Transform the child space in observation_space indicated by field using func
 
     Args:
         observation_space (gym.Space): space to be transformed

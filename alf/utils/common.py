@@ -434,7 +434,8 @@ def cast_transformer(observation, dtype=tf.float32):
 
 
 def transform_observation(observation, field, func):
-    """
+    """Transform the child observation in observation indicated by field using func
+
     Args:
         observation (nested Tensor): observations to be applied the transformation
         field (str): field to be transformed, multi-level path denoted by "A.B.C"
