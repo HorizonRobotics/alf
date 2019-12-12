@@ -136,6 +136,7 @@ class FrameStack(BaseObservationWrapper):
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
         self._channel_order = channel_order
+        assert channel_order in ['channels_last', 'channels_first']
         if self._channel_order == 'channels_last':
             stack_axis = -1
         else:

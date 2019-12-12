@@ -35,6 +35,7 @@ from tf_agents.specs.distribution_spec import DistributionSpec
 
 from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
+from alf.utils.nest_utils import is_namedtuple
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -196,8 +197,7 @@ def add_nested_summaries(prefix, data):
     for field in fields:
         elem = data[field] if isinstance(data, dict) else getattr(data, field)
         name = prefix + '/' + field
-        if isinstance(elem, dict) or (isinstance(elem, tuple)
-                                      and hasattr(elem, '_fields')):
+        if isinstance(elem, dict) or is_namedtuple(elem):
             add_nested_summaries(name, elem)
         elif isinstance(elem, tf.Tensor):
             tf.summary.scalar(name, elem)
@@ -212,7 +212,7 @@ def add_loss_summaries(loss_info: LossInfo):
     tf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
-    if not hasattr(loss_info.extra, '_fields'):
+    if not is_namedtuple(loss_info.extra):
         # not a namedtuple
         return
     add_nested_summaries('loss', loss_info.extra)
@@ -450,7 +450,7 @@ def transform_observation(observation, field, func):
         if not levels:
             return func(obs, field)
         level = levels[0]
-        if isinstance(obs, tuple) and hasattr(obs, '_fields'):
+        if is_namedtuple(obs):
             new_val = _traverse_transform(
                 obs=getattr(obs, level), levels=levels[1:])
             return obs._replace(**{level: new_val})
