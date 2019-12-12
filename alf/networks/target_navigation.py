@@ -30,9 +30,15 @@ from alf.layers import get_identity_layer, get_first_element_layer
 
 # followed https://www.tensorflow.org/guide/keras/custom_layers_and_models
 class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
-    def __init__(self, vocab_size, **kwargs):
+    def __init__(self,
+                 vocab_size,
+                 network_to_debug=None,
+                 output_attention_max=False,
+                 **kwargs):
         super().__init__(**kwargs)
         self._vocab_size = vocab_size
+        self._network_to_debug = network_to_debug
+        self._output_attention_max = output_attention_max
         self.fig = None
 
     def build(self, input_shape):
@@ -56,11 +62,18 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
         b = key_shape[0]
         c = key_shape[-1]  # channels last
         # Output per batch contains query: c num_embedding_dims, image: c channels, position: 2 dims
-        return (b, 3 * c)  # 2 * c + 2 if not tiling position tensor
+        output_channels = 3 * c  # 2 * c + 2 if not tiling position tensor
+        if self._output_attention_max:
+            output_channels += c
+        return (b, output_channels)
 
     def get_config(self):
         config = super().get_config()
-        config.update({'vocab_size': self._vocab_size})
+        config.update({
+            'vocab_size': self._vocab_size,
+            'output_attention_max': self._output_attention_max,
+            'network_to_debug': self._network_to_debug
+        })
         return config
 
     def call(self, input):
@@ -125,35 +138,29 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
         attn_scores = tf.keras.layers.GlobalAveragePooling1D()(
             attn_scores)  # across seq_len
         attn_score_max = tf.reduce_max(
-            tf.nn.softmax(attn_scores))  # across h*w
+            tf.nn.softmax(attn_scores), axis=-1)  # across h*w
         if tf.executing_eagerly():
             # shape (batch, )
-            tf.summary.scalar(
+            tf.summary.histogram(
                 name=self.name + "/attention/value-max", data=attn_score_max)
 
-            obs = key[0][:][:][9:]
+            if self._network_to_debug == self.name:
+                obs = tf.reshape(attn_scores, (b, h, w))[0]
 
-            def tensor_to_image(tensor):
-                tensor = tf.cast(tensor * 255, dtype=tf.uint8)
-                try:
-                    tensor = tensor.numpy()
-                except:
-                    tf.print("exception")
-                    return [[[1, 2, 3]]]
-                if np.ndim(tensor) > 3:
-                    assert tensor.shape[0] == 1
-                    tensor = tensor[0]
-                return tensor
+                def tensor_to_image(tensor):
+                    tensor = tf.cast(tensor * 255, dtype=tf.uint8)
+                    tensor = tensor.numpy()  # will fail in graph mode
+                    if np.ndim(tensor) > 3:
+                        assert tensor.shape[0] == 1
+                        tensor = tensor[0]
+                    return tensor
 
-            img = tensor_to_image(obs)
-            if self.fig is None:
-                self.fig = plt.imshow(img)
-                tf.print("show")
-                #plt.show()
-            else:
-                tf.print("set_data")
-                self.fig.set_data(img)
-            plt.pause(.00001)
+                img = tensor_to_image(obs)
+                if self.fig is None:
+                    self.fig = plt.imshow(img)
+                else:
+                    self.fig.set_data(img)
+                plt.pause(.00001)
 
         query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
             query_embeddings)
@@ -161,7 +168,14 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
             pos_attention_seq)
         # tf.print(self.name, " pos: ", pos_attention[0][-4:], " attn_max", attn_score_max)
 
-        return tf.keras.layers.Concatenate()([query_encoding, pos_attention])
+        outputs = [query_encoding, pos_attention]
+        if self._output_attention_max:
+            outputs.append(
+                tf.reshape(
+                    tf.keras.backend.repeat(
+                        tf.reshape(attn_score_max, (b, 1)), n=c), (b, c)))
+
+        return tf.keras.layers.Concatenate()(outputs)
 
 
 @gin.configurable
@@ -173,7 +187,9 @@ def get_ac_networks(conv_layer_params=None,
                     fc_layer_params=None,
                     num_state_tiles=None,
                     num_sentence_tiles=None,
-                    name=None):
+                    name=None,
+                    network_to_debug=None,
+                    output_attention_max=False):
     """
     Generate the actor and value networks
 
@@ -264,7 +280,10 @@ def get_ac_networks(conv_layer_params=None,
 
     if attention:
         attention_combiner = ImageLanguageAttentionLayer(
-            vocab_size=vocab_size, name=name)
+            vocab_size=vocab_size,
+            name=name,
+            network_to_debug=network_to_debug,
+            output_attention_max=output_attention_max)
         preprocessing_combiner = attention_combiner
 
     if not isinstance(preprocessing_layers, dict):
