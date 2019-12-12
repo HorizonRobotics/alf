@@ -29,6 +29,7 @@ def transform_space(observation_space, field, func):
     Args:
         observation_space (gym.Space): space to be transformed
         field (str): field of the space to be transformed, multi-level path denoted by "A.B.C"
+            If None, then non-nested observation_space is transformed
         func (Callable): transform function. The function will be called as
             func(observation_space, level) and should return new observation_space.
     Returns:
@@ -67,7 +68,7 @@ class BaseObservationWrapper(gym.ObservationWrapper):
         Args:
             env (gym.Env): the gym environment
             fields (list[str]): fields to be applied transformation, A field str is a multi-level
-                path denoted by "A.B.C".
+                path denoted by "A.B.C". If None, then non-nested observation is transformed
         """
         super().__init__(env)
 
@@ -132,7 +133,7 @@ class FrameStack(BaseObservationWrapper):
             channel_order (str): The ordering of the dimensions in the images.
                 should be one of `channels_last` or `channels_first`.
             fields (list[str]): fields to be stacked, A field str is a multi-level
-                path denoted by "A.B.C".
+                path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
         self._channel_order = channel_order
         if self._channel_order == 'channels_last':
@@ -224,7 +225,7 @@ class FrameResize(BaseObservationWrapper):
              width (int): resize width
              height (int): resize height
              fields (list[str]):  fields to be resize, A field str is a multi-level
-                path denoted by "A.B.C".
+                path denoted by "A.B.C". If None, then non-nested observation is resized
         """
         self._width = width
         self._height = height
@@ -258,7 +259,7 @@ class FrameGrayScale(BaseObservationWrapper):
         Args:
              env (gym.Env): the gym environment
              fields (list[str]):  fields to be gray scaled, A field str is a multi-level
-                path denoted by "A.B.C".
+                path denoted by "A.B.C". If None, then non-nested observation is gray scaled
         """
         super().__init__(env, fields=fields)
 

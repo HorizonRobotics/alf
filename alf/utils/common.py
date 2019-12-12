@@ -439,6 +439,7 @@ def transform_observation(observation, field, func):
     Args:
         observation (nested Tensor): observations to be applied the transformation
         field (str): field to be transformed, multi-level path denoted by "A.B.C"
+            If None, then non-nested observation is transformed
         func (Callable): transform func, the function will be called as
             func(observation, field) and should return new observation
     Returns:
