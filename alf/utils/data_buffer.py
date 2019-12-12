@@ -105,12 +105,13 @@ class DataBuffer(tf.Module):
         Returns:
             Tensor of shape [batch_size] + tensor_spec.shape
         """
-        indices = tf.random.uniform(
-            shape=(batch_size, ),
-            dtype=tf.int32,
-            minval=0,
-            maxval=self._current_size)
-        return self.get_batch_by_indices(indices)
+        with tf.device(self._device):
+            indices = tf.random.uniform(
+                shape=(batch_size, ),
+                dtype=tf.int32,
+                minval=0,
+                maxval=self._current_size)
+            return self.get_batch_by_indices(indices)
 
     def get_batch_by_indices(self, indices):
         """Get the samples by indices
@@ -130,8 +131,7 @@ class DataBuffer(tf.Module):
                 self._buffer)
 
     def get_all(self):
-        with tf.device(self._device):
-            return self._buffer
+        return self._buffer
 
     def clear(self):
         """Clear the buffer.
