@@ -31,7 +31,7 @@ ActorCriticInfo = namedtuple("ActorCriticInfo", ["value"])
 
 @gin.configurable
 class ActorCriticAlgorithm(OnPolicyAlgorithm):
-    """Actor critic algorithm"""
+    """Actor critic algorithm."""
 
     def __init__(self,
                  action_spec,
@@ -42,7 +42,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  optimizer=None,
                  debug_summaries=False,
                  name="ActorCriticAlgorithm"):
-        """Create an ActorCriticAlgorithm
+        """Create an ActorCriticAlgorithm.
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
@@ -93,7 +93,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state=ActorCriticState(actor=actor_state),
             info=())
 
-    def rollout(self, time_step: ActionTimeStep, state: ActorCriticState):
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state: ActorCriticState,
+                is_train_step=False):
         """Rollout for one step."""
         value, value_state = self._value_network(
             time_step.observation,

@@ -22,6 +22,7 @@ from collections import Iterable
 import tensorflow as tf
 import tensorflow_probability as tfp
 
+from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.trajectories.time_step import StepType
 
 from alf.algorithms.algorithm import Algorithm

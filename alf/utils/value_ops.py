@@ -176,7 +176,7 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     return tf.stop_gradient(returns)
 
 
-def one_step_discounted_return(rewards, values, step_types, discounts):
+def one_step_discounted_return(rewards, values, discounts):
     """Calculate the one step discounted return  for the first T-1 steps.
 
     return = next_reward + next_discount * next_value
@@ -184,7 +184,6 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     Args:
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
         values (Tensor): shape is [T,B] (or [T]) representing values.
-        step_types (Tensor): shape is [T,B] (or [T]) representing step types.
         discounts (Tensor): shape is [T, B] (or [T]) representing discounts.
     Returns:
         A tensor with shape [T-1, B] (or [T-1]) representing the discounted
@@ -194,10 +193,8 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
     discounts = discounts[1:]
     rewards = rewards[1:]
     values = values[1:]
-    step_types = step_types[:-1]
 
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
-    returns = rewards + (1 - is_lasts) * discounts * values
+    returns = rewards + discounts * values
 
     return returns
 

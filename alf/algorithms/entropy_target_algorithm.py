@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+"""An algorithm for adjusting entropy regularization strength."""
 from absl import logging
 import gin
 import numpy as np
@@ -26,7 +26,7 @@ from alf.utils.common import namedtuple, run_if, should_record_summaries
 from alf.utils.dist_utils import calc_default_target_entropy
 from alf.utils.dist_utils import calc_default_max_entropy
 
-EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["entropy_loss"])
+EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
 EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
 
 
@@ -68,6 +68,7 @@ class EntropyTargetAlgorithm(Algorithm):
                  slow_update_rate=0.01,
                  fast_update_rate=np.log(2),
                  min_alpha=1e-4,
+                 average_window=2,
                  debug_summaries=False):
         """Create an EntropyTargetAlgorithm
 
@@ -88,6 +89,7 @@ class EntropyTargetAlgorithm(Algorithm):
                 state 2
             min_alpha (float): the minimal value of alpha. If <=0, exp(-100) is
                 used.
+            average_window (int): window size for averaging past entropies.
             optimizer (tf.optimizers.Optimizer): The optimizer for training. If
                 not provided, will use the same optimizer of the parent
                 algorithm.
@@ -103,7 +105,7 @@ class EntropyTargetAlgorithm(Algorithm):
             trainable=False)
         self._stage = tf.Variable(
             name='stage', initial_value=-2, dtype=tf.int32, trainable=False)
-        self._avg_entropy = ScalarWindowAverager(2)
+        self._avg_entropy = ScalarWindowAverager(average_window)
         self._update_rate = tf.Variable(
             name='update_rate',
             initial_value=fast_update_rate,
@@ -142,6 +144,7 @@ class EntropyTargetAlgorithm(Algorithm):
         Args:
             distribution (nested Distribution): action distribution from the
                 policy.
+            step_type (StepType): the step type for the distributions.
         Returns:
             AlgorithmStep. `info` field is LossInfo, other fields are empty.
         """
@@ -154,16 +157,43 @@ class EntropyTargetAlgorithm(Algorithm):
                 step_type=step_type,
                 loss=LossInfo(
                     loss=-entropy_for_gradient,
-                    extra=EntropyTargetLossInfo(entropy_loss=-entropy))))
+                    extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
 
-    def calc_loss(self, training_info: EntropyTargetInfo):
+    def calc_loss(self, training_info: EntropyTargetInfo, valid_mask=None):
         loss_info = training_info.loss
         mask = tf.cast(training_info.step_type != StepType.LAST, tf.float32)
-        entropy = -loss_info.extra.entropy_loss * mask
+        if valid_mask:
+            mask = mask * tf.cast(valid_mask, tf.float32)
+        entropy = -loss_info.extra.neg_entropy * mask
         num = tf.reduce_sum(mask)
+        not_empty = num > 0
+        num = tf.maximum(num, 1)
         entropy2 = tf.reduce_sum(tf.square(entropy)) / num
         entropy = tf.reduce_sum(entropy) / num
         entropy_std = tf.sqrt(tf.maximum(0.0, entropy2 - entropy * entropy))
+
+        run_if(not_empty, lambda: self.adjust_alpha(entropy))
+
+        def _summarize():
+            with self.name_scope:
+                tf.summary.scalar("entropy_std", entropy_std)
+
+        if self._debug_summaries:
+            run_if(
+                tf.logical_and(not_empty, should_record_summaries()),
+                _summarize)
+
+        alpha = tf.exp(self._log_alpha)
+        return loss_info._replace(loss=loss_info.loss * alpha)
+
+    def adjust_alpha(self, entropy):
+        """Adjust alpha according to the current entropy.
+
+        Args:
+            entropy (scalar Tensor). the current entropy.
+        Returns:
+            adjusted entropy regularization
+        """
         prev_avg_entropy = self._avg_entropy.get()
         avg_entropy = self._avg_entropy.average(entropy)
 
@@ -212,7 +242,6 @@ class EntropyTargetAlgorithm(Algorithm):
         def _summarize():
             with self.name_scope:
                 tf.summary.scalar("alpha", alpha)
-                tf.summary.scalar("entropy_std", entropy_std)
                 tf.summary.scalar("avg_entropy", avg_entropy)
                 tf.summary.scalar("stage", self._stage)
                 tf.summary.scalar("update_rate", self._update_rate)
@@ -220,4 +249,4 @@ class EntropyTargetAlgorithm(Algorithm):
         if self._debug_summaries:
             run_if(should_record_summaries(), _summarize)
 
-        return loss_info._replace(loss=loss_info.loss * alpha)
+        return alpha

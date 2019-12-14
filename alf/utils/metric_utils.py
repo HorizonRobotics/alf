@@ -21,7 +21,7 @@ from alf.utils import common
 
 
 class Policy(Base):
-    """Wrap an action fn to policy"""
+    """Wrap an action fn to policy."""
 
     def __init__(self, time_step_spec, action_spec, policy_state_spec,
                  action_fn):
@@ -37,14 +37,17 @@ class Policy(Base):
         super(Policy, self).__init__(
             time_step_spec=time_step_spec,
             action_spec=action_spec,
-            policy_state_spec=policy_state_spec)
+            policy_state_spec=(policy_state_spec, action_spec))
         # attribute named `_action_fn` already exist in parent
         self._action_fn1 = action_fn
 
     def _action(self, time_step, policy_state=(), seed=None):
-        policy_step = self._action_fn1(time_step, policy_state)
+        policy_step = self._action_fn1(
+            common.make_action_time_step(time_step, policy_state[1]),
+            policy_state[0])
         action = common.sample_action_distribution(policy_step.action, seed)
-        policy_step = policy_step._replace(action=action)
+        policy_step = policy_step._replace(
+            action=action, state=(policy_step.state, action))
         return policy_step
 
 
@@ -66,7 +69,7 @@ def eager_compute(metrics,
         action_fn (Callable): action function used to step the environment that
             generates next action given the time_step and policy_state.
         num_episodes (int): Number of episodes to compute the metrics over.
-        step_metrics: (list[TFStepMetric]) Iterable of step metrics to generate summaries
+        step_metrics (list[TFStepMetric]): Iterable of step metrics to generate summaries
             against.
         train_step (Variable): An optional step to write summaries against.
         summary_writer (SummaryWriter): An optional writer for generating metric summaries.

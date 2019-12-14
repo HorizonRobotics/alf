@@ -47,8 +47,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             action = sample action from policy_step.action
             collect necessary information and policy_step.info into training_info
             time_step = env.step(action)
-    final_policy_step = algorithm.rollout(training_info)
-    collect necessary information and final_policy_step.info into training_info
+    final_policy_step = algorithm.rollout(training_info) ***
+    collect necessary information and final_policy_step.info into training_info ***
     algorithm.train_complete(tape, training_info)
     ```
 
@@ -57,12 +57,15 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         redo the policy_step for the same time_step in the next iteration.
         This requires that the algorithm can correctly generate policy_step with
         repeated train_step() call.
-    * FINAL_STEP_SKIP: use final_policy_step for one more env.step(). Hence this
+    * FINAL_STEP_SKIP: use final_policy_step for the next env.step(). Hence this
         environment step will be skipped for training because it's not performed
         with GradientTape() context.
+    * FINAL_STEP_NO: do not include final_step for training_info (
+        skip step (***) in the above pseudocode)
     """
     FINAL_STEP_REDO = 0  # redo the final step for training
     FINAL_STEP_SKIP = 1  # skip the final step for training
+    FINAL_STEP_NO = 2  # do not include final step for training_info
 
     def __init__(self,
                  env: TFEnvironment,
@@ -98,7 +101,10 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             training=training,
             greedy_predict=greedy_predict)
 
-        self._final_step_mode = final_step_mode
+        if not algorithm.need_final_step():
+            self._final_step_mode = final_step_mode
+        else:
+            self._final_step_mode = OnPolicyDriver.FINAL_STEP_NO
 
         if training:
             algorithm.set_metrics(self._metrics)
@@ -108,9 +114,11 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
     def _prepare_specs(self, algorithm):
         time_step_spec = self._env.time_step_spec()
+        self._action_distribution_spec = tf.nest.map_structure(
+            common.to_distribution_spec, algorithm.action_distribution_spec)
         action_distribution_param_spec = tf.nest.map_structure(
             lambda spec: spec.input_params_spec,
-            algorithm.action_distribution_spec)
+            self._action_distribution_spec)
 
         policy_step = algorithm.rollout(
             algorithm.transform_timestep(self.get_initial_time_step()),
@@ -217,7 +225,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             next_time_step, policy_step, action, transformed_time_step = self._step(
                 time_step, policy_state)
             next_state = policy_step.state
-        else:
+        elif self._final_step_mode == OnPolicyDriver.FINAL_STEP_REDO:
             transformed_time_step = self._algorithm.transform_timestep(
                 time_step)
             policy_step = common.algorithm_step(
@@ -225,27 +233,32 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             action = common.sample_action_distribution(policy_step.action)
             next_time_step = time_step
             next_state = policy_state
+        else:
+            next_time_step = time_step
+            next_state = policy_state
 
-        action_distribution_param = common.get_distribution_params(
-            policy_step.action)
+        if self._final_step_mode != OnPolicyDriver.FINAL_STEP_NO:
+            action_distribution_param = common.get_distribution_params(
+                policy_step.action)
 
-        final_training_info = TrainingInfo(
-            action_distribution=action_distribution_param,
-            action=action,
-            reward=transformed_time_step.reward,
-            discount=transformed_time_step.discount,
-            step_type=transformed_time_step.step_type,
-            info=policy_step.info)
+            final_training_info = TrainingInfo(
+                action_distribution=action_distribution_param,
+                action=action,
+                reward=transformed_time_step.reward,
+                discount=transformed_time_step.discount,
+                step_type=transformed_time_step.step_type,
+                info=policy_step.info)
 
         with tape:
-            training_info_ta = tf.nest.map_structure(
-                lambda ta, x: ta.write(counter, x), training_info_ta,
-                final_training_info)
+            if self._final_step_mode != OnPolicyDriver.FINAL_STEP_NO:
+                training_info_ta = tf.nest.map_structure(
+                    lambda ta, x: ta.write(counter, x), training_info_ta,
+                    final_training_info)
             training_info = tf.nest.map_structure(lambda ta: ta.stack(),
                                                   training_info_ta)
 
             action_distribution = nested_distributions_from_specs(
-                self._algorithm.action_distribution_spec,
+                self._action_distribution_spec,
                 training_info.action_distribution)
 
             training_info = training_info._replace(

@@ -26,7 +26,7 @@ from tf_agents.networks.q_network import QNetwork
 from tf_agents.networks.q_rnn_network import QRnnNetwork
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
-from tf_agents.networks.network import Network
+from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories.policy_step import PolicyStep
 
@@ -86,7 +86,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def __init__(self,
                  action_spec,
-                 actor_network: Network,
+                 actor_network: DistributionNetwork,
                  critic_network: Network,
                  critic_loss=None,
                  target_entropy=None,
