@@ -29,6 +29,15 @@ ActorDistributionRnnNetwork.lstm_size=(128, 128)
 ValueRnnNetwork.activation_fn=@tf.nn.elu
 ValueRnnNetwork.lstm_size=(128, 128)
 
+ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.init_means_output_factor=1e-10
+NormalProjectionNetwork.std_bias_initializer_value=0.0
+
+ActorDistributionNetwork.activation_fn=@tf.nn.elu
+ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+
+ValueNetwork.activation_fn=@tf.nn.elu
+
 ac/Adam.learning_rate=2e-4
 
 conv_layer_params=((16, 3, 2), (32, 3, 2))

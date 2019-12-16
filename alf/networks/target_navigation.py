@@ -23,6 +23,8 @@ import tensorflow as tf
 import tf_agents
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.value_rnn_network import ValueRnnNetwork
+from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
+from tf_agents.networks.value_network import ValueNetwork
 
 from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
@@ -189,7 +191,8 @@ def get_ac_networks(conv_layer_params=None,
                     num_sentence_tiles=None,
                     name=None,
                     network_to_debug=None,
-                    output_attention_max=False):
+                    output_attention_max=False,
+                    rnn=True):
     """
     Generate the actor and value networks
 
@@ -289,18 +292,37 @@ def get_ac_networks(conv_layer_params=None,
     if not isinstance(preprocessing_layers, dict):
         preprocessing_combiner = None
 
-    actor = ActorDistributionRnnNetwork(
-        input_tensor_spec=observation_spec,
-        output_tensor_spec=action_spec,
-        preprocessing_layers=preprocessing_layers,
-        preprocessing_combiner=preprocessing_combiner,
-        input_fc_layer_params=fc_layer_params)
+    if name == 'actor':
+        print('==========================================')
+        print('observation_spec: ', observation_spec)
+        print('action_spec: ', action_spec)
 
-    value = ValueRnnNetwork(
-        input_tensor_spec=observation_spec,
-        preprocessing_layers=preprocessing_layers,
-        preprocessing_combiner=preprocessing_combiner,
-        input_fc_layer_params=fc_layer_params)
+    if rnn:
+        actor = ActorDistributionRnnNetwork(
+            input_tensor_spec=observation_spec,
+            output_tensor_spec=action_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            input_fc_layer_params=fc_layer_params)
+
+        value = ValueRnnNetwork(
+            input_tensor_spec=observation_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            input_fc_layer_params=fc_layer_params)
+    else:
+        actor = ActorDistributionNetwork(
+            input_tensor_spec=observation_spec,
+            output_tensor_spec=action_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            fc_layer_params=fc_layer_params)
+
+        value = ValueNetwork(
+            input_tensor_spec=observation_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            fc_layer_params=fc_layer_params)
 
     return actor, value
 

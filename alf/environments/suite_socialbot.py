@@ -74,6 +74,10 @@ def load(environment_name,
         A PyEnvironmentBase instance.
     """
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
+    if gym_env_wrappers is None:
+        gym_env_wrappers = ()
+    if env_wrappers is None:
+        env_wrappers = ()
 
     gym_spec = gym.spec(environment_name)
     if max_episode_steps is None:
