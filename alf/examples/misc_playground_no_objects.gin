@@ -8,9 +8,9 @@
 # If you are not recording video and observation does not contain image, you can add 'DISPLAY=null' to skip camera rendering, which will speedup the simulation a lot:
 # DISPLAY=null python -m alf.bin.train ...
 
-# python alf/bin/train.py --gin_file=alf/examples/misc_playground_no_objects.gin --root_dir=logs/misc_playground_no_objects-tmp
+# python -m alf.bin.train --gin_file=misc_playground_no_objects.gin --root_dir=~/tmp/misc_playground_no_objects
 
-include 'alf/examples/ppo.gin'
+include 'ppo.gin'
 import social_bot
 import alf.environments.suite_socialbot
 

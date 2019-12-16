@@ -26,6 +26,7 @@ from tf_agents.trajectories.time_step import StepType
 from alf.utils.encoding_network import EncodingNetwork
 from alf.utils.common import transpose2
 from alf.data_structures import ActionTimeStep
+from alf.utils import math_ops
 
 MISCInfo = namedtuple("MISCInfo", ["reward"])
 
@@ -120,9 +121,7 @@ class MISCAlgorithm(Algorithm):
 
         """
         y_in_tran = transpose2(y_in, 1, 0)
-        # tf.random.shuffle() has no gradient defined, so use tf.gather()
-        y_shuffle_tran = tf.gather(
-            y_in_tran, tf.random.shuffle(tf.range(tf.shape(y_in_tran)[0])))
+        y_shuffle_tran = math_ops.shuffle(y_in_tran)
         y_shuffle = transpose2(y_shuffle_tran, 1, 0)
 
         # propagate the forward pass

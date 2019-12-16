@@ -373,6 +373,30 @@ class TrainPlayTest(tf.test.TestCase):
             skip_checker=self._skip_if_dmlab_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_misc_playground(self):
+        self._test(
+            gin_file='misc_playground.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=PPO_TRAIN_PARAMS)
+
+    def test_misc_playground_empowerment(self):
+        self._test(
+            gin_file='misc_playground_empowerment.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=PPO_TRAIN_PARAMS)
+
+    def test_misc_playground_no_objects(self):
+        self._test(
+            gin_file='misc_playground_on_objects.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=PPO_TRAIN_PARAMS)
+
+    def test_misc_playground_two_balls(self):
+        self._test(
+            gin_file='misc_playground_two_balls.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=PPO_TRAIN_PARAMS)
+
     def test_off_policy_ac_breakout(self):
         self._test(
             gin_file='off_policy_ac_breakout.gin',
