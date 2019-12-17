@@ -66,9 +66,8 @@ def conditional_update(target, cond, func, *args, **kwargs):
 
     def _update_subset():
         gather_indices = tf.squeeze(scatter_indices, 1)
-        selected_args = [_gather_nest(arg, gather_indices) for arg in args]
-        selected_kwargs = dict(
-            [(k, _gather_nest(v, gather_indices)) for k, v in kwargs.items()])
+        selected_args = _gather_nest(args, gather_indices)
+        selected_kwargs = _gather_nest(kwargs, gather_indices)
         updates = func(*selected_args, **selected_kwargs)
         return tf.nest.map_structure(
             lambda tgt, updt: tf.tensor_scatter_nd_update(

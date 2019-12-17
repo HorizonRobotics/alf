@@ -37,7 +37,7 @@ class DataBuffer(tf.Module):
             device (str): which device to store the data
             name (str): name of the buffer
         """
-        super().__init__()
+        super().__init__(name=name)
         self._capacity = capacity
         self._device = device
 
