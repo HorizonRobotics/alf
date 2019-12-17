@@ -132,6 +132,14 @@ class ReplayBufferTest(tf.test.TestCase):
         self.assertArrayEqual(batch.t[:, 0] + 1, batch.t[:, 1])
         self.assertEqual(batch.t.shape, [128, 2])
 
+        batch = replay_buffer.get_batch(10, 2)
+        self.assertArrayEqual(batch.t[:, 0] + 1, batch.t[:, 1])
+        self.assertEqual(batch.t.shape, [10, 2])
+
+        batch = replay_buffer.get_batch(4, 2)
+        self.assertArrayEqual(batch.t[:, 0] + 1, batch.t[:, 1])
+        self.assertEqual(batch.t.shape, [4, 2])
+
 
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
