@@ -63,16 +63,14 @@ class FakeDictObservationEnvironment(FakeEnvironment):
 
 
 class FrameStackTest(tf.test.TestCase):
-    def setUp(self):
-        self._env = FrameStack(FakeDictObservationEnvironment())
-        super().setUp()
-
-    def tearDown(self):
-        super().tearDown()
-        self._env.close()
+    def _create_env(self, stack_fields):
+        return FrameStack(
+            env=FakeDictObservationEnvironment(), fields=stack_fields)
 
     def test_framestack_all_fields(self):
-        obs = self._env.reset()
+        env = self._create_env(
+            ['image', 'states', 'language', 'dict.inner_states'])
+        obs = env.reset()
         all_shapes = (
             obs['image'].shape,
             obs['states'].shape,
@@ -83,14 +81,14 @@ class FrameStackTest(tf.test.TestCase):
             (2, 2, 3 * 4),  # 3 channels * 4
             (4 * 4, ),
             (3 * 4, ),
-            (7 * 4, ),  # nested field
+            (7 * 4, ),
         )
         assert all_shapes == expected, "Result " + str(
             all_shapes) + " doesn't match exptected " + str(expected)
 
-    def test_framestack_some_fields(self):
-        self._env._fields_to_stack = ['image', 'dict.inner_states']
-        obs = self._env.reset()
+    def test_framestack_partial_fields(self):
+        env = self._create_env(['image', 'dict.inner_states'])
+        obs = env.reset()
         all_shapes = (
             obs['image'].shape,
             obs['states'].shape,
@@ -109,5 +107,6 @@ class FrameStackTest(tf.test.TestCase):
 
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
+
     set_per_process_memory_growth()
     tf.test.main()

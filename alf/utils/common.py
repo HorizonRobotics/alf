@@ -35,6 +35,7 @@ from tf_agents.specs.distribution_spec import DistributionSpec
 
 from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
+from alf.utils.nest_utils import is_namedtuple
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -196,8 +197,7 @@ def add_nested_summaries(prefix, data):
     for field in fields:
         elem = data[field] if isinstance(data, dict) else getattr(data, field)
         name = prefix + '/' + field
-        if isinstance(elem, dict) or (isinstance(elem, tuple)
-                                      and hasattr(elem, '_fields')):
+        if isinstance(elem, dict) or is_namedtuple(elem):
             add_nested_summaries(name, elem)
         elif isinstance(elem, tf.Tensor):
             tf.summary.scalar(name, elem)
@@ -212,7 +212,7 @@ def add_loss_summaries(loss_info: LossInfo):
     tf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
-    if not hasattr(loss_info.extra, '_fields'):
+    if not is_namedtuple(loss_info.extra):
         # not a namedtuple
         return
     add_nested_summaries('loss', loss_info.extra)
@@ -433,6 +433,40 @@ def cast_transformer(observation, dtype=tf.float32):
     return tf.nest.map_structure(_cast, observation)
 
 
+def transform_observation(observation, field, func):
+    """Transform the child observation in observation indicated by field using func
+
+    Args:
+        observation (nested Tensor): observations to be applied the transformation
+        field (str): field to be transformed, multi-level path denoted by "A.B.C"
+            If None, then non-nested observation is transformed
+        func (Callable): transform func, the function will be called as
+            func(observation, field) and should return new observation
+    Returns:
+        transformed observation
+    """
+
+    def _traverse_transform(obs, levels):
+        if not levels:
+            return func(obs, field)
+        level = levels[0]
+        if is_namedtuple(obs):
+            new_val = _traverse_transform(
+                obs=getattr(obs, level), levels=levels[1:])
+            return obs._replace(**{level: new_val})
+        elif isinstance(obs, dict):
+            new_val = obs.copy()
+            new_val[level] = _traverse_transform(
+                obs=obs[level], levels=levels[1:])
+            return new_val
+        else:
+            raise TypeError("If value is a nest, it must be either " +
+                            "a dict or namedtuple!")
+
+    return _traverse_transform(
+        obs=observation, levels=field.split('.') if field else [])
+
+
 @gin.configurable
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max)
@@ -449,33 +483,41 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         Transfromed observation
     """
 
-    def _transform_image(obs):
+    def _transform_image(obs, field):
         assert isinstance(obs, tf.Tensor), str(type(obs)) + ' is not Tensor'
         assert obs.dtype == tf.uint8, "Image must have dtype uint8!"
         obs = tf.cast(obs, tf.float32)
         return ((max - min) / 255.) * obs + min
 
-    def _traverse_path(obs, path):
-        """Traverse `path` and transform the image at the path end."""
-        if not path:
-            return _transform_image(obs)
-        step = path[0]
-        if isinstance(obs, tuple) and hasattr(obs, '_fields'):
-            new_val = _traverse_path(getattr(obs, step), path[1:])
-            return obs._replace(**{step: new_val})
-        elif isinstance(obs, dict):
-            new_obs = obs.copy()
-            new_obs[step] = _traverse_path(obs[step], path[1:])
-            return new_obs
-        else:
-            raise TypeError(("If observation is a nest, it must be either " +
-                             "a dict or namedtuple!"))
-
-    fields = fields or [""]
+    fields = fields or [None]
     for field in fields:
-        # remove '' in the path
-        path = [step for step in field.split(".") if step]
-        observation = _traverse_path(observation, path)
+        observation = transform_observation(
+            observation=observation, field=field, func=_transform_image)
+    return observation
+
+
+@gin.configurable
+def scale_transformer(observation, scale, dtype=tf.float32, fields=None):
+    """Scale observation
+
+    Args:
+         observation (nested Tensor): observation to be scaled
+         scale (float): scale factor
+         dtype (Dtype): The destination type.
+         fields (list[str]): fields to be scaled, A field str is a multi-level
+                path denoted by "A.B.C".
+    Returns:
+        scaled observation
+    """
+
+    def _scale_obs(obs, field):
+        obs = tf.cast(obs * scale, dtype)
+        return obs
+
+    fields = fields or [None]
+    for field in fields:
+        observation = transform_observation(
+            observation=observation, field=field, func=_scale_obs)
     return observation
 
 
@@ -794,7 +836,7 @@ def set_global_env(env):
 
 
 @gin.configurable
-def get_observation_spec():
+def get_observation_spec(field=None):
     """Get the `TensorSpec` of observations provided by the global environment.
 
     This spec is used for creating models only! All uint8 dtype will be converted
@@ -803,15 +845,22 @@ def get_observation_spec():
 
     https://github.com/HorizonRobotics/alf/pull/239#issuecomment-544644558
 
+    Args:
+        field (str): a multi-step path denoted by "A.B.C".
     Returns:
         A `TensorSpec`, or a nested dict, list or tuple of
         `TensorSpec` objects, which describe the observation.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
-    return tf.nest.map_structure(
+    specs = tf.nest.map_structure(
         lambda spec: (tf.TensorSpec(spec.shape, tf.float32)
                       if spec.dtype == tf.uint8 else spec), specs)
+
+    if field:
+        for f in field.split('.'):
+            specs = specs[f]
+    return specs
 
 
 @gin.configurable

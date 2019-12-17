@@ -16,6 +16,18 @@
 import tensorflow as tf
 
 
+def is_namedtuple(value):
+    """Whether the value is a namedtuple instance
+
+    Args:
+         value (Object):
+    Returns:
+        True if the value is a namedtuple instance
+    """
+
+    return isinstance(value, tuple) and hasattr(value, '_fields')
+
+
 def nest_list_to_tuple(nest):
     """Convert the lists in a nest to tuples.
 
@@ -29,7 +41,7 @@ def nest_list_to_tuple(nest):
     """
     if isinstance(nest, tuple):
         new_nest = tuple(nest_list_to_tuple(item) for item in nest)
-        if hasattr(nest, '_fields'):
+        if is_namedtuple(nest):
             # example is a namedtuple
             new_nest = type(nest)(*new_nest)
         return new_nest
@@ -84,7 +96,7 @@ def nest_tuple_to_list(nest, example):
     if isinstance(nest, tuple):
         new_nest = tuple(
             nest_tuple_to_list(nst, exp) for nst, exp in zip(nest, example))
-        if hasattr(example, '_fields'):
+        if is_namedtuple(example):
             # example is a namedtuple
             new_nest = type(example)(*new_nest)
         elif isinstance(example, list):
