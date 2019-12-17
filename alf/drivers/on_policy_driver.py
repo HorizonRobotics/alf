@@ -101,10 +101,10 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             training=training,
             greedy_predict=greedy_predict)
 
-        if not algorithm.need_final_step():
-            self._final_step_mode = final_step_mode
-        else:
+        if training and not algorithm.need_final_step():
             self._final_step_mode = OnPolicyDriver.FINAL_STEP_NO
+        else:
+            self._final_step_mode = final_step_mode
 
         if training:
             algorithm.set_metrics(self._metrics)
@@ -195,11 +195,13 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
         """One training iteration."""
         counter = tf.zeros((), tf.int32)
         batch_size = self._env.batch_size
+        ta_size = self._train_interval
+        ta_size += self._final_step_mode != OnPolicyDriver.FINAL_STEP_NO
 
         def create_ta(s):
             return tf.TensorArray(
                 dtype=s.dtype,
-                size=self._train_interval + 1,
+                size=ta_size,
                 element_shape=tf.TensorShape([batch_size]).concatenate(
                     s.shape))
 
