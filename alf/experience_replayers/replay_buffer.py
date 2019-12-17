@@ -117,7 +117,7 @@ class ReplayBuffer(tf.Module):
                 tf.minimum(current_size + 1, self._max_length))
 
     def get_batch(self, batch_size, batch_length):
-        """Randomly get `batch_size` tranjectories from the buffer.
+        """Randomly get `batch_size` trajectories from the buffer.
 
         Note: The environments where the sampels are from are ordered in the
             returned batch.
