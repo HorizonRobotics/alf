@@ -20,10 +20,13 @@ import six
 import abc
 import tensorflow as tf
 import gin.tf
-from alf.utils.common import flatten_once
-from tf_agents.replay_buffers.tf_uniform_replay_buffer import TFUniformReplayBuffer
 
-from alf.utils import nest_utils
+from tf_agents.utils.nest_utils import get_outer_rank
+
+from alf.utils.common import flatten_once
+from alf.experience_replayers.replay_buffer import ReplayBuffer
+
+from alf.utils import common, nest_utils
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -35,7 +38,7 @@ class ExperienceReplayer(object):
     """
 
     @abc.abstractmethod
-    def observe(self, exp, env_ids=None):
+    def observe(self, exp):
         """
         Observe a batch of `exp`, potentially storing it to replay buffers.
 
@@ -44,9 +47,6 @@ class ExperienceReplayer(object):
                 `unroll_length`, ...), where `num_envs` is the number of tf_agents
                 *batched* environments, each of which contains `env_batch_size`
                 independent & parallel single environments.
-
-            env_ids (tf.tensor): if not None, has the shape of (`num_envs`). Each
-                element of `env_ids` indicates which batched env the data come from.
         """
 
     @abc.abstractmethod
@@ -76,7 +76,7 @@ class ExperienceReplayer(object):
 
     @abc.abstractmethod
     def clear(self):
-        """Clear all buffers"""
+        """Clear all buffers."""
 
     @abc.abstractmethod
     def batch_size(self):
@@ -103,7 +103,9 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         self._experience = None
         self._batch_size = None
 
-    def observe(self, exp, env_ids):
+    def observe(self, exp):
+        # The shape is [learn_queue_cap, unroll_length, env_batch_size, ...]
+        exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
         # flatten the shape (num_envs, env_batch_size)
         self._experience = tf.nest.map_structure(flatten_once, exp)
         if self._batch_size is None:
@@ -142,33 +144,28 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     """
 
     def __init__(self, experience_spec, batch_size):
-        # TFUniformReplayBuffer does not support list in spec, we have to do
-        # some conversion.
         self._experience_spec = experience_spec
-        self._exp_has_list = nest_utils.nest_contains_list(experience_spec)
-        tuple_experience_spec = nest_utils.nest_list_to_tuple(experience_spec)
-        self._buffer = TFUniformReplayBuffer(tuple_experience_spec, batch_size)
+        self._buffer = ReplayBuffer(experience_spec, batch_size)
         self._data_iter = None
 
-    def _list_to_tuple(self, exp):
-        if self._exp_has_list:
-            return nest_utils.nest_list_to_tuple(exp)
-        else:
-            return exp
-
-    def _tuple_to_list(self, exp):
-        if self._exp_has_list:
-            return nest_utils.nest_tuple_to_list(exp, self._experience_spec)
-        else:
-            return exp
-
-    def observe(self, exp, env_ids=None):
+    @tf.function
+    def observe(self, exp):
         """
         For the sync driver, `exp` has the shape (`env_batch_size`, ...)
-        with `num_envs`==1 and `unroll_length`==1. This function always ignores
-        `env_ids`.
+        with `num_envs`==1 and `unroll_length`==1.
         """
-        self._buffer.add_batch(self._list_to_tuple(exp))
+        outer_rank = get_outer_rank(exp, self._experience_spec)
+
+        if outer_rank == 1:
+            self._buffer.add_batch(exp, exp.env_id)
+        elif outer_rank == 3:
+            # The shape is [learn_queue_cap, unroll_length, env_batch_size, ...]
+            for q in tf.range(tf.shape(exp.step_type)[0]):
+                for t in tf.range(tf.shape(exp.step_type)[1]):
+                    bat = tf.nest.map_structure(lambda x: x[q, t, ...], exp)
+                    self._buffer.add_batch(bat, bat.env_id)
+        else:
+            raise ValueError("Unsupported outer rank %s of `exp`" % outer_rank)
 
     def replay(self, sample_batch_size, mini_batch_length):
         """Get a random batch.
@@ -178,23 +175,15 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
             mini_batch_length (int): the length of each sequence
         Returns:
             Experience: experience batch in batch major (B, T, ...)
-            tf_uniform_replay_buffer.BufferInfo: information about the batch
         """
-        if self._data_iter is None:
-            dataset = self._buffer.as_dataset(
-                num_parallel_calls=3,
-                sample_batch_size=sample_batch_size,
-                num_steps=mini_batch_length).prefetch(3)
-            self._data_iter = iter(dataset)
-        exp, info = next(self._data_iter)
-        return self._tuple_to_list(exp), info
+        return self._buffer.get_batch(sample_batch_size, mini_batch_length)
 
     def replay_all(self):
-        return self._tuple_to_list(self._buffer.gather_all())
+        raise NotImplementedError("replay_all is not supported")
 
     def clear(self):
         self._buffer.clear()
 
     @property
     def batch_size(self):
-        return self._buffer._batch_size
+        return self._buffer.num_environments

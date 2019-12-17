@@ -99,10 +99,10 @@ class ActorCriticLoss(object):
 
         Args:
             training_info (TrainingInfo): training_info collected by
-                (On/Off)PolicyDriver. All tensors in training_info are time-major
+                OnPolicyDriver/OffPolicyAlgorithm. All tensors in training_info
+                are time-major
             value (tf.Tensor): the time-major tensor for the value at each time
                 step
-            final_value (tf.Tensor): the value at one step ahead.
         Returns:
             loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
         """

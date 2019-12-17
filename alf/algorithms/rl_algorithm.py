@@ -38,7 +38,7 @@ import gin.tf
 TrainingInfo = namedtuple(
     "TrainingInfo", [
         "action_distribution", "action", "step_type", "reward", "discount",
-        "info", "collect_info", "collect_action_distribution"
+        "info", "collect_info", "collect_action_distribution", "env_id"
     ],
     default_value=())
 

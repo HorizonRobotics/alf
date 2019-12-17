@@ -27,13 +27,13 @@ class OnPolicyTrainer(Trainer):
         super().__init__(config)
         self._num_steps_per_iter = config.num_steps_per_iter
 
-    def init_driver(self):
+    def _init_driver(self):
         return OnPolicyDriver(
             env=self._envs[0],
             algorithm=self._algorithm,
             train_interval=self._unroll_length)
 
-    def train_iter(self, iter_num, policy_state, time_step):
+    def _train_iter(self, iter_num, policy_state, time_step):
         time_step, policy_state, num_steps = self._driver.run(
             max_num_steps=self._num_steps_per_iter,
             time_step=time_step,

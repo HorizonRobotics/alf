@@ -132,7 +132,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             step_type=time_step_spec.step_type,
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
-            info=info_spec)
+            info=info_spec,
+            env_id=tf.TensorSpec((), tf.int32))
 
     def _run(self, max_num_steps, time_step, policy_state):
         if self._training:
@@ -181,7 +182,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             reward=transformed_time_step.reward,
             discount=transformed_time_step.discount,
             step_type=transformed_time_step.step_type,
-            info=policy_step.info)
+            info=policy_step.info,
+            env_id=transformed_time_step.env_id)
 
         training_info_ta = tf.nest.map_structure(
             lambda ta, x: ta.write(counter, x), training_info_ta,
@@ -249,7 +251,8 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 reward=transformed_time_step.reward,
                 discount=transformed_time_step.discount,
                 step_type=transformed_time_step.step_type,
-                info=policy_step.info)
+                info=policy_step.info,
+                env_id=transformed_time_step.env_id)
 
         with tape:
             if self._final_step_mode != OnPolicyDriver.FINAL_STEP_NO:

@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utility functions for generate summary."""
+import time
 
 import tensorflow as tf
 from tensorboard.plugins.histogram import metadata
 from tensorflow.python.ops import summary_ops_v2
+
 from alf.utils.conditional_ops import run_if
 
 DEFAULT_BUCKET_COUNT = 30
@@ -331,3 +333,29 @@ def safe_mean_summary(name, value):
     run_if(
         tf.reduce_prod(tf.shape(value)) >
         0, lambda: add_mean_summary(current_scope + name, value))
+
+
+class record_time(object):
+    """A context manager for record the time.
+
+    Example:
+    ```python
+    with record_time("time/calc"):
+        long_function()
+    ```
+    """
+
+    def __init__(self, tag):
+        """Create a context object for recording time.
+
+        Args:
+            tag (str): the summary tag for the the time.
+        """
+        self._tag = tag
+
+    def __enter__(self):
+        self._t0 = time.time()
+
+    def __exit__(self, type, value, traceback):
+        t = time.time() - self._t0
+        tf.summary.scalar(self._tag, t)

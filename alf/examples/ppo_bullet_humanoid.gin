@@ -54,7 +54,7 @@ TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars = True
 TrainerConfig.summary_interval = 10
 
-TFUniformReplayBuffer.max_length = 2048
+ReplayBuffer.max_length = 2048
 
 
 

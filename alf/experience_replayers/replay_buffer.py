@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Replay buffer."""
+
+import gin
 import tensorflow as tf
 
 from alf.utils.nest_utils import get_nest_batch_size
 
 
+@gin.configurable
 class ReplayBuffer(tf.Module):
     """Replay buffer.
 
@@ -27,7 +30,7 @@ class ReplayBuffer(tf.Module):
     def __init__(self,
                  data_spec,
                  num_environments,
-                 max_length,
+                 max_length=1024,
                  device="cpu:*",
                  name="ReplayBuffer"):
         """Create a ReplayBuffer.
@@ -57,11 +60,11 @@ class ReplayBuffer(tf.Module):
         with tf.device(self._device):
             self._current_size = tf.Variable(
                 name=name + "/size",
-                initial_value=tf.zeros((num_environments, ), tf.int32),
+                initial_value=tf.zeros((num_environments, ), tf.int64),
                 trainable=False)
             self._current_pos = tf.Variable(
                 name=name + "/pos",
-                initial_value=tf.zeros((num_environments, ), tf.int32),
+                initial_value=tf.zeros((num_environments, ), tf.int64),
                 trainable=False)
             self._buffer = tf.nest.map_structure(_create_buffer, data_spec)
             # TF 2.0 checkpoint does not handle tuple. We have to convert
@@ -99,10 +102,11 @@ class ReplayBuffer(tf.Module):
                 tf.reduce_max(env_id_count) == 1,
                 ["There are duplicated ids in env_ids", env_ids])
             current_pos = tf.gather(self._current_pos, env_ids, axis=0)
-            indices = tf.concat(
-                [tf.expand_dims(env_ids, -1),
-                 tf.expand_dims(current_pos, -1)],
-                axis=-1)
+            indices = tf.concat([
+                tf.cast(tf.expand_dims(env_ids, -1), tf.int64),
+                tf.expand_dims(current_pos, -1)
+            ],
+                                axis=-1)
 
             tf.nest.map_structure(
                 lambda buf, bat: buf.scatter_nd_update(indices, bat),
@@ -140,21 +144,23 @@ class ReplayBuffer(tf.Module):
             remaining = batch_size % self._num_envs
             if batch_size_per_env > 0:
                 env_ids = tf.tile(
-                    tf.range(self._num_envs), [batch_size_per_env])
+                    tf.range(self._num_envs, dtype=tf.int64),
+                    [batch_size_per_env])
             else:
-                env_ids = tf.zeros((0, ), tf.int32)
+                env_ids = tf.zeros((0, ), tf.int64)
             if remaining > 0:
-                eids = tf.random.shuffle(tf.range(self._num_envs))[:remaining]
+                eids = tf.range(self._num_envs, dtype=tf.int64)
+                eids = tf.random.shuffle(eids)[:remaining]
                 env_ids = tf.concat([env_ids, eids], axis=0)
 
             r = tf.random.uniform(tf.shape(env_ids))
             num_positions = self._current_size - batch_length + 1
             num_positions = tf.gather(num_positions, env_ids)
-            pos = tf.cast(r * tf.cast(num_positions, tf.float32), tf.int32)
+            pos = tf.cast(r * tf.cast(num_positions, tf.float32), tf.int64)
             pos += tf.gather(self._current_pos - self._current_size, env_ids)
             pos = tf.reshape(pos, [-1, 1])  # [B, 1]
             pos = pos + tf.expand_dims(
-                tf.range(batch_length), axis=0)  # [B, T]
+                tf.range(batch_length, dtype=tf.int64), axis=0)  # [B, T]
             pos = pos % self._max_length
             pos = tf.expand_dims(pos, -1)  # [B, T, 1]
             env_ids = tf.reshape(env_ids, [-1, 1])  # [B, 1]
@@ -163,3 +169,12 @@ class ReplayBuffer(tf.Module):
             indices = tf.concat([env_ids, pos], axis=-1)  # [B, T, 2]
             return tf.nest.map_structure(
                 lambda buffer: tf.gather_nd(buffer, indices), self._buffer)
+
+    def clear(self):
+        with tf.device(self._device):
+            self._current_size.assign(tf.zeros_like(self._current_size))
+            self._current_pos.assign(tf.zeros_like(self._current_pos))
+
+    @property
+    def num_environments(self):
+        return self._num_envs

@@ -78,4 +78,4 @@ TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
 
 Agent.observation_transformer=@image_scale_transformer
-TFUniformReplayBuffer.max_length=32
+ReplayBuffer.max_length=32

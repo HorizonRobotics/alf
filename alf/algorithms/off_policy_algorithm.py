@@ -32,8 +32,8 @@ from alf.experience_replayers.experience_replay import SyncUniformExperienceRepl
 from alf.utils import common
 
 Experience = namedtuple("Experience", [
-    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'action',
-    'info', 'action_distribution', 'state'
+    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'env_id',
+    'action', 'info', 'action_distribution', 'state'
 ])
 
 
@@ -46,6 +46,7 @@ def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep,
         discount=time_step.discount,
         observation=time_step.observation,
         prev_action=time_step.prev_action,
+        env_id=time_step.env_id,
         action=policy_step.action,
         info=policy_step.info,
         action_distribution=action_distribution,
@@ -212,20 +213,32 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """
         return experience
 
-    def set_exp_replayer(self, exp_replayer: str):
-        """Set experience replayer."""
+    def set_exp_replayer(self, exp_replayer: str, num_envs=1):
+        """Set experience replayer.
 
+        Args:
+            exp_replayer (str): type of experience replayer. One of ("one_time",
+                "uniform")
+            num_envs (int): the number of batched environments.
+        """
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
         elif exp_replayer == "uniform":
             self._exp_replayer = SyncUniformExperienceReplayer(
-                self._experience_spec, self._env_batch_size)
+                self._experience_spec, self._env_batch_size * num_envs)
         else:
             raise ValueError("invalid experience replayer name")
         self.add_experience_observer(self._exp_replayer.observe)
 
     def observe(self, exp: Experience):
-        """An algorithm can override to manipulate experience."""
+        """An algorithm can override to manipulate experience.
+
+        Args:
+            exp (Experience): The shapes can be either [Q, T, B, ...] or
+                [B, ...], where Q is `learn_queue_cap` in `AsyncOffPolicyDriver`,
+                T is the sequence length, and B is the batch size of the batched
+                environment.
+        """
         for observer in self._exp_observers:
             observer(exp)
 
@@ -234,8 +247,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         prepare_off_policy_specs is called by OffPolicyDriver._prepare_spec().
 
+        Args:
+            time_step (ActionTimeStep): the batch size of time_step should be
+                same as the batch size of the batched environment.
         """
-
         self._env_batch_size = time_step.step_type.shape[0]
         self._time_step_spec = common.extract_spec(time_step)
         initial_state = common.get_initial_policy_state(
@@ -256,6 +271,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             discount=self._time_step_spec.discount,
             observation=self._time_step_spec.observation,
             prev_action=self._action_spec,
+            env_id=self._time_step_spec.env_id,
             action=self._action_spec,
             info=info_spec,
             action_distribution=self._action_dist_param_spec,
@@ -272,6 +288,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             discount=time_step.discount,
             observation=time_step.observation,
             prev_action=time_step.prev_action,
+            env_id=time_step.env_id,
             action=time_step.prev_action,
             info=policy_step.info,
             action_distribution=action_dist,
@@ -317,7 +334,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             experience = self._exp_replayer.replay_all()
             self._exp_replayer.clear()
         else:
-            experience, _ = self._exp_replayer.replay(
+            experience = self._exp_replayer.replay(
                 sample_batch_size=mini_batch_size,
                 mini_batch_length=mini_batch_length)
 
@@ -459,7 +476,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 discount=experience.discount,
                 step_type=experience.step_type,
                 collect_info=experience.info,
-                collect_action_distribution=experience.action_distribution)
+                collect_action_distribution=experience.action_distribution,
+                env_id=experience.env_id)
 
             action_distribution = nested_distributions_from_specs(
                 self._action_distribution_spec,
