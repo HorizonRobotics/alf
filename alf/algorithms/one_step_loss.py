@@ -41,6 +41,7 @@ class OneStepTDLoss(object):
         returns = value_ops.one_step_discounted_return(
             rewards=training_info.reward,
             values=target_value,
+            step_types=training_info.step_type,
             discounts=training_info.discount * self._gamma)
         returns = common.tensor_extend(returns, value[-1])
         if self._debug_summaries:
