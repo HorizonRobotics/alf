@@ -151,7 +151,6 @@ class ReplayBuffer(tf.Module):
             num_positions = self._current_size - batch_length + 1
             num_positions = tf.gather(num_positions, env_ids)
             pos = tf.cast(r * tf.cast(num_positions, tf.float32), tf.int32)
-            pos = tf.minimum(pos, num_positions - 1)
             pos += tf.gather(self._current_pos - self._current_size, env_ids)
             pos = tf.reshape(pos, [-1, 1])  # [B, 1]
             pos = pos + tf.expand_dims(
