@@ -45,12 +45,28 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             action = sample action from policy_step.action
             collect necessary information and policy_step.info into training_info
             time_step = env.step(action)
-    final_policy_step = rollout(training_info)
-    collect necessary information and final_policy_step.info into training_info
+    final_policy_step = rollout(training_info) (***)
+    collect necessary information and final_policy_step.info into training_info(***)
     train_complete(tape, training_info)
     ```
     """
 
+    # subclass may override this
+    def need_final_step(self):
+        """Whether this algorithm need fianl_step for `train_complete()`.
+
+        Many on-policy RL algorithms need an addition step in order to calculate
+        the loss thus the gradient for the pass sequences (step (***) in the
+        above pseudo code). But some algorithms does not need it (e.g.
+        SarsaAlgorithm). If this final step is not needed, you can override this
+        function to return False.
+
+        Returns:
+            whether final step is needed
+        """
+        return True
+
+    # subclass may override this
     def predict(self, time_step: ActionTimeStep, state=None):
         """Default implementation of predict.
 
@@ -58,6 +74,32 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
         """
         policy_step = self.rollout(time_step, state)
         return policy_step._replace(info=())
+
+    @abstractmethod
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state=None,
+                is_train_step=False):
+        """Perform one step of rollout.
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+            is_train_step (bool): Some on-policy algorithms can also be trained
+                in an off-policy way. If rollout is called during off-policy
+                training, is_train_step will be set to True.
+        Returns:
+            policy_step (PolicyStep):
+              action (nested tf.distribution): should be consistent with
+                `action_distribution_spec`
+              state (nested Tensor): should be consistent with `train_state_spec`
+              info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OnPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
+        """
+        pass
 
     # Implement train_step() to allow off-policy training for an
     # OnPolicyAlgorithm
@@ -68,4 +110,4 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             discount=exp.discount,
             observation=exp.observation,
             prev_action=exp.prev_action)
-        return self.rollout(time_step, state)
+        return self.rollout(time_step, state, is_train_step=True)

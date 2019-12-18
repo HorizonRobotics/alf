@@ -24,7 +24,7 @@ from alf.utils.losses import element_wise_squared_loss
 from alf.utils import common, dist_utils, value_ops
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
-                                 ["pg_loss", "td_loss", "entropy_loss"])
+                                 ["pg_loss", "td_loss", "neg_entropy"])
 
 
 def _normalize_advantages(advantages, axes=(0, ), variance_epsilon=1e-8):
@@ -146,7 +146,7 @@ class ActorCriticLoss(object):
         return LossInfo(
             loss=loss,
             extra=ActorCriticLossInfo(
-                td_loss=td_loss, pg_loss=pg_loss, entropy_loss=entropy_loss))
+                td_loss=td_loss, pg_loss=pg_loss, neg_entropy=entropy_loss))
 
     def _pg_loss(self, training_info, advantages):
         action_log_prob = tfa_common.log_probability(

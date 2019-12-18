@@ -131,6 +131,9 @@ class Agent(OnPolicyAlgorithm):
             observation, _ = self._encoding_network(observation)
         return observation
 
+    def need_final_step(self):
+        return self._rl_algorithm.need_final_step()
+
     def predict(self, time_step: ActionTimeStep, state: AgentState):
         """Predict for one step."""
         observation = self._encode(time_step)

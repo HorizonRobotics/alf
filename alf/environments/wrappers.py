@@ -14,6 +14,8 @@
 
 import copy
 from collections import deque
+import random
+
 import gym
 import numpy as np
 import cv2
@@ -506,4 +508,54 @@ class NonEpisodicAgent(wrappers.PyEnvironmentBaseWrapper):
             # zero (non-episodic).
             time_step = time_step._replace(
                 discount=np.asarray(self._discount, np.float32))
+        return time_step
+
+
+@gin.configurable
+class RandomFirstEpisodeLength(wrappers.PyEnvironmentBaseWrapper):
+    """Randomize the length of the first episode.
+
+    The motivation is to make the observations less correlated for the
+    environments that have fixed episode length.
+
+    Example usage:
+        RandomFirstEpisodeLength.random_length_range=200
+        suite_gym.load.env_wrappers=(@RandomFirstEpisodeLength, )
+    """
+
+    def __init__(self, env, random_length_range, num_episodes=1):
+        """Create a RandomFirstEpisodeLength wrapper.
+
+        Args:
+            random_length_range (int): [1, random_length_range]
+            num_episodes (int): randomize the episode length for the first so
+                many episodes.
+        """
+        super().__init__(env)
+        self._random_length_range = random_length_range
+        self._num_episodes = num_episodes
+        self._episode = 0
+        self._num_steps = 0
+        self._max_length = random.randint(1, self._random_length_range)
+
+    def _reset(self):
+        self._num_steps = 0
+        return self._env.reset()
+
+    def _step(self, action):
+        if self._num_steps is None:
+            return self.reset()
+
+        time_step = self._env.step(action)
+
+        self._num_steps += 1
+        if (self._episode < self._num_episodes
+                and self._num_steps >= self._max_length):
+            time_step = time_step._replace(step_type=StepType.LAST)
+            self._max_length = random.randint(1, self._random_length_range)
+            self._episode += 1
+
+        if time_step.is_last():
+            self._num_steps = None
+
         return time_step

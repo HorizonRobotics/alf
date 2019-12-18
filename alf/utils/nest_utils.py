@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Functions for handling nest."""
+import wrapt
 
 import tensorflow as tf
 
@@ -39,6 +40,10 @@ def nest_list_to_tuple(nest):
     Returns:
         nest with the same content as the input but lists are changed to tuples
     """
+    # TF may wrap tuple, which causes construction of tuple to fail.
+    # So we use the original object instead.
+    if isinstance(nest, wrapt.ObjectProxy):
+        nest = nest.__wrapped__
     if isinstance(nest, tuple):
         new_nest = tuple(nest_list_to_tuple(item) for item in nest)
         if is_namedtuple(nest):
@@ -93,6 +98,12 @@ def nest_tuple_to_list(nest, example):
         nest with the same content as the input but some tuples are changed to
         lists
     """
+    # TF may wrap tuple, which causes construction of tuple to fail.
+    # So we use the original object instead.
+    if isinstance(nest, wrapt.ObjectProxy):
+        nest = nest.__wrapped__
+    if isinstance(example, wrapt.ObjectProxy):
+        example = example.__wrapped__
     if isinstance(nest, tuple):
         new_nest = tuple(
             nest_tuple_to_list(nst, exp) for nst, exp in zip(nest, example))

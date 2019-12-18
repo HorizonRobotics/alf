@@ -65,7 +65,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  gradient_clipping=None,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
-        """
+        """Create a DdpgAlgorithm.
+
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network):  The network will be called with
@@ -127,7 +128,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_loss = OneStepTDLoss(debug_summaries=debug_summaries)
         self._critic_loss = critic_loss
 
-        self._ou_process = self._create_ou_process(ou_stddev, ou_damping)
+        self._ou_process = create_ou_process(action_spec, ou_stddev,
+                                             ou_damping)
 
         self._update_target = common.get_target_updater(
             models=[self._actor_network, self._critic_network],
@@ -242,17 +244,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return ['_target_actor_network', '_target_critic_network']
 
-    def _create_ou_process(self, ou_stddev, ou_damping):
-        # todo with seed None
-        seed_stream = tfd.SeedStream(seed=None, salt='ou_noise')
 
-        def _create_ou_process(action_spec):
-            return tfa_common.OUProcess(
-                lambda: tf.zeros(action_spec.shape, dtype=action_spec.dtype),
-                ou_damping,
-                ou_stddev,
-                seed=seed_stream())
+def create_ou_process(action_spec, ou_stddev, ou_damping):
+    # todo with seed None
+    seed_stream = tfd.SeedStream(seed=None, salt='ou_noise')
 
-        ou_process = tf.nest.map_structure(_create_ou_process,
-                                           self._action_spec)
-        return ou_process
+    def _create_ou_process(action_spec):
+        return tfa_common.OUProcess(
+            lambda: tf.zeros(action_spec.shape, dtype=action_spec.dtype),
+            ou_damping,
+            ou_stddev,
+            seed=seed_stream())
+
+    ou_process = tf.nest.map_structure(_create_ou_process, action_spec)
+    return ou_process
