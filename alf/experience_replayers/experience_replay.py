@@ -179,7 +179,7 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
         return self._buffer.get_batch(sample_batch_size, mini_batch_length)
 
     def replay_all(self):
-        raise NotImplementedError("replay_all is not supported")
+        return self._buffer.gather_all()
 
     def clear(self):
         self._buffer.clear()

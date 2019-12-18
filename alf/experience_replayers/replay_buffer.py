@@ -175,6 +175,29 @@ class ReplayBuffer(tf.Module):
             self._current_size.assign(tf.zeros_like(self._current_size))
             self._current_pos.assign(tf.zeros_like(self._current_pos))
 
+    def gather_all(self):
+        """Returns all the items in buffer.
+
+        Returns:
+            Returns all the items currently in the buffer. The shapes of the
+            tensors are [B, T, ...] where B=num_environments, T=current_size
+        Raises:
+            tf.errors.InvalidArgumentError: if the current_size is not same for
+                all the environments
+        """
+        size = tf.reduce_min(self._current_size)
+        max_size = tf.reduce_max(self._current_size)
+        tf.Assert(size == max_size, [
+            "Not all environment have the same size. min_size:", size,
+            "max_size:", max_size
+        ])
+
+        if size == self._max_length:
+            return tf.nest.map_structure(lambda buf: buf.value(), self._buffer)
+        else:
+            return tf.nest.map_structure(lambda buf: buf[:, :size, ...],
+                                         self._buffer)
+
     @property
     def num_environments(self):
         return self._num_envs
