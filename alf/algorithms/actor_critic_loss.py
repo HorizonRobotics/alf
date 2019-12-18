@@ -77,7 +77,11 @@ class ActorCriticLoss(tf.Module):
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
+<<<<<<< HEAD
             use_vtrace (bool): use vtrace in off policy training.
+=======
+            use_vtrace (float): use vtrace in off policy training.
+>>>>>>> vtrace compared to gold standard passes unit test
         """
         super().__init__(name=name)
 

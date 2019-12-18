@@ -491,7 +491,6 @@ class VTraceTest(tf.test.TestCase):
             step_types,
             discounts,
             time_major=False)
-
         expected_advantages = value_ops.generalized_advantage_estimation(
             rewards=rewards,
             values=values,
