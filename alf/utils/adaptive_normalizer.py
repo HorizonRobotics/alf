@@ -63,8 +63,8 @@ class AdaptiveNormalizer(tf.Module):
         self._variance_epsilon = variance_epsilon
 
     def update(self, tensor):
-        self._mean_averager.update(tf.reduce_mean(tensor))
-        self._m2_averager.update(tf.reduce_mean(tf.square(tensor)))
+        self._mean_averager.update(tf.reduce_mean(tensor, axis=0))
+        self._m2_averager.update(tf.reduce_mean(tf.square(tensor), axis=0))
 
     def normalize(self, tensor, clip_value=-1.0):
         """
