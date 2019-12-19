@@ -275,26 +275,6 @@ def from_importance_weights(log_rhos,
 # END(scalable_agent code)
 
 
-def vtrace_scalable_agent(log_imp_weights, discounts, rewards, values):
-    log_imp_weights = tf.transpose(a=log_imp_weights)
-    discounts = tf.transpose(a=discounts)
-    rewards = tf.transpose(a=rewards)
-    values = tf.transpose(a=values)
-    vtrace_returns = from_importance_weights(
-        log_rhos=log_imp_weights,
-        discounts=discounts,
-        rewards=rewards,
-        values=values,
-        bootstrap_value=values[-1],
-        clip_rho_threshold=1.0,
-        clip_pg_rho_threshold=1.0)
-    vs = vtrace_returns.vs
-    adv = vtrace_returns.pg_advantages
-    vs = tf.transpose(a=vs)
-    adv = tf.transpose(a=adv)
-    return vs, adv
-
-
 class DiscountedReturnTest(tf.test.TestCase):
     """Tests for alf.utils.value_ops.discounted_return
     """
@@ -409,6 +389,27 @@ class GeneralizedAdvantageTest(tf.test.TestCase):
                 time_major=False), expected)
 
 
+def vtrace_scalable_agent(imp_weights, discounts, rewards, values):
+    log_imp_weights = tf.math.log(imp_weights)
+    log_imp_weights = tf.transpose(a=log_imp_weights)
+    discounts = tf.transpose(a=discounts)
+    rewards = tf.transpose(a=rewards)
+    values = tf.transpose(a=values)
+    vtrace_returns = from_importance_weights(
+        log_rhos=log_imp_weights,
+        discounts=discounts,
+        rewards=rewards,
+        values=values,
+        bootstrap_value=values[-1],
+        clip_rho_threshold=1.0,
+        clip_pg_rho_threshold=1.0)
+    vs = vtrace_returns.vs
+    adv = vtrace_returns.pg_advantages
+    vs = tf.transpose(a=vs)
+    adv = tf.transpose(a=adv)
+    return vs, adv
+
+
 class VTraceTest(tf.test.TestCase):
     """Tests for alf.utils.value_ops.vtrace_returns_and_advantages_impl
     """
@@ -431,6 +432,12 @@ class VTraceTest(tf.test.TestCase):
             step_types,
             discounts,
             time_major=False)
+        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
+                                                   discounts, rewards, values)
+        self.assertAllClose(
+            sa_adv, advantages, msg='advantages differ from scalable_agent')
+        self.assertAllClose(
+            sa_returns, returns, msg='returns differ from scalable_agent')
         expected_advantages = value_ops.generalized_advantage_estimation(
             rewards=rewards,
             values=values,
