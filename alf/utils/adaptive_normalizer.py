@@ -15,6 +15,9 @@
 import tensorflow as tf
 
 from tf_agents.specs.tensor_spec import TensorSpec
+from tf_agents.utils.nest_utils import get_outer_rank
+from tf_agents.networks.utils import BatchSquash
+
 from alf.utils.averager import AdaptiveAverager
 
 
@@ -48,8 +51,8 @@ class AdaptiveNormalizer(tf.Module):
         which is the same result with the case when w_1=w_2=...=w_n=(1/n)
 
         Args:
-            tensor_spec (TensorSpec): spec of the mean of tensors to be
-              normlized.
+            tensor_spec (nested TensorSpec): specs of the mean of tensors to be
+              normalized.
             speed (float): speed of updating mean and variance.
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
@@ -57,43 +60,67 @@ class AdaptiveNormalizer(tf.Module):
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
-        self._mean_averager = AdaptiveAverager(tensor_spec, speed=speed)
-        self._m2_averager = AdaptiveAverager(tensor_spec, speed=speed)
+
+        def _create_averager(spec):
+            return AdaptiveAverager(spec, speed=speed)
+
+        self._mean_averager = tf.nest.map_structure(_create_averager,
+                                                    tensor_spec)
+        self._m2_averager = tf.nest.map_structure(_create_averager,
+                                                  tensor_spec)
         self._auto_update = auto_update
         self._variance_epsilon = variance_epsilon
+        self._tensor_spec = tensor_spec
 
     def update(self, tensor):
-        self._mean_averager.update(tf.reduce_mean(tensor, axis=0))
-        self._m2_averager.update(tf.reduce_mean(tf.square(tensor), axis=0))
+        def _update(averager, spec, t):
+            outer_dims = get_outer_rank(t, spec)
+            batch_squash = BatchSquash(outer_dims)
+            t = batch_squash.flatten(t)
+            averager.update(tf.reduce_mean(t, axis=0))
+
+        tf.nest.map_structure(_update, self._mean_averager, self._tensor_spec,
+                              tensor)
+        tf.nest.map_structure(
+            lambda averager, spec, t: _update(averager, spec, tf.square(t)),
+            self._m2_averager, self._tensor_spec, tensor)
 
     def normalize(self, tensor, clip_value=-1.0):
         """
         Normalize a tensor with mean and variance
 
         Args:
-            tensor (tf.Tensor): with shape [B, ] + tensor_spec.shape
+            tensor (nested tf.Tensor): each leaf can have arbitrary outer dims
+                with shape [B1, B2,...] + tensor_spec.shape.
             clip_value (float): if positive, normalized values will be clipped to
-                [-clip_value, clip_value]
+                [-clip_value, clip_value].
 
         Returns:
             normalized tensor
         """
         if self._auto_update:
             self.update(tensor)
-        m = self._mean_averager.get()
-        m2 = self._m2_averager.get()
-        var = m2 - tf.square(m)
-        normalized_tensor = tf.nn.batch_normalization(
-            tensor,
-            m,
-            var,
-            offset=None,
-            scale=None,
-            variance_epsilon=self._variance_epsilon)
-        if clip_value > 0:
-            normalized_tensor = tf.clip_by_value(normalized_tensor,
-                                                 -clip_value, clip_value)
-        return normalized_tensor
+
+        def _normalize(m, m2, spec, t):
+            var = m2.get() - tf.square(m.get())
+            outer_dims = get_outer_rank(t, spec)
+            batch_squash = BatchSquash(outer_dims)
+            t = batch_squash.flatten(t)
+            t = tf.nn.batch_normalization(
+                t,
+                m.get(),
+                var,
+                offset=None,
+                scale=None,
+                variance_epsilon=self._variance_epsilon)
+            if clip_value > 0:
+                t = tf.clip_by_value(t, -clip_value, clip_value)
+            t = batch_squash.unflatten(t)
+            return t
+
+        return tf.nest.map_structure(_normalize, self._mean_averager,
+                                     self._m2_averager, self._tensor_spec,
+                                     tensor)
 
 
 class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
