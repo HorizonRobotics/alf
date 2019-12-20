@@ -45,9 +45,8 @@ class Policy(Base):
         policy_step = self._action_fn1(
             common.make_action_time_step(time_step, policy_state[1]),
             policy_state[0])
-        action = common.sample_action_distribution(policy_step.action, seed)
         policy_step = policy_step._replace(
-            action=action, state=(policy_step.state, action))
+            state=(policy_step.state, policy_step.action))
         return policy_step
 
 

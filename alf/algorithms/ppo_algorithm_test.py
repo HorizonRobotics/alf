@@ -61,6 +61,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
     return PPOAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         actor_network=actor_net,
         value_network=value_net,

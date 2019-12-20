@@ -133,6 +133,14 @@ class RLAlgorithm(Algorithm):
     def use_rollout_state(self, flag):
         self._use_rollout_state = flag
 
+    def need_full_rollout_state(self):
+        """Whether PolicyStep.state from rollout should be full.
+
+        If True, it means that rollout() should return the complete state
+        for train_step().
+        """
+        return self._is_rnn and self._use_rollout_state
+
     @property
     def observation_spec(self):
         """Return the observation spec."""
@@ -140,6 +148,7 @@ class RLAlgorithm(Algorithm):
 
     @property
     def train_step_info_spec(self):
+        """The spec for the PolicyInfo.info returned from train_step()."""
         if self._train_step_info_spec is not None:
             return self._train_step_info_spec
         batch_size = 4
@@ -152,17 +161,21 @@ class RLAlgorithm(Algorithm):
 
     @property
     def rollout_info_spec(self):
+        """The spec for the PolicyInfo.info returned from rollout()."""
         if self._rollout_info_spec is not None:
             return self._rollout_info_spec
         batch_size = 4
         time_step = common.zeros_from_spec(self.time_step_spec, batch_size)
         state = common.zeros_from_spec(self.train_state_spec, batch_size)
-        policy_step = self.rollout(self.transform_timestep(time_step), state)
+        policy_step = self.rollout(
+            self.transform_timestep(time_step), state,
+            RLAlgorithm.PREPARE_SPEC)
         self._rollout_info_spec = common.extract_spec(policy_step.info)
         return self._rollout_info_spec
 
     @property
     def experience_spec(self):
+        """Spec for experience."""
         policy_step_spec = PolicyStep(
             action=self.action_spec,
             state=self.train_state_spec,
@@ -174,6 +187,11 @@ class RLAlgorithm(Algorithm):
 
     @property
     def processed_experience_spec(self):
+        """Spec for processed experience.
+
+        Returns:
+            Spec for the experience returned by preprocess_experience().
+        """
         if self._processed_experience_spec is not None:
             return self._processed_experience_spec
         batch_size = 4
@@ -190,6 +208,7 @@ class RLAlgorithm(Algorithm):
 
     @property
     def time_step_spec(self):
+        """Return spec for ActionTimeStep."""
         return ActionTimeStep(
             step_type=tf.TensorSpec((), tf.int32),
             reward=tf.TensorSpec((), tf.float32),
@@ -401,6 +420,7 @@ class RLAlgorithm(Algorithm):
     ON_POLICY_TRAINING = 0
     OFF_POLICY_TRAINING = 1
     ROLLOUT = 2
+    PREPARE_SPEC = 3
 
     @abstractmethod
     def rollout(self,
@@ -416,6 +436,13 @@ class RLAlgorithm(Algorithm):
             time_step (ActionTimeStep):
             state (nested Tensor): should be consistent with train_state_spec
             mode (int): one of (ON_POLICY_TRAINING, OFF_POLICY_TRAINING, ROLLOUT).
+                ON_POLICY_TRAINING: called during on-policy training
+                OFF_POLICY_TRAINING: called during the training phase off-policy
+                    training
+                ROLLOUT: called during the rollout phase of off-policy training
+                PREPARE_SPEC: called using fake data for preparing various specs.
+                    rollout() should not make any side effect during this, such
+                    as making changes to Variable using the provided time_step.
         Returns:
             policy_step (PolicyStep):
               action (nested Tensor): should be consistent with
@@ -480,6 +507,41 @@ class RLAlgorithm(Algorithm):
                 time_step = time_step._replace(
                     observation=observation_transformer(time_step.observation))
         return time_step
+
+    def preprocess_experience(self, experience: Experience):
+        """Preprocess experience.
+
+        preprocess_experience is called for the experiences got from replay
+        buffer. An example is to calculate advantages and returns in PPOAlgorithm.
+
+        The shapes of tensors in experience are assumed to be (B, T, ...)
+
+        Args:
+            experience (Experience): original experience
+        Returns:
+            processed experience
+        """
+        return experience
+
+    @abstractmethod
+    def train_step(self, experience: Experience, state):
+        """Perform one step of training computation.
+
+        Args:
+            experience (Experience):
+            state (nested Tensor): should be consistent with train_state_spec
+
+        Returns (PolicyStep):
+            action (nested tf.distribution): should be consistent with
+                `action_distribution_spec`
+            state (nested Tensor): should be consistent with `train_state_spec`
+            info (nested Tensor): everything necessary for training. Note that
+                ("action_distribution", "action", "reward", "discount",
+                "is_last") are automatically collected by OffPolicyDriver. So
+                the user only need to put other stuff (e.g. value estimation)
+                into `policy_step.info`
+        """
+        pass
 
     # Subclass may override train_complete() to allow customized training
     def train_complete(self,

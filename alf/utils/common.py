@@ -688,35 +688,6 @@ def sample_policy_action(policy_step):
     return policy_step
 
 
-def epsilon_greedy_sample(nested_dist, eps=0.1):
-    """
-
-    Generate greedy sample that maximizes the probability.
-
-    Args:
-        nested_dist (nested Distribution): distribution to sample from
-        eps (float): a floating value in [0,1], representing the chance of
-            action sampling instead of taking argmax. This can help prevent
-            a dead loop in some deterministic environment like Breakout.
-    Returns:
-        (nested) Tensor
-    """
-
-    def dist_fn(dist):
-        try:
-            greedy_action = tf.cond(
-                tf.less(tf.random.uniform((), 0, 1), eps), dist.sample,
-                dist.mode)
-        except NotImplementedError:
-            raise ValueError(
-                "Your network's distribution does not implement mode "
-                "making it incompatible with a greedy policy.")
-
-        return tfp.distributions.Deterministic(loc=greedy_action)
-
-    return tf.nest.map_structure(dist_fn, nested_dist)
-
-
 def flatten_once(t):
     """Flatten a tensor along axis=0 and axis=1."""
     return tf.reshape(t, [-1] + list(t.shape[2:]))
@@ -811,13 +782,13 @@ def _build_squash_to_spec_normal(spec, *args, **kwargs):
 
 def extract_spec(nest, from_dim=1):
     """
-    Extract tensor spec for each element of a nested structure.
+    Extract TensorSpec or DistributionSpec for each element of a nested structure.
     It assumes that the first dimension of each element is the batch size.
 
     Args:
         from_dim (int): ignore dimension before this when constructing the spec.
         nest (nested structure): each leaf node of the nested structure is a
-            tensor of the same batch size
+            Tensor or Distribution of the same batch size
     Returns:
         spec (nested structure): each leaf node of the returned nested spec is the
             corresponding spec (excluding batch size) of the element of `nest`

@@ -13,7 +13,6 @@
 # limitations under the License.
 """Base class for off policy algorithms."""
 
-import abc
 from collections import namedtuple
 from typing import Callable
 
@@ -63,48 +62,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
     ```
     """
 
-    def need_full_rollout_state(self):
-        return self._is_rnn and self._use_rollout_state
-
     @property
     def exp_replayer(self):
         """Return experience replayer."""
         return self._exp_replayer
-
-    @abc.abstractmethod
-    def train_step(self, experience: Experience, state):
-        """Perform one step of training computation.
-
-        Args:
-            experience (Experience):
-            state (nested Tensor): should be consistent with train_state_spec
-
-        Returns (PolicyStep):
-            action (nested tf.distribution): should be consistent with
-                `action_distribution_spec`
-            state (nested Tensor): should be consistent with `train_state_spec`
-            info (nested Tensor): everything necessary for training. Note that
-                ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by OffPolicyDriver. So
-                the user only need to put other stuff (e.g. value estimation)
-                into `policy_step.info`
-        """
-        pass
-
-    def preprocess_experience(self, experience: Experience):
-        """Preprocess experience.
-
-        preprocess_experience is called for the experiences got from replay
-        buffer. An example is to calculate advantages and returns in PPOAlgorithm.
-
-        The shapes of tensors in experience are assumed to be (B, T, ...)
-
-        Args:
-            experience (Experience): original experience
-        Returns:
-            processed experience
-        """
-        return experience
 
     def train(self,
               num_updates=1,

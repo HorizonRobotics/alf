@@ -50,9 +50,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
 
     def _init_driver(self):
         return SyncOffPolicyDriver(
-            env=self._envs[0],
-            use_rollout_state=self._config.use_rollout_state,
-            algorithm=self._algorithm)
+            env=self._envs[0], algorithm=self._algorithm)
 
     def _train_iter(self, iter_num, policy_state, time_step):
         max_num_steps = self._unroll_length * self._envs[0].batch_size
@@ -87,7 +85,6 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         driver = AsyncOffPolicyDriver(
             envs=self._envs,
             algorithm=self._algorithm,
-            use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length)
         return driver
 

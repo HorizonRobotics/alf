@@ -21,8 +21,8 @@ import tensorflow as tf
 
 from tf_agents.utils import eager_utils
 
-import alf.utils
 from alf.data_structures import namedtuple, LossInfo
+import alf.utils
 
 AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
 

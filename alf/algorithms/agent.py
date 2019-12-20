@@ -109,7 +109,8 @@ class Agent(OnPolicyAlgorithm):
             entropy_target_algorithm = EntropyTargetAlgorithm(
                 action_spec, debug_summaries=debug_summaries)
 
-        super(Agent, self).__init__(
+        super().__init__(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             predict_state_spec=predict_state_spec,
             train_state_spec=train_state_spec,
@@ -279,6 +280,6 @@ class Agent(OnPolicyAlgorithm):
             training_info._replace(info=training_info.info.rl))
 
     def preprocess_experience(self, exp: Experience):
-        reward = self.calc_training_reward(exp.reward, exp.info)
+        reward = self.calc_training_reward(exp.reward, exp.rollout_info)
         return self._rl_algorithm.preprocess_experience(
-            exp._replace(reward=reward, info=exp.info.rl))
+            exp._replace(reward=reward, rollout_info=exp.rollout_info.rl))

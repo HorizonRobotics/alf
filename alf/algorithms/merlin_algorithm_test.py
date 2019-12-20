@@ -39,6 +39,7 @@ def _create_merlin_algorithm(
     observation_spec = common.get_observation_spec()
     action_spec = common.get_action_spec()
     algorithm = MerlinAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         encoders=EncodingNetwork(
             input_tensor_spec=observation_spec,

@@ -151,12 +151,15 @@ def to_distribution_param_spec(nest):
 
 
 def params_to_distributions(nest, nest_spec):
-    """Convert distribution parameters to Distribution.
+    """Convert distribution parameters to Distribution, keep Tensors unchanged.
 
     Args:
-        action_or_distribution (nested tf.Tensor|nested Distribution]):
-            tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
-            and others for tfp.distributions.Distribution instance
+        nest (nested tf.Tensor): nested Tensor and dictionary of the Tensor
+            parameters of Distribution. Typicall, `nest` is obtained using
+            `distributions_to_params()`
+        nest_spec (nested DistributionSpec and TensorSpec): The distribution
+            params will be converted to Distribution according to the
+            corresponding DistributionSpec in nest_spec
     Returns:
         nested Distribution/Tensor
     """
@@ -175,15 +178,15 @@ def params_to_distributions(nest, nest_spec):
 
 
 def distributions_to_params(nest):
-    """Get the params for an optionally nested Distribution/Tensors.
+    """Convert distributions to its parameters, keep Tensors unchanged.
 
     Only returns parameters that have tf.Tensor values.
 
     Args:
-        nested_distribution (nested tf.distribution.Distribution):
-            The distributions whose parameter tensors to extract.
+        nest (nested Distribution and Tensor): Each Distribution will be
+            converted to dictionary of its Tensor parameters.
     Returns:
-        A nest of Tensor/distribution parameters. Each leaf is a Tensor or a
+        A nest of Tensor/Distribution parameters. Each leaf is a Tensor or a
         dict corresponding to one distribution, with keys as parameter name and
         values as tensors containing parameter values.
     """

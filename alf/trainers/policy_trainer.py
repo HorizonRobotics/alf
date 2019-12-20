@@ -243,8 +243,8 @@ class Trainer(object):
         common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(
-            observation_spec=env.observation_spec,
-            action_spec=env.action_spec,
+            observation_spec=env.observation_spec(),
+            action_spec=env.action_spec(),
             debug_summaries=self._debug_summaries)
         self._algorithm.set_summary_settings(
             summarize_grads_and_vars=self._summarize_grads_and_vars,
