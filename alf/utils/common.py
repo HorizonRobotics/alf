@@ -29,7 +29,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.specs import tensor_spec
-from tf_agents.trajectories.time_step import StepType
+from tf_agents.trajectories.time_step import StepType, TimeStep
 from tf_agents.utils import common as tfa_common
 from tf_agents.specs.distribution_spec import DistributionSpec
 
@@ -60,10 +60,10 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
 
 
 class ActionTimeStep(
-        namedtuple(
-            'ActionTimeStep',
-            ['step_type', 'reward', 'discount', 'observation', 'prev_action'])
-):
+        namedtuple('ActionTimeStep', [
+            'step_type', 'reward', 'discount', 'observation', 'prev_action',
+            'env_id'
+        ])):
     """TimeStep with action."""
 
     def is_first(self):
@@ -82,13 +82,25 @@ class ActionTimeStep(
         return np.equal(self.step_type, StepType.LAST)
 
 
-def make_action_time_step(time_step, prev_action):
+def make_action_time_step(time_step: TimeStep, prev_action, first_env_id=0):
+    """Make ActionTimeStep from TimeStep.
+
+    Args:
+        time_step (TimeStep):
+        prev_action (nested Tensor):
+        first_env_id (int): the environment ID for the first sample in this
+            batch. The environment IDs for the other samples are incremented
+            from this.
+    Returns:
+        ActionTimeStep
+    """
     return ActionTimeStep(
         step_type=time_step.step_type,
         reward=time_step.reward,
         discount=time_step.discount,
         observation=time_step.observation,
-        prev_action=prev_action)
+        prev_action=prev_action,
+        env_id=first_env_id + tf.range(time_step.step_type.shape[0]))
 
 
 LossInfo = namedtuple(
@@ -726,6 +738,8 @@ def to_distribution_spec(spec):
 
     Args:
         spec (tf.TensorSpec | DistributionSpec): spec
+    Returns:
+        nested DistributionSpec
     """
     if isinstance(spec, tf.TensorSpec):
         return DistributionSpec(
@@ -771,19 +785,20 @@ def get_initial_policy_state(batch_size, policy_state_spec):
     return zero_tensor_from_nested_spec(policy_state_spec, batch_size)
 
 
-def get_initial_time_step(env):
+def get_initial_time_step(env, first_env_id=0):
     """
     Return the initial time step
     Args:
         env (TFPyEnvironment):
-
+        first_env_id (int): the environment ID for the first sample in this
+            batch.
     Returns:
         time_step (ActionTimeStep): the init time step with actions as zero
             tensors
     """
     time_step = env.current_time_step()
     action = zero_tensor_from_nested_spec(env.action_spec(), env.batch_size)
-    return make_action_time_step(time_step, action)
+    return make_action_time_step(time_step, action, first_env_id)
 
 
 def algorithm_step(algorithm_step_func, time_step, state):

@@ -56,6 +56,6 @@ TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=True
 TrainerConfig.summary_interval=5
 
-TFUniformReplayBuffer.max_length=2048
+ReplayBuffer.max_length=2048
 
 

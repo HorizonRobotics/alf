@@ -250,7 +250,7 @@ class Trainer(object):
             summarize_action_distributions)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
 
-        self._driver = self.init_driver()
+        self._driver = self._init_driver()
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
@@ -274,7 +274,7 @@ class Trainer(object):
             env.pyenv.close()
 
     @abc.abstractmethod
-    def init_driver(self):
+    def _init_driver(self):
         """Initialize driver
 
         Sub class should implement this method and return an instance of `PolicyDriver`
@@ -299,7 +299,7 @@ class Trainer(object):
         self._close_envs()
 
     @abc.abstractmethod
-    def train_iter(self, iter_num, policy_state, time_step):
+    def _train_iter(self, iter_num, policy_state, time_step):
         """Perform one training iteration.
 
         Args:
@@ -321,7 +321,7 @@ class Trainer(object):
         iter_num = 0
         while True:
             t0 = time.time()
-            time_step, policy_state, train_steps = self.train_iter(
+            time_step, policy_state, train_steps = self._train_iter(
                 iter_num=iter_num,
                 policy_state=policy_state,
                 time_step=time_step)

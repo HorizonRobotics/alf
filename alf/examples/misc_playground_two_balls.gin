@@ -90,4 +90,4 @@ TrainerConfig.use_rollout_state=True
 TrainerConfig.use_tf_functions = True
 TrainerConfig.random_seed = None
 
-TFUniformReplayBuffer.max_length=2048
+ReplayBuffer.max_length=2048

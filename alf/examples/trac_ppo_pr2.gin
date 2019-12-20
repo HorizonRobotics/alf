@@ -67,4 +67,4 @@ TrainerConfig.summary_interval=5
 TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.algorithm_ctor=@Agent
 
-TFUniformReplayBuffer.max_length=2048
+ReplayBuffer.max_length=2048

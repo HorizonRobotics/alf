@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Thread classes for asynchronous training."""
 
 from collections import namedtuple
 import threading
@@ -117,10 +118,9 @@ def repeat_shape_n(nested_spec, n):
         lambda t: tf.TensorSpec([n] + list(t.shape), t.dtype), nested_spec)
 
 
-LearningBatch = namedtuple("LearningBatch", [
-    "time_step", "state", "policy_step", "act_dist_param", "next_time_step",
-    "env_id"
-])
+LearningBatch = namedtuple(
+    "LearningBatch",
+    ["time_step", "state", "policy_step", "act_dist_param", "next_time_step"])
 
 
 class TFQueues(object):
@@ -195,8 +195,7 @@ class TFQueues(object):
                 act_dist_param=repeat_shape_n(self._act_dist_param_spec,
                                               unroll_length),
                 next_time_step=repeat_shape_n(self._time_step_spec,
-                                              unroll_length),
-                env_id=tf.ones((), dtype=tf.int32)))
+                                              unroll_length)))
 
         self.log_queue = NestFIFOQueue(
             capacity=num_envs,
@@ -237,8 +236,8 @@ class TFQueues(object):
                     state=self._policy_step_spec.state if store_state else (),
                     policy_step=self._policy_step_spec,
                     act_dist_param=self._act_dist_param_spec,
-                    next_time_step=self._time_step_spec,
-                    env_id=())) for i in range(num_envs)
+                    next_time_step=self._time_step_spec))
+            for i in range(num_envs)
         ]
 
     def close_all(self):
@@ -360,8 +359,15 @@ class EnvThread(Thread):
     simulator to an external process
     """
 
-    def __init__(self, name, coord, env, tf_queues, unroll_length, id,
-                 actor_id):
+    def __init__(self,
+                 name,
+                 coord,
+                 env,
+                 tf_queues,
+                 unroll_length,
+                 id,
+                 actor_id,
+                 first_env_id=None):
         """
         Args:
             name (str): name of the thread
@@ -373,6 +379,12 @@ class EnvThread(Thread):
                 the steps to the learning queue. If the env is batched, then
                 the total number would be `unroll_length` * `batch_size`.
             id (int): an integer identifies the env thread
+            first_env_id (int): the id for the first environment of the
+                batched environment `env`. If there are multiple `EnvThread`s.
+                The `first_env_id` should be set in such way that the IDs for
+                individual environments are different. If None, it's assumed
+                that all the `env` have same batch_size and first_env_id will
+                be set as `id * env.batch_size`
             actor_id (int): indicates which actor thread the env thread should
                 send time steps to.
         """
@@ -381,6 +393,9 @@ class EnvThread(Thread):
         self._env = env
         self._tfq = tf_queues
         self._id = id
+        if first_env_id is None:
+            first_env_id = self._id * env.batch_size
+        self._first_env_id = first_env_id
         self._actor_q = self._tfq.actor_queues[actor_id]
         self._action_return_q = self._tfq.action_return_queues[id]
         self._unroll_queue = self._tfq.env_unroll_queues[id]
@@ -396,7 +411,8 @@ class EnvThread(Thread):
         self._actor_q.enqueue([time_step, policy_state, self._id])
         policy_step, act_dist_param = self._action_return_q.dequeue()
         action = policy_step.action
-        next_time_step = make_action_time_step(self._env.step(action), action)
+        next_time_step = make_action_time_step(
+            self._env.step(action), action, first_env_id=self._first_env_id)
         # temporarily store the transition into a local queue
         self._unroll_queue.enqueue(
             LearningBatch(
@@ -404,8 +420,7 @@ class EnvThread(Thread):
                 state=policy_state if self._tfq._store_state else (),
                 policy_step=policy_step,
                 act_dist_param=act_dist_param,
-                next_time_step=next_time_step,
-                env_id=()))
+                next_time_step=next_time_step))
         return [next_time_step, policy_step.state]
 
     def _unroll_env(self, time_step, policy_state, unroll_length):
@@ -425,7 +440,7 @@ class EnvThread(Thread):
         # Dump transitions from the local queue and put into
         # the learner queue and the log queue
         unrolled = self._unroll_queue.dequeue_all()
-        self._tfq.learn_queue.enqueue(unrolled._replace(env_id=self._id))
+        self._tfq.learn_queue.enqueue(unrolled)
         self._tfq.log_queue.enqueue([
             unrolled.time_step, unrolled.policy_step, unrolled.next_time_step,
             self._id
@@ -434,7 +449,8 @@ class EnvThread(Thread):
 
     def _run(self, coord, unroll_length):
         with coord.stop_on_exception():
-            time_step = common.get_initial_time_step(self._env)
+            time_step = common.get_initial_time_step(
+                self._env, first_env_id=self._first_env_id)
             policy_state = self._initial_policy_state
             while not coord.should_stop():
                 time_step, policy_state = self._unroll_and_learn(

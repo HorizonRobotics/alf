@@ -65,4 +65,4 @@ TrainerConfig.unroll_length=512
 TrainerConfig.use_tf_functions=True
 PolicyDriver.summarize_action_distributions=True
 
-TFUniformReplayBuffer.max_length=2048
+ReplayBuffer.max_length=2048

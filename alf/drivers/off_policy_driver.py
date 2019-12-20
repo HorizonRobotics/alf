@@ -37,6 +37,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  env: TFEnvironment,
                  algorithm: OffPolicyAlgorithm,
                  exp_replayer: str,
+                 num_envs=1,
                  observers=[],
                  use_rollout_state=False,
                  metrics=[]):
@@ -47,6 +48,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             algorithm (OffPolicyAlgorithm): The algorithm for training
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use. Either "one_time" or "uniform".
+            num_envs (int): the number of batched environments. The total number
+                of single environment is `num_envs * env.batch_size`
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
@@ -62,7 +65,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             greedy_predict=False)  # always use OnPolicyDriver for play/eval!
 
         self._prepare_specs(algorithm)
-        algorithm.set_exp_replayer(exp_replayer)
+        algorithm.set_exp_replayer(exp_replayer, num_envs)
 
     def start(self):
         """

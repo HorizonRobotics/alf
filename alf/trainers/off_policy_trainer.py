@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Off-policy trainer."""
 
 import time
 from absl import logging
@@ -21,11 +22,14 @@ import tensorflow as tf
 from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
 from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.trainers.policy_trainer import Trainer
+from alf.utils.summary_utils import record_time
 
 
 class OffPolicyTrainer(Trainer):
+    """Base class for off-policy trainer."""
+
     def __init__(self, config):
-        """Abstract base class for off policy trainer
+        """Create an OffPolicyTrainer
 
         Args:
             config (TrainerConfig): configuration used to construct this trainer
@@ -42,40 +46,42 @@ class OffPolicyTrainer(Trainer):
 
 @gin.configurable("sync_off_policy_trainer")
 class SyncOffPolicyTrainer(OffPolicyTrainer):
-    """Perform off-policy training using SyncOffPolicyDriver"""
+    """Perform off-policy training using SyncOffPolicyDriver."""
 
-    def init_driver(self):
+    def _init_driver(self):
         return SyncOffPolicyDriver(
             env=self._envs[0],
             use_rollout_state=self._config.use_rollout_state,
             algorithm=self._algorithm)
 
-    def train_iter(self, iter_num, policy_state, time_step):
+    def _train_iter(self, iter_num, policy_state, time_step):
         max_num_steps = self._unroll_length * self._envs[0].batch_size
         if iter_num == 0 and self._initial_collect_steps != 0:
             max_num_steps = self._initial_collect_steps
-        time_step, policy_state = self._driver.run(
-            max_num_steps=max_num_steps,
-            time_step=time_step,
-            policy_state=policy_state)
-        # `train_steps` might be different from `max_num_steps`!
-        train_steps = self._algorithm.train(
-            num_updates=self._num_updates_per_train_step,
-            mini_batch_size=self._mini_batch_size,
-            mini_batch_length=self._mini_batch_length,
-            clear_replay_buffer=self._clear_replay_buffer)
+        with record_time("time/driver_run"):
+            time_step, policy_state = self._driver.run(
+                max_num_steps=max_num_steps,
+                time_step=time_step,
+                policy_state=policy_state)
+        with record_time("time/train"):
+            # `train_steps` might be different from `max_num_steps`!
+            train_steps = self._algorithm.train(
+                num_updates=self._num_updates_per_train_step,
+                mini_batch_size=self._mini_batch_size,
+                mini_batch_length=self._mini_batch_length,
+                clear_replay_buffer=self._clear_replay_buffer)
         return time_step, policy_state, train_steps
 
 
 @gin.configurable("async_off_policy_trainer")
 class AsyncOffPolicyTrainer(OffPolicyTrainer):
-    """Perform off-policy training using AsyncOffPolicyDriver"""
+    """Perform off-policy training using AsyncOffPolicyDriver."""
 
     def __init__(self, config):
         super().__init__(config)
         self._driver_started = False
 
-    def init_driver(self):
+    def _init_driver(self):
         for _ in range(1, self._config.num_envs):
             self._create_environment()
         driver = AsyncOffPolicyDriver(
@@ -85,20 +91,22 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             unroll_length=self._unroll_length)
         return driver
 
-    def train_iter(self, iter_num, policy_state, time_step):
+    def _train_iter(self, iter_num, policy_state, time_step):
         if not self._driver_started:
             self._driver.start()
             self._driver_started = True
-        if iter_num == 0 and self._initial_collect_steps != 0:
-            steps = 0
-            while steps < self._initial_collect_steps:
-                steps += self._driver.run_async()
-        else:
-            self._driver.run_async()
-        # `train_steps` might be different from `steps`!
-        train_steps = self._algorithm.train(
-            num_updates=self._num_updates_per_train_step,
-            mini_batch_size=self._mini_batch_size,
-            mini_batch_length=self._mini_batch_length,
-            clear_replay_buffer=self._clear_replay_buffer)
+        with record_time("time/driver_run"):
+            if iter_num == 0 and self._initial_collect_steps != 0:
+                steps = 0
+                while steps < self._initial_collect_steps:
+                    steps += self._driver.run_async()
+            else:
+                self._driver.run_async()
+        with record_time("time/train"):
+            # `train_steps` might be different from `steps`!
+            train_steps = self._algorithm.train(
+                num_updates=self._num_updates_per_train_step,
+                mini_batch_size=self._mini_batch_size,
+                mini_batch_length=self._mini_batch_length,
+                clear_replay_buffer=self._clear_replay_buffer)
         return time_step, policy_state, train_steps

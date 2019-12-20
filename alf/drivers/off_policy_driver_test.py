@@ -70,7 +70,7 @@ def _create_ddpg_algorithm():
         action_spec=action_spec,
         actor_network=actor_net,
         critic_network=critic_net,
-        actor_optimizer=tf.optimizers.Adam(learning_rate=1e-2),
+        actor_optimizer=tf.optimizers.Adam(learning_rate=5e-3),
         critic_optimizer=tf.optimizers.Adam(learning_rate=1e-1),
         debug_summaries=True)
 
@@ -235,7 +235,6 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
                 unroll_length=unroll_length,
                 learn_queue_cap=1,
                 actor_queue_cap=1)
-        replayer = driver.algorithm.exp_replayer
         eval_driver = OnPolicyDriver(
             eval_env, algorithm, training=False, greedy_predict=True)
 

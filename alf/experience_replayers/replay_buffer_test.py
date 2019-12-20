@@ -26,6 +26,8 @@ class ReplayBufferTest(tf.test.TestCase):
             x = tf.constant(x)
         if isinstance(y, list):
             y = tf.constant(y)
+        x = tf.cast(x, tf.float64)
+        y = tf.cast(y, tf.float64)
         self.assertEqual(x.shape, y.shape)
         self.assertEqual(float(tf.reduce_max(abs(x - y))), 0)
 
@@ -67,6 +69,10 @@ class ReplayBufferTest(tf.test.TestCase):
                               [1, 1, 1, 1, 1, 1, 1, 1])
         self.assertArrayEqual(replay_buffer._current_pos,
                               [1, 1, 1, 1, 1, 1, 1, 1])
+
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 1])
+
         with self.assertRaises(tf.errors.InvalidArgumentError):
             replay_buffer.get_batch(8, 2)
             replay_buffer.get_batch(13, 1)
@@ -125,6 +131,8 @@ class ReplayBufferTest(tf.test.TestCase):
             self.assertArrayEqual(bat2.env_id, batch2.env_id)
             self.assertArrayEqual(bat2.x, batch2.x)
             t3.append(bat3.t)
+
+        # Test time consistency
         self.assertArrayEqual(t2[0] + 1, t2[1])
         self.assertArrayEqual(t3[0] + 1, t3[1])
 
@@ -139,6 +147,16 @@ class ReplayBufferTest(tf.test.TestCase):
         batch = replay_buffer.get_batch(4, 2)
         self.assertArrayEqual(batch.t[:, 0] + 1, batch.t[:, 1])
         self.assertEqual(batch.t.shape, [4, 2])
+
+        # Test gather_all()
+        with self.assertRaises(tf.errors.InvalidArgumentError):
+            replay_buffer.gather_all()
+
+        for t in range(2, 10):
+            batch4 = _get_batch([1, 2, 3, 5, 6], t=t, x=0.4)
+            replay_buffer.add_batch(batch4, batch4.env_id)
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 4])
 
 
 if __name__ == '__main__':

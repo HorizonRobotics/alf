@@ -15,7 +15,6 @@
 from typing import Callable
 from absl import logging
 
-from alf.utils import common
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.off_policy_algorithm import make_experience
 
@@ -81,6 +80,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         """
         super(AsyncOffPolicyDriver, self).__init__(
             env=envs[0],
+            num_envs=len(envs),
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
@@ -151,7 +151,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         Get training experiences from the learning queue
 
         Returns:
-            exp (Experience):
+            exp (Experience): shapes are [Q, T, B, ...], where Q is
+                learn_queue_cap
             env_id (tf.tensor): if not None, has the shape of (`num_envs`). Each
                 element of `env_ids` indicates which batched env the data come from.
             steps (int): how many environment steps this batch of exps contain
@@ -164,11 +165,10 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             batch.act_dist_param,
             state=batch.state)
         # make the exp batch major for each environment
-        exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
         num_envs, unroll_length, env_batch_size \
             = batch.time_step.reward.shape[:3]
         steps = num_envs * unroll_length * env_batch_size
-        return exp, batch.env_id, steps
+        return exp, steps
 
     def run_async(self):
         """
@@ -181,9 +181,8 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         Output:
             steps (int): the total number of unrolled steps
         """
-        exp, env_id, steps = self.get_training_exps()
-        for ob in self._algorithm.exp_observers:
-            ob(exp, env_id)
+        exp, steps = self.get_training_exps()
+        self._algorithm.observe(exp)
         return steps
 
     def _run(self, *args, **kwargs):
