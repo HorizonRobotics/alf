@@ -60,30 +60,16 @@ class AdaptiveNormalizer(tf.Module):
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
-
-        def _create_averager(spec):
-            return AdaptiveAverager(spec, speed=speed)
-
-        self._mean_averager = tf.nest.map_structure(_create_averager,
-                                                    tensor_spec)
-        self._m2_averager = tf.nest.map_structure(_create_averager,
-                                                  tensor_spec)
+        self._mean_averager = AdaptiveAverager(tensor_spec, speed=speed)
+        self._m2_averager = AdaptiveAverager(tensor_spec, speed=speed)
         self._auto_update = auto_update
         self._variance_epsilon = variance_epsilon
         self._tensor_spec = tensor_spec
 
     def update(self, tensor):
-        def _update(averager, spec, t):
-            outer_dims = get_outer_rank(t, spec)
-            batch_squash = BatchSquash(outer_dims)
-            t = batch_squash.flatten(t)
-            averager.update(tf.reduce_mean(t, axis=0))
-
-        tf.nest.map_structure(_update, self._mean_averager, self._tensor_spec,
-                              tensor)
-        tf.nest.map_structure(
-            lambda averager, spec, t: _update(averager, spec, tf.square(t)),
-            self._m2_averager, self._tensor_spec, tensor)
+        self._mean_averager.update(tensor)
+        sqr_tensor = tf.nest.map_structure(tf.square, tensor)
+        self._m2_averager.update(sqr_tensor)
 
     def normalize(self, tensor, clip_value=-1.0):
         """
