@@ -88,13 +88,13 @@ class AdaptiveNormalizer(tf.Module):
             self.update(tensor)
 
         def _normalize(m, m2, spec, t):
-            var = m2.get() - tf.square(m.get())
+            var = m2 - tf.square(m)
             outer_dims = get_outer_rank(t, spec)
             batch_squash = BatchSquash(outer_dims)
             t = batch_squash.flatten(t)
             t = tf.nn.batch_normalization(
                 t,
-                m.get(),
+                m,
                 var,
                 offset=None,
                 scale=None,
@@ -104,9 +104,9 @@ class AdaptiveNormalizer(tf.Module):
             t = batch_squash.unflatten(t)
             return t
 
-        return tf.nest.map_structure(_normalize, self._mean_averager,
-                                     self._m2_averager, self._tensor_spec,
-                                     tensor)
+        return tf.nest.map_structure(_normalize, self._mean_averager.get(),
+                                     self._m2_averager.get(),
+                                     self._tensor_spec, tensor)
 
 
 class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
