@@ -15,14 +15,15 @@
 
 from collections import namedtuple
 import threading
+import traceback
 from threading import Thread
 
 from typing import Callable
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from alf.utils import common
-from alf.algorithms.rl_algorithm import make_action_time_step
+from alf.utils import common, nest_utils
+from alf.data_structures import make_action_time_step
 
 from tf_agents.trajectories.trajectory import from_transition
 
@@ -118,9 +119,8 @@ def repeat_shape_n(nested_spec, n):
         lambda t: tf.TensorSpec([n] + list(t.shape), t.dtype), nested_spec)
 
 
-LearningBatch = namedtuple(
-    "LearningBatch",
-    ["time_step", "state", "policy_step", "act_dist_param", "next_time_step"])
+LearningBatch = namedtuple("LearningBatch",
+                           ["time_step", "policy_step", "next_time_step"])
 
 
 class TFQueues(object):
@@ -133,9 +133,7 @@ class TFQueues(object):
                  actor_queue_cap,
                  time_step_spec,
                  policy_step_spec,
-                 act_dist_param_spec,
                  unroll_length,
-                 store_state,
                  num_actor_queues=1):
         """
         Create five kinds of queues:
@@ -170,39 +168,33 @@ class TFQueues(object):
                 used for creating queues
             policy_step_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs();
                 used for creating queues
-            act_dist_param_spec (tf.nest): see OffPolicyAsyncDriver._prepare_specs();
-                used for creating queues
             unroll_length (int): how many time steps each environment proceeds
                 before training
-            store_state (bool): Include the RNN state for the experiences
             num_actor_queues (int): number of actor queues running in parallel
         """
-        self._time_step_spec = repeat_shape_n(time_step_spec, env_batch_size)
-        self._policy_step_spec = repeat_shape_n(policy_step_spec,
-                                                env_batch_size)
-        self._act_dist_param_spec = repeat_shape_n(act_dist_param_spec,
-                                                   env_batch_size)
-        self._store_state = store_state
+        batch_time_step_spec = repeat_shape_n(time_step_spec, env_batch_size)
+        batch_policy_step_spec = repeat_shape_n(
+            nest_utils.to_distribution_param_spec(policy_step_spec),
+            env_batch_size)
+        unrolled_time_step_spec = repeat_shape_n(batch_time_step_spec,
+                                                 unroll_length)
+        unrolled_policy_step_spec = repeat_shape_n(batch_policy_step_spec,
+                                                   unroll_length)
+
+        self._batch_state_spec = batch_policy_step_spec.state
 
         self.learn_queue = NestFIFOQueue(
             capacity=learn_queue_cap,
             sample_element=LearningBatch(
-                time_step=repeat_shape_n(self._time_step_spec, unroll_length),
-                state=repeat_shape_n(self._policy_step_spec.state,
-                                     unroll_length) if store_state else (),
-                policy_step=repeat_shape_n(self._policy_step_spec,
-                                           unroll_length),
-                act_dist_param=repeat_shape_n(self._act_dist_param_spec,
-                                              unroll_length),
-                next_time_step=repeat_shape_n(self._time_step_spec,
-                                              unroll_length)))
+                time_step=unrolled_time_step_spec,
+                policy_step=unrolled_policy_step_spec,
+                next_time_step=unrolled_time_step_spec))
 
         self.log_queue = NestFIFOQueue(
             capacity=num_envs,
             sample_element=[
-                repeat_shape_n(self._time_step_spec, unroll_length),
-                repeat_shape_n(self._policy_step_spec, unroll_length),
-                repeat_shape_n(self._time_step_spec, unroll_length),
+                unrolled_time_step_spec, unrolled_policy_step_spec,
+                unrolled_time_step_spec,
                 tf.ones((), dtype=tf.int32)
             ])
 
@@ -215,28 +207,23 @@ class TFQueues(object):
             NestFIFOQueue(
                 capacity=actor_queue_cap,
                 sample_element=[
-                    self._time_step_spec, self._policy_step_spec.state,
+                    batch_time_step_spec, batch_policy_step_spec.state,
                     tf.ones((), dtype=tf.int32)
                 ]) for i in range(num_actor_queues)
         ]
 
         self.action_return_queues = [
-            NestFIFOQueue(
-                capacity=1,
-                sample_element=[
-                    self._policy_step_spec, self._act_dist_param_spec
-                ]) for i in range(num_envs)
+            NestFIFOQueue(capacity=1, sample_element=batch_policy_step_spec)
+            for i in range(num_envs)
         ]
 
         self.env_unroll_queues = [
             NestFIFOQueue(
                 capacity=unroll_length,
                 sample_element=LearningBatch(
-                    time_step=self._time_step_spec,
-                    state=self._policy_step_spec.state if store_state else (),
-                    policy_step=self._policy_step_spec,
-                    act_dist_param=self._act_dist_param_spec,
-                    next_time_step=self._time_step_spec))
+                    time_step=batch_time_step_spec,
+                    policy_step=batch_policy_step_spec,
+                    next_time_step=batch_time_step_spec))
             for i in range(num_envs)
         ]
 
@@ -277,13 +264,11 @@ class ActorThread(Thread):
         self._actor_q = self._tfq.actor_queues[id]
 
     @tf.function
-    def _enqueue_actions(self, policy_step, action_dist_param, i, return_q):
+    def _enqueue_actions(self, policy_step, i, return_q):
         i_policy_step = tf.nest.map_structure(lambda e: e[i], policy_step)
-        i_action_dist_param = tf.nest.map_structure(lambda e: e[i],
-                                                    action_dist_param)
-        return_q.enqueue([i_policy_step, i_action_dist_param])
+        return_q.enqueue(i_policy_step)
 
-    def _send_actions_back(self, i, env_ids, policy_step, action_dist_param):
+    def _send_actions_back(self, i, env_ids, policy_step):
         """
         Send back the policy step to the i-th id in `env_ids`
         """
@@ -292,17 +277,8 @@ class ActorThread(Thread):
         # to index a python list of non-tensor objects with tf.scalar
         action_return_queue = self._tfq.action_return_queues[env_id]
 
-        self._enqueue_actions(policy_step, action_dist_param, i,
-                              action_return_queue)
-        return [i + 1, env_ids, policy_step, action_dist_param]
-
-    def _step(self, algorithm, time_step, state):
-        time_step = algorithm.transform_timestep(time_step)
-        policy_step = common.algorithm_step(algorithm.rollout, time_step,
-                                            state)
-        action_dist_param = common.get_distribution_params(policy_step.action)
-        policy_step = common.sample_policy_action(policy_step)
-        return policy_step, action_dist_param
+        self._enqueue_actions(policy_step, i, action_return_queue)
+        return [i + 1, env_ids, policy_step]
 
     @tf.function
     def _dequeue_and_step(self, algorithm):
@@ -312,26 +288,23 @@ class ActorThread(Thread):
         policy_state = tf.nest.map_structure(common.flatten_once, policy_state)
 
         # prediction forward
-        policy_step, action_dist_param = self._step(algorithm, time_step,
-                                                    policy_state)
+        transformed_time_step = algorithm.transform_timestep(time_step)
+        policy_step = algorithm.rollout(transformed_time_step, policy_state)
 
         # unpack
+        policy_step = nest_utils.distributions_to_params(policy_step)
         policy_step = tf.nest.map_structure(
             lambda e: tf.reshape(e, [env_ids.shape[0], -1] + list(e.shape[1:])
                                  ), policy_step)
-        action_dist_param = tf.nest.map_structure(
-            lambda e: tf.reshape(e, [env_ids.shape[0], -1] + list(e.shape[1:])
-                                 ), action_dist_param)
-        return policy_step, action_dist_param, env_ids
+        return policy_step, env_ids
 
     def _acting_body(self, algorithm):
-        policy_step, action_dist_param, env_ids = self._dequeue_and_step(
-            algorithm)
+        policy_step, env_ids = self._dequeue_and_step(algorithm)
         i = tf.zeros((), tf.int32)
         tf.while_loop(
             cond=lambda *_: True,
             body=self._send_actions_back,
-            loop_vars=[i, env_ids, policy_step, action_dist_param],
+            loop_vars=[i, env_ids, policy_step],
             back_prop=False,
             parallel_iterations=env_ids.shape[0],
             maximum_iterations=env_ids.shape[0])
@@ -340,8 +313,17 @@ class ActorThread(Thread):
         # do not apply tf.function to any code containing coord!
         # (it won't work)
         with coord.stop_on_exception():
-            while not coord.should_stop():
-                self._acting_body(algorithm)
+            try:
+                while not coord.should_stop():
+                    self._acting_body(algorithm)
+            except tf.errors.CancelledError as e:
+                raise e
+            except tf.errors.OutOfRangeError as e:
+                raise e
+            except Exception as e:
+                traceback.print_exc()
+                raise e
+
         # Whoever stops first, cancel all pending requests
         # (including enqueues and dequeues),
         # so that no thread hangs before calling coord.should_stop()
@@ -403,13 +385,13 @@ class EnvThread(Thread):
             self._env.batch_size,
             tf.nest.map_structure(
                 lambda t: tf.TensorSpec(t.shape[1:], t.dtype),
-                self._tfq._policy_step_spec.state))
+                self._tfq._batch_state_spec))
 
     def _step(self, time_step, policy_state):
         policy_state = common.reset_state_if_necessary(
             policy_state, self._initial_policy_state, time_step.is_first())
         self._actor_q.enqueue([time_step, policy_state, self._id])
-        policy_step, act_dist_param = self._action_return_q.dequeue()
+        policy_step = self._action_return_q.dequeue()
         action = policy_step.action
         next_time_step = make_action_time_step(
             self._env.step(action), action, first_env_id=self._first_env_id)
@@ -417,9 +399,7 @@ class EnvThread(Thread):
         self._unroll_queue.enqueue(
             LearningBatch(
                 time_step=time_step,
-                state=policy_state if self._tfq._store_state else (),
                 policy_step=policy_step,
-                act_dist_param=act_dist_param,
                 next_time_step=next_time_step))
         return [next_time_step, policy_step.state]
 
@@ -449,12 +429,20 @@ class EnvThread(Thread):
 
     def _run(self, coord, unroll_length):
         with coord.stop_on_exception():
-            time_step = common.get_initial_time_step(
-                self._env, first_env_id=self._first_env_id)
-            policy_state = self._initial_policy_state
-            while not coord.should_stop():
-                time_step, policy_state = self._unroll_and_learn(
-                    time_step, policy_state, unroll_length)
+            try:
+                time_step = common.get_initial_time_step(
+                    self._env, first_env_id=self._first_env_id)
+                policy_state = self._initial_policy_state
+                while not coord.should_stop():
+                    time_step, policy_state = self._unroll_and_learn(
+                        time_step, policy_state, unroll_length)
+            except tf.errors.CancelledError as e:
+                raise e
+            except tf.errors.OutOfRangeError as e:
+                raise e
+            except Exception as e:
+                traceback.print_exc()
+                raise e
         # Whoever stops first, cancel all pending requests
         # (including enqueues and dequeues),
         # so that no thread hangs before calling coord.should_stop()
@@ -503,5 +491,13 @@ class LogThread(Thread):
 
     def _run(self, coord, queue):
         with coord.stop_on_exception():
-            while not coord.should_stop():
-                self._summary(queue.dequeue())
+            try:
+                while not coord.should_stop():
+                    self._summary(queue.dequeue())
+            except tf.errors.CancelledError as e:
+                raise e
+            except tf.errors.OutOfRangeError as e:
+                raise e
+            except Exception as e:
+                traceback.print_exc()
+                raise e

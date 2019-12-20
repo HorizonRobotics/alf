@@ -21,12 +21,15 @@ from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, namedtuple
+import alf.data_structures as ds
+from alf.data_structures import ActionTimeStep, namedtuple
+from alf.utils import common
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
 
-ActorCriticInfo = namedtuple("ActorCriticInfo", ["value"])
+ActorCriticInfo = namedtuple("ActorCriticInfo",
+                             ["action_distribution", "value"])
 
 
 @gin.configurable
@@ -34,6 +37,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     """Actor critic algorithm."""
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  actor_network: DistributionNetwork,
                  value_network: Network,
@@ -61,13 +65,13 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             name (str): Name of this algorithm.
             """
         super(ActorCriticAlgorithm, self).__init__(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             predict_state_spec=ActorCriticState(
                 actor=actor_network.state_spec),
             train_state_spec=ActorCriticState(
                 actor=actor_network.state_spec,
                 value=value_network.state_spec),
-            action_distribution_spec=actor_network.output_spec,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
@@ -81,7 +85,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
-    def predict(self, time_step: ActionTimeStep, state: ActorCriticState):
+    def predict_action_distribution(self, time_step: ActionTimeStep,
+                                    state: ActorCriticState):
         """Predict for one step."""
         action_distribution, actor_state = self._actor_network(
             time_step.observation,
@@ -93,10 +98,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state=ActorCriticState(actor=actor_state),
             info=())
 
-    def rollout(self,
-                time_step: ActionTimeStep,
-                state: ActorCriticState,
-                is_train_step=False):
+    def rollout_action_distribution(self, time_step: ActionTimeStep,
+                                    state: ActorCriticState, mode):
         """Rollout for one step."""
         value, value_state = self._value_network(
             time_step.observation,
@@ -111,7 +114,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         return PolicyStep(
             action=action_distribution,
             state=ActorCriticState(actor=actor_state, value=value_state),
-            info=ActorCriticInfo(value=value))
+            info=ActorCriticInfo(
+                value=value, action_distribution=action_distribution))
 
     def calc_loss(self, training_info):
         """Calculate loss."""

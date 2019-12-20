@@ -19,7 +19,7 @@ import tensorflow as tf
 from tf_agents.utils import common as tfa_common
 from tf_agents.specs import tensor_spec
 
-from alf.algorithms.rl_algorithm import TrainingInfo, LossInfo
+from alf.data_structures import TrainingInfo, LossInfo
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.losses import element_wise_squared_loss
@@ -103,9 +103,9 @@ class PPOLoss(ActorCriticLoss):
     def _pg_loss(self, training_info: TrainingInfo, advantages):
         scope = tf.name_scope(self.__class__.__name__)
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
-            action_distribution=training_info.action_distribution,
-            collect_action_distribution=training_info.
-            collect_action_distribution,
+            action_distribution=training_info.info.action_distribution,
+            collect_action_distribution=training_info.rollout_info.
+            action_distribution,
             action=training_info.action,
             action_spec=self._action_spec,
             clipping_mode='double_sided',
@@ -136,6 +136,6 @@ class PPOLoss(ActorCriticLoss):
         return policy_gradient_loss
 
     def _calc_returns_and_advantages(self, training_info: TrainingInfo, value):
-        advantages = training_info.collect_info.advantages
-        returns = training_info.collect_info.returns
+        advantages = training_info.rollout_info.advantages
+        returns = training_info.rollout_info.returns
         return returns, advantages

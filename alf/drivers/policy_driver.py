@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import abc
+import functools
 import os
 from typing import Callable
 
@@ -24,9 +25,9 @@ from tf_agents.drivers import driver
 from tf_agents.metrics import tf_metrics
 from tf_agents.trajectories.trajectory import from_transition
 
-from alf.algorithms.off_policy_algorithm import make_experience
-from alf.utils import common, summary_utils
-from alf.algorithms.rl_algorithm import make_action_time_step
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.data_structures import make_action_time_step, make_experience
+from alf.utils import common, nest_utils, summary_utils
 
 
 @gin.configurable
@@ -35,10 +36,8 @@ class PolicyDriver(driver.Driver):
                  env,
                  algorithm,
                  observers=[],
-                 use_rollout_state=False,
                  metrics=[],
-                 training=True,
-                 greedy_predict=False):
+                 mode="on_policy_training"):
         """Create a PolicyDriver.
 
         Args:
@@ -47,18 +46,21 @@ class PolicyDriver(driver.Driver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            use_rollout_state (bool): Include the RNN state for the experiences
-                used for off-policy training
             metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
             greedy_predict (bool): use greedy action for evaluation (i.e.
                 training==False).
         """
+        assert mode in [
+            "on_policy_training", "predict", "greedy_predict", "rollout"
+        ]
+        self._mode = mode
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
             tf_metrics.NumberOfEpisodes(),
             tf_metrics.EnvironmentSteps(),
         ]
+        training = mode in ["on_policy_training", "rollout"]
         # This is a HACK.
         # Due to tf_agents metric API change:
         # https://github.com/tensorflow/agents/commit/b08a142edf180325b63441ec1b71119c393c4a64,
@@ -74,14 +76,12 @@ class PolicyDriver(driver.Driver):
                     batch_size=env.batch_size, buffer_size=metric_buf_size),
             ]
         self._metrics = standard_metrics + metrics
-        self._use_rollout_state = use_rollout_state
 
         super(PolicyDriver, self).__init__(env, None,
                                            observers + self._metrics)
 
         self._algorithm = algorithm
         self._training = training
-        self._greedy_predict = greedy_predict
         if training:
             self._policy_state_spec = algorithm.train_state_spec
         else:
@@ -91,10 +91,6 @@ class PolicyDriver(driver.Driver):
     @property
     def algorithm(self):
         return self._algorithm
-
-    @abc.abstractmethod
-    def _prepare_specs(self, algorithm):
-        pass
 
     def get_step_metrics(self):
         """Get step metrics that used for generating summaries against
@@ -139,38 +135,40 @@ class PolicyDriver(driver.Driver):
         return time_step, policy_state
 
     def _eval_loop_body(self, time_step, policy_state):
-        next_time_step, policy_step, _, _ = self._step(time_step, policy_state)
+        next_time_step, policy_step, _ = self._step(time_step, policy_state)
         return [next_time_step, policy_step.state]
 
     def _step(self, time_step, policy_state):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        step_func = self._algorithm.rollout if self._training else (
-            self._algorithm.greedy_predict
-            if self._greedy_predict else self._algorithm.predict)
+        if self._mode == "predict":
+            step_func = self._algorithm.predict
+        elif self._mode == "greedy_predict":
+            step_func = self._algorithm.greedy_predict
+        elif self._mode == "on_policy_training":
+            step_func = functools.partial(
+                self._algorithm.rollout, mode=RLAlgorithm.ON_POLICY_TRAINING)
+        elif self._mode == "rollout":
+            step_func = functools.partial(
+                self._algorithm.rollout, mode=RLAlgorithm.ROLLOUT)
+        else:
+            raise ValueError()
         transformed_time_step = self._algorithm.transform_timestep(time_step)
-        policy_step = common.algorithm_step(step_func, transformed_time_step,
-                                            policy_state)
-        action = common.sample_action_distribution(policy_step.action)
-        next_time_step = self._env_step(action)
+        policy_step = step_func(transformed_time_step, policy_state)
+
+        next_time_step = self._env_step(policy_step.action)
         if self._observers:
-            traj = from_transition(time_step,
-                                   policy_step._replace(action=action),
+            traj = from_transition(time_step, policy_step._replace(info=()),
                                    next_time_step)
             for observer in self._observers:
                 observer(traj)
         if self._algorithm.exp_observers and self._training:
-            action_distribution_param = common.get_distribution_params(
-                policy_step.action)
-            exp = make_experience(
-                time_step,
-                policy_step._replace(action=action),
-                action_distribution=action_distribution_param,
-                state=policy_state if self._use_rollout_state else ())
+            policy_step = nest_utils.distributions_to_params(policy_step)
+            exp = make_experience(time_step, policy_step)
             self._algorithm.observe(exp)
 
-        return next_time_step, policy_step, action, transformed_time_step
+        return next_time_step, policy_step, transformed_time_step
 
     def _env_step(self, action):
         time_step = self._env.step(action)

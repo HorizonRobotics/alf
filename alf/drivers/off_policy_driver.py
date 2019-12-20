@@ -15,17 +15,11 @@
 from absl import logging
 
 import tensorflow as tf
-import tensorflow_probability as tfp
 
-from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import StepType
 from tf_agents.environments.tf_environment import TFEnvironment
-from tf_agents.specs.distribution_spec import DistributionSpec
-from tf_agents.specs.tensor_spec import TensorSpec
 
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
 from alf.drivers import policy_driver
-from alf.utils import common
 
 
 class OffPolicyDriver(policy_driver.PolicyDriver):
@@ -39,7 +33,6 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  exp_replayer: str,
                  num_envs=1,
                  observers=[],
-                 use_rollout_state=False,
                  metrics=[]):
         """Create an OffPolicyDriver.
 
@@ -59,13 +52,10 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             env=env,
             algorithm=algorithm,
             observers=observers,
-            use_rollout_state=use_rollout_state,
             metrics=metrics,
-            training=True,
-            greedy_predict=False)  # always use OnPolicyDriver for play/eval!
+            mode="rollout")
 
-        self._prepare_specs(algorithm)
-        algorithm.set_exp_replayer(exp_replayer, num_envs)
+        algorithm.set_exp_replayer(exp_replayer, num_envs * env.batch_size)
 
     def start(self):
         """
@@ -80,26 +70,3 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
         This empty function keeps OffPolicyDriver APIs consistent.
         """
         pass
-
-    def _prepare_specs(self, algorithm):
-        """Prepare various tensor specs."""
-
-        time_step = self.get_initial_time_step()
-        self._time_step_spec = common.extract_spec(time_step)
-        self._action_spec = self._env.action_spec()
-
-        policy_step = algorithm.rollout(
-            algorithm.transform_timestep(time_step), self._initial_state)
-        info_spec = common.extract_spec(policy_step.info)
-        self._policy_step_spec = PolicyStep(
-            action=self._action_spec,
-            state=algorithm.train_state_spec,
-            info=info_spec)
-
-        self._action_distribution_spec = tf.nest.map_structure(
-            common.to_distribution_spec, algorithm.action_distribution_spec)
-        self._action_dist_param_spec = tf.nest.map_structure(
-            lambda spec: spec.input_params_spec,
-            self._action_distribution_spec)
-
-        algorithm.prepare_off_policy_specs(time_step)

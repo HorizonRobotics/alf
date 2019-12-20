@@ -19,28 +19,20 @@ import psutil
 from typing import Callable
 from collections import Iterable
 
-import tensorflow as tf
-import tensorflow_probability as tfp
-
-from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import StepType
-
-from alf.algorithms.algorithm import Algorithm
-import alf.utils.common as common
-from alf.utils.common import ActionTimeStep, namedtuple, LossInfo, make_action_time_step
-from alf.utils.common import cast_transformer
-from tf_agents.utils import eager_utils
-from tf_agents.metrics import tf_metrics
-
-import alf.utils
 import gin.tf
 
-TrainingInfo = namedtuple(
-    "TrainingInfo", [
-        "action_distribution", "action", "step_type", "reward", "discount",
-        "info", "collect_info", "collect_action_distribution", "env_id"
-    ],
-    default_value=())
+import tensorflow as tf
+
+from tf_agents.metrics import tf_metrics
+from tf_agents.utils import eager_utils
+
+from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import ActionTimeStep, Experience, make_experience, PolicyStep, StepType, TrainingInfo
+from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
+from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
+import alf.utils
+from alf.utils import common, nest_utils
+from alf.utils.common import cast_transformer
 
 
 @gin.configurable
@@ -51,8 +43,14 @@ class RLAlgorithm(Algorithm):
 
     The key interface functions are:
     1. predict(): one step of computation of action for evaluation.
+       The subclass can choose to implement predict_action_distribution() instead
+       of predict(). In that case, RLAlgorithm.predict() will sample an action
+       from the action distribution
     2. rollout(): one step of comutation for rollout. Besides action, it also
        needs to compute other information necessary for training.
+       The subclass can choose to implement rollout_action_distribution() instead
+       of rollout(). In that case, RLAlgorithm.rollout() will sample an action
+       from the action distribution.
     3. train_step(): only used for off-policy training.
     4. train_complete(): Complete one training iteration based on the
        information collected from rollout() and/or train_step()
@@ -61,9 +59,9 @@ class RLAlgorithm(Algorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  train_state_spec,
-                 action_distribution_spec,
                  predict_state_spec=None,
                  optimizer=None,
                  trainable_module_sets=None,
@@ -108,8 +106,8 @@ class RLAlgorithm(Algorithm):
             debug_summaries=debug_summaries,
             name=name)
 
+        self._observation_spec = observation_spec
         self._action_spec = action_spec
-        self._action_distribution_spec = action_distribution_spec
         self._reward_shaping_fn = reward_shaping_fn
         if isinstance(observation_transformer, Iterable):
             observation_transformers = list(observation_transformer)
@@ -123,6 +121,10 @@ class RLAlgorithm(Algorithm):
         self._summarize_action_distributions = summarize_action_distributions
         self._use_rollout_state = False
 
+        self._rollout_info_spec = None
+        self._train_step_info_spec = None
+        self._processed_experience_spec = None
+
     @property
     def use_rollout_state(self):
         return self._use_rollout_state
@@ -130,6 +132,71 @@ class RLAlgorithm(Algorithm):
     @use_rollout_state.setter
     def use_rollout_state(self, flag):
         self._use_rollout_state = flag
+
+    @property
+    def observation_spec(self):
+        """Return the observation spec."""
+        return self._observation_spec
+
+    @property
+    def train_step_info_spec(self):
+        if self._train_step_info_spec is not None:
+            return self._train_step_info_spec
+        batch_size = 4
+        processed_exp = common.zeros_from_spec(self.processed_experience_spec,
+                                               batch_size)
+        state = common.zeros_from_spec(self.train_state_spec, batch_size)
+        policy_step = self.train_step(processed_exp, state)
+        self._train_step_info_spec = common.extract_spec(policy_step.info)
+        return self._train_step_info_spec
+
+    @property
+    def rollout_info_spec(self):
+        if self._rollout_info_spec is not None:
+            return self._rollout_info_spec
+        batch_size = 4
+        time_step = common.zeros_from_spec(self.time_step_spec, batch_size)
+        state = common.zeros_from_spec(self.train_state_spec, batch_size)
+        policy_step = self.rollout(self.transform_timestep(time_step), state)
+        self._rollout_info_spec = common.extract_spec(policy_step.info)
+        return self._rollout_info_spec
+
+    @property
+    def experience_spec(self):
+        policy_step_spec = PolicyStep(
+            action=self.action_spec,
+            state=self.train_state_spec,
+            info=self.rollout_info_spec)
+        exp_spec = make_experience(self.time_step_spec, policy_step_spec)
+        if not self._use_rollout_state:
+            exp_spec = exp_spec._replace(state=())
+        return exp_spec
+
+    @property
+    def processed_experience_spec(self):
+        if self._processed_experience_spec is not None:
+            return self._processed_experience_spec
+        batch_size = 4
+        exp = common.zeros_from_spec(self.experience_spec, batch_size)
+        transformed_exp = self.transform_timestep(exp)
+        processed_exp = self.preprocess_experience(transformed_exp)
+        self._processed_experience_spec = self.experience_spec._replace(
+            observation=common.extract_spec(processed_exp.observation),
+            rollout_info=common.extract_spec(processed_exp.rollout_info))
+        if not self._use_rollout_state:
+            self._procesed_experience_spec = \
+                self._processed_experience_spec._replace(state=())
+        return self._processed_experience_spec
+
+    @property
+    def time_step_spec(self):
+        return ActionTimeStep(
+            step_type=tf.TensorSpec((), tf.int32),
+            reward=tf.TensorSpec((), tf.float32),
+            discount=tf.TensorSpec((), tf.float32),
+            observation=self.observation_spec,
+            prev_action=self.action_spec,
+            env_id=tf.TensorSpec((), tf.int32))
 
     @property
     def action_spec(self):
@@ -173,6 +240,40 @@ class RLAlgorithm(Algorithm):
             observer (Callable): callable which accept Experience as argument.
         """
         self._exp_observers.append(observer)
+
+    def set_exp_replayer(self, exp_replayer: str, num_envs):
+        """Set experience replayer.
+
+        Args:
+            exp_replayer (str): type of experience replayer. One of ("one_time",
+                "uniform")
+            num_envs (int): the total number of environments from all batched
+                environments.
+        """
+        if exp_replayer == "one_time":
+            self._exp_replayer = OnetimeExperienceReplayer()
+        elif exp_replayer == "uniform":
+            exp_spec = nest_utils.to_distribution_param_spec(
+                self.experience_spec)
+            self._exp_replayer = SyncUniformExperienceReplayer(
+                exp_spec, num_envs)
+        else:
+            raise ValueError("invalid experience replayer name")
+        self.add_experience_observer(self._exp_replayer.observe)
+
+    def observe(self, exp: Experience):
+        """An algorithm can override to manipulate experience.
+
+        Args:
+            exp (Experience): The shapes can be either [Q, T, B, ...] or
+                [B, ...], where Q is `learn_queue_cap` in `AsyncOffPolicyDriver`,
+                T is the sequence length, and B is the batch size of the batched
+                environment.
+        """
+        if not self._use_rollout_state:
+            exp = exp._replace(state=())
+        for observer in self._exp_observers:
+            observer(exp)
 
     def training_summary(self, training_info, loss_info, grads_and_vars):
         """Generate summaries for training & loss info."""
@@ -242,9 +343,9 @@ class RLAlgorithm(Algorithm):
                     "Your network's distribution does not implement mode "
                     "making it incompatible with a greedy policy.")
 
-            return tfp.distributions.Deterministic(loc=greedy_action)
+            return greedy_action
 
-        policy_step = self.predict(time_step, state)
+        policy_step = self.predict_action_distribution(time_step, state)
         action = tf.nest.map_structure(dist_fn, policy_step.action)
         return policy_step._replace(action=action)
 
@@ -265,11 +366,47 @@ class RLAlgorithm(Algorithm):
                 `action_distribution_spec`
               policy_step.state should be consistent with `predict_state_spec`
         """
-        policy_step = self.rollout(time_step, state)
+        if self.__class__.predict_action_distribution != RLAlgorithm.predict_action_distribution:
+            # predict_action_distribution is overridden, use it.
+            policy_step = self.predict_action_distribution(time_step, state)
+            action = common.sample_action_distribution(policy_step.action)
+            return policy_step._replace(action=action)
+        else:
+            # predict_action_distribution is not overridden. Use rollout()
+            policy_step = self.rollout(time_step, state)
+            return policy_step._replace(info=())
+
+    # Subclass may override predict_action_distribution()
+    def predict_action_distribution(self,
+                                    time_step: ActionTimeStep,
+                                    state=None):
+        """Predict for one step of observation.
+
+        This only used for evaluation. So it only need to perform compuations
+        for generating action distribution.
+
+        Args:
+            time_step (ActionTimeStep): Current observation and other inputs
+                for computing action.
+            state (nested Tensor): should be consistent with predict_state_spec
+        Returns:
+            policy_step (PolicyStep):
+              policy_step.action is nested Distribution which consistent with
+                `action_distribution_spec`
+              policy_step.state should be consistent with `predict_state_spec`
+        """
+        policy_step = self.rollout_action_distribution(time_step, state)
         return policy_step._replace(info=())
 
+    ON_POLICY_TRAINING = 0
+    OFF_POLICY_TRAINING = 1
+    ROLLOUT = 2
+
     @abstractmethod
-    def rollout(self, time_step: ActionTimeStep, state=None):
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state=None,
+                mode=ON_POLICY_TRAINING):
         """Perform one step of rollout.
 
         It is called to generate actions for every environment step.
@@ -278,18 +415,46 @@ class RLAlgorithm(Algorithm):
         Args:
             time_step (ActionTimeStep):
             state (nested Tensor): should be consistent with train_state_spec
+            mode (int): one of (ON_POLICY_TRAINING, OFF_POLICY_TRAINING, ROLLOUT).
         Returns:
             policy_step (PolicyStep):
-              action (nested tf.distribution): should be consistent with
+              action (nested Tensor): should be consistent with
                 `action_distribution_spec`
               state (nested Tensor): should be consistent with `train_state_spec`
               info (nested Tensor): everything necessary for training. Note that
-                ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by OnPolicyDriver. So
-                the user only need to put other stuff (e.g. value estimation)
-                into `policy_step.info`
+                ("action", "reward", "discount", "is_last") are automatically
+                collected by OnPolicyDriver. So the user only need to put other
+                stuff (e.g. value estimation) into `policy_step.info`
         """
-        pass
+        policy_step = self.rollout_action_distribution(time_step, state, mode)
+        action = common.sample_action_distribution(policy_step.action)
+        return policy_step._replace(action=action)
+
+    def rollout_action_distribution(self,
+                                    time_step: ActionTimeStep,
+                                    state=None,
+                                    mode=ON_POLICY_TRAINING):
+        """Perform one step of rollout.
+
+        It is called to generate actions for every environment step.
+        It also needs to generate necessary information for training.
+
+        Args:
+            time_step (ActionTimeStep):
+            state (nested Tensor): should be consistent with train_state_spec
+            mode (int): one of (ON_POLICY_TRAINING, OFF_POLICY_TRAINING, ROLLOUT).
+        Returns:
+            policy_step (PolicyStep):
+              action (nested Distribution): should be consistent with
+                `action_distribution_spec`
+              state (nested Tensor): should be consistent with `train_state_spec`
+              info (nested Tensor): everything necessary for training. Note that
+                ("action", "reward", "discount", "is_last") are automatically
+                collected by OnPolicyDriver. So the user only need to put other
+                stuff (e.g. value estimation) into `policy_step.info`
+        """
+        raise NotImplementedError(
+            "rollout_action_distribution is not implemented")
 
     def transform_timestep(self, time_step):
         """Transform time_step.

@@ -38,8 +38,8 @@ from alf.algorithms.algorithm import Algorithm, AlgorithmStep
 from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
 from alf.algorithms.vae import VariationalAutoEncoder
+from alf.data_structures import TrainingInfo, ActionTimeStep, LossInfo
 from alf.utils.action_encoder import SimpleActionEncoder
 from alf.utils import common
 from alf.utils import resnet50_block
@@ -247,6 +247,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
     """The policy module for MERLIN model."""
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  memory: MemoryWithUsage,
                  num_read_keys=1,
@@ -285,9 +286,9 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             name=name + "/actor_net")
 
         super(MemoryBasedActor, self).__init__(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             train_state_spec=get_rnn_cell_state_spec(rnn),
-            action_distribution_spec=actor_net.output_spec,
             name=name)
 
         self._loss = ActorCriticLoss(action_spec) if loss is None else loss
@@ -311,7 +312,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
         # TODO: add qvalue_net for predicting Q-value
 
-    def rollout(self, time_step: ActionTimeStep, state):
+    def rollout_action_distribution(self, time_step: ActionTimeStep, state):
         """Train one step.
 
         Args:
@@ -360,6 +361,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  encoders,
                  decoders,
@@ -395,6 +397,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             memory_size=memory_size)
 
         mba = MemoryBasedActor(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             latent_dim=latent_dim,
             lstm_size=lstm_size,
@@ -402,11 +405,11 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             memory=mbp.memory)
 
         super(MerlinAlgorithm, self).__init__(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             train_state_spec=MerlinState(
                 mbp_state=mbp.train_state_spec,
                 mba_state=mba.train_state_spec),
-            action_distribution_spec=mba.action_distribution_spec,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
@@ -414,12 +417,12 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         self._mbp = mbp
         self._mba = mba
 
-    def rollout(self, time_step: ActionTimeStep, state):
+    def rollout_action_distribution(self, time_step: ActionTimeStep, state):
         """Train one step."""
         mbp_step = self._mbp.train_step(
             inputs=(time_step.observation, time_step.prev_action),
             state=state.mbp_state)
-        mba_step = self._mba.rollout(
+        mba_step = self._mba.rollout_action_distribution(
             time_step=time_step._replace(observation=mbp_step.outputs),
             state=state.mba_state)
 

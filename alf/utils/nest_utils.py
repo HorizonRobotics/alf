@@ -15,6 +15,10 @@
 import wrapt
 
 import tensorflow as tf
+import tensorflow_probability as tfp
+
+from tensorflow.python.util.nest import map_structure_up_to
+from tf_agents.specs.distribution_spec import DistributionSpec
 
 
 def is_namedtuple(value):
@@ -131,3 +135,71 @@ def get_nest_batch_size(nest, dtype=None):
     if dtype is not None:
         batch_size = tf.cast(batch_size, dtype)
     return batch_size
+
+
+def to_distribution_param_spec(nest):
+    def _to_param_spec(spec):
+        if isinstance(spec, DistributionSpec):
+            return spec.input_params_spec
+        elif isinstance(spec, tf.TensorSpec):
+            return spec
+        else:
+            raise ValueError("Only TensorSpec or DistributionSpec is allowed "
+                             "in nest, got %s. nest is %s" % (spec, nest))
+
+    return tf.nest.map_structure(_to_param_spec, nest)
+
+
+def params_to_distributions(nest, nest_spec):
+    """Convert distribution parameters to Distribution.
+
+    Args:
+        action_or_distribution (nested tf.Tensor|nested Distribution]):
+            tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
+            and others for tfp.distributions.Distribution instance
+    Returns:
+        nested Distribution/Tensor
+    """
+
+    def _to_dist(spec, params):
+        if isinstance(spec, DistributionSpec):
+            return spec.build_distribution(**params)
+        elif isinstance(spec, tf.TensorSpec):
+            return params
+        else:
+            raise ValueError(
+                "Only DistributionSpec or TensorSpec is allowed "
+                "in nest_spec, got %s. nest_spec is %s" % (spec, nest_spec))
+
+    return map_structure_up_to(nest_spec, _to_dist, nest_spec, nest)
+
+
+def distributions_to_params(nest):
+    """Get the params for an optionally nested Distribution/Tensors.
+
+    Only returns parameters that have tf.Tensor values.
+
+    Args:
+        nested_distribution (nested tf.distribution.Distribution):
+            The distributions whose parameter tensors to extract.
+    Returns:
+        A nest of Tensor/distribution parameters. Each leaf is a Tensor or a
+        dict corresponding to one distribution, with keys as parameter name and
+        values as tensors containing parameter values.
+    """
+
+    def _to_params(dist_or_tensor):
+        if isinstance(dist_or_tensor, tfp.distributions.Distribution):
+            params = dist_or_tensor.parameters
+            return {
+                k: params[k]
+                for k in params if isinstance(params[k], tf.Tensor)
+            }
+        elif isinstance(dist_or_tensor, tf.Tensor):
+            return dist_or_tensor
+        else:
+            raise ValueError(
+                "Only Tensor or Distribution is allowed in nest, ",
+                "got %s. nest is %s" % (dist_or_tensor, nest))
+
+    return tf.nest.map_structure(_to_params, nest)

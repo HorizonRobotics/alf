@@ -15,6 +15,7 @@
 
 import collections
 from collections import OrderedDict
+import functools
 import glob
 import math
 import os
@@ -28,92 +29,21 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
+from tf_agents.distributions.utils import scale_distribution_to_spec, SquashToSpecNormal
+from tf_agents.specs.distribution_spec import DistributionSpec
+from tf_agents.specs.tensor_spec import BoundedTensorSpec
 from tf_agents.specs import tensor_spec
 from tf_agents.trajectories.time_step import StepType, TimeStep
 from tf_agents.utils import common as tfa_common
-from tf_agents.specs.distribution_spec import DistributionSpec
 
+from alf.data_structures import LossInfo, make_action_time_step
 from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 from alf.utils.nest_utils import is_namedtuple
+from alf.utils import nest_utils
 
 
-def namedtuple(typename, field_names, default_value=None, default_values=()):
-    """namedtuple with default value.
-
-    Args:
-        typename (str): type name of this namedtuple
-        field_names (list[str]): name of each field
-        default_value (Any): the default value for all fields
-        default_values (list|dict): default value for each field
-    Returns:
-        the type for the namedtuple
-    """
-    T = collections.namedtuple(typename, field_names)
-    T.__new__.__defaults__ = (default_value, ) * len(T._fields)
-    if isinstance(default_values, collections.Mapping):
-        prototype = T(**default_values)
-    else:
-        prototype = T(*default_values)
-    T.__new__.__defaults__ = tuple(prototype)
-    return T
-
-
-class ActionTimeStep(
-        namedtuple('ActionTimeStep', [
-            'step_type', 'reward', 'discount', 'observation', 'prev_action',
-            'env_id'
-        ])):
-    """TimeStep with action."""
-
-    def is_first(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.FIRST)
-        return np.equal(self.step_type, StepType.FIRST)
-
-    def is_mid(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.MID)
-        return np.equal(self.step_type, StepType.MID)
-
-    def is_last(self):
-        if tf.is_tensor(self.step_type):
-            return tf.equal(self.step_type, StepType.LAST)
-        return np.equal(self.step_type, StepType.LAST)
-
-
-def make_action_time_step(time_step: TimeStep, prev_action, first_env_id=0):
-    """Make ActionTimeStep from TimeStep.
-
-    Args:
-        time_step (TimeStep):
-        prev_action (nested Tensor):
-        first_env_id (int): the environment ID for the first sample in this
-            batch. The environment IDs for the other samples are incremented
-            from this.
-    Returns:
-        ActionTimeStep
-    """
-    return ActionTimeStep(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        prev_action=prev_action,
-        env_id=first_env_id + tf.range(time_step.step_type.shape[0]))
-
-
-LossInfo = namedtuple(
-    "LossInfo",
-    [
-        "loss",  # batch loss shape should be (T, B)
-        "scalar_loss",  # shape is ()
-        "extra"  # nested batch and/or scalar losses, for summary only
-    ],
-    default_value=())
-
-
-def zero_tensor_from_nested_spec(nested_spec, batch_size):
+def zeros_from_spec(nested_spec, batch_size):
     def _zero_tensor(spec):
         if batch_size is None:
             shape = spec.shape
@@ -123,7 +53,12 @@ def zero_tensor_from_nested_spec(nested_spec, batch_size):
         dtype = spec.dtype
         return tf.zeros(shape, dtype)
 
-    return tf.nest.map_structure(_zero_tensor, nested_spec)
+    param_spec = nest_utils.to_distribution_param_spec(nested_spec)
+    params = tf.nest.map_structure(_zero_tensor, param_spec)
+    return nest_utils.params_to_distributions(params, nested_spec)
+
+
+zero_tensor_from_nested_spec = zeros_from_spec
 
 
 def set_per_process_memory_growth(flag=True):
@@ -269,31 +204,6 @@ def add_action_summaries(actions, action_specs):
                     data=action[:, a],
                     bucket_min=_get_val(action_spec.minimum, a),
                     bucket_max=_get_val(action_spec.maximum, a))
-
-
-def get_distribution_params(nested_distribution):
-    """Get the params for an optionally nested action distribution.
-
-    Only returns parameters that have tf.Tensor values.
-
-    Args:
-        nested_distribution (nested tf.distribution.Distribution):
-            The distributions whose parameter tensors to extract.
-    Returns:
-        A nest of distribution parameters. Each leaf is a dict corresponding to
-        one distribution, with keys as parameter name and values as tensors
-        containing parameter values.
-    """
-
-    def _tensor_parameters_only(params):
-        return {
-            k: params[k]
-            for k in params if isinstance(params[k], tf.Tensor)
-        }
-
-    return tf.nest.map_structure(
-        lambda single_dist: _tensor_parameters_only(single_dist.parameters),
-        nested_distribution)
 
 
 def concat_shape(shape1, shape2):
@@ -712,7 +622,7 @@ def explained_variance(ypred, y):
     return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)
 
 
-def sample_action_distribution(actions_or_distributions, seed=None):
+def sample_action_distribution(distributions, seed=None):
     """Sample actions from distributions
     Args:
         actions_or_distributions (nested tf.Tensor|nested Distribution]):
@@ -726,47 +636,9 @@ def sample_action_distribution(actions_or_distributions, seed=None):
         sampled actions
     """
 
-    distributions = tf.nest.map_structure(to_distribution,
-                                          actions_or_distributions)
-    seed_stream = tfp.distributions.SeedStream(seed=seed, salt='sample')
+    seed_stream = tfp.util.SeedStream(seed=seed, salt='sample')
     return tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
                                  distributions)
-
-
-def to_distribution_spec(spec):
-    """Convert spec to to DistributionSpec.
-
-    Args:
-        spec (tf.TensorSpec | DistributionSpec): spec
-    Returns:
-        nested DistributionSpec
-    """
-    if isinstance(spec, tf.TensorSpec):
-        return DistributionSpec(
-            tfp.distributions.Deterministic,
-            input_params_spec={"loc": spec},
-            sample_spec=spec)
-    return spec
-
-
-def to_distribution(action_or_distribution):
-    """Convert action_or_distribution to to Distribution.
-
-    Args:
-        action_or_distribution (nested tf.Tensor|nested Distribution]):
-            tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
-            and others for tfp.distributions.Distribution instance
-    Returns:
-        nested Distribution
-    """
-
-    def _to_dist(action_or_distribution):
-        if isinstance(action_or_distribution, tf.Tensor):
-            return tfp.distributions.Deterministic(loc=action_or_distribution)
-        else:
-            return action_or_distribution
-
-    return tf.nest.map_structure(_to_dist, action_or_distribution)
 
 
 def get_initial_policy_state(batch_size, policy_state_spec):
@@ -801,26 +673,6 @@ def get_initial_time_step(env, first_env_id=0):
     return make_action_time_step(time_step, action, first_env_id)
 
 
-def algorithm_step(algorithm_step_func, time_step, state):
-    """
-    Perform an algorithm step on a time step.
-    Always convert the output `policy_step.action` to an action distribution
-
-    Args:
-        algorithm_step_func (Callable): step function from algorithm. Can be
-            algorithm.predict, algorithm.rollout or algorithm.train_step
-        time_step (ActionTimeStep):
-        state (tf.nest): could be consistent with either
-            `algorithm.train_state_spec` or `algorithm.predict_state_spec`
-
-    Returns:
-        policy_step (PolicyStep): policy step should always have action
-            distributions, even for deterministic ones
-    """
-    policy_step = algorithm_step_func(time_step, state)
-    return policy_step._replace(action=to_distribution(policy_step.action))
-
-
 def transpose2(x, dim1, dim2):
     """Transpose two axes `dim1` and `dim2` of a tensor."""
     perm = list(range(len(x.shape)))
@@ -834,6 +686,35 @@ def sample_policy_action(policy_step):
     action = sample_action_distribution(policy_step.action)
     policy_step = policy_step._replace(action=action)
     return policy_step
+
+
+def epsilon_greedy_sample(nested_dist, eps=0.1):
+    """
+
+    Generate greedy sample that maximizes the probability.
+
+    Args:
+        nested_dist (nested Distribution): distribution to sample from
+        eps (float): a floating value in [0,1], representing the chance of
+            action sampling instead of taking argmax. This can help prevent
+            a dead loop in some deterministic environment like Breakout.
+    Returns:
+        (nested) Tensor
+    """
+
+    def dist_fn(dist):
+        try:
+            greedy_action = tf.cond(
+                tf.less(tf.random.uniform((), 0, 1), eps), dist.sample,
+                dist.mode)
+        except NotImplementedError:
+            raise ValueError(
+                "Your network's distribution does not implement mode "
+                "making it incompatible with a greedy policy.")
+
+        return tfp.distributions.Deterministic(loc=greedy_action)
+
+    return tf.nest.map_structure(dist_fn, nested_dist)
 
 
 def flatten_once(t):
@@ -923,6 +804,11 @@ def get_vocab_size():
         return 0
 
 
+def _build_squash_to_spec_normal(spec, *args, **kwargs):
+    distribution = tfp.distributions.Normal(*args, **kwargs)
+    return scale_distribution_to_spec(distribution, spec)
+
+
 def extract_spec(nest, from_dim=1):
     """
     Extract tensor spec for each element of a nested structure.
@@ -936,8 +822,39 @@ def extract_spec(nest, from_dim=1):
         spec (nested structure): each leaf node of the returned nested spec is the
             corresponding spec (excluding batch size) of the element of `nest`
     """
-    return tf.nest.map_structure(
-        lambda t: tf.TensorSpec(t.shape[from_dim:], t.dtype), nest)
+
+    def _extract_spec(obj):
+        if isinstance(obj, tf.Tensor):
+            return tf.TensorSpec(obj.shape[from_dim:], obj.dtype)
+        if not isinstance(obj, tfp.distributions.Distribution):
+            raise ValueError("Unsupported value type: %s" % type(obj))
+
+        params = obj.parameters
+        input_param = {
+            k: params[k]
+            for k in params if isinstance(params[k], tf.Tensor)
+        }
+        input_param_spec = extract_spec(input_param, from_dim)
+        sample_spec = tf.TensorSpec(obj.event_shape, obj.dtype)
+
+        if type(obj) in [
+                tfp.distributions.Deterministic, tfp.distributions.Normal,
+                tfp.distributions.Categorical
+        ]:
+            builder = type(obj)
+        elif isinstance(obj, SquashToSpecNormal):
+            spec = BoundedTensorSpec(
+                shape=obj.action_means.shape,
+                minimum=obj.action_means - obj.action_magnitudes,
+                maximum=obj.action_means + obj.action_magnitudes,
+                dtype=obj.action_means.dtype)
+            builder = functools.partial(_build_squash_to_spec_normal, spec)
+        else:
+            raise ValueError("Unsupported value type: %s" % type(obj))
+        return DistributionSpec(
+            builder, input_param_spec, sample_spec=sample_spec)
+
+    return tf.nest.map_structure(_extract_spec, nest)
 
 
 @gin.configurable

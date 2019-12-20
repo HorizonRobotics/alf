@@ -377,8 +377,8 @@ class Trainer(object):
                 metrics=self._eval_metrics,
                 environment=self._eval_env,
                 state_spec=self._algorithm.predict_state_spec,
-                action_fn=lambda time_step, state: common.algorithm_step(
-                    algorithm_step_func=self._algorithm.greedy_predict,
+                action_fn=lambda time_step, state: self._algorithm.
+                greedy_predict(
                     time_step=self._algorithm.transform_timestep(time_step),
                     state=state),
                 num_episodes=self._num_eval_episodes,

@@ -30,10 +30,11 @@ from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.utils import common as tfa_common
 from tf_agents.trajectories.policy_step import PolicyStep
 
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
-from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
-from alf.utils import losses, common, dist_utils
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.data_structures import ActionTimeStep, Experience, LossInfo, TrainingInfo
+from alf.utils import losses, common, dist_utils
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -85,6 +86,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  actor_network: DistributionNetwork,
                  critic_network: Network,
@@ -134,6 +136,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             dtype=tf.float32,
             trainable=True)
         super().__init__(
+            observation_spec,
             action_spec,
             train_state_spec=SacState(
                 share=SacShareState(actor=actor_network.state_spec),
@@ -145,7 +148,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     critic2=critic_network.state_spec,
                     target_critic1=critic_network.state_spec,
                     target_critic2=critic_network.state_spec)),
-            action_distribution_spec=actor_network.output_spec,
             optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
             trainable_module_sets=[[actor_network],
                                    [critic_network1, critic_network2],
@@ -199,7 +201,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
-    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
+    def rollout_action_distribution(self,
+                                    time_step: ActionTimeStep,
+                                    state=None,
+                                    mode=RLAlgorithm.ROLLOUT):
+        if self.need_full_rollout_state():
+            raise NotImplementedError("Storing RNN state to replay buffer "
+                                      "is not supported by SacAlgorithm")
+
         action, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
@@ -347,7 +356,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor=actor_state,
             critic=critic_state)
         info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
-        return PolicyStep(action_distribution, state, info)
+        return PolicyStep(action, state, info)
 
     def after_train(self, training_info):
         self._update_target()

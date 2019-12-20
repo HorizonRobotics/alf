@@ -28,8 +28,9 @@ from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import ActionTimeStep, Experience, LossInfo, TrainingInfo
 from alf.utils import losses, common
 
 DdpgCriticState = namedtuple("DdpgCriticState",
@@ -51,6 +52,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  actor_network: Network,
                  critic_network: Network,
@@ -102,9 +104,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_critic=critic_network.state_spec))
 
         super().__init__(
+            observation_spec,
             action_spec,
             train_state_spec=train_state_spec,
-            action_distribution_spec=action_spec,
             optimizer=[actor_optimizer, critic_optimizer],
             trainable_module_sets=[[actor_network], [critic_network]],
             gradient_clipping=gradient_clipping,
@@ -161,7 +163,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             actor=DdpgActorState(actor=state, critic=()))
         return PolicyStep(action=action, state=state, info=())
 
-    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state=None,
+                mode=RLAlgorithm.ROLLOUT):
+        if self.need_full_rollout_state():
+            raise NotImplementedError("Storing RNN state to replay buffer "
+                                      "is not supported by DdpgAlgorithm")
         policy_step = self.greedy_predict(time_step, state)
         action = tf.nest.map_structure(lambda a, ou: a + ou(),
                                        policy_step.action, self._ou_process)
