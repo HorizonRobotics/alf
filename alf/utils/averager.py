@@ -22,6 +22,21 @@ from tf_agents.utils.nest_utils import get_outer_rank
 from tf_agents.networks.utils import BatchSquash
 
 
+def average_outer_dims(tensor, spec):
+    """
+    Args:
+        tensor (tf.Tensor): a single Tensor
+        spec (tf.TensorSpec):
+
+    Returns:
+        the average tensor across outer dims
+    """
+    outer_dims = get_outer_rank(tensor, spec)
+    batch_squash = BatchSquash(outer_dims)
+    tensor = batch_squash.flatten(tensor)
+    return tf.reduce_mean(tensor, axis=0)
+
+
 @gin.configurable
 class WindowAverager(tf.Module):
     def __init__(self,
@@ -47,19 +62,14 @@ class WindowAverager(tf.Module):
 
         Args:
             tensor (nested Tensor): value for updating the average; outer dims
-                will be flattened first before being added as a batch
+                will be averaged first before being added
         Returns:
             None
         """
-
-        def _flatten(t, spec):
-            outer_dims = get_outer_rank(t, spec)
-            batch_squash = BatchSquash(outer_dims)
-            return batch_squash.flatten(t)
-
         tf.nest.map_structure(
-            lambda buf, t, spec: buf.add_batch(_flatten(t, spec)), self._buf,
-            tensor, self._tensor_spec)
+            lambda buf, t, spec: buf.add_batch(
+                tf.expand_dims(average_outer_dims(t, spec), axis=0)),
+            self._buf, tensor, self._tensor_spec)
 
     def get(self):
         """Get the current average.
@@ -79,7 +89,7 @@ class WindowAverager(tf.Module):
 
         Args:
             tensor (nested Tensor): a value for updating the average;  outer dims
-                will be flattened first before being added as a batch
+                will be averaged first before being added
         Returns:
             Tensor: the current average
         """
@@ -155,16 +165,9 @@ class EMAverager(tf.Module):
         Returns:
             None
         """
-
-        def _average_outer_dims(t, spec):
-            outer_dims = get_outer_rank(t, spec)
-            batch_squash = BatchSquash(outer_dims)
-            t = batch_squash.flatten(t)
-            return tf.reduce_mean(t, axis=0)
-
         tf.nest.map_structure(
             lambda average, t, spec: average.assign_add(
-                tf.cast(self._update_rate, t.dtype) * (_average_outer_dims(
+                tf.cast(self._update_rate, t.dtype) * (average_outer_dims(
                     t, spec) - average)), self._average, tensor,
             self._tensor_spec)
         self._mass.assign_add(
