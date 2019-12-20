@@ -29,7 +29,6 @@ critic/Adam.learning_rate=5e-4
 
 alpha/Adam.learning_rate=5e-4
 
-SacAlgorithm.action_spec=%action_spec
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 SacAlgorithm.critic_network=@critic/CriticNetwork()
 SacAlgorithm.actor_optimizer=@actor/Adam()
@@ -39,7 +38,6 @@ SacAlgorithm.target_update_tau=0.005
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 
 import alf.algorithms.trac_algorithm
-Agent.action_spec=%action_spec
 Agent.rl_algorithm_cls=@TracAlgorithm
 TracAlgorithm.ac_algorithm_cls=@SacAlgorithm
 TracAlgorithm.action_dist_clip_per_dim=0.01

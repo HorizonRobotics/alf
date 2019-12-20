@@ -74,7 +74,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
             name (str): Name of this algorithm.
         """
         ac_algorithm = ac_algorithm_cls(
-            action_spec=action_spec, debug_summaries=debug_summaries)
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            debug_summaries=debug_summaries)
 
         assert hasattr(ac_algorithm, '_actor_network')
         if isinstance(ac_algorithm._actor_network, DistributionNetwork):

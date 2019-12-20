@@ -23,7 +23,6 @@ value/ValueNetwork.fc_layer_params=(100,)
 
 ac/Adam.learning_rate=1e-3
 
-Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()

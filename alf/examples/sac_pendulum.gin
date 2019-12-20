@@ -29,7 +29,6 @@ critic/Adam.learning_rate=5e-4
 
 alpha/Adam.learning_rate=5e-4
 
-SacAlgorithm.action_spec=%action_spec
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 SacAlgorithm.critic_network=@critic/CriticNetwork()
 SacAlgorithm.actor_optimizer=@actor/Adam()

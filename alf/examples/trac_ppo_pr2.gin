@@ -44,7 +44,6 @@ value/ValueNetwork.activation_fn=@tf.nn.softsign
 ac/Adam.learning_rate=2e-4
 
 import alf.algorithms.trac_algorithm
-Agent.action_spec=%action_spec
 Agent.rl_algorithm_cls=@TracAlgorithm
 TracAlgorithm.ac_algorithm_cls=@PPOAlgorithm
 TracAlgorithm.action_dist_clip_per_dim=0.02

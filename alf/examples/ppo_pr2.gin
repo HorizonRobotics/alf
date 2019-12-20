@@ -35,7 +35,6 @@ value/ValueNetwork.activation_fn=@tf.nn.softsign
 
 ac/Adam.learning_rate=2e-4
 
-Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
