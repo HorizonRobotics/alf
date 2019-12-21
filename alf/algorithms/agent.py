@@ -136,28 +136,16 @@ class Agent(OnPolicyAlgorithm):
             observation, _ = self._encoding_network(observation)
         return observation
 
-    def need_final_step(self):
-        return self._rl_algorithm.need_final_step()
-
-    def predict(self, time_step: ActionTimeStep, state: AgentState):
+    def predict(self, time_step: ActionTimeStep, state: AgentState,
+                epsilon_greedy):
         """Predict for one step."""
         observation = self._encode(time_step)
 
         new_state = AgentState()
 
         rl_step = self._rl_algorithm.predict(
-            time_step._replace(observation=observation), state.rl)
-        new_state = new_state._replace(rl=rl_step.state)
-
-        return PolicyStep(action=rl_step.action, state=new_state, info=())
-
-    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
-        observation = self._encode(time_step)
-
-        new_state = AgentState()
-
-        rl_step = self._rl_algorithm.greedy_predict(
-            time_step._replace(observation=observation), state.rl)
+            time_step._replace(observation=observation), state.rl,
+            epsilon_greedy)
         new_state = new_state._replace(rl=rl_step.state)
 
         return PolicyStep(action=rl_step.action, state=new_state, info=())
@@ -174,7 +162,7 @@ class Agent(OnPolicyAlgorithm):
             new_state = new_state._replace(icm=icm_step.state)
 
         rl_step = self._rl_algorithm.rollout(
-            time_step._replace(observation=observation), state.rl)
+            time_step._replace(observation=observation), state.rl, mode)
 
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)

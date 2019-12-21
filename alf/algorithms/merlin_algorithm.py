@@ -312,7 +312,11 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
         # TODO: add qvalue_net for predicting Q-value
 
-    def rollout_action_distribution(self, time_step: ActionTimeStep, state):
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state,
+                mode,
+                epsilon_greedy=1.0):
         """Train one step.
 
         Args:
@@ -331,9 +335,11 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         value, _ = self._value_net(
             latent_vector, step_type=time_step.step_type, network_state=None)
 
-        info = ActorCriticInfo(value=value)
-        return PolicyStep(
-            action=action_distribution, state=rnn_state, info=info)
+        info = ActorCriticInfo(
+            action_distribution=action_distribution, value=value)
+        action = common.epsilon_greedy_sample(action_distribution,
+                                              epsilon_greedy)
+        return PolicyStep(action=action, state=rnn_state, info=info)
 
     def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
@@ -417,20 +423,30 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         self._mbp = mbp
         self._mba = mba
 
-    def rollout_action_distribution(self, time_step: ActionTimeStep, state):
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state,
+                mode,
+                epsilon_greedy=1.0):
         """Train one step."""
         mbp_step = self._mbp.train_step(
             inputs=(time_step.observation, time_step.prev_action),
             state=state.mbp_state)
-        mba_step = self._mba.rollout_action_distribution(
+        mba_step = self._mba.rollout(
             time_step=time_step._replace(observation=mbp_step.outputs),
-            state=state.mba_state)
+            state=state.mba_state,
+            mode=mode,
+            epsilon_greedy=epsilon_greedy)
 
         return PolicyStep(
             action=mba_step.action,
             state=MerlinState(
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
+
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        return self.rollout(
+            time_step, state, mode=self.ROLLOUT, epsilon_greedy=epsilon_greedy)
 
     def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""

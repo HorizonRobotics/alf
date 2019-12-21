@@ -53,7 +53,8 @@ SacCriticInfo = namedtuple("SacCriticInfo",
 
 SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss"])
 
-SacInfo = namedtuple("SacInfo", ["actor", "critic", "alpha"])
+SacInfo = namedtuple("SacInfo",
+                     ["action_distribution", "actor", "critic", "alpha"])
 
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
 
@@ -201,22 +202,31 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
-    def rollout_action_distribution(self,
-                                    time_step: ActionTimeStep,
-                                    state=None,
-                                    mode=RLAlgorithm.ROLLOUT):
-        if self.need_full_rollout_state():
-            raise NotImplementedError("Storing RNN state to replay buffer "
-                                      "is not supported by SacAlgorithm")
-
-        action, state = self._actor_network(
+    def _predict(self,
+                 time_step: ActionTimeStep,
+                 state=None,
+                 epsilon_greedy=1.):
+        action_dist, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state.share.actor)
         empty_state = tf.nest.map_structure(lambda x: (),
                                             self.train_state_spec)
         state = empty_state._replace(share=SacShareState(actor=state))
-        return PolicyStep(action=action, state=state, info=())
+        action = common.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        return PolicyStep(
+            action=action,
+            state=state,
+            info=SacInfo(action_distribution=action_dist))
+
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        return self._predict(time_step, state, epsilon_greedy)
+
+    def rollout(self, time_step: ActionTimeStep, state, mode):
+        if self.need_full_rollout_state():
+            raise NotImplementedError("Storing RNN state to replay buffer "
+                                      "is not supported by SacAlgorithm")
+        return self._predict(time_step, state, epsilon_greedy=1.0)
 
     def _actor_train_step(self, exp: Experience, state: SacActorState,
                           action_distribution, action, log_pi):
@@ -355,7 +365,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             share=SacShareState(actor=share_actor_state),
             actor=actor_state,
             critic=critic_state)
-        info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
+        info = SacInfo(
+            action_distribution=action_distribution,
+            actor=actor_info,
+            critic=critic_info,
+            alpha=alpha_info)
         return PolicyStep(action, state, info)
 
     def after_train(self, training_info):

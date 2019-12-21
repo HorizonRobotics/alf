@@ -236,8 +236,7 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
                                           unroll_length=unroll_length,
                                           learn_queue_cap=1,
                                           actor_queue_cap=1)
-        eval_driver = OnPolicyDriver(
-            eval_env, algorithm, training=False, greedy_predict=True)
+        eval_driver = OnPolicyDriver(eval_env, algorithm, training=False)
 
         eval_env.reset()
         driver.start()

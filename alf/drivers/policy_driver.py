@@ -32,12 +32,17 @@ from alf.utils import common, nest_utils, summary_utils
 
 @gin.configurable
 class PolicyDriver(driver.Driver):
+    ON_POLICY_TRAINING = 0
+    OFF_POLICY_TRAINING = 1
+    PREDICT = 2
+
     def __init__(self,
                  env,
                  algorithm,
                  observers=[],
                  metrics=[],
-                 mode="on_policy_training"):
+                 epsilon_greedy=0.1,
+                 mode=PREDICT):
         """Create a PolicyDriver.
 
         Args:
@@ -48,19 +53,19 @@ class PolicyDriver(driver.Driver):
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
-            greedy_predict (bool): use greedy action for evaluation (i.e.
-                training==False).
+            epsilon_greedy (float):  a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for mode=PREDICT.
         """
-        assert mode in [
-            "on_policy_training", "predict", "greedy_predict", "rollout"
-        ]
         self._mode = mode
+        self._epsilon_greedy = 0.1
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
             tf_metrics.NumberOfEpisodes(),
             tf_metrics.EnvironmentSteps(),
         ]
-        training = mode in ["on_policy_training", "rollout"]
+        training = mode in [self.ON_POLICY_TRAINING, self.OFF_POLICY_TRAINING]
         # This is a HACK.
         # Due to tf_agents metric API change:
         # https://github.com/tensorflow/agents/commit/b08a142edf180325b63441ec1b71119c393c4a64,
@@ -142,14 +147,13 @@ class PolicyDriver(driver.Driver):
         policy_state = common.reset_state_if_necessary(policy_state,
                                                        self._initial_state,
                                                        time_step.is_first())
-        if self._mode == "predict":
-            step_func = self._algorithm.predict
-        elif self._mode == "greedy_predict":
-            step_func = self._algorithm.greedy_predict
-        elif self._mode == "on_policy_training":
+        if self._mode == self.PREDICT:
+            step_func = functools.partial(
+                self._algorithm.predict, epsilon_greedy=self._epsilon_greedy)
+        elif self._mode == self.ON_POLICY_TRAINING:
             step_func = functools.partial(
                 self._algorithm.rollout, mode=RLAlgorithm.ON_POLICY_TRAINING)
-        elif self._mode == "rollout":
+        elif self._mode == self.OFF_POLICY_TRAINING:
             step_func = functools.partial(
                 self._algorithm.rollout, mode=RLAlgorithm.ROLLOUT)
         else:

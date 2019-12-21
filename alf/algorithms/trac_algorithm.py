@@ -81,6 +81,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
         assert hasattr(ac_algorithm, '_actor_network')
         if isinstance(ac_algorithm._actor_network, DistributionNetwork):
             self._action_distribution_spec = ac_algorithm._actor_network.output_spec
+            assert "action_distribution" in ac_algorithm.rollout_info_spec._fields, (
+                "PolicyStep.info from ac_algorithm.rollout() needs to contain "
+                "`action_distribution` in order to use TracAlgorithm.")
         else:
             self._action_distribution_spec = None
 
@@ -103,9 +106,12 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
 
-    def rollout(self, time_step: ActionTimeStep, state):
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        return self._ac_algorithm.predict(time_step, state, epsilon_greedy)
+
+    def rollout(self, time_step: ActionTimeStep, state, mode):
         """Rollout for one step."""
-        policy_step = self._ac_algorithm.rollout(time_step, state)
+        policy_step = self._ac_algorithm.rollout(time_step, state, mode)
         return policy_step._replace(
             info=TracInfo(
                 observation=time_step.observation,
@@ -121,9 +127,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 state=self._ac_algorithm.convert_train_state_to_predict_state(
                     state),
                 ac=policy_step.info))
-
-    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
-        return self._ac_algorithm.greedy_predict(time_step, state)
 
     def calc_loss(self, training_info):
         if self._trusted_updater is None:
@@ -214,13 +217,19 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 state, initial_state, exp.step_type == StepType.FIRST)
             time_step = ActionTimeStep(
                 observation=exp.observation, step_type=exp.step_type)
+            policy_step = self._ac_algorithm.predict(
+                time_step=time_step, state=state, epsilon_greedy=1.0)
             if self._action_distribution_spec is None:
-                policy_step = self._ac_algorithm.predict(
-                    time_step=time_step, state=state)
+                new_action = policy_step.action
             else:
-                policy_step = self._ac_algorithm.predict_action_distribution(
-                    time_step=time_step, state=state)
-            new_action, state = policy_step.action, policy_step.state
+                assert (
+                    common.is_namedtuple(policy_step.info)
+                    and "action_distribution" in policy_step.info._fields
+                ), ("PolicyStep.info from ac_algorithm.rollout() should be "
+                    "a namedtuple containing `action_distribution` in order to "
+                    "use TracAlgorithm.")
+                new_action = policy_step.info.action_distribution
+            state = policy_step.state
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(num_steps * batch_size, tf.float32)

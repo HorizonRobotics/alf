@@ -42,7 +42,7 @@ flags.DEFINE_string(
     'checkpoint_name', None, "name of the checkpoint "
     "(e.g. 'ckpt-12800`). If None, the latest checkpoint under train_dir will "
     "be used.")
-flags.DEFINE_bool('greedy_predict', True, "use greedy action for evaluation.")
+flags.DEFINE_bool('epsilon_greedy', 0.1, "probability of sampling action.")
 flags.DEFINE_integer('random_seed', 0, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
 flags.DEFINE_float('sleep_time_per_step', 0.01,
@@ -70,7 +70,7 @@ def main(_):
         env,
         algorithm,
         checkpoint_name=FLAGS.checkpoint_name,
-        greedy_predict=FLAGS.greedy_predict,
+        epsilon_greedy=FLAGS.epsilon_greedy,
         random_seed=FLAGS.random_seed,
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,

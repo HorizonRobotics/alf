@@ -54,7 +54,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                  observers=[],
                  metrics=[],
                  training=True,
-                 greedy_predict=False,
+                 epsilon_greedy=0.1,
                  train_interval=20):
         """Create an OnPolicyDriver.
 
@@ -66,8 +66,10 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optional list of metrics.
             training (bool): True for training, false for evaluating
-            greedy_predict (bool): use greedy action for evaluation (i.e.
-                training==False).
+            epsilon_greedy (float):  a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for training=False
             train_interval (int):
         """
         super(OnPolicyDriver, self).__init__(
@@ -75,8 +77,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             algorithm=algorithm,
             observers=observers,
             metrics=metrics,
-            mode="on_policy_training" if training else
-            ("greedy_predict" if greedy_predict else "predict"))
+            mode=self.ON_POLICY_TRAINING if training else self.PREDICT)
 
         if training:
             algorithm.set_metrics(self._metrics)

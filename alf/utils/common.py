@@ -44,6 +44,20 @@ from alf.utils import nest_utils
 
 
 def zeros_from_spec(nested_spec, batch_size):
+    """Create nested zero Tensors or Distributions.
+
+    A zero tensor with shape[0]=`batch_size is created for each TensorSpec and
+    A distribution with all the parameters as zero Tensors is created for each
+    DistributionSpec.
+
+    Args:
+        nested_spec (nested TensorSpec or DistributionSpec):
+        batch_size (int): batch size added as the first dimension to the shapes
+             in TensorSpec
+    Returns:
+        nested Tensor or Distribution
+    """
+
     def _zero_tensor(spec):
         if batch_size is None:
             shape = spec.shape
@@ -625,9 +639,7 @@ def explained_variance(ypred, y):
 def sample_action_distribution(distributions, seed=None):
     """Sample actions from distributions
     Args:
-        actions_or_distributions (nested tf.Tensor|nested Distribution]):
-            tf.Tensor represent parameter `loc` for tfp.distributions.Deterministic
-            and others for tfp.distributions.Distribution instances
+        distributions (nested Distribution]): action distributions
         seed (Any):Any Python object convertible to string, supplying the
             initial entropy.  If `None`, operations seeded with seeds
             drawn from this `SeedStream` will follow TensorFlow semantics
@@ -641,6 +653,35 @@ def sample_action_distribution(distributions, seed=None):
                                  distributions)
 
 
+def epsilon_greedy_sample(nested_dist, eps=0.1):
+    """Generate greedy sample that maximizes the probability.
+    Args:
+        nested_dist (nested Distribution): distribution to sample from
+        eps (float): a floating value in [0,1], representing the chance of
+            action sampling instead of taking argmax. This can help prevent
+            a dead loop in some deterministic environment like Breakout.
+    Returns:
+        (nested) Tensor
+    """
+
+    def dist_fn(dist):
+        try:
+            greedy_action = tf.cond(
+                tf.less(tf.random.uniform((), 0, 1), eps), dist.sample,
+                dist.mode)
+        except NotImplementedError:
+            raise ValueError(
+                "Your network's distribution does not implement mode "
+                "making it incompatible with a greedy policy.")
+
+        return greedy_action
+
+    if eps >= 1.0:
+        return sample_action_distribution(nested_dist)
+    else:
+        return tf.nest.map_structure(dist_fn, nested_dist)
+
+
 def get_initial_policy_state(batch_size, policy_state_spec):
     """
     Return zero tensors as the initial policy states.
@@ -648,7 +689,6 @@ def get_initial_policy_state(batch_size, policy_state_spec):
         batch_size (int): number of policy states created
         policy_state_spec (nested structure): each item is a tensor spec for
             a state
-
     Returns:
         state (nested structure): each item is a tensor with the first dim equal
             to `batch_size`. The remaining dims are consistent with

@@ -85,21 +85,22 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
-    def predict_action_distribution(self, time_step: ActionTimeStep,
-                                    state: ActorCriticState):
+    def predict(self, time_step: ActionTimeStep, state: ActorCriticState,
+                epsilon_greedy):
         """Predict for one step."""
-        action_distribution, actor_state = self._actor_network(
+        action_dist, actor_state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state.actor)
 
+        action = common.epsilon_greedy_sample(action_dist, epsilon_greedy)
         return PolicyStep(
-            action=action_distribution,
+            action=action,
             state=ActorCriticState(actor=actor_state),
-            info=())
+            info=ActorCriticInfo(action_distribution=action_dist))
 
-    def rollout_action_distribution(self, time_step: ActionTimeStep,
-                                    state: ActorCriticState, mode):
+    def rollout(self, time_step: ActionTimeStep, state: ActorCriticState,
+                mode):
         """Rollout for one step."""
         value, value_state = self._value_network(
             time_step.observation,
@@ -111,8 +112,9 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             step_type=time_step.step_type,
             network_state=state.actor)
 
+        action = common.sample_action_distribution(action_distribution)
         return PolicyStep(
-            action=action_distribution,
+            action=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
                 value=value, action_distribution=action_distribution))

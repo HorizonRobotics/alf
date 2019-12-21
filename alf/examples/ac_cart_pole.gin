@@ -27,7 +27,9 @@ ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
 
+import alf.algorithms.trac_algorithm
 Agent.gradient_clipping=10.0
+Agent.rl_algorithm_cls=@TracAlgorithm
 ActorCriticLoss.entropy_regularization=1e-4
 ActorCriticLoss.gamma=0.98
 ActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss

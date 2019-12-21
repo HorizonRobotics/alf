@@ -152,13 +152,20 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self._target_actor_network.variables,
             tau=1.0)
 
-    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
         action, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state.actor.actor)
         empty_state = tf.nest.map_structure(lambda x: (),
                                             self.train_state_spec)
+
+        def _sample(a, ou):
+            return tf.cond(
+                tf.less(tf.random.uniform((), 0, 1),
+                        epsilon_greedy), lambda: a + ou(), lambda: a)
+
+        action = tf.nest.map_structure(_sample, action, self._ou_process)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critic=()))
         return PolicyStep(action=action, state=state, info=())
@@ -170,10 +177,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by DdpgAlgorithm")
-        policy_step = self.greedy_predict(time_step, state)
-        action = tf.nest.map_structure(lambda a, ou: a + ou(),
-                                       policy_step.action, self._ou_process)
-        return policy_step._replace(action=action)
+        return self.predict(time_step, state, epsilon_greedy=1.0)
 
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(

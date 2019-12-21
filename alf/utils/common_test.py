@@ -15,6 +15,7 @@
 import tensorflow as tf
 
 import alf.utils.common as common
+from alf.data_structures import namedtuple
 
 
 class ImageScaleTransformerTest(tf.test.TestCase):
@@ -23,9 +24,9 @@ class ImageScaleTransformerTest(tf.test.TestCase):
         observation = tf.zeros(shape, dtype=tf.uint8)
         common.image_scale_transformer(observation)
 
-        T1 = common.namedtuple('T1', ['x', 'y'])
-        T2 = common.namedtuple('T2', ['a', 'b', 'c'])
-        T3 = common.namedtuple('T3', ['l', 'm'])
+        T1 = namedtuple('T1', ['x', 'y'])
+        T2 = namedtuple('T2', ['a', 'b', 'c'])
+        T3 = namedtuple('T3', ['l', 'm'])
         observation = T1(
             x=T2(
                 a=tf.ones(shape, dtype=tf.uint8) * 255,

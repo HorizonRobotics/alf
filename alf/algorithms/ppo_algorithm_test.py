@@ -87,8 +87,7 @@ class PpoTest(tf.test.TestCase):
         algorithm = create_algorithm(env, learning_rate=learning_rate)
         algorithm.set_summary_settings(summarize_grads_and_vars=DEBUGGING)
         driver = SyncOffPolicyDriver(env, algorithm)
-        eval_driver = OnPolicyDriver(
-            eval_env, algorithm, training=False, greedy_predict=True)
+        eval_driver = OnPolicyDriver(eval_env, algorithm, training=False)
 
         env.reset()
         eval_env.reset()

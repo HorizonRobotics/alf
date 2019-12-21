@@ -53,7 +53,7 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             algorithm=algorithm,
             observers=observers,
             metrics=metrics,
-            mode="rollout")
+            mode=self.OFF_POLICY_TRAINING)
 
         algorithm.set_exp_replayer(exp_replayer, num_envs * env.batch_size)
 

@@ -156,58 +156,29 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return ["_target_actor_network", "_target_critic_network"]
 
-    def _get_action(self, time_step, actor_network, state):
+    def _get_action(self, time_step, actor_network, state, epsilon_greedy=1.0):
         action_distribution, state = actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state)
         if isinstance(actor_network, DistributionNetwork):
-            action = tf.nest.map_structure(lambda d: d.sample(),
-                                           action_distribution)
+            action = common.epsilon_greedy_sample(action_distribution,
+                                                  epsilon_greedy)
         else:
-            action = tf.nest.map_structure(lambda a, ou: a + ou(),
-                                           action_distribution,
+
+            def _sample(a, ou):
+                return tf.cond(
+                    tf.less(tf.random.uniform((), 0, 1),
+                            epsilon_greedy), lambda: a + ou(), lambda: a)
+
+            action = tf.nest.map_structure(_sample, action_distribution,
                                            self._ou_process)
             action_distribution = ()
         return action_distribution, action, state
 
-    def predict(self, time_step: ActionTimeStep, state=None):
-        _, action, actor_state = self._get_action(self._actor_network,
-                                                  time_step, state.actor)
-        return PolicyStep(
-            action=action,
-            state=SarsaState(
-                actor=actor_state,
-                prev_observation=time_step.observation,
-                prev_step_type=time_step.step_type),
-            info=())
-
-    def predict_distribution(self,
-                             time_step: ActionTimeStep,
-                             state=None,
-                             eps=0.1):
-        assert isinstance(self._actor_network, DistributionNetwork), (
-            "prediction_distribution() is not supported for deterministic actor"
-        )
-        action_distribution, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
-        return PolicyStep(
-            action=action_distribution,
-            state=SarsaState(
-                actor=actor_state,
-                prev_observation=time_step.observation,
-                prev_step_type=time_step.step_type),
-            info=())
-
-    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
-        if isinstance(self._actor_network, DistributionNetwork):
-            return super().greedy_predict(time_step, state, eps=eps)
-        action, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        _, action, actor_state = self._get_action(
+            self._actor_network, time_step, state.actor, epsilon_greedy)
         return PolicyStep(
             action=action,
             state=SarsaState(
