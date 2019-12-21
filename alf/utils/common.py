@@ -815,6 +815,27 @@ def get_vocab_size():
         return 0
 
 
+SquashToSpecNormal__init__original = SquashToSpecNormal.__init__
+
+
+def SquashToSpecNormal__init__(self,
+                               distribution,
+                               spec,
+                               validate_args=False,
+                               name="SquashToSpecNormal"):
+    SquashToSpecNormal__init__original(self, distribution, spec, validate_args,
+                                       name)
+    self.spec = spec
+
+
+# This is a hack to SquashToSpecNormal so that `spec` provided at __init__ can
+# be recovered by `common.extract_spec`. `SquashToSpecNormal.action_means`
+# and `SquashToSpecNormal.action_magnitudes` are tf.Tensor and cannot be used
+# to recover `spec` because `BoundedTensorSpec` cannot accept tf.Tensor for
+# `minimum` and `maximum`.
+SquashToSpecNormal.__init__ = SquashToSpecNormal__init__
+
+
 def _build_squash_to_spec_normal(spec, *args, **kwargs):
     distribution = tfp.distributions.Normal(*args, **kwargs)
     return scale_distribution_to_spec(distribution, spec)
@@ -854,12 +875,7 @@ def extract_spec(nest, from_dim=1):
         ]:
             builder = type(obj)
         elif isinstance(obj, SquashToSpecNormal):
-            spec = BoundedTensorSpec(
-                shape=obj.action_means.shape,
-                minimum=obj.action_means - obj.action_magnitudes,
-                maximum=obj.action_means + obj.action_magnitudes,
-                dtype=obj.action_means.dtype)
-            builder = functools.partial(_build_squash_to_spec_normal, spec)
+            builder = functools.partial(_build_squash_to_spec_normal, obj.spec)
         else:
             raise ValueError("Unsupported value type: %s" % type(obj))
         return DistributionSpec(

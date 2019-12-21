@@ -13,7 +13,6 @@
 # limitations under the License.
 """Soft Actor Critic Algorithm."""
 
-from collections import namedtuple
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -28,12 +27,12 @@ from tf_agents.networks.actor_distribution_network import ActorDistributionNetwo
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.utils import common as tfa_common
-from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.data_structures import ActionTimeStep, Experience, LossInfo, TrainingInfo
+from alf.data_structures import ActionTimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import PolicyStep, TrainingInfo
 from alf.utils import losses, common, dist_utils
 
 SacShareState = namedtuple("SacShareState", ["actor"])
@@ -53,8 +52,9 @@ SacCriticInfo = namedtuple("SacCriticInfo",
 
 SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss"])
 
-SacInfo = namedtuple("SacInfo",
-                     ["action_distribution", "actor", "critic", "alpha"])
+SacInfo = namedtuple(
+    "SacInfo", ["action_distribution", "actor", "critic", "alpha"],
+    default_value=())
 
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
 
