@@ -18,6 +18,24 @@ import tensorflow as tf
 
 from alf.utils.data_buffer import DataBuffer
 
+from tf_agents.utils.nest_utils import get_outer_rank
+from tf_agents.networks.utils import BatchSquash
+
+
+def average_outer_dims(tensor, spec):
+    """
+    Args:
+        tensor (tf.Tensor): a single Tensor
+        spec (tf.TensorSpec):
+
+    Returns:
+        the average tensor across outer dims
+    """
+    outer_dims = get_outer_rank(tensor, spec)
+    batch_squash = BatchSquash(outer_dims)
+    tensor = batch_squash.flatten(tensor)
+    return tf.reduce_mean(tensor, axis=0)
+
 
 @gin.configurable
 class WindowAverager(tf.Module):
@@ -29,23 +47,29 @@ class WindowAverager(tf.Module):
 
         WindowAverager calculate the average of the past `window_size` samples.
         Args:
-            tensor_spec (TensorSpec): the TensorSpec for the value to be
+            tensor_spec (nested TensorSpec): the TensorSpec for the value to be
                 averaged
             window_size (int): the size of the window
             name (str): name of this averager
         """
         super().__init__(name=name)
-        self._buf = DataBuffer(tensor_spec, window_size)
+        self._buf = tf.nest.map_structure(
+            lambda spec: DataBuffer(spec, window_size), tensor_spec)
+        self._tensor_spec = tensor_spec
 
     def update(self, tensor):
         """Update the average.
 
         Args:
-            tensor (Tensor): a value for updating the average
+            tensor (nested Tensor): value for updating the average; outer dims
+                will be averaged first before being added
         Returns:
             None
         """
-        self._buf.add_batch(tf.expand_dims(tensor, axis=0))
+        tf.nest.map_structure(
+            lambda buf, t, spec: buf.add_batch(
+                tf.expand_dims(average_outer_dims(t, spec), axis=0)),
+            self._buf, tensor, self._tensor_spec)
 
     def get(self):
         """Get the current average.
@@ -53,14 +77,19 @@ class WindowAverager(tf.Module):
         Returns:
             Tensor: the current average
         """
-        n = tf.cast(tf.maximum(self._buf.current_size, 1), tf.float32)
-        return tf.reduce_sum(self._buf.get_all(), axis=0) * (1. / n)
+
+        def _get(buf):
+            n = tf.cast(tf.maximum(buf.current_size, 1), tf.float32)
+            return tf.reduce_sum(buf.get_all(), axis=0) * (1. / n)
+
+        return tf.nest.map_structure(_get, self._buf)
 
     def average(self, tensor):
         """Combines self.update and self.get in one step. Can be handy in practice.
 
         Args:
-            tensor (Tensor): a value for updating the average
+            tensor (nested Tensor): a value for updating the average;  outer dims
+                will be averaged first before being added
         Returns:
             Tensor: the current average
         """
@@ -109,7 +138,7 @@ class EMAverager(tf.Module):
         """Create an EMAverager.
 
         Args:
-            tensor_spec (TensorSpec): the TensorSpec for the value to be
+            tensor_spec (nested TensorSpec): the TensorSpec for the value to be
                 averaged
             update_rate (float|Variable): the update rate
             name (str): name of this averager
@@ -117,10 +146,13 @@ class EMAverager(tf.Module):
         super().__init__(name=name)
         self._tensor_spec = tensor_spec
         self._update_rate = update_rate
-        self._average = tf.Variable(
-            initial_value=tf.zeros(tensor_spec.shape, tensor_spec.dtype),
-            trainable=False,
-            dtype=tensor_spec.dtype)
+
+        self._average = tf.nest.map_structure(
+            lambda spec: tf.Variable(
+                initial_value=tf.zeros(spec.shape, spec.dtype),
+                trainable=False,
+                dtype=spec.dtype), tensor_spec)
+        # mass can be shared by different structure elements
         self._mass = tf.Variable(
             initial_value=0, trainable=False, dtype=tf.float64)
 
@@ -128,13 +160,16 @@ class EMAverager(tf.Module):
         """Update the average.
 
         Args:
-            tensor (Tensor): a value for updating the average
+            tensor (nested Tensor): value for updating the average; outer dims
+                will be first averaged before being added to the average
         Returns:
             None
         """
-        self._average.assign_add(
-            tf.cast(self._update_rate, tensor.dtype) *
-            (tensor - self._average))
+        tf.nest.map_structure(
+            lambda average, t, spec: average.assign_add(
+                tf.cast(self._update_rate, t.dtype) * (average_outer_dims(
+                    t, spec) - average)), self._average, tensor,
+            self._tensor_spec)
         self._mass.assign_add(
             tf.cast(self._update_rate, tf.float64) * (1 - self._mass))
 
@@ -144,13 +179,16 @@ class EMAverager(tf.Module):
         Returns:
             Tensor: the current average
         """
-        return self._average / tf.cast(self._mass, dtype=self._average.dtype)
+        return tf.nest.map_structure(
+            lambda average: (average / tf.cast(
+                self._mass, dtype=average.dtype)), self._average)
 
     def average(self, tensor):
         """Combines self.update and self.get in one step. Can be handy in practice.
 
         Args:
-            tensor (Tensor): a value for updating the average
+            tensor (nested Tensor): a value for updating the average; outer dims
+                will be first averaged before being added to the average
         Returns:
             Tensor: the current average
         """
@@ -193,7 +231,7 @@ class AdaptiveAverager(EMAverager):
         """Create an AdpativeAverager.
 
         Args:
-            tensor_spec (TensorSpec): the TensorSpec for the value to be
+            tensor_spec (nested TensorSpec): the TensorSpec for the value to be
                 averaged
             speed (float): speed of updating mean and variance.
             name (str): name of this averager
@@ -210,7 +248,8 @@ class AdaptiveAverager(EMAverager):
         """Update the average.
 
         Args:
-            tensor (Tensor): a value for updating the average
+            tensor (nested Tensor): a value for updating the average; outer dims
+                will be first averaged before being added to the average
         Returns:
             None
         """
