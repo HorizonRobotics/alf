@@ -46,7 +46,7 @@ class Policy(Base):
             common.make_action_time_step(time_step, policy_state[1]),
             policy_state[0])
         policy_step = policy_step._replace(
-            state=(policy_step.state, policy_step.action))
+            state=(policy_step.state, policy_step.action), info=())
         return policy_step
 
 
