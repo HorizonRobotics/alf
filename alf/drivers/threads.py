@@ -27,6 +27,7 @@ from alf.data_structures import make_action_time_step
 
 from tf_agents.trajectories.trajectory import from_transition
 
+from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.metrics.tf_metrics import NumberOfEpisodes
 from alf.metrics.tf_metrics import EnvironmentSteps
 from alf.metrics.tf_metrics import AverageReturnMetric
@@ -289,7 +290,8 @@ class ActorThread(Thread):
 
         # prediction forward
         transformed_time_step = algorithm.transform_timestep(time_step)
-        policy_step = algorithm.rollout(transformed_time_step, policy_state)
+        policy_step = algorithm.rollout(
+            transformed_time_step, policy_state, mode=RLAlgorithm.ROLLOUT)
 
         # unpack
         policy_step = nest_utils.distributions_to_params(policy_step)
