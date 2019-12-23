@@ -156,7 +156,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return ["_target_actor_network", "_target_critic_network"]
 
-    def _get_action(self, time_step, actor_network, state, epsilon_greedy=1.0):
+    def _get_action(self, actor_network, time_step, state, epsilon_greedy=1.0):
         action_distribution, state = actor_network(
             time_step.observation,
             step_type=time_step.step_type,
@@ -198,7 +198,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             state.critic)
 
         action_distribution, action, actor_state = self._get_action(
-            time_step, self._actor_network, state.actor)
+            self._actor_network, time_step, state.actor)
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(action)
@@ -220,7 +220,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         actor_loss = tf.add_n(tf.nest.flatten(actor_loss))
 
         _, target_action, target_actor_state = self._get_action(
-            time_step, self._target_actor_network, state.target_actor)
+            self._target_actor_network, time_step, state.target_actor)
 
         target_critic, target_critic_state = self._target_critic_network(
             (time_step.observation, target_action),
