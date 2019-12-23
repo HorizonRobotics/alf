@@ -23,16 +23,11 @@ import gin.tf
 
 import tensorflow as tf
 
-from tf_agents.metrics import tf_metrics
-from tf_agents.utils import eager_utils
-
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import ActionTimeStep, Experience, make_experience, PolicyStep, StepType, TrainingInfo
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
 from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
-import alf.utils
-from alf.utils import common, nest_utils
-from alf.utils.common import cast_transformer
+from alf.utils import common, nest_utils, summary_utils
 
 
 @gin.configurable
@@ -43,7 +38,7 @@ class RLAlgorithm(Algorithm):
 
     The key interface functions are:
     1. predict(): one step of computation of action for evaluation.
-    2. rollout(): one step of comutation for rollout. rollout() is used for
+    2. rollout(): one step of computation for rollout. rollout() is used for
         collecting experiences during training. Different from `predict`,
         `rollout` may include addtional computations for training.
     3. train_step(): only used for off-policy training.
@@ -63,7 +58,7 @@ class RLAlgorithm(Algorithm):
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer=cast_transformer,
+                 observation_transformer=common.cast_transformer,
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
@@ -294,18 +289,18 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for training & loss info."""
 
         if self._summarize_grads_and_vars:
-            alf.utils.summary_utils.add_variables_summaries(grads_and_vars)
-            alf.utils.summary_utils.add_gradients_summaries(grads_and_vars)
+            summary_utils.add_variables_summaries(grads_and_vars)
+            summary_utils.add_gradients_summaries(grads_and_vars)
         if self._debug_summaries:
-            alf.utils.common.add_action_summaries(training_info.action,
-                                                  self._action_spec)
-            alf.utils.common.add_loss_summaries(loss_info)
+            common.add_action_summaries(training_info.action,
+                                        self._action_spec)
+            common.add_loss_summaries(loss_info)
 
         if self._summarize_action_distributions:
-            alf.utils.summary_utils.summarize_action_dist(
+            summary_utils.summarize_action_dist(
                 training_info.action_distribution, self._action_spec)
             if training_info.collect_action_distribution:
-                alf.utils.summary_utils.summarize_action_dist(
+                summary_utils.summarize_action_dist(
                     action_distributions=training_info.
                     collect_action_distribution,
                     action_specs=self._action_spec,

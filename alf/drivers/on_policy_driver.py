@@ -77,6 +77,7 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             algorithm=algorithm,
             observers=observers,
             metrics=metrics,
+            epsilon_greedy=epsilon_greedy,
             mode=self.ON_POLICY_TRAINING if training else self.PREDICT)
 
         if training:

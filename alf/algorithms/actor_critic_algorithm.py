@@ -17,12 +17,10 @@ import gin.tf
 import tensorflow as tf
 
 from tf_agents.networks.network import Network, DistributionNetwork
-from tf_agents.trajectories.policy_step import PolicyStep
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-import alf.data_structures as ds
-from alf.data_structures import ActionTimeStep, namedtuple
+from alf.data_structures import ActionTimeStep, namedtuple, PolicyStep
 from alf.utils import common
 
 ActorCriticState = namedtuple(

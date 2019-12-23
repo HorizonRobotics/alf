@@ -52,14 +52,14 @@ class PolicyDriver(driver.Driver):
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optional list of metrics.
-            training (bool): True for training, false for evaluating
             epsilon_greedy (float):  a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for mode=PREDICT.
+            mode (int): One of (ON_POLICY_TRAINING, OFF_POLICY_TRAINING, PREDICT)
         """
         self._mode = mode
-        self._epsilon_greedy = 0.1
+        self._epsilon_greedy = epsilon_greedy
         metric_buf_size = max(10, env.batch_size)
         standard_metrics = [
             tf_metrics.NumberOfEpisodes(),

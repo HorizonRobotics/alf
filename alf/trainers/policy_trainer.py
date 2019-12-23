@@ -423,7 +423,7 @@ def play(root_dir,
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
             If None, the latest checkpoint under train_dir will be used.
-        epsilon_greedy (bool): a floating value in [0,1], representing the
+        epsilon_greedy (float): a floating value in [0,1], representing the
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout.
