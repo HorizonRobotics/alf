@@ -17,8 +17,6 @@ import collections
 import gin
 import matplotlib.pyplot as plt
 import numpy as np
-import PIL
-from io import StringIO
 import tensorflow as tf
 import tf_agents
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
