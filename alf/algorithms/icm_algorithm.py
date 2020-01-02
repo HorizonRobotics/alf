@@ -128,12 +128,12 @@ class ICMAlgorithm(Algorithm):
         """
         Args:
             inputs (tuple): observation and previous action
-            state (Tensor):  state for ICM (previous feature)
+            state (Tensor): state for ICM (previous observation)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
             TrainStep:
                 outputs: empty tuple ()
-                state: empty tuple ()
+                state: observation
                 info (ICMInfo):
         """
         feature, prev_action = inputs

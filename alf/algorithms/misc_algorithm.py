@@ -32,11 +32,11 @@ MISCInfo = namedtuple("MISCInfo", ["reward"])
 @gin.configurable
 class MISCAlgorithm(Algorithm):
     """Mutual Information-based State Control (MISC)
-    Author: Rui Zhao 
-    Work done during a research internship at Horizon Robotics. 
+    Author: Rui Zhao
+    Work done during a research internship at Horizon Robotics.
     The paper is currently under review in a conference.
 
-    This algorithm generates the intrinsic reward based on the mutual information 
+    This algorithm generates the intrinsic reward based on the mutual information
     estimation between the states of interests and the context states.
 
     See Zhao et al "Self-Supervised State-Control through Intrinsic Mutual Information Rewards"
@@ -56,20 +56,20 @@ class MISCAlgorithm(Algorithm):
                  n_objects=1,
                  name="MISCAlgorithm"):
         """Create an MISCAlgorithm.
-        
+
         Args:
             batch_size (int): batch size
             observation_spec (tf.TensorSpec): observation size
             action_spec (tf.TensorSpec): action size
             soi_spec (tf.TensorSpec): state of interest size
             soc_spec (tf.TensorSpec): state of context size
-            split_observation_fn (Callable): split observation function. 
+            split_observation_fn (Callable): split observation function.
                 The input is observation and action concatenated.
                 The outputs are the context states and states of interest
             network (Network): network for estimating mutual information (MI)
             mi_r_scale (float): scale factor of MI estimation
             hidden_size (int): number of hidden units in neural nets
-            buffer_size (int): buffer size for the data buffer storing the trajectories 
+            buffer_size (int): buffer size for the data buffer storing the trajectories
                 for training the Mutual Information Neural Estimator
             n_objects: number of objects for estimating the mutual information reward
             name (str): the algorithm name, "MISCAlgorithm"
@@ -113,7 +113,7 @@ class MISCAlgorithm(Algorithm):
         http://proceedings.mlr.press/v80/belghazi18a/belghazi18a.pdf
         'DV':  sup_T E_P(T) - log E_Q(exp(T))
         where P is the joint distribution of X and Y, and Q is the product
-         marginal distribution of P. DV is a lower bound for 
+         marginal distribution of P. DV is a lower bound for
          KLD(P||Q)=MI(X, Y).
 
         """
@@ -137,13 +137,14 @@ class MISCAlgorithm(Algorithm):
     def train_step(self, inputs, state, calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple): observation
-            state (Tensor):  state for MISC (previous feature)
+            inputs (tuple): observation and previous action
+            state (tuple): state for MISC (previous observation,
+                previous previous action)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
             TrainStep:
                 outputs: empty tuple ()
-                state:  empty tuple ()
+                state: tuple of observation and previous action
                 info: (MISCInfo):
         """
         feature_state, prev_action = inputs

@@ -169,7 +169,7 @@ class PolicyDriver(driver.Driver):
                 observer(traj)
         if self._algorithm.exp_observers and self._training:
             policy_step = nest_utils.distributions_to_params(policy_step)
-            exp = make_experience(time_step, policy_step)
+            exp = make_experience(time_step, policy_step, policy_state)
             self._algorithm.observe(exp)
 
         return next_time_step, policy_step, transformed_time_step

@@ -42,7 +42,7 @@ flags.DEFINE_string(
     'checkpoint_name', None, "name of the checkpoint "
     "(e.g. 'ckpt-12800`). If None, the latest checkpoint under train_dir will "
     "be used.")
-flags.DEFINE_bool('epsilon_greedy', 0.1, "probability of sampling action.")
+flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
 flags.DEFINE_integer('random_seed', 0, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
 flags.DEFINE_float('sleep_time_per_step', 0.01,
@@ -64,7 +64,8 @@ def main(_):
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
     env = create_environment(nonparallel=True)
     common.set_global_env(env)
-    algorithm = algorithm_ctor()
+    algorithm = algorithm_ctor(
+        observation_spec=env.observation_spec(), action_spec=env.action_spec())
     policy_trainer.play(
         FLAGS.root_dir,
         env,

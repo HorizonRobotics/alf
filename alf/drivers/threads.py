@@ -120,8 +120,8 @@ def repeat_shape_n(nested_spec, n):
         lambda t: tf.TensorSpec([n] + list(t.shape), t.dtype), nested_spec)
 
 
-LearningBatch = namedtuple("LearningBatch",
-                           ["time_step", "policy_step", "next_time_step"])
+LearningBatch = namedtuple(
+    "LearningBatch", ["time_step", "state", "policy_step", "next_time_step"])
 
 
 class TFQueues(object):
@@ -188,6 +188,7 @@ class TFQueues(object):
             capacity=learn_queue_cap,
             sample_element=LearningBatch(
                 time_step=unrolled_time_step_spec,
+                state=unrolled_policy_step_spec.state,
                 policy_step=unrolled_policy_step_spec,
                 next_time_step=unrolled_time_step_spec))
 
@@ -223,6 +224,7 @@ class TFQueues(object):
                 capacity=unroll_length,
                 sample_element=LearningBatch(
                     time_step=batch_time_step_spec,
+                    state=batch_policy_step_spec.state,
                     policy_step=batch_policy_step_spec,
                     next_time_step=batch_time_step_spec))
             for i in range(num_envs)
@@ -401,6 +403,7 @@ class EnvThread(Thread):
         self._unroll_queue.enqueue(
             LearningBatch(
                 time_step=time_step,
+                state=policy_state,
                 policy_step=policy_step,
                 next_time_step=next_time_step))
         return [next_time_step, policy_step.state]

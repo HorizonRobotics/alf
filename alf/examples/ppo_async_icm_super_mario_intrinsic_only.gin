@@ -75,13 +75,14 @@ TrainerConfig.num_updates_per_train_step = 2
 TrainerConfig.unroll_length = 32
 TrainerConfig.mini_batch_length = 1
 TrainerConfig.mini_batch_size = 128
-TrainerConfig.eval_interval = 100
+TrainerConfig.eval_interval = 200
 TrainerConfig.evaluate = True
 TrainerConfig.summarize_grads_and_vars = True
 TrainerConfig.debug_summaries=1
-TrainerConfig.summary_interval = 10
+TrainerConfig.summary_interval = 20
 TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
 TrainerConfig.num_envs = %N
+TrainerConfig.checkpoint_interval = 2000
 
 Agent.observation_transformer=@image_scale_transformer

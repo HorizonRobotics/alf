@@ -171,7 +171,8 @@ class RLAlgorithm(Algorithm):
             action=self.action_spec,
             state=self.train_state_spec,
             info=self.rollout_info_spec)
-        exp_spec = make_experience(self.time_step_spec, policy_step_spec)
+        exp_spec = make_experience(self.time_step_spec, policy_step_spec,
+                                   policy_step_spec.state)
         if not self._use_rollout_state:
             exp_spec = exp_spec._replace(state=())
         return exp_spec

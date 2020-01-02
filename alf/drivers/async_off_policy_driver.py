@@ -159,7 +159,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         """
         batch = self._tfq.learn_queue.dequeue_all()
         # convert the batch to the experience format
-        exp = make_experience(batch.time_step, batch.policy_step)
+        exp = make_experience(batch.time_step, batch.policy_step, batch.state)
         # make the exp batch major for each environment
         num_envs, unroll_length, env_batch_size \
             = batch.time_step.reward.shape[:3]

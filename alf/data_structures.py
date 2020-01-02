@@ -121,12 +121,21 @@ Experience = namedtuple(
         'env_id',
         'action',
         'rollout_info',  # PolicyStep.info from rollout()
-        'state'  # PolicyStep.state from rollout()
+        'state'  # state passed to rollout() to generate `action`
     ])
 
 
-def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
-    """Make an instance of Experience from ActionTimeStep and PolicyStep."""
+def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep, state):
+    """Make an instance of Experience from ActionTimeStep and PolicyStep.
+
+    Args:
+        time_step (ActionTimeStep): time step from the environment
+        policy_step (PolicyStep): policy step returned from rollout()
+        state (nested Tensor): state used for calling rollout() to get the
+            `policy_step`
+    Returns:
+        Experience
+    """
     return Experience(
         step_type=time_step.step_type,
         reward=time_step.reward,
@@ -136,7 +145,7 @@ def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep):
         env_id=time_step.env_id,
         action=policy_step.action,
         rollout_info=policy_step.info,
-        state=policy_step.state)
+        state=state)
 
 
 LossInfo = namedtuple(
