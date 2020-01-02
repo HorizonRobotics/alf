@@ -238,4 +238,4 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
     def preprocess_experience(self, exp: Experience):
         return self._ac_algorithm.preprocess_experience(
-            exp._replace(info=exp.rollout_info.ac))
+            exp._replace(rollout_info=exp.rollout_info.ac))
