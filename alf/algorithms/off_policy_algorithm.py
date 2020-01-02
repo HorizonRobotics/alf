@@ -71,7 +71,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
               num_updates=1,
               mini_batch_size=None,
               mini_batch_length=None,
-              clear_replay_buffer=True):
+              clear_replay_buffer=True,
+              update_counter_every_mini_batch=False):
         """Train algorithm.
 
         Args:
@@ -81,7 +82,11 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 sample in the minibatch
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
-
+            update_counter_every_mini_batch (bool): whether to update counter
+                for every mini batch. The `summary_interval` is based on this
+                counter. Typically, this should be False. Set to True if you
+                want to have summary for every mini batch for the purpose of
+                debugging.
         Returns:
             train_steps (int): the actual number of time steps that have been
                 trained (a step might be trained multiple times)
@@ -97,11 +102,11 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 sample_batch_size=mini_batch_size,
                 mini_batch_length=mini_batch_length)
         return self._train(experience, num_updates, mini_batch_size,
-                           mini_batch_length)
+                           mini_batch_length, update_counter_every_mini_batch)
 
     @tf.function
     def _train(self, experience, num_updates, mini_batch_size,
-               mini_batch_length):
+               mini_batch_length, update_counter_every_mini_batch):
         """Train using experience."""
         experience = nest_utils.params_to_distributions(
             experience, self.experience_spec)
@@ -139,6 +144,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
+        if not update_counter_every_mini_batch:
+            common.get_global_counter().assign_add(1)
+
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
                 indices = tf.random.shuffle(
@@ -146,6 +154,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 experience = tf.nest.map_structure(
                     lambda x: tf.gather(x, indices), experience)
             for b in tf.range(0, batch_size, mini_batch_size):
+                if update_counter_every_mini_batch:
+                    common.get_global_counter().assign_add(1)
+                is_last_mini_batch = tf.logical_and(
+                    tf.equal(u, num_updates - 1),
+                    tf.greater_equal(b + mini_batch_size, batch_size))
+                do_summary = tf.logical_or(is_last_mini_batch,
+                                           update_counter_every_mini_batch)
+                common.enable_summary(do_summary)
                 batch = tf.nest.map_structure(
                     lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
                     experience)
@@ -154,8 +170,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     batch,
                     weight=tf.cast(tf.shape(batch.step_type)[1], tf.float32) /
                     float(mini_batch_size))
-                common.get_global_counter().assign_add(1)
-                self.training_summary(training_info, loss_info, grads_and_vars)
+                if do_summary:
+                    self.training_summary(training_info, loss_info,
+                                          grads_and_vars)
 
         self.metric_summary()
         train_steps = batch_size * mini_batch_length * num_updates

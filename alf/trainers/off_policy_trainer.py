@@ -67,7 +67,9 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
-                clear_replay_buffer=self._clear_replay_buffer)
+                clear_replay_buffer=self._clear_replay_buffer,
+                update_counter_every_mini_batch=self._config.
+                update_counter_every_mini_batch)
         return time_step, policy_state, train_steps
 
 
@@ -105,5 +107,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
-                clear_replay_buffer=self._clear_replay_buffer)
+                clear_replay_buffer=self._clear_replay_buffer,
+                update_counter_every_mini_batch=self._config.
+                update_counter_every_mini_batch)
         return time_step, policy_state, train_steps

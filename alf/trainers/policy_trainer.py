@@ -66,6 +66,7 @@ class TrainerConfig(object):
                  epsilon_greedy=0.1,
                  num_eval_episodes=10,
                  summary_interval=50,
+                 update_counter_every_mini_batch=False,
                  summaries_flush_secs=1,
                  summary_max_queue=10,
                  debug_summaries=False,
@@ -112,6 +113,11 @@ class TrainerConfig(object):
                 Breakout. Only used for evaluation.
             num_eval_episodes (int) : number of episodes for one evaluation
             summary_interval (int): write summary every so many training steps
+            update_counter_every_mini_batch (bool): whether to update counter
+                for every mini batch. The `summary_interval` is based on this
+                counter. Typically, this should be False. Set to True if you
+                want to have summary for every mini batch for the purpose of
+                debugging.
             summaries_flush_secs (int): flush summary to disk every so many seconds
             summary_max_queue (int): flush to disk every so mary summaries
             debug_summaries (bool): A bool to gather debug summaries.
@@ -152,6 +158,7 @@ class TrainerConfig(object):
             epsilon_greedy=epsilon_greedy,
             num_eval_episodes=num_eval_episodes,
             summary_interval=summary_interval,
+            update_counter_every_mini_batch=update_counter_every_mini_batch,
             summaries_flush_secs=summaries_flush_secs,
             summary_max_queue=summary_max_queue,
             debug_summaries=debug_summaries,
