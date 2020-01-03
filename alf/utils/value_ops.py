@@ -151,9 +151,10 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
         step_types = tf.transpose(a=step_types)
 
     tf.Assert(
-        tf.shape(values)[0] >= 2,
-        ["The sequence length needs be at least 2. Got ",
-         tf.shape(values)[0]])
+        tf.shape(values)[0] >= 2, [
+            "The sequence length needs to be at least 2. Got ",
+            tf.shape(values)[0]
+        ])
 
     discounts = discounts[1:]
     rewards = rewards[1:]
@@ -196,9 +197,10 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
         returns.
     """
     tf.Assert(
-        tf.shape(values)[0] >= 2,
-        ["The sequence length needs be at least 2. Got ",
-         tf.shape(values)[0]])
+        tf.shape(values)[0] >= 2, [
+            "The sequence length needs to be at least 2. Got ",
+            tf.shape(values)[0]
+        ])
 
     discounts = discounts[1:]
     rewards = rewards[1:]
@@ -253,9 +255,10 @@ def generalized_advantage_estimation(rewards,
         step_types = tf.transpose(a=step_types)
 
     tf.Assert(
-        tf.shape(values)[0] >= 2,
-        ["The sequence length needs be at least 2. Got ",
-         tf.shape(values)[0]])
+        tf.shape(values)[0] >= 2, [
+            "The sequence length needs to be at least 2. Got ",
+            tf.shape(values)[0]
+        ])
 
     rewards = rewards[1:]
     next_values = values[1:]
