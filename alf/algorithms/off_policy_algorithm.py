@@ -13,7 +13,6 @@
 # limitations under the License.
 """Base class for off policy algorithms."""
 
-import abc
 from collections import namedtuple
 from typing import Callable
 
@@ -21,36 +20,9 @@ from absl import logging
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.trajectories.time_step import StepType
-from tf_agents.specs.distribution_spec import DistributionSpec
-from tf_agents.specs.distribution_spec import nested_distributions_from_specs
-
-from alf.algorithms.rl_algorithm import ActionTimeStep, RLAlgorithm, TrainingInfo
-from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
-from alf.utils import common
-
-Experience = namedtuple("Experience", [
-    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'env_id',
-    'action', 'info', 'action_distribution', 'state'
-])
-
-
-def make_experience(time_step: ActionTimeStep, policy_step: PolicyStep,
-                    action_distribution, state):
-    """Make an instance of Experience from ActionTimeStep and PolicyStep."""
-    return Experience(
-        step_type=time_step.step_type,
-        reward=time_step.reward,
-        discount=time_step.discount,
-        observation=time_step.observation,
-        prev_action=time_step.prev_action,
-        env_id=time_step.env_id,
-        action=policy_step.action,
-        info=policy_step.info,
-        action_distribution=action_distribution,
-        state=state)
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.data_structures import ActionTimeStep, Experience, StepType, TrainingInfo
+from alf.utils import common, nest_utils
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
@@ -95,224 +67,12 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """Return experience replayer."""
         return self._exp_replayer
 
-    def predict(self, time_step: ActionTimeStep, state=None):
-        """Default implementation of predict.
-
-        Subclass may override.
-        """
-        policy_step = self._rollout_partial_state(time_step, state)
-        return policy_step._replace(info=())
-
-    def rollout(self, time_step: ActionTimeStep, state=None):
-        """Base implementation of rollout for OffPolicyAlgorithm.
-
-        Calls _rollout_full_state or _rollout_partial_state based on
-        use_rollout_state.
-
-        Subclass may override.
-
-        Args:
-            time_step (ActionTimeStep):
-            state (nested Tensor): should be consistent with train_state_spec
-        Returns:
-            policy_step (PolicyStep):
-              action (nested tf.distribution): should be consistent with
-                `action_distribution_spec`
-              state (nested Tensor): should be consistent with `train_state_spec`
-              info (nested Tensor): everything necessary for training. Note that
-                ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by OnPolicyDriver. So
-                the user only need to put other stuff (e.g. value estimation)
-                into `policy_step.info`
-        """
-        if self._use_rollout_state and self._is_rnn:
-            return self._rollout_full_state(time_step, state)
-        else:
-            return self._rollout_partial_state(time_step, state)
-
-    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
-        """Rollout without the full state for train_step().
-
-        It is used for non-RNN model or RNN model without computating all states
-        in train_state_spec. In the returned PolicyStep.state, you can use an
-        empty tuple as a placeholder for those states that are not necessary for
-        rollout.
-
-        User needs to override this if _rollout_full_state() is not implemented.
-        Args:
-            time_step (ActionTimeStep):
-            state (nested Tensor): should be consistent with train_state_spec
-        Returns:
-            policy_step (PolicyStep):
-              action (nested tf.distribution): should be consistent with
-                `action_distribution_spec`
-              state (nested Tensor): should be consistent with `train_state_spec`.
-              info (nested Tensor): everything necessary for training. Note that
-                ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by OnPolicyDriver. So
-                the user only need to put other stuff (e.g. value estimation)
-                into `policy_step.info`
-        """
-        return self._rollout_full_state(time_step, state)
-
-    def _rollout_full_state(self, time_step: ActionTimeStep, state=None):
-        """Rollout with full state for train_step().
-
-        If you want to use the rollout state for off-policy training (by setting
-        TrainerConfig.use_rollout=True), you need to implement this function.
-        You need to compute all the states for the returned PolicyStep.state.
-
-        Args:
-            time_step (ActionTimeStep):
-            state (nested Tensor): should be consistent with train_state_spec
-        Returns:
-            policy_step (PolicyStep):
-              action (nested tf.distribution): should be consistent with
-                `action_distribution_spec`
-              state (nested Tensor): should be consistent with `train_state_spec`.
-              info (nested Tensor): everything necessary for training. Note that
-                ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by OnPolicyDriver. So
-                the user only need to put other stuff (e.g. value estimation)
-                into `policy_step.info`
-        """
-        raise NotImplementedError("_rollout_full_state is not implemented")
-
-    @abc.abstractmethod
-    def train_step(self, experience: Experience, state):
-        """Perform one step of training computation.
-
-        Args:
-            experience (Experience):
-            state (nested Tensor): should be consistent with train_state_spec
-
-        Returns (PolicyStep):
-            action (nested tf.distribution): should be consistent with
-                `action_distribution_spec`
-            state (nested Tensor): should be consistent with `train_state_spec`
-            info (nested Tensor): everything necessary for training. Note that
-                ("action_distribution", "action", "reward", "discount",
-                "is_last") are automatically collected by OffPolicyDriver. So
-                the user only need to put other stuff (e.g. value estimation)
-                into `policy_step.info`
-        """
-        pass
-
-    def preprocess_experience(self, experience: Experience):
-        """Preprocess experience.
-
-        preprocess_experience is called for the experiences got from replay
-        buffer. An example is to calculate advantages and returns in PPOAlgorithm.
-
-        The shapes of tensors in experience are assumed to be (B, T, ...)
-
-        Args:
-            experience (Experience): original experience
-        Returns:
-            processed experience
-        """
-        return experience
-
-    def set_exp_replayer(self, exp_replayer: str, num_envs=1):
-        """Set experience replayer.
-
-        Args:
-            exp_replayer (str): type of experience replayer. One of ("one_time",
-                "uniform")
-            num_envs (int): the number of batched environments.
-        """
-        if exp_replayer == "one_time":
-            self._exp_replayer = OnetimeExperienceReplayer()
-        elif exp_replayer == "uniform":
-            self._exp_replayer = SyncUniformExperienceReplayer(
-                self._experience_spec, self._env_batch_size * num_envs)
-        else:
-            raise ValueError("invalid experience replayer name")
-        self.add_experience_observer(self._exp_replayer.observe)
-
-    def observe(self, exp: Experience):
-        """An algorithm can override to manipulate experience.
-
-        Args:
-            exp (Experience): The shapes can be either [Q, T, B, ...] or
-                [B, ...], where Q is `learn_queue_cap` in `AsyncOffPolicyDriver`,
-                T is the sequence length, and B is the batch size of the batched
-                environment.
-        """
-        for observer in self._exp_observers:
-            observer(exp)
-
-    def prepare_off_policy_specs(self, time_step: ActionTimeStep):
-        """Prepare various tensor specs for off_policy training.
-
-        prepare_off_policy_specs is called by OffPolicyDriver._prepare_spec().
-
-        Args:
-            time_step (ActionTimeStep): the batch size of time_step should be
-                same as the batch size of the batched environment.
-        """
-        self._env_batch_size = time_step.step_type.shape[0]
-        self._time_step_spec = common.extract_spec(time_step)
-        initial_state = common.get_initial_policy_state(
-            self._env_batch_size, self.train_state_spec)
-        transformed_timestep = self.transform_timestep(time_step)
-        policy_step = self.rollout(transformed_timestep, initial_state)
-        info_spec = common.extract_spec(policy_step.info)
-
-        self._action_distribution_spec = tf.nest.map_structure(
-            common.to_distribution_spec, self.action_distribution_spec)
-        self._action_dist_param_spec = tf.nest.map_structure(
-            lambda spec: spec.input_params_spec,
-            self._action_distribution_spec)
-
-        self._experience_spec = Experience(
-            step_type=self._time_step_spec.step_type,
-            reward=self._time_step_spec.reward,
-            discount=self._time_step_spec.discount,
-            observation=self._time_step_spec.observation,
-            prev_action=self._action_spec,
-            env_id=self._time_step_spec.env_id,
-            action=self._action_spec,
-            info=info_spec,
-            action_distribution=self._action_dist_param_spec,
-            state=self.train_state_spec if self._use_rollout_state else ())
-
-        action_dist_params = common.zero_tensor_from_nested_spec(
-            self._experience_spec.action_distribution, self._env_batch_size)
-        action_dist = nested_distributions_from_specs(
-            self._action_distribution_spec, action_dist_params)
-
-        exp = Experience(
-            step_type=time_step.step_type,
-            reward=time_step.reward,
-            discount=time_step.discount,
-            observation=time_step.observation,
-            prev_action=time_step.prev_action,
-            env_id=time_step.env_id,
-            action=time_step.prev_action,
-            info=policy_step.info,
-            action_distribution=action_dist,
-            state=initial_state if self._use_rollout_state else ())
-
-        transformed_exp = self.transform_timestep(exp)
-        processed_exp = self.preprocess_experience(transformed_exp)
-        self._processed_experience_spec = self._experience_spec._replace(
-            observation=common.extract_spec(processed_exp.observation),
-            info=common.extract_spec(processed_exp.info))
-
-        policy_step = common.algorithm_step(
-            algorithm_step_func=self.train_step,
-            time_step=processed_exp,
-            state=initial_state)
-        info_spec = common.extract_spec(policy_step.info)
-        self._training_info_spec = TrainingInfo(
-            action_distribution=self._action_dist_param_spec, info=info_spec)
-
     def train(self,
               num_updates=1,
               mini_batch_size=None,
               mini_batch_length=None,
-              clear_replay_buffer=True):
+              clear_replay_buffer=True,
+              update_counter_every_mini_batch=False):
         """Train algorithm.
 
         Args:
@@ -322,7 +82,11 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 sample in the minibatch
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
-
+            update_counter_every_mini_batch (bool): whether to update counter
+                for every mini batch. The `summary_interval` is based on this
+                counter. Typically, this should be False. Set to True if you
+                want to have summary for every mini batch for the purpose of
+                debugging.
         Returns:
             train_steps (int): the actual number of time steps that have been
                 trained (a step might be trained multiple times)
@@ -337,17 +101,18 @@ class OffPolicyAlgorithm(RLAlgorithm):
             experience = self._exp_replayer.replay(
                 sample_batch_size=mini_batch_size,
                 mini_batch_length=mini_batch_length)
-
         return self._train(experience, num_updates, mini_batch_size,
-                           mini_batch_length)
+                           mini_batch_length, update_counter_every_mini_batch)
 
     @tf.function
     def _train(self, experience, num_updates, mini_batch_size,
-               mini_batch_length):
+               mini_batch_length, update_counter_every_mini_batch):
         """Train using experience."""
-
+        experience = nest_utils.params_to_distributions(
+            experience, self.experience_spec)
         experience = self.transform_timestep(experience)
         experience = self.preprocess_experience(experience)
+        experience = nest_utils.distributions_to_params(experience)
 
         length = experience.step_type.shape[1]
         mini_batch_length = (mini_batch_length or length)
@@ -379,6 +144,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
+        if not update_counter_every_mini_batch:
+            common.get_global_counter().assign_add(1)
+
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
                 indices = tf.random.shuffle(
@@ -386,6 +154,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 experience = tf.nest.map_structure(
                     lambda x: tf.gather(x, indices), experience)
             for b in tf.range(0, batch_size, mini_batch_size):
+                if update_counter_every_mini_batch:
+                    common.get_global_counter().assign_add(1)
+                is_last_mini_batch = tf.logical_and(
+                    tf.equal(u, num_updates - 1),
+                    tf.greater_equal(b + mini_batch_size, batch_size))
+                do_summary = tf.logical_or(is_last_mini_batch,
+                                           update_counter_every_mini_batch)
+                common.enable_summary(do_summary)
                 batch = tf.nest.map_structure(
                     lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
                     experience)
@@ -394,8 +170,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     batch,
                     weight=tf.cast(tf.shape(batch.step_type)[1], tf.float32) /
                     float(mini_batch_size))
-                common.get_global_counter().assign_add(1)
-                self.training_summary(training_info, loss_info, grads_and_vars)
+                if do_summary:
+                    self.training_summary(training_info, loss_info,
+                                          grads_and_vars)
 
         self.metric_summary()
         train_steps = batch_size * mini_batch_length * num_updates
@@ -422,72 +199,57 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 element_shape=tf.TensorShape([ta_batch_size]).concatenate(
                     s.shape))
 
-        experience_ta = tf.nest.map_structure(create_ta,
-                                              self._processed_experience_spec)
+        experience_ta = tf.nest.map_structure(
+            create_ta,
+            nest_utils.to_distribution_param_spec(
+                self.processed_experience_spec))
         experience_ta = tf.nest.map_structure(
             lambda elem, ta: ta.unstack(elem), experience, experience_ta)
-        training_info_ta = tf.nest.map_structure(create_ta,
-                                                 self._training_info_spec)
+        info_ta = tf.nest.map_structure(
+            create_ta,
+            nest_utils.to_distribution_param_spec(self.train_step_info_spec))
 
-        def _train_loop_body(counter, policy_state, training_info_ta):
+        def _train_loop_body(counter, policy_state, info_ta):
             exp = tf.nest.map_structure(lambda ta: ta.read(counter),
                                         experience_ta)
-            collect_action_distribution_param = exp.action_distribution
-            collect_action_distribution = nested_distributions_from_specs(
-                self._action_distribution_spec,
-                collect_action_distribution_param)
-            exp = exp._replace(action_distribution=collect_action_distribution)
-
+            exp = nest_utils.params_to_distributions(
+                exp, self.processed_experience_spec)
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
 
-            policy_step = common.algorithm_step(self.train_step, exp,
-                                                policy_state)
+            policy_step = self.train_step(exp, policy_state)
 
-            action_dist_param = common.get_distribution_params(
-                policy_step.action)
-
-            training_info = TrainingInfo(
-                action_distribution=action_dist_param, info=policy_step.info)
-
-            training_info_ta = tf.nest.map_structure(
-                lambda ta, x: ta.write(counter, x), training_info_ta,
-                training_info)
+            info_ta = tf.nest.map_structure(
+                lambda ta, x: ta.write(counter, x), info_ta,
+                nest_utils.distributions_to_params(policy_step.info))
 
             counter += 1
 
-            return [counter, policy_step.state, training_info_ta]
+            return [counter, policy_step.state, info_ta]
 
         with tf.GradientTape(
                 persistent=True, watch_accessed_variables=False) as tape:
             tape.watch(self.trainable_variables)
-            [_, _, training_info_ta] = tf.while_loop(
+            [_, _, info_ta] = tf.while_loop(
                 cond=lambda counter, *_: tf.less(counter, num_steps),
                 body=_train_loop_body,
-                loop_vars=[counter, first_train_state, training_info_ta],
+                loop_vars=[counter, first_train_state, info_ta],
                 back_prop=True,
                 name="train_loop")
-            training_info = tf.nest.map_structure(lambda ta: ta.stack(),
-                                                  training_info_ta)
-            training_info = training_info._replace(
+            info = tf.nest.map_structure(lambda ta: ta.stack(), info_ta)
+            info = nest_utils.params_to_distributions(
+                info, self.train_step_info_spec)
+            experience = nest_utils.params_to_distributions(
+                experience, self.processed_experience_spec)
+            training_info = TrainingInfo(
                 action=experience.action,
                 reward=experience.reward,
                 discount=experience.discount,
                 step_type=experience.step_type,
-                collect_info=experience.info,
-                collect_action_distribution=experience.action_distribution,
+                rollout_info=experience.rollout_info,
+                info=info,
                 env_id=experience.env_id)
-
-            action_distribution = nested_distributions_from_specs(
-                self._action_distribution_spec,
-                training_info.action_distribution)
-            collect_action_distribution = nested_distributions_from_specs(
-                self._action_distribution_spec,
-                training_info.collect_action_distribution)
-            training_info = training_info._replace(
-                action_distribution=action_distribution,
-                collect_action_distribution=collect_action_distribution)
 
         loss_info, grads_and_vars = self.train_complete(
             tape=tape, training_info=training_info, weight=weight)

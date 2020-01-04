@@ -53,7 +53,6 @@ class SyncOffPolicyDriver(OffPolicyDriver):
                  algorithm: OffPolicyAlgorithm,
                  exp_replayer="uniform",
                  observers=[],
-                 use_rollout_state=False,
                  metrics=[]):
         """Create an OffPolicyDriver.
 
@@ -65,8 +64,6 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            use_rollout_state (bool): Include the RNN state for the experiences
-                used for off-policy training
             metrics (list[TFStepMetric]): An optiotional list of metrics.
         """
         # training=False because training info is always obtained from
@@ -78,7 +75,6 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
-            use_rollout_state=use_rollout_state,
             metrics=metrics)
         algorithm.set_metrics(self.get_metrics())
 

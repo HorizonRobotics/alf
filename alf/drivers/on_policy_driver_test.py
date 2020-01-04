@@ -50,18 +50,19 @@ class OnPolicyDriverTest(tf.test.TestCase):
         action_spec = env.action_spec()
         observation_spec = env.observation_spec()
         algorithm = ActorCriticAlgorithm(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             actor_network=ActorDistributionNetwork(
                 observation_spec, action_spec, fc_layer_params=()),
             value_network=ValueNetwork(observation_spec, fc_layer_params=()),
             optimizer=tf.optimizers.Adam(learning_rate=1e-1))
-        driver = OnPolicyDriver(env, algorithm, train_interval=1)
+        driver = OnPolicyDriver(env, algorithm, train_interval=2)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
         driver.run = tf.function(driver.run)
 
         t0 = time.time()
-        driver.run(max_num_steps=1300 * batch_size)
+        driver.run(max_num_steps=2600 * batch_size)
         print("time=%s" % (time.time() - t0))
 
         env.reset()
@@ -81,18 +82,19 @@ class OnPolicyDriverTest(tf.test.TestCase):
         action_spec = env.action_spec()
         observation_spec = env.observation_spec()
         algorithm = ActorCriticAlgorithm(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             actor_network=ActorDistributionNetwork(
                 observation_spec, action_spec, fc_layer_params=()),
             value_network=ValueNetwork(observation_spec, fc_layer_params=()),
             optimizer=tf.optimizers.Adam(learning_rate=1e-2))
-        driver = OnPolicyDriver(env, algorithm, train_interval=1)
+        driver = OnPolicyDriver(env, algorithm, train_interval=2)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
         driver.run = tf.function(driver.run)
 
         t0 = time.time()
-        driver.run(max_num_steps=1300 * batch_size)
+        driver.run(max_num_steps=2600 * batch_size)
         print("time=%s" % (time.time() - t0))
 
         env.reset()
@@ -113,6 +115,7 @@ class OnPolicyDriverTest(tf.test.TestCase):
         action_spec = env.action_spec()
         observation_spec = env.observation_spec()
         algorithm = ActorCriticAlgorithm(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             actor_network=ActorDistributionRnnNetwork(
                 observation_spec,
@@ -124,13 +127,13 @@ class OnPolicyDriverTest(tf.test.TestCase):
                 input_fc_layer_params=(),
                 output_fc_layer_params=None),
             optimizer=tf.optimizers.Adam(learning_rate=1e-2))
-        driver = OnPolicyDriver(env, algorithm, train_interval=8)
+        driver = OnPolicyDriver(env, algorithm, train_interval=9)
         eval_driver = OnPolicyDriver(env, algorithm, training=False)
 
         driver.run = tf.function(driver.run)
 
         t0 = time.time()
-        driver.run(max_num_steps=1000 * batch_size)
+        driver.run(max_num_steps=2000 * batch_size)
         logging.info("time=%s" % (time.time() - t0))
 
         env.reset()

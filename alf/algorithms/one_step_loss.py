@@ -15,7 +15,7 @@
 import tensorflow as tf
 import gin.tf
 
-from alf.algorithms.rl_algorithm import TrainingInfo, LossInfo
+from alf.data_structures import TrainingInfo, LossInfo
 from alf.utils import common, losses, value_ops
 
 

@@ -25,9 +25,9 @@ from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.ddpg_algorithm import create_ou_process
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import ActionTimeStep, LossInfo, PolicyStep, TrainingInfo
+from alf.data_structures import ActionTimeStep, LossInfo, PolicyStep, TrainingInfo
+from alf.data_structures import namedtuple
 from alf.utils import common, dist_utils, losses
-from alf.utils.common import namedtuple
 from alf.utils.summary_utils import safe_mean_hist_summary
 
 SarsaState = namedtuple(
@@ -36,7 +36,8 @@ SarsaState = namedtuple(
         'critic', 'target_critic'
     ],
     default_value=())
-SarsaInfo = namedtuple('SarsaInfo', ['actor_loss', 'critic', 'returns'])
+SarsaInfo = namedtuple(
+    'SarsaInfo', ['action_distribution', 'actor_loss', 'critic', 'returns'])
 SarsaLossInfo = namedtuple(
     'SarsaLossInfo', ['actor', 'critic'], default_value=())
 
@@ -55,8 +56,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     """
 
     def __init__(self,
-                 action_spec,
                  observation_spec,
+                 action_spec,
                  actor_network: DistributionNetwork,
                  critic_network: Network,
                  gamma=0.99,
@@ -99,14 +100,15 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             name (str): The name of this algorithm.
         """
         if isinstance(actor_network, DistributionNetwork):
-            action_distribution_spec = actor_network.output_spec
+            self._action_distribution_spec = actor_network.output_spec
         elif isinstance(actor_network, Network):
-            action_distribution_spec = action_spec
+            self._action_distribution_spec = action_spec
         else:
             raise ValueError("Expect DistributionNetwork or Network for"
                              " `actor_network`, got %s" % type(actor_network))
 
         super().__init__(
+            observation_spec,
             action_spec,
             predict_state_spec=SarsaState(
                 prev_observation=observation_spec,
@@ -120,7 +122,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 critic=critic_network.state_spec,
                 target_critic=critic_network.state_spec,
             ),
-            action_distribution_spec=action_distribution_spec,
             optimizer=[actor_optimizer, critic_optimizer],
             trainable_module_sets=[[actor_network], [critic_network]],
             gradient_clipping=gradient_clipping,
@@ -152,29 +153,32 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         self._ou_process = create_ou_process(action_spec, ou_stddev,
                                              ou_damping)
 
-    def need_final_step(self):
-        return False
-
     def _trainable_attributes_to_ignore(self):
         return ["_target_actor_network", "_target_critic_network"]
 
-    def _get_action(self, time_step, actor_network, state):
+    def _get_action(self, actor_network, time_step, state, epsilon_greedy=1.0):
         action_distribution, state = actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state)
         if isinstance(actor_network, DistributionNetwork):
-            action = tf.nest.map_structure(lambda d: d.sample(),
-                                           action_distribution)
+            action = common.epsilon_greedy_sample(action_distribution,
+                                                  epsilon_greedy)
         else:
-            action = action_distribution
+
+            def _sample(a, ou):
+                return tf.cond(
+                    tf.less(tf.random.uniform((), 0, 1),
+                            epsilon_greedy), lambda: a + ou(), lambda: a)
+
+            action = tf.nest.map_structure(_sample, action_distribution,
+                                           self._ou_process)
+            action_distribution = ()
         return action_distribution, action, state
 
-    def _predict(self, time_step: ActionTimeStep, state=None):
-        action, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        _, action, actor_state = self._get_action(
+            self._actor_network, time_step, state.actor, epsilon_greedy)
         return PolicyStep(
             action=action,
             state=SarsaState(
@@ -183,25 +187,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 prev_step_type=time_step.step_type),
             info=())
 
-    def predict(self, time_step: ActionTimeStep, state=None):
-        policy_step = self._predict(time_step, state)
-        if not isinstance(self._actor_network, DistributionNetwork):
-            action = tf.nest.map_structure(lambda a, ou: a + ou(),
-                                           policy_step.action,
-                                           self._ou_process)
-            policy_step = policy_step._replace(action=action)
-        return policy_step
-
-    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
-        if isinstance(self._actor_network, DistributionNetwork):
-            return super().greedy_predict(time_step, state, eps=eps)
-        else:
-            return self._predict(time_step, state)
-
-    def rollout(self,
-                time_step: ActionTimeStep,
-                state: SarsaState,
-                is_train_step=False):
+    def rollout(self, time_step: ActionTimeStep, state: SarsaState, mode):
         not_first_step = tf.not_equal(time_step.step_type, StepType.FIRST)
         prev_critic, critic_state = self._critic_network(
             inputs=(state.prev_observation, time_step.prev_action),
@@ -212,7 +198,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             state.critic)
 
         action_distribution, action, actor_state = self._get_action(
-            time_step, self._actor_network, state.actor)
+            self._actor_network, time_step, state.actor)
 
         with tf.GradientTape(watch_accessed_variables=False) as tape:
             tape.watch(action)
@@ -234,7 +220,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         actor_loss = tf.add_n(tf.nest.flatten(actor_loss))
 
         _, target_action, target_actor_state = self._get_action(
-            time_step, self._target_actor_network, state.target_actor)
+            self._target_actor_network, time_step, state.target_actor)
 
         target_critic, target_critic_state = self._target_critic_network(
             (time_step.observation, target_action),
@@ -244,13 +230,10 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         prev_return = tf.stop_gradient(time_step.reward +
                                        time_step.discount * target_critic)
         info = SarsaInfo(
-            actor_loss=actor_loss, critic=prev_critic, returns=prev_return)
-
-        if not is_train_step and not isinstance(self._actor_network,
-                                                DistributionNetwork):
-            # action_distribution is actually action tensors in this case
-            action_distribution = tf.nest.map_structure(
-                lambda a, ou: a + ou(), action_distribution, self._ou_process)
+            action_distribution=action_distribution,
+            actor_loss=actor_loss,
+            critic=prev_critic,
+            returns=prev_return)
 
         rl_state = SarsaState(
             prev_observation=time_step.observation,
@@ -260,7 +243,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             critic=critic_state,
             target_critic=target_critic_state)
 
-        return PolicyStep(action_distribution, rl_state, info)
+        return PolicyStep(action, rl_state, info)
 
     def calc_loss(self, training_info: TrainingInfo):
         info = training_info.info  # SarsaInfo

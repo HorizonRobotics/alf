@@ -19,10 +19,11 @@ import tensorflow as tf
 
 from tf_agents.trajectories.time_step import StepType
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.data_structures import namedtuple, LossInfo
 from alf.utils import dist_utils
 from alf.utils.averager import ScalarWindowAverager
-from alf.utils.common import namedtuple, run_if, should_record_summaries
+from alf.utils.common import run_if, should_record_summaries
 from alf.utils.dist_utils import calc_default_target_entropy
 from alf.utils.dist_utils import calc_default_max_entropy
 

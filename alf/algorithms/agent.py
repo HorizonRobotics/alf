@@ -27,7 +27,7 @@ from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.misc_algorithm import MISCAlgorithm
 from alf.algorithms.on_policy_algorithm import Experience, OnPolicyAlgorithm, RLAlgorithm
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo, namedtuple
+from alf.data_structures import ActionTimeStep, TrainingInfo, LossInfo, namedtuple
 from alf.utils.common import cast_transformer
 from alf.utils.math_ops import add_ignore_empty
 
@@ -48,6 +48,7 @@ class Agent(OnPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  rl_algorithm_cls=ActorCriticAlgorithm,
                  encoding_network: Network = None,
@@ -77,7 +78,9 @@ class Agent(OnPolicyAlgorithm):
                 not smaller than `entropy_target` supplied for constructing
                 EntropyTargetAlgorithm. If this is enabled, make sure you don't
                 use entropy_regularization for loss (see ActorCriticLoss or
-                PPOLoss).
+                PPOLoss). In order to use this, The PolicyStep.info from
+                rl_algorithm_cls.train_step() and rl_algorithm_cls.rollout()
+                needs to contain `action_distribution`.
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
@@ -91,7 +94,9 @@ class Agent(OnPolicyAlgorithm):
             name (str): Name of this algorithm.
             """
         rl_algorithm = rl_algorithm_cls(
-            action_spec=action_spec, debug_summaries=debug_summaries)
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            debug_summaries=debug_summaries)
         train_state_spec = AgentState(rl=rl_algorithm.train_state_spec)
         predict_state_spec = AgentState(rl=rl_algorithm.predict_state_spec)
 
@@ -104,11 +109,11 @@ class Agent(OnPolicyAlgorithm):
             entropy_target_algorithm = EntropyTargetAlgorithm(
                 action_spec, debug_summaries=debug_summaries)
 
-        super(Agent, self).__init__(
+        super().__init__(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             predict_state_spec=predict_state_spec,
             train_state_spec=train_state_spec,
-            action_distribution_spec=rl_algorithm.action_distribution_spec,
             optimizer=[optimizer],
             trainable_module_sets=[[encoding_network]],
             gradient_clipping=gradient_clipping,
@@ -131,33 +136,21 @@ class Agent(OnPolicyAlgorithm):
             observation, _ = self._encoding_network(observation)
         return observation
 
-    def need_final_step(self):
-        return self._rl_algorithm.need_final_step()
-
-    def predict(self, time_step: ActionTimeStep, state: AgentState):
+    def predict(self, time_step: ActionTimeStep, state: AgentState,
+                epsilon_greedy):
         """Predict for one step."""
         observation = self._encode(time_step)
 
         new_state = AgentState()
 
         rl_step = self._rl_algorithm.predict(
-            time_step._replace(observation=observation), state.rl)
+            time_step._replace(observation=observation), state.rl,
+            epsilon_greedy)
         new_state = new_state._replace(rl=rl_step.state)
 
         return PolicyStep(action=rl_step.action, state=new_state, info=())
 
-    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
-        observation = self._encode(time_step)
-
-        new_state = AgentState()
-
-        rl_step = self._rl_algorithm.greedy_predict(
-            time_step._replace(observation=observation), state.rl)
-        new_state = new_state._replace(rl=rl_step.state)
-
-        return PolicyStep(action=rl_step.action, state=new_state, info=())
-
-    def rollout(self, time_step: ActionTimeStep, state: AgentState):
+    def rollout(self, time_step: ActionTimeStep, state: AgentState, mode):
         """Rollout for one step."""
         new_state = AgentState()
         info = AgentInfo()
@@ -169,16 +162,19 @@ class Agent(OnPolicyAlgorithm):
             new_state = new_state._replace(icm=icm_step.state)
 
         rl_step = self._rl_algorithm.rollout(
-            time_step._replace(observation=observation), state.rl)
+            time_step._replace(observation=observation), state.rl, mode)
 
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
-        # TODO
-        # avoid computing this when rollout (off policy train)
-        if self._entropy_target_algorithm:
+        if self._entropy_target_algorithm and mode != RLAlgorithm.ROLLOUT:
+            assert 'action_distribution' in rl_step.info._fields, (
+                "PolicyStep from rl_algorithm.rollout() does not contain "
+                "`action_distribution`, which is required by "
+                "`enforce_entropy_target`")
             et_step = self._entropy_target_algorithm.train_step(
-                rl_step.action, step_type=time_step.step_type)
+                rl_step.info.action_distribution,
+                step_type=time_step.step_type)
             info = info._replace(entropy_target=et_step.info)
 
         return PolicyStep(action=rl_step.action, state=new_state, info=info)
@@ -202,8 +198,12 @@ class Agent(OnPolicyAlgorithm):
         info = info._replace(rl=rl_step.info)
 
         if self._entropy_target_algorithm:
+            assert 'action_distribution' in rl_step.info._fields, (
+                "PolicyStep from rl_algorithm.train_step() does not contain "
+                "`action_distribution`, which is required by "
+                "`enforce_entropy_target`")
             et_step = self._entropy_target_algorithm.train_step(
-                rl_step.action, step_type=exp.step_type)
+                rl_step.info.action_distribution, step_type=exp.step_type)
             info = info._replace(entropy_target=et_step.info)
 
         return PolicyStep(action=rl_step.action, state=new_state, info=info)
@@ -237,7 +237,7 @@ class Agent(OnPolicyAlgorithm):
 
     def calc_loss(self, training_info):
         """Calculate loss."""
-        if training_info.collect_info == ():
+        if training_info.rollout_info == ():
             training_info = training_info._replace(
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
@@ -268,6 +268,6 @@ class Agent(OnPolicyAlgorithm):
             training_info._replace(info=training_info.info.rl))
 
     def preprocess_experience(self, exp: Experience):
-        reward = self.calc_training_reward(exp.reward, exp.info)
+        reward = self.calc_training_reward(exp.reward, exp.rollout_info)
         return self._rl_algorithm.preprocess_experience(
-            exp._replace(reward=reward, info=exp.info.rl))
+            exp._replace(reward=reward, rollout_info=exp.rollout_info.rl))

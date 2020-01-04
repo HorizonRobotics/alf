@@ -63,8 +63,10 @@ class TrainerConfig(object):
                  checkpoint_max_to_keep=20,
                  evaluate=False,
                  eval_interval=10,
+                 epsilon_greedy=0.1,
                  num_eval_episodes=10,
                  summary_interval=50,
+                 update_counter_every_mini_batch=False,
                  summaries_flush_secs=1,
                  summary_max_queue=10,
                  debug_summaries=False,
@@ -105,8 +107,17 @@ class TrainerConfig(object):
                 deleted). If None, all checkpoints will be kept.
             evaluate (bool): A bool to evaluate when training
             eval_interval (int): evaluate every so many iteration
+            epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout. Only used for evaluation.
             num_eval_episodes (int) : number of episodes for one evaluation
             summary_interval (int): write summary every so many training steps
+            update_counter_every_mini_batch (bool): whether to update counter
+                for every mini batch. The `summary_interval` is based on this
+                counter. Typically, this should be False. Set to True if you
+                want to have summary for every mini batch for the purpose of
+                debugging.
             summaries_flush_secs (int): flush summary to disk every so many seconds
             summary_max_queue (int): flush to disk every so mary summaries
             debug_summaries (bool): A bool to gather debug summaries.
@@ -144,8 +155,10 @@ class TrainerConfig(object):
             checkpoint_max_to_keep=checkpoint_max_to_keep,
             evaluate=evaluate,
             eval_interval=eval_interval,
+            epsilon_greedy=epsilon_greedy,
             num_eval_episodes=num_eval_episodes,
             summary_interval=summary_interval,
+            update_counter_every_mini_batch=update_counter_every_mini_batch,
             summaries_flush_secs=summaries_flush_secs,
             summary_max_queue=summary_max_queue,
             debug_summaries=debug_summaries,
@@ -243,6 +256,8 @@ class Trainer(object):
         common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(
+            observation_spec=env.observation_spec(),
+            action_spec=env.action_spec(),
             debug_summaries=self._debug_summaries)
         self._algorithm.set_summary_settings(
             summarize_grads_and_vars=self._summarize_grads_and_vars,
@@ -377,10 +392,10 @@ class Trainer(object):
                 metrics=self._eval_metrics,
                 environment=self._eval_env,
                 state_spec=self._algorithm.predict_state_spec,
-                action_fn=lambda time_step, state: common.algorithm_step(
-                    algorithm_step_func=self._algorithm.greedy_predict,
+                action_fn=lambda time_step, state: self._algorithm.predict(
                     time_step=self._algorithm.transform_timestep(time_step),
-                    state=state),
+                    state=state,
+                    epsilon_greedy=self._config.epsilon_greedy),
                 num_episodes=self._num_eval_episodes,
                 step_metrics=self._driver.get_step_metrics(),
                 train_step=global_step,
@@ -394,7 +409,7 @@ def play(root_dir,
          env,
          algorithm,
          checkpoint_name=None,
-         greedy_predict=True,
+         epsilon_greedy=0.1,
          random_seed=None,
          num_episodes=10,
          sleep_time_per_step=0.01,
@@ -415,7 +430,10 @@ def play(root_dir,
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_name (str): name of the checkpoint (e.g. 'ckpt-12800`).
             If None, the latest checkpoint under train_dir will be used.
-        greedy_predict (bool): use greedy action for evaluation.
+        epsilon_greedy (float): a floating value in [0,1], representing the
+                chance of action sampling instead of taking argmax. This can
+                help prevent a dead loop in some deterministic environment like
+                Breakout.
         random_seed (None|int): random seed, a random seed is used if None
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
@@ -437,7 +455,7 @@ def play(root_dir,
         env=env,
         algorithm=algorithm,
         training=False,
-        greedy_predict=greedy_predict)
+        epsilon_greedy=epsilon_greedy)
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
     checkpoint = tf.train.Checkpoint(

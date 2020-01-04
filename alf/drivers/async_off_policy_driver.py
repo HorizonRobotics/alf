@@ -16,12 +16,14 @@ from typing import Callable
 from absl import logging
 
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.algorithms.off_policy_algorithm import make_experience
+from alf.data_structures import make_experience
 
 import gin.tf
 import tensorflow as tf
 
 from tf_agents.environments.tf_environment import TFEnvironment
+
+from alf.data_structures import PolicyStep
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.drivers.threads import TFQueues, ActorThread, EnvThread, LogThread
 from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
@@ -51,7 +53,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
                  learn_queue_cap=1,
                  actor_queue_cap=1,
                  observers=[],
-                 use_rollout_state=False,
                  metrics=[],
                  exp_replayer="one_time"):
         """
@@ -72,8 +73,6 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
-            use_rollout_state (bool): Include the RNN state for the experiences
-                used for off-policy training
             metrics (list[TFStepMetric]): An optional list of metrics.
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
@@ -84,22 +83,23 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
-            use_rollout_state=use_rollout_state,
             metrics=metrics)
 
         # create threads
         self._coord = tf.train.Coordinator()
         num_envs = len(envs)
+        policy_step_spec = PolicyStep(
+            action=algorithm.action_spec,
+            state=algorithm.train_state_spec,
+            info=algorithm.rollout_info_spec)
         self._tfq = TFQueues(
             num_envs,
             self._env.batch_size,
             learn_queue_cap,
             actor_queue_cap,
-            time_step_spec=self._time_step_spec,
-            policy_step_spec=self._policy_step_spec,
-            act_dist_param_spec=self._action_dist_param_spec,
+            time_step_spec=algorithm.time_step_spec,
+            policy_step_spec=policy_step_spec,
             unroll_length=unroll_length,
-            store_state=use_rollout_state,
             num_actor_queues=num_actor_queues)
         actor_threads = [
             ActorThread(
@@ -159,11 +159,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         """
         batch = self._tfq.learn_queue.dequeue_all()
         # convert the batch to the experience format
-        exp = make_experience(
-            batch.time_step,
-            batch.policy_step,
-            batch.act_dist_param,
-            state=batch.state)
+        exp = make_experience(batch.time_step, batch.policy_step, batch.state)
         # make the exp batch major for each environment
         num_envs, unroll_length, env_batch_size \
             = batch.time_step.reward.shape[:3]

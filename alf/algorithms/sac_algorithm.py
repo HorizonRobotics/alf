@@ -13,7 +13,6 @@
 # limitations under the License.
 """Soft Actor Critic Algorithm."""
 
-from collections import namedtuple
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -28,12 +27,13 @@ from tf_agents.networks.actor_distribution_network import ActorDistributionNetwo
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
 from tf_agents.networks.network import Network, DistributionNetwork
 from tf_agents.utils import common as tfa_common
-from tf_agents.trajectories.policy_step import PolicyStep
 
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
-from alf.algorithms.rl_algorithm import TrainingInfo, ActionTimeStep, LossInfo
-from alf.utils import losses, common, dist_utils
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.data_structures import ActionTimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import PolicyStep, TrainingInfo
+from alf.utils import losses, common, dist_utils
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -52,7 +52,9 @@ SacCriticInfo = namedtuple("SacCriticInfo",
 
 SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss"])
 
-SacInfo = namedtuple("SacInfo", ["actor", "critic", "alpha"])
+SacInfo = namedtuple(
+    "SacInfo", ["action_distribution", "actor", "critic", "alpha"],
+    default_value=())
 
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
 
@@ -85,6 +87,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  actor_network: DistributionNetwork,
                  critic_network: Network,
@@ -134,6 +137,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             dtype=tf.float32,
             trainable=True)
         super().__init__(
+            observation_spec,
             action_spec,
             train_state_spec=SacState(
                 share=SacShareState(actor=actor_network.state_spec),
@@ -145,7 +149,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     critic2=critic_network.state_spec,
                     target_critic1=critic_network.state_spec,
                     target_critic2=critic_network.state_spec)),
-            action_distribution_spec=actor_network.output_spec,
             optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
             trainable_module_sets=[[actor_network],
                                    [critic_network1, critic_network2],
@@ -199,15 +202,31 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._target_critic_network2.variables,
             tau=1.0)
 
-    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
-        action, state = self._actor_network(
+    def _predict(self,
+                 time_step: ActionTimeStep,
+                 state=None,
+                 epsilon_greedy=1.):
+        action_dist, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state.share.actor)
         empty_state = tf.nest.map_structure(lambda x: (),
                                             self.train_state_spec)
         state = empty_state._replace(share=SacShareState(actor=state))
-        return PolicyStep(action=action, state=state, info=())
+        action = common.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        return PolicyStep(
+            action=action,
+            state=state,
+            info=SacInfo(action_distribution=action_dist))
+
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        return self._predict(time_step, state, epsilon_greedy)
+
+    def rollout(self, time_step: ActionTimeStep, state, mode):
+        if self.need_full_rollout_state():
+            raise NotImplementedError("Storing RNN state to replay buffer "
+                                      "is not supported by SacAlgorithm")
+        return self._predict(time_step, state, epsilon_greedy=1.0)
 
     def _actor_train_step(self, exp: Experience, state: SacActorState,
                           action_distribution, action, log_pi):
@@ -346,8 +365,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             share=SacShareState(actor=share_actor_state),
             actor=actor_state,
             critic=critic_state)
-        info = SacInfo(actor=actor_info, critic=critic_info, alpha=alpha_info)
-        return PolicyStep(action_distribution, state, info)
+        info = SacInfo(
+            action_distribution=action_distribution,
+            actor=actor_info,
+            critic=critic_info,
+            alpha=alpha_info)
+        return PolicyStep(action, state, info)
 
     def after_train(self, training_info):
         self._update_target()

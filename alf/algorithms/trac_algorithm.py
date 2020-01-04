@@ -25,12 +25,10 @@ from tf_agents.specs import tensor_spec
 from tf_agents.distributions.utils import SquashToSpecNormal
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.off_policy_algorithm import Experience
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.algorithms.rl_algorithm import ActionTimeStep, StepType
+from alf.data_structures import ActionTimeStep, Experience, namedtuple, StepType
 from alf.optimizers.trusted_updater import TrustedUpdater
-from alf.utils import common
-from alf.utils.common import namedtuple
+from alf.utils import common, nest_utils
 
 nest_map = tf.nest.map_structure
 
@@ -60,6 +58,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  ac_algorithm_cls=ActorCriticAlgorithm,
                  action_dist_clip_per_dim=0.01,
@@ -75,15 +74,24 @@ class TracAlgorithm(OnPolicyAlgorithm):
             name (str): Name of this algorithm.
         """
         ac_algorithm = ac_algorithm_cls(
-            action_spec=action_spec, debug_summaries=debug_summaries)
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            debug_summaries=debug_summaries)
 
         assert hasattr(ac_algorithm, '_actor_network')
+        if isinstance(ac_algorithm._actor_network, DistributionNetwork):
+            self._action_distribution_spec = ac_algorithm._actor_network.output_spec
+            assert "action_distribution" in ac_algorithm.rollout_info_spec._fields, (
+                "PolicyStep.info from ac_algorithm.rollout() needs to contain "
+                "`action_distribution` in order to use TracAlgorithm.")
+        else:
+            self._action_distribution_spec = None
 
         super().__init__(
+            observation_spec=observation_spec,
             action_spec=action_spec,
             train_state_spec=ac_algorithm.train_state_spec,
             predict_state_spec=ac_algorithm.predict_state_spec,
-            action_distribution_spec=ac_algorithm.action_distribution_spec,
             debug_summaries=debug_summaries,
             name=name)
 
@@ -98,9 +106,12 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
 
-    def rollout(self, time_step: ActionTimeStep, state):
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+        return self._ac_algorithm.predict(time_step, state, epsilon_greedy)
+
+    def rollout(self, time_step: ActionTimeStep, state, mode):
         """Rollout for one step."""
-        policy_step = self._ac_algorithm.rollout(time_step, state)
+        policy_step = self._ac_algorithm.rollout(time_step, state, mode)
         return policy_step._replace(
             info=TracInfo(
                 observation=time_step.observation,
@@ -117,9 +128,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
                     state),
                 ac=policy_step.info))
 
-    def greedy_predict(self, time_step: ActionTimeStep, state=None, eps=0.1):
-        return self._ac_algorithm.greedy_predict(time_step, state)
-
     def calc_loss(self, training_info):
         if self._trusted_updater is None:
             self._trusted_updater = TrustedUpdater(
@@ -129,11 +137,14 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
     def after_train(self, training_info):
         """Adjust actor parameter according to KL-divergence."""
+        action_param = training_info.action
+        if self._action_distribution_spec is not None:
+            action_param = nest_utils.distributions_to_params(
+                training_info.info.ac.action_distribution)
         exp_array = TracExperience(
             observation=training_info.info.observation,
             step_type=training_info.step_type,
-            action_param=common.get_distribution_params(
-                training_info.action_distribution),
+            action_param=action_param,
             state=training_info.info.state)
         exp_array = common.create_and_unstack_tensor_array(
             exp_array, clear_after_read=False)
@@ -163,8 +174,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
         def _dist(d1, d2):
             if isinstance(d1, tfp.distributions.Categorical):
                 dist = tf.square(d1.logits - d2.logits)
-            elif isinstance(d1, tfp.distributions.Deterministic):
-                dist = tf.square(d1.loc - d2.loc)
+            elif isinstance(d1, tf.Tensor):
+                dist = tf.square(d1 - d2)
             else:
                 if isinstance(d1, SquashToSpecNormal):
                     # TODO `SquashToSpecNormal.kl_divergence` checks that two
@@ -181,9 +192,10 @@ class TracAlgorithm(OnPolicyAlgorithm):
             return dist
 
         def _update_total_dists(new_action, exp, total_dists):
-            old_action = nested_distributions_from_specs(
-                common.to_distribution_spec(self.action_distribution_spec),
-                exp.action_param)
+            old_action = exp.action_param
+            if self._action_distribution_spec is not None:
+                old_action = nest_utils.params_to_distributions(
+                    exp.action_param, self._action_distribution_spec)
             dists = nest_map(_dist, old_action, new_action)
             valid_masks = tf.cast(
                 tf.not_equal(exp.step_type, StepType.LAST), tf.float32)
@@ -206,9 +218,18 @@ class TracAlgorithm(OnPolicyAlgorithm):
             time_step = ActionTimeStep(
                 observation=exp.observation, step_type=exp.step_type)
             policy_step = self._ac_algorithm.predict(
-                time_step=time_step, state=state)
-            new_action, state = policy_step.action, policy_step.state
-            new_action = common.to_distribution(new_action)
+                time_step=time_step, state=state, epsilon_greedy=1.0)
+            if self._action_distribution_spec is None:
+                new_action = policy_step.action
+            else:
+                assert (
+                    common.is_namedtuple(policy_step.info)
+                    and "action_distribution" in policy_step.info._fields
+                ), ("PolicyStep.info from ac_algorithm.rollout() should be "
+                    "a namedtuple containing `action_distribution` in order to "
+                    "use TracAlgorithm.")
+                new_action = policy_step.info.action_distribution
+            state = policy_step.state
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(num_steps * batch_size, tf.float32)
@@ -217,4 +238,4 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
     def preprocess_experience(self, exp: Experience):
         return self._ac_algorithm.preprocess_experience(
-            exp._replace(info=exp.info.ac))
+            exp._replace(rollout_info=exp.rollout_info.ac))

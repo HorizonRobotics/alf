@@ -50,9 +50,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
 
     def _init_driver(self):
         return SyncOffPolicyDriver(
-            env=self._envs[0],
-            use_rollout_state=self._config.use_rollout_state,
-            algorithm=self._algorithm)
+            env=self._envs[0], algorithm=self._algorithm)
 
     def _train_iter(self, iter_num, policy_state, time_step):
         max_num_steps = self._unroll_length * self._envs[0].batch_size
@@ -69,7 +67,9 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
-                clear_replay_buffer=self._clear_replay_buffer)
+                clear_replay_buffer=self._clear_replay_buffer,
+                update_counter_every_mini_batch=self._config.
+                update_counter_every_mini_batch)
         return time_step, policy_state, train_steps
 
 
@@ -87,7 +87,6 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         driver = AsyncOffPolicyDriver(
             envs=self._envs,
             algorithm=self._algorithm,
-            use_rollout_state=self._config.use_rollout_state,
             unroll_length=self._unroll_length)
         return driver
 
@@ -108,5 +107,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
-                clear_replay_buffer=self._clear_replay_buffer)
+                clear_replay_buffer=self._clear_replay_buffer,
+                update_counter_every_mini_batch=self._config.
+                update_counter_every_mini_batch)
         return time_step, policy_state, train_steps

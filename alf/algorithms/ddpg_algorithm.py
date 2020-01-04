@@ -28,8 +28,9 @@ from tf_agents.trajectories.policy_step import PolicyStep
 from tf_agents.utils import common as tfa_common
 
 from alf.algorithms.one_step_loss import OneStepTDLoss
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo, LossInfo
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm, Experience
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import ActionTimeStep, Experience, LossInfo, TrainingInfo
 from alf.utils import losses, common
 
 DdpgCriticState = namedtuple("DdpgCriticState",
@@ -51,6 +52,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     """
 
     def __init__(self,
+                 observation_spec,
                  action_spec,
                  actor_network: Network,
                  critic_network: Network,
@@ -102,9 +104,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_critic=critic_network.state_spec))
 
         super().__init__(
+            observation_spec,
             action_spec,
             train_state_spec=train_state_spec,
-            action_distribution_spec=action_spec,
             optimizer=[actor_optimizer, critic_optimizer],
             trainable_module_sets=[[actor_network], [critic_network]],
             gradient_clipping=gradient_clipping,
@@ -150,22 +152,32 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self._target_actor_network.variables,
             tau=1.0)
 
-    def greedy_predict(self, time_step: ActionTimeStep, state=None):
+    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
         action, state = self._actor_network(
             time_step.observation,
             step_type=time_step.step_type,
             network_state=state.actor.actor)
         empty_state = tf.nest.map_structure(lambda x: (),
                                             self.train_state_spec)
+
+        def _sample(a, ou):
+            return tf.cond(
+                tf.less(tf.random.uniform((), 0, 1),
+                        epsilon_greedy), lambda: a + ou(), lambda: a)
+
+        action = tf.nest.map_structure(_sample, action, self._ou_process)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critic=()))
         return PolicyStep(action=action, state=state, info=())
 
-    def _rollout_partial_state(self, time_step: ActionTimeStep, state=None):
-        policy_step = self.greedy_predict(time_step, state)
-        action = tf.nest.map_structure(lambda a, ou: a + ou(),
-                                       policy_step.action, self._ou_process)
-        return policy_step._replace(action=action)
+    def rollout(self,
+                time_step: ActionTimeStep,
+                state=None,
+                mode=RLAlgorithm.ROLLOUT):
+        if self.need_full_rollout_state():
+            raise NotImplementedError("Storing RNN state to replay buffer "
+                                      "is not supported by DdpgAlgorithm")
+        return self.predict(time_step, state, epsilon_greedy=1.0)
 
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(

@@ -50,6 +50,7 @@ def _create_sac_algorithm():
     critic_net = CriticNetwork((observation_spec, action_spec),
                                joint_fc_layer_params=(16, 16))
     return SacAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         actor_network=actor_net,
         critic_network=critic_net,
@@ -67,6 +68,7 @@ def _create_ddpg_algorithm():
     critic_net = CriticNetwork((observation_spec, action_spec),
                                joint_fc_layer_params=(16, 16))
     return DdpgAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         actor_network=actor_net,
         critic_network=critic_net,
@@ -91,6 +93,7 @@ def _create_ppo_algorithm():
         output_fc_layer_params=None)
 
     return PPOAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         actor_network=actor_net,
         value_network=value_net,
@@ -108,6 +111,7 @@ def _create_ac_algorithm():
     value_net = ValueNetwork(observation_spec, fc_layer_params=(8, ))
 
     return ActorCriticAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         actor_network=actor_net,
         value_network=value_net,
@@ -224,19 +228,15 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
         algorithm.use_rollout_state = use_rollout_state
 
         if sync_driver:
-            driver = SyncOffPolicyDriver(
-                env, algorithm, use_rollout_state=use_rollout_state)
+            driver = SyncOffPolicyDriver(env, algorithm)
         else:
-            driver = AsyncOffPolicyDriver(
-                [env],
-                algorithm,
-                use_rollout_state=algorithm.use_rollout_state,
-                num_actor_queues=1,
-                unroll_length=unroll_length,
-                learn_queue_cap=1,
-                actor_queue_cap=1)
-        eval_driver = OnPolicyDriver(
-            eval_env, algorithm, training=False, greedy_predict=True)
+            driver = AsyncOffPolicyDriver([env],
+                                          algorithm,
+                                          num_actor_queues=1,
+                                          unroll_length=unroll_length,
+                                          learn_queue_cap=1,
+                                          actor_queue_cap=1)
+        eval_driver = OnPolicyDriver(eval_env, algorithm, training=False)
 
         eval_env.reset()
         driver.start()

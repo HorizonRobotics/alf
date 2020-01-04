@@ -45,7 +45,6 @@ rnd/EncodingNetwork.activation_fn=@tf.nn.elu
 RNDAlgorithm.target_net=@rnd/EncodingNetwork()
 RNDAlgorithm.predictor_net=@rnd/EncodingNetwork()
 
-Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()

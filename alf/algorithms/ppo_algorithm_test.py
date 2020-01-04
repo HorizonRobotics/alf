@@ -61,6 +61,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
 
     return PPOAlgorithm(
+        observation_spec=observation_spec,
         action_spec=action_spec,
         actor_network=actor_net,
         value_network=value_net,
@@ -86,8 +87,7 @@ class PpoTest(tf.test.TestCase):
         algorithm = create_algorithm(env, learning_rate=learning_rate)
         algorithm.set_summary_settings(summarize_grads_and_vars=DEBUGGING)
         driver = SyncOffPolicyDriver(env, algorithm)
-        eval_driver = OnPolicyDriver(
-            eval_env, algorithm, training=False, greedy_predict=True)
+        eval_driver = OnPolicyDriver(eval_env, algorithm, training=False)
 
         env.reset()
         eval_env.reset()

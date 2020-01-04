@@ -18,12 +18,12 @@ import gin
 import tensorflow as tf
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-from alf.algorithms.off_policy_algorithm import Experience
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.algorithms.rl_algorithm import ActionTimeStep, TrainingInfo
+from alf.data_structures import Experience, ActionTimeStep, TrainingInfo
 from alf.utils import common, value_ops
 
-PPOInfo = namedtuple("PPOInfo", ["returns", "advantages"])
+PPOInfo = namedtuple("PPOInfo",
+                     ["action_distribution", "returns", "advantages"])
 
 
 @gin.configurable
@@ -37,10 +37,10 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     """
 
     def preprocess_experience(self, exp: Experience):
-        """Compute advantages and put it into exp.info."""
+        """Compute advantages and put it into exp.rollout_info."""
         advantages = value_ops.generalized_advantage_estimation(
             rewards=exp.reward,
-            values=exp.info.value,
+            values=exp.rollout_info.value,
             step_types=exp.step_type,
             discounts=exp.discount * self._loss._gamma,
             td_lambda=self._loss._lambda,
@@ -52,5 +52,7 @@ class PPOAlgorithm(ActorCriticAlgorithm):
                 dtype=advantages.dtype)
         ],
                                axis=-1)
-        returns = exp.info.value + advantages
-        return exp._replace(info=PPOInfo(returns, advantages))
+        returns = exp.rollout_info.value + advantages
+        return exp._replace(
+            rollout_info=PPOInfo(exp.rollout_info.action_distribution, returns,
+                                 advantages))

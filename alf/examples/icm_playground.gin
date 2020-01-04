@@ -57,7 +57,6 @@ Agent.intrinsic_reward_coef=1.0
 
 
 # ActorCriticAlgorithm
-Agent.action_spec=%action_spec
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
