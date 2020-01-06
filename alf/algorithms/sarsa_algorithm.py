@@ -133,14 +133,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             name='target_actor_network')
         self._target_critic_network = critic_network.copy(
             name='target_critic_network')
-        tfa_common.soft_variables_update(
-            self._critic_network.variables,
-            self._target_critic_network.variables,
-            tau=1.0)
-        tfa_common.soft_variables_update(
-            self._actor_network.variables,
-            self._target_actor_network.variables,
-            tau=1.0)
         self._update_target = common.get_target_updater(
             models=[self._actor_network, self._critic_network],
             target_models=[

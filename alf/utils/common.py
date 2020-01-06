@@ -117,12 +117,12 @@ def as_list(x):
     return [x]
 
 
-def get_target_updater(models, target_models, tau=1.0, period=1):
+def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     """Performs a soft update of the target model parameters.
 
     For each weight w_s in the model, and its corresponding
     weight w_t in the target_model, a soft update is:
-    w_t = (1 - tau) * w_t + tau * w_s
+    w_t = (1 - tau) * w_t + tau * w_s.
 
     Args:
         models (Network | list[Network]): the current model.
@@ -130,12 +130,18 @@ def get_target_updater(models, target_models, tau=1.0, period=1):
         tau (float): A float scalar in [0, 1]. Default `tau=1.0` means hard
             update.
         period (int): Step interval at which the target model is updated.
-
+        copy (bool): If True, also copy `models` to `target_models` in the
+            beginning.
     Returns:
         A callable that performs a soft update of the target model parameters.
     """
     models = as_list(models)
     target_models = as_list(target_models)
+
+    if copy:
+        for model, target_model in zip(models, target_models):
+            tfa_common.soft_variables_update(
+                model.variables, target_model.variables, tau=1.0)
 
     def update():
         update_ops = []
