@@ -303,7 +303,7 @@ class DiscountedReturnTest(tf.test.TestCase):
             StepType.MID
         ]], tf.int32)
         expected = tf.constant(
-            [[(1 * 0.9 + 2) * 0.9 + 2, 1 * 0.9 + 2, 1, 1 * 0.9 + 2]],
+            [[(2 * 0.9 + 2) * 0.9 + 2, 2 * 0.9 + 2, 2, 1 * 0.9 + 2]],
             dtype=tf.float32)
         self.assertAllClose(
             value_ops.discounted_return(
@@ -319,7 +319,7 @@ class DiscountedReturnTest(tf.test.TestCase):
             StepType.MID
         ]], tf.int32)
         discounts = tf.constant([[0.9, 0.9, 0.0, 0.9, 0.9]])
-        expected = tf.constant([[(0 * 0.9 + 2) * 0.9 + 2, 2, 1, 1 * 0.9 + 2]],
+        expected = tf.constant([[(0 * 0.9 + 2) * 0.9 + 2, 2, 2, 1 * 0.9 + 2]],
                                dtype=tf.float32)
 
         self.assertAllClose(
@@ -361,7 +361,8 @@ class GeneralizedAdvantageTest(tf.test.TestCase):
             StepType.MID, StepType.MID, StepType.LAST, StepType.MID,
             StepType.MID
         ]], tf.int32)
-        expected = tf.constant([[d * 0.6 + d, d, 0, d]], dtype=tf.float32)
+        expected = tf.constant([[(d + 0.6) * 0.6 + d, d + 0.6, 1, d]],
+                               dtype=tf.float32)
         self.assertAllClose(
             value_ops.generalized_advantage_estimation(
                 rewards=rewards,
@@ -377,7 +378,7 @@ class GeneralizedAdvantageTest(tf.test.TestCase):
             StepType.MID
         ]], tf.int32)
         discounts = tf.constant([[0.9, 0.9, 0.0, 0.9, 0.9]])
-        expected = tf.constant([[1 * 0.6 + d, 1, 0, d]], dtype=tf.float32)
+        expected = tf.constant([[1 * 0.6 + d, 1, 1, d]], dtype=tf.float32)
 
         self.assertAllClose(
             value_ops.generalized_advantage_estimation(
@@ -389,22 +390,26 @@ class GeneralizedAdvantageTest(tf.test.TestCase):
                 time_major=False), expected)
 
 
-def vtrace_scalable_agent(imp_weights, discounts, rewards, values):
+def vtrace_scalable_agent(imp_weights, discounts, rewards, values, step_types):
     log_imp_weights = tf.math.log(imp_weights)
     log_imp_weights = tf.transpose(a=log_imp_weights)
     discounts = tf.transpose(a=discounts)
     rewards = tf.transpose(a=rewards)
     values = tf.transpose(a=values)
+    step_types = tf.transpose(a=step_types)
+    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
     vtrace_returns = from_importance_weights(
-        log_rhos=log_imp_weights,
-        discounts=discounts,
-        rewards=rewards,
-        values=values,
+        log_rhos=log_imp_weights[:-1],
+        discounts=discounts[1:] * (1 - is_lasts[:-1]),
+        rewards=rewards[1:],
+        values=values[:-1],
         bootstrap_value=values[-1],
         clip_rho_threshold=1.0,
         clip_pg_rho_threshold=1.0)
     vs = vtrace_returns.vs
     adv = vtrace_returns.pg_advantages
+    vs = common.tensor_extend(vs, values[-1])
+    adv = common.tensor_extend_zero(adv)
     vs = tf.transpose(a=vs)
     adv = tf.transpose(a=adv)
     return vs, adv
@@ -415,8 +420,8 @@ class VTraceTest(tf.test.TestCase):
     """
 
     def test_vtrace_returns_and_advantages_impl_on_policy_no_last_step(self):
-        """Test vtrace_returns_and_advantages_impl on policy no last_step
-            in the middle of the trajectory.
+        """Test vtrace_returns_and_advantages_impl, on policy, no last_step
+            middle of the trajectory.
         """
         importance_ratio_clipped = tf.constant([[1.] * 5], tf.float32)
         values = tf.constant([[2.] * 5], tf.float32)
@@ -432,8 +437,8 @@ class VTraceTest(tf.test.TestCase):
             step_types,
             discounts,
             time_major=False)
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
+        sa_returns, sa_adv = vtrace_scalable_agent(
+            importance_ratio_clipped, discounts, rewards, values, step_types)
         self.assertAllClose(
             sa_adv, advantages, msg='advantages differ from scalable_agent')
         self.assertAllClose(
@@ -464,6 +469,58 @@ class VTraceTest(tf.test.TestCase):
         self.assertAllClose(
             expected_returns, returns, msg='returns differ from gold')
 
+    def test_vtrace_returns_and_advantages_impl_on_policy_has_last_step_resume(
+            self):
+        """Test vtrace_returns_and_advantages_impl, on policy, has last_step, resuming episode.
+        """
+        importance_ratio_clipped = tf.constant([[1.] * 5], tf.float32)
+        values = tf.constant([[2., 2.1, 2.2, 2.3, 2.4]], tf.float32)
+        step_types = tf.constant([[
+            StepType.MID, StepType.MID, StepType.LAST, StepType.MID,
+            StepType.MID
+        ]], tf.int32)
+        rewards = tf.constant([[3., 3.1, 3.2, 3.3, 3.4]], tf.float32)
+        discounts = tf.constant([[0.9] * 5], tf.float32)
+        td_lambda = 1.0
+
+        returns, advantages = value_ops.vtrace_returns_and_advantages_impl(
+            importance_ratio_clipped,
+            rewards,
+            values,
+            step_types,
+            discounts,
+            time_major=False)
+        sa_returns, sa_adv = vtrace_scalable_agent(
+            importance_ratio_clipped, discounts, rewards, values, step_types)
+        self.assertAllClose(
+            sa_adv, advantages, msg='advantages differ from scalable_agent')
+        self.assertAllClose(
+            sa_returns, returns, msg='returns differ from scalable_agent')
+        expected_advantages = value_ops.generalized_advantage_estimation(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            td_lambda=td_lambda,
+            time_major=False)
+        expected_advantages = tf.transpose(a=expected_advantages)
+        expected_advantages = common.tensor_extend_zero(expected_advantages)
+        expected_advantages = tf.transpose(a=expected_advantages)
+        self.assertAllClose(
+            expected_advantages, advantages, msg='advantages differ')
+
+        expected_returns = value_ops.discounted_return(
+            rewards=rewards,
+            values=values,
+            step_types=step_types,
+            discounts=discounts,
+            time_major=False)
+        expected_returns = tf.transpose(a=expected_returns)
+        values = tf.transpose(a=values)
+        expected_returns = common.tensor_extend(expected_returns, values[-1])
+        expected_returns = tf.transpose(a=expected_returns)
+        self.assertAllClose(expected_returns, returns, msg='returns differ')
+
     def test_vtrace_returns_and_advantages_impl_on_policy_has_last_step(self):
         """Test vtrace_returns_and_advantages_impl on policy has last_step
             in the middle of the trajectory.
@@ -485,8 +542,8 @@ class VTraceTest(tf.test.TestCase):
             step_types,
             discounts,
             time_major=False)
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
+        sa_returns, sa_adv = vtrace_scalable_agent(
+            importance_ratio_clipped, discounts, rewards, values, step_types)
         self.assertAllClose(
             sa_adv, advantages, msg='advantages differ from scalable_agent')
         self.assertAllClose(
@@ -540,8 +597,8 @@ class VTraceTest(tf.test.TestCase):
             discounts,
             time_major=False)
 
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
+        sa_returns, sa_adv = vtrace_scalable_agent(
+            importance_ratio_clipped, discounts, rewards, values, step_types)
         self.assertAllClose(
             sa_adv, advantages, msg='advantages differ from scalable_agent')
         self.assertAllClose(
@@ -549,18 +606,19 @@ class VTraceTest(tf.test.TestCase):
 
         td3 = (3. + 2. * d - 2.) * r
         expected_returns = tf.constant(
-            [[td3 + d * r * (3. - 2.) * r, r, 0, td3, 0]], tf.float32) + values
-        # 5.695401, 2.999   , 2.      , 4.7972  , 2.
+            [[td3 + d * r * (3. - 2.) * r, r, r, td3, 0]], tf.float32) + values
+        # 5.695401, 2.999   , 2.999      , 4.7972  , 2.
         self.assertAllClose(expected_returns, returns, msg='returns differ')
 
         is_lasts = tf.cast(
             tf.equal(tf.transpose(a=step_types), StepType.LAST), tf.float32)
-        expected_advantages = (1 - is_lasts[:-1]) * r * (
-            tf.transpose(a=rewards)[1:] + tf.transpose(a=discounts)[1:] *
+        expected_advantages = r * (
+            tf.transpose(a=rewards)[1:] +
+            (1 - is_lasts[:-1]) * tf.transpose(a=discounts)[1:] *
             tf.transpose(a=expected_returns)[1:] - tf.transpose(a=values)[:-1])
         expected_advantages = common.tensor_extend_zero(expected_advantages)
         expected_advantages = tf.transpose(a=expected_advantages)
-        # 3.695401, 0.999   , 0.      , 2.7972  , 0.
+        # 3.695401, 0.999   , 0.999      , 2.7972  , 0.
         self.assertAllClose(
             expected_advantages, advantages, msg='advantages differ')
 
@@ -574,8 +632,8 @@ class VTraceTest(tf.test.TestCase):
             discounts,
             time_major=False)
 
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
+        sa_returns, sa_adv = vtrace_scalable_agent(
+            importance_ratio_clipped, discounts, rewards, values, step_types)
         self.assertAllClose(
             sa_adv, advantages, msg='advantages differ from scalable_agent')
         self.assertAllClose(
@@ -584,18 +642,19 @@ class VTraceTest(tf.test.TestCase):
         td3 = (3. + 4. * d - 3) * r
         td1 = 2 * r
         expected_returns = tf.constant([[(3. + 1. * d - 0) * r + d * r * td1,
-                                         td1, 0, td3, 0]], tf.float32) + values
-        # 5.692502, 2.998   , 2.      , 6.5964  , 4.
+                                         td1, r, td3, 0]], tf.float32) + values
+        # 5.692502, 2.998   , 2.999      , 6.5964  , 4.
         self.assertAllClose(expected_returns, returns, msg='returns differ')
 
         is_lasts = tf.cast(
             tf.equal(tf.transpose(a=step_types), StepType.LAST), tf.float32)
-        expected_advantages = (1 - is_lasts[:-1]) * r * (
-            tf.transpose(a=rewards)[1:] + tf.transpose(a=discounts)[1:] *
+        expected_advantages = r * (
+            tf.transpose(a=rewards)[1:] +
+            (1 - is_lasts[:-1]) * tf.transpose(a=discounts)[1:] *
             tf.transpose(a=expected_returns)[1:] - tf.transpose(a=values)[:-1])
         expected_advantages = common.tensor_extend_zero(expected_advantages)
         expected_advantages = tf.transpose(a=expected_advantages)
-        # 5.692502, 1.998   , 0.      , 3.5964  , 0.
+        # 5.692502, 1.998   , 0.999      , 3.5964  , 0.
         self.assertAllClose(
             expected_advantages, advantages, msg='advantages differ')
 

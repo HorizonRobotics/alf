@@ -152,18 +152,17 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
         values = tf.transpose(a=values)
         step_types = tf.transpose(a=step_types)
 
-    discounts = discounts[1:]
     rewards = rewards[1:]
     final_value = values[-1]
     values = values[:-1]
 
     step_types = step_types[:-1]
     is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    discounts = discounts[1:] * (1 - is_lasts)
 
     def discounted_return_fn(acc_discounted_reward, args):
         (reward, value, is_last, discount) = args
-        acc_discounted_value = acc_discounted_reward * discount + reward
-        return is_last * value + (1 - is_last) * acc_discounted_value
+        return acc_discounted_reward * discount + reward
 
     returns = tf.scan(
         fn=discounted_return_fn,
@@ -249,16 +248,16 @@ def generalized_advantage_estimation(rewards,
     next_values = values[1:]
     final_value = values[-1]
     values = values[:-1]
-    discounts = discounts[1:]
     step_types = step_types[:-1]
     is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    discounts = discounts[1:] * (1 - is_lasts)
 
     delta = rewards + discounts * next_values - values
     weighted_discounts = discounts * td_lambda
 
     def weighted_cumulative_td_fn(accumulated_td, weights_td_is_last):
         weighted_discount, td, is_last = weights_td_is_last
-        return (1 - is_last) * (td + weighted_discount * accumulated_td)
+        return td + weighted_discount * accumulated_td
 
     advantages = tf.scan(
         fn=weighted_cumulative_td_fn,
@@ -310,9 +309,9 @@ def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
     next_values = values[1:]
     final_value = values[-1]
     values = values[:-1]
-    discounts = discounts[1:]
     step_types = step_types[:-1]
     is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    discounts = discounts[1:] * (1 - is_lasts)
 
     tds = (importance_ratio_clipped *
            (rewards + discounts * next_values - values))
@@ -320,7 +319,7 @@ def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
 
     def vs_target_minus_vs_fn(vs_target_minus_vs, params):
         weighted_discount, td, is_last = params
-        return (1 - is_last) * (td + weighted_discount * vs_target_minus_vs)
+        return td + weighted_discount * vs_target_minus_vs
 
     vs_target_minus_vs = tf.scan(
         fn=vs_target_minus_vs_fn,
@@ -329,13 +328,12 @@ def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
         reverse=True,
         back_prop=False)
 
-    returns = (1 - is_lasts) * vs_target_minus_vs + values
+    returns = vs_target_minus_vs + values
     returns = common.tensor_extend(returns, final_value)
 
     next_vs_targets = returns[1:]
 
-    # Note, advantage of last step cannot be computed, and is assumed to be 0.
-    advantages = (1 - is_lasts) * importance_ratio_clipped * (
+    advantages = importance_ratio_clipped * (
         rewards + discounts * next_vs_targets - values)
     advantages = common.tensor_extend_zero(advantages)
 
