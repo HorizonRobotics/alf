@@ -18,6 +18,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [Amortized SVGD](alf/algorithms/generator.py): Feng et al "Learning to Draw Samples with Amortized Stein Variational Gradient Descent"[arXiv:1707.06626](https://arxiv.org/abs/1707.06626)
 * [RND](alf/algorithms/rnd_algorithm.py): Burda et al "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)
 * [MINE](alf/algorithms/mi_estimator.py): Belghazi et al "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)
+* [TD3](alf/algorithms/td3_algorithm.py): Fujimoto et al "Addressing Function Approximation Error in Actor-Critic Methods" [arXiv:1802.09477](https://arxiv.org/abs/arXiv:1802.09477)
 
 ## Installation
 
