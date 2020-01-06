@@ -289,6 +289,7 @@ class Trainer(object):
         assert (None not in (self._algorithm, self._driver)) and self._envs, \
             "Trainer not initialized"
         self._restore_checkpoint()
+        common.enable_summary(True)
         run_under_record_context(
             self._train,
             summary_dir=self._train_dir,
