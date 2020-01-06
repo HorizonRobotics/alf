@@ -16,8 +16,11 @@
 from abc import abstractmethod
 from absl import logging
 import copy
+import json
+import os
 
 import tensorflow as tf
+from tensorflow.python.util.serialization import get_json_type
 
 from tf_agents.utils import eager_utils
 
@@ -25,6 +28,44 @@ from alf.data_structures import namedtuple, LossInfo
 import alf.utils
 
 AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
+
+
+def _is_alg(obj):
+    """Only return True if the obj in an instance of Algorithm"""
+    return isinstance(obj, Algorithm)
+
+
+def _is_trainable_module(obj):
+    """Only return True if the module or var is trainable, to avoid
+    possible confusions shown in the optimizer info"""
+    return (isinstance(obj, tf.Module) and not isinstance(obj, Algorithm)
+            and obj.trainable_variables)
+
+
+def _is_trainable_var(obj):
+    """Only return True if the module or var is trainable, to avoid
+    possible confusions shown in the optimizer info"""
+    return isinstance(obj, tf.Variable) and obj.trainable
+
+
+def _get_trainable_vars(obj):
+    """Get trainable variable of obj, obj should be a trainable module
+    or variable
+
+    Args:
+        obj (tf.Module|tf.Variable)
+    Returns:
+        list[tf.Variable]
+    """
+    if obj is None:
+        return []
+    if _is_trainable_module(obj):
+        return obj.trainable_variables
+    elif _is_trainable_var(obj):
+        return [obj]
+    else:
+        raise ValueError(
+            "%s is not a trainable module or variable!" % obj.name)
 
 
 class Algorithm(tf.Module):
@@ -169,36 +210,10 @@ class Algorithm(tf.Module):
         """Get the optimizers and the corresponding module sets.
 
         Returns:
-            list[tuple(Algorithm_name, Opimizer, list[Module])]: optimizer
+            list[tuple(Algorithm_name, Optimizer, list[Module])]: optimizer
                 can be None, which means that no optimizer is specified for the
                 corresponding modules.
         """
-
-        def _is_alg(obj):
-            return isinstance(obj, Algorithm)
-
-        def _is_trainable_module(obj):
-            """Only return True if the module or var is trainable, to avoid
-            possible confusions shown in the optimizer info"""
-            return (isinstance(obj, tf.Module)
-                    and not isinstance(obj, Algorithm)
-                    and obj.trainable_variables)
-
-        def _is_trainable_var(obj):
-            """Only return True if the module or var is trainable, to avoid
-            possible confusions shown in the optimizer info"""
-            return isinstance(obj, tf.Variable) and obj.trainable
-
-        def _get_trainable_vars(obj):
-            if obj is None:
-                return []
-            if _is_trainable_module(obj):
-                return obj.trainable_variables
-            elif _is_trainable_var(obj):
-                return [obj]
-            else:
-                assert "%s is not a trainble module or variable!" % obj.name
-
         module_sets = [copy.copy(s) for s in self._init_module_sets]
         optimizers = copy.copy(self._init_optimizers)
         algorithm_names = [self.name] * len(optimizers)
@@ -297,11 +312,24 @@ class Algorithm(tf.Module):
         optimizer_info = []
         for alg_name, opt, module_set in optimizer_and_module_sets:
             optimizer_info.append(
-                'Algorithm: "%s" Optimizer: "%s" Modules: "%s"' \
-                    % (alg_name,
-                       opt.get_config() if opt is not None else None,
-                       '; '.join(sorted([m.name for m in module_set if m is not None]))))
-        return '\n\n'.join(optimizer_info)
+                dict(
+                    Algorithm=alg_name,
+                    Optimizer=opt.get_config() if opt is not None else None,
+                    Modules=[
+                        dict(
+                            ModuleName=m.name,
+                            TrainableVariables=[
+                                v.name for v in _get_trainable_vars(m)
+                            ]) for m in module_set if m is not None
+                    ]))
+        json_pretty_str_info = json.dumps(
+            obj=optimizer_info, indent=2, default=get_json_type)
+
+        def _markdownify(paragraph):
+            return "    ".join(
+                (os.linesep + paragraph).splitlines(keepends=True))
+
+        return _markdownify(json_pretty_str_info)
 
     @property
     def predict_state_spec(self):
