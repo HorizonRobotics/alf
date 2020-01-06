@@ -58,6 +58,7 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             reward=exp.reward,
             discount=exp.discount,
             observation=exp.observation,
-            prev_action=exp.prev_action)
+            prev_action=exp.prev_action,
+            env_id=exp.env_id)
         return self.rollout(
             time_step, state, mode=RLAlgorithm.OFF_POLICY_TRAINING)

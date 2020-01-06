@@ -273,6 +273,7 @@ class Trainer(object):
         if self._evaluate:
             self._eval_env = unwrapped_env
 
+    @gin.configurable('alf.trainers.PolicyTrainer._create_environment')
     def _create_environment(self, nonparallel=False):
         """Create and register an env."""
         env = create_environment(nonparallel=nonparallel)
