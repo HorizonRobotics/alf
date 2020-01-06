@@ -35,7 +35,7 @@ Algorithm is the most important concept in ALF. TODO: more description about the
 
 `ActionTimeStep` is a data structure extended from `TimeStep` of [TF-Agents](https://github.com/tensorflow/agents)
 for storing the information from the result of each environment step. It contains
-four fields:
+five fields:
 * `observation`: observation from the environment. It can be a nest of Tensors.
 * `step_type`: type of this step. It has three possible values:
   - StepType.FIRST is the first step of an episode, which is typically the step generated from env.reset().
@@ -89,3 +89,12 @@ creates an environemnt in the following way to avoid
 Then TF-Agents uses its own wrapper `tf_agents.environments.wrappers.TimeLimit`
 to wrap the environment to limit the steps so that it does not change the
 discount when `max_episode_steps` is reached.
+
+The following table summarizes how step type and discount affect the learning.
+
+| Step type       | Discount           | Value used for bootstrapping the previous value?  | Value to be learned? | Note|
+| ------------- |:-------------:| -----:|-----:|------:|
+| FIRST      | 1 | No | Yes | First step of an episode|
+| MID     | 1   |Yes  |  Yes | Any step other than FIRST and LAST |
+| LAST | 0      |   No | No | Last step because of a normal game end |
+| LAST | 1 | Yes | No | Last step because of time limit |
