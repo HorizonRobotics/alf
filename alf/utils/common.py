@@ -277,7 +277,7 @@ def _get_summary_enabled_var():
     global _summary_enabled_var
     if _summary_enabled_var is None:
         _summary_enabled_var = tf.Variable(
-            True, dtype=tf.bool, name="summary_enabled")
+            False, dtype=tf.bool, name="summary_enabled")
     return _summary_enabled_var
 
 
