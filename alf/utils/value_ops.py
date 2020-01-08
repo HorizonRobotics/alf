@@ -269,14 +269,13 @@ def generalized_advantage_estimation(rewards,
     if not time_major:
         advantages = tf.transpose(a=advantages)
 
-    return tf.stop_gradient(advantages)
-
 
 def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
                                        rewards,
                                        values,
                                        step_types,
                                        discounts,
+                                       gamma,
                                        td_lambda=1,
                                        time_major=True):
     """Actual implementation after getting importance_ratios
@@ -397,4 +396,5 @@ def calc_vtrace_returns_and_advantages(training_info,
         values=values,
         step_types=step_types,
         discounts=discounts,
+        gamma=gamma,
         td_lambda=td_lambda)

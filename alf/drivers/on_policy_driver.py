@@ -217,12 +217,15 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
             next_time_step, policy_step, action, transformed_time_step = self._step(
                 time_step, policy_state)
             next_state = policy_step.state
-        else:
+        elif self._final_step_mode == OnPolicyDriver.FINAL_STEP_REDO:
             transformed_time_step = self._algorithm.transform_timestep(
                 time_step)
             policy_step = common.algorithm_step(
                 self._algorithm.rollout, transformed_time_step, policy_state)
             action = common.sample_action_distribution(policy_step.action)
+            next_time_step = time_step
+            next_state = policy_state
+        else:
             next_time_step = time_step
             next_state = policy_state
 
