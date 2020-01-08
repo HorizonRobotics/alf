@@ -15,6 +15,8 @@
 
 import tensorflow as tf
 
+from alf.utils.scope_utils import get_current_scope
+
 
 def _gather_nest(nest, indices):
     return tf.nest.map_structure(lambda t: tf.gather(t, indices, axis=0), nest)
@@ -63,12 +65,15 @@ def conditional_update(target, cond, func, *args, **kwargs):
     # shape of indices from where() is [batch_size,1], which is what scatter_nd
     # needs
     scatter_indices = tf.where(cond)
+    scope = get_current_scope()
 
     def _update_subset():
         gather_indices = tf.squeeze(scatter_indices, 1)
         selected_args = _gather_nest(args, gather_indices)
         selected_kwargs = _gather_nest(kwargs, gather_indices)
-        updates = func(*selected_args, **selected_kwargs)
+        with tf.name_scope(scope):
+            # tf.case loses the original name scope. Need to restore it.
+            updates = func(*selected_args, **selected_kwargs)
         return tf.nest.map_structure(
             lambda tgt, updt: tf.tensor_scatter_nd_update(
                 tgt, scatter_indices, updt), target, updates)
@@ -101,9 +106,14 @@ def run_if(cond, func):
     Returns:
         None
     """
+    scope = get_current_scope()
 
     def _if_true():
-        func()
-        return tf.constant(True)
+        # The reason of this line is that inside tf.cond, somehow
+        # get_current_scope() is '', which makes operations and summaries inside
+        # func unscoped. We need this line to restore the original name scope.
+        with tf.name_scope(scope):
+            func()
+            return tf.constant(True)
 
     tf.cond(cond, _if_true, lambda: tf.constant(False))

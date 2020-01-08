@@ -41,6 +41,7 @@ from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 from alf.utils.nest_utils import is_namedtuple
 from alf.utils import nest_utils
+from alf.utils.scope_utils import get_current_scope
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -145,79 +146,6 @@ def get_target_updater(models, target_models, tau=1.0, period=1):
         return tf.group(*update_ops)
 
     return tfa_common.Periodically(update, period, 'periodic_update_targets')
-
-
-def add_nested_summaries(prefix, data):
-    """Add summary about loss_info
-
-    Args:
-        prefix (str): the prefix of the names of the summaries
-        data (dict or namedtuple): data to be summarized
-    """
-    fields = data.keys() if isinstance(data, dict) else data._fields
-    for field in fields:
-        elem = data[field] if isinstance(data, dict) else getattr(data, field)
-        name = prefix + '/' + field
-        if isinstance(elem, dict) or is_namedtuple(elem):
-            add_nested_summaries(name, elem)
-        elif isinstance(elem, tf.Tensor):
-            tf.summary.scalar(name, elem)
-
-
-def add_loss_summaries(loss_info: LossInfo):
-    """Add summary about loss_info
-
-    Args:
-        loss_info (LossInfo): loss_info.extra must be a namedtuple
-    """
-    tf.summary.scalar('loss', data=loss_info.loss)
-    if not loss_info.extra:
-        return
-    if not is_namedtuple(loss_info.extra):
-        # not a namedtuple
-        return
-    add_nested_summaries('loss', loss_info.extra)
-
-
-def add_action_summaries(actions, action_specs):
-    """Generate histogram summaries for actions.
-
-    Actions whose rank is more than 1 will be skipped.
-
-    Args:
-        actions (nested Tensor): actions to be summarized
-        action_specs (nested TensorSpec): spec for the actions
-    """
-    action_specs = tf.nest.flatten(action_specs)
-    actions = tf.nest.flatten(actions)
-
-    for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
-        if len(action_spec.shape) > 1:
-            continue
-
-        if tensor_spec.is_discrete(action_spec):
-            summary_utils.histogram_discrete(
-                name="action/%s" % i,
-                data=action,
-                bucket_min=action_spec.minimum,
-                bucket_max=action_spec.maximum)
-        else:
-            if len(action_spec.shape) == 0:
-                action_dim = 1
-            else:
-                action_dim = action_spec.shape[-1]
-            action = tf.reshape(action, (-1, action_dim))
-
-            def _get_val(a, i):
-                return a if len(a.shape) == 0 else a[i]
-
-            for a in range(action_dim):
-                # TODO: use a descriptive name for the summary
-                summary_utils.histogram_continuous(
-                    name="action/%s/%s" % (i, a),
-                    data=action[:, a],
-                    bucket_min=_get_val(action_spec.minimum, a),
-                    bucket_max=_get_val(action_spec.maximum, a))
 
 
 def concat_shape(shape1, shape2):
@@ -997,3 +925,107 @@ def create_and_unstack_tensor_array(tensors, clear_after_read=True):
         spec, num_steps, batch_size, clear_after_read=clear_after_read)
     ta = tf.nest.map_structure(lambda elem, ta: ta.unstack(elem), tensors, ta)
     return ta
+
+
+class FunctionInstance(object):
+    """
+    This is not a public API. It is for internal use.
+    """
+
+    def __init__(self, tf_func, instance, owner):
+        """Create a FunctionInstance object.
+
+        FunctionInstance is created for each instance the wrapped function is
+        bound to.
+        Args:
+            tf_func (tensorflow.python.eager.def_function.Function): a function
+                wrapped by tf.function which accept `instance` and `scope_name`
+                as its first two arguments
+            instance (object): the instance which the original function is bound
+                to.
+            owner (type): the class type of `instance`
+        """
+        self._tf_func = tf_func
+        self._instance = instance
+        self._owner = owner
+
+    def __call__(self, *args, **kwargs):
+        """Call the wrapped function.
+
+        Tensorflow creates a different instance of Function object for each
+        instance to handle instance specific processing. We need to explicitly
+        call tf_Function.__get__ to handle class methods correctly.
+
+        Reference: tensorflow.python.eager.def_function.Function.__get__().
+        """
+        tf_func_instance = self._tf_func.__get__(self._instance, self._owner)
+        return tf_func_instance(get_current_scope(), *args, **kwargs)
+
+
+class Function(object):
+    """
+    This is not a public API. It is for internal use.
+    """
+
+    def __init__(self, func, **kwargs):
+        def _bound_tf_func(instance, scope_name, *args, **kwargs):
+            with tf.name_scope(scope_name):
+                return func(instance, *args, **kwargs)
+
+        def _tf_func(scope_name, *args, **kwargs):
+            with tf.name_scope(scope_name):
+                return func(*args, **kwargs)
+
+        self._bound_tf_func = tf.function(*kwargs)(_bound_tf_func)
+        self._tf_func = tf.function(*kwargs)(_tf_func)
+
+    def __call__(self, *args, **kwargs):
+        return self._tf_func(get_current_scope(), *args, **kwargs)
+
+    def __get__(self, instance, owner):
+        """Get the instance specific function (FunctionInstance).
+
+        References:
+        1. tensorflow.python.eager.def_function.Function.__get__().
+        2. Python descriptor (https://docs.python.org/3/howto/descriptor.html)
+        """
+        return FunctionInstance(self._bound_tf_func, instance, owner)
+
+
+def function(func=None, **kwargs):
+    """Wrapper for tf.function with ALF-specific customizations.
+
+    Functions decorated using tf.function lose the original name scope of the
+    caller. This decorator fixes that.
+
+    Example:
+    ```python
+    @common.function()
+    def my_eager_code(x, y):
+        ...
+    ```
+
+    Args:
+        func (Callable): function to be compiled.  If `func` is None, returns a
+            decorator that can be invoked with a single argument - `func`. The
+            end result is equivalent to providing all the arguments up front.
+            In other words, `common.function(input_signature=...)(func)` is
+            equivalent to `common.function(func, input_signature=...)`. The
+            former can be used to decorate Python functions, for example:
+                @tf.function(input_signature=...)
+                def foo(...): ...
+        args (list): Args for tf.function.
+        kwargs (dict): Keyword args for tf.function.
+    Returns:
+        If `func` is not None, returns a callable that will execute the compiled
+        function (and return zero or more `tf.Tensor` objects).
+        If `func` is None, returns a decorator that, when invoked with a single
+        `func` argument, returns a callable equivalent to the case above.
+    """
+
+    def decorate(f):
+        return functools.wraps(f)(Function(f, **kwargs))
+
+    if func is not None:
+        return decorate(func)
+    return decorate

@@ -35,7 +35,7 @@ def _normalize_advantages(advantages, axes=(0, ), variance_epsilon=1e-8):
 
 
 @gin.configurable
-class ActorCriticLoss(object):
+class ActorCriticLoss(tf.Module):
     def __init__(self,
                  action_spec,
                  gamma=0.99,
@@ -47,7 +47,8 @@ class ActorCriticLoss(object):
                  advantage_clip=None,
                  entropy_regularization=None,
                  td_loss_weight=1.0,
-                 debug_summaries=False):
+                 debug_summaries=False,
+                 name="ActorCriticLoss"):
         """Create a ActorCriticLoss object
 
         The total loss equals to
@@ -76,6 +77,7 @@ class ActorCriticLoss(object):
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
         """
+        super().__init__(name=name)
 
         self._action_spec = action_spec
         self._td_loss_weight = td_loss_weight
@@ -111,7 +113,7 @@ class ActorCriticLoss(object):
             training_info, value)
 
         def _summary():
-            with tf.name_scope('ActorCriticLoss'):
+            with self.name_scope:
                 tf.summary.scalar("values", tf.reduce_mean(value))
                 tf.summary.scalar("returns", tf.reduce_mean(returns))
                 tf.summary.scalar("advantages/mean",
