@@ -24,7 +24,7 @@ in order to debug in vscode, you need to make ALF not to start separate processe
 by setting the following gin config:
 ```
 create_environment.num_parallel_environments=1
-PolicyTrainer._create_environment.nonparallel=True
+Trainer._create_environment.nonparallel=True
 ```
 
 ## Algorithm
@@ -37,6 +37,7 @@ Algorithm is the most important concept in ALF. TODO: more description about the
 for storing the information from the result of each environment step. It contains
 five fields:
 * `observation`: observation from the environment. It can be a nest of Tensors.
+  It is obtained after the environment execute `prev_action`.
 * `step_type`: type of this step. It has three possible values:
   - StepType.FIRST is the first step of an episode, which is typically the step generated from env.reset().
   - StepType.LAST is the last step of an episode.
@@ -44,8 +45,9 @@ five fields:
 * `reward`: reward from the previous action. In most RL literature, the reward
   for an action a_t at time t is usually written as r_t. However, in ALF, reward_t
   will always represent the reward for the previous action at time t-1.
-* `discount`: discount value for discounting future reward. There is some
-  sultleties on how this value is set which we will describe later.
+* `discount`: discount value for discounting future reward. When calculating
+  the cumulative discounted return, `discount` is used to discount the future
+  reward. There is some subtleties on how this value is set which we will describe later.
 * `prev_action`: this field is not in the TimeStep structure of TF-Agents.
   However, because of it is frequently used, ALF includes it in ActionTimeStep
   structure.
