@@ -23,6 +23,7 @@ from alf.drivers.async_off_policy_driver import AsyncOffPolicyDriver
 from alf.drivers.sync_off_policy_driver import SyncOffPolicyDriver
 from alf.trainers.policy_trainer import Trainer
 from alf.utils.summary_utils import record_time
+from alf.utils import common
 
 
 class OffPolicyTrainer(Trainer):
@@ -63,6 +64,8 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
                 policy_state=policy_state)
         with record_time("time/train"):
             # `train_steps` might be different from `max_num_steps`!
+            if not self._config.update_counter_every_mini_batch:
+                common.get_global_counter().assign_add(1)
             train_steps = self._algorithm.train(
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
@@ -102,6 +105,8 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             else:
                 self._driver.run_async()
         with record_time("time/train"):
+            if not self._config.update_counter_every_mini_batch:
+                common.get_global_counter().assign_add(1)
             # `train_steps` might be different from `steps`!
             train_steps = self._algorithm.train(
                 num_updates=self._num_updates_per_train_step,

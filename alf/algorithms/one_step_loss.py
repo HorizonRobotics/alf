@@ -20,11 +20,12 @@ from alf.utils import common, losses, value_ops
 
 
 @gin.configurable
-class OneStepTDLoss(object):
+class OneStepTDLoss(tf.Module):
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=losses.element_wise_squared_loss,
-                 debug_summaries=False):
+                 debug_summaries=False,
+                 name="OneStepLoss"):
         """
         Args:
             gamma (float): A discount factor for future rewards.
@@ -33,6 +34,7 @@ class OneStepTDLoss(object):
                 Q values and returns the loss for each element of the batch.
             debug_summaries (bool): True if debug summaries should be created
         """
+        super().__init__(name=name)
         self._gamma = gamma
         self._td_error_loss_fn = td_error_loss_fn
         self._debug_summaries = debug_summaries
@@ -45,7 +47,7 @@ class OneStepTDLoss(object):
             discounts=training_info.discount * self._gamma)
         returns = common.tensor_extend(returns, value[-1])
         if self._debug_summaries:
-            with tf.name_scope('OneStepTDLoss'):
+            with self.name_scope:
                 tf.summary.scalar("values", tf.reduce_mean(value))
                 tf.summary.scalar("returns", tf.reduce_mean(returns))
         loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)

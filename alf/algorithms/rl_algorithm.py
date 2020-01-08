@@ -288,19 +288,20 @@ class RLAlgorithm(Algorithm):
 
     def training_summary(self, training_info, loss_info, grads_and_vars):
         """Generate summaries for training & loss info."""
-
         if self._summarize_grads_and_vars:
             summary_utils.add_variables_summaries(grads_and_vars)
             summary_utils.add_gradients_summaries(grads_and_vars)
         if self._debug_summaries:
-            common.add_action_summaries(training_info.action,
-                                        self._action_spec)
-            common.add_loss_summaries(loss_info)
+            summary_utils.add_action_summaries(training_info.action,
+                                               self._action_spec)
+            summary_utils.add_loss_summaries(loss_info)
 
         if self._summarize_action_distributions:
-            summary_utils.summarize_action_dist(
-                training_info.action_distribution, self._action_spec)
-            if training_info.collect_action_distribution:
+            if 'action_distribution' in training_info.info._fields:
+                summary_utils.summarize_action_dist(
+                    training_info.action_distribution, self._action_spec)
+            if (training_info.rollout_info and 'action_distribution' in
+                    training_info.rollout_info._fields):
                 summary_utils.summarize_action_dist(
                     action_distributions=training_info.
                     collect_action_distribution,
@@ -309,7 +310,6 @@ class RLAlgorithm(Algorithm):
 
     def metric_summary(self):
         """Generate summaries for metrics `AverageEpisodeLength`, `AverageReturn`..."""
-
         if self._metrics:
             for metric in self._metrics:
                 metric.tf_summaries(

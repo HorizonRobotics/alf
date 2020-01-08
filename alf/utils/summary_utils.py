@@ -12,13 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utility functions for generate summary."""
+import functools
 import time
 
 import tensorflow as tf
 from tensorboard.plugins.histogram import metadata
 from tensorflow.python.ops import summary_ops_v2
 
+from tf_agents.specs import tensor_spec
+
 from alf.utils.conditional_ops import run_if
+from alf.utils.nest_utils import is_namedtuple
+from alf.data_structures import LossInfo
 
 DEFAULT_BUCKET_COUNT = 30
 
@@ -27,8 +32,9 @@ def _summary_wrapper(summary_func):
     """Summary wrapper
 
     Wrapper summary function to reduce cost for data computation
-     """
+    """
 
+    @functools.wraps(summary_func)
     def wrapper(*args, **kwargs):
         from alf.utils.common import run_if
         return run_if(summary_ops_v2._should_record_summaries_v2(), lambda:
@@ -167,8 +173,8 @@ def add_variables_summaries(grads_and_vars, step=None):
     """Add summaries for variables.
 
     Args:
-      grads_and_vars (list): A list of (gradient, variable) pairs.
-      step (tf.Variable): Variable to use for summaries.
+        grads_and_vars (list): A list of (gradient, variable) pairs.
+        step (tf.Variable): Variable to use for summaries.
     """
     if not grads_and_vars:
         return
@@ -193,8 +199,8 @@ def add_gradients_summaries(grads_and_vars, step=None):
     """Add summaries to gradients.
 
     Args:
-      grads_and_vars (list): A list of gradient to variable pairs (tuples).
-      step (tf.Variable): Variable to use for summaries.
+        grads_and_vars (list): A list of gradient to variable pairs (tuples).
+        step (tf.Variable): Variable to use for summaries.
     """
     if not grads_and_vars:
         return
@@ -216,6 +222,79 @@ def add_gradients_summaries(grads_and_vars, step=None):
 
 
 tf.summary.histogram = _summary_wrapper(tf.summary.histogram)
+
+
+def add_nested_summaries(prefix, data):
+    """Add summary about loss_info
+
+    Args:
+        prefix (str): the prefix of the names of the summaries
+        data (dict or namedtuple): data to be summarized
+    """
+    fields = data.keys() if isinstance(data, dict) else data._fields
+    for field in fields:
+        elem = data[field] if isinstance(data, dict) else getattr(data, field)
+        name = prefix + '/' + field
+        if isinstance(elem, dict) or is_namedtuple(elem):
+            add_nested_summaries(name, elem)
+        elif isinstance(elem, tf.Tensor):
+            tf.summary.scalar(name, elem)
+
+
+def add_loss_summaries(loss_info: LossInfo):
+    """Add summary about loss_info
+
+    Args:
+        loss_info (LossInfo): loss_info.extra must be a namedtuple
+    """
+    tf.summary.scalar('loss', data=loss_info.loss)
+    if not loss_info.extra:
+        return
+    if not is_namedtuple(loss_info.extra):
+        # not a namedtuple
+        return
+    add_nested_summaries('loss', loss_info.extra)
+
+
+def add_action_summaries(actions, action_specs):
+    """Generate histogram summaries for actions.
+
+    Actions whose rank is more than 1 will be skipped.
+
+    Args:
+        actions (nested Tensor): actions to be summarized
+        action_specs (nested TensorSpec): spec for the actions
+    """
+    action_specs = tf.nest.flatten(action_specs)
+    actions = tf.nest.flatten(actions)
+
+    for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
+        if len(action_spec.shape) > 1:
+            continue
+
+        if tensor_spec.is_discrete(action_spec):
+            histogram_discrete(
+                name="action/%s" % i,
+                data=action,
+                bucket_min=action_spec.minimum,
+                bucket_max=action_spec.maximum)
+        else:
+            if len(action_spec.shape) == 0:
+                action_dim = 1
+            else:
+                action_dim = action_spec.shape[-1]
+            action = tf.reshape(action, (-1, action_dim))
+
+            def _get_val(a, i):
+                return a if len(a.shape) == 0 else a[i]
+
+            for a in range(action_dim):
+                # TODO: use a descriptive name for the summary
+                histogram_continuous(
+                    name="action/%s/%s" % (i, a),
+                    data=action[:, a],
+                    bucket_min=_get_val(action_spec.minimum, a),
+                    bucket_max=_get_val(action_spec.maximum, a))
 
 
 def summarize_action_dist(action_distributions,
@@ -250,26 +329,6 @@ def summarize_action_dist(action_distributions,
                 name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
 
 
-def get_current_scope():
-    """Returns the current name scope in the default_graph.
-
-    For example:
-    ```python
-    with tf.name_scope('scope1'):
-        with tf.name_scope('scope2'):
-            print(get_current_scope())
-    ```
-    would print the string `scope1/scope2/`.
-
-    Returns:
-        A string representing the current name scope.
-    """
-    with tf.name_scope("foo") as scope:
-        # With the above example, scope is "scope1/scope2/foo_1/".
-        # We want to return "scope1/scope2/".
-        return scope[:scope.rfind('/', 0, -1) + 1]
-
-
 def add_mean_hist_summary(name, value):
     """Generate mean and histogram summary of `value`.
 
@@ -294,12 +353,9 @@ def safe_mean_hist_summary(name, value):
     Returns:
         None
     """
-    current_scope = get_current_scope()
-    # The reason of prefixing name with current_scope is that inside run_if,
-    # somehow get_current_scope() is '', which makes summary tag unscoped.
     run_if(
         tf.reduce_prod(tf.shape(value)) >
-        0, lambda: add_mean_hist_summary(current_scope + name, value))
+        0, lambda: add_mean_hist_summary(name, value))
 
 
 def add_mean_summary(name, value):
@@ -327,12 +383,9 @@ def safe_mean_summary(name, value):
     Returns:
         None
     """
-    current_scope = get_current_scope()
-    # The reason of prefixing name with current_scope is that inside run_if,
-    # somehow get_current_scope() is '', which makes summary tag unscoped.
     run_if(
         tf.reduce_prod(tf.shape(value)) >
-        0, lambda: add_mean_summary(current_scope + name, value))
+        0, lambda: add_mean_summary(name, value))
 
 
 class record_time(object):

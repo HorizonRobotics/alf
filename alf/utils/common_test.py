@@ -47,6 +47,38 @@ class ImageScaleTransformerTest(tf.test.TestCase):
         common.image_scale_transformer(observation, fields=["x.a"])
 
 
+class FunctionTest(tf.test.TestCase):
+    @tf.function
+    def f(self):
+        with tf.name_scope("f") as scope:
+            return scope
+
+    def g(self):
+        with tf.name_scope("g") as scope:
+            return scope
+
+    @common.function
+    def h(self):
+        with tf.name_scope("h") as scope:
+            return scope
+
+    def test_function(self):
+        with tf.name_scope("main"):
+            f = self.f()
+            self.assertEqual(f, "f/")
+            g = self.g()
+            self.assertEqual(g, "main/g/")
+            h = self.h()
+            self.assertEqual(h, "main/h/")
+
+        f = self.f()
+        self.assertEqual(f, "f/")
+        g = self.g()
+        self.assertEqual(g, "g/")
+        h = self.h()
+        self.assertEqual(h, "h/")
+
+
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth
 

@@ -41,6 +41,7 @@ from alf.utils import summary_utils, gin_utils
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
 from alf.utils.nest_utils import is_namedtuple
 from alf.utils import nest_utils
+from alf.utils.scope_utils import get_current_scope
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -145,79 +146,6 @@ def get_target_updater(models, target_models, tau=1.0, period=1):
         return tf.group(*update_ops)
 
     return tfa_common.Periodically(update, period, 'periodic_update_targets')
-
-
-def add_nested_summaries(prefix, data):
-    """Add summary about loss_info
-
-    Args:
-        prefix (str): the prefix of the names of the summaries
-        data (dict or namedtuple): data to be summarized
-    """
-    fields = data.keys() if isinstance(data, dict) else data._fields
-    for field in fields:
-        elem = data[field] if isinstance(data, dict) else getattr(data, field)
-        name = prefix + '/' + field
-        if isinstance(elem, dict) or is_namedtuple(elem):
-            add_nested_summaries(name, elem)
-        elif isinstance(elem, tf.Tensor):
-            tf.summary.scalar(name, elem)
-
-
-def add_loss_summaries(loss_info: LossInfo):
-    """Add summary about loss_info
-
-    Args:
-        loss_info (LossInfo): loss_info.extra must be a namedtuple
-    """
-    tf.summary.scalar('loss', data=loss_info.loss)
-    if not loss_info.extra:
-        return
-    if not is_namedtuple(loss_info.extra):
-        # not a namedtuple
-        return
-    add_nested_summaries('loss', loss_info.extra)
-
-
-def add_action_summaries(actions, action_specs):
-    """Generate histogram summaries for actions.
-
-    Actions whose rank is more than 1 will be skipped.
-
-    Args:
-        actions (nested Tensor): actions to be summarized
-        action_specs (nested TensorSpec): spec for the actions
-    """
-    action_specs = tf.nest.flatten(action_specs)
-    actions = tf.nest.flatten(actions)
-
-    for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
-        if len(action_spec.shape) > 1:
-            continue
-
-        if tensor_spec.is_discrete(action_spec):
-            summary_utils.histogram_discrete(
-                name="action/%s" % i,
-                data=action,
-                bucket_min=action_spec.minimum,
-                bucket_max=action_spec.maximum)
-        else:
-            if len(action_spec.shape) == 0:
-                action_dim = 1
-            else:
-                action_dim = action_spec.shape[-1]
-            action = tf.reshape(action, (-1, action_dim))
-
-            def _get_val(a, i):
-                return a if len(a.shape) == 0 else a[i]
-
-            for a in range(action_dim):
-                # TODO: use a descriptive name for the summary
-                summary_utils.histogram_continuous(
-                    name="action/%s/%s" % (i, a),
-                    data=action[:, a],
-                    bucket_min=_get_val(action_spec.minimum, a),
-                    bucket_max=_get_val(action_spec.maximum, a))
 
 
 def concat_shape(shape1, shape2):
@@ -997,3 +925,40 @@ def create_and_unstack_tensor_array(tensors, clear_after_read=True):
         spec, num_steps, batch_size, clear_after_read=clear_after_read)
     ta = tf.nest.map_structure(lambda elem, ta: ta.unstack(elem), tensors, ta)
     return ta
+
+
+def function(func=None, **kwargs):
+    """Wrapper for tf.function with ALF-specific customizations.
+
+    Functions decorated using tf.function lose the original name scope of the
+    caller. This decorator fixes that.
+
+    Example:
+    ```python
+    @common.function()
+    def my_eager_code(x, y):
+        ...
+    ```
+
+    Args:
+        *args: Args for tf.function.
+        **kwargs: Keyword args for tf.function.
+    Returns:
+        A tf.function wrapper.
+    """
+
+    def decorate(f):
+        @tf.function(**kwargs)
+        def _f(scope_name, *args, **kwargs):
+            with tf.name_scope(scope_name):
+                return f(*args, **kwargs)
+
+        @functools.wraps(f)
+        def _f1(*args, **kwargs):
+            return _f(get_current_scope(), *args, **kwargs)
+
+        return _f1
+
+    if func is not None:
+        return decorate(func)
+    return decorate

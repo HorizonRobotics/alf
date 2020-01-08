@@ -23,6 +23,7 @@ import tensorflow_probability as tfp
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import ActionTimeStep, Experience, StepType, TrainingInfo
 from alf.utils import common, nest_utils
+from alf.utils.scope_utils import get_current_scope
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
@@ -91,7 +92,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
             train_steps (int): the actual number of time steps that have been
                 trained (a step might be trained multiple times)
         """
-
         if mini_batch_size is None:
             mini_batch_size = self._exp_replayer.batch_size
         if clear_replay_buffer:
@@ -104,7 +104,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
         return self._train(experience, num_updates, mini_batch_size,
                            mini_batch_length, update_counter_every_mini_batch)
 
-    @tf.function
+    @common.function
     def _train(self, experience, num_updates, mini_batch_size,
                mini_batch_length, update_counter_every_mini_batch):
         """Train using experience."""
@@ -144,8 +144,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             return tf.nest.map_structure(lambda x: common.transpose2(x, 0, 1),
                                          nest)
 
-        if not update_counter_every_mini_batch:
-            common.get_global_counter().assign_add(1)
+        scope = get_current_scope()
 
         for u in tf.range(num_updates):
             if mini_batch_size < batch_size:
@@ -166,13 +165,21 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     lambda x: x[b:tf.minimum(batch_size, b + mini_batch_size)],
                     experience)
                 batch = _make_time_major(batch)
-                training_info, loss_info, grads_and_vars = self._update(
-                    batch,
-                    weight=tf.cast(tf.shape(batch.step_type)[1], tf.float32) /
-                    float(mini_batch_size))
+                # Tensorflow graph mode loses the original name scope here. We
+                # need to restore the original name scope
+                with tf.name_scope(scope):
+                    training_info, loss_info, grads_and_vars = self._update(
+                        batch,
+                        weight=tf.cast(
+                            tf.shape(batch.step_type)[1], tf.float32) /
+                        float(mini_batch_size))
                 if do_summary:
-                    self.training_summary(training_info, loss_info,
-                                          grads_and_vars)
+                    # Putting `if do_summary` under the above `with` statement
+                    # does not help. Somehow `if` statement will also lose
+                    # the original name scope.
+                    with tf.name_scope(scope):
+                        self.training_summary(training_info, loss_info,
+                                              grads_and_vars)
 
         self.metric_summary()
         train_steps = batch_size * mini_batch_length * num_updates
@@ -209,6 +216,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
             create_ta,
             nest_utils.to_distribution_param_spec(self.train_step_info_spec))
 
+        scope = get_current_scope()
+
         def _train_loop_body(counter, policy_state, info_ta):
             exp = tf.nest.map_structure(lambda ta: ta.read(counter),
                                         experience_ta)
@@ -218,7 +227,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 policy_state, initial_train_state,
                 tf.equal(exp.step_type, StepType.FIRST))
 
-            policy_step = self.train_step(exp, policy_state)
+            with tf.name_scope(scope):
+                policy_step = self.train_step(exp, policy_state)
 
             info_ta = tf.nest.map_structure(
                 lambda ta, x: ta.write(counter, x), info_ta,
