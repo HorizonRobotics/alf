@@ -245,10 +245,13 @@ class Trainer(object):
 
     def initialize(self):
         """Initializes the Trainer."""
-        if self._random_seed is not None:
-            random.seed(self._random_seed)
-            np.random.seed(self._random_seed)
-            tf.random.set_seed(self._random_seed)
+        random_seed = self._random_seed
+        if random_seed is None:
+            random_seed = os.getpid() + int(time.time())
+
+        random.seed(random_seed)
+        np.random.seed(random_seed)
+        tf.random.set_seed(random_seed)
 
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
@@ -445,10 +448,13 @@ def play(root_dir,
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
-    if random_seed is not None:
-        random.seed(random_seed)
-        np.random.seed(random_seed)
-        tf.random.set_seed(random_seed)
+    random_seed = self._random_seed
+    if random_seed is None:
+        random_seed = os.getpid() + int(time.time())
+
+    random.seed(random_seed)
+    np.random.seed(random_seed)
+    tf.random.set_seed(random_seed)
 
     global_step = get_global_counter()
 

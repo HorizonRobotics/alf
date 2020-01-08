@@ -88,7 +88,9 @@ class AdaptiveNormalizer(tf.Module):
             self.update(tensor)
 
         def _normalize(m, m2, spec, t):
-            var = m2 - tf.square(m)
+            # in some extreme cases, due to floating errors, var might be a very
+            # large negative value (close to 0)
+            var = tf.nn.relu(m2 - tf.square(m))
             outer_dims = get_outer_rank(t, spec)
             batch_squash = BatchSquash(outer_dims)
             t = batch_squash.flatten(t)
