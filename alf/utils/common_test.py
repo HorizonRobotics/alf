@@ -47,6 +47,26 @@ class ImageScaleTransformerTest(tf.test.TestCase):
         common.image_scale_transformer(observation, fields=["x.a"])
 
 
+class F(tf.Module):
+    def __init__(self, name):
+        super().__init__(name=name)
+        self._created = False
+
+    @common.function
+    def train(self, a, b):
+        with self.name_scope as scope:
+            if not self._created:
+                self._v = tf.Variable(initial_value=1.0, shape=())
+                self._created = True
+            return a + b, scope
+
+
+@common.function
+def func(a, b):
+    with tf.name_scope("func") as scope:
+        return a + b, scope
+
+
 class FunctionTest(tf.test.TestCase):
     @tf.function
     def f(self):
@@ -64,19 +84,27 @@ class FunctionTest(tf.test.TestCase):
 
     def test_function(self):
         with tf.name_scope("main"):
-            f = self.f()
-            self.assertEqual(f, "f/")
-            g = self.g()
-            self.assertEqual(g, "main/g/")
-            h = self.h()
-            self.assertEqual(h, "main/h/")
+            f1 = F("f1")
+            f2 = F("f2")
+            self.assertEqual(self.f(), "f/")
+            self.assertEqual(self.g(), "main/g/")
+            self.assertEqual(self.h(), "main/h/")
+            self.assertEqual(f1.train(1, 3)[0], 4)
+            self.assertEqual(f1.train(1, 3)[1], "main/f1/")
+            self.assertEqual(f2.train(2, 3)[0], 5)
+            self.assertEqual(f2.train(2, 3)[1], "main/f2/")
+            self.assertEqual(func(2, 4)[0], 6)
+            self.assertEqual(func(2, 4)[1], "main/func/")
 
-        f = self.f()
-        self.assertEqual(f, "f/")
-        g = self.g()
-        self.assertEqual(g, "g/")
-        h = self.h()
-        self.assertEqual(h, "h/")
+        self.assertEqual(self.f(), "f/")
+        self.assertEqual(self.g(), "g/")
+        self.assertEqual(self.h(), "h/")
+        self.assertEqual(f1.train(5, 3)[0], 8)
+        self.assertEqual(f1.train(5, 3)[1], "main/f1/")
+        self.assertEqual(f2.train(6, 3)[0], 9)
+        self.assertEqual(f2.train(6, 3)[1], "main/f2/")
+        self.assertEqual(func(3, 5)[0], 8)
+        self.assertEqual(func(3, 5)[1], "func/")
 
 
 if __name__ == '__main__':

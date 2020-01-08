@@ -927,6 +927,71 @@ def create_and_unstack_tensor_array(tensors, clear_after_read=True):
     return ta
 
 
+class FunctionInstance(object):
+    """
+    This is not a public API. It is for internal use.
+    """
+
+    def __init__(self, tf_func, instance, owner):
+        """Create a FunctionInstance object.
+
+        FunctionInstance is created for each instance the wrapped function is
+        bound to.
+        Args:
+            tf_func (tensorflow.python.eager.def_function.Function): a function
+                wrapped by tf.function which accept `instance` and `scope_name`
+                as its first two arguments
+            instance (object): the instance which the original function is bound
+                to.
+            owner (type): the class type of `instance`
+        """
+        self._tf_func = tf_func
+        self._instance = instance
+        self._owner = owner
+
+    def __call__(self, *args, **kwargs):
+        """Call the wrapped function.
+
+        Tensorflow creates a different instance of Function object for each
+        instance to handle instance specific processing. We need to explicitly
+        call tf_Function.__get__ to handle class methods correctly.
+
+        Reference: tensorflow.python.eager.def_function.Function.__get__().
+        """
+        tf_func_instance = self._tf_func.__get__(self._instance, self._owner)
+        return tf_func_instance(get_current_scope(), *args, **kwargs)
+
+
+class Function(object):
+    """
+    This is not a public API. It is for internal use.
+    """
+
+    def __init__(self, func, **kwargs):
+        def _bound_tf_func(instance, scope_name, *args, **kwargs):
+            with tf.name_scope(scope_name):
+                return func(instance, *args, **kwargs)
+
+        def _tf_func(scope_name, *args, **kwargs):
+            with tf.name_scope(scope_name):
+                return func(*args, **kwargs)
+
+        self._bound_tf_func = tf.function(*kwargs)(_bound_tf_func)
+        self._tf_func = tf.function(*kwargs)(_tf_func)
+
+    def __call__(self, *args, **kwargs):
+        return self._tf_func(get_current_scope(), *args, **kwargs)
+
+    def __get__(self, instance, owner):
+        """Get the instance specific function (FunctionInstance).
+
+        References:
+        1. tensorflow.python.eager.def_function.Function.__get__().
+        2. Python descriptor (https://docs.python.org/3/howto/descriptor.html)
+        """
+        return FunctionInstance(self._bound_tf_func, instance, owner)
+
+
 def function(func=None, **kwargs):
     """Wrapper for tf.function with ALF-specific customizations.
 
@@ -941,23 +1006,25 @@ def function(func=None, **kwargs):
     ```
 
     Args:
-        *args: Args for tf.function.
-        **kwargs: Keyword args for tf.function.
+        func (Callable): function to be compiled.  If `func` is None, returns a
+            decorator that can be invoked with a single argument - `func`. The
+            end result is equivalent to providing all the arguments up front.
+            In other words, `common.function(input_signature=...)(func)` is
+            equivalent to `common.function(func, input_signature=...)`. The
+            former can be used to decorate Python functions, for example:
+                @tf.function(input_signature=...)
+                def foo(...): ...
+        args (list): Args for tf.function.
+        kwargs (dict): Keyword args for tf.function.
     Returns:
-        A tf.function wrapper.
+        If `func` is not None, returns a callable that will execute the compiled
+        function (and return zero or more `tf.Tensor` objects).
+        If `func` is None, returns a decorator that, when invoked with a single
+        `func` argument, returns a callable equivalent to the case above.
     """
 
     def decorate(f):
-        @tf.function(**kwargs)
-        def _f(scope_name, *args, **kwargs):
-            with tf.name_scope(scope_name):
-                return f(*args, **kwargs)
-
-        @functools.wraps(f)
-        def _f1(*args, **kwargs):
-            return _f(get_current_scope(), *args, **kwargs)
-
-        return _f1
+        return functools.wraps(f)(Function(f, **kwargs))
 
     if func is not None:
         return decorate(func)
