@@ -105,6 +105,7 @@ class RLAlgorithm(Algorithm):
             observation_transformers = [observation_transformer]
         self._observation_transformers = observation_transformers
         self._exp_observers = []
+        self._metrics = None
         self._proc = psutil.Process(os.getpid())
         self._debug_summaries = debug_summaries
         self._summarize_grads_and_vars = summarize_grads_and_vars
