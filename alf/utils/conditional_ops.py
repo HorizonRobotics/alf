@@ -47,11 +47,11 @@ def conditional_update(target, cond, func, *args, **kwargs):
     otherwise result[row] will be target[row]. Note that target will not be
     changed.
 
-    If you simply want to do some conditional computation wihtout actually
+    If you simply want to do some conditional computation without actually
     returning any results. You can use conditional_update in the following way:
     ```
     # func needs to return an empty tuple ()
-    condititional_update((), cond, func, *args, **kwargs)
+    conditional_update((), cond, func, *args, **kwargs)
     ```
 
     Args:

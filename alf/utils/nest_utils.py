@@ -37,7 +37,7 @@ def nest_list_to_tuple(nest):
     """Convert the lists in a nest to tuples.
 
     Some tf-agents function (e.g. ReplayBuffer) cannot accept nest containing
-    list. So we need some utitity to convert back and forth.
+    list. So we need some utility to convert back and forth.
 
     Args:
         nest (a nest): a nest structure
@@ -93,10 +93,10 @@ def nest_tuple_to_list(nest, example):
     be convert to a list.
 
     Some tf-agents function (e.g. ReplayBuffer) cannot accept nest containing
-    list. So we need some utitity to convert back and forth.
+    list. So we need some utility to convert back and forth.
 
     Args:
-        nest (a nest): a nest structure wihtout list
+        nest (a nest): a nest structure without list
         example (a nest): the example structure that nest will be converted to
     Returns:
         nest with the same content as the input but some tuples are changed to
@@ -155,7 +155,7 @@ def params_to_distributions(nest, nest_spec):
 
     Args:
         nest (nested tf.Tensor): nested Tensor and dictionary of the Tensor
-            parameters of Distribution. Typicall, `nest` is obtained using
+            parameters of Distribution. Typically, `nest` is obtained using
             `distributions_to_params()`
         nest_spec (nested DistributionSpec and TensorSpec): The distribution
             params will be converted to Distribution according to the
