@@ -192,16 +192,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
-        tfa_common.soft_variables_update(
-            self._critic_network1.variables,
-            self._target_critic_network1.variables,
-            tau=1.0)
-
-        tfa_common.soft_variables_update(
-            self._critic_network2.variables,
-            self._target_critic_network2.variables,
-            tau=1.0)
-
     def _predict(self,
                  time_step: ActionTimeStep,
                  state=None,

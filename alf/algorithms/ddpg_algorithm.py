@@ -143,15 +143,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         self._dqda_clipping = dqda_clipping
 
-        tfa_common.soft_variables_update(
-            self._critic_network.variables,
-            self._target_critic_network.variables,
-            tau=1.0)
-        tfa_common.soft_variables_update(
-            self._actor_network.variables,
-            self._target_actor_network.variables,
-            tau=1.0)
-
     def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
         action, state = self._actor_network(
             time_step.observation,
