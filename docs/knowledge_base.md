@@ -16,6 +16,31 @@ you can set the following gin configuration to run in eager mode:
 TrainerConfig.use_tf_functions=False
 ```
 
+### Debugging in graph mode
+
+Sometime, an error may only appear in graph mode. And tensowflow usually does
+not stop at where the error occurs (which is typically in the transformed code)
+because it captures the exception raised from the transformed code. Here is the
+[code segment](https://github.com/tensorflow/tensorflow/blob/0f57d4f0b3eb4278ea1127f6fcd9fcafa58dd59c/tensorflow/python/framework/func_graph.py#L956-L970). You may find it is easier
+to debug by commenting out the exception handling as the following so that you
+can debugging into the transformed code:
+```python
+          # try:
+          return autograph.converted_call(
+              original_func,
+              args,
+              kwargs,
+              options=autograph.ConversionOptions(
+                  recursive=True,
+                  optional_features=autograph_options,
+                  user_requested=True,
+              ))
+          # except Exception as e:  # pylint:disable=broad-except
+          #   if hasattr(e, "ag_error_metadata"):
+          #     raise e.ag_error_metadata.to_exception(e)
+          #   else:
+          #     raise
+```
 ### Debugging using VisualStudio Code
 
 Currently, ALF uses separate processes to launch multiple environments. Because
