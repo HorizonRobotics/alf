@@ -13,7 +13,7 @@ PlayGround.resized_image_size=(84, 84)
 
 GoalTask.polar_coord=False
 
-FrameStack.fields_to_stack=['image']  # must be a subset of input observations
+FrameStack.fields=['image']  # must be a subset of input observations
 image_scale_transformer.fields=['image']
 
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
@@ -69,6 +69,7 @@ ActorCriticAlgorithm.value_network=@target_navigation.get_value_network()
 
 Agent.gradient_clipping=0.5
 
+ActorCriticLoss.entropy_regularization=0.0005
 
 suite_socialbot.load.max_episode_steps=100
 GoalTask.max_steps=1000
