@@ -133,7 +133,7 @@ class NumberOfEpisodes(tf_metrics.NumberOfEpisodes):
     """
 
     def __init__(self, name='NumberOfEpisodes', dtype=tf.int64):
-        super(NumberOfEpisodes, self).__init__(name, dtype)
+        super(NumberOfEpisodes, self).__init__(name=name, dtype=dtype)
 
     def call(self, trajectory, id):
         """This metric doesn't care about which env the traj comes from"""
@@ -146,7 +146,7 @@ class EnvironmentSteps(tf_metrics.EnvironmentSteps):
     """
 
     def __init__(self, name='EnvironmentSteps', dtype=tf.int64):
-        super(EnvironmentSteps, self).__init__(name, dtype)
+        super(EnvironmentSteps, self).__init__(name=name, dtype=dtype)
 
     def call(self, trajectory, id):
         """This metric doesn't care about which env the traj comes from"""
