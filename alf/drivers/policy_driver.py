@@ -46,7 +46,7 @@ class PolicyDriver(driver.Driver):
         """Create a PolicyDriver.
 
         Args:
-            env (TFEnvironment): A TFEnvoronmnet
+            env (TFEnvironment): A TFEnvironmnet
             algorithm (RLAlgorithm): The algorithm for training
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a

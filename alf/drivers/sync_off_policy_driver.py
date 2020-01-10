@@ -57,7 +57,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         """Create an OffPolicyDriver.
 
         Args:
-            env (TFEnvironment): A TFEnvoronmnet
+            env (TFEnvironment): A TFEnvironmnet
             algorithm (OffPolicyAlgorithm): The algorithm for training
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.

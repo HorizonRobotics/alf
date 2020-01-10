@@ -149,7 +149,7 @@ def get_target_updater(models, target_models, tau=1.0, period=1):
 
 
 def concat_shape(shape1, shape2):
-    """Concatenate two shape tensor.
+    """Concatenate two shape tensors.
 
     Args:
         shape1 (Tensor|list): first shape
