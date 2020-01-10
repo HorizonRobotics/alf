@@ -724,6 +724,8 @@ def get_states_shape():
     if isinstance(_env.observation_spec(),
                   dict) and ('states' in _env.observation_spec()):
         return _env.observation_spec()['states'].shape
+    elif isinstance(_env.observation_spec(), dict):
+        assert 'states' in _env.observation_spec()
     else:
         return 0
 
@@ -762,6 +764,8 @@ def get_vocab_size():
         # return _env.observation_spec()['sentence'].shape[0]
         # is the sequence length of the sentence.
         return _env.observation_spec()['sentence'].maximum + 1
+    elif isinstance(_env.observation_spec(), dict):
+        assert 'sentence' in _env.observation_spec()
     else:
         return 0
 
