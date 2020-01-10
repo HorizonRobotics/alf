@@ -30,6 +30,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from tf_agents.distributions.utils import scale_distribution_to_spec, SquashToSpecNormal
+from tf_agents.networks.network import Network
 from tf_agents.specs.distribution_spec import DistributionSpec
 from tf_agents.specs.tensor_spec import BoundedTensorSpec
 from tf_agents.specs import tensor_spec
@@ -140,6 +141,10 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
 
     if copy:
         for model, target_model in zip(models, target_models):
+            if isinstance(model, Network):
+                model.create_variables()
+            if isinstance(target_model, Network):
+                target_model.create_variables()
             tfa_common.soft_variables_update(
                 model.variables, target_model.variables, tau=1.0)
 

@@ -20,7 +20,7 @@ setup(
     install_requires=[
         'atari_py == 0.1.7',
         'fasteners',
-        'gym == 0.10.11',
+        'gym == 0.12.5',
         'matplotlib',
         'numpy',
         'opencv-python >= 3.4.1.15',
@@ -28,7 +28,8 @@ setup(
         'pillow',
         'psutil',
         'pybullet == 2.5.0',
-        'tensorflow-gpu == 2.0.0',
+        'tensorflow-gpu == 2.1.0',
+        'tf-agents == 0.3.0',
     ],  # And any other dependencies foo needs
     packages=find_packages(),
 )
