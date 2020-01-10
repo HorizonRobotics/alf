@@ -116,6 +116,11 @@ class RLAlgorithm(Algorithm):
         self._train_step_info_spec = None
         self._processed_experience_spec = None
 
+    def set_children_property(self, property_name, value):
+        children = self._get_children(lambda obj: isinstance(obj, RLAlgorithm))
+        for alg in children:
+            alg.__setattr__(property_name, value)
+
     @property
     def use_rollout_state(self):
         return self._use_rollout_state
@@ -124,6 +129,7 @@ class RLAlgorithm(Algorithm):
     def use_rollout_state(self, flag):
         # TODO: need to set the flag for the child algorithms.
         self._use_rollout_state = flag
+        self.set_children_property('use_rollout_state', flag)
 
     def need_full_rollout_state(self):
         """Whether PolicyStep.state from rollout should be full.
