@@ -231,14 +231,23 @@ class TFQueues(object):
         ]
 
     def close_all(self):
-        self.learn_queue.close()
-        self.log_queue.close()
-        for aq in self.actor_queues:
-            aq.close()
-        for arq in self.action_return_queues:
-            arq.close()
-        for euq in self.env_unroll_queues:
-            euq.close()
+        try:
+            self.learn_queue.close()
+            self.log_queue.close()
+            for aq in self.actor_queues:
+                aq.close()
+            for arq in self.action_return_queues:
+                arq.close()
+            for euq in self.env_unroll_queues:
+                euq.close()
+        except tf.errors.CancelledError:
+            # Ignore this because it is typically because those queues have
+            # already been closed
+            pass
+        except tf.errors.OutOfRangeError:
+            # Ignore this because it is typically because those queues have
+            # already been closed
+            pass
 
 
 class ActorThread(Thread):
