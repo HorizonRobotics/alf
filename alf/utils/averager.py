@@ -180,8 +180,10 @@ class EMAverager(tf.Module):
             Tensor: the current average
         """
         return tf.nest.map_structure(
-            lambda average: (average / tf.cast(
-                self._mass, dtype=average.dtype)), self._average)
+            lambda average: (average / tf.maximum(
+                tf.cast(self._mass, dtype=average.dtype),
+                tf.cast(self._update_rate, dtype=average.dtype))),
+            self._average)
 
     def average(self, tensor):
         """Combines self.update and self.get in one step. Can be handy in practice.
