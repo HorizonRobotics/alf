@@ -31,7 +31,7 @@ AlgorithmStep = namedtuple("AlgorithmStep", ["outputs", "state", "info"])
 
 
 def _is_alg(obj):
-    """Only return True if the obj in an instance of Algorithm"""
+    """Only return True if the obj in an instance of Algorithm."""
     return isinstance(obj, Algorithm)
 
 
@@ -233,10 +233,10 @@ class Algorithm(tf.Module):
                 new_vars = [new_module_or_var]
             new_var_ids = set(map(id, new_vars))
             dup_ids = var_ids & new_var_ids
-            assert not dup_ids, \
-                (("Modules/variables %s might have multiple optimizers! Consider "
-                 + "specifying attributes in _trainable_attributes_to_ignore()")
-                 % new_module_or_var.name)
+            assert not dup_ids, (
+                "Modules/variables %s might have multiple optimizers! Consider "
+                "specifying attributes in _trainable_attributes_to_ignore()" %
+                new_module_or_var.name)
             var_ids.update(new_var_ids)
 
         for alg in self._get_children(_is_alg):
@@ -342,7 +342,7 @@ class Algorithm(tf.Module):
         return self._train_state_spec
 
     def convert_train_state_to_predict_state(self, state):
-        """Convert RNN state for train_step() to RNN state for predict()"""
+        """Convert RNN state for train_step() to RNN state for predict()."""
         tf.nest.assert_same_structure(self._train_state_spec,
                                       self._predict_state_spec)
         return state
