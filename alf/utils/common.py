@@ -706,13 +706,13 @@ def get_states_shape():
     Returns:
         list of ints.
         Returns 0 if internal states is not part of observation.
+        We don't raise error so this code can serve to check whether
+        env has states input
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     if isinstance(_env.observation_spec(),
                   dict) and ('states' in _env.observation_spec()):
         return _env.observation_spec()['states'].shape
-    elif isinstance(_env.observation_spec(), dict):
-        assert 'states' in _env.observation_spec()
     else:
         return 0
 
@@ -742,6 +742,8 @@ def get_vocab_size():
     Returns:
         vocab_size (int): size of the environment's/teacher's vocabulary.
         Returns 0 if language is not part of observation.
+        We don't raise error so this code can serve to check whether
+        env has language input
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     if isinstance(_env.observation_spec(),
@@ -749,8 +751,6 @@ def get_vocab_size():
         # return _env.observation_spec()['sentence'].shape[0]
         # is the sequence length of the sentence.
         return _env.observation_spec()['sentence'].maximum + 1
-    elif isinstance(_env.observation_spec(), dict):
-        assert 'sentence' in _env.observation_spec()
     else:
         return 0
 
