@@ -216,7 +216,7 @@ def _get_summary_enabled_var():
     global _summary_enabled_var
     if _summary_enabled_var is None:
         _summary_enabled_var = tf.Variable(
-            False, dtype=tf.bool, name="summary_enabled")
+            False, dtype=tf.bool, trainable=False, name="summary_enabled")
     return _summary_enabled_var
 
 
@@ -717,10 +717,12 @@ def get_states_shape():
     Returns:
         list of ints.
         Returns 0 if internal states is not part of observation.
+        We don't raise error so this code can serve to check whether
+        env has states input
     """
     assert _env, "set a global env by `set_global_env` before using the function"
-    assert isinstance(_env.observation_spec(), dict), "observation not a dict"
-    if 'states' in _env.observation_spec():
+    if isinstance(_env.observation_spec(),
+                  dict) and ('states' in _env.observation_spec()):
         return _env.observation_spec()['states'].shape
     else:
         return 0
@@ -739,6 +741,11 @@ def get_action_spec():
     return _env.action_spec()
 
 
+def get_env():
+    assert _env, "set a global env by `set_global_env` before using the function"
+    return _env
+
+
 @gin.configurable
 def get_vocab_size():
     """Get the vocabulary size of observations provided by the global environment.
@@ -746,10 +753,15 @@ def get_vocab_size():
     Returns:
         vocab_size (int): size of the environment's/teacher's vocabulary.
         Returns 0 if language is not part of observation.
+        We don't raise error so this code can serve to check whether
+        env has language input
     """
     assert _env, "set a global env by `set_global_env` before using the function"
-    if 'sentence' in _env.observation_spec():
-        return _env.observation_spec()['sentence'].shape[0]
+    if isinstance(_env.observation_spec(),
+                  dict) and ('sentence' in _env.observation_spec()):
+        # return _env.observation_spec()['sentence'].shape[0]
+        # is the sequence length of the sentence.
+        return _env.observation_spec()['sentence'].maximum + 1
     else:
         return 0
 

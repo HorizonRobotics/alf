@@ -8,11 +8,12 @@ create_environment.num_parallel_environments=%batch_size
 
 create_environment.env_name='SocialBot-PlayGround-v0'
 PlayGround.use_image_observation=True
-PlayGround.image_with_internal_states=True
 PlayGround.with_language=True
 PlayGround.resized_image_size=(84, 84)
 
-FrameStack.fields=['image', 'states']  # must be a subset of input observations
+GoalTask.polar_coord=False
+
+FrameStack.fields=['image']  # must be a subset of input observations
 image_scale_transformer.fields=['image']
 
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
@@ -28,6 +29,15 @@ ActorDistributionRnnNetwork.lstm_size=(128, 128)
 ValueRnnNetwork.activation_fn=@tf.nn.elu
 ValueRnnNetwork.lstm_size=(128, 128)
 
+ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
+NormalProjectionNetwork.init_means_output_factor=1e-10
+NormalProjectionNetwork.std_bias_initializer_value=0.0
+
+ActorDistributionNetwork.activation_fn=@tf.nn.elu
+ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+
+ValueNetwork.activation_fn=@tf.nn.elu
+
 ac/Adam.learning_rate=2e-4
 
 conv_layer_params=((16, 3, 2), (32, 3, 2))
@@ -36,18 +46,19 @@ fc_layer_params=(256,)
 num_state_tiles=800
 num_sentence_tiles=800
 
-mlp_layers.activation_fn=@tf.keras.activations.softsign
-mlp_layers.kernel_initializer=@tf.keras.initializers.GlorotUniform()
-
 import alf.networks.target_navigation
 
 target_navigation.get_actor_network.conv_layer_params=%conv_layer_params
+target_navigation.get_actor_network.activation_fn=@tf.keras.activations.softsign
+target_navigation.get_actor_network.kernel_initializer=@tf.keras.initializers.GlorotUniform()
 target_navigation.get_actor_network.num_embedding_dims=%num_embedding_dims
 target_navigation.get_actor_network.fc_layer_params=%fc_layer_params
 target_navigation.get_actor_network.num_state_tiles=%num_state_tiles
 target_navigation.get_actor_network.num_sentence_tiles=%num_sentence_tiles
 
 target_navigation.get_value_network.conv_layer_params=%conv_layer_params
+target_navigation.get_value_network.activation_fn=@tf.keras.activations.softsign
+target_navigation.get_value_network.kernel_initializer=@tf.keras.initializers.GlorotUniform()
 target_navigation.get_value_network.num_embedding_dims=%num_embedding_dims
 target_navigation.get_value_network.fc_layer_params=%fc_layer_params
 target_navigation.get_value_network.num_state_tiles=%num_state_tiles
@@ -58,13 +69,15 @@ ActorCriticAlgorithm.value_network=@target_navigation.get_value_network()
 
 Agent.gradient_clipping=0.5
 
+ActorCriticLoss.entropy_regularization=0.0005
 
-suite_socialbot.load.max_episode_steps=1000
-GoalTask.max_steps=200
+suite_socialbot.load.max_episode_steps=100
+GoalTask.max_steps=1000
+PlayGround.max_steps=1000
 
-GoalTask.fail_distance_thresh=10
+GoalTask.fail_distance_thresh=1000
 GoalTask.random_goal=False
-#GoalTask.random_range=2
+#GoalTask.random_range=5
 GoalTask.goal_name='ball'
 
 #Curriculum
@@ -77,4 +90,4 @@ GoalTask.percent_full_range_in_curriculum=0.2
 
 TrainerConfig.use_tf_functions=1
 TrainerConfig.checkpoint_interval=100
-TrainerConfig.unroll_length=50
+TrainerConfig.unroll_length=100

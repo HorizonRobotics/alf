@@ -50,7 +50,6 @@ Agent.gradient_clipping=None
 #   [id=3806 driver_loop/body/_1/iter_loop_grad/next_iteration/_1116-0-1-TransposeNCHWToNHWC-LayoutOptimizer:0 -> driver_loop/body/_1/iter_loop_grad/merge/_957:1]
 #   to driver_loop/body/_1/iter_loop_grad/merge/_957
 #   when visiting the graph in post-order.  Most likely indicates a bug in deadness analysis. [Op:__inference_run_16937]
-SimpleNavigation.data_format=%CHANNEL_ORDER
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config

@@ -108,3 +108,7 @@ class NestConcatenate(tf.keras.layers.Concatenate):
 @gin.configurable
 def get_identity_layer():
     return tf.keras.layers.Lambda(lambda x: x)
+
+
+def get_first_element_layer():
+    return tf.keras.layers.Lambda(lambda x: x[0])
