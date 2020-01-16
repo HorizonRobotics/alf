@@ -250,9 +250,9 @@ class GridSearch(object):
         device_queue = self._init_device_queue(max_worker_num)
 
         task_count = 0
-        for values in itertools.product(*param_values):
-            parameters = dict(zip(param_keys, values))
-            for repeat in range(self._conf.repeats):
+        for repeat in range(self._conf.repeats):
+            for values in itertools.product(*param_values):
+                parameters = dict(zip(param_keys, values))
                 root_dir = "%s/%s" % (FLAGS.root_dir,
                                       self._generate_run_name(
                                           parameters, task_count, repeat))
