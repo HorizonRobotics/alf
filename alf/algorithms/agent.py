@@ -167,7 +167,9 @@ class Agent(OnPolicyAlgorithm):
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
-        if self._entropy_target_algorithm and mode != RLAlgorithm.ROLLOUT:
+        if self._entropy_target_algorithm:
+            # TODO: For off-policy training, skip entropy_target_algorithm
+            # during rollout()
             assert 'action_distribution' in rl_step.info._fields, (
                 "PolicyStep from rl_algorithm.rollout() does not contain "
                 "`action_distribution`, which is required by "
