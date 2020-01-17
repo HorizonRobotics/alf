@@ -4,12 +4,12 @@ target_navigation.get_ac_networks.attention=True
 
 # PlayGround.group_img_lang=True
 
-# FrameStack.fields_to_stack=['image_sentence.image']  # must be a subset of input observations
+# FrameStack.fields=['image_sentence.image']  # must be a subset of input observations
 # image_scale_transformer.fields=['image_sentence.image']
 
 num_state_tiles=0
 num_sentence_tiles=0
-conv_layer_params=((16, 3, 2), (32, 3, 2), (256, 3, 2))
+conv_layer_params=((16, 3, 2), (32, 3, 2), (64, 3, 2))
 
 import alf.networks.target_navigation
 target_navigation.get_actor_network.conv_layer_params=%conv_layer_params
