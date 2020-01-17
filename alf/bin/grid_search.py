@@ -158,7 +158,7 @@ class GridSearchConfig(object):
 
 
 class GridSearch(object):
-    """Grid Search"""
+    """Grid Search."""
 
     def __init__(self, conf_file):
         """Create GridSearch instance
@@ -249,10 +249,10 @@ class GridSearch(object):
             processes=max_worker_num, maxtasksperchild=1)
         device_queue = self._init_device_queue(max_worker_num)
 
-        task_count = 0
-        for values in itertools.product(*param_values):
-            parameters = dict(zip(param_keys, values))
-            for repeat in range(self._conf.repeats):
+        for repeat in range(self._conf.repeats):
+            for task_count, values in enumerate(
+                    itertools.product(*param_values)):
+                parameters = dict(zip(param_keys, values))
                 root_dir = "%s/%s" % (FLAGS.root_dir,
                                       self._generate_run_name(
                                           parameters, task_count, repeat))
@@ -260,7 +260,6 @@ class GridSearch(object):
                     func=self._worker,
                     args=[root_dir, parameters, device_queue],
                     error_callback=lambda e: logging.error(e))
-            task_count += 1
 
         process_pool.close()
         process_pool.join()
