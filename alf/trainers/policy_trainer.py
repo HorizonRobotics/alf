@@ -33,6 +33,7 @@ from tf_agents.metrics import tf_metrics
 from alf.utils import common
 from alf.utils.common import run_under_record_context, get_global_counter
 from alf.environments.utils import create_environment
+from alf.utils import git_utils
 
 
 @gin.configurable
@@ -358,10 +359,18 @@ class Trainer(object):
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
                 with tf.summary.record_if(True):
+
+                    def _markdownify(paragraph):
+                        return "    ".join(
+                            (os.linesep + paragraph).splitlines(keepends=True))
+
                     common.summarize_gin_config()
                     tf.summary.text('commandline', ' '.join(sys.argv))
-                    tf.summary.text('optimizers',
-                                    self._algorithm.get_optimizer_info())
+                    tf.summary.text(
+                        'optimizers',
+                        _markdownify(self._algorithm.get_optimizer_info()))
+                    tf.summary.text('revision', git_utils.get_revision())
+                    tf.summary.text('diff', _markdownify(git_utils.get_diff()))
 
             # check termination
             env_steps_metric = self._driver.get_step_metrics()[1]

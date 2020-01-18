@@ -325,11 +325,7 @@ class Algorithm(tf.Module):
         json_pretty_str_info = json.dumps(
             obj=optimizer_info, indent=2, default=get_json_type)
 
-        def _markdownify(paragraph):
-            return "    ".join(
-                (os.linesep + paragraph).splitlines(keepends=True))
-
-        return _markdownify(json_pretty_str_info)
+        return json_pretty_str_info
 
     @property
     def predict_state_spec(self):
