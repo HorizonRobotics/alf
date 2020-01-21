@@ -29,14 +29,16 @@ from alf.layers import get_identity_layer, get_first_element_layer
 
 
 # followed https://www.tensorflow.org/guide/keras/custom_layers_and_models
-class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
+class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
     def __init__(self,
                  vocab_size,
+                 n_heads=1,
                  network_to_debug=None,
                  output_attention_max=False,
                  **kwargs):
         super().__init__(**kwargs)
         self._vocab_size = vocab_size
+        self._n_heads = n_heads
         self._network_to_debug = network_to_debug
         self._output_attention_max = output_attention_max
         self.fig = None
@@ -50,7 +52,7 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
 
         self._attention = tf.keras.layers.Attention(use_scale=True)
         query_emb_shape = self._embedding.compute_output_shape(query_shape)
-        key_value_shape = (b, h * w, c + 2)
+        key_value_shape = (b, h * w, c + c)
         key_emb_shape = (b, h * w, c)
         self._attention.build(
             input_shape=[query_emb_shape, key_value_shape, key_emb_shape])
@@ -71,6 +73,7 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
         config = super().get_config()
         config.update({
             'vocab_size': self._vocab_size,
+            'n_heads': self._n_heads,
             'output_attention_max': self._output_attention_max,
             'network_to_debug': self._network_to_debug
         })
@@ -126,17 +129,52 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
         query_embeddings = self._embedding(query)
 
         key_value = tf.concat([key_embeddings, pos_embeddings], axis=-1)
+        n_heads = self._n_heads
+        nbatch = b
+
+        # Section of code adapted from https://github.com/google/trax/blob/master/trax/layers/attention.py
+        # under http://www.apache.org/licenses/LICENSE-2.0
+
+        # nbatch, seqlen, d_feature --> nbatch, n_heads, seqlen, d_head
+        def SplitHeads(x, d_feature):
+            assert d_feature % n_heads == 0
+            d_head = d_feature // n_heads
+            return tf.transpose(
+                tf.reshape(x, (nbatch, -1, n_heads, d_head)), (0, 2, 1, 3))
+
+        # nbatch, n_heads, seqlen, d_head --> nbatch, seqlen, d_feature
+        def JoinHeads(x, d_feature):  # pylint: disable=invalid-name
+            assert d_feature % n_heads == 0
+            d_head = d_feature // n_heads
+            return tf.reshape(
+                tf.transpose(x, (0, 2, 1, 3)), (nbatch, -1, n_heads * d_head))
+
+        # End section of code
+
+        orig_query_embeddings = query_embeddings
+        if n_heads > 1:
+            query_embeddings = SplitHeads(query_embeddings, c)
+            key_value = SplitHeads(key_value, 2 * c)
+            key_embeddings = SplitHeads(key_embeddings, c)
+
+        # print('query ', query_embeddings, '\nkey_val ', key_value, '\nkey ',
+        #       key_embeddings)
 
         # generates the position attention of shape (batch, seq_len, c+c)  or c+2 if not tiling
         pos_attention_seq = self._attention(
             [query_embeddings, key_value, key_embeddings])
 
-        # print('query ', query_embeddings, '\nkey_val ', key_value, '\nkey ', key_embeddings)
+        if n_heads > 1:
+            pos_attention_seq = JoinHeads(pos_attention_seq, 2 * c)
 
         attn_scores = tf.matmul(
             query_embeddings, key_embeddings, transpose_b=True)
-        attn_scores = tf.keras.layers.GlobalAveragePooling1D()(
-            attn_scores)  # across seq_len
+        # print('attn_scores ', attn_scores)
+        if n_heads > 1:
+            attn_scores = tf.reduce_mean(attn_scores, axis=2)
+        else:
+            attn_scores = tf.keras.layers.GlobalAveragePooling1D()(
+                attn_scores)  # across seq_len
         attn_score_max = tf.reduce_max(
             tf.nn.softmax(attn_scores), axis=-1)  # across h*w
         if tf.executing_eagerly():
@@ -145,9 +183,11 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
                 name=self.name + "/attention/value-max", data=attn_score_max)
 
             if self._network_to_debug == self.name:
-                obs = tf.reshape(attn_scores, (b, h, w))[0]
+                obs = tf.reshape(attn_scores, (b, n_heads, h, w))[0]
 
                 def tensor_to_image(tensor):
+                    # Default color palette: viridis (purple to yellow):
+                    # https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html
                     tensor = tf.cast(tensor * 255, dtype=tf.uint8)
                     tensor = tensor.numpy()  # will fail in graph mode
                     if np.ndim(tensor) > 3:
@@ -155,15 +195,17 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
                         tensor = tensor[0]
                     return tensor
 
-                img = tensor_to_image(obs)
-                if self.fig is None:
-                    self.fig = plt.imshow(img)
-                else:
-                    self.fig.set_data(img)
+                for i in range(n_heads):
+                    img = tensor_to_image(obs[i])
+                    if self.fig is None:
+                        _, axs = plt.subplots(1, n_heads)
+                        self.fig = axs
+                        plt.show()
+                    self.fig[i].imshow(img)
                 plt.pause(.00001)
 
         query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
-            query_embeddings)
+            orig_query_embeddings)
         pos_attention = tf.keras.layers.GlobalAveragePooling1D()(
             pos_attention_seq)
         # tf.print(self.name, " pos: ", pos_attention[0][-4:], " attn_max", attn_score_max)
@@ -173,7 +215,8 @@ class ImageLanguageAttentionLayer(tf.keras.layers.Layer):
             outputs.append(
                 tf.reshape(
                     tf.keras.backend.repeat(
-                        tf.reshape(attn_score_max, (b, 1)), n=c), (b, c)))
+                        tf.reshape(attn_score_max, (b, n_heads)), n=c),
+                    (b, c)))
 
         return tf.keras.layers.Concatenate()(outputs)
 
@@ -188,6 +231,7 @@ def get_ac_networks(conv_layer_params=None,
                     num_state_tiles=None,
                     num_sentence_tiles=None,
                     name=None,
+                    n_heads=1,
                     network_to_debug=None,
                     output_attention_max=False,
                     rnn=True):
@@ -280,8 +324,9 @@ def get_ac_networks(conv_layer_params=None,
     preprocessing_combiner = tf.keras.layers.Concatenate()
 
     if attention:
-        attention_combiner = ImageLanguageAttentionLayer(
+        attention_combiner = ImageLanguageAttentionCombiner(
             vocab_size=vocab_size,
+            n_heads=n_heads,
             name=name,
             network_to_debug=network_to_debug,
             output_attention_max=output_attention_max)
