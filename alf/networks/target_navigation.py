@@ -15,6 +15,7 @@
 
 import collections
 import gin
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -195,13 +196,16 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                         tensor = tensor[0]
                     return tensor
 
+                num_rows = 4
                 for i in range(n_heads):
                     img = tensor_to_image(obs[i])
                     if self.fig is None:
-                        _, axs = plt.subplots(1, n_heads)
+                        plt.interactive(True)
+                        _, axs = plt.subplots(num_rows,
+                                              int(n_heads / num_rows))
                         self.fig = axs
                         plt.show()
-                    self.fig[i].imshow(img)
+                    self.fig[i % num_rows, int(i / num_rows)].imshow(img)
                 plt.pause(.00001)
 
         query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
