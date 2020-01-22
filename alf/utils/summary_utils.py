@@ -418,7 +418,7 @@ class record_time(object):
         self._tag = tag
         caller = logging.get_absl_logger().findCaller()
         # token is a string of filename:lineno:tag
-        token = caller[0] + ':' + str(caller[0]) + ':' + tag
+        token = caller[0] + ':' + str(caller[1]) + ':' + tag
         if token not in _contexts:
             _contexts[token] = {'time': 0., 'n': 0}
         self._counter = _contexts[token]
