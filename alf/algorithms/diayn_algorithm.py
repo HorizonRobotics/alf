@@ -96,9 +96,6 @@ class DIAYNAlgorithm(Algorithm):
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(observation)
 
-        # skill_index = tf.cast(skill, tf.int32)
-        # skill = self._encode_skill(skill_index)
-
         skill_pred, _ = self._discriminator_net(inputs=feature)
 
         #first_mask = tf.equal(step_type, time_step.StepType.FIRST)

@@ -219,7 +219,7 @@ class Agent(OnPolicyAlgorithm):
 
         if self._goal_generator is not None:
             new_state = new_state._replace(goal_generator=state.goal_generator)
-            observation = [observation, state.goal_generator]
+            observation = [observation, exp.rollout_info.goal_generator.goal]
 
         if self._icm is not None:
             icm_step = self._icm.train_step((observation, exp.prev_action),
@@ -306,5 +306,8 @@ class Agent(OnPolicyAlgorithm):
 
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)
-        return self._rl_algorithm.preprocess_experience(
+        exp_rl = self._rl_algorithm.preprocess_experience(
             exp._replace(reward=reward, rollout_info=exp.rollout_info.rl))
+        new_rollout_info = exp.rollout_info._replace(rl=exp_rl.rollout_info)
+        exp = exp_rl._replace(rollout_info=new_rollout_info)
+        return exp
