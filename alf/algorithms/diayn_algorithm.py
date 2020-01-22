@@ -47,7 +47,9 @@ class DIAYNAlgorithm(Algorithm):
 
         Args:
             num_of_skills (int): number of skills
-            hidden_size (int|tuple): size of hidden layer(s)
+            hidden_size (int|tuple): size of hidden layer(s).
+            If discriminator_net is None, a default discriminator_net
+            with this hidden_size will be used.
             reward_normalizer (AdaptiveNormalizer): normalizer for the reward
             encoding_net (Network): network for encoding observation into a
                 latent feature specified by feature_spec. Its input is the same
@@ -95,7 +97,6 @@ class DIAYNAlgorithm(Algorithm):
         observations_aug, step_type = inputs
         observation, skill = observations_aug
         prev_skill = state
-        batch_size = tf.shape(observation)[0]
 
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(observation)
@@ -107,7 +108,7 @@ class DIAYNAlgorithm(Algorithm):
 
         valid_masks = tf.cast(
             tf.not_equal(step_type, StepType.FIRST), tf.float32)
-        valid_masks = tf.reshape(valid_masks, [batch_size])
+        valid_masks = tf.squeeze(valid_masks)
 
         skill_discriminate_loss = skill_discriminate_loss * valid_masks
 

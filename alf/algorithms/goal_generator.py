@@ -60,7 +60,7 @@ class RandomCategoricalGoalGenerator(Algorithm):
         samples_onehot = tf.reshape(samples_onehot, [batch_size, -1])
         return samples_onehot
 
-    def update_goal(self, observation, state, step_type):
+    def _update_goal(self, observation, state, step_type):
         new_goal_mask = (step_type == StepType.FIRST)
         new_goal = common.conditional_update(
             target=state.goal,
@@ -72,7 +72,7 @@ class RandomCategoricalGoalGenerator(Algorithm):
 
     def predict(self, observation, state, step_type):
         """Predict one step for goal generation."""
-        new_goal = self.update_goal(observation, state, step_type)
+        new_goal = self._update_goal(observation, state, step_type)
         return AlgorithmStep(
             outputs=new_goal,
             state=GoalState(goal=new_goal),
