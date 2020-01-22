@@ -222,8 +222,11 @@ class Agent(OnPolicyAlgorithm):
         observation = self._encode(exp)
 
         if self._goal_generator is not None:
-            new_state = new_state._replace(goal_generator=state.goal_generator)
-            observation = [observation, exp.rollout_info.goal_generator.goal]
+            goal_step = self._goal_generator.train_step(
+                observation, state.goal_generator)
+            info = info._replace(goal_generator=goal_step.info)
+            new_state = new_state._replace(goal_generator=goal_step.state)
+            observation = [observation, goal_step.outputs]
 
         if self._icm is not None:
             if self._goal_generator is not None:
