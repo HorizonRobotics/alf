@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ import tensorflow as tf
 @gin.configurable
 class ImageEncodingNetwork(tf.keras.models.Model):
     """
-    A general template class for create convolutional encoding networks.
+    A general template class for creating convolutional encoding networks.
     """
 
     def __init__(self,
@@ -85,7 +85,8 @@ class ImageEncodingNetwork(tf.keras.models.Model):
         Args:
             input_size (int): the input image size
             conv (bool): whether calculate the intermediate conv output size
-                or the final FC output size
+                or the final FC output size. If True, return the last conv's
+                shape regardless of self._postprocess_fc_layers.
 
         Returns:
             a tuple representing the output shape
@@ -115,7 +116,7 @@ class ImageEncodingNetwork(tf.keras.models.Model):
 @gin.configurable
 class ImageDecodingNetwork(tf.keras.models.Model):
     """
-    A general template class for create transposed convolutional decoding networks.
+    A general template class for creating transposed convolutional decoding networks.
     """
 
     def __init__(self,
@@ -135,7 +136,7 @@ class ImageDecodingNetwork(tf.keras.models.Model):
                 (num_filters, kernel_size, strides).
             start_decoding_size (int): the initial size we'd like to have for
                 the feature map
-            start_decoding_filters (int): the initial number of fitlers we'd like
+            start_decoding_filters (int): the initial number of filters we'd like
                 to have for the feature map. Note that given this value and
                 `start_decoding_size`, we always first project an input latent
                 vector into a vector of an appropriate length so that it can be
