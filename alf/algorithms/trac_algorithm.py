@@ -35,7 +35,8 @@ nest_map = tf.nest.map_structure
 TracExperience = namedtuple(
     "TracExperience", ["observation", "step_type", "state", "action_param"])
 
-TracInfo = namedtuple("TracInfo", ["observation", "state", "ac"])
+TracInfo = namedtuple("TracInfo",
+                      ["action_distribution", "observation", "state", "ac"])
 
 
 @gin.configurable
@@ -109,24 +110,40 @@ class TracAlgorithm(OnPolicyAlgorithm):
     def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
         return self._ac_algorithm.predict(time_step, state, epsilon_greedy)
 
+    def _make_policy_step(self, observation, state, policy_step):
+        action_distribution = ()
+        ac_info = policy_step.info
+        if self._action_distribution_spec is not None:
+            assert (
+                common.is_namedtuple(policy_step.info)
+                and "action_distribution" in policy_step.info._fields
+            ), ("PolicyStep.info from ac_algorithm.rollout() should be "
+                "a namedtuple containing `action_distribution` in order to "
+                "use TracAlgorithm.")
+            action_distribution = policy_step.info.action_distribution
+            ac_info = policy_step.info._replace(action_distribution=())
+        return policy_step._replace(
+            info=TracInfo(
+                action_distribution=action_distribution,
+                observation=observation,
+                state=self._ac_algorithm.convert_train_state_to_predict_state(
+                    state),
+                ac=ac_info))
+
     def rollout(self, time_step: ActionTimeStep, state, mode):
         """Rollout for one step."""
         policy_step = self._ac_algorithm.rollout(time_step, state, mode)
-        return policy_step._replace(
-            info=TracInfo(
-                observation=time_step.observation,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
-                ac=policy_step.info))
+        return self._make_policy_step(time_step.observation, state,
+                                      policy_step)
 
     def train_step(self, exp: Experience, state):
+        ac_info = exp.rollout_info.ac
+        if self._action_distribution_spec is not None:
+            ac_info = exp.rollout_info.ac._replace(
+                action_distribution=exp.rollout_info.action_distribution)
+        exp = exp._replace(rollout_info=ac_info)
         policy_step = self._ac_algorithm.train_step(exp, state)
-        return policy_step._replace(
-            info=TracInfo(
-                observation=exp.observation,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
-                ac=policy_step.info))
+        return self._make_policy_step(exp.observation, state, policy_step)
 
     def calc_loss(self, training_info):
         if self._trusted_updater is None:
@@ -140,7 +157,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
         action_param = training_info.action
         if self._action_distribution_spec is not None:
             action_param = nest_utils.distributions_to_params(
-                training_info.info.ac.action_distribution)
+                training_info.info.action_distribution)
         exp_array = TracExperience(
             observation=training_info.info.observation,
             step_type=training_info.step_type,
@@ -158,8 +175,11 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 tf.summary.scalar("adjust_steps", steps)
 
         common.run_if(common.should_record_summaries(), _summarize)
-        self._ac_algorithm.after_train(
-            training_info._replace(info=training_info.info.ac))
+        ac_info = training_info.info.ac
+        if self._action_distribution_spec is not None:
+            ac_info = ac_info._replace(
+                action_distribution=training_info.info.action_distribution)
+        self._ac_algorithm.after_train(training_info._replace(info=ac_info))
 
     @tf.function
     def _calc_change(self, exp_array):
@@ -225,7 +245,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 assert (
                     common.is_namedtuple(policy_step.info)
                     and "action_distribution" in policy_step.info._fields
-                ), ("PolicyStep.info from ac_algorithm.rollout() should be "
+                ), ("PolicyStep.info from ac_algorithm.predict() should be "
                     "a namedtuple containing `action_distribution` in order to "
                     "use TracAlgorithm.")
                 new_action = policy_step.info.action_distribution
@@ -237,5 +257,11 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return total_dists
 
     def preprocess_experience(self, exp: Experience):
-        return self._ac_algorithm.preprocess_experience(
-            exp._replace(rollout_info=exp.rollout_info.ac))
+        ac_info = exp.rollout_info.ac
+        if self._action_distribution_spec is not None:
+            ac_info = exp.rollout_info.ac._replace(
+                action_distribution=exp.rollout_info.action_distribution)
+        new_exp = self._ac_algorithm.preprocess_experience(
+            exp._replace(rollout_info=ac_info))
+        return new_exp._replace(
+            rollout_info=exp.rollout_info._replace(ac=new_exp.rollout_info))
