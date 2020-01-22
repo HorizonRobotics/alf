@@ -32,7 +32,7 @@ GoalInfo = namedtuple("GoalInfo", ["goal"], default_value=())
 class RandomCategoricalGoalGenerator(Algorithm):
     """Random Goal Generation Module
 
-    This module generates a random categorical goal for the agent.
+    This module generates a random categorical goal for the agent in the beginning of every episode.
     """
 
     def __init__(self,
@@ -43,6 +43,7 @@ class RandomCategoricalGoalGenerator(Algorithm):
 
         Args:
             num_of_goals (int): total number of goals the agent can sample from
+            goal_feature_size (int): the dimensionality of the goal representation. It is one for the categorical goal.
         """
         goal_spec = tf.TensorSpec((goal_feature_size, ))
         super().__init__(train_state_spec=goal_spec, name=name)

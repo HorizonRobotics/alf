@@ -65,14 +65,13 @@ DIAYNAlgorithm.hidden_size=(200, 200)
 RandomCategoricalGoalGenerator.num_of_goals=%num_of_skills
 RandomCategoricalGoalGenerator.goal_feature_size=%skill_feature_size
 
-
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 SacAlgorithm.critic_network=@critic/alf.networks.critic_network.CriticNetwork()
 SacAlgorithm.target_update_tau=0.005
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 
 
-# agent config with the goal genrator
+# agent config with the goal generator
 Agent/Adam.learning_rate=5e-4
 Agent.intrinsic_reward_coef=1
 Agent.extrinsic_reward_coef=0

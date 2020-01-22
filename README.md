@@ -92,7 +92,7 @@ python -m alf.bin.play --root_dir=LOG_DIR
 
 ### DIAYN
 * [Pendulum](alf/examples/diayn_pendulum.gin). Learning diverse skills without external reward.
-*
+
   <img src="alf/examples/diayn_pendulum.gif" width = "600" alt="Skills learned with DIAYN"/>
 
 

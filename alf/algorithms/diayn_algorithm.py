@@ -44,7 +44,7 @@ class DIAYNAlgorithm(Algorithm):
         """Create a DIAYNAlgorithm.
 
         Args:
-            num_of_skills: number of skills
+            num_of_skills (int): number of skills
             hidden_size (int|tuple): size of hidden layer(s)
             encoding_net (Network): network for encoding observation into a
                 latent feature specified by feature_spec. Its input is same as
@@ -58,8 +58,6 @@ class DIAYNAlgorithm(Algorithm):
                    ) == 1, "DIAYNAlgorithm doesn't support nested feature_spec"
 
         self._num_skills = num_of_skills
-        self._skill_spec = tf.TensorSpec(
-            shape=(self._num_skills, ), dtype=tf.int32)
 
         self._encoding_net = encoding_net
 
@@ -77,10 +75,7 @@ class DIAYNAlgorithm(Algorithm):
         self._discriminator_net = discriminator_net
 
     def _encode_skill(self, skill):
-        if tensor_spec.is_discrete(self._skill_spec):
-            return tf.one_hot(indices=skill, depth=self._num_skills)
-        else:
-            return skill
+        return tf.one_hot(indices=skill, depth=self._num_skills)
 
     def train_step(self, inputs, state, calc_intrinsic_reward=True):
         """
@@ -106,12 +101,8 @@ class DIAYNAlgorithm(Algorithm):
 
         skill_pred, _ = self._discriminator_net(inputs=feature)
 
-        if tensor_spec.is_discrete(self._skill_spec):
-            skill_discriminate_loss = tf.nn.softmax_cross_entropy_with_logits(
-                labels=skill, logits=skill_pred)
-        else:
-            skill_discriminate_loss = 0.5 * tf.reduce_mean(
-                tf.square(skill - skill_pred), axis=-1)
+        skill_discriminate_loss = tf.nn.softmax_cross_entropy_with_logits(
+            labels=skill, logits=skill_pred)
 
         intrinsic_reward = ()
 
