@@ -29,9 +29,9 @@ DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
 class DIAYNAlgorithm(Algorithm):
     """Diversity is All You Need Module
 
-    This module learns a set of skill-conditional policies in an unsupervised way.
-
-    See Eysenbach et al "Diversity is All You Need: Learning Diverse Skills without a Reward Function"
+    This module learns a set of skill-conditional policies in an unsupervised
+    way. See Eysenbach et al "Diversity is All You Need: Learning Diverse Skills
+    without a Reward Function" for more details.
     """
 
     def __init__(self,
@@ -49,7 +49,8 @@ class DIAYNAlgorithm(Algorithm):
             encoding_net (Network): network for encoding observation into a
                 latent feature specified by feature_spec. Its input is same as
                 the input of this algorithm.
-            discriminator_net (Network): network for predicting the skill labels based on the observation.
+            discriminator_net (Network): network for predicting the skill labels
+                based on the observation.
         """
         super().__init__(train_state_spec=feature_spec, name=name)
 
@@ -95,14 +96,16 @@ class DIAYNAlgorithm(Algorithm):
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(observation)
 
-        prev_feature = state
         skill_index = tf.cast(skill, tf.int32)
         skill = self._encode_skill(skill_index)
 
         skill_pred, _ = self._discriminator_net(inputs=feature)
 
+        #first_mask = tf.equal(step_type, time_step.StepType.FIRST)
         skill_discriminate_loss = tf.nn.softmax_cross_entropy_with_logits(
             labels=skill, logits=skill_pred)
+
+        #skill_discriminate_loss = skill_discriminate_loss*first_mask
 
         intrinsic_reward = ()
 

@@ -63,7 +63,6 @@ DIAYNAlgorithm.hidden_size=(200, 200)
 
 # goal generator config
 RandomCategoricalGoalGenerator.num_of_goals=%num_of_skills
-RandomCategoricalGoalGenerator.goal_feature_size=%skill_feature_size
 
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 SacAlgorithm.critic_network=@critic/alf.networks.critic_network.CriticNetwork()
@@ -100,7 +99,7 @@ TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
 TrainerConfig.use_rollout_state=True
-TrainerConfig.use_tf_functions=True
+TrainerConfig.use_tf_functions=False
 
 ReplayBuffer.max_length=100000
 

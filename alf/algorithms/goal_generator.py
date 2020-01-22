@@ -21,7 +21,7 @@ import tf_agents.specs.tensor_spec as tensor_spec
 from tf_agents.trajectories.time_step import StepType
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep
-from alf.data_structures import ActionTimeStep, PolicyStep, TrainingInfo, LossInfo, namedtuple
+from alf.data_structures import TrainingInfo, namedtuple
 
 import alf.utils.common as common
 
@@ -32,23 +32,20 @@ GoalInfo = namedtuple("GoalInfo", ["goal"], default_value=())
 class RandomCategoricalGoalGenerator(Algorithm):
     """Random Goal Generation Module
 
-    This module generates a random categorical goal for the agent in the beginning of every episode.
+    This module generates a random categorical goal for the agent
+    in the beginning of every episode.
     """
 
-    def __init__(self,
-                 num_of_goals,
-                 goal_feature_size,
-                 name="RandomCategoricalGoalGenerator"):
+    def __init__(self, num_of_goals, name="RandomCategoricalGoalGenerator"):
         """Create a RandomCategoricalGoalGenerator.
 
         Args:
             num_of_goals (int): total number of goals the agent can sample from
-            goal_feature_size (int): the dimensionality of the goal representation. It is one for the categorical goal.
         """
+        goal_feature_size = 1  # categorical goal
         goal_spec = tf.TensorSpec((goal_feature_size, ))
         super().__init__(train_state_spec=goal_spec, name=name)
         self._num_of_goals = num_of_goals
-        assert goal_feature_size == 1, "the goal feature size should be 1 for RandomCategoricalGoalGenerator"
         self._goal_feature_size = goal_feature_size
         self._p_goal = tf.ones(self._num_of_goals)
 
@@ -68,16 +65,16 @@ class RandomCategoricalGoalGenerator(Algorithm):
         new_goal = common.conditional_update(
             target=state,
             cond=new_goal_mask,
-            func=functools.partial(self._generate_goal),
+            func=self._generate_goal,
             observation=observation,
             state=state)
         return new_goal
 
-    def rollout(self, observation, state, step_type):
-        """Rollout for one step for goal generation."""
-        new_state = self.update_goal(observation, state, step_type)
-        return PolicyStep(
-            action=new_state, state=new_state, info=GoalInfo(goal=new_state))
+    def predict(self, observation, state, step_type):
+        """Predict one step for goal generation."""
+        new_goal = self.update_goal(observation, state, step_type)
+        return AlgorithmStep(
+            outputs=new_goal, state=state, info=GoalInfo(goal=new_goal))
 
     def train_step(self, inputs, state=None):
         """Perform one step of predicting and training computation.

@@ -75,7 +75,7 @@ class Agent(OnPolicyAlgorithm):
             encoding_network (Network): A function that encodes the observation
             intrinsic_curiosity_module (Algorithm): an algorithm whose outputs
                 is a scalar intrinsic reward
-            goal_generator (Algorithm): an algorithm whose output is a goal vector
+            goal_generator (Algorithm): an algorithm with output a goal vector
             intrinsic_reward_coef (float): Coefficient for intrinsic reward
             extrinsic_reward_coef (float): Coefficient for extrinsic reward
             enforce_entropy_target (bool): If True, use EntropyTargetAlgorithm
@@ -155,13 +155,13 @@ class Agent(OnPolicyAlgorithm):
 
         new_state = AgentState()
         if self._goal_generator is not None:
-            goal_step = self._goal_generator.rollout(
+            goal_step = self._goal_generator.predict(
                 observation=observation,
                 state=state.goal_generator,
                 step_type=time_step.step_type)
             new_state = new_state._replace(goal_generator=goal_step.state)
 
-            observation = [observation, goal_step.state]
+            observation = [observation, goal_step.outputs]
 
         rl_step = self._rl_algorithm.predict(
             time_step._replace(observation=observation), state.rl,
@@ -177,14 +177,14 @@ class Agent(OnPolicyAlgorithm):
         observation = self._encode(time_step)
 
         if self._goal_generator is not None:
-            goal_step = self._goal_generator.rollout(
+            goal_step = self._goal_generator.predict(
                 observation=observation,
                 state=state.goal_generator,
                 step_type=time_step.step_type)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
 
-            observation = [observation, goal_step.state]
+            observation = [observation, goal_step.outputs]
 
         if self._icm is not None:
             icm_step = self._icm.train_step(
@@ -219,6 +219,7 @@ class Agent(OnPolicyAlgorithm):
 
         if self._goal_generator is not None:
             new_state = new_state._replace(goal_generator=state.goal_generator)
+            goal_vector = time_step.rollout_info.goal
             observation = [observation, state.goal_generator]
 
         if self._icm is not None:
