@@ -187,8 +187,12 @@ class Agent(OnPolicyAlgorithm):
             observation = [observation, goal_step.outputs]
 
         if self._icm is not None:
-            icm_step = self._icm.train_step(
-                (observation, time_step.prev_action), state=state.icm)
+            if self._goal_generator is not None:
+                icm_step = self._icm.train_step(
+                    (observation, time_step.step_type), state=state.icm)
+            else:
+                icm_step = self._icm.train_step(
+                    (observation, time_step.prev_action), state=state.icm)
             info = info._replace(icm=icm_step.info)
             new_state = new_state._replace(icm=icm_step.state)
 

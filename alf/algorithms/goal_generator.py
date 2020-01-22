@@ -25,6 +25,7 @@ from alf.data_structures import TrainingInfo, namedtuple
 
 import alf.utils.common as common
 
+GoalState = namedtuple("GoalState", ["goal"], default_value=())
 GoalInfo = namedtuple("GoalInfo", ["goal"], default_value=())
 
 
@@ -43,7 +44,8 @@ class RandomCategoricalGoalGenerator(Algorithm):
             num_of_goals (int): total number of goals the agent can sample from
         """
         goal_spec = tf.TensorSpec((num_of_goals, ))
-        super().__init__(train_state_spec=goal_spec, name=name)
+        train_state_spec = GoalState(goal=goal_spec)
+        super().__init__(train_state_spec=train_state_spec, name=name)
         self._num_of_goals = num_of_goals
         self._p_goal = tf.ones(self._num_of_goals)
 
@@ -61,7 +63,7 @@ class RandomCategoricalGoalGenerator(Algorithm):
     def update_goal(self, observation, state, step_type):
         new_goal_mask = (step_type == StepType.FIRST)
         new_goal = common.conditional_update(
-            target=state,
+            target=state.goal,
             cond=new_goal_mask,
             func=self._generate_goal,
             observation=observation,
@@ -72,7 +74,9 @@ class RandomCategoricalGoalGenerator(Algorithm):
         """Predict one step for goal generation."""
         new_goal = self.update_goal(observation, state, step_type)
         return AlgorithmStep(
-            outputs=new_goal, state=state, info=GoalInfo(goal=new_goal))
+            outputs=new_goal,
+            state=GoalState(goal=new_goal),
+            info=GoalInfo(goal=new_goal))
 
     def train_step(self, inputs, state=None):
         """Perform one step of predicting and training computation.
