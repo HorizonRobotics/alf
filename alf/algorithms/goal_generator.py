@@ -81,7 +81,8 @@ class RandomCategoricalGoalGenerator(Algorithm):
     def train_step(self, inputs, state):
         """Perform one step of predicting and training computation.
 
-        Note that as RandomCategoricalGoalGenerator is a non-trainable module, this function just passes the goal from state as outputs and
+        Note that as RandomCategoricalGoalGenerator is a non-trainable module,
+        this function just passes the goal from state as outputs and
         the input state as output state.
 
         Args:
