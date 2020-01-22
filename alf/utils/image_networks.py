@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import numpy as np
 import gin.tf
 import tensorflow as tf
 
@@ -38,8 +39,8 @@ class ImageEncodingNetwork(tf.keras.models.Model):
             padding (str): "same" or "valid", see tf.keras.layers.Conv2DTranspose
             postprocess_fc_layer_params (tuple[int]): a list of fc layer units.
                 These fc layers are used for postprocessing the conv output. If
-                None, then the output would preserve the shape of an image (will
-                not be flattened).
+                None, then the output would preserve the shape of an image; if (),
+                the output will be still flattened.
             activation_fn (tf.nn.activation): activation for conv layers
             output_activation_fn (tf.nn.activation): only used when there are
                 postprocessing FC layers
@@ -51,7 +52,7 @@ class ImageEncodingNetwork(tf.keras.models.Model):
         assert len(conv_layer_params) > 0
 
         self._postprocess_fc_layers = []
-        if postprocess_fc_layer_params is not None:
+        if postprocess_fc_layer_params:
             for size in postprocess_fc_layer_params[:-1]:
                 self._postprocess_fc_layers.append(
                     tf.keras.layers.Dense(size, activation=activation_fn))
@@ -83,7 +84,7 @@ class ImageEncodingNetwork(tf.keras.models.Model):
         where H = output size, H1 = input size, HF = size of kernel
 
         Args:
-            input_size (int): the input image size
+            input_size (tuple): the input image size (height, width)
             conv (bool): whether calculate the intermediate conv output size
                 or the final FC output size. If True, return the last conv's
                 shape regardless of self._postprocess_fc_layers.
@@ -94,19 +95,26 @@ class ImageEncodingNetwork(tf.keras.models.Model):
         if self._postprocess_fc_layers and not conv:
             return (self._postprocess_fc_layer_params[-1], )
 
-        size = input_size
+        height, width = input_size
         for filters, kernel_size, strides in self._conv_layer_params:
             if self._padding == "same":
-                size = (size - 1) // strides + 1
+                height = (height - 1) // strides + 1
+                width = (width - 1) // strides + 1
             else:
-                size = (size - kernel_size) // strides + 1
-        return (size, size, filters)
+                height = (height - kernel_size) // strides + 1
+                width = (width - kernel_size) // strides + 1
+        shape = (width, height, filters)
+
+        if not conv and self._postprocess_fc_layer_params == ():
+            return (np.prod(shape), )
+        else:
+            return shape
 
     def call(self, inputs):
         z = inputs
         for conv_l in self._conv_layers:
             z = conv_l(z)
-        if self._postprocess_fc_layers:
+        if self._postprocess_fc_layer_params is not None:
             z = tf.reshape(z, [tf.shape(z)[0], -1])
             for fc_l in self._postprocess_fc_layers:
                 z = fc_l(z)
@@ -121,7 +129,8 @@ class ImageDecodingNetwork(tf.keras.models.Model):
 
     def __init__(self,
                  deconv_layer_params,
-                 start_decoding_size,
+                 start_decoding_height,
+                 start_decoding_width,
                  start_decoding_filters,
                  padding="same",
                  preprocess_fc_layer_params=None,
@@ -134,7 +143,9 @@ class ImageDecodingNetwork(tf.keras.models.Model):
         Args:
             deconv_layer_params (list[tuple]): a non-empty list of elements
                 (num_filters, kernel_size, strides).
-            start_decoding_size (int): the initial size we'd like to have for
+            start_decoding_height (int): the initial height we'd like to have for
+                the feature map
+            start_decoding_width (int): the initial width we'd like to have for
                 the feature map
             start_decoding_filters (int): the initial number of filters we'd like
                 to have for the feature map. Note that given this value and
@@ -165,7 +176,7 @@ class ImageDecodingNetwork(tf.keras.models.Model):
 
         # We always assume "channels_last" !
         self._start_decoding_shape = [
-            start_decoding_size, start_decoding_size, start_decoding_filters
+            start_decoding_height, start_decoding_width, start_decoding_filters
         ]
         self._preprocess_fc_layers.append(
             tf.keras.layers.Dense(
@@ -199,13 +210,15 @@ class ImageDecodingNetwork(tf.keras.models.Model):
         Returns:
             a tuple representing the output shape
         """
-        size = self._start_decoding_shape[0]
+        height, width, _ = self._start_decoding_shape
         for filters, kernel_size, strides in self._deconv_layer_params:
             if self._padding == "same":
-                size *= strides
+                height *= strides
+                width *= strides
             else:
-                size = (size - 1) * strides + kernel_size
-        return (size, size, filters)
+                height = (height - 1) * strides + kernel_size
+                width = (width - 1) * strides + kernel_size
+        return (height, width, filters)
 
     def call(self, inputs):
         z = inputs
