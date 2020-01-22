@@ -78,10 +78,12 @@ class EntropyTargetAlgorithm(Algorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             initial_alpha (float): initial value for alpha; make sure that it's
                 large enough for initial meaningful exploration
-            skip_free_stage (bool): If True, directly goes to stage adjust stage.
+            skip_free_stage (bool): If True, directly goes to the adjust stage.
             max_entropy (float): the upper bound of the entropy. If not provided,
                 initial_entropy - 0.2 is used. initial_entropy is estimated from
-                first `average_window` steps.
+                first `average_window` steps. "-0.2" is to ensure that we can
+                get a policy a little bit less random as the initial policy
+                before reaching the free stage.
             target_entropy (float): the lower bound of the entropy. If not
                 provided, a default value proportional to the action dimension
                 is used. This value should be less or equal than `max_entropy`.
