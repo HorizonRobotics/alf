@@ -219,7 +219,6 @@ class Agent(OnPolicyAlgorithm):
 
         if self._goal_generator is not None:
             new_state = new_state._replace(goal_generator=state.goal_generator)
-            goal_vector = time_step.rollout_info.goal
             observation = [observation, state.goal_generator]
 
         if self._icm is not None:

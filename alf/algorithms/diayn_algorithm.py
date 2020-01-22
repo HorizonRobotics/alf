@@ -47,8 +47,8 @@ class DIAYNAlgorithm(Algorithm):
             num_of_skills (int): number of skills
             hidden_size (int|tuple): size of hidden layer(s)
             encoding_net (Network): network for encoding observation into a
-                latent feature specified by feature_spec. Its input is same as
-                the input of this algorithm.
+                latent feature specified by feature_spec. Its input is the same
+                as the input of this algorithm.
             discriminator_net (Network): network for predicting the skill labels
                 based on the observation.
         """
@@ -96,8 +96,8 @@ class DIAYNAlgorithm(Algorithm):
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(observation)
 
-        skill_index = tf.cast(skill, tf.int32)
-        skill = self._encode_skill(skill_index)
+        # skill_index = tf.cast(skill, tf.int32)
+        # skill = self._encode_skill(skill_index)
 
         skill_pred, _ = self._discriminator_net(inputs=feature)
 

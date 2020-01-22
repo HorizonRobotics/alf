@@ -9,7 +9,7 @@ import alf.networks.critic_network
 
 # skill related
 num_of_skills=5
-skill_feature_size=1 # skill feature size is 1 for the categorical case
+skill_feature_size=%num_of_skills # skill feature size is 1 for the categorical case
 
 # environment config
 NUM_PARALLEL_ENVIRONMENTS=1

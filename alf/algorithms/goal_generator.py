@@ -42,11 +42,9 @@ class RandomCategoricalGoalGenerator(Algorithm):
         Args:
             num_of_goals (int): total number of goals the agent can sample from
         """
-        goal_feature_size = 1  # categorical goal
-        goal_spec = tf.TensorSpec((goal_feature_size, ))
+        goal_spec = tf.TensorSpec((num_of_goals, ))
         super().__init__(train_state_spec=goal_spec, name=name)
         self._num_of_goals = num_of_goals
-        self._goal_feature_size = goal_feature_size
         self._p_goal = tf.ones(self._num_of_goals)
 
     def _generate_goal(self, observation, state):
@@ -56,9 +54,10 @@ class RandomCategoricalGoalGenerator(Algorithm):
         # generate goal with the same batch size as observation
         samples = tf.random.categorical(
             tf.math.log([self._p_goal]), batch_size)
-        samples = tf.reshape(samples, [batch_size, self._goal_feature_size])
-        samples = tf.cast(samples, tf.float32)
-        return samples
+        samples_onehot = tf.one_hot(indices=samples, depth=self._num_of_goals)
+        #samples_onehot = tf.cast(samples_onehot, tf.float32)
+        samples_onehot = tf.reshape(samples_onehot, [batch_size, -1])
+        return samples_onehot
 
     def update_goal(self, observation, state, step_type):
         new_goal_mask = (step_type == StepType.FIRST)
