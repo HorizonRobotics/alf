@@ -80,10 +80,10 @@ class EntropyTargetAlgorithm(Algorithm):
                 large enough for initial meaningful exploration
             skip_free_stage (bool): If True, directly goes to the adjust stage.
             max_entropy (float): the upper bound of the entropy. If not provided,
-                initial_entropy - 0.2 is used. initial_entropy is estimated from
-                first `average_window` steps. "-0.2" is to ensure that we can
-                get a policy a little bit less random as the initial policy
-                before reaching the free stage.
+                min(initial_entropy * 0.8, initial_entropy / 0.8) is used.
+                initial_entropy is estimated from the first `average_window`
+                steps. 0.8 is to ensure that we can get a policy a less random
+                as the initial policy before starting the free stage.
             target_entropy (float): the lower bound of the entropy. If not
                 provided, a default value proportional to the action dimension
                 is used. This value should be less or equal than `max_entropy`.
@@ -214,7 +214,8 @@ class EntropyTargetAlgorithm(Algorithm):
         avg_entropy = self._avg_entropy.average(entropy)
 
         def _init_entropy():
-            self._max_entropy.assign(avg_entropy - 0.2)
+            self._max_entropy.assign(
+                tf.minimum(0.8 * avg_entropy, avg_entropy / 0.8))
             self._stage.assign_add(1)
 
         def _init():
