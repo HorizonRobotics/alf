@@ -55,7 +55,6 @@ class RandomCategoricalGoalGenerator(Algorithm):
         samples = tf.random.categorical(
             tf.math.log([self._p_goal]), batch_size)
         samples_onehot = tf.one_hot(indices=samples, depth=self._num_of_goals)
-        #samples_onehot = tf.cast(samples_onehot, tf.float32)
         samples_onehot = tf.reshape(samples_onehot, [batch_size, -1])
         return samples_onehot
 

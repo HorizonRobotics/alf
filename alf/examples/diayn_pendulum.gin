@@ -99,7 +99,7 @@ TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
 TrainerConfig.use_rollout_state=True
-TrainerConfig.use_tf_functions=False
+TrainerConfig.use_tf_functions=True
 
 ReplayBuffer.max_length=100000
 

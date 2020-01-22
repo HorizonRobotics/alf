@@ -21,6 +21,7 @@ import tf_agents.specs.tensor_spec as tensor_spec
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.encoding_network import EncodingNetwork
+from alf.data_structures import StepType
 
 DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
 
@@ -38,6 +39,7 @@ class DIAYNAlgorithm(Algorithm):
                  num_of_skills,
                  feature_spec,
                  hidden_size=256,
+                 reward_normalizer=None,
                  encoding_net: Network = None,
                  discriminator_net: Network = None,
                  name="DIAYNAlgorithm"):
@@ -46,13 +48,15 @@ class DIAYNAlgorithm(Algorithm):
         Args:
             num_of_skills (int): number of skills
             hidden_size (int|tuple): size of hidden layer(s)
+            reward_normalizer (AdaptiveNormalizer): normalizer for the reward
             encoding_net (Network): network for encoding observation into a
                 latent feature specified by feature_spec. Its input is the same
                 as the input of this algorithm.
             discriminator_net (Network): network for predicting the skill labels
                 based on the observation.
         """
-        super().__init__(train_state_spec=feature_spec, name=name)
+        skill_spec = tf.TensorSpec((num_of_skills, ))
+        super().__init__(train_state_spec=skill_spec, name=name)
 
         flat_feature_spec = tf.nest.flatten(feature_spec)
         assert len(flat_feature_spec
@@ -74,35 +78,38 @@ class DIAYNAlgorithm(Algorithm):
                 last_kernel_initializer=tf.initializers.Zeros())
 
         self._discriminator_net = discriminator_net
-
-    def _encode_skill(self, skill):
-        return tf.one_hot(indices=skill, depth=self._num_skills)
+        self._reward_normalizer = reward_normalizer
 
     def train_step(self, inputs, state, calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple):  skill-augmened observation and previous action
-            state (Tensor): state for DIAYN (previous observation)
+            inputs (tuple):  skill-augmened observation and step_type
+            state (Tensor): state for DIAYN (previous skill)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
             TrainStep:
                 outputs: empty tuple ()
-                state: observation
+                state: skill
                 info (DIAYNInfo):
         """
-        observations_aug, _ = inputs
+        observations_aug, step_type = inputs
         observation, skill = observations_aug
+        prev_skill = state
+        batch_size = tf.shape(observation)[0]
 
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(observation)
 
         skill_pred, _ = self._discriminator_net(inputs=feature)
 
-        #first_mask = tf.equal(step_type, time_step.StepType.FIRST)
         skill_discriminate_loss = tf.nn.softmax_cross_entropy_with_logits(
-            labels=skill, logits=skill_pred)
+            labels=prev_skill, logits=skill_pred)
 
-        #skill_discriminate_loss = skill_discriminate_loss*first_mask
+        valid_masks = tf.cast(
+            tf.not_equal(step_type, StepType.FIRST), tf.float32)
+        valid_masks = tf.reshape(valid_masks, [batch_size])
+
+        skill_discriminate_loss = skill_discriminate_loss * valid_masks
 
         intrinsic_reward = ()
 
@@ -110,10 +117,13 @@ class DIAYNAlgorithm(Algorithm):
             # use negative cross-entropy as reward
             # neglect neg-prior term as it is constant
             intrinsic_reward = tf.stop_gradient(-skill_discriminate_loss)
+            if self._reward_normalizer is not None:
+                intrinsic_reward = self._reward_normalizer.normalize(
+                    intrinsic_reward)
 
         return AlgorithmStep(
             outputs=(),
-            state=feature,
+            state=skill,
             info=DIAYNInfo(
                 reward=intrinsic_reward,
                 loss=LossInfo(
