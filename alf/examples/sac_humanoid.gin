@@ -4,7 +4,7 @@ import alf.trainers.off_policy_trainer
 
 
 # environment config
-import tfagents.environments.suite_mujoco
+import tf_agents.environments.suite_mujoco
 
 create_environment.env_name="Humanoid-v2"
 create_environment.num_parallel_environments=32

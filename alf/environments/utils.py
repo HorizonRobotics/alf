@@ -80,60 +80,6 @@ class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
         super(ProcessPyEnvironment, self).__init__(
             env_constructor, flatten=flatten)
 
-    def _worker(self, conn, env_constructor, flatten=False):
-        """It's a little different with `super()._worker`, it closes environment when
-        receives _CLOSE.
-
-        Args:
-            conn (Pipe): Connection for communication to the main process.
-            env_constructor (Callable): env_constructor for the OpenAI Gym environment.
-            flatten (bool): whether to assume flattened actions and time_steps
-                during communication to avoid overhead.
-
-        Raises:
-            KeyError: When receiving a message of unknown type.
-        """
-        try:
-            env = env_constructor()
-            action_spec = env.action_spec()
-            conn.send(self._READY)  # Ready.
-            while True:
-                try:
-                    # Only block for short times to have keyboard exceptions be raised.
-                    if not conn.poll(0.1):
-                        continue
-                    message, payload = conn.recv()
-                except (EOFError, KeyboardInterrupt):
-                    break
-                if message == self._ACCESS:
-                    name = payload
-                    result = getattr(env, name)
-                    conn.send((self._RESULT, result))
-                    continue
-                if message == self._CALL:
-                    name, args, kwargs = payload
-                    if flatten and name == 'step':
-                        args = [tf.nest.pack_sequence_as(action_spec, args[0])]
-                    result = getattr(env, name)(*args, **kwargs)
-                    if flatten and name in ['step', 'reset']:
-                        result = tf.nest.flatten(result)
-                    conn.send((self._RESULT, result))
-                    continue
-                if message == self._CLOSE:
-                    assert payload is None
-                    env.close()
-                    break
-                raise KeyError(
-                    'Received message of unknown type {}'.format(message))
-        except Exception:  # pylint: disable=broad-except
-            etype, evalue, tb = sys.exc_info()
-            stacktrace = ''.join(traceback.format_exception(etype, evalue, tb))
-            message = 'Error in environment process: {}'.format(stacktrace)
-            logging.error(message)
-            conn.send((self._EXCEPTION, stacktrace))
-        finally:
-            conn.close()
-
     def render(self, mode='human'):
         """Render the environment.
 

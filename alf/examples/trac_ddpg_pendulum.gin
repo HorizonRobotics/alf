@@ -31,7 +31,7 @@ OneStepTDLoss.td_error_loss_fn=@losses.element_wise_huber_loss
 import alf.algorithms.trac_algorithm
 Agent.rl_algorithm_cls=@TracAlgorithm
 TracAlgorithm.ac_algorithm_cls=@DdpgAlgorithm
-TracAlgorithm.action_dist_clip_per_dim=0.01
+TracAlgorithm.action_dist_clip_per_dim=0.1
 
 
 # training config

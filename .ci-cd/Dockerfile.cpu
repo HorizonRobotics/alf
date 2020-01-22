@@ -14,6 +14,11 @@
 
 FROM tensorflow/tensorflow:2.1.0-py3
 
+# mirror sources which may speed up downloading
+#  software packages
+# COPY ./sources.list /etc/apt/sources.list
+# COPY ./pip.conf /root/.pip/pip.conf
+
 # install code style tools
 RUN pip3 install  pre-commit==1.17.0 \
     cpplint==1.4.4 \
@@ -27,13 +32,49 @@ RUN apt install -y \
         libsm6  \
         libxext-dev \
         libxrender1 \
-        xvfb
+        unzip \
+        cmake \
+        libxml2 libxml2-dev libxslt1-dev \
+        dirmngr gnupg2 lsb-release \
+        xvfb kmod swig patchelf \
+        libopenmpi-dev  libcups2-dev  libssl-dev  libosmesa6-dev mesa-utils
+
+# install gazebo-9
+RUN echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable `lsb_release -cs` main" > \
+    /etc/apt/sources.list.d/gazebo-stable.list
+
+RUN apt install -y wget
+RUN wget http://packages.osrfoundation.org/gazebo.key -O - |  apt-key add -
+RUN apt update
+
+RUN apt-get install -q -y gazebo9 
+RUN apt-get install -q -y libgazebo9-dev
+
+# build and install social robot
+RUN mkdir -p /opt/local \
+    && cd /opt/local \
+    && git clone https://github.com/HorizonRobotics/SocialRobot.git \
+    && cd SocialRobot \
+    && mkdir build \
+    && cd build \
+    && cmake .. \
+    && make -j \
+    && cd .. \
+    && pip3 install -e . \
+    && rm -rf build
+
+# build deepmind lab
+# TODO
+
+# python libs requirement by alf
+COPY requirements.txt  /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt 
+
+# import public correct ROM for super mario
+# TODO
 
 # clean
 RUN  rm -rf /var/lib/apt/lists/*
 
-# python libs requirement by alf
-COPY requirements.txt  /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
 
 

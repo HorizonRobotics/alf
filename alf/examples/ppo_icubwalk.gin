@@ -25,13 +25,13 @@ estimated_entropy.check_numerics=True
 
 estimated_entropy.assume_reparametrization=True
 
+import alf.networks.stable_normal_projection_network
+
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 128)
 actor/ActorDistributionNetwork.activation_fn=@tf.nn.tanh
 actor/ActorDistributionNetwork.continuous_projection_net=@StableNormalProjectionNetwork
-
-import alf.networks.stable_normal_projection_network
 
 StableNormalProjectionNetwork.init_means_output_factor=1e-10
 StableNormalProjectionNetwork.inverse_std_transform='softplus'
@@ -62,6 +62,6 @@ TrainerConfig.summarize_grads_and_vars=True
 TrainerConfig.summary_interval=1
 TrainerConfig.unroll_length=512
 TrainerConfig.use_tf_functions=True
-PolicyDriver.summarize_action_distributions=True
+TrainerConfig.summarize_action_distributions=True
 
 ReplayBuffer.max_length=2048
