@@ -78,3 +78,16 @@ class RandomCategoricalGoalGenerator(Algorithm):
         new_state = self.update_goal(observation, state, step_type)
         return PolicyStep(
             action=new_state, state=new_state, info=GoalInfo(goal=new_state))
+
+    def train_step(self, inputs, state=None):
+        """Perform one step of predicting and training computation.
+
+        Note that this is just a placeholder as RandomCategoricalGoalGenerator
+        is a non-trainable module. For trainable goal_generator this function
+        needs to be implemented and called for training.
+
+        Args:
+            inputs (nested Tensor): inputs for train
+            state (nested Tensor): consistent with train_state_spec
+        """
+        pass
