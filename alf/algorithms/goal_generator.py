@@ -95,4 +95,4 @@ class RandomCategoricalGoalGenerator(Algorithm):
                 info (GoalInfo):
         """
         return AlgorithmStep(
-            outputs=(state.goal), state=state, info=GoalInfo())
+            outputs=(state.goal), state=state, info=GoalInfo(goal=state.goal))

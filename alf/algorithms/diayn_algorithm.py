@@ -48,8 +48,8 @@ class DIAYNAlgorithm(Algorithm):
         Args:
             num_of_skills (int): number of skills
             hidden_size (int|tuple): size of hidden layer(s).
-            If discriminator_net is None, a default discriminator_net
-            with this hidden_size will be used.
+                If discriminator_net is None, a default discriminator_net
+                with this hidden_size will be used.
             reward_normalizer (AdaptiveNormalizer): normalizer for the reward
             encoding_net (Network): network for encoding observation into a
                 latent feature specified by feature_spec. Its input is the same
