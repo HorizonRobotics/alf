@@ -63,6 +63,7 @@ class EntropyTargetAlgorithm(Algorithm):
     def __init__(self,
                  action_spec,
                  initial_alpha=0.1,
+                 skip_free_stage=False,
                  max_entropy=None,
                  target_entropy=None,
                  very_slow_update_rate=0.001,
@@ -77,8 +78,12 @@ class EntropyTargetAlgorithm(Algorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             initial_alpha (float): initial value for alpha; make sure that it's
                 large enough for initial meaningful exploration
+            skip_free_stage (bool): If True, directly goes to the adjust stage.
             max_entropy (float): the upper bound of the entropy. If not provided,
-                a default value proportional to the action dimension is used.
+                min(initial_entropy * 0.8, initial_entropy / 0.8) is used.
+                initial_entropy is estimated from the first `average_window`
+                steps. 0.8 is to ensure that we can get a policy a less random
+                as the initial policy before starting the free stage.
             target_entropy (float): the lower bound of the entropy. If not
                 provided, a default value proportional to the action dimension
                 is used. This value should be less or equal than `max_entropy`.
@@ -121,23 +126,33 @@ class EntropyTargetAlgorithm(Algorithm):
         if target_entropy is None:
             target_entropy = np.sum(
                 list(map(calc_default_target_entropy, flat_action_spec)))
+            logging.info("target_entropy=%s" % target_entropy)
+
         if max_entropy is None:
-            max_entropy = np.sum(
-                list(map(calc_default_max_entropy, flat_action_spec)))
-        assert target_entropy <= max_entropy, \
-            ("Target entropy %s should be less or equal than max entropy %s!"
-             % (target_entropy, max_entropy))
+            # max_entropy will be estimated in the first `average_window` steps.
+            max_entropy = 0.
+            self._stage.assign(-2 - average_window)
+        else:
+            assert target_entropy <= max_entropy, (
+                "Target entropy %s should be less or equal than max entropy %s!"
+                % (target_entropy, max_entropy))
+        self._max_entropy = tf.Variable(
+            name='max_entropy',
+            initial_value=max_entropy,
+            dtype=tf.float32,
+            trainable=False)
+
+        if skip_free_stage:
+            self._stage.assign(1)
+
         if target_entropy > 0:
             self._fast_stage_thresh = 0.5 * target_entropy
         else:
             self._fast_stage_thresh = 2.0 * target_entropy
         self._target_entropy = target_entropy
-        self._max_entropy = max_entropy
         self._very_slow_update_rate = very_slow_update_rate
         self._slow_update_rate = slow_update_rate
         self._fast_update_rate = fast_update_rate
-        logging.info("target_entropy=%s" % target_entropy)
-        logging.info("max_entropy=%s" % max_entropy)
 
     def train_step(self, distribution, step_type):
         """Train step.
@@ -198,6 +213,11 @@ class EntropyTargetAlgorithm(Algorithm):
         prev_avg_entropy = self._avg_entropy.get()
         avg_entropy = self._avg_entropy.average(entropy)
 
+        def _init_entropy():
+            self._max_entropy.assign(
+                tf.minimum(0.8 * avg_entropy, avg_entropy / 0.8))
+            self._stage.assign_add(1)
+
         def _init():
             below = avg_entropy < self._max_entropy
             increasing = tf.cast(avg_entropy > prev_avg_entropy, tf.float32)
@@ -235,6 +255,7 @@ class EntropyTargetAlgorithm(Algorithm):
             log_alpha = tf.maximum(log_alpha, np.float32(self._min_log_alpha))
             self._log_alpha.assign(log_alpha)
 
+        run_if(self._stage < -2, _init_entropy)
         run_if(self._stage == -2, _init)
         run_if(self._stage == -1, _free)
         run_if(self._stage >= 0, _adjust)
