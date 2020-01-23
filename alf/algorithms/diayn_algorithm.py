@@ -118,8 +118,6 @@ class DIAYNAlgorithm(Algorithm):
 
         valid_masks = tf.cast(
             tf.not_equal(step_type, StepType.FIRST), tf.float32)
-        valid_masks = tf.squeeze(valid_masks)
-
         skill_discriminate_loss = skill_discriminate_loss * valid_masks
 
         intrinsic_reward = ()
