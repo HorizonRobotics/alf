@@ -21,7 +21,7 @@ script:
     -v $PWD:/ALF
     -w /ALF/
     -e PYTHONPATH=/ALF
-    -it horizonrobotics/alf:0.1.0
+    -it horizonrobotics/alf:0.2.0
     /ALF/.ci-cd/build.sh ${JOB}
 
 notifications:

@@ -415,7 +415,7 @@ class TrainPlayTest(tf.test.TestCase):
     def test_ppo_icm_super_mario_intrinsic_only(self):
         self._test(
             gin_file='ppo_icm_super_mario_intrinsic_only.gin',
-            skip_checker=self._skip_if_atari_unavailable,
+            skip_checker=self._skip_if_mario_unavailable(),
             extra_train_params=PPO_TRAIN_PARAMS)
 
     def test_ppo_icubwalk(self):

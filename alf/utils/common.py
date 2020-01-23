@@ -44,6 +44,12 @@ from alf.utils.nest_utils import is_namedtuple
 from alf.utils import nest_utils
 from alf.utils.scope_utils import get_current_scope
 
+# `test_session` is deprecated and skipped test function, remove
+#   it for all unittest which inherit from `tf.test.TestCase`
+#   to exclude it from statistics of unittest result
+
+del tf.test.TestCase.test_session
+
 
 def zeros_from_spec(nested_spec, batch_size):
     """Create nested zero Tensors or Distributions.

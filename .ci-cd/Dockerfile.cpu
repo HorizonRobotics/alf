@@ -37,7 +37,9 @@ RUN apt install -y \
         libxml2 libxml2-dev libxslt1-dev \
         dirmngr gnupg2 lsb-release \
         xvfb kmod swig patchelf \
-        libopenmpi-dev  libcups2-dev  libssl-dev  libosmesa6-dev mesa-utils
+        libopenmpi-dev  libcups2-dev \
+        libssl-dev  libosmesa6-dev \
+        mesa-utils python-opengl
 
 # install gazebo-9
 RUN echo "deb http://packages.osrfoundation.org/gazebo/ubuntu-stable `lsb_release -cs` main" > \
@@ -53,8 +55,9 @@ RUN apt-get install -q -y libgazebo9-dev
 # build and install social robot
 RUN mkdir -p /opt/local \
     && cd /opt/local \
-    && git clone https://github.com/HorizonRobotics/SocialRobot.git \
+    && git clone --depth=1 https://github.com/HorizonRobotics/SocialRobot.git \
     && cd SocialRobot \
+    && git submodule update --init --recursive \
     && mkdir build \
     && cd build \
     && cmake .. \
@@ -70,8 +73,14 @@ RUN mkdir -p /opt/local \
 COPY requirements.txt  /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt 
 
-# import public correct ROM for super mario
-# TODO
+# import public ROM for super mario (ignore shasum)
+RUN cd /tmp \
+    && wget \
+      'https://static.roms.download/roms/nintendo/Super Mario Bros (E).zip' \
+    && unzip 'Super Mario Bros (E).zip' \
+    && mv 'Super Mario Bros (E).nes' \
+      /usr/local/lib/python3.6/dist-packages/retro/data/stable/SuperMarioBros-Nes/rom.nes \
+    && rm 'Super Mario Bros (E).zip'
 
 # clean
 RUN  rm -rf /var/lib/apt/lists/*

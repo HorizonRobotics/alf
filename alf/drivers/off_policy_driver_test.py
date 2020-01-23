@@ -267,8 +267,11 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
                 max_num_steps=(steps_per_episode - 1) * batch_size)
-            logging.info("%d reward=%f", i,
-                         float(tf.reduce_mean(eval_time_step.reward)))
+            logging.log_every_n_seconds(
+                logging.INFO,
+                "%d reward=%f" %
+                (i, float(tf.reduce_mean(eval_time_step.reward))),
+                n_seconds=1)
         driver.stop()
 
         self.assertAlmostEqual(
