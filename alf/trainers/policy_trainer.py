@@ -32,6 +32,7 @@ from alf.utils.metric_utils import eager_compute
 from tf_agents.metrics import tf_metrics
 from alf.utils import common
 from alf.utils.common import run_under_record_context, get_global_counter
+from alf.utils.summary_utils import record_time
 from alf.environments.utils import create_environment
 from alf.utils import git_utils
 
@@ -339,17 +340,17 @@ class Trainer(object):
         iter_num = 0
         while True:
             t0 = time.time()
-            time_step, policy_state, train_steps = self._train_iter(
-                iter_num=iter_num,
-                policy_state=policy_state,
-                time_step=time_step)
+            with record_time("time/train_iter"):
+                time_step, policy_state, train_steps = self._train_iter(
+                    iter_num=iter_num,
+                    policy_state=policy_state,
+                    time_step=time_step)
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
                 '%s time=%.3f throughput=%0.2f' % (iter_num, t,
                                                    int(train_steps) / t),
                 n_seconds=1)
-            tf.summary.scalar("time/train_iter", t)
             if (iter_num + 1) % self._checkpoint_interval == 0:
                 self._save_checkpoint()
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:

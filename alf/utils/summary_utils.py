@@ -15,6 +15,8 @@
 import functools
 import time
 
+from absl import logging
+
 import tensorflow as tf
 from tensorboard.plugins.histogram import metadata
 from tensorflow.python.ops import summary_ops_v2
@@ -27,6 +29,8 @@ from alf.data_structures import LossInfo
 
 DEFAULT_BUCKET_COUNT = 30
 
+from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
+
 
 def _summary_wrapper(summary_func):
     """Summary wrapper
@@ -37,8 +41,8 @@ def _summary_wrapper(summary_func):
     @functools.wraps(summary_func)
     def wrapper(*args, **kwargs):
         from alf.utils.common import run_if
-        return run_if(summary_ops_v2._should_record_summaries_v2(), lambda:
-                      summary_func(*args, **kwargs))
+        return run_if(
+            should_record_summaries(), lambda: summary_func(*args, **kwargs))
 
     return wrapper
 
@@ -389,8 +393,14 @@ def safe_mean_summary(name, value):
         0, lambda: add_mean_summary(name, value))
 
 
+_contexts = {}
+
+
 class record_time(object):
     """A context manager for record the time.
+    
+    It records the average time spent under the context between
+    two summaries.
 
     Example:
     ```python
@@ -406,10 +416,21 @@ class record_time(object):
             tag (str): the summary tag for the the time.
         """
         self._tag = tag
+        caller = logging.get_absl_logger().findCaller()
+        # token is a string of filename:lineno:tag
+        token = caller[0] + ':' + str(caller[1]) + ':' + tag
+        if token not in _contexts:
+            _contexts[token] = {'time': 0., 'n': 0}
+        self._counter = _contexts[token]
 
     def __enter__(self):
         self._t0 = time.time()
 
     def __exit__(self, type, value, traceback):
-        t = time.time() - self._t0
-        tf.summary.scalar(self._tag, t)
+        self._counter['time'] += time.time() - self._t0
+        self._counter['n'] += 1
+        if should_record_summaries():
+            tf.summary.scalar(self._tag,
+                              self._counter['time'] / self._counter['n'])
+            self._counter['time'] = .0
+            self._counter['n'] = 0

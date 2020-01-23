@@ -101,12 +101,28 @@ class OffPolicyAlgorithm(RLAlgorithm):
             experience = self._exp_replayer.replay(
                 sample_batch_size=mini_batch_size,
                 mini_batch_length=mini_batch_length)
-        return self._train(experience, num_updates, mini_batch_size,
-                           mini_batch_length, update_counter_every_mini_batch)
+        # We pass in an explicit value of should_summarize so that TF can
+        # compile two different versions of _train(), one with
+        # should_summarize=True, the other with should_summarize=False.
+        # Even though should_summarize=True or False should not make any
+        # difference (should_record_summaries() is checked before generating
+        # summaries in add_gradients_summaries() and add_variables_summaries()),
+        # somehow, TF is very slow (30% in my case) when TrainerConfig.summarize_grads_and_vars
+        # is True and summary_interval very large if we do not explicitly pass
+        # in should_summarize.
+        return self._train(
+            experience,
+            num_updates,
+            mini_batch_size,
+            mini_batch_length,
+            update_counter_every_mini_batch,
+            should_summarize=bool(common.should_record_summaries())
+            or update_counter_every_mini_batch)
 
     @common.function
     def _train(self, experience, num_updates, mini_batch_size,
-               mini_batch_length, update_counter_every_mini_batch):
+               mini_batch_length, update_counter_every_mini_batch,
+               should_summarize):
         """Train using experience."""
         experience = nest_utils.params_to_distributions(
             experience, self.experience_spec)
@@ -173,13 +189,14 @@ class OffPolicyAlgorithm(RLAlgorithm):
                         weight=tf.cast(
                             tf.shape(batch.step_type)[1], tf.float32) /
                         float(mini_batch_size))
-                if do_summary:
-                    # Putting `if do_summary` under the above `with` statement
-                    # does not help. Somehow `if` statement will also lose
-                    # the original name scope.
-                    with tf.name_scope(scope):
-                        self.training_summary(training_info, loss_info,
-                                              grads_and_vars)
+                if should_summarize:
+                    if do_summary:
+                        # Putting `if do_summary` under the above `with` statement
+                        # does not help. Somehow `if` statement will also lose
+                        # the original name scope.
+                        with tf.name_scope(scope):
+                            self.training_summary(training_info, loss_info,
+                                                  grads_and_vars)
 
         self.metric_summary()
         train_steps = batch_size * mini_batch_length * num_updates
