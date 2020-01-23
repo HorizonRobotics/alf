@@ -21,6 +21,7 @@ from tf_agents.networks.network import Network
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.adaptive_normalizer import AdaptiveNormalizer
+from alf.data_structures import ActionTimeStep
 
 RNDInfo = namedtuple("RNDInfo", ["reward", "loss"])
 
@@ -77,10 +78,13 @@ class RNDAlgorithm(Algorithm):
             self._observation_normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec, speed=observation_adapt_speed)
 
-    def train_step(self, inputs, state, calc_intrinsic_reward=True):
+    def train_step(self,
+                   time_step: ActionTimeStep,
+                   state,
+                   calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple): observation
+            time_step (ActionTimeStep): input time_step data
             state (tuple):  empty tuple ()
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
@@ -89,7 +93,7 @@ class RNDAlgorithm(Algorithm):
                 state: empty tuple ()
                 info: RNDInfo
         """
-        observation, _ = inputs
+        observation = time_step.observation
         if self._observation_normalizer is not None:
             observation = self._observation_normalizer.normalize(observation)
 

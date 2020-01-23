@@ -20,8 +20,9 @@ from tf_agents.networks.network import Network
 import tf_agents.specs.tensor_spec as tensor_spec
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
+from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
-from alf.data_structures import StepType
+from alf.data_structures import StepType, ActionTimeStep
 
 DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
 
@@ -39,7 +40,7 @@ class DIAYNAlgorithm(Algorithm):
                  num_of_skills,
                  feature_spec,
                  hidden_size=256,
-                 reward_normalizer=None,
+                 reward_adapt_speed=8.0,
                  encoding_net: Network = None,
                  discriminator_net: Network = None,
                  name="DIAYNAlgorithm"):
@@ -50,7 +51,10 @@ class DIAYNAlgorithm(Algorithm):
             hidden_size (int|tuple): size of hidden layer(s).
                 If discriminator_net is None, a default discriminator_net
                 with this hidden_size will be used.
-            reward_normalizer (AdaptiveNormalizer): normalizer for the reward
+            reward_adapt_speed (float): how fast to adapt the reward normalizer.
+                rouphly speaking, the statistics for the normalization is
+                calculated mostly based on the most recent T/speed samples,
+                where T is the total number of samples.
             encoding_net (Network): network for encoding observation into a
                 latent feature specified by feature_spec. Its input is the same
                 as the input of this algorithm.
@@ -80,12 +84,17 @@ class DIAYNAlgorithm(Algorithm):
                 last_kernel_initializer=tf.initializers.Zeros())
 
         self._discriminator_net = discriminator_net
-        self._reward_normalizer = reward_normalizer
+        self._reward_normalizer = ScalarAdaptiveNormalizer(
+            speed=reward_adapt_speed)
 
-    def train_step(self, inputs, state, calc_intrinsic_reward=True):
+    def train_step(self,
+                   time_step: ActionTimeStep,
+                   state,
+                   calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple):  skill-augmened observation and step_type
+            time_step (ActionTimeStep): input time_step data, where the
+            observation is skill-augmened observation
             state (Tensor): state for DIAYN (previous skill)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
@@ -94,7 +103,8 @@ class DIAYNAlgorithm(Algorithm):
                 state: skill
                 info (DIAYNInfo):
         """
-        observations_aug, step_type = inputs
+        observations_aug = time_step.observation
+        step_type = time_step.step_type
         observation, skill = observations_aug
         prev_skill = state
 
@@ -118,9 +128,8 @@ class DIAYNAlgorithm(Algorithm):
             # use negative cross-entropy as reward
             # neglect neg-prior term as it is constant
             intrinsic_reward = tf.stop_gradient(-skill_discriminate_loss)
-            if self._reward_normalizer is not None:
-                intrinsic_reward = self._reward_normalizer.normalize(
-                    intrinsic_reward)
+            intrinsic_reward = self._reward_normalizer.normalize(
+                intrinsic_reward)
 
         return AlgorithmStep(
             outputs=(),

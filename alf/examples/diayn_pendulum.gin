@@ -28,7 +28,7 @@ actor/NestConcatenate.axis=-1
 actor/ActorDistributionNetwork.input_tensor_spec=[%observation_spec, @goal/TensorSpec()]
 actor/ActorDistributionNetwork.preprocessing_combiner=@actor/NestConcatenate()
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
-actor/ActorDistributionNetwork.fc_layer_params=(100, 100)
+actor/ActorDistributionNetwork.fc_layer_params=(10, 10)
 actor/ActorDistributionNetwork.activation_fn=@tf.nn.relu
 
 actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
@@ -42,13 +42,13 @@ NormalProjectionNetwork.std_transform=@clipped_exp
 critic/NestConcatenate.axis=-1
 critic/alf.networks.critic_network.CriticNetwork.input_tensor_spec=([%observation_spec, @goal/TensorSpec()], %action_spec)
 critic/alf.networks.critic_network.CriticNetwork.observation_preprocessing_combiner=@critic/NestConcatenate()
-critic/alf.networks.critic_network.CriticNetwork.joint_fc_layer_params=(100, 100)
+critic/alf.networks.critic_network.CriticNetwork.joint_fc_layer_params=(10, 10)
 critic/alf.networks.critic_network.CriticNetwork.activation_fn=@tf.nn.relu
 
 
 
-feature_size=200
-diayn/encoding_net_fc_layer_params=(200, %feature_size)
+feature_size=10
+diayn/encoding_net_fc_layer_params=(10, %feature_size)
 diayn/EncodingNetwork.input_tensor_spec=%observation_spec
 diayn/EncodingNetwork.fc_layer_params=%diayn/encoding_net_fc_layer_params
 diayn/EncodingNetwork.activation_fn=@tf.nn.relu
@@ -58,7 +58,7 @@ diayn/TensorSpec.shape=(%feature_size,)
 DIAYNAlgorithm.num_of_skills=%num_of_skills
 DIAYNAlgorithm.feature_spec=@diayn/TensorSpec()
 DIAYNAlgorithm.encoding_net=@diayn/EncodingNetwork()
-DIAYNAlgorithm.hidden_size=(200, 200)
+DIAYNAlgorithm.hidden_size=(10, 10)
 
 
 # goal generator config
@@ -99,7 +99,7 @@ TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
 TrainerConfig.use_rollout_state=True
-TrainerConfig.use_tf_functions=False
+TrainerConfig.use_tf_functions=True
 
 ReplayBuffer.max_length=100000
 

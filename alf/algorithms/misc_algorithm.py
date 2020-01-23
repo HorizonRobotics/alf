@@ -25,6 +25,7 @@ from alf.utils.data_buffer import DataBuffer
 from tf_agents.trajectories.time_step import StepType
 from alf.utils.encoding_network import EncodingNetwork
 from alf.utils.common import transpose2
+from alf.data_structures import ActionTimeStep
 
 MISCInfo = namedtuple("MISCInfo", ["reward"])
 
@@ -134,10 +135,13 @@ class MISCAlgorithm(Algorithm):
 
         return loss
 
-    def train_step(self, inputs, state, calc_intrinsic_reward=True):
+    def train_step(self,
+                   time_step: ActionTimeStep,
+                   state,
+                   calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple): observation and previous action
+            time_step (ActionTimeStep): input time_step data
             state (tuple): state for MISC (previous observation,
                 previous previous action)
             calc_intrinsic_reward (bool): if False, only return the losses
@@ -147,7 +151,8 @@ class MISCAlgorithm(Algorithm):
                 state: tuple of observation and previous action
                 info: (MISCInfo):
         """
-        feature_state, prev_action = inputs
+        feature = time_step.observation
+        prev_action = time_step.prev_action
         feature = tf.concat([feature_state, prev_action], axis=-1)
         prev_feature = tf.concat(state, axis=-1)
 
