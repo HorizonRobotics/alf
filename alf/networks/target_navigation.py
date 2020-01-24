@@ -18,6 +18,7 @@ import gin
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.misc import imresize
 import tensorflow as tf
 import tf_agents
 from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
@@ -25,6 +26,7 @@ from tf_agents.networks.value_rnn_network import ValueRnnNetwork
 from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
 from tf_agents.networks.value_network import ValueNetwork
 
+from alf.algorithms.agent import get_obs
 from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
 
@@ -46,7 +48,11 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         assert isinstance(input_shape, list)
-        [key_shape, query_shape] = input_shape
+        key_shape = input_shape[0]
+        query_shape = input_shape[1]
+        states_shape = 0
+        if len(input_shape) > 2:
+            states_shape = input_shape[2]
         (b, h, w, c) = key_shape  # channels last
         self._embedding = tf.keras.layers.Embedding(self._vocab_size, c)
         self._embedding.build(input_shape[1])
@@ -59,16 +65,19 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
             input_shape=[query_emb_shape, key_value_shape, key_emb_shape])
         super().build(input_shape)
 
-    def compute_output_shape(self, input_shape):
-        assert isinstance(input_shape, list)
-        key_shape = input_shape[0]
-        b = key_shape[0]
-        c = key_shape[-1]  # channels last
-        # Output per batch contains query: c num_embedding_dims, image: c channels, position: 2 dims
-        output_channels = 3 * c  # 2 * c + 2 if not tiling position tensor
-        if self._output_attention_max:
-            output_channels += c
-        return (b, output_channels)
+    # def compute_output_shape(self, input_shape):
+    #     assert isinstance(input_shape, list)
+    #     key_shape = input_shape[0]
+    #     states_shape = 0
+    #     if len(input_shape) > 2:
+    #         states_shape = input_shape[2]
+    #     b = key_shape[0]
+    #     c = key_shape[-1]  # channels last
+    #     # Output per batch contains query: c num_embedding_dims, image: c channels, position: 2 dims
+    #     output_channels = 3 * c  # 2 * c + 2 if not tiling position tensor
+    #     if self._output_attention_max:
+    #         output_channels += c
+    #     return (b, output_channels)
 
     def get_config(self):
         config = super().get_config()
@@ -80,7 +89,7 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         })
         return config
 
-    def call(self, input):
+    def call(self, inputs):
         """
         Generate the attention layer output
 
@@ -95,8 +104,12 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                         from the image input (key) in order to do inner product in
                         attention layer.
         """
-        assert isinstance(input, list)
-        [key, query] = input  # ['image', 'sentence']
+        assert isinstance(inputs, list)
+        key = inputs[0]
+        query = inputs[1]
+        states = None
+        if len(inputs) > 2:
+            states = inputs[2]
 
         # flatten image tensor [batches, height, width, channels]
         # into [batches, height * width, channels].
@@ -184,29 +197,42 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                 name=self.name + "/attention/value-max", data=attn_score_max)
 
             if self._network_to_debug == self.name:
-                obs = tf.reshape(attn_scores, (b, n_heads, h, w))[0]
+                # take first batch
+                attn = tf.reshape(attn_scores, (b, n_heads, h, w))[0]
 
-                def tensor_to_image(tensor):
+                def tensor_to_image(attn, img):
                     # Default color palette: viridis (purple to yellow):
                     # https://cran.r-project.org/web/packages/viridis/vignettes/intro-to-viridis.html
-                    tensor = tf.cast(tensor * 255, dtype=tf.uint8)
-                    tensor = tensor.numpy()  # will fail in graph mode
-                    if np.ndim(tensor) > 3:
-                        assert tensor.shape[0] == 1
-                        tensor = tensor[0]
-                    return tensor
+                    if 0:  # Smaller image:
+                        img = imresize(img, attn.shape, interp='bilinear')
+                        attn = np.repeat(
+                            np.reshape(attn, (h, w, 1)), 3, axis=-1)
+                    else:  # Larger image:
+                        attn = np.repeat(
+                            np.reshape(attn, (h, w, 1)), 3, axis=-1)
+                        attn = imresize(
+                            attn * 255, img.shape, interp='nearest') / 255.
+                        attn = np.clip(attn, 0, 1)
+                    attn_img = (img * attn).astype(np.uint8)
+                    return attn_img
 
-                num_rows = 4
+                img = get_obs()['image'].numpy()  # will fail in graph mode
+                img = img[
+                    0, :, :,
+                    -3:] * 255.  # take first batch, take last 3 channels to revert FrameStack, multiply by 255 to revert image scale wrapper
+                img = np.clip(img, 0, 255)
+                num_rows = 2
                 for i in range(n_heads):
-                    img = tensor_to_image(obs[i])
+                    attn_img = tensor_to_image(attn[i].numpy(), img)
                     if self.fig is None:
                         plt.interactive(True)
                         _, axs = plt.subplots(num_rows,
                                               int(n_heads / num_rows))
                         self.fig = axs
                         plt.show()
-                    self.fig[i % num_rows, int(i / num_rows)].imshow(img)
-                plt.pause(.00001)
+                    self.fig[i % num_rows, int(i / num_rows)].imshow(attn_img)
+                # plt.pause(.00001)
+                input()
 
         query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
             orig_query_embeddings)
@@ -220,7 +246,9 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                 tf.reshape(
                     tf.keras.backend.repeat(
                         tf.reshape(attn_score_max, (b, n_heads)), n=c),
-                    (b, c)))
+                    (b, c * n_heads)))
+        if states is not None:
+            outputs.append(states)
 
         return tf.keras.layers.Concatenate()(outputs)
 
@@ -307,6 +335,9 @@ def get_ac_networks(conv_layer_params=None,
     if isinstance(obs_spec, dict) and 'image' in obs_spec:
         preprocessing_layers['image'] = image_layers
 
+    if isinstance(obs_spec, dict) and 'sentence' in obs_spec:
+        preprocessing_layers['sentence'] = sentence_layers
+
     if isinstance(obs_spec, dict) and 'states' in obs_spec:
         state_layers = get_identity_layer()
         # [image: (1, 12800), sentence: (1, 16 * 800), states: (1, 16 * 800)]
@@ -317,9 +348,6 @@ def get_ac_networks(conv_layer_params=None,
                     x, multiples=[1, num_state_tiles]))
             ])
         preprocessing_layers['states'] = state_layers
-
-    if isinstance(obs_spec, dict) and 'sentence' in obs_spec:
-        preprocessing_layers['sentence'] = sentence_layers
 
     # This makes the code work with internal states input alone as well.
     if not preprocessing_layers:

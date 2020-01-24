@@ -39,6 +39,13 @@ AgentInfo = namedtuple(
 AgentLossInfo = namedtuple(
     "AgentLossInfo", ["rl", "icm", "entropy_target"], default_value=())
 
+_obs = None
+
+
+def get_obs():
+    global _obs
+    return _obs
+
 
 @gin.configurable
 class Agent(OnPolicyAlgorithm):
@@ -132,6 +139,8 @@ class Agent(OnPolicyAlgorithm):
 
     def _encode(self, time_step: ActionTimeStep):
         observation = time_step.observation
+        global _obs
+        _obs = observation
         if self._encoding_network is not None:
             observation, _ = self._encoding_network(observation)
         return observation
