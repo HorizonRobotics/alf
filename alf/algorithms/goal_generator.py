@@ -20,13 +20,13 @@ import functools
 import tf_agents.specs.tensor_spec as tensor_spec
 from tf_agents.trajectories.time_step import StepType
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
-from alf.data_structures import TrainingInfo, namedtuple
+from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
+from alf.data_structures import TrainingInfo, namedtuple, ActionTimeStep
 
 import alf.utils.common as common
 
 GoalState = namedtuple("GoalState", ["goal"], default_value=())
-GoalInfo = namedtuple("GoalInfo", ["goal"], default_value=())
+GoalInfo = namedtuple("GoalInfo", ["goal", "loss"], default_value=())
 
 
 @gin.configurable
@@ -70,15 +70,10 @@ class RandomCategoricalGoalGenerator(Algorithm):
             state=state)
         return new_goal
 
-    def predict(self, observation, state, step_type):
-        """Predict one step for goal generation."""
-        new_goal = self._update_goal(observation, state, step_type)
-        return AlgorithmStep(
-            outputs=new_goal,
-            state=GoalState(goal=new_goal),
-            info=GoalInfo(goal=new_goal))
-
-    def train_step(self, inputs, state):
+    def train_step(self,
+                   time_step: ActionTimeStep,
+                   state,
+                   calc_goal_update=True):
         """Perform one step of predicting and training computation.
 
         Note that as RandomCategoricalGoalGenerator is a non-trainable module,
@@ -86,13 +81,30 @@ class RandomCategoricalGoalGenerator(Algorithm):
         the input state as output state.
 
         Args:
-            inputs (nested Tensor): inputs for train
+            time_step (ActionTimeStep): input time_step data
             state (nested Tensor): consistent with train_state_spec
+            calc_goal_update (bool): perform goal alculattion the goal if true;
+                otherwise, use the goal from state as outputs and the
+                input state as output state.
         Returns:
             TrainStep:
                 outputs: goal vector; currently just output the one from state
                 state: state
                 info (GoalInfo):
         """
-        return AlgorithmStep(
-            outputs=(state.goal), state=state, info=GoalInfo(goal=state.goal))
+        observation = time_step.observation
+        step_type = time_step.step_type
+        if calc_goal_update:
+            new_goal = self._update_goal(observation, state, step_type)
+            return AlgorithmStep(
+                outputs=new_goal,
+                state=GoalState(goal=new_goal),
+                info=GoalInfo(goal=new_goal))
+        else:
+            return AlgorithmStep(
+                outputs=(state.goal),
+                state=state,
+                info=GoalInfo(goal=state.goal))
+
+    def calc_loss(self, info: GoalInfo):
+        return LossInfo()

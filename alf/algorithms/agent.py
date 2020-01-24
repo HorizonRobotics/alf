@@ -155,10 +155,9 @@ class Agent(OnPolicyAlgorithm):
 
         new_state = AgentState()
         if self._goal_generator is not None:
-            goal_step = self._goal_generator.predict(
-                observation=observation,
-                state=state.goal_generator,
-                step_type=time_step.step_type)
+            goal_step = self._goal_generator.train_step(
+                time_step._replace(observation=observation),
+                state.goal_generator)
             new_state = new_state._replace(goal_generator=goal_step.state)
 
             observation = [observation, goal_step.outputs]
@@ -177,10 +176,9 @@ class Agent(OnPolicyAlgorithm):
         observation = self._encode(time_step)
 
         if self._goal_generator is not None:
-            goal_step = self._goal_generator.predict(
-                observation=observation,
-                state=state.goal_generator,
-                step_type=time_step.step_type)
+            goal_step = self._goal_generator.train_step(
+                time_step._replace(observation=observation),
+                state.goal_generator)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
 
@@ -219,7 +217,9 @@ class Agent(OnPolicyAlgorithm):
 
         if self._goal_generator is not None:
             goal_step = self._goal_generator.train_step(
-                observation, state.goal_generator)
+                exp._replace(observation=observation),
+                state.goal_generator,
+                calc_goal_update=False)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
             observation = [observation, goal_step.outputs]
@@ -301,6 +301,8 @@ class Agent(OnPolicyAlgorithm):
         loss_info = _update_loss(loss_info, training_info, 'icm', self._icm)
         loss_info = _update_loss(loss_info, training_info, 'entropy_target',
                                  self._entropy_target_algorithm)
+        loss_info = _update_loss(loss_info, training_info, 'goal_generator',
+                                 self._goal_generator)
 
         return loss_info
 
