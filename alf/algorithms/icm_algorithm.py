@@ -22,6 +22,7 @@ import tf_agents.specs.tensor_spec as tensor_spec
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
+from alf.data_structures import ActionTimeStep
 
 ICMInfo = namedtuple("ICMInfo", ["reward", "loss"])
 
@@ -124,10 +125,13 @@ class ICMAlgorithm(Algorithm):
         else:
             return action
 
-    def train_step(self, inputs, state, calc_intrinsic_reward=True):
+    def train_step(self,
+                   time_step: ActionTimeStep,
+                   state,
+                   calc_intrinsic_reward=True):
         """
         Args:
-            inputs (tuple): observation and previous action
+            time_step (ActionTimeStep): input time_step data for ICM
             state (Tensor): state for ICM (previous observation)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
@@ -136,7 +140,9 @@ class ICMAlgorithm(Algorithm):
                 state: observation
                 info (ICMInfo):
         """
-        feature, prev_action = inputs
+        feature = time_step.observation
+        prev_action = time_step.prev_action
+
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(feature)
         prev_feature = state

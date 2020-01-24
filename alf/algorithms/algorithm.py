@@ -82,7 +82,7 @@ class Algorithm(tf.Module):
     PolicyDriver). All the training information collected at each previous
     train_step() are batched and provided as arguments for train_complete().
 
-    The following is the pseudo code to illustrate how Algorithm is for
+    The following is the pseudo code to illustrate how Algorithm is used for
     training.
 
     ```python

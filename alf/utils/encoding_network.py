@@ -18,7 +18,7 @@ from alf.layers import NestConcatenate
 
 
 class EncodingNetwork(TFAEncodingNetwork):
-    """Feed Forward network with CNN and FNN layers.."""
+    """Feed Forward network with CNN and FNN layers."""
 
     def __init__(self,
                  input_tensor_spec,
