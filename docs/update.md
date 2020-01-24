@@ -34,6 +34,6 @@ ALF source root, ALF_VERSION to represent the name of the new version (e.g. 0.1.
    docker push horizonrobotics/alf:$ALF_VERSION
    docker logout
    ```
-6. Update [.travis.yml](../.travis.yml). Change `horizonrobotics/alf:xxx` to the new docker image
+6. Update [.github/workflows/test.yml](../.github/workflows/test.yml). Change `horizonrobotics/alf:xxx` to the new docker image
 version `horizonrobotics/alf:ALF_VERSION`
 7. Send your change to github for code review.
