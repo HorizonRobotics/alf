@@ -29,7 +29,7 @@ class EstimatedEntropyTest(parameterized.TestCase, tf.test.TestCase):
     def test_estimated_entropy(self, assume_reparametrization):
         logging.info("assume_reparametrization=%s" % assume_reparametrization)
         num_samples = 1000000
-        seed_stream = tfp.distributions.SeedStream(
+        seed_stream = tfp.util.SeedStream(
             seed=1, salt='test_estimated_entropy')
         batch_shape = (2, )
         loc = tf.random.normal(shape=batch_shape, seed=seed_stream())

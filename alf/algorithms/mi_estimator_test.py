@@ -271,7 +271,7 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
             mi_estimator.train_complete(tape, alg_step.info)
             return alg_step
 
-        for i in range(10000):
+        for i in range(15000):
             _train()
             if i % 1000 == 0:
                 batch = _get_batch(batch_size)

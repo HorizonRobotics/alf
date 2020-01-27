@@ -103,8 +103,7 @@ def entropy_with_fallback(distributions, action_spec, seed=None):
         situations where its value is needed, and entropy_for_gradient where
         you need to calculate the gradient of entropy.
     """
-    seed_stream = tfp.distributions.SeedStream(
-        seed=seed, salt='entropy_with_fallback')
+    seed_stream = tfp.util.SeedStream(seed=seed, salt='entropy_with_fallback')
 
     def _calc_outer_rank(dist: tfp.distributions.Distribution, action_spec):
         if isinstance(dist, SquashToSpecNormal):
