@@ -23,7 +23,6 @@ from alf.data_structures import ActionTimeStep
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.normalizers import AdaptiveNormalizer
 
-
 RNDInfo = namedtuple("RNDInfo", ["reward", "loss"])
 
 
