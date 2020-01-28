@@ -329,12 +329,6 @@ class TrainPlayTest(tf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_ac_target_navigation(self):
-        self._test(
-            gin_file='ac_target_navigation.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
-
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
             self.assertGreater(np.mean(returns[-5:]), -200)
