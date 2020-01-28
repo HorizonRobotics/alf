@@ -335,18 +335,6 @@ class TrainPlayTest(tf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_ac_target_navigation_attn(self):
-        self._test(
-            gin_file='ac_target_navigation_attn.gin',
-            skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=ON_POLICY_TRAIN_PARAMS)
-
-    def test_async_ppo_bullet_humanoid(self):
-        self._test(
-            gin_file='async_ppo_bullet_humanoid.gin',
-            skip_checker=self._skip_if_bullet_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
-
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
             self.assertGreater(np.mean(returns[-5:]), -200)
@@ -392,12 +380,6 @@ class TrainPlayTest(tf.test.TestCase):
         self._test(
             gin_file='off_policy_ac_cart_pole.gin',
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
-
-    def test_ppo_async_icm_super_mario_intrinsic_only(self):
-        self._test(
-            gin_file='ppo_async_icm_super_mario_intrinsic_only.gin',
-            skip_checker=self._skip_if_mario_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
 
     def test_ppo_bullet_humanoid(self):
         self._test(
@@ -468,11 +450,6 @@ class TrainPlayTest(tf.test.TestCase):
             gin_file='trac_breakout.gin',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
-
-    def test_trac_ddpg_pendulum(self):
-        self._test(
-            gin_file='trac_ddpg_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     def test_trac_ppo_pr2(self):
         self._test(
