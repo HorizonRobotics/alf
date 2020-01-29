@@ -125,7 +125,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
         # get noiseless action, some algorithm using noise action for exploration
         # TODO, this can be reduced when the action is noiseless
         predict_step = self._ac_algorithm.predict(
-            time_step=time_step, state=predict_state, epsilon_greedy=1.0)
+            time_step=time_step, state=predict_state, epsilon_greedy=0)
         if self._action_distribution_spec is not None:
             action_param = nest_utils.distributions_to_params(
                 predict_step.info.action_distribution)
@@ -226,7 +226,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             time_step = ActionTimeStep(
                 observation=exp.observation, step_type=exp.step_type)
             policy_step = self._ac_algorithm.predict(
-                time_step=time_step, state=state, epsilon_greedy=1.0)
+                time_step=time_step, state=state, epsilon_greedy=0)
             if self._action_distribution_spec is None:
                 new_action = policy_step.action
             else:
