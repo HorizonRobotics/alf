@@ -19,9 +19,9 @@ import tensorflow as tf
 from tf_agents.networks.network import Network
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
-from alf.utils.adaptive_normalizer import AdaptiveNormalizer
 from alf.data_structures import ActionTimeStep
+from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.utils.normalizers import AdaptiveNormalizer
 
 RNDInfo = namedtuple("RNDInfo", ["reward", "loss"])
 
