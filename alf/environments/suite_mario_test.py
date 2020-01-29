@@ -59,8 +59,8 @@ class SuiteMarioTest(tf.test.TestCase):
             EnvironmentSteps(),
             NumberOfEpisodes()
         ]
-        driver = dynamic_step_driver.DynamicStepDriver(env, random_policy,
-                                                       metrics, 10000)
+        driver = dynamic_step_driver.DynamicStepDriver(
+            env, random_policy, observers=metrics, num_steps=100)
         driver.run(maximum_iterations=10000)
 
 

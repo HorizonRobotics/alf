@@ -1,0 +1,17 @@
+name: CI
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-18.04
+    container: 
+      image: horizonrobotics/alf:0.2.0
+    steps:
+    - uses: actions/checkout@v1
+    - name: check code style
+      run: |
+        ./.ci-cd/build.sh check_style
+    - name: run unittest
+      run: |
+        PYTHONPATH=`pwd` ./.ci-cd/build.sh test

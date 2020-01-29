@@ -4,8 +4,6 @@ import alf.environments.suite_socialbot
 
 # environment config
 import alf.environments.wrappers
-CHANNEL_ORDER='channels_first'
-FrameStack.channel_order=%CHANNEL_ORDER
 create_environment.env_name='SocialBot-SimpleNavigationDiscreteAction-v0'
 create_environment.env_load_fn=@suite_socialbot.load
 suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
@@ -40,17 +38,6 @@ ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
 
-
-# tf has a bug which can be triggered by the default data_format 'channels_last'
-# It has something to do with AddLayoutTransposeToOutputs() in
-# tensorflow/core/grappler/optimizers/layout_optimizer.cc and
-# DeadnessAnalysisImpl::GetInputPreds() in tensorflow/compiler/jit/deadness_analysis.cc
-# The error is like the following:
-#   tensorflow.python.framework.errors_impl.InternalError: Could not find input
-#   [id=3806 driver_loop/body/_1/iter_loop_grad/next_iteration/_1116-0-1-TransposeNCHWToNHWC-LayoutOptimizer:0 -> driver_loop/body/_1/iter_loop_grad/merge/_957:1]
-#   to driver_loop/body/_1/iter_loop_grad/merge/_957
-#   when visiting the graph in post-order.  Most likely indicates a bug in deadness analysis. [Op:__inference_run_16937]
-tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
 # training config
 TrainerConfig.trainer=@on_policy_trainer

@@ -64,6 +64,7 @@ def main(_):
     algorithm_ctor = gin.query_parameter(
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
     env = create_environment(nonparallel=True)
+    env.reset()
     common.set_global_env(env)
     algorithm = algorithm_ctor(
         observation_spec=env.observation_spec(), action_spec=env.action_spec())
