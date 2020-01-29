@@ -157,6 +157,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                         epsilon_greedy), lambda: a + ou(), lambda: a)
 
         action = tf.nest.map_structure(_sample, action, self._ou_process)
+        action = tf.nest.map_structure(tfa_common.clip_to_spec, action,
+                                       self._action_spec)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critic=()))
         return PolicyStep(action=action, state=state, info=())

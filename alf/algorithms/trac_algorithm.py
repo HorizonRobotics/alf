@@ -35,7 +35,8 @@ nest_map = tf.nest.map_structure
 TracExperience = namedtuple(
     "TracExperience", ["observation", "step_type", "state", "action_param"])
 
-TracInfo = namedtuple("TracInfo", ["observation", "state", "ac"])
+TracInfo = namedtuple("TracInfo",
+                      ["observation", "state", "ac", "action_param"])
 
 
 @gin.configurable
@@ -112,20 +113,29 @@ class TracAlgorithm(OnPolicyAlgorithm):
     def rollout(self, time_step: ActionTimeStep, state, mode):
         """Rollout for one step."""
         policy_step = self._ac_algorithm.rollout(time_step, state, mode)
-        return policy_step._replace(
-            info=TracInfo(
-                observation=time_step.observation,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
-                ac=policy_step.info))
+        return self._replace_info(policy_step, time_step, state)
 
     def train_step(self, exp: Experience, state):
         policy_step = self._ac_algorithm.train_step(exp, state)
+        return self._replace_info(policy_step, exp, state)
+
+    def _replace_info(self, policy_step, time_step, state):
+        predict_state = self._ac_algorithm.convert_train_state_to_predict_state(
+            state)
+        # get noiseless action, some algorithm using noise action for exploration
+        # TODO, this can be reduced when the action is noiseless
+        predict_step = self._ac_algorithm.predict(
+            time_step=time_step, state=predict_state, epsilon_greedy=1.0)
+        if self._action_distribution_spec is not None:
+            action_param = nest_utils.distributions_to_params(
+                predict_step.info.action_distribution)
+        else:
+            action_param = predict_step.action
         return policy_step._replace(
             info=TracInfo(
-                observation=exp.observation,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
+                observation=time_step.observation,
+                state=predict_state,
+                action_param=action_param,
                 ac=policy_step.info))
 
     def calc_loss(self, training_info):
@@ -137,15 +147,12 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
     def after_train(self, training_info):
         """Adjust actor parameter according to KL-divergence."""
-        action_param = training_info.action
-        if self._action_distribution_spec is not None:
-            action_param = nest_utils.distributions_to_params(
-                training_info.info.ac.action_distribution)
         exp_array = TracExperience(
             observation=training_info.info.observation,
             step_type=training_info.step_type,
-            action_param=action_param,
+            action_param=training_info.info.action_param,
             state=training_info.info.state)
+
         exp_array = common.create_and_unstack_tensor_array(
             exp_array, clear_after_read=False)
         dists, steps = self._trusted_updater.adjust_step(
@@ -189,6 +196,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 # reduce to shape [B]
                 reduce_dims = list(range(1, len(dist.shape)))
                 dist = tf.reduce_sum(dist, axis=reduce_dims)
+            dist = tf.sqrt(dist)
             return dist
 
         def _update_total_dists(new_action, exp, total_dists):
@@ -222,18 +230,12 @@ class TracAlgorithm(OnPolicyAlgorithm):
             if self._action_distribution_spec is None:
                 new_action = policy_step.action
             else:
-                assert (
-                    common.is_namedtuple(policy_step.info)
-                    and "action_distribution" in policy_step.info._fields
-                ), ("PolicyStep.info from ac_algorithm.rollout() should be "
-                    "a namedtuple containing `action_distribution` in order to "
-                    "use TracAlgorithm.")
                 new_action = policy_step.info.action_distribution
             state = policy_step.state
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
         size = tf.cast(num_steps * batch_size, tf.float32)
-        total_dists = nest_map(lambda d: tf.sqrt(d / size), total_dists)
+        total_dists = nest_map(lambda d: d / size, total_dists)
         return total_dists
 
     def preprocess_experience(self, exp: Experience):
