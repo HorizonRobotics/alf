@@ -348,11 +348,13 @@ class DMAtariPreprocessing(gym.Wrapper):
     def _reset_with_random_noops(self):
         self.env.reset()
         self._lives = self.env.ale.lives()
-        n_noops = self.env.unwrapped.np_random.randint(1, self.noop_max + 1)
-        for _ in range(n_noops):
-            _, _, game_over, _ = self.env.step(0)
-            if game_over:
-                self.env.reset()
+        if self.noop_max > 0:
+            n_noops = self.env.unwrapped.np_random.randint(
+                1, self.noop_max + 1)
+            for _ in range(n_noops):
+                _, _, game_over, _ = self.env.step(0)
+                if game_over:
+                    self.env.reset()
 
     def fire(self):
         # The following code is from https://github.com/openai/gym/...
