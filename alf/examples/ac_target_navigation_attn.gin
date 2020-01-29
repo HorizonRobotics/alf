@@ -1,6 +1,6 @@
 include 'ac_target_navigation.gin'
 
-# target_navigation.get_ac_networks.attention=True
+target_navigation.get_ac_networks.attention=True
 
 # PlayGround.group_img_lang=True
 
