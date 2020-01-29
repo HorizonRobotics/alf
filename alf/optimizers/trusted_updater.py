@@ -77,7 +77,7 @@ class TrustedUpdater(object):
             for var, prev_var in zip(self._variables, self._prev_variables):
                 var.assign(prev_var + r * (var - prev_var))
 
-        steps = tf.zeros(())
+        steps = tf.zeros((), tf.int32)
         change0 = change_f()
         change = change0
         ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
@@ -88,8 +88,7 @@ class TrustedUpdater(object):
             ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
             ratio = math_ops.max_n(tf.nest.flatten(ratio))
             steps += 1
-
-        # This suggest something wrong. change cannot be reduced by making
+        # This suggests something wrong. change cannot be reduced by making
         # the step smaller.
         tf.Assert(steps < 100, [steps])
 

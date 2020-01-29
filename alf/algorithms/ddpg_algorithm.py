@@ -13,7 +13,6 @@
 # limitations under the License.
 """Deep Deterministic Policy Gradient (DDPG)."""
 
-from collections import namedtuple
 import gin.tf
 import tensorflow as tf
 
@@ -31,6 +30,7 @@ from tf_agents.utils import common as tfa_common
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import namedtuple
 from alf.data_structures import ActionTimeStep, Experience, LossInfo, TrainingInfo
 from alf.utils import losses, common
 
@@ -39,7 +39,9 @@ DdpgCriticState = namedtuple("DdpgCriticState",
 DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_value", "target_q_value"])
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critic'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critic'])
-DdpgInfo = namedtuple("DdpgInfo", ["actor_loss", "critic"])
+DdpgInfo = namedtuple(
+    "DdpgInfo", ["action_distribution", "actor_loss", "critic"],
+    default_value=())
 DdpgLossInfo = namedtuple('DdpgLossInfo', ('actor', 'critic'))
 
 
@@ -157,10 +159,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 tf.less(tf.random.uniform((), 0, 1),
                         epsilon_greedy), lambda: a + ou(), lambda: a)
 
-        action = tf.nest.map_structure(_sample, action, self._ou_process)
+        noisy_action = tf.nest.map_structure(_sample, action, self._ou_process)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critic=()))
-        return PolicyStep(action=action, state=state, info=())
+        return PolicyStep(
+            action=noisy_action,
+            state=state,
+            info=DdpgInfo(action_distribution=action))
 
     def rollout(self,
                 time_step: ActionTimeStep,
@@ -227,7 +232,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         policy_step = self._actor_train_step(exp=exp, state=state.actor)
         return policy_step._replace(
             state=DdpgState(actor=policy_step.state, critic=critic_state),
-            info=DdpgInfo(critic=critic_info, actor_loss=policy_step.info))
+            info=DdpgInfo(
+                action_distribution=policy_step.action,
+                critic=critic_info,
+                actor_loss=policy_step.info))
 
     def calc_loss(self, training_info: TrainingInfo):
         critic_loss = self._critic_loss(

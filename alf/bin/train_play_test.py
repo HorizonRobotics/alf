@@ -445,6 +445,11 @@ class TrainPlayTest(tf.test.TestCase):
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_trac_ddpg_pendulum(self):
+        self._test(
+            gin_file='trac_ddpg_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_trac_ppo_pr2(self):
         self._test(
             gin_file='trac_ppo_pr2.gin',
