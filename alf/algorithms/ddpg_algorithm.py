@@ -17,6 +17,7 @@ from collections import namedtuple
 import gin.tf
 import tensorflow as tf
 
+import tensorflow_probability as tfp
 from tensorflow_probability import distributions as tfd
 from tf_agents.agents.ddpg.actor_network import ActorNetwork
 from tf_agents.agents.ddpg.actor_rnn_network import ActorRnnNetwork
@@ -250,7 +251,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
 def create_ou_process(action_spec, ou_stddev, ou_damping):
     # todo with seed None
-    seed_stream = tfd.SeedStream(seed=None, salt='ou_noise')
+    seed_stream = tfp.util.SeedStream(seed=None, salt='ou_noise')
 
     def _create_ou_process(action_spec):
         return tfa_common.OUProcess(
