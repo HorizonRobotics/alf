@@ -160,6 +160,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                         epsilon_greedy), lambda: a + ou(), lambda: a)
 
         noisy_action = tf.nest.map_structure(_sample, action, self._ou_process)
+        noisy_action = tf.nest.map_structure(tfa_common.clip_to_spec,
+                                             noisy_action, self._action_spec)
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critic=()))
         return PolicyStep(
@@ -258,6 +260,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
 
 def create_ou_process(action_spec, ou_stddev, ou_damping):
+    """Create nested zero-mean Ornstein-Uhlenbeck processes.
+
+    The temporal update equation is:
+    `x_next = (1 - damping) * x + N(0, std_dev)`
+
+    Args:
+        action_spec (nested BountedTensorSpec): action spec
+        ou_damping (float): Damping rate in the above equation. We must have
+            0 <= damping <= 1.
+        ou_stddev (float): Standard deviation of the Gaussian component.
+    Returns:
+        nested OUProcess with the same structure as action_spec.
+    """
     # todo with seed None
     seed_stream = tfp.util.SeedStream(seed=None, salt='ou_noise')
 
