@@ -38,12 +38,14 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                  n_heads=1,
                  network_to_debug=None,
                  output_attention_max=False,
+                 use_attn_residual=False,
                  **kwargs):
         super().__init__(**kwargs)
         self._vocab_size = vocab_size
         self._n_heads = n_heads
         self._network_to_debug = network_to_debug
         self._output_attention_max = output_attention_max
+        self._use_attn_residual = use_attn_residual
         self.fig = None
 
     def build(self, input_shape):
@@ -85,6 +87,7 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
             'vocab_size': self._vocab_size,
             'n_heads': self._n_heads,
             'output_attention_max': self._output_attention_max,
+            'use_attn_residual': self._use_attn_residual,
             'network_to_debug': self._network_to_debug
         })
         return config
@@ -189,8 +192,12 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         else:
             attn_scores = tf.keras.layers.GlobalAveragePooling1D()(
                 attn_scores)  # across seq_len
-        attn_score_max = tf.reduce_max(
-            tf.nn.softmax(attn_scores), axis=-1)  # across h*w
+        attn_softmax = tf.nn.softmax(attn_scores)
+        attn_score_max = tf.reduce_max(attn_softmax, axis=-1)  # across h*w
+        attn_residual = tf.multiply(
+            tf.expand_dims(attn_softmax, -1), key_value)
+        if n_heads > 1:
+            attn_residual = JoinHeads(attn_residual, 2 * c)
         if tf.executing_eagerly():
             # shape (batch, )
             tf.summary.histogram(
@@ -249,7 +256,17 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                     (b, c * n_heads)))
         if states is not None:
             outputs.append(states)
+        if self._use_attn_residual:
+            outputs.append(tf.reshape(attn_residual, [b, -1]))
 
+        with tf.init_scope():
+            if self.name == 'actor' and b > 1:
+                print('attention_combiner outputs {} tensors'.format(
+                    len(outputs)))
+                shape_str = '  '
+                for t in outputs:
+                    shape_str += '  ' + str(t.shape)
+                print(shape_str)
         return tf.keras.layers.Concatenate()(outputs)
 
 
@@ -266,6 +283,7 @@ def get_ac_networks(conv_layer_params=None,
                     n_heads=1,
                     network_to_debug=None,
                     output_attention_max=False,
+                    use_attn_residual=False,
                     rnn=True):
     """
     Generate the actor and value networks
@@ -360,8 +378,9 @@ def get_ac_networks(conv_layer_params=None,
             vocab_size=vocab_size,
             n_heads=n_heads,
             name=name,
-            network_to_debug=network_to_debug,
-            output_attention_max=output_attention_max)
+            output_attention_max=output_attention_max,
+            use_attn_residual=use_attn_residual,
+            network_to_debug=network_to_debug)
         preprocessing_combiner = attention_combiner
 
     if not isinstance(preprocessing_layers, dict):
