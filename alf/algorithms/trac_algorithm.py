@@ -35,7 +35,8 @@ nest_map = tf.nest.map_structure
 TracExperience = namedtuple(
     "TracExperience", ["observation", "step_type", "state", "action_param"])
 
-TracInfo = namedtuple("TracInfo", ["observation", "state", "ac"])
+TracInfo = namedtuple("TracInfo",
+                      ["action_distribution", "observation", "state", "ac"])
 
 
 @gin.configurable
@@ -79,13 +80,11 @@ class TracAlgorithm(OnPolicyAlgorithm):
             debug_summaries=debug_summaries)
 
         assert hasattr(ac_algorithm, '_actor_network')
-        if isinstance(ac_algorithm._actor_network, DistributionNetwork):
-            self._action_distribution_spec = ac_algorithm._actor_network.output_spec
-            assert "action_distribution" in ac_algorithm.rollout_info_spec._fields, (
-                "PolicyStep.info from ac_algorithm.rollout() needs to contain "
-                "`action_distribution` in order to use TracAlgorithm.")
-        else:
-            self._action_distribution_spec = None
+        assert "action_distribution" in ac_algorithm.rollout_info_spec._fields, (
+            "PolicyStep.info from ac_algorithm.rollout() needs to contain "
+            "`action_distribution` in order to use TracAlgorithm.")
+        self._action_distribution_spec = (
+            ac_algorithm.rollout_info_spec.action_distribution)
 
         super().__init__(
             observation_spec=observation_spec,
@@ -109,38 +108,54 @@ class TracAlgorithm(OnPolicyAlgorithm):
     def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
         return self._ac_algorithm.predict(time_step, state, epsilon_greedy)
 
+    def _make_policy_step(self, observation, state, policy_step):
+        assert (
+            common.is_namedtuple(policy_step.info)
+            and "action_distribution" in policy_step.info._fields), (
+                "PolicyStep.info from ac_algorithm.rollout() or "
+                "ac_algorithm.train_step() should be a namedtuple containing "
+                "`action_distribution` in order to use TracAlgorithm.")
+        action_distribution = policy_step.info.action_distribution
+        ac_info = policy_step.info._replace(action_distribution=())
+        # EntropyTargetAlgorithm need info.action_distribution
+        return policy_step._replace(
+            info=TracInfo(
+                action_distribution=action_distribution,
+                observation=observation,
+                state=self._ac_algorithm.convert_train_state_to_predict_state(
+                    state),
+                ac=ac_info))
+
     def rollout(self, time_step: ActionTimeStep, state, mode):
         """Rollout for one step."""
         policy_step = self._ac_algorithm.rollout(time_step, state, mode)
-        return policy_step._replace(
-            info=TracInfo(
-                observation=time_step.observation,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
-                ac=policy_step.info))
+        return self._make_policy_step(time_step.observation, state,
+                                      policy_step)
 
     def train_step(self, exp: Experience, state):
+        ac_info = exp.rollout_info.ac._replace(
+            action_distribution=exp.rollout_info.action_distribution)
+        exp = exp._replace(rollout_info=ac_info)
         policy_step = self._ac_algorithm.train_step(exp, state)
-        return policy_step._replace(
-            info=TracInfo(
-                observation=exp.observation,
-                state=self._ac_algorithm.convert_train_state_to_predict_state(
-                    state),
-                ac=policy_step.info))
+        return self._make_policy_step(exp.observation, state, policy_step)
 
     def calc_loss(self, training_info):
         if self._trusted_updater is None:
             self._trusted_updater = TrustedUpdater(
                 self._ac_algorithm._actor_network.trainable_variables)
+        rollout_ac_info = ()
+        if training_info.rollout_info != ():
+            rollout_ac_info = training_info.rollout_info.ac._replace(
+                action_distribution=training_info.info.action_distribution)
+        ac_info = training_info.info.ac._replace(
+            action_distribution=training_info.info.action_distribution)
         return self._ac_algorithm.calc_loss(
-            training_info._replace(info=training_info.info.ac))
+            training_info._replace(rollout_info=rollout_ac_info, info=ac_info))
 
     def after_train(self, training_info):
         """Adjust actor parameter according to KL-divergence."""
-        action_param = training_info.action
-        if self._action_distribution_spec is not None:
-            action_param = nest_utils.distributions_to_params(
-                training_info.info.ac.action_distribution)
+        action_param = nest_utils.distributions_to_params(
+            training_info.info.action_distribution)
         exp_array = TracExperience(
             observation=training_info.info.observation,
             step_type=training_info.step_type,
@@ -158,8 +173,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 tf.summary.scalar("adjust_steps", steps)
 
         common.run_if(common.should_record_summaries(), _summarize)
-        self._ac_algorithm.after_train(
-            training_info._replace(info=training_info.info.ac))
+        ac_info = training_info.info.ac._replace(
+            action_distribution=training_info.info.action_distribution)
+        self._ac_algorithm.after_train(training_info._replace(info=ac_info))
 
     @tf.function
     def _calc_change(self, exp_array):
@@ -192,10 +208,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
             return dist
 
         def _update_total_dists(new_action, exp, total_dists):
-            old_action = exp.action_param
-            if self._action_distribution_spec is not None:
-                old_action = nest_utils.params_to_distributions(
-                    exp.action_param, self._action_distribution_spec)
+            old_action = nest_utils.params_to_distributions(
+                exp.action_param, self._action_distribution_spec)
             dists = nest_map(_dist, old_action, new_action)
             valid_masks = tf.cast(
                 tf.not_equal(exp.step_type, StepType.LAST), tf.float32)
@@ -219,16 +233,13 @@ class TracAlgorithm(OnPolicyAlgorithm):
                 observation=exp.observation, step_type=exp.step_type)
             policy_step = self._ac_algorithm.predict(
                 time_step=time_step, state=state, epsilon_greedy=1.0)
-            if self._action_distribution_spec is None:
-                new_action = policy_step.action
-            else:
-                assert (
-                    common.is_namedtuple(policy_step.info)
-                    and "action_distribution" in policy_step.info._fields
-                ), ("PolicyStep.info from ac_algorithm.rollout() should be "
-                    "a namedtuple containing `action_distribution` in order to "
-                    "use TracAlgorithm.")
-                new_action = policy_step.info.action_distribution
+            assert (
+                common.is_namedtuple(policy_step.info)
+                and "action_distribution" in policy_step.info._fields
+            ), ("PolicyStep.info from ac_algorithm.predict() should be "
+                "a namedtuple containing `action_distribution` in order to "
+                "use TracAlgorithm.")
+            new_action = policy_step.info.action_distribution
             state = policy_step.state
             total_dists = _update_total_dists(new_action, exp, total_dists)
 
@@ -237,5 +248,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return total_dists
 
     def preprocess_experience(self, exp: Experience):
-        return self._ac_algorithm.preprocess_experience(
-            exp._replace(rollout_info=exp.rollout_info.ac))
+        ac_info = exp.rollout_info.ac._replace(
+            action_distribution=exp.rollout_info.action_distribution)
+        new_exp = self._ac_algorithm.preprocess_experience(
+            exp._replace(rollout_info=ac_info))
+        return new_exp._replace(
+            rollout_info=exp.rollout_info._replace(ac=new_exp.rollout_info))
