@@ -1005,8 +1005,8 @@ class Function(object):
             with tf.name_scope(scope_name):
                 return func(*args, **kwargs)
 
-        self._bound_tf_func = tf.function(*kwargs)(_bound_tf_func)
-        self._tf_func = tf.function(*kwargs)(_tf_func)
+        self._bound_tf_func = tf.function(**kwargs)(_bound_tf_func)
+        self._tf_func = tf.function(**kwargs)(_tf_func)
 
     def __call__(self, *args, **kwargs):
         return self._tf_func(get_current_scope(), *args, **kwargs)
@@ -1029,7 +1029,7 @@ def function(func=None, **kwargs):
 
     Example:
     ```python
-    @common.function()
+    @common.function
     def my_eager_code(x, y):
         ...
     ```
