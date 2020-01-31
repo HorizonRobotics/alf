@@ -31,6 +31,34 @@ from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
 
 
+class StateLanguageAttentionCombiner(tf.keras.layers.Layer):
+    def __init__(self, network_to_debug=None, **kwargs):
+        super().__init__(**kwargs)
+        self._network_to_debug = network_to_debug
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({'network_to_debug': self._network_to_debug})
+        return config
+
+    def call(self, inputs):
+        assert isinstance(inputs, list)
+        lang = inputs[0]
+        states = inputs[1]
+        (b, d) = states.shape
+        lang = tf.reshape(lang, (b, d, d))
+        states = tf.reshape(states, (b, d, 1))
+        outputs = tf.reshape(tf.matmul(lang, states), (b, d))
+
+        with tf.init_scope():
+            if self.name == 'actor' and b > 1:
+                print(
+                    'attention_combiner gets lang: {}, states: {}, and outputs {} tensor'
+                    .format(inputs[0].shape, inputs[1].shape, outputs.shape))
+
+        return outputs
+
+
 # followed https://www.tensorflow.org/guide/keras/custom_layers_and_models
 class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
     def __init__(self,
@@ -228,7 +256,10 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                     0, :, :,
                     -3:] * 255.  # take first batch, take last 3 channels to revert FrameStack, multiply by 255 to revert image scale wrapper
                 img = np.clip(img, 0, 255)
-                num_rows = 2
+                if n_heads > 1:
+                    num_rows = 2
+                else:
+                    num_rows = 1
                 for i in range(n_heads):
                     attn_img = tensor_to_image(attn[i].numpy(), img)
                     if self.fig is None:
@@ -237,7 +268,11 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                                               int(n_heads / num_rows))
                         self.fig = axs
                         plt.show()
-                    self.fig[i % num_rows, int(i / num_rows)].imshow(attn_img)
+                    if num_rows > 1:
+                        self.fig[i % num_rows, int(i /
+                                                   num_rows)].imshow(attn_img)
+                    else:
+                        self.fig.imshow(attn_img)
                 # plt.pause(.00001)
                 input()
 
@@ -312,13 +347,20 @@ def get_ac_networks(conv_layer_params=None,
     """
     observation_spec = common.get_observation_spec()
     action_spec = common.get_action_spec()
-
+    state_attn = (attention and isinstance(observation_spec, dict)
+                  and 'image' not in observation_spec
+                  and 'sentence' in observation_spec
+                  and 'states' in observation_spec)
     if attention:
-        num_embedding_dims = conv_layer_params[-1][0]
+        if not state_attn:
+            num_embedding_dims = conv_layer_params[-1][0]
+        else:
+            d = observation_spec['states'].shape[-1]
+            num_embedding_dims = d * d
 
     vocab_size = common.get_vocab_size()
     if vocab_size:
-        if not attention:
+        if not attention or state_attn:
             sentence_layers = tf.keras.Sequential([
                 tf.keras.layers.Embedding(vocab_size, num_embedding_dims),
                 tf.keras.layers.GlobalAveragePooling1D()
@@ -327,7 +369,7 @@ def get_ac_networks(conv_layer_params=None,
                 sentence_layers.add(
                     tf.keras.layers.Lambda(lambda x: tf.tile(
                         x, multiples=[1, num_sentence_tiles])))
-        else:  # attention
+        else:  # image attention
             sentence_layers = get_identity_layer()
 
     # image:
@@ -349,7 +391,7 @@ def get_ac_networks(conv_layer_params=None,
     image_layers = tf.keras.Sequential(image_layers)
 
     preprocessing_layers = {}
-    obs_spec = common.get_observation_spec()
+    obs_spec = observation_spec
     if isinstance(obs_spec, dict) and 'image' in obs_spec:
         preprocessing_layers['image'] = image_layers
 
@@ -374,13 +416,17 @@ def get_ac_networks(conv_layer_params=None,
     preprocessing_combiner = tf.keras.layers.Concatenate()
 
     if attention:
-        attention_combiner = ImageLanguageAttentionCombiner(
-            vocab_size=vocab_size,
-            n_heads=n_heads,
-            name=name,
-            output_attention_max=output_attention_max,
-            use_attn_residual=use_attn_residual,
-            network_to_debug=network_to_debug)
+        if state_attn:
+            attention_combiner = StateLanguageAttentionCombiner(
+                name=name, network_to_debug=network_to_debug)
+        else:
+            attention_combiner = ImageLanguageAttentionCombiner(
+                vocab_size=vocab_size,
+                n_heads=n_heads,
+                name=name,
+                output_attention_max=output_attention_max,
+                use_attn_residual=use_attn_residual,
+                network_to_debug=network_to_debug)
         preprocessing_combiner = attention_combiner
 
     if not isinstance(preprocessing_layers, dict):
