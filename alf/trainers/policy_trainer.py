@@ -18,9 +18,7 @@ import time
 import abc
 from absl import logging
 import gin.tf
-import random
 import tensorflow as tf
-import numpy as np
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 from tf_agents.eval import metric_utils
@@ -247,11 +245,7 @@ class Trainer(object):
 
     def initialize(self):
         """Initializes the Trainer."""
-        if self._random_seed is not None:
-            os.environ["TF_DETERMINISTIC_OPS"] = str(1)
-            random.seed(self._random_seed)
-            np.random.seed(self._random_seed)
-            tf.random.set_seed(self._random_seed)
+        common.set_random_seed(self._random_seed)
 
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)

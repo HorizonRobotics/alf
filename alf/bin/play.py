@@ -25,9 +25,6 @@ python -m alf.bin.play \
 """
 
 import os
-import random
-import numpy as np
-import tensorflow as tf
 
 from absl import app
 from absl import flags
@@ -63,11 +60,7 @@ FLAGS = flags.FLAGS
 
 def main(_):
     # set the seed first to make sure `env.reset()` is also deterministic
-    if FLAGS.random_seed is not None:
-        os.environ["TF_DETERMINISTIC_OPS"] = str(1)
-        random.seed(FLAGS.random_seed)
-        np.random.seed(FLAGS.random_seed)
-        tf.random.set_seed(FLAGS.random_seed)
+    common.set_random_seed(FLAGS.random_seed)
 
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)

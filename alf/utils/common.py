@@ -25,6 +25,7 @@ from typing import Callable
 from absl import flags
 from absl import logging
 import gin
+import random
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -1058,3 +1059,11 @@ def function(func=None, **kwargs):
     if func is not None:
         return decorate(func)
     return decorate
+
+
+def set_random_seed(seed):
+    if seed is not None:
+        os.environ["TF_DETERMINISTIC_OPS"] = str(1)
+        random.seed(seed)
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
