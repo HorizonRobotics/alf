@@ -28,8 +28,9 @@ setup(
         'pillow',
         'psutil',
         'pybullet == 2.5.0',
-        'tensorflow-gpu == 2.1.0',
+        'tensorflow == 2.1.0',
         'tf-agents == 0.3.0',
     ],  # And any other dependencies foo needs
+    package_data={'': ['*.gin']},
     packages=find_packages(),
 )
