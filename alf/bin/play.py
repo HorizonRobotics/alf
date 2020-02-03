@@ -25,6 +25,9 @@ python -m alf.bin.play \
 """
 
 import os
+import random
+import numpy as np
+import tensorflow as tf
 
 from absl import app
 from absl import flags
@@ -43,7 +46,7 @@ flags.DEFINE_string(
     "(e.g. 'ckpt-12800`). If None, the latest checkpoint under train_dir will "
     "be used.")
 flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
-flags.DEFINE_integer('random_seed', 0, "random seed")
+flags.DEFINE_integer('random_seed', None, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
 flags.DEFINE_float('sleep_time_per_step', 0.01,
                    "sleep so many seconds for each"
@@ -59,6 +62,13 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
+    # set the seed first to make sure `env.reset()` is also deterministic
+    if FLAGS.random_seed is not None:
+        os.environ["TF_DETERMINISTIC_OPS"] = str(1)
+        random.seed(FLAGS.random_seed)
+        np.random.seed(FLAGS.random_seed)
+        tf.random.set_seed(FLAGS.random_seed)
+
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     algorithm_ctor = gin.query_parameter(
@@ -74,7 +84,6 @@ def main(_):
         algorithm,
         checkpoint_name=FLAGS.checkpoint_name,
         epsilon_greedy=FLAGS.epsilon_greedy,
-        random_seed=FLAGS.random_seed,
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
         record_file=FLAGS.record_file,

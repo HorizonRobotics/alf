@@ -224,7 +224,7 @@ class TrainPlayTest(tf.test.TestCase):
               extra_train_params=None,
               test_play=True,
               extra_play_params=None,
-              test_perf=False,
+              test_perf=True,
               test_perf_func=None):
         """Test train, play and check performance
 
@@ -272,7 +272,7 @@ class TrainPlayTest(tf.test.TestCase):
             'python3', '-m', 'alf.bin.train',
             '--root_dir=%s' % root_dir,
             '--gin_file=%s' % gin_file,
-            '--gin_param=TrainerConfig.random_seed=0'
+            '--gin_param=TrainerConfig.random_seed=1'
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
@@ -289,7 +289,7 @@ class TrainPlayTest(tf.test.TestCase):
         """
         cmd = [
             'python3', '-m', 'alf.bin.play',
-            '--root_dir=%s' % root_dir, '--num_episodes=1'
+            '--root_dir=%s' % root_dir, '--num_episodes=1', '--random_seed=0'
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd

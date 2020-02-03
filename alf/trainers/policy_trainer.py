@@ -248,6 +248,7 @@ class Trainer(object):
     def initialize(self):
         """Initializes the Trainer."""
         if self._random_seed is not None:
+            os.environ["TF_DETERMINISTIC_OPS"] = str(1)
             random.seed(self._random_seed)
             np.random.seed(self._random_seed)
             tf.random.set_seed(self._random_seed)
@@ -421,7 +422,6 @@ def play(root_dir,
          algorithm,
          checkpoint_name=None,
          epsilon_greedy=0.1,
-         random_seed=None,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
@@ -445,7 +445,6 @@ def play(root_dir,
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout.
-        random_seed (None|int): random seed, a random seed is used if None
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
@@ -454,11 +453,6 @@ def play(root_dir,
     """
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
-
-    if random_seed is not None:
-        random.seed(random_seed)
-        np.random.seed(random_seed)
-        tf.random.set_seed(random_seed)
 
     global_step = get_global_counter()
 
