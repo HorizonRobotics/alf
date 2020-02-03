@@ -85,8 +85,11 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         self._driver_started = False
 
     def _init_driver(self):
-        for _ in range(1, self._config.num_envs):
-            self._create_environment()
+        for i in range(1, self._config.num_envs):
+            # [self._random_seed, self._random_seed + batch_size) has been used
+            # in policy_trainer.py
+            self._create_environment(
+                random_seed=self._random_seed + i * common._env.batch_size)
         driver = AsyncOffPolicyDriver(
             envs=self._envs,
             algorithm=self._algorithm,

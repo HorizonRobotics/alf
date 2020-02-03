@@ -1061,8 +1061,15 @@ def function(func=None, **kwargs):
     return decorate
 
 
-def set_random_seed(seed):
+def set_random_seed(seed, eager_mode):
+    """Set a seed for deterministic behaviors."""
     if seed is not None:
+        if not tf.config.list_physical_devices('GPU'):
+            assert eager_mode, (
+                "CPU mode: because you have specified a fixed " +
+                "random seed, make sure to turn on eager mode " +
+                "to have deterministic results!")
+
         os.environ["TF_DETERMINISTIC_OPS"] = str(1)
         random.seed(seed)
         np.random.seed(seed)

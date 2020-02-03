@@ -37,8 +37,11 @@ def run_cmd(cmd, cwd=None):
     """
     logging.info("Running %s", " ".join(cmd))
 
+    new_env = os.environ.copy()
+    new_env["CUDA_VISIBLE_DEVICES"] = ''  # force to use CPU for testing
+
     process = subprocess.Popen(
-        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd)
+        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd, env=new_env)
 
     process.communicate()
 
@@ -141,6 +144,14 @@ PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.num_updates_per_train_step=2'
 ]
 PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
+
+TEST_PERF_CONF = [
+    # train long enough (but not too long) to test the performance
+    'TrainerConfig.num_iterations=10',
+    'TrainerConfig.evaluate=True',
+    'TrainerConfig.eval_interval=10'
+]
+TEST_PERF_PARAMS = _to_gin_params(TEST_PERF_CONF)
 
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
@@ -272,7 +283,8 @@ class TrainPlayTest(tf.test.TestCase):
             'python3', '-m', 'alf.bin.train',
             '--root_dir=%s' % root_dir,
             '--gin_file=%s' % gin_file,
-            '--gin_param=TrainerConfig.random_seed=1'
+            '--gin_param=TrainerConfig.random_seed=1',
+            '--gin_param=TrainerConfig.use_tf_functions=False'
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
@@ -289,7 +301,7 @@ class TrainPlayTest(tf.test.TestCase):
         """
         cmd = [
             'python3', '-m', 'alf.bin.play',
-            '--root_dir=%s' % root_dir, '--num_episodes=1', '--random_seed=0'
+            '--root_dir=%s' % root_dir, '--num_episodes=1'
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
@@ -318,10 +330,13 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ac_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-2:]), 198)
-            self.assertGreater(np.mean(lengths[-2:]), 198)
+            self.assertEqual(returns[-1], 200)
+            self.assertEqual(lengths[-1], 200)
 
-        self._test(gin_file='ac_cart_pole.gin', test_perf_func=_test_func)
+        self._test(
+            gin_file='ac_cart_pole.gin',
+            test_perf_func=_test_func,
+            extra_train_params=TEST_PERF_PARAMS)
 
     def test_ac_simple_navigation(self):
         self._test(
@@ -331,9 +346,12 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-5:]), -200)
+            self.assertEqual(round(returns[-1], 2), -1302.14)
 
-        self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
+        self._test(
+            gin_file='ddpg_pendulum.gin',
+            test_perf_func=_test_func,
+            extra_train_params=TEST_PERF_PARAMS)
 
     def test_icm_mountain_car(self):
         self._test(
@@ -383,10 +401,12 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ppo_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-2:]), 198)
-            self.assertGreater(np.mean(lengths[-2:]), 198)
+            self.assertEqual(round(returns[-1], 2), 122.10)
 
-        self._test(gin_file='ppo_cart_pole.gin', test_perf_func=_test_func)
+        self._test(
+            gin_file='ppo_cart_pole.gin',
+            test_perf_func=_test_func,
+            extra_train_params=TEST_PERF_PARAMS)
 
     def test_ppo_icm_super_mario_intrinsic_only(self):
         self._test(
@@ -430,9 +450,12 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_sac_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-5:]), -200)
+            self.assertEqual(returns[-1], -1431.25)
 
-        self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
+        self._test(
+            gin_file='sac_pendulum.gin',
+            test_perf_func=_test_func,
+            extra_train_params=TEST_PERF_PARAMS)
 
     def test_sarsa_pendulum(self):
         self._test(
