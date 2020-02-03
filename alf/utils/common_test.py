@@ -60,6 +60,14 @@ class F(tf.Module):
                 self._created = True
             return a + b, scope
 
+    @common.function(experimental_relax_shapes=True)
+    def train2(self, a, b):
+        with self.name_scope as scope:
+            if not self._created:
+                self._v = tf.Variable(initial_value=1.0, shape=())
+                self._created = True
+            return a + b, scope
+
 
 @common.function
 def func(a, b):
@@ -93,6 +101,8 @@ class FunctionTest(tf.test.TestCase):
             self.assertEqual(f1.train(1, 3)[1], "main/f1/")
             self.assertEqual(f2.train(2, 3)[0], 5)
             self.assertEqual(f2.train(2, 3)[1], "main/f2/")
+            self.assertEqual(f2.train2(2, 3)[0], 5)
+            self.assertEqual(f2.train2(2, 3)[1], "main/f2/")
             self.assertEqual(func(2, 4)[0], 6)
             self.assertEqual(func(2, 4)[1], "main/func/")
 
