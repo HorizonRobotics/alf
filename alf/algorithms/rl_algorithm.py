@@ -310,10 +310,10 @@ class RLAlgorithm(Algorithm):
             if (training_info.rollout_info and 'action_distribution' in
                     training_info.rollout_info._fields):
                 summary_utils.summarize_action_dist(
-                    action_distributions=training_info.
-                    collect_action_distribution,
+                    action_distributions=training_info.rollout_info.
+                    action_distribution,
                     action_specs=self._action_spec,
-                    name="collect_action_dist")
+                    name="rollout_action_dist")
 
     def metric_summary(self):
         """Generate summaries for metrics `AverageEpisodeLength`, `AverageReturn`..."""
