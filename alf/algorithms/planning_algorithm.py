@@ -29,8 +29,8 @@ from alf.optimizers.random import RandomOptimizer
 class PlanAlgorithm(Algorithm):
     """Planning Module
 
-    This module planning for actions based on initial observation
-    and a specified cost function
+    This module plans for actions based on initial observation
+    and specified reward and dynamics functions
     """
 
     def __init__(self,
@@ -100,17 +100,19 @@ class PlanAlgorithm(Algorithm):
     def set_dynamics_func(self, dynamics_func):
         """Set the dynamics function for planning
         Args:
-            dynamics_func (Callable): reward function to be used for planning
-            dynamics_func takes (obs, action) as input
+            dynamics_func (Callable): reward function to be used for planning.
+            dynamics_func takes (time_step, state) as input and returns
+            next_time_step (ActionTimeStep) and the next_state
         """
         self._dynamics_func = dynamics_func
 
-    def generate_plan(self, obs):
+    def generate_plan(self, time_step: ActionTimeStep, state):
         """Compute the plan based on the provided observation and action
         Args:
-            obs (Tensor): an observation to start the planning with
+            time_step (ActionTimeStep): input data for next step prediction
+            state: input state next step prediction
         Returns:
-            action (Tensor): planned action for the given input
+            action: planned action for the given inputs
         """
         pass
 
@@ -168,13 +170,12 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             self._population_size,
             upper_bound=action_spec.maximum,
             lower_bound=action_spec.minimum)
-        self._solution_size = solution_size
 
     def train_step(self, time_step: ActionTimeStep, state):
         """
         Args:
             time_step (ActionTimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            state: state for dynamics learning (previous observation)
         Returns:
             TrainStep:
                 outputs: empty tuple ()
@@ -206,7 +207,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
         Returns:
-            obs: observation (tf.Tensor) with shape [batch_size, obs_dim]
+            cost (tf.Tensor) with shape [batch_size, population_size]
         """
         obs = time_step.observation
         batch_size = obs.shape[0]

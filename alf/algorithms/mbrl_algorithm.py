@@ -119,7 +119,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             time step and state
         Args:
             time_step (ActionTimeStep): input data for next step prediction
-            state (Tensor): input state next step prediction
+            state: input state next step prediction
         Returns:
             next_time_step (ActionTimeStep): updated time_step with observation
                 predicted from the dynamics module
