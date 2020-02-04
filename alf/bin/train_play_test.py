@@ -450,7 +450,7 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_sac_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertEqual(returns[-1], -1431.25)
+            self.assertEqual(round(returns[-1], 2), -1431.25)
 
         self._test(
             gin_file='sac_pendulum.gin',
