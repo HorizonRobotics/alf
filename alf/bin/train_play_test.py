@@ -145,14 +145,6 @@ PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
 ]
 PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
 
-TEST_PERF_CONF = [
-    # train long enough (but not too long) to test the performance
-    'TrainerConfig.num_iterations=10',
-    'TrainerConfig.evaluate=True',
-    'TrainerConfig.eval_interval=10'
-]
-TEST_PERF_PARAMS = _to_gin_params(TEST_PERF_CONF)
-
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
@@ -330,13 +322,10 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ac_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertEqual(returns[-1], 200)
-            self.assertEqual(lengths[-1], 200)
+            self.assertGreater(returns[-1], 195)
+            self.assertGreater(lengths[-1], 195)
 
-        self._test(
-            gin_file='ac_cart_pole.gin',
-            test_perf_func=_test_func,
-            extra_train_params=TEST_PERF_PARAMS)
+        self._test(gin_file='ac_cart_pole.gin', test_perf_func=_test_func)
 
     def test_ac_simple_navigation(self):
         self._test(
@@ -346,12 +335,9 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertEqual(round(returns[-1], 2), -1302.14)
+            self.assertGreater(returns[-1], -200)
 
-        self._test(
-            gin_file='ddpg_pendulum.gin',
-            test_perf_func=_test_func,
-            extra_train_params=TEST_PERF_PARAMS)
+        self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
 
     def test_icm_mountain_car(self):
         self._test(
@@ -401,12 +387,9 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ppo_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertEqual(round(returns[-1], 2), 122.10)
+            self.assertGreater(returns[-1], 195)
 
-        self._test(
-            gin_file='ppo_cart_pole.gin',
-            test_perf_func=_test_func,
-            extra_train_params=TEST_PERF_PARAMS)
+        self._test(gin_file='ppo_cart_pole.gin', test_perf_func=_test_func)
 
     def test_ppo_icm_super_mario_intrinsic_only(self):
         self._test(
@@ -450,12 +433,9 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_sac_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertEqual(round(returns[-1], 2), -1431.25)
+            self.assertGreater(returns[-1], -200)
 
-        self._test(
-            gin_file='sac_pendulum.gin',
-            test_perf_func=_test_func,
-            extra_train_params=TEST_PERF_PARAMS)
+        self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
 
     def test_sarsa_pendulum(self):
         self._test(
