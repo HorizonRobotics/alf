@@ -28,19 +28,12 @@ class RandomOptimizer(Optimizer):
                  population_size,
                  upper_bound=None,
                  lower_bound=None):
-        """Creates an instance of this class.
+        """Creates a Random Optimizer
 
         Args:
             solution_dim (int): The dimensionality of the problem space
             population_size (int): The number of candidate solutions to be
                 sampled at every iteration
-            cost_function (Callable): the cost function to be minimized. It
-                takes as input:
-                (1) time_step (ActionTimeStep) for next step prediction
-                (2) state: input state for next step prediction
-                (3) action_sequence (tf.Tensor of shape [batch_size,
-                    population_size, solution_dim])
-                and returns a cost Tensor of shape [batch_size, population_size]
             upper_bound (int|tf.Tensor): upper bounds for elements in solution
             lower_bound (int|tf.Tensor): lower bounds for elements in solution
         """

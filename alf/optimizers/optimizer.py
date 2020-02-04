@@ -18,10 +18,19 @@ class Optimizer:
         pass
 
     def reset(self):
-        raise NotImplementedError("Must be implemented in subclass.")
+        pass
 
     def set_cost(self, cost_function):
+        """Set cost function for miminizing.
+        cost_function (Callable): the cost function to be minimized. It
+            takes as input:
+            (1) time_step (ActionTimeStep) for next step prediction
+            (2) state: input state for next step prediction
+            (3) action_sequence (tf.Tensor of shape [batch_size,
+                population_size, solution_dim])
+            and returns a cost Tensor of shape [batch_size, population_size]
+        """
         self.cost_function = cost_function
 
     def obtain_solution(self, *args, **kwargs):
-        raise NotImplementedError("Must be implemented in subclass.")
+        pass
