@@ -20,12 +20,10 @@ from tf_agents.specs import tensor_spec
 from tf_agents.trajectories import time_step as ts
 from tf_agents.networks import sequential_layer
 from alf.networks import actor_network
-from tensorflow.python.framework import test_util
 
 
 class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_build(self, outer_dims):
         num_obs_dims = 5
         action_spec = tensor_spec.BoundedTensorSpec([1], tf.float32, 2., 3.)
@@ -38,7 +36,6 @@ class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
                             list(outer_dims) + action_spec.shape.as_list())
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_scalar_action(self, outer_dims):
         num_obs_dims = 5
         obs_spec = tensor_spec.TensorSpec([num_obs_dims], tf.float32)
@@ -53,7 +50,6 @@ class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertEqual(len(actor_net.trainable_variables), 2)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_2d_action(self, outer_dims):
         num_obs_dims = 5
         obs_spec = tensor_spec.TensorSpec([num_obs_dims], tf.float32)
@@ -67,7 +63,6 @@ class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertEqual(len(actor_net.trainable_variables), 2)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_actions_within_range(self, outer_dims):
         num_obs_dims = 5
         obs_spec = tensor_spec.TensorSpec([num_obs_dims], tf.float32)
@@ -81,7 +76,6 @@ class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertTrue(np.all(actions_ <= action_spec.maximum))
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_list_of_single_action(self, outer_dims):
         num_obs_dims = 5
         obs_spec = tensor_spec.TensorSpec([num_obs_dims], tf.float32)
@@ -97,7 +91,6 @@ class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertEqual(len(actor_net.trainable_variables), 2)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_dict_of_single_action(self, outer_dims):
         num_obs_dims = 5
         obs_spec = tensor_spec.TensorSpec([num_obs_dims], tf.float32)
@@ -114,7 +107,6 @@ class ActorNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertEqual(len(actor_net.trainable_variables), 2)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_handle_preprocessing_layers(self, outer_dims):
         observation_spec = (tensor_spec.TensorSpec([1], tf.float32),
                             tensor_spec.TensorSpec([], tf.float32))
