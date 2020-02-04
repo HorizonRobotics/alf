@@ -18,39 +18,54 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-
+from alf.data_structures import ActionTimeStep
 from .optimizer import Optimizer
 
 
 class RandomOptimizer(Optimizer):
-    def __init__(self, sol_dim, popsize, upper_bound=None, lower_bound=None):
+    def __init__(self,
+                 solution_dim,
+                 population_size,
+                 upper_bound=None,
+                 lower_bound=None):
         """Creates an instance of this class.
 
         Args:
-            sol_dim (int): The dimensionality of the problem space
-            popsize (int): The number of candidate solutions to be sampled at every iteration
-            cost_function (func): the cost function to be minimized
-            upper_bound (int|tf.Array): upper bounds for elements in solution
-            lower_bound (int|tf.Array): lower bounds for elements in solution
+            solution_dim (int): The dimensionality of the problem space
+            population_size (int): The number of candidate solutions to be
+                sampled at every iteration
+            cost_function (Callable): the cost function to be minimized. It
+                takes as input:
+                (1) time_step (ActionTimeStep) for next step prediction
+                (2) state: input state for next step prediction
+                (3) action_sequence (tf.Tensor of shape [batch_size,
+                    population_size, solution_dim])
+                and returns a cost Tensor of shape [batch_size, population_size]
+            upper_bound (int|tf.Tensor): upper bounds for elements in solution
+            lower_bound (int|tf.Tensor): lower bounds for elements in solution
         """
         super().__init__()
-        self.sol_dim = sol_dim
-        self.popsize = popsize
-        self.ub = upper_bound
-        self.lb = lower_bound
+        self._solution_dim = solution_dim
+        self._population_size = population_size
+        self._upper_bound = upper_bound
+        self._lower_bound = lower_bound
 
-    def reset(self):
-        pass
-
-    def obtain_solution(self, init_obs, *args, **kwargs):
+    def obtain_solution(self, time_step: ActionTimeStep, state):
         """Minimize the cost function provided
 
-        Arguments:
-            init_obs (tf.Tensor): the initial observation to start the rollout
+        Args:
+            time_step (ActionTimeStep): the initial time_step to start rollout
+            state: input state to start rollout
         """
-        solutions = tf.random.uniform([self.popsize, self.sol_dim], self.ub,
-                                      self.lb)
-        costs = self.cost_function(init_obs, solutions)
-        solution = tf.gather(
-            solutions, tf.cast(tf.argmin(costs, axis=-1), tf.int32), axis=0)
+        init_obs = time_step.observation
+        batch_size = init_obs.shape[0]
+        solutions = tf.random.uniform(
+            [batch_size, self._population_size, self._solution_dim],
+            self._upper_bound, self._lower_bound)
+        costs = self.cost_function(time_step, state, solutions)
+        min_ind = tf.cast(tf.argmin(costs, axis=-1), tf.int32)
+        population_ind = tf.expand_dims(min_ind, 1)
+        batch_ind = tf.expand_dims(tf.range(tf.shape(solutions)[0]), 1)
+        ind = tf.concat([batch_ind, population_ind], axis=1)
+        solution = tf.gather_nd(solutions, ind)
         return solution

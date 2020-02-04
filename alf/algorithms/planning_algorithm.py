@@ -26,7 +26,7 @@ from alf.optimizers.random import RandomOptimizer
 
 
 @gin.configurable
-class PLANAlgorithm(Algorithm):
+class PlanAlgorithm(Algorithm):
     """Planning Module
 
     This module planning for actions based on initial observation
@@ -39,8 +39,6 @@ class PLANAlgorithm(Algorithm):
                  planning_horizon,
                  upper_bound=None,
                  lower_bound=None,
-                 hidden_size=256,
-                 plan_network: Network = None,
                  name="PlanningAlgorithm"):
         """Create a PlanningAlgorithm.
 
@@ -50,10 +48,6 @@ class PLANAlgorithm(Algorithm):
                 action_spec.maximum will be used if not specified
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
-            hidden_size (int|tuple): size of hidden layer(s)
-            plan_network (Network): network for planning
-                based on the current feature and action. It should accept
-                input with spec feature_spec and output an action.
         """
         super().__init__(name=name)
 
@@ -98,7 +92,7 @@ class PLANAlgorithm(Algorithm):
     def set_reward_func(self, reward_func):
         """Set per-time-step reward function used for planning
         Args:
-            reward_func (func): the reward function to be used for planning.
+            reward_func (Callable): the reward function to be used for planning.
             reward_func takes (obs, action) as input
         """
         self._reward_func = reward_func
@@ -106,7 +100,7 @@ class PLANAlgorithm(Algorithm):
     def set_dynamics_func(self, dynamics_func):
         """Set the dynamics function for planning
         Args:
-            dynamics_func (func): the reward function to be used for planning.
+            dynamics_func (Callable): reward function to be used for planning
             dynamics_func takes (obs, action) as input
         """
         self._dynamics_func = dynamics_func
@@ -127,8 +121,8 @@ class PLANAlgorithm(Algorithm):
 
 
 @gin.configurable
-class RSPAlgorithm(PLANAlgorithm):
-    """Random Shooting Planning (RSP) method.
+class RandomShootingAlgorithm(PlanAlgorithm):
+    """Random Shooting-based planning method.
     """
 
     def __init__(self,
@@ -139,8 +133,8 @@ class RSPAlgorithm(PLANAlgorithm):
                  upper_bound=None,
                  lower_bound=None,
                  hidden_size=256,
-                 name="RandomShootingPlanningAlgorithm"):
-        """Create a RandomShootingPlanningAlgorithm.
+                 name="RandomShootingAlgorithm"):
+        """Create a RandomShootingAlgorithm.
 
         Args:
             population_size (int): the size of polulation for random shooting
@@ -157,9 +151,15 @@ class RSPAlgorithm(PLANAlgorithm):
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
             lower_bound=lower_bound,
-            hidden_size=hidden_size,
-            plan_network=None,
             name=name)
+
+        flat_action_spec = tf.nest.flatten(action_spec)
+        assert len(flat_action_spec) == 1, ("RandomShootingAlgorithm doesn't "
+                                            "support nested action_spec")
+
+        flat_feature_spec = tf.nest.flatten(feature_spec)
+        assert len(flat_feature_spec) == 1, ("RandomShootingAlgorithm doesn't "
+                                             "support nested feature_spec")
 
         self._population_size = population_size
         solution_size = self._planning_horizon * self._num_actions
@@ -168,6 +168,7 @@ class RSPAlgorithm(PLANAlgorithm):
             self._population_size,
             upper_bound=action_spec.maximum,
             lower_bound=action_spec.minimum)
+        self._solution_size = solution_size
 
     def train_step(self, time_step: ActionTimeStep, state):
         """
@@ -182,33 +183,48 @@ class RSPAlgorithm(PLANAlgorithm):
         """
         return AlgorithmStep(outputs=(), state=(), info=())
 
-    def generate_plan(self, obs):
-        assert self._reward_func is not None, "specify reward function \
-            before planning"
+    def generate_plan(self, time_step: ActionTimeStep, state):
+        assert self._reward_func is not None, ("specify reward function "
+                                               "before planning")
 
-        assert self._dynamics_func is not None, "specify dynamics function \
-            before planning"
+        assert self._dynamics_func is not None, ("specify dynamics function "
+                                                 "before planning")
 
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
-        opt_action = self._plan_optimizer.obtain_solution(obs)
+        opt_action = self._plan_optimizer.obtain_solution(time_step, state)
         action = opt_action[:, 0]
-        action = tf.reshape(action, [obs.shape[0], -1])
+        action = tf.reshape(action, [time_step.observation.shape[0], -1])
         return action
 
-    def _calc_cost_for_action_sequence(self, obs, ac_seqs):
+    def _calc_cost_for_action_sequence(self, time_step: ActionTimeStep, state,
+                                       ac_seqs):
+        """
+        Args:
+            time_step (ActionTimeStep): input data for next step prediction
+            state: input state next step prediction
+            ac_seqs: action_sequence (tf.Tensor) of shape [batch_size,
+                    population_size, solution_dim]), where
+                    solution_dim = planning_horizon * num_actions
+        Returns:
+            obs: observation (tf.Tensor) with shape [batch_size, obs_dim]
+        """
+        obs = time_step.observation
         batch_size = obs.shape[0]
         init_costs = tf.zeros([batch_size, self._population_size])
-        ac_seqs = tf.reshape(ac_seqs, [-1, self._planning_horizon, 1])
         ac_seqs = tf.reshape(
-            tf.tile(
-                tf.transpose(ac_seqs, [1, 0, 2])[:, :, None],
-                [1, 1, batch_size, 1]), [self._planning_horizon, -1, 1])
+            ac_seqs,
+            [batch_size, self._population_size, self._planning_horizon, -1])
+        ac_seqs = tf.reshape(
+            tf.transpose(ac_seqs, [2, 0, 1, 3]),
+            [self._planning_horizon, -1, self._num_actions])
         init_obs = tf.tile(obs, [self._population_size, 1])
         obs = init_obs
         cost = 0
         for i in range(ac_seqs.shape[0]):
             action = ac_seqs[i]
-            next_obs = self._dynamics_func(obs, action)
+            time_step = time_step._replace(observation=obs, prev_action=action)
+            time_step, state = self._dynamics_func(time_step, state)
+            next_obs = time_step.observation
             # Note: currently using (next_obs, action), might need to
             # consider (obs, action) in order to be more compatible
             # with the conventional definition of reward function

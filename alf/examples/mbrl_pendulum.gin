@@ -3,6 +3,7 @@ import alf.trainers.off_policy_trainer
 import alf.algorithms.dynamics_learning_algorithm
 import alf.algorithms.reward_learning_algorithm
 import alf.algorithms.planning_algorithm
+import alf.examples.mbrl_pendulum
 
 
 # environment config
@@ -16,27 +17,25 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
 # dynamics learning config
-DDLAlgorithm.action_spec=%action_spec
-DDLAlgorithm.feature_spec=%observation_spec
-DDLAlgorithm.hidden_size=(200, 100, 50, 10)
+DeterministicDynamicsAlgorithm.action_spec=%action_spec
+DeterministicDynamicsAlgorithm.feature_spec=%observation_spec
+DeterministicDynamicsAlgorithm.hidden_size=(200, 100, 50, 10)
 
 # reward learning config
-FREAlgorithm.env_name=%env_name
-FREAlgorithm.feature_spec=%observation_spec
-FREAlgorithm.action_spec=%action_spec
+FixedRewardFunction.reward_func=@reward_function_for_pendulum
 
 # planner config
-RSPAlgorithm.feature_spec=%observation_spec
-RSPAlgorithm.action_spec=%action_spec
-RSPAlgorithm.population_size=1000
-RSPAlgorithm.planning_horizon=25
+RandomShootingAlgorithm.feature_spec=%observation_spec
+RandomShootingAlgorithm.action_spec=%action_spec
+RandomShootingAlgorithm.population_size=1000
+RandomShootingAlgorithm.planning_horizon=25
 
 # model-based RL algo config
 MbrlAlgorithm.feature_spec=%observation_spec
 MbrlAlgorithm.action_spec=%action_spec
-MbrlAlgorithm.dynamics_module=@DDLAlgorithm()
-MbrlAlgorithm.reward_module=@FREAlgorithm()
-MbrlAlgorithm.planner_module=@RSPAlgorithm()
+MbrlAlgorithm.dynamics_module=@DeterministicDynamicsAlgorithm()
+MbrlAlgorithm.reward_module=@FixedRewardFunction()
+MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
 
 # agent config
 Agent/Adam.learning_rate=1e-3

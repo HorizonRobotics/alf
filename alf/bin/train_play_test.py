@@ -461,6 +461,11 @@ class TrainPlayTest(tf.test.TestCase):
             gin_file='trac_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_mbrl_pendulum(self):
+        self._test(
+            gin_file='mbrl_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     @classmethod
     def tearDownClass(cls):
         not_tested = cls._all_.difference(cls._tested_)

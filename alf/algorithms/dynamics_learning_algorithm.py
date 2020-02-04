@@ -28,7 +28,7 @@ DynamicsInfo = namedtuple("DynamicsInfo", ["loss"])
 
 
 @gin.configurable
-class DLAlgorithm(Algorithm):
+class DynamicsLearningAlgorithm(Algorithm):
     """Base Dynamics Learning Module
 
     This module trys to learn the dynamics of environment.
@@ -92,11 +92,6 @@ class DLAlgorithm(Algorithm):
         else:
             return action
 
-    def predict_next_obs(self, obs, action):
-        """Predict the next observation given the current observation and action
-        """
-        pass
-
     def update_state(self, time_step: ActionTimeStep, state: DynamicsState):
         """Update the state based on ActionTimeStep data. This function is
             mainly used during rollout together with a planner
@@ -138,7 +133,7 @@ class DLAlgorithm(Algorithm):
 
 
 @gin.configurable
-class DDLAlgorithm(DLAlgorithm):
+class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
     """Deterministic Dynamics Learning Module
 
     This module trys to learn the dynamics of environment with a
@@ -150,8 +145,8 @@ class DDLAlgorithm(DLAlgorithm):
                  feature_spec,
                  hidden_size=256,
                  dynamics_network: Network = None,
-                 name="DeterminsticDynamicsLearningAlgorithm"):
-        """Create a DeterminsticDynamicsLearningAlgorithm.
+                 name="DeterministicDynamicsAlgorithm"):
+        """Create a DeterministicDynamicsAlgorithm.
 
         Args:
             hidden_size (int|tuple): size of hidden layer(s)
@@ -169,12 +164,16 @@ class DDLAlgorithm(DLAlgorithm):
             dynamics_network=dynamics_network,
             name=name)
 
-    def predict_next_obs(self, obs, action):
-        """Predict the next observation given the current observation and action
+    def predict(self, time_step: ActionTimeStep, state: DynamicsState):
+        """Predict the next observation given the current time_step.
+                Note that when calling this function, the prev_action in
+                time_step is used for predicting the next step.
         """
-        forward_delta, _ = self._dynamics_network(inputs=[obs, action])
-        forward_pred = obs + forward_delta
-        return forward_pred
+        action = self._encode_action(time_step.prev_action)
+        forward_delta, _ = self._dynamics_network(
+            inputs=[time_step.observation, action])
+        forward_pred = time_step.observation + forward_delta
+        return AlgorithmStep(outputs=forward_pred, state=state, info=())
 
     def update_state(self, time_step: ActionTimeStep, state: DynamicsState):
         """Update the state based on ActionTimeStep data. This function is
@@ -191,12 +190,12 @@ class DDLAlgorithm(DLAlgorithm):
         feature = time_step.observation
         return state._replace(feature=feature)
 
-    def get_state_specs(self):
+    def get_state_with_specs(self):
         """Get the state specs of the current module.
         This function is mainly used for constructing the nested state specs
         by the upper-level module.
         """
-        return DynamicsState(feature=self._feature_spec)
+        return DynamicsState(feature=self.train_state_spec)
 
     def train_step(self, time_step: ActionTimeStep, state: DynamicsState):
         """
@@ -213,10 +212,11 @@ class DDLAlgorithm(DLAlgorithm):
         prev_action = time_step.prev_action
 
         prev_feature = state.feature
-        prev_action = self._encode_action(prev_action)
 
-        forward_pred = self.predict_next_obs(prev_feature, prev_action)
-
+        dynamics_step = self.predict(
+            time_step._replace(
+                observation=prev_feature, prev_action=prev_action), state)
+        forward_pred = dynamics_step.outputs
         forward_loss = 0.5 * tf.reduce_mean(
             tf.square(feature - forward_pred), axis=-1)
 

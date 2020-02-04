@@ -30,9 +30,9 @@ from alf.data_structures import PolicyStep, TrainingInfo
 from alf.utils import losses, common, dist_utils
 from alf.utils.math_ops import add_ignore_empty
 
-from alf.algorithms.dynamics_learning_algorithm import DLAlgorithm
-from alf.algorithms.reward_learning_algorithm import REAlgorithm
-from alf.algorithms.planning_algorithm import PLANAlgorithm
+from alf.algorithms.dynamics_learning_algorithm import DynamicsLearningAlgorithm
+from alf.algorithms.reward_learning_algorithm import RewardEstimationAlgorithm
+from alf.algorithms.planning_algorithm import PlanAlgorithm
 
 MbrlState = namedtuple("MbrlState", ["dynamics", "reward", "planner"])
 MbrlInfo = namedtuple(
@@ -48,9 +48,9 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                  observation_spec,
                  feature_spec,
                  action_spec,
-                 dynamics_module: DLAlgorithm,
-                 reward_module: REAlgorithm,
-                 planner_module: PLANAlgorithm,
+                 dynamics_module: DynamicsLearningAlgorithm,
+                 reward_module: RewardEstimationAlgorithm,
+                 planner_module: PlanAlgorithm,
                  gradient_clipping=None,
                  debug_summaries=False,
                  name="MbrlAlgorithm"):
@@ -71,15 +71,15 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 representation of the action. For continuous action, encoded
                 action is same as the original action.
             reward_module (REAlgorithm): module for calculating the reward,
-            i.e.,  evaluating the reward for a (s, a) pair
+                i.e.,  evaluating the reward for a (s, a) pair
             planner_module (PLANAlgorithm): module for generating planned action
-            based on specified reward function and dynamics function
+                based on specified reward function and dynamics function
             gradient_clipping (float): Norm length to clip gradients.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
 
         """
-        dynamics_state_spec = dynamics_module.get_state_specs()
+        dynamics_state_spec = dynamics_module.get_state_with_specs()
         train_state_spec = MbrlState(
             dynamics=dynamics_state_spec, reward=(), planner=())
 
@@ -112,18 +112,30 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         self._reward_module = reward_module
         self._planner_module = planner_module
         self._planner_module.set_reward_func(self._calc_step_reward)
-        self._planner_module.set_dynamics_func(self._predict_next_obs)
+        self._planner_module.set_dynamics_func(self._predict_next_step)
 
-    def _predict_next_obs(self, obs, action):
-        forward_pred = self._dynamics_module.predict_next_obs(obs, action)
-        return forward_pred
+    def _predict_next_step(self, time_step, state):
+        """Predict the next step (observation and state) based on the current
+            time step and state
+        Args:
+            time_step (ActionTimeStep): input data for next step prediction
+            state (Tensor): input state next step prediction
+        Returns:
+            next_time_step (ActionTimeStep): updated time_step with observation
+                predicted from the dynamics module
+            next_state: updated state from the dynamics module
+        """
+        dynamics_step = self._dynamics_module.predict(time_step, state)
+        next_time_step = time_step._replace(observation=dynamics_step.outputs)
+        next_state = dynamics_step.state
+        return next_time_step, next_state
 
     def _calc_step_reward(self, obs, action):
         reward = self._reward_module.compute_reward(obs, action)
         return reward
 
     def _predict_with_planning(self, time_step: ActionTimeStep, state):
-        action = self._planner_module.generate_plan(time_step.observation)
+        action = self._planner_module.generate_plan(time_step, state)
         dynamics_state = self._dynamics_module.update_state(
             time_step, state.dynamics)
 
