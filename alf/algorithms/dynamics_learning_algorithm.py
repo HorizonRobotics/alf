@@ -23,7 +23,8 @@ from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
 from alf.utils.encoding_network import EncodingNetwork
 from alf.data_structures import ActionTimeStep, namedtuple
 
-DynamicsState = namedtuple("DynamicsState", ["feature"], default_value=())
+DynamicsState = namedtuple(
+    "DynamicsState", ["feature", "network"], default_value=())
 DynamicsInfo = namedtuple("DynamicsInfo", ["loss"])
 
 
@@ -35,6 +36,7 @@ class DynamicsLearningAlgorithm(Algorithm):
     """
 
     def __init__(self,
+                 train_state_spec,
                  action_spec,
                  feature_spec,
                  hidden_size=256,
@@ -51,7 +53,7 @@ class DynamicsLearningAlgorithm(Algorithm):
                 encoded_action is an one-hot representation of the action.
                 For continuous action, encoded action is the original action.
         """
-        super().__init__(train_state_spec=feature_spec, name=name)
+        super().__init__(train_state_spec=train_state_spec, name=name)
 
         flat_action_spec = tf.nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"
@@ -157,7 +159,14 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
                 encoded_action is an one-hot representation of the action.
                 For continuous action, encoded action is the original action.
         """
+        if dynamics_network is not None:
+            dynamics_network_state_spec = dynamics_network.state_spec
+        else:
+            dynamics_network_state_spec = ()
+
         super().__init__(
+            train_state_spec=DynamicsState(
+                feature=feature_spec, network=dynamics_network_state_spec),
             action_spec=action_spec,
             feature_spec=feature_spec,
             hidden_size=hidden_size,
@@ -166,13 +175,15 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
 
     def predict(self, time_step: ActionTimeStep, state: DynamicsState):
         """Predict the next observation given the current time_step.
-                Note that when calling this function, the prev_action in
-                time_step is used for predicting the next step.
+                The next step is predicted using the prev_action from time_step
+                and the feature from state.
         """
         action = self._encode_action(time_step.prev_action)
-        forward_delta, _ = self._dynamics_network(
-            inputs=[time_step.observation, action])
-        forward_pred = time_step.observation + forward_delta
+        obs = state.feature
+        forward_delta, network_state = self._dynamics_network(
+            inputs=[obs, action], network_state=state.network)
+        forward_pred = obs + forward_delta
+        state = state._replace(feature=forward_pred, network=network_state)
         return AlgorithmStep(outputs=forward_pred, state=state, info=())
 
     def update_state(self, time_step: ActionTimeStep, state: DynamicsState):
@@ -190,13 +201,6 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         feature = time_step.observation
         return state._replace(feature=feature)
 
-    def get_state_with_specs(self):
-        """Get the state specs of the current module.
-        This function is mainly used for constructing the nested state specs
-        by the upper-level module.
-        """
-        return DynamicsState(feature=self.train_state_spec)
-
     def train_step(self, time_step: ActionTimeStep, state: DynamicsState):
         """
         Args:
@@ -209,13 +213,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
                 info (DynamicsInfo):
         """
         feature = time_step.observation
-        prev_action = time_step.prev_action
-
-        prev_feature = state.feature
-
-        dynamics_step = self.predict(
-            time_step._replace(
-                observation=prev_feature, prev_action=prev_action), state)
+        dynamics_step = self.predict(time_step, state)
         forward_pred = dynamics_step.outputs
         forward_loss = 0.5 * tf.reduce_mean(
             tf.square(feature - forward_pred), axis=-1)

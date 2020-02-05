@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-class Optimizer:
+class Optimizer(object):
     def __init__(self, *args, **kwargs):
         pass
 

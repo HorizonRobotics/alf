@@ -79,9 +79,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
 
         """
-        dynamics_state_spec = dynamics_module.get_state_with_specs()
         train_state_spec = MbrlState(
-            dynamics=dynamics_state_spec, reward=(), planner=())
+            dynamics=dynamics_module.train_state_spec, reward=(), planner=())
 
         super().__init__(
             feature_spec,
@@ -119,15 +118,16 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             time step and state
         Args:
             time_step (ActionTimeStep): input data for next step prediction
-            state: input state next step prediction
+            state (MbrlState): input state next step prediction
         Returns:
             next_time_step (ActionTimeStep): updated time_step with observation
                 predicted from the dynamics module
-            next_state: updated state from the dynamics module
+            next_state (MbrlState): updated state from the dynamics module
         """
-        dynamics_step = self._dynamics_module.predict(time_step, state)
+        dynamics_step = self._dynamics_module.predict(time_step,
+                                                      state.dynamics)
         next_time_step = time_step._replace(observation=dynamics_step.outputs)
-        next_state = dynamics_step.state
+        next_state = state._replace(dynamics=dynamics_step.state)
         return next_time_step, next_state
 
     def _calc_step_reward(self, obs, action):

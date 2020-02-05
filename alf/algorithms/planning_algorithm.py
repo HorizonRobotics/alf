@@ -174,8 +174,8 @@ class RandomShootingAlgorithm(PlanAlgorithm):
     def train_step(self, time_step: ActionTimeStep, state):
         """
         Args:
-            time_step (ActionTimeStep): input data for dynamics learning
-            state: state for dynamics learning (previous observation)
+            time_step (ActionTimeStep): input data for planning
+            state: state for planning (previous observation)
         Returns:
             TrainStep:
                 outputs: empty tuple ()
@@ -202,7 +202,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         """
         Args:
             time_step (ActionTimeStep): input data for next step prediction
-            state: input state next step prediction
+            state (MbrlState): input state for next step prediction
             ac_seqs: action_sequence (tf.Tensor) of shape [batch_size,
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
@@ -218,12 +218,17 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         ac_seqs = tf.reshape(
             tf.transpose(ac_seqs, [2, 0, 1, 3]),
             [self._planning_horizon, -1, self._num_actions])
-        init_obs = tf.tile(obs, [self._population_size, 1])
+        init_obs = tf.tile(
+            tf.expand_dims(obs, 1),
+            [1, self._population_size] + [1] * len(self._feature_spec.shape))
+        init_obs = tf.reshape(init_obs,
+                              [-1] + self._feature_spec.shape.as_list())
         obs = init_obs
         cost = 0
+        state = state._replace(dynamics=state.dynamics._replace(feature=obs))
         for i in range(ac_seqs.shape[0]):
             action = ac_seqs[i]
-            time_step = time_step._replace(observation=obs, prev_action=action)
+            time_step = time_step._replace(prev_action=action)
             time_step, state = self._dynamics_func(time_step, state)
             next_obs = time_step.observation
             # Note: currently using (next_obs, action), might need to
