@@ -18,12 +18,10 @@ import tensorflow as tf
 from alf.networks import critic_rnn_network
 from tf_agents.specs import tensor_spec
 from tf_agents.trajectories import time_step as ts
-from tensorflow.python.framework import test_util
 
 
 class CriticRnnNetworkTest(tf.test.TestCase, parameterized.TestCase):
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_build(self, outer_dims):
         observation_spec = tensor_spec.BoundedTensorSpec((8, 8, 3), tf.float32,
                                                          0, 1)

@@ -22,12 +22,10 @@ from alf.networks import critic_network
 from tf_agents.specs import tensor_spec
 from tf_agents.trajectories import time_step as ts
 from tf_agents.networks import sequential_layer
-from tensorflow.python.framework import test_util
 
 
 class CriticNetworkTest(tf.test.TestCase, parameterized.TestCase):
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_build(self, outer_dims):
         num_obs_dims = 5
         num_actions_dims = 2
@@ -43,7 +41,6 @@ class CriticNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertLen(critic_net.trainable_variables, 2)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_add_obs_conv_layers(self, outer_dims):
         num_obs_dims = 5
         num_actions_dims = 2
@@ -62,7 +59,6 @@ class CriticNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertLen(critic_net.trainable_variables, 4)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_add_obs_fc_layers(self, outer_dims):
         num_obs_dims = 5
         num_actions_dims = 2
@@ -80,7 +76,6 @@ class CriticNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertLen(critic_net.trainable_variables, 6)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_add_action_fc_layers(self, outer_dims):
         num_obs_dims = 5
         num_actions_dims = 2
@@ -97,7 +92,6 @@ class CriticNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertLen(critic_net.trainable_variables, 4)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_add_joint_fc_layers(self, outer_dims):
         num_obs_dims = 5
         num_actions_dims = 2
@@ -114,7 +108,6 @@ class CriticNetworkTest(tf.test.TestCase, parameterized.TestCase):
         self.assertLen(critic_net.trainable_variables, 4)
 
     @parameterized.parameters({'outer_dims': (3, )}, {'outer_dims': (3, 5)})
-    @test_util.run_in_graph_and_eager_modes()
     def test_handle_preprocessing_layers(self, outer_dims):
         num_actions_dims = 2
 
