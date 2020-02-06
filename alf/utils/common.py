@@ -25,6 +25,7 @@ from typing import Callable
 from absl import flags
 from absl import logging
 import gin
+import time
 import random
 import numpy as np
 import tensorflow as tf
@@ -1071,6 +1072,9 @@ def set_random_seed(seed, eager_mode):
                 "to have deterministic results!")
 
         os.environ["TF_DETERMINISTIC_OPS"] = str(1)
-        random.seed(seed)
-        np.random.seed(seed)
-        tf.random.set_seed(seed)
+    else:
+        seed = os.getpid() + int(time.time())
+
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
