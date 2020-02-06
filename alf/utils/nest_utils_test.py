@@ -46,6 +46,26 @@ class TestListNest(tf.test.TestCase):
         self.assertEqual(type(new_list_nest[4]), ListWrapper)
 
 
+class TestFindField(tf.test.TestCase):
+    def test_find_field(self):
+        nest = NTuple(a=1, b=NTuple(a=NTuple(a=2, b=3), b=2))
+        ret = nest_utils.find_field(nest, 'a')
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(ret[0], nest.a)
+        self.assertEqual(ret[1], nest.b.a)
+
+        nest = (1, NTuple(a=NTuple(a=2, b=3), b=2))
+        ret = nest_utils.find_field(nest, 'a')
+        self.assertEqual(len(ret), 1)
+        self.assertEqual(ret[0], nest[1].a)
+
+        nest = NTuple(a=1, b=[NTuple(a=2, b=3), 2])
+        ret = nest_utils.find_field(nest, 'a')
+        self.assertEqual(len(ret), 2)
+        self.assertEqual(ret[0], nest.a)
+        self.assertEqual(ret[1], nest.b[0].a)
+
+
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     tf.test.main()

@@ -233,7 +233,9 @@ class Agent(OnPolicyAlgorithm):
             new_state = new_state._replace(icm=icm_step.state)
 
         rl_step = self._rl_algorithm.train_step(
-            exp._replace(observation=observation), state.rl)
+            exp._replace(
+                observation=observation, rollout_info=exp.rollout_info.rl),
+            state.rl)
 
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
@@ -294,8 +296,16 @@ class Agent(OnPolicyAlgorithm):
                                              new_loss_info.scalar_loss),
                 extra=loss_info.extra._replace(**{name: new_loss_info.extra}))
 
+        def _make_training_info(training_info, name):
+            if training_info.rollout_info == ():
+                rollout_info = ()
+            else:
+                rollout_info = getattr(training_info.rollout_info, name)
+            info = getattr(training_info.info, name)
+            return training_info._replace(info=info, rollout_info=rollout_info)
+
         rl_loss_info = self._rl_algorithm.calc_loss(
-            training_info._replace(info=training_info.info.rl))
+            _make_training_info(training_info, 'rl'))
         loss_info = rl_loss_info._replace(
             extra=AgentLossInfo(rl=rl_loss_info.extra))
         loss_info = _update_loss(loss_info, training_info, 'icm', self._icm)
@@ -312,5 +322,7 @@ class Agent(OnPolicyAlgorithm):
 
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)
-        return self._rl_algorithm.preprocess_experience(
+        new_exp = self._rl_algorithm.preprocess_experience(
             exp._replace(reward=reward, rollout_info=exp.rollout_info.rl))
+        return new_exp._replace(
+            rollout_info=exp.rollout_info._replace(rl=new_exp.rollout_info))

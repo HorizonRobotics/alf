@@ -194,9 +194,9 @@ class OnPolicyDriver(policy_driver.PolicyDriver):
 
         del tape
 
-        self._algorithm.training_summary(training_info, loss_info,
-                                         grads_and_vars)
-        self._algorithm.metric_summary()
+        self._algorithm.summarize_train(training_info, loss_info,
+                                        grads_and_vars)
+        self._algorithm.summarize_metrics()
 
         common.get_global_counter().assign_add(1)
 

@@ -54,18 +54,20 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
             env=self._envs[0], algorithm=self._algorithm)
 
     def _train_iter(self, iter_num, policy_state, time_step):
-        max_num_steps = self._unroll_length * self._envs[0].batch_size
+        if not self._config.update_counter_every_mini_batch:
+            common.get_global_counter().assign_add(1)
+        unroll_steps = self._unroll_length * self._envs[0].batch_size
+        max_num_steps = unroll_steps
         if iter_num == 0 and self._initial_collect_steps != 0:
             max_num_steps = self._initial_collect_steps
         with record_time("time/driver_run"):
-            time_step, policy_state = self._driver.run(
-                max_num_steps=max_num_steps,
-                time_step=time_step,
-                policy_state=policy_state)
+            for _ in range((max_num_steps + unroll_steps - 1) // unroll_steps):
+                time_step, policy_state = self._driver.run(
+                    max_num_steps=unroll_steps,
+                    time_step=time_step,
+                    policy_state=policy_state)
         with record_time("time/train"):
             # `train_steps` might be different from `max_num_steps`!
-            if not self._config.update_counter_every_mini_batch:
-                common.get_global_counter().assign_add(1)
             train_steps = self._algorithm.train(
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
@@ -103,6 +105,8 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         if not self._driver_started:
             self._driver.start()
             self._driver_started = True
+        if not self._config.update_counter_every_mini_batch:
+            common.get_global_counter().assign_add(1)
         with record_time("time/driver_run"):
             if iter_num == 0 and self._initial_collect_steps != 0:
                 steps = 0
@@ -111,8 +115,6 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
             else:
                 self._driver.run_async()
         with record_time("time/train"):
-            if not self._config.update_counter_every_mini_batch:
-                common.get_global_counter().assign_add(1)
             # `train_steps` might be different from `steps`!
             train_steps = self._algorithm.train(
                 num_updates=self._num_updates_per_train_step,
