@@ -264,9 +264,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 step_type=exp.step_type,
                 network_state=state.critic2)
 
-            assert isinstance(
-                action_distribution, tfp.distributions.Categorical), \
-                "Only `tfp.distributions.Categorical` was supported, received:" + str(type(action_distribution))
+            assert isinstance(action_distribution,
+                              tfp.distributions.Categorical), (
+                                  "Only `tfp.distributions.Categorical` " +
+                                  "was supported, received:" + str(
+                                      type(action_distribution)))
 
             action_probs = action_distribution.probs
             log_action_probs = tf.math.log(action_probs + 1e-8)

@@ -25,6 +25,8 @@ from typing import Callable
 from absl import flags
 from absl import logging
 import gin
+import time
+import random
 import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
@@ -1058,3 +1060,21 @@ def function(func=None, **kwargs):
     if func is not None:
         return decorate(func)
     return decorate
+
+
+def set_random_seed(seed, eager_mode):
+    """Set a seed for deterministic behaviors."""
+    if seed is not None:
+        if not tf.config.list_physical_devices('GPU'):
+            assert eager_mode, (
+                "CPU mode: because you have specified a fixed " +
+                "random seed, make sure to turn on eager mode " +
+                "to have deterministic results!")
+
+        os.environ["TF_DETERMINISTIC_OPS"] = str(1)
+    else:
+        seed = os.getpid() + int(time.time())
+
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)

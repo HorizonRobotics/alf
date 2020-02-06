@@ -43,7 +43,7 @@ flags.DEFINE_string(
     "(e.g. 'ckpt-12800`). If None, the latest checkpoint under train_dir will "
     "be used.")
 flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
-flags.DEFINE_integer('random_seed', 0, "random seed")
+flags.DEFINE_integer('random_seed', None, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
 flags.DEFINE_float('sleep_time_per_step', 0.01,
                    "sleep so many seconds for each"
@@ -59,11 +59,12 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
+    common.set_random_seed(FLAGS.random_seed, not FLAGS.use_tf_functions)
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     algorithm_ctor = gin.query_parameter(
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
-    env = create_environment(nonparallel=True)
+    env = create_environment(nonparallel=True, seed=FLAGS.random_seed)
     env.reset()
     common.set_global_env(env)
     algorithm = algorithm_ctor(
@@ -74,7 +75,6 @@ def main(_):
         algorithm,
         checkpoint_name=FLAGS.checkpoint_name,
         epsilon_greedy=FLAGS.epsilon_greedy,
-        random_seed=FLAGS.random_seed,
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
         record_file=FLAGS.record_file,

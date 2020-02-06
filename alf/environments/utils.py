@@ -137,7 +137,8 @@ class UnwrappedEnvChecker(object):
 def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
                        num_parallel_environments=30,
-                       nonparallel=False):
+                       nonparallel=False,
+                       seed=None):
     """Create environment.
 
     Args:
@@ -157,16 +158,25 @@ def create_environment(env_name='CartPole-v0',
         #   run in the same thread which the env is created in for some simulation
         #   environments such as social_bot(gazebo)
         py_env = ThreadPyEnvironment(lambda: env_load_fn(env_name))
-        py_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
+        if seed is None:
+            py_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
+        else:
+            py_env.seed(seed)
     else:
         py_env = parallel_py_environment.ParallelPyEnvironment(
             [lambda: env_load_fn(env_name)] * num_parallel_environments)
 
-        py_env.seed([
-            np.random.randint(0,
-                              np.iinfo(np.int32).max)
-            for i in range(num_parallel_environments)
-        ])
+        if seed is None:
+            py_env.seed([
+                np.random.randint(0,
+                                  np.iinfo(np.int32).max)
+                for i in range(num_parallel_environments)
+            ])
+        else:
+            # We want deterministic behaviors for each environment, but different
+            # behaviors among different individual environments (to increase the
+            # diversity of environment data)!
+            py_env.seed([seed + i for i in range(num_parallel_environments)])
 
     return tf_py_environment.TFPyEnvironment(py_env)
 

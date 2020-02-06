@@ -37,8 +37,11 @@ def run_cmd(cmd, cwd=None):
     """
     logging.info("Running %s", " ".join(cmd))
 
+    new_env = os.environ.copy()
+    new_env["CUDA_VISIBLE_DEVICES"] = ''  # force to use CPU for testing
+
     process = subprocess.Popen(
-        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd)
+        cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd, env=new_env)
 
     process.communicate()
 
@@ -224,7 +227,7 @@ class TrainPlayTest(tf.test.TestCase):
               extra_train_params=None,
               test_play=True,
               extra_play_params=None,
-              test_perf=False,
+              test_perf=True,
               test_perf_func=None):
         """Test train, play and check performance
 
@@ -272,7 +275,8 @@ class TrainPlayTest(tf.test.TestCase):
             'python3', '-m', 'alf.bin.train',
             '--root_dir=%s' % root_dir,
             '--gin_file=%s' % gin_file,
-            '--gin_param=TrainerConfig.random_seed=0'
+            '--gin_param=TrainerConfig.random_seed=1',
+            '--gin_param=TrainerConfig.use_tf_functions=False'
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
@@ -318,8 +322,8 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ac_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-2:]), 198)
-            self.assertGreater(np.mean(lengths[-2:]), 198)
+            self.assertGreater(returns[-1], 195)
+            self.assertGreater(lengths[-1], 195)
 
         self._test(gin_file='ac_cart_pole.gin', test_perf_func=_test_func)
 
@@ -331,7 +335,7 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-5:]), -200)
+            self.assertGreater(returns[-1], -200)
 
         self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
 
@@ -383,8 +387,7 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_ppo_cart_pole(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-2:]), 198)
-            self.assertGreater(np.mean(lengths[-2:]), 198)
+            self.assertGreater(returns[-1], 195)
 
         self._test(gin_file='ppo_cart_pole.gin', test_perf_func=_test_func)
 
@@ -430,7 +433,7 @@ class TrainPlayTest(tf.test.TestCase):
 
     def test_sac_pendulum(self):
         def _test_func(returns, lengths):
-            self.assertGreater(np.mean(returns[-5:]), -200)
+            self.assertGreater(returns[-1], -200)
 
         self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
 

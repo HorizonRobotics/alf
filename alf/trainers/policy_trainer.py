@@ -18,9 +18,7 @@ import time
 import abc
 from absl import logging
 import gin.tf
-import random
 import tensorflow as tf
-import numpy as np
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 from tf_agents.eval import metric_utils
@@ -247,14 +245,11 @@ class Trainer(object):
 
     def initialize(self):
         """Initializes the Trainer."""
-        if self._random_seed is not None:
-            random.seed(self._random_seed)
-            np.random.seed(self._random_seed)
-            tf.random.set_seed(self._random_seed)
+        common.set_random_seed(self._random_seed, not self._use_tf_functions)
 
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
-        env = self._create_environment()
+        env = self._create_environment(random_seed=self._random_seed)
         common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(
@@ -271,15 +266,22 @@ class Trainer(object):
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
-        unwrapped_env = self._create_environment(nonparallel=True)
+        # DO NOT register this env in self._envs because AsyncOffPolicyTrainer
+        # will use all self._envs to init AsyncOffPolicyDriver!
+        self._unwrapped_env = self._create_environment(
+            nonparallel=True, random_seed=self._random_seed, register=False)
         if self._evaluate:
-            self._eval_env = unwrapped_env
+            self._eval_env = self._unwrapped_env
 
     @gin.configurable('alf.trainers.Trainer._create_environment')
-    def _create_environment(self, nonparallel=False):
+    def _create_environment(self,
+                            nonparallel=False,
+                            random_seed=None,
+                            register=True):
         """Create and register an env."""
-        env = create_environment(nonparallel=nonparallel)
-        self._register_env(env)
+        env = create_environment(nonparallel=nonparallel, seed=random_seed)
+        if register:
+            self._register_env(env)
         return env
 
     def _register_env(self, env):
@@ -290,6 +292,7 @@ class Trainer(object):
         """Close all envs to release their resources."""
         for env in self._envs:
             env.pyenv.close()
+        self._unwrapped_env.pyenv.close()
 
     @abc.abstractmethod
     def _init_driver(self):
@@ -421,7 +424,6 @@ def play(root_dir,
          algorithm,
          checkpoint_name=None,
          epsilon_greedy=0.1,
-         random_seed=None,
          num_episodes=10,
          sleep_time_per_step=0.01,
          record_file=None,
@@ -445,7 +447,6 @@ def play(root_dir,
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout.
-        random_seed (None|int): random seed, a random seed is used if None
         num_episodes (int): number of episodes to play
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
@@ -454,11 +455,6 @@ def play(root_dir,
     """
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
-
-    if random_seed is not None:
-        random.seed(random_seed)
-        np.random.seed(random_seed)
-        tf.random.set_seed(random_seed)
 
     global_step = get_global_counter()
 
