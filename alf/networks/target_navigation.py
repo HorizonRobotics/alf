@@ -31,34 +31,6 @@ from alf.utils import common
 from alf.layers import get_identity_layer, get_first_element_layer
 
 
-class StateLanguageAttentionCombiner(tf.keras.layers.Layer):
-    def __init__(self, network_to_debug=None, **kwargs):
-        super().__init__(**kwargs)
-        self._network_to_debug = network_to_debug
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({'network_to_debug': self._network_to_debug})
-        return config
-
-    def call(self, inputs):
-        assert isinstance(inputs, list)
-        lang = inputs[0]
-        states = inputs[1]
-        (b, d) = states.shape
-        lang = tf.reshape(lang, (b, d, d))
-        states = tf.reshape(states, (b, d, 1))
-        outputs = tf.reshape(tf.matmul(lang, states), (b, d))
-
-        with tf.init_scope():
-            if self.name == 'actor' and b > 1:
-                print(
-                    'attention_combiner gets lang: {}, states: {}, and outputs {} tensor'
-                    .format(inputs[0].shape, inputs[1].shape, outputs.shape))
-
-        return outputs
-
-
 # followed https://www.tensorflow.org/guide/keras/custom_layers_and_models
 class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
     def __init__(self,
@@ -164,7 +136,7 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                        (b, h * w, 2)) / w  # divide by w to normalize input pos
 
         # value: (b, h*w, 2 * c/2)
-        pos_embeddings = tf.tile(p, multiples=[1, 1, int(c / 2)])
+        pos_embeddings = tf.tile(p, multiples=[1, 1, c // 2])
         # inner product (Luong style) attention
 
         # c will be the number of embedding dimensions for the sentence input,
@@ -264,13 +236,11 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                     attn_img = tensor_to_image(attn[i].numpy(), img)
                     if self.fig is None:
                         plt.interactive(True)
-                        _, axs = plt.subplots(num_rows,
-                                              int(n_heads / num_rows))
+                        _, axs = plt.subplots(num_rows, n_heads // num_rows)
                         self.fig = axs
                         plt.show()
                     if num_rows > 1:
-                        self.fig[i % num_rows, int(i /
-                                                   num_rows)].imshow(attn_img)
+                        self.fig[i % num_rows, i // num_rows].imshow(attn_img)
                     else:
                         self.fig.imshow(attn_img)
                 # plt.pause(.00001)
@@ -305,9 +275,109 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         return tf.keras.layers.Concatenate()(outputs)
 
 
+class StateLanguageAttentionCombiner(tf.keras.layers.Layer):
+    def __init__(self,
+                 network_to_debug=None,
+                 use_attention=False,
+                 num_obj_dims=2,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self._network_to_debug = network_to_debug
+        self._use_attention = use_attention
+        self._num_obj_dims = num_obj_dims
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'network_to_debug': self._network_to_debug,
+            'use_attention': self._use_attention,
+            'num_obj_dims': self._num_obj_dims,
+        })
+        return config
+
+    def build(self, input_shape):
+        if self._use_attention:
+            assert isinstance(input_shape, list)
+            query_shape = input_shape[0]
+            states_shape = input_shape[1]
+            (b, c) = query_shape
+            (b, d) = states_shape
+            n_objs = d // (1 + self._num_obj_dims)
+            if self._num_obj_dims == 2:
+                skip = 3  # first 3 objects are fake, encoding agent internal states
+            else:  # == 3:
+                skip = 2  # first 2 are internal states
+            n_objs_real = n_objs - skip
+            self._embedding = tf.keras.layers.Embedding(
+                input_dim=n_objs,  # vocab_size
+                output_dim=c)
+            self._embedding.build((b, n_objs_real))
+            self._attention = tf.keras.layers.Attention(use_scale=True)
+            key_emb_shape = self._embedding.compute_output_shape((b,
+                                                                  n_objs_real))
+            value_shape = (b, n_objs_real, self._num_obj_dims)
+            query_emb_shape = (b, 1, c)
+            self._attention.build(
+                input_shape=[query_emb_shape, value_shape, key_emb_shape])
+        super().build(input_shape)
+
+    def call(self, inputs):
+        assert isinstance(inputs, list)
+        lang = inputs[0]
+        states = inputs[1]
+        (b, d) = states.shape
+        n_objs = d // (1 + self._num_obj_dims)
+        states = tf.reshape(states, (b, n_objs, (1 + self._num_obj_dims)))
+        if self._num_obj_dims == 2:
+            skip = 3  # first 3 objects are fake, encoding agent internal states
+        else:  # == 3:
+            skip = 2  # first 2 objects are fake, encoding agent internal states
+        keys = states[:, skip:, 0]  # object_ids
+        key_embeddings = self._embedding(keys)
+        values = states[:, skip:, 1:]  # skip fake objects and object_ids
+        if self._use_attention:
+            # Perform attention to extract coordinates based on self._num_obj_dims
+            query_embeddings = tf.reshape(lang, (b, 1, -1))
+
+            pos_attention = self._attention(
+                [query_embeddings, values, key_embeddings])
+
+            outputs = [
+                lang,  # flattened query_embeddings
+                tf.reshape(pos_attention, (b, -1)),
+                tf.reshape(states[:, :, 1:], (b, -1))
+            ]
+            with tf.init_scope():
+                if self.name == 'actor' and b > 1:
+                    debug_str = (
+                        'attention_combiner gets lang: {}, states: {}, ' +
+                        'and outputs concat of {} tensors:\n').format(
+                            inputs[0].shape, inputs[1].shape, len(outputs))
+                    for t in outputs:
+                        debug_str += " {}".format(t.shape)
+                    print(debug_str)
+                    print('key_embed: {}, query_embed: {}, values: {}'.format(
+                        key_embeddings.shape, query_embeddings.shape,
+                        values.shape))
+            return tf.keras.layers.Concatenate()(outputs)
+        else:  # use transformation
+            lang = tf.reshape(lang, (b, d, d))
+            states = tf.reshape(states, (b, d, 1))
+            outputs = tf.reshape(tf.matmul(lang, states), (b, d))
+            with tf.init_scope():
+                if self.name == 'actor' and b > 1:
+                    print(
+                        'attention_combiner gets lang: {}, states: {}, and outputs {} tensor'
+                        .format(inputs[0].shape, inputs[1].shape,
+                                outputs.shape))
+            return outputs
+
+
 @gin.configurable
 def get_ac_networks(conv_layer_params=None,
                     attention=False,
+                    has_obj_id=False,
+                    angle_limit=0,
                     activation_fn=tf.keras.activations.softsign,
                     kernel_initializer=tf.keras.initializers.GlorotUniform(),
                     num_embedding_dims=None,
@@ -329,6 +399,10 @@ def get_ac_networks(conv_layer_params=None,
             (filters, kernel_size, stride).
         attention (bool): if true, use attention after conv layer.
             Assumes that sentence is part of the input dictionary.
+        has_obj_id (bool): whether input has object id for id embedding.
+        angle_limit (int): 0 if not restricting agent's viewing angle, and input
+            coordinates per object will be 2-dimensional, otherwise, if positive
+            inputs will be 3-dim per object.
         num_embedding_dims (int): optional number of dimensions of the
             vocabulary embedding space.
         fc_layer_params (list[int]): optional fully_connected parameters, where
@@ -355,8 +429,11 @@ def get_ac_networks(conv_layer_params=None,
         if not state_attn:
             num_embedding_dims = conv_layer_params[-1][0]
         else:
-            d = observation_spec['states'].shape[-1]
-            num_embedding_dims = d * d
+            if has_obj_id:  # objects ordered left to right, indexed by id
+                num_embedding_dims = observation_spec['sentence'].shape[-1]
+            else:  # objects have fixed positions in the input list
+                d = observation_spec['states'].shape[-1]
+                num_embedding_dims = d * d
 
     vocab_size = common.get_vocab_size()
     if vocab_size:
@@ -417,8 +494,14 @@ def get_ac_networks(conv_layer_params=None,
 
     if attention:
         if state_attn:
+            num_obj_dims = 2
+            if angle_limit > 0:
+                num_obj_dims = 3
             attention_combiner = StateLanguageAttentionCombiner(
-                name=name, network_to_debug=network_to_debug)
+                name=name,
+                network_to_debug=network_to_debug,
+                use_attention=has_obj_id,
+                num_obj_dims=num_obj_dims)
         else:
             attention_combiner = ImageLanguageAttentionCombiner(
                 vocab_size=vocab_size,
