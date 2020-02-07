@@ -19,6 +19,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [RND](alf/algorithms/rnd_algorithm.py): Burda et al "Exploration by Random Network Distillation" [arXiv:1810.12894](https://arxiv.org/abs/1810.12894)
 * [MINE](alf/algorithms/mi_estimator.py): Belghazi et al "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)
 * [DIAYN](alf/algorithms/diayn_algorithm.py): Eysenbach et al "Diversity is All You Need: Learning Diverse Skills without a Reward Function" [arXiv:1802.06070](https://arxiv.org/abs/1802.06070)
+* [MISC](alf/algorithms/misc_algorithm.py): Zhao et al "Mutual Information-based State-Control for Intrinsically Motivated Reinforcement Learning" [arXiv:2002.01963](https://arxiv.org/abs/2002.01963)
 
 ## Installation
 

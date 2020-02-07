@@ -38,9 +38,10 @@ class MISCAlgorithm(Algorithm):
     The paper is currently under review in a conference.
 
     This algorithm generates the intrinsic reward based on the mutual information
-    estimation between the states of interests and the context states.
+    estimation between the goal states and the controllable states.
 
-    See Zhao et al "Self-Supervised State-Control through Intrinsic Mutual Information Rewards"
+    See Zhao et al "Mutual Information-based State-Control for Intrinsically Motivated Reinforcement Learning",
+    https://arxiv.org/abs/2002.01963
     """
 
     def __init__(self,
