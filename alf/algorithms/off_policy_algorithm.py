@@ -198,7 +198,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
                             self.summarize_train(training_info, loss_info,
                                                  grads_and_vars)
 
-        self.summarize_metrics()
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 
