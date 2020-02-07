@@ -210,9 +210,9 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         """
         data_population = tf.tile(
             tf.expand_dims(data, 1),
-            [1, self._population_size] + [1] * len(data.shape[-1:]))
+            [1, self._population_size] + [1] * len(data.shape[1:]))
         data_population = tf.reshape(data_population,
-                                     [-1] + data.shape[-1:].as_list())
+                                     [-1] + data.shape[1:].as_list())
         return data_population
 
     def _calc_cost_for_action_sequence(self, time_step: ActionTimeStep, state,
