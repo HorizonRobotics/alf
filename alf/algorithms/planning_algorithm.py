@@ -197,6 +197,24 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         action = tf.reshape(action, [time_step.observation.shape[0], -1])
         return action
 
+    def _expand_to_population(self, data):
+        """Expand the input tensor to a population of replications
+        Args:
+            data (tf.Tensor): input data with shape [batch_size, ...]
+        Returns:
+            data_population (tf.Tensor) with shape
+                                    [batch_size * self._population_size, ...].
+            For example data tensor [[a, b], [c, d]] and a population_size of 2,
+            we have the following data_population tensor as output
+                                    [[a, b], [a, b], [c, d], [c, d]]
+        """
+        data_population = tf.tile(
+            tf.expand_dims(data, 1),
+            [1, self._population_size] + [1] * len(data.shape[-1:]))
+        data_population = tf.reshape(data_population,
+                                     [-1] + data.shape[-1:].as_list())
+        return data_population
+
     def _calc_cost_for_action_sequence(self, time_step: ActionTimeStep, state,
                                        ac_seqs):
         """
@@ -218,14 +236,13 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         ac_seqs = tf.reshape(
             tf.transpose(ac_seqs, [2, 0, 1, 3]),
             [self._planning_horizon, -1, self._num_actions])
-        init_obs = tf.tile(
-            tf.expand_dims(obs, 1),
-            [1, self._population_size] + [1] * len(self._feature_spec.shape))
-        init_obs = tf.reshape(init_obs,
-                              [-1] + self._feature_spec.shape.as_list())
+
+        state = state._replace(dynamics=state.dynamics._replace(feature=obs))
+        init_obs = self._expand_to_population(obs)
+        state = tf.nest.map_structure(self._expand_to_population, state)
+
         obs = init_obs
         cost = 0
-        state = state._replace(dynamics=state.dynamics._replace(feature=obs))
         for i in range(ac_seqs.shape[0]):
             action = ac_seqs[i]
             time_step = time_step._replace(prev_action=action)
