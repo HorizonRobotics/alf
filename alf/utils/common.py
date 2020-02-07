@@ -1078,3 +1078,18 @@ def set_random_seed(seed, eager_mode):
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
+
+
+@gin.configurable
+def generate_spec(shape, dtype="float32"):
+    """Generate a tensor spec to be used by a gin file.
+
+    Args:
+        shape (tuple): the shape of the spec
+        dtype (str): the dtype of the spec; a string that will be converted to
+            tf.dtypes.DType
+
+    Returns:
+        spec (tf.TensorSpec):
+    """
+    return tf.TensorSpec(shape=shape, dtype=tf.dtypes.as_dtype(dtype))
