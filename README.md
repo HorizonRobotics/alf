@@ -101,6 +101,6 @@ python -m alf.bin.play --root_dir=LOG_DIR
 
 
 ### MISC
-* [Playground with a red ball](alf/examples/misc_playground.gin) and [with two balls, a red ball and a blue ball](alf/examples/misc_playground_two_balls.gin). Learning control behaviors without external reward.
+* [Playground with a red ball](alf/examples/misc_playground.gin) and [with two balls, a red ball and a blue ball](alf/examples/misc_playground_two_balls.gin).  The agent learns to interact with the objects via the MI-based internal drive.
 
   <img src="alf/examples/misc_playground.gif" width = "300" alt="Playground with a red ball"/> <img src="alf/examples/misc_playground_two_balls.gif" width = "300" alt="Playground with two balls"/>
