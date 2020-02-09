@@ -98,3 +98,9 @@ python -m alf.bin.play --root_dir=LOG_DIR
   `DeepmindLab` is required,  Follow the instruction at [DeepmindLab](https://github.com/deepmind/lab/blob/master/python/pip_package/README.md) to install the environment.
 
   <img src="alf/examples/merlin_dmlab_collect_good_objects.png" width = "300" height ="200" alt="room-collect-good-objects-training-curve"/> <img src="alf/examples/merlin_dmlab_collect_good_objects.gif" width = "300" height ="200" alt="room-collect-good-objects"/>
+
+
+### MISC
+* [Playground with a red ball](alf/examples/misc_playground.gin) and [with two balls, a red ball and a blue ball](alf/examples/misc_playground_two_balls.gin).  The agent learns to interact with the objects via the MI-based internal drive.
+
+  <img src="alf/examples/misc_playground.gif" width = "300" alt="Playground with a red ball"/> <img src="alf/examples/misc_playground_two_balls.gif" width = "300" alt="Playground with two balls"/>
