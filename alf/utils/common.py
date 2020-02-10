@@ -1078,3 +1078,4 @@ def set_random_seed(seed, eager_mode):
     random.seed(seed)
     np.random.seed(seed)
     tf.random.set_seed(seed)
+    return seed

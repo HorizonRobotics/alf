@@ -59,12 +59,13 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
-    common.set_random_seed(FLAGS.random_seed, not FLAGS.use_tf_functions)
+    seed = common.set_random_seed(FLAGS.random_seed,
+                                  not FLAGS.use_tf_functions)
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     algorithm_ctor = gin.query_parameter(
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
-    env = create_environment(nonparallel=True, seed=FLAGS.random_seed)
+    env = create_environment(nonparallel=True, seed=seed)
     env.reset()
     common.set_global_env(env)
     algorithm = algorithm_ctor(
