@@ -89,7 +89,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             step_type=time_step_spec.step_type,
             reward=time_step_spec.reward,
             discount=time_step_spec.discount,
-            info=algorithm.rollout_info_spec,
+            rollout_info=algorithm.rollout_info_spec,
             env_id=time_step_spec.env_id)
 
     def _run(self, max_num_steps, time_step, policy_state):
@@ -112,8 +112,8 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         training_info_ta = tf.nest.map_structure(
             create_ta,
             self._training_info_spec._replace(
-                info=nest_utils.to_distribution_param_spec(
-                    self._training_info_spec.info)))
+                rollout_info=nest_utils.to_distribution_param_spec(
+                    self._training_info_spec.rollout_info)))
 
         [counter, time_step, policy_state, training_info_ta] = tf.while_loop(
             cond=lambda *_: True,
@@ -145,7 +145,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             reward=transformed_time_step.reward,
             discount=transformed_time_step.discount,
             step_type=transformed_time_step.step_type,
-            info=nest_utils.distributions_to_params(policy_step.info),
+            rollout_info=nest_utils.distributions_to_params(policy_step.info),
             env_id=transformed_time_step.env_id)
 
         training_info_ta = tf.nest.map_structure(
