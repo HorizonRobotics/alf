@@ -36,6 +36,7 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
     def __init__(self,
                  vocab_size,
                  n_heads=1,
+                 gft=0,
                  network_to_debug=None,
                  output_attention_max=False,
                  use_attn_residual=False,
@@ -43,6 +44,7 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         super().__init__(**kwargs)
         self._vocab_size = vocab_size
         self._n_heads = n_heads
+        self._gft = gft
         self._network_to_debug = network_to_debug
         self._output_attention_max = output_attention_max
         self._use_attn_residual = use_attn_residual
@@ -59,12 +61,18 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         self._embedding = tf.keras.layers.Embedding(self._vocab_size, c)
         self._embedding.build(input_shape[1])
 
-        self._attention = tf.keras.layers.Attention(use_scale=True)
-        query_emb_shape = self._embedding.compute_output_shape(query_shape)
-        key_value_shape = (b, h * w, c + c)
-        key_emb_shape = (b, h * w, c)
-        self._attention.build(
-            input_shape=[query_emb_shape, key_value_shape, key_emb_shape])
+        if self._gft:
+            self.t_layers = [
+                tf.keras.layers.Dense(units=c * c + c, input_shape=(c, ))
+                for i in range(self._gft)
+            ]
+        else:
+            self._attention = tf.keras.layers.Attention(use_scale=True)
+            query_emb_shape = self._embedding.compute_output_shape(query_shape)
+            key_value_shape = (b, h * w, c + c)
+            key_emb_shape = (b, h * w, c)
+            self._attention.build(
+                input_shape=[query_emb_shape, key_value_shape, key_emb_shape])
         super().build(input_shape)
 
     # def compute_output_shape(self, input_shape):
@@ -86,6 +94,7 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         config.update({
             'vocab_size': self._vocab_size,
             'n_heads': self._n_heads,
+            'gft': self._gft,
             'output_attention_max': self._output_attention_max,
             'use_attn_residual': self._use_attn_residual,
             'network_to_debug': self._network_to_debug
@@ -110,6 +119,8 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         assert isinstance(inputs, list)
         key = inputs[0]
         query = inputs[1]
+        query_embeddings = self._embedding(query)
+
         states = None
         if len(inputs) > 2:
             states = inputs[2]
@@ -120,6 +131,21 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         (b, h, w, c) = key.shape
         flatten_shape = (b, h * w, c)
         key_embeddings = tf.reshape(key, flatten_shape)
+
+        if self._gft:
+            query_encoding = tf.keras.layers.GlobalAveragePooling1D()(
+                query_embeddings)
+            ts = [
+                tf.reshape(l(query_encoding), (b, c + 1, c))
+                for l in self.t_layers
+            ]
+            ones = tf.ones((b, h * w, 1))
+            output = key_embeddings
+            for t in ts:
+                output = tf.concat([output, ones], axis=-1)
+                output = tf.matmul(output, t)
+                output = tf.keras.activations.relu(output)
+            return output
 
         # create position input tensor
         x = tf.reshape(
@@ -143,8 +169,6 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         # and num_embedding_dims parameter is ignored.  This is because we do
         # inner product of image and sentence embedding vectors to compute attention.
         # query_embeddings shape: (seq_len, c)
-        query_embeddings = self._embedding(query)
-
         key_value = tf.concat([key_embeddings, pos_embeddings], axis=-1)
         n_heads = self._n_heads
         nbatch = b
@@ -386,6 +410,7 @@ def get_ac_networks(conv_layer_params=None,
                     num_sentence_tiles=None,
                     name=None,
                     n_heads=1,
+                    gft=0,
                     network_to_debug=None,
                     output_attention_max=False,
                     use_attn_residual=False,
@@ -506,6 +531,7 @@ def get_ac_networks(conv_layer_params=None,
             attention_combiner = ImageLanguageAttentionCombiner(
                 vocab_size=vocab_size,
                 n_heads=n_heads,
+                gft=gft,
                 name=name,
                 output_attention_max=output_attention_max,
                 use_attn_residual=use_attn_residual,
