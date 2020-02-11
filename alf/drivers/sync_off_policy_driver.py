@@ -25,6 +25,9 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.drivers.off_policy_driver import OffPolicyDriver
 from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
 
+import alf.data_structures as ds
+from alf.utils import nest_utils
+
 
 @gin.configurable
 class SyncOffPolicyDriver(OffPolicyDriver):
@@ -77,7 +80,78 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             observers=observers,
             metrics=metrics)
         algorithm.set_metrics(self.get_metrics())
+        self._prepare_specs(algorithm)
+
+    def _prepare_specs(self, algorithm):
+        time_step_spec = algorithm.time_step_spec
+        self._training_info_spec = ds.TrainingInfo(
+            action=algorithm.action_spec,
+            step_type=time_step_spec.step_type,
+            reward=time_step_spec.reward,
+            discount=time_step_spec.discount,
+            rollout_info=algorithm.rollout_info_spec,
+            env_id=time_step_spec.env_id)
 
     def _run(self, max_num_steps, time_step, policy_state):
         """Take steps in the environment for max_num_steps."""
-        return self.predict(max_num_steps, time_step, policy_state)
+        return self.rollout(max_num_steps, time_step, policy_state)
+
+    @tf.function
+    def rollout(self, max_num_steps, time_step, policy_state):
+        counter = tf.zeros((), tf.int32)
+        batch_size = self._env.batch_size
+        maximum_iterations = math.ceil(max_num_steps / self._env.batch_size)
+
+        def create_ta(s):
+            return tf.TensorArray(
+                dtype=s.dtype,
+                size=maximum_iterations,
+                element_shape=tf.TensorShape([batch_size]).concatenate(
+                    s.shape))
+
+        training_info_ta = tf.nest.map_structure(
+            create_ta,
+            self._training_info_spec._replace(
+                rollout_info=nest_utils.to_distribution_param_spec(
+                    self._training_info_spec.rollout_info)))
+
+        [counter, time_step, policy_state, training_info_ta] = tf.while_loop(
+            cond=lambda *_: True,
+            body=self._rollout_loop_body,
+            loop_vars=[counter, time_step, policy_state, training_info_ta],
+            maximum_iterations=maximum_iterations,
+            back_prop=False,
+            name="rollout_loop")
+
+        training_info = tf.nest.map_structure(lambda ta: ta.stack(),
+                                              training_info_ta)
+
+        training_info = nest_utils.params_to_distributions(
+            training_info, self._training_info_spec)
+
+        self._algorithm.summarize_rollout(training_info)
+        self._algorithm.summarize_metrics()
+
+        return time_step, policy_state
+
+    def _rollout_loop_body(self, counter, time_step, policy_state,
+                           training_info_ta):
+
+        next_time_step, policy_step, transformed_time_step = self._step(
+            time_step, policy_state)
+
+        training_info = ds.TrainingInfo(
+            action=policy_step.action,
+            reward=transformed_time_step.reward,
+            discount=transformed_time_step.discount,
+            step_type=transformed_time_step.step_type,
+            rollout_info=nest_utils.distributions_to_params(policy_step.info),
+            env_id=transformed_time_step.env_id)
+
+        training_info_ta = tf.nest.map_structure(
+            lambda ta, x: ta.write(counter, x), training_info_ta,
+            training_info)
+
+        counter += 1
+
+        return [counter, next_time_step, policy_step.state, training_info_ta]

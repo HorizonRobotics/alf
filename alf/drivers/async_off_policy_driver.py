@@ -179,6 +179,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         """
         exp, steps = self.get_training_exps()
         self._algorithm.observe(exp)
+        self._algorithm.summarize_metrics()
         return steps
 
     def _run(self, *args, **kwargs):

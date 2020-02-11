@@ -206,3 +206,39 @@ def distributions_to_params(nest):
                 "got %s. nest is %s" % (dist_or_tensor, nest))
 
     return tf.nest.map_structure(_to_params, nest)
+
+
+def find_field(nest, name, ignore_empty=True):
+    """Find fields with given name.
+
+    Examples:
+    ```python
+    nest = dict(a=1, b=dict(a=dict(a=2, b=3), b=2))
+    find_filed(nest, 'a')
+    # you would get [1, {"a": 2, "b": 3}]
+    ```
+            
+    Args:
+        nest (nest): a nest structure
+        name (str): name of the field
+        ignore_empty (bool): ignore the field if it is None or empty.
+    Returns:
+        list
+    """
+    ret = []
+    if isinstance(nest, (list, tuple)) and not is_namedtuple(nest):
+        for elem in nest:
+            if isinstance(elem, (dict, tuple, list)):
+                ret = ret + find_field(elem, name)
+    elif isinstance(nest, dict) or is_namedtuple(nest):
+        fields = nest.keys() if isinstance(nest, dict) else nest._fields
+        for field in fields:
+            elem = nest[field] if isinstance(nest, dict) else getattr(
+                nest, field)
+            if field == name:
+                if ((elem is not None and elem != () and elem != [])
+                        or not ignore_empty):
+                    ret.append(elem)
+            elif isinstance(elem, (dict, tuple, list)):
+                ret = ret + find_field(elem, name)
+    return ret

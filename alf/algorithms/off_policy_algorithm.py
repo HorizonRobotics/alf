@@ -195,10 +195,9 @@ class OffPolicyAlgorithm(RLAlgorithm):
                         # does not help. Somehow `if` statement will also lose
                         # the original name scope.
                         with tf.name_scope(scope):
-                            self.training_summary(training_info, loss_info,
-                                                  grads_and_vars)
+                            self.summarize_train(training_info, loss_info,
+                                                 grads_and_vars)
 
-        self.metric_summary()
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 

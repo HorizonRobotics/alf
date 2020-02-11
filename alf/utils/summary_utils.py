@@ -16,6 +16,7 @@ import functools
 import time
 
 from absl import logging
+import gin
 
 import tensorflow as tf
 from tensorboard.plugins.histogram import metadata
@@ -174,7 +175,8 @@ def unique_var_names(vars):
 
 
 @_summary_wrapper
-def add_variables_summaries(grads_and_vars, step=None):
+@gin.configurable
+def add_variables_summaries(grads_and_vars, step=None, with_histogram=True):
     """Add summaries for variables.
 
     Args:
@@ -189,10 +191,11 @@ def add_variables_summaries(grads_and_vars, step=None):
             var_values = var.values
         else:
             var_values = var
-        tf.summary.histogram(
-            name='summarize_vars/' + var_name + '_value',
-            data=var_values,
-            step=step)
+        if with_histogram:
+            tf.summary.histogram(
+                name='summarize_vars/' + var_name + '_value',
+                data=var_values,
+                step=step)
         tf.summary.scalar(
             name='summarize_vars/' + var_name + '_value_norm',
             data=tf.linalg.global_norm([var_values]),
@@ -200,7 +203,8 @@ def add_variables_summaries(grads_and_vars, step=None):
 
 
 @_summary_wrapper
-def add_gradients_summaries(grads_and_vars, step=None):
+@gin.configurable
+def add_gradients_summaries(grads_and_vars, step=None, with_histogram=True):
     """Add summaries to gradients.
 
     Args:
@@ -211,19 +215,21 @@ def add_gradients_summaries(grads_and_vars, step=None):
         return
     grads, vars = zip(*grads_and_vars)
     for grad, var_name in zip(grads, unique_var_names(vars)):
-        if grad is not None:
-            if isinstance(grad, tf.IndexedSlices):
-                grad_values = grad.values
-            else:
-                grad_values = grad
+        if grad is None:
+            continue
+        if isinstance(grad, tf.IndexedSlices):
+            grad_values = grad.values
+        else:
+            grad_values = grad
+        if with_histogram:
             tf.summary.histogram(
                 name='summarize_grads/' + var_name + '_gradient',
                 data=grad_values,
                 step=step)
-            tf.summary.scalar(
-                name='summarize_grads/' + var_name + '_gradient_norm',
-                data=tf.linalg.global_norm([grad_values]),
-                step=step)
+        tf.summary.scalar(
+            name='summarize_grads/' + var_name + '_gradient_norm',
+            data=tf.linalg.global_norm([grad_values]),
+            step=step)
 
 
 tf.summary.histogram = _summary_wrapper(tf.summary.histogram)
@@ -261,7 +267,7 @@ def add_loss_summaries(loss_info: LossInfo):
     add_nested_summaries('loss', loss_info.extra)
 
 
-def add_action_summaries(actions, action_specs):
+def add_action_summaries(actions, action_specs, name="action"):
     """Generate histogram summaries for actions.
 
     Actions whose rank is more than 1 will be skipped.
@@ -279,7 +285,7 @@ def add_action_summaries(actions, action_specs):
 
         if tensor_spec.is_discrete(action_spec):
             histogram_discrete(
-                name="action/%s" % i,
+                name="%s/%s" % (name, i),
                 data=action,
                 bucket_min=action_spec.minimum,
                 bucket_max=action_spec.maximum)
@@ -296,7 +302,7 @@ def add_action_summaries(actions, action_specs):
             for a in range(action_dim):
                 # TODO: use a descriptive name for the summary
                 histogram_continuous(
-                    name="action/%s/%s" % (i, a),
+                    name="%s/%s/%s" % (name, i, a),
                     data=action[:, a],
                     bucket_min=_get_val(action_spec.minimum, a),
                     bucket_max=_get_val(action_spec.maximum, a))
@@ -398,7 +404,7 @@ _contexts = {}
 
 class record_time(object):
     """A context manager for record the time.
-    
+
     It records the average time spent under the context between
     two summaries.
 
