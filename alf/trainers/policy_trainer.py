@@ -245,7 +245,8 @@ class Trainer(object):
 
     def initialize(self):
         """Initializes the Trainer."""
-        common.set_random_seed(self._random_seed, not self._use_tf_functions)
+        self._random_seed = common.set_random_seed(self._random_seed,
+                                                   not self._use_tf_functions)
 
         tf.config.experimental_run_functions_eagerly(
             not self._use_tf_functions)
@@ -375,6 +376,7 @@ class Trainer(object):
                         _markdownify(self._algorithm.get_optimizer_info()))
                     tf.summary.text('revision', git_utils.get_revision())
                     tf.summary.text('diff', _markdownify(git_utils.get_diff()))
+                    tf.summary.text('seed', str(self._random_seed))
 
             # check termination
             env_steps_metric = self._driver.get_step_metrics()[1]
