@@ -53,7 +53,7 @@ class RNDAlgorithm(Algorithm):
                  name="RNDAlgorithm"):
         """
         Args:
-            encoder_net (Network): a shared network that encodes imgs to
+            encoder_net (Network): a shared network that encodes observation to
                 embeddings before being input to `target_net` or `predictor_net`;
                 its parameters are not trainable
             target_net (Network): the random fixed network that generates target

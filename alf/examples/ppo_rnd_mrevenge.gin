@@ -20,20 +20,20 @@ create_environment.env_name = 'MontezumaRevengeNoFrameskip-v0'
 create_environment.num_parallel_environments = 128
 
 # RND config
-encoder/generate_spec.shape=(84, 84, 1) # only take the last stacked frame
+encoder/tf.TensorSpec.shape=(84, 84, 1)  # only take the last stacked frame
 encoder/EncodingNetwork.activation_fn=@tf.nn.tanh
-encoder/EncodingNetwork.input_tensor_spec=@encoder/generate_spec()
+encoder/EncodingNetwork.input_tensor_spec=@encoder/tf.TensorSpec()
 encoder/EncodingNetwork.conv_layer_params = [(64, 5, 5), (64, 2, 2), (64, 2, 2)]
 
-target/generate_spec.shape=(1024,)
+target/tf.TensorSpec.shape=(1024,)
 embedding_dim=1000
 
 pred/EncodingNetwork.activation_fn=@tf.nn.tanh
-pred/EncodingNetwork.input_tensor_spec=@target/generate_spec()
+pred/EncodingNetwork.input_tensor_spec=@target/tf.TensorSpec()
 pred/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
 
 target/EncodingNetwork.activation_fn=@tf.nn.tanh
-target/EncodingNetwork.input_tensor_spec=@target/generate_spec()
+target/EncodingNetwork.input_tensor_spec=@target/tf.TensorSpec()
 target/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
 
 
