@@ -415,6 +415,11 @@ class TrainPlayTest(tf.test.TestCase):
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_ppo_rnd_mrevenge(self):
+        self._test(
+            gin_file='ppo_rnd_mrevenge.gin',
+            extra_train_params=PPO_TRAIN_PARAMS)
+
     def test_sac_bipedal_walker(self):
         self._test(
             gin_file='sac_bipedal_walker.gin',

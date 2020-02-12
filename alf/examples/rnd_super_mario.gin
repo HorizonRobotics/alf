@@ -37,13 +37,15 @@ value/ValueNetwork.activation_fn=@tf.nn.elu
 
 ac/Adam.learning_rate=3e-5
 
-rnd/EncodingNetwork.input_tensor_spec=%observation_spec
+rnd/tf.TensorSpec.shape=(84, 84, 1)
+rnd/EncodingNetwork.input_tensor_spec=@rnd/tf.TensorSpec()
 rnd/EncodingNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 rnd/EncodingNetwork.fc_layer_params=(256, 256, 128)
 rnd/EncodingNetwork.activation_fn=@tf.nn.elu
 
 RNDAlgorithm.target_net=@rnd/EncodingNetwork()
 RNDAlgorithm.predictor_net=@rnd/EncodingNetwork()
+RNDAlgorithm.reward_adapt_speed=8.0
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()

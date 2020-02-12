@@ -1,0 +1,78 @@
+# RND on MontezumaRevenge
+
+include 'atari.gin'
+include "ppo.gin"
+include "image_game_model.gin"
+
+import alf.algorithms.rnd_algorithm
+
+suite_gym.load.max_episode_steps = 4500
+DMAtariPreprocessing.noop_max = 0
+# From OpenAI gym wiki:
+#
+# "v0 vs v4: v0 has repeat_action_probability of 0.25
+#  (meaning 25% of the time the previous action will be used instead of the new action),
+#   while v4 has 0 (always follow your issued action)
+# Because we already implements frame_skip in AtariPreprocessing, we should always
+# use 'NoFrameSkip' Atari environments from OpenAI gym
+create_environment.env_name = 'MontezumaRevengeNoFrameskip-v0'
+# Do not use suite_atari.load as it has some resetting issue!
+create_environment.num_parallel_environments = 128
+
+# RND config
+encoder/tf.TensorSpec.shape=(84, 84, 1)  # only take the last stacked frame
+encoder/EncodingNetwork.activation_fn=@tf.nn.tanh
+encoder/EncodingNetwork.input_tensor_spec=@encoder/tf.TensorSpec()
+encoder/EncodingNetwork.conv_layer_params = [(64, 5, 5), (64, 2, 2), (64, 2, 2)]
+
+target/tf.TensorSpec.shape=(1024,)
+embedding_dim=1000
+
+pred/EncodingNetwork.activation_fn=@tf.nn.tanh
+pred/EncodingNetwork.input_tensor_spec=@target/tf.TensorSpec()
+pred/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
+
+target/EncodingNetwork.activation_fn=@tf.nn.tanh
+target/EncodingNetwork.input_tensor_spec=@target/tf.TensorSpec()
+target/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
+
+
+RNDAlgorithm.encoder_net=@encoder/EncodingNetwork()
+RNDAlgorithm.target_net=@target/EncodingNetwork()
+RNDAlgorithm.predictor_net=@pred/EncodingNetwork()
+RNDAlgorithm.learning_rate=4e-5
+#RNDAlgorithm.clip_value=1.0
+#RNDAlgorithm.reward_adapt_speed=8.0
+RNDAlgorithm.stacked_frames=True
+
+# config AC
+rl/Adam.learning_rate = 1e-4
+Agent.optimizer=@rl/Adam()
+Agent.intrinsic_curiosity_module=@RNDAlgorithm()
+Agent.observation_transformer=@image_scale_transformer
+
+Agent.reward_shaping_fn = @reward_clipping
+
+PPOLoss.entropy_regularization = 0.01
+
+# config training rewards
+Agent.extrinsic_reward_coef = 1.0
+Agent.intrinsic_reward_coef = 1e-3
+
+# training config (fixed)
+TrainerConfig.num_updates_per_train_step=6
+TrainerConfig.unroll_length=32
+TrainerConfig.mini_batch_length=1
+TrainerConfig.mini_batch_size=1024
+TrainerConfig.num_iterations=0
+TrainerConfig.num_env_steps=50000000 # = 200M frames / 4 (frame_skip)
+TrainerConfig.use_tf_functions=True
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=False
+TrainerConfig.summary_interval=100
+TrainerConfig.checkpoint_interval=500
+TrainerConfig.checkpoint_max_to_keep=1
+TrainerConfig.use_rollout_state=True
+TrainerConfig.update_counter_every_mini_batch=True
+
+ReplayBuffer.max_length = 35
