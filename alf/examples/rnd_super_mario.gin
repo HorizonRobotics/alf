@@ -67,7 +67,6 @@ TrainerConfig.use_tf_functions=True
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=False
 TrainerConfig.summary_interval=10
-TrainerConfig.update_counter_every_mini_batch=True
 
 Agent.observation_transformer=@image_scale_transformer
 
