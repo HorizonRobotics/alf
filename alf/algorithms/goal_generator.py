@@ -20,8 +20,9 @@ import functools
 import tf_agents.specs.tensor_spec as tensor_spec
 from tf_agents.trajectories.time_step import StepType
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.data_structures import TrainingInfo, namedtuple, ActionTimeStep
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.data_structures import (ActionTimeStep, Experience, LossInfo,
+                                 namedtuple, PolicyStep, TrainingInfo)
 
 import alf.utils.common as common
 
@@ -30,28 +31,40 @@ GoalInfo = namedtuple("GoalInfo", ["goal", "loss"], default_value=())
 
 
 @gin.configurable
-class RandomCategoricalGoalGenerator(Algorithm):
+class RandomCategoricalGoalGenerator(RLAlgorithm):
     """Random Goal Generation Module
 
     This module generates a random categorical goal for the agent
     in the beginning of every episode.
     """
 
-    def __init__(self, num_of_goals, name="RandomCategoricalGoalGenerator"):
+    def __init__(self,
+                 observation_spec,
+                 num_of_goals,
+                 name="RandomCategoricalGoalGenerator"):
         """Create a RandomCategoricalGoalGenerator.
 
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             num_of_goals (int): total number of goals the agent can sample from
+            name (str): name of the algorithm
         """
         goal_spec = tf.TensorSpec((num_of_goals, ))
         train_state_spec = GoalState(goal=goal_spec)
-        super().__init__(train_state_spec=train_state_spec, name=name)
+        super().__init__(
+            observation_spec=observation_spec,
+            action_spec=tensor_spec.BoundedTensorSpec(
+                shape=(num_of_goals, ),
+                dtype=tf.float32,
+                minimum=0.,
+                maximum=1.),
+            train_state_spec=train_state_spec,
+            name=name)
         self._num_of_goals = num_of_goals
         self._p_goal = tf.ones(self._num_of_goals)
 
     def _generate_goal(self, observation, state):
-        """Generate a goal
-        """
+        """Generate a goal."""
         batch_size = tf.shape(tf.nest.flatten(observation)[0])[0]
         # generate goal with the same batch size as observation
         samples = tf.random.categorical(
@@ -70,10 +83,7 @@ class RandomCategoricalGoalGenerator(Algorithm):
             state=state)
         return new_goal
 
-    def train_step(self,
-                   time_step: ActionTimeStep,
-                   state,
-                   calc_goal_update=True):
+    def rollout(self, time_step: ActionTimeStep, state, mode):
         """Perform one step of predicting and training computation.
 
         Note that as RandomCategoricalGoalGenerator is a non-trainable module,
@@ -86,6 +96,7 @@ class RandomCategoricalGoalGenerator(Algorithm):
             calc_goal_update (bool): perform goal alculattion the goal if true;
                 otherwise, use the goal from state as outputs and the
                 input state as output state.
+            mode (int): See alf.algorithms.rl_algorithm.RLAlgorithm.rollout
         Returns:
             TrainStep:
                 outputs: goal vector; currently just output the one from state
@@ -94,17 +105,15 @@ class RandomCategoricalGoalGenerator(Algorithm):
         """
         observation = time_step.observation
         step_type = time_step.step_type
-        if calc_goal_update:
-            new_goal = self._update_goal(observation, state, step_type)
-            return AlgorithmStep(
-                outputs=new_goal,
-                state=GoalState(goal=new_goal),
-                info=GoalInfo(goal=new_goal))
-        else:
-            return AlgorithmStep(
-                outputs=(state.goal),
-                state=state,
-                info=GoalInfo(goal=state.goal))
+        new_goal = self._update_goal(observation, state, step_type)
+        return PolicyStep(
+            action=new_goal,
+            state=GoalState(goal=new_goal),
+            info=GoalInfo(goal=new_goal))
+
+    def train_step(self, exp: Experience, state):
+        return PolicyStep(
+            action=state.goal, state=state, info=GoalInfo(goal=state.goal))
 
     def calc_loss(self, info: GoalInfo):
         return LossInfo()

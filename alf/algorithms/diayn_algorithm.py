@@ -20,7 +20,7 @@ from tf_agents.networks.network import Network
 import tf_agents.specs.tensor_spec as tensor_spec
 
 from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.utils.adaptive_normalizer import ScalarAdaptiveNormalizer
+from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.encoding_network import EncodingNetwork
 from alf.data_structures import StepType, ActionTimeStep
 
