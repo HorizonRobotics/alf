@@ -54,7 +54,7 @@ class RandomOptimizer(Optimizer):
         batch_size = init_obs.shape[0]
         solutions = tf.random.uniform(
             [batch_size, self._population_size, self._solution_dim],
-            self._upper_bound, self._lower_bound)
+            self._lower_bound, self._upper_bound)
         costs = self.cost_function(time_step, state, solutions)
         min_ind = tf.cast(tf.argmin(costs, axis=-1), tf.int32)
         population_ind = tf.expand_dims(min_ind, 1)

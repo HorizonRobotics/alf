@@ -30,6 +30,7 @@ setup(
         'pybullet == 2.5.0',
         'tensorflow-gpu == 2.1.0',
         'tf-agents == 0.3.0',
+        'tensorflow-addons == 0.8.2',
     ],  # And any other dependencies foo needs
     packages=find_packages(),
 )

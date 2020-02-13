@@ -29,8 +29,7 @@ def reward_function_for_pendulum(obs, action):
 
     def _observation_cost(obs):
         c_theta, s_theta, d_theta = obs[:, :1], obs[:, 1:2], obs[:, 2:3]
-        # theta = tf.sign(tf.math.acos(c_theta)) * tf.math.asin(s_theta)
-        theta = tf.math.acos(c_theta)
+        theta = tf.math.atan2(s_theta, c_theta)
         cost = tf.reduce_sum(
             tf.square(theta) + 0.1 * tf.square(d_theta), axis=1)
         cost = tf.where(tf.math.is_nan(cost), 1e6 * tf.ones_like(cost), cost)
