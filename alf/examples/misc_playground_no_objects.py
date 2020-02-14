@@ -20,10 +20,10 @@ import tensorflow as tf
 def split_observation_fn(o):
 
     dimo = o.get_shape().as_list()[-1]
-    assert dimo == 23, ("The dimension does not match.")
+    assert dimo == 38, ("The dimension does not match. dimo=%s" % dimo)
 
     task_specific_ob, agent_pose, agent_vel, internal_states, action = tf.split(
-        o, [3, 6, 6, 6, 2], axis=-1)
+        o, [18, 6, 6, 6, 2], axis=-1)
 
     joint_pose_sin_1, joint_pose_sin_2, joint_pose_cos_1, joint_pose_cos_2, \
         joint_vel_1, joint_vel_2 = tf.split(internal_states, [1, 1, 1, 1, 1, 1], axis=-1)
