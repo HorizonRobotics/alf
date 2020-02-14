@@ -339,6 +339,11 @@ class TrainPlayTest(tf.test.TestCase):
 
         self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
 
+    def test_diayn_pendulum(self):
+        self._test(
+            gin_file='diayn_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_icm_mountain_car(self):
         self._test(
             gin_file='icm_mountain_car.gin',

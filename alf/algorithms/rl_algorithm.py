@@ -66,6 +66,7 @@ class RLAlgorithm(Algorithm):
         """Create a RLAlgorithm.
 
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             train_state_spec (nested TensorSpec): for the network state of
                 `rollout()`
@@ -290,6 +291,7 @@ class RLAlgorithm(Algorithm):
         """
         if not self._use_rollout_state:
             exp = exp._replace(state=())
+        exp = nest_utils.distributions_to_params(exp)
         for observer in self._exp_observers:
             observer(exp)
 

@@ -60,6 +60,7 @@ class Agent(OnPolicyAlgorithm):
                  intrinsic_reward_coef=1.0,
                  extrinsic_reward_coef=1.0,
                  enforce_entropy_target=False,
+                 entropy_target_cls=None,
                  optimizer=None,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
@@ -86,6 +87,8 @@ class Agent(OnPolicyAlgorithm):
                 PPOLoss). In order to use this, The PolicyStep.info from
                 rl_algorithm_cls.train_step() and rl_algorithm_cls.rollout()
                 needs to contain `action_distribution`.
+            entropy_target_cls (type): If provided, will be used to dynamically
+                adjust entropy regularization.
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
@@ -98,26 +101,37 @@ class Agent(OnPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
-        rl_algorithm = rl_algorithm_cls(
-            observation_spec=observation_spec,
-            action_spec=action_spec,
-            debug_summaries=debug_summaries)
-        train_state_spec = AgentState(rl=rl_algorithm.train_state_spec)
-        predict_state_spec = AgentState(rl=rl_algorithm.predict_state_spec)
+        train_state_spec = AgentState()
+        predict_state_spec = AgentState()
 
         if intrinsic_curiosity_module is not None:
             train_state_spec = train_state_spec._replace(
                 icm=intrinsic_curiosity_module.train_state_spec)
 
+        rl_observation_spec = observation_spec
         if goal_generator is not None:
             train_state_spec = train_state_spec._replace(
                 goal_generator=goal_generator.train_state_spec)
             predict_state_spec = predict_state_spec._replace(
                 goal_generator=goal_generator.predict_state_spec)
+            rl_observation_spec = [
+                observation_spec, goal_generator.action_spec
+            ]
+
+        rl_algorithm = rl_algorithm_cls(
+            observation_spec=rl_observation_spec,
+            action_spec=action_spec,
+            debug_summaries=debug_summaries)
+        train_state_spec = train_state_spec._replace(
+            rl=rl_algorithm.train_state_spec)
+        predict_state_spec = predict_state_spec._replace(
+            rl=rl_algorithm.predict_state_spec)
 
         entropy_target_algorithm = None
-        if enforce_entropy_target:
-            entropy_target_algorithm = EntropyTargetAlgorithm(
+        if entropy_target_cls or enforce_entropy_target:
+            if entropy_target_cls is None:
+                entropy_target_cls = EntropyTargetAlgorithm
+            entropy_target_algorithm = entropy_target_cls(
                 action_spec, debug_summaries=debug_summaries)
 
         super().__init__(
@@ -155,12 +169,11 @@ class Agent(OnPolicyAlgorithm):
 
         new_state = AgentState()
         if self._goal_generator is not None:
-            goal_step = self._goal_generator.train_step(
+            goal_step = self._goal_generator.predict(
                 time_step._replace(observation=observation),
-                state.goal_generator)
+                state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
-
-            observation = [observation, goal_step.outputs]
+            observation = [observation, goal_step.action]
 
         rl_step = self._rl_algorithm.predict(
             time_step._replace(observation=observation), state.rl,
@@ -176,13 +189,12 @@ class Agent(OnPolicyAlgorithm):
         observation = self._encode(time_step)
 
         if self._goal_generator is not None:
-            goal_step = self._goal_generator.train_step(
-                time_step._replace(observation=observation),
-                state.goal_generator)
-            info = info._replace(goal_generator=goal_step.info)
+            goal_step = self._goal_generator.rollout(
+                time_step._replace(observation=time_step.observation),
+                state.goal_generator, mode)
             new_state = new_state._replace(goal_generator=goal_step.state)
-
-            observation = [observation, goal_step.outputs]
+            info = info._replace(goal_generator=goal_step.info)
+            observation = [observation, goal_step.action]
 
         if self._icm is not None:
             icm_step = self._icm.train_step(
@@ -217,12 +229,10 @@ class Agent(OnPolicyAlgorithm):
 
         if self._goal_generator is not None:
             goal_step = self._goal_generator.train_step(
-                exp._replace(observation=observation),
-                state.goal_generator,
-                calc_goal_update=False)
+                exp._replace(observation=observation), state.goal_generator)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
-            observation = [observation, goal_step.outputs]
+            observation = [observation, goal_step.action]
 
         if self._icm is not None:
             icm_step = self._icm.train_step(
@@ -273,6 +283,12 @@ class Agent(OnPolicyAlgorithm):
             self.add_reward_summary("reward/icm", info.icm.reward)
             reward += self._intrinsic_reward_coef * info.icm.reward
 
+        if (self._goal_generator is not None
+                and 'reward' in info.goal_generator._fields):
+            self.add_reward_summary("reward/goal_generator",
+                                    info.goal_generator.reward)
+            reward += info.goal_generator.reward
+
         if id(reward) != id(external_reward):
             self.add_reward_summary("reward/overall", reward)
 
@@ -309,6 +325,8 @@ class Agent(OnPolicyAlgorithm):
         loss_info = rl_loss_info._replace(
             extra=AgentLossInfo(rl=rl_loss_info.extra))
         loss_info = _update_loss(loss_info, training_info, 'icm', self._icm)
+        loss_info = _update_loss(loss_info, training_info, 'goal_generator',
+                                 self._goal_generator)
         loss_info = _update_loss(loss_info, training_info, 'entropy_target',
                                  self._entropy_target_algorithm)
         loss_info = _update_loss(loss_info, training_info, 'goal_generator',
@@ -319,6 +337,9 @@ class Agent(OnPolicyAlgorithm):
     def after_train(self, training_info):
         self._rl_algorithm.after_train(
             training_info._replace(info=training_info.info.rl))
+        if self._goal_generator:
+            self._goal_generator.after_train(
+                training_info._replace(info=training_info.info.goal_generator))
 
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)
