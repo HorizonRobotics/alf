@@ -93,9 +93,6 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         Args:
             time_step (ActionTimeStep): input time_step data
             state (nested Tensor): consistent with train_state_spec
-            calc_goal_update (bool): perform goal alculattion the goal if true;
-                otherwise, use the goal from state as outputs and the
-                input state as output state.
             mode (int): See alf.algorithms.rl_algorithm.RLAlgorithm.rollout
         Returns:
             TrainStep:
