@@ -123,7 +123,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             should_summarize=bool(common.should_record_summaries())
             or update_counter_every_mini_batch)
 
-    @common.function(experimental_relax_shapes=True)
+    @common.function
     def _train(self, experience, num_updates, mini_batch_size,
                mini_batch_length, update_counter_every_mini_batch,
                should_summarize):
