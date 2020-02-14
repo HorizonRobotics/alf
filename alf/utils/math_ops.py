@@ -18,6 +18,7 @@ import tensorflow as tf
 
 from alf.utils.nest_utils import get_nest_batch_size
 
+
 @gin.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
     """ Clip value to the range [`clip_value_min`, `clip_value_max`]
