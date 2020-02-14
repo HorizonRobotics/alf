@@ -16,6 +16,7 @@
 import gin
 import tensorflow as tf
 
+from alf.utils.nest_utils import get_nest_batch_size
 
 @gin.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
@@ -97,7 +98,7 @@ def shuffle(values, seed=None):
     Returns:
         shuffled value along dimension 0.
     """
-    batch_size = tf.shape(tf.nest.flatten(values)[0])[0]
+    batch_size = get_nest_batch_size(values)
     indices = tf.random.shuffle(tf.range(batch_size), seed=seed)
     return tf.nest.map_structure(lambda value: tf.gather(value, indices),
                                  values)
