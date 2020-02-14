@@ -14,3 +14,4 @@ Pillow
 psutil
 tensorflow-probability==0.8.0
 tf-agents==0.3.0
+tensorflow-addons==0.8.2
