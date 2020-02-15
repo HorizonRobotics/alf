@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tensorflow as tf
+import unittest
 from absl.testing import parameterized
 from alf.environments.simple.noisy_array import NoisyArray
 
 
-class NoisyArrayTest(parameterized.TestCase, tf.test.TestCase):
+class NoisyArrayTest(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters((5, 3), (201, 100))
     def test_noisy_array_environment(self, K, M):
         array = NoisyArray(K, M)
@@ -52,4 +52,4 @@ class NoisyArrayTest(parameterized.TestCase, tf.test.TestCase):
 
 
 if __name__ == "__main__":
-    tf.test.main()
+    unittest.main()

@@ -12,6 +12,4 @@ pybullet==2.5.0
 pathos==0.2.4
 Pillow
 psutil
-tensorflow-probability==0.8.0
-tf-agents==0.3.0
-tensorflow-addons==0.8.2
+tensorboard==2.1.0

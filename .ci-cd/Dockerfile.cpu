@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM tensorflow/tensorflow:2.1.0-py3
+FROM ubuntu:18.04
 
-# mirror sources which may speed up downloading
-#  software packages
-# COPY ./sources.list /etc/apt/sources.list
-# COPY ./pip.conf /root/.pip/pip.conf
+RUN apt update
+
+RUN apt install -y python3.6 python3-pip
 
 # install code style tools
 RUN pip3 install  pre-commit==1.17.0 \
@@ -25,6 +24,9 @@ RUN pip3 install  pre-commit==1.17.0 \
     pydocstyle==4.0.0 \
     pylint==2.3.1 \
     yapf==0.28.0
+
+RUN pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu \
+    -f https://download.pytorch.org/whl/torch_stable.html
 
 RUN apt update && apt install -y  git clang-format
 
@@ -71,7 +73,7 @@ RUN mkdir -p /opt/local \
 
 # python libs requirement by alf
 COPY requirements.txt  /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt 
+RUN pip3 install -r /tmp/requirements.txt 
 
 # import public ROM for super mario (ignore shasum)
 RUN cd /tmp \

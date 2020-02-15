@@ -41,7 +41,8 @@ function check_style() {
 
 function test() {
     cd alf
-    TF_CPP_MIN_LOG_LEVEL=2 python3 -m unittest discover -p "*_test.py" -v
+    python3 -m unittest -v \
+        alf.environments.simple.noisy_array_test
     cd ..
 }
 
