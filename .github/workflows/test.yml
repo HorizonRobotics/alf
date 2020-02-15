@@ -5,8 +5,8 @@ on: [push]
 jobs:
   build:
     runs-on: ubuntu-18.04
-    container: 
-      image: horizonrobotics/alf:0.2.0
+    container:
+      image: horizonrobotics/alf:0.0.1-pytorch
     steps:
     - uses: actions/checkout@v1
     - name: check code style
