@@ -17,7 +17,6 @@ import gin
 import gin.tf.external_configurables
 import gym
 import tensorflow as tf
-import tensorflow_addons as tfa
 from tf_agents.specs.tensor_spec import BoundedTensorSpec
 from tf_agents.networks.utils import mlp_layers
 from tf_agents.networks.sequential_layer import SequentialLayer
@@ -30,8 +29,6 @@ tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
                                                    'tf.keras.layers.Conv2D')
 tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
                                                'tf.optimizers.Adam')
-tfa.optimizers.AdamW = gin.external_configurable(tfa.optimizers.AdamW,
-                                                 'tfa.optimizers.AdamW')
 
 gin.external_configurable(tf.keras.layers.Concatenate,
                           'tf.keras.layers.Concatenate')

@@ -39,9 +39,8 @@ MbrlAlgorithm.reward_module=@FixedRewardFunction()
 MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
 
 # agent config
-Agent/AdamW.learning_rate=1e-3
-Agent/AdamW.weight_decay=5e-4
-Agent.optimizer=@Agent/AdamW()
+Agent/Adam.learning_rate=1e-3
+Agent.optimizer=@Agent/Adam()
 Agent.intrinsic_reward_coef=0
 Agent.extrinsic_reward_coef=1
 Agent.action_spec=%action_spec
