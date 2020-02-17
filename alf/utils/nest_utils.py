@@ -14,6 +14,9 @@
 """Functions for handling nest."""
 
 import numpy as np
+import gin
+
+import torch
 
 
 def is_namedtuple(value):
@@ -183,3 +186,33 @@ def find_field(nest, name, ignore_empty=True):
             elif isinstance(elem, (dict, tuple, list)):
                 ret = ret + find_field(elem, name)
     return ret
+
+
+@gin.configurable
+def nest_concatenate(nest, dim=-1):
+    """Concatenate all elements in a nest along the specified axis. It assumes
+    that all elements have the same tensor shape. Can be used as a preprocessing
+    combiner in `EncodingNetwork`.
+
+    Args:
+        nest (nest): a nested structure
+        dim (int): the dim along which the elements are concatenated
+
+    Returns:
+        tensor (torch.Tensor): the concat result
+    """
+    return torch.cat(flatten(nest), dim=dim)
+
+
+def nest_reduce_sum(nest):
+    """Add all elements in a nest together. It assumes that all elements have
+    the same tensor shape. Can be used as a preprocessing combiner in
+    `EncodingNetwork`.
+
+    Args:
+        nest (nest): a nested structure
+
+    Returns:
+        tensor (torch.Tensor):
+    """
+    return torch.sum(torch.stack(flatten(nest), dim=0), dim=0)
