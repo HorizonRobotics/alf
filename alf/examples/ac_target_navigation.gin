@@ -18,9 +18,12 @@ image_scale_transformer.fields=['image']
 
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 
+import alf.algorithms.trac_algorithm
+Agent.rl_algorithm_cls=@TracAlgorithm
+TracAlgorithm.ac_algorithm_cls=@ActorCriticAlgorithm
+TracAlgorithm.action_dist_clip_per_dim=0.01
+
 ActorDistributionRnnNetwork.continuous_projection_net=@NormalProjectionNetwork
-NormalProjectionNetwork.init_means_output_factor=1e-10
-NormalProjectionNetwork.std_bias_initializer_value=0.0
 
 ActorDistributionRnnNetwork.activation_fn=@tf.nn.elu
 ActorDistributionRnnNetwork.discrete_projection_net=@CategoricalProjectionNetwork
@@ -30,8 +33,6 @@ ValueRnnNetwork.activation_fn=@tf.nn.elu
 ValueRnnNetwork.lstm_size=(128, 128)
 
 ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
-NormalProjectionNetwork.init_means_output_factor=1e-10
-NormalProjectionNetwork.std_bias_initializer_value=0.0
 
 ActorDistributionNetwork.activation_fn=@tf.nn.elu
 ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork

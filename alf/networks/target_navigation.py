@@ -62,10 +62,15 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
         self._embedding.build(input_shape[1])
 
         if self._gft:
-            self.t_layers = [
-                tf.keras.layers.Dense(units=c * c + c, input_shape=(c, ))
-                for i in range(self._gft)
-            ]
+            self.t_layers = []
+            for _ in range(self._gft):
+                m = tf.keras.Sequential()
+                # m.add(tf.keras.layers.Dense(units=c, input_shape=(c, )))
+                # m.add(tf.keras.layers.Activation('relu'))
+                m.add(
+                    tf.keras.layers.Dense(units=c * c + c, input_shape=(c, )))
+                m.build((c, ))
+                self.t_layers.append(m)
         else:
             self._attention = tf.keras.layers.Attention(use_scale=True)
             query_emb_shape = self._embedding.compute_output_shape(query_shape)
@@ -145,6 +150,9 @@ class ImageLanguageAttentionCombiner(tf.keras.layers.Layer):
                 output = tf.concat([output, ones], axis=-1)
                 output = tf.matmul(output, t)
                 output = tf.keras.activations.relu(output)
+            with tf.init_scope():
+                if self.name == 'actor' and b > 1:
+                    print('GFT output tensor shape: {}'.format(output.shape))
             return output
 
         # create position input tensor
