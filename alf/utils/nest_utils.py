@@ -12,13 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Functions for handling nest."""
-import wrapt
 
-import tensorflow as tf
-import tensorflow_probability as tfp
-
-from tensorflow.python.util.nest import map_structure_up_to
-from tf_agents.specs.distribution_spec import DistributionSpec
+import numpy as np
 
 
 def is_namedtuple(value):
@@ -33,179 +28,128 @@ def is_namedtuple(value):
     return isinstance(value, tuple) and hasattr(value, '_fields')
 
 
-def nest_list_to_tuple(nest):
-    """Convert the lists in a nest to tuples.
+def is_unnamedtuple(value):
+    """Whether the value is an unnamedtuple instance"""
+    return isinstance(value, tuple) and not is_namedtuple(value)
 
-    Some tf-agents function (e.g. ReplayBuffer) cannot accept nest containing
-    list. So we need some utility to convert back and forth.
 
-    Args:
-        nest (a nest): a nest structure
+def extract_fields_from_nest(nest):
+    """Extract fields and the corresponding values from a nest if it's either
+    a `namedtuple` or `dict`.
+
     Returns:
-        nest with the same content as the input but lists are changed to tuples
+        An iterator that generates (field, value) pairs.
     """
-    # TF may wrap tuple, which causes construction of tuple to fail.
-    # So we use the original object instead.
-    if isinstance(nest, wrapt.ObjectProxy):
-        nest = nest.__wrapped__
-    if isinstance(nest, tuple):
-        new_nest = tuple(nest_list_to_tuple(item) for item in nest)
-        if is_namedtuple(nest):
-            # example is a namedtuple
-            new_nest = type(nest)(*new_nest)
-        return new_nest
-    elif isinstance(nest, list):
-        return tuple(nest_list_to_tuple(item) for item in nest)
-    elif isinstance(nest, dict):
-        new_nest = {}
-        for k, v in nest.items():
-            new_nest[k] = nest_list_to_tuple(v)
-        return new_nest
+    assert is_namedtuple(nest) or isinstance(nest, dict), \
+        "Nest {} must be a dict or namedtuple!".format(nest)
+    fields = nest.keys() if isinstance(nest, dict) else nest._fields
+    for field in fields:
+        value = nest[field] if isinstance(nest, dict) else getattr(nest, field)
+        yield field, value
+
+
+def is_nested(value):
+    """Returns true if the input is one of: `list`, `unnamedtuple`, `dict`, or
+    `namedtuple`. Note that this definition is different from tf's is_nested
+    where all types that are collections.abc.Sequence are defined to be nested.
+    """
+    return isinstance(value, (list, tuple, dict))
+
+
+def flatten(nest):
+    """Returns a flat list from a given nested structure."""
+    if not is_nested(nest):
+        # any other data type will be returned as it is
+        return [nest]
+    flattened = []
+    if isinstance(nest, list) or is_unnamedtuple(nest):
+        for value in nest:
+            flattened.extend(flatten(value))
     else:
-        return nest
+        for _, value in extract_fields_from_nest(nest):
+            flattened.extend(flatten(value))
+    return flattened
 
 
-def nest_contains_list(nest):
-    """Whether the nest contains list.
-
-    Args:
-        nest (nest): a nest structure
-    Returns:
-        bool: True if nest contains one or more list
-    """
-    if isinstance(nest, list):
-        return True
-    elif isinstance(nest, tuple):
-        for item in nest:
-            if nest_contains_list(item):
-                return True
-    elif isinstance(nest, dict):
-        for _, item in nest.items():
-            if nest_contains_list(item):
-                return True
-    return False
+def assert_same_structure(nest1, nest2):
+    """Asserts that two structures are nested in the same way."""
+    # When neither is nested, the assertion won't fail
+    if is_nested(nest1) or is_nested(nest2):
+        assert type(nest1) == type(nest2)
+        if isinstance(nest1, list) or is_unnamedtuple(nest1):
+            for value1, value2 in zip(nest1, nest2):
+                assert_same_structure(value1, value2)
+        else:
+            fields_and_values1 = sorted(
+                list(extract_fields_from_nest(nest1)), key=lambda fv: fv[0])
+            fields_and_values2 = sorted(
+                list(extract_fields_from_nest(nest2)), key=lambda fv: fv[0])
+            for fv1, fv2 in zip(fields_and_values1, fields_and_values2):
+                assert fv1[0] == fv2[0], \
+                    "Keys are different {} <-> {}".format(fv1[0], fv2[0])
+                assert_same_structure(fv1[1], fv2[1])
 
 
-def nest_tuple_to_list(nest, example):
-    """Convert the tuples in a nest to list according to example
+def map_structure(func, *nests):
+    """Applies func to each entry in structure and returns a new structure."""
+    assert nests, "There should be at least one input nest!"
+    for nest in nests[1:]:
+        assert_same_structure(nests[0], nest)
 
-    If a tuple whole corresponding structure in the example is a list, it will
-    be convert to a list.
+    def _map(*nests):
+        if not is_nested(nests[0]):
+            return func(*nests)
+        if isinstance(nests[0], list) or is_unnamedtuple(nests[0]):
+            ret = type(nests[0])([_map(*values) for values in zip(*nests)])
+        else:
+            ret = {}
+            for fields_and_values in zip(
+                    *[extract_fields_from_nest(nest) for nest in nests]):
+                field = fields_and_values[0][0]
+                values = map(lambda fv: fv[1], fields_and_values)
+                ret[field] = _map(*values)
+            ret = type(nests[0])(**ret)
+        return ret
 
-    Some tf-agents function (e.g. ReplayBuffer) cannot accept nest containing
-    list. So we need some utility to convert back and forth.
+    return _map(*nests)
 
-    Args:
-        nest (a nest): a nest structure without list
-        example (a nest): the example structure that nest will be converted to
-    Returns:
-        nest with the same content as the input but some tuples are changed to
-        lists
-    """
-    # TF may wrap tuple, which causes construction of tuple to fail.
-    # So we use the original object instead.
-    if isinstance(nest, wrapt.ObjectProxy):
-        nest = nest.__wrapped__
-    if isinstance(example, wrapt.ObjectProxy):
-        example = example.__wrapped__
-    if isinstance(nest, tuple):
-        new_nest = tuple(
-            nest_tuple_to_list(nst, exp) for nst, exp in zip(nest, example))
-        if is_namedtuple(example):
-            # example is a namedtuple
-            new_nest = type(example)(*new_nest)
-        elif isinstance(example, list):
-            # type(example) might be ListWrapper
-            new_nest = type(example)(list(new_nest))
-        return new_nest
-    elif isinstance(nest, list):
-        raise ValueError("list is not expected in nest %s" % nest)
-    elif isinstance(nest, dict):
-        new_nest = {}
-        for k, v in nest.items():
-            new_nest[k] = nest_tuple_to_list(v, example[k])
-        return new_nest
-    else:
-        return nest
+
+def pack_sequence_as(nest, flat_seq):
+    """Returns a given flattened sequence packed into a given structure."""
+    assert len(flatten(nest)) == len(flat_seq), \
+        "The two structures have a different number of elements!"
+
+    def _pack(nest, flat_seq):
+        if not is_nested(nest):
+            return flat_seq.pop(0)
+        if isinstance(nest, list) or is_unnamedtuple(nest):
+            ret = type(nest)([_pack(value, flat_seq) for value in nest])
+        else:
+            ret = {}
+            for field, value in extract_fields_from_nest(nest):
+                ret[field] = _pack(value, flat_seq)
+            ret = type(nest)(**ret)
+        return ret
+
+    return _pack(nest, flat_seq)
 
 
 def get_nest_batch_size(nest, dtype=None):
-    """Get the batch_size of a nest."""
-    batch_size = tf.shape(tf.nest.flatten(nest)[0])[0]
+    """Get the batch_size of a nest.
+
+    Args:
+        nest (nest): a nested structure
+        dtype : a python data type
+
+    Returns:
+        batch_size
+    """
+    flat_seq = flatten(nest)
+    assert len(flat_seq) > 0, "Zero element in the nest!"
+    batch_size = flat_seq[0].size()[0]
     if dtype is not None:
-        batch_size = tf.cast(batch_size, dtype)
+        batch_size = dtype(batch_size)
     return batch_size
-
-
-def to_distribution_param_spec(nest):
-    def _to_param_spec(spec):
-        if isinstance(spec, DistributionSpec):
-            return spec.input_params_spec
-        elif isinstance(spec, tf.TensorSpec):
-            return spec
-        else:
-            raise ValueError("Only TensorSpec or DistributionSpec is allowed "
-                             "in nest, got %s. nest is %s" % (spec, nest))
-
-    return tf.nest.map_structure(_to_param_spec, nest)
-
-
-def params_to_distributions(nest, nest_spec):
-    """Convert distribution parameters to Distribution, keep Tensors unchanged.
-
-    Args:
-        nest (nested tf.Tensor): nested Tensor and dictionary of the Tensor
-            parameters of Distribution. Typically, `nest` is obtained using
-            `distributions_to_params()`
-        nest_spec (nested DistributionSpec and TensorSpec): The distribution
-            params will be converted to Distribution according to the
-            corresponding DistributionSpec in nest_spec
-    Returns:
-        nested Distribution/Tensor
-    """
-
-    def _to_dist(spec, params):
-        if isinstance(spec, DistributionSpec):
-            return spec.build_distribution(**params)
-        elif isinstance(spec, tf.TensorSpec):
-            return params
-        else:
-            raise ValueError(
-                "Only DistributionSpec or TensorSpec is allowed "
-                "in nest_spec, got %s. nest_spec is %s" % (spec, nest_spec))
-
-    return map_structure_up_to(nest_spec, _to_dist, nest_spec, nest)
-
-
-def distributions_to_params(nest):
-    """Convert distributions to its parameters, keep Tensors unchanged.
-
-    Only returns parameters that have tf.Tensor values.
-
-    Args:
-        nest (nested Distribution and Tensor): Each Distribution will be
-            converted to dictionary of its Tensor parameters.
-    Returns:
-        A nest of Tensor/Distribution parameters. Each leaf is a Tensor or a
-        dict corresponding to one distribution, with keys as parameter name and
-        values as tensors containing parameter values.
-    """
-
-    def _to_params(dist_or_tensor):
-        if isinstance(dist_or_tensor, tfp.distributions.Distribution):
-            params = dist_or_tensor.parameters
-            return {
-                k: params[k]
-                for k in params if isinstance(params[k], tf.Tensor)
-            }
-        elif isinstance(dist_or_tensor, tf.Tensor):
-            return dist_or_tensor
-        else:
-            raise ValueError(
-                "Only Tensor or Distribution is allowed in nest, ",
-                "got %s. nest is %s" % (dist_or_tensor, nest))
-
-    return tf.nest.map_structure(_to_params, nest)
 
 
 def find_field(nest, name, ignore_empty=True):
@@ -217,7 +161,7 @@ def find_field(nest, name, ignore_empty=True):
     find_filed(nest, 'a')
     # you would get [1, {"a": 2, "b": 3}]
     ```
-            
+
     Args:
         nest (nest): a nest structure
         name (str): name of the field
@@ -226,15 +170,12 @@ def find_field(nest, name, ignore_empty=True):
         list
     """
     ret = []
-    if isinstance(nest, (list, tuple)) and not is_namedtuple(nest):
+    if isinstance(nest, list) or is_unnamedtuple(nest):
         for elem in nest:
             if isinstance(elem, (dict, tuple, list)):
                 ret = ret + find_field(elem, name)
     elif isinstance(nest, dict) or is_namedtuple(nest):
-        fields = nest.keys() if isinstance(nest, dict) else nest._fields
-        for field in fields:
-            elem = nest[field] if isinstance(nest, dict) else getattr(
-                nest, field)
+        for field, elem in extract_fields_from_nest(nest):
             if field == name:
                 if ((elem is not None and elem != () and elem != [])
                         or not ignore_empty):

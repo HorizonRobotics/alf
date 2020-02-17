@@ -14,39 +14,72 @@
 """Unittests for nest_utils.py"""
 
 from collections import namedtuple
-import tensorflow as tf
-
-from absl import logging
+import unittest
 
 from alf.utils import nest_utils
 
 NTuple = namedtuple('NTuple', ['a', 'b'])
 
 
-class ListWrapper(list):
-    pass
+class TestFlatten(unittest.TestCase):
+    def test_flatten(self):
+        nest = NTuple(a=1, b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=2)))
+        expected_flat_seq = [1, 2, 3, 2]
+        self.assertEqual(nest_utils.flatten(nest), expected_flat_seq)
+        self.assertEqual(nest_utils.flatten(1), [1])
 
 
-class TestListNest(tf.test.TestCase):
-    def test_list_nest(self):
-        list_nest = ('a', NTuple(a=1, b=2), (3, 4), list([5, 6]),
-                     ListWrapper([7, 8]), dict(a=9, b=10))
-        tuple_nest = nest_utils.nest_list_to_tuple(list_nest)
-        expected_tuple_nest = ('a', NTuple(a=1, b=2), (3, 4), (5, 6), (7, 8),
-                               dict(a=9, b=10))
-        print(tuple_nest)
-        self.assertEqual(tuple_nest, expected_tuple_nest)
-        self.assertEqual(type(tuple_nest[1]), NTuple)
-        self.assertFalse(nest_utils.nest_contains_list(tuple_nest))
-        self.assertTrue(nest_utils.nest_contains_list(list_nest))
-        new_list_nest = nest_utils.nest_tuple_to_list(tuple_nest, list_nest)
-        print(new_list_nest)
-        self.assertEqual(new_list_nest, list_nest)
-        self.assertEqual(type(new_list_nest[1]), NTuple)
-        self.assertEqual(type(new_list_nest[4]), ListWrapper)
+class TestAssertSameStructure(unittest.TestCase):
+    def test_assert_same_structure(self):
+        nest1 = NTuple(
+            a=1,
+            b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=NTuple(a=[100], b=1))))
+        nest2 = NTuple(
+            b=NTuple(
+                a=NTuple(a=(2, ), b=[300]), b=dict(x=NTuple(a=[1], b=100))),
+            a=3.0)
+        nest_utils.assert_same_structure(nest1, nest2)
+        nest_utils.assert_same_structure(
+            dict(x=1, y=NTuple(a=[1], b=3)), dict(y=NTuple(a=[3], b=1), x=1))
+        self.assertRaises(AssertionError, nest_utils.assert_same_structure,
+                          dict(x=1, y=[2]), dict(x=[2], y=1))
+        self.assertRaises(AssertionError, nest_utils.assert_same_structure,
+                          dict(y=[2]), dict(x=[2]))
+        self.assertRaises(AssertionError, nest_utils.assert_same_structure,
+                          dict(x=1, y=[2]), dict(y=(2, ), x=1))
+        self.assertRaises(AssertionError, nest_utils.assert_same_structure,
+                          dict(x=1, y=[2]), 1)
+        self.assertRaises(AssertionError, nest_utils.assert_same_structure,
+                          NTuple(a=1, b=[2]), NTuple(b=[2], a=[1]))
+        nest_utils.assert_same_structure(1.0, 10)
 
 
-class TestFindField(tf.test.TestCase):
+class TestMapStructure(unittest.TestCase):
+    def test_map_structure(self):
+        nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
+        nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
+        nest3 = NTuple(a=dict(x=1, y=-2), b=[50.0, (6, )])
+        expected_result = NTuple(a=dict(x=5, y=-2), b=[250.0, (21, )])
+        self.assertEqual(
+            nest_utils.map_structure(lambda a, b, c: a + b + c, nest1, nest2,
+                                     nest3), expected_result)
+        self.assertEqual(
+            nest_utils.map_structure(lambda a, b: a + b, [1, 3], [4, 5]),
+            [5, 8])
+        self.assertEqual(nest_utils.map_structure(lambda a, b: a * b, 1, 3), 3)
+
+
+class TestPackSequenceAs(unittest.TestCase):
+    def test_pack_sequence_as(self):
+        nest = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
+        flat_seq = [30, 20, -1, 4]
+        expected_nest = NTuple(a=dict(x=30, y=20), b=[-1, (4, )])
+        self.assertEqual(
+            nest_utils.pack_sequence_as(nest, flat_seq), expected_nest)
+        self.assertEqual(nest_utils.pack_sequence_as(1, [1]), 1)
+
+
+class TestFindField(unittest.TestCase):
     def test_find_field(self):
         nest = NTuple(a=1, b=NTuple(a=NTuple(a=2, b=3), b=2))
         ret = nest_utils.find_field(nest, 'a')
@@ -67,5 +100,4 @@ class TestFindField(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
-    tf.test.main()
+    unittest.main()
