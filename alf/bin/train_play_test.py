@@ -145,6 +145,9 @@ PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
 ]
 PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
 
+MISC_TRAIN_CONF = PPO_TRAIN_CONF + ['MISCAlgorithm.batch_size=1']
+MISC_TRAIN_PARAMS = _to_gin_params(MISC_TRAIN_CONF)
+
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
@@ -377,25 +380,25 @@ class TrainPlayTest(tf.test.TestCase):
         self._test(
             gin_file='misc_playground.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+            extra_train_params=MISC_TRAIN_PARAMS)
 
     def test_misc_playground_empowerment(self):
         self._test(
             gin_file='misc_playground_empowerment.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+            extra_train_params=MISC_TRAIN_PARAMS)
 
     def test_misc_playground_no_objects(self):
         self._test(
-            gin_file='misc_playground_on_objects.gin',
+            gin_file='misc_playground_no_objects.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+            extra_train_params=MISC_TRAIN_PARAMS)
 
     def test_misc_playground_two_balls(self):
         self._test(
             gin_file='misc_playground_two_balls.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
-            extra_train_params=PPO_TRAIN_PARAMS)
+            extra_train_params=MISC_TRAIN_PARAMS)
 
     def test_off_policy_ac_breakout(self):
         self._test(
