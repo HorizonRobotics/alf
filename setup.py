@@ -31,7 +31,6 @@ setup(
         'tensorboard == 2.1.0',
         'torch == 1.4.0',
         'torchvision == 0.5.0',
-        'tf-agents == 0.3.0',
     ],  # And any other dependencies foo needs
     package_data={'': ['*.gin']},
     packages=find_packages(),
