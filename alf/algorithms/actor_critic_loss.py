@@ -15,8 +15,7 @@
 from collections import namedtuple
 
 import gin.tf
-import tensorflow as tf
-import tensorflow_probability as tfp
+import torch
 
 from tf_agents.utils import common as tfa_common
 from alf.data_structures import TrainingInfo, LossInfo
@@ -27,8 +26,18 @@ ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "neg_entropy"])
 
 
-def _normalize_advantages(advantages, axes=(0, ), variance_epsilon=1e-8):
+def _normalize_advantages(advantages, axes=0, variance_epsilon=1e-8):
     adv_mean, adv_var = tf.nn.moments(x=advantages, axes=axes, keepdims=True)
+    adv_var = torch.var(
+        x.view(
+            x.shape[0],
+            x.shape[1],
+            1,
+            -1,
+        ),
+        dim=axes,
+        unbiased=True,
+        keepdim=True)
     normalized_advantages = (
         (advantages - adv_mean) / (tf.sqrt(adv_var) + variance_epsilon))
     return normalized_advantages
