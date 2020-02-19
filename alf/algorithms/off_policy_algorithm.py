@@ -72,6 +72,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
               num_updates=1,
               mini_batch_size=None,
               mini_batch_length=None,
+              whole_replay_buffer_training=True,
               clear_replay_buffer=True,
               update_counter_every_mini_batch=False):
         """Train algorithm.
@@ -81,8 +82,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
             mini_batch_size (int): number of sequences for each minibatch
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch
-            clear_replay_buffer (bool): whether use all data in replay buffer to
-                perform one update and then wiped clean
+            whole_replay_buffer_training (bool): whether use all data in replay
+                buffer to perform one update
+            clear_replay_buffer (bool): whether wiped clean replay buffer; this
+                flag only takes effect if whole_replay_buffer_training is True
             update_counter_every_mini_batch (bool): whether to update counter
                 for every mini batch. The `summary_interval` is based on this
                 counter. Typically, this should be False. Set to True if you
@@ -94,9 +97,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """
         if mini_batch_size is None:
             mini_batch_size = self._exp_replayer.batch_size
-        if clear_replay_buffer:
+        if whole_replay_buffer_training:
             experience = self._exp_replayer.replay_all()
-            self._exp_replayer.clear()
+            if clear_replay_buffer:
+                self._exp_replayer.clear()
         else:
             experience = self._exp_replayer.replay(
                 sample_batch_size=mini_batch_size,

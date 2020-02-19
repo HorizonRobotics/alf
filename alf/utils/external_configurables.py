@@ -29,6 +29,7 @@ tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
                                                    'tf.keras.layers.Conv2D')
 tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
                                                'tf.optimizers.Adam')
+
 gin.external_configurable(tf.keras.layers.Concatenate,
                           'tf.keras.layers.Concatenate')
 
@@ -50,6 +51,8 @@ gin.external_configurable(mlp_layers, 'mlp_layers')
 
 gin.external_configurable(tf.keras.activations.softsign,
                           'tf.keras.activations.softsign')
+
+gin.external_configurable(tf.nn.swish, 'tf.nn.swish')
 
 gin.external_configurable(tf.keras.initializers.GlorotUniform,
                           'tf.keras.initializers.GlorotUniform')
