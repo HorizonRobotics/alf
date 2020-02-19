@@ -65,6 +65,14 @@ class FC(nn.Module):
     def forward(self, inputs):
         return self._activation(self._linear(inputs))
 
+    @property
+    def weight(self):
+        return self._linear.weight
+
+    @property
+    def bias(self):
+        return self._linear.bias
+
 
 @gin.configurable
 class Conv2D(nn.Module):
@@ -113,6 +121,14 @@ class Conv2D(nn.Module):
 
     def forward(self, img):
         return self._activation(self._conv2d(img))
+
+    @property
+    def weight(self):
+        return self._conv2d.weight
+
+    @property
+    def bias(self):
+        return self._conv2d.bias
 
 
 @gin.configurable
@@ -163,3 +179,11 @@ class ConvTranspose2D(nn.Module):
 
     def forward(self, img):
         return self._activation(self._conv_trans2d(img))
+
+    @property
+    def weight(self):
+        return self._conv_trans2d.weight
+
+    @property
+    def bias(self):
+        return self._conv_trans2d.bias
