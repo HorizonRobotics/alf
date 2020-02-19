@@ -142,6 +142,13 @@ PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
 ]
 PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
 
+MBRL_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
+    'TrainerConfig.unroll_length=4',
+    'TrainerConfig.whole_replay_buffer_training=True',
+    'TrainerConfig.clear_replay_buffer=False',
+]
+MBRL_TRAIN_PARAMS = _to_gin_params(MBRL_TRAIN_CONF)
+
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
@@ -520,6 +527,10 @@ class TrainPlayTest(alf.test.TestCase):
         self._test(
             gin_file='trac_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_mbrl_pendulum(self):
+        self._test(
+            gin_file='mbrl_pendulum.gin', extra_train_params=MBRL_TRAIN_PARAMS)
 
     @classmethod
     def tearDownClass(cls):
