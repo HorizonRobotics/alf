@@ -17,7 +17,7 @@ import gin
 
 import torch
 
-from alf.nest import nest
+import alf.nest as nest
 
 
 @gin.configurable

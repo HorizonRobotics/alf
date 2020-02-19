@@ -133,7 +133,7 @@ def map_structure_up_to(shallow_nest, func, *nests):
     shallow_nest = [None, None]
     inp_val = [[1], 2]
     out = map_structure_up_to(shallow_nest, lambda x: 2 * x, inp_val)
-    # Output is: [[2], 4]
+    # Output is: [[1, 1], 4]
     ```
     ```python
     ab_tuple = collections.namedtuple("ab_tuple", "a, b")

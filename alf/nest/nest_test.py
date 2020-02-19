@@ -16,7 +16,7 @@
 from collections import namedtuple
 import unittest
 
-from alf.nest import nest
+import alf.nest as nest
 
 NTuple = namedtuple('NTuple', ['a', 'b'])
 
