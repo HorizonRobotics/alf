@@ -28,6 +28,9 @@ import gin
 import time
 import random
 import numpy as np
+import torch
+from alf.utils.nest_utils import map_structure
+
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -45,8 +48,6 @@ from alf.utils.conditional_ops import conditional_update, run_if, select_from_ma
 from alf.utils.nest_utils import is_namedtuple
 from alf.utils import nest_utils
 from alf.utils.scope_utils import get_current_scope
-
-from alf.utils.nest_utils import map_structure
 
 # `test_session` is deprecated and skipped test function, remove
 #   it for all unittest which inherit from `tf.test.TestCase`
@@ -609,10 +610,10 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
     def greedy_fn(dist):
         # pytorch distribution has no 'mode' operation
         sample_action = dist.sample()
-        greedy_mask = torch.rand(sample_action.shape) > eps
+        greedy_mask = torch.rand(sample_action.shape[0]) > eps
         if isinstance(dist, torch.distributions.categorical.Categorical):
             greedy_action = torch.argmax(dist.logits, -1)
-        elif isinstance(dist, torch.distributions.categorical.Normal):
+        elif isinstance(dist, torch.distributions.normal.Normal):
             greedy_action = dist.mean
         else:
             greedy_action = dist.sample()
