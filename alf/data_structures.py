@@ -90,7 +90,7 @@ class TimeStep(
       reward: a `Tensor` of reward values from executing 'prev_action'.
       discount: A discount value in the range `[0, 1]`.
       observation: A (nested) 'Tensor' for observation
-      prev_action: A 'Tensor' for action from previous tiem step
+      prev_action: A 'Tensor' for action from previous time step
       env_id: the ID of the environment from which this time_step is
     """
 
@@ -109,14 +109,9 @@ class TimeStep(
             return torch.eq(self.step_type, StepType.LAST)
         raise ValueError('step_type is not a Torch Tensor')
 
-    # def __hash__(self):
-    # TODO(b/130243327): Explore performance impact and consider converting
-    # dicts in the observation into ordered dicts in __new__ call.
-    # TODO(Jerry): wait for pytorch version of nest
-    # return hash(tuple(tf.nest.flatten(self)))
 
-
-PolicyStep = namedtuple('PolicyStep', ('action', 'state', 'info'))
+PolicyStep = namedtuple(
+    'PolicyStep', ['action', 'state', 'info'], default_value=())
 
 TrainingInfo = namedtuple(
     "TrainingInfo",
@@ -149,6 +144,30 @@ Experience = namedtuple(
         'rollout_info',  # PolicyStep.info from rollout()
         'state'  # state passed to rollout() to generate `action`
     ])
+
+
+def make_experience(time_step: TimeStep, policy_step: PolicyStep, state):
+    """Make an instance of Experience from TimeStep and PolicyStep.
+
+    Args:
+        time_step (TimeStep): time step from the environment
+        policy_step (PolicyStep): policy step returned from rollout()
+        state (nested Tensor): state used for calling rollout() to get the
+            `policy_step`
+    Returns:
+        Experience
+    """
+    return Experience(
+        step_type=time_step.step_type,
+        reward=time_step.reward,
+        discount=time_step.discount,
+        observation=time_step.observation,
+        prev_action=time_step.prev_action,
+        env_id=time_step.env_id,
+        action=policy_step.action,
+        rollout_info=policy_step.info,
+        state=state)
+
 
 LossInfo = namedtuple(
     "LossInfo",

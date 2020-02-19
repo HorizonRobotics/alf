@@ -32,8 +32,8 @@ class PolicyStepTest(unittest.TestCase):
 
     def testCreateWithAllDefaults(self):
         action = torch.tensor(1)
-        state = None
-        info = None
+        state = ()
+        info = ()
         step = PolicyStep(action=action)
         self.assertEqual(step.action, action)
         self.assertEqual(step.state, state)
@@ -42,7 +42,7 @@ class PolicyStepTest(unittest.TestCase):
     def testCreateWithDefaultInfo(self):
         action = torch.tensor(1)
         state = torch.tensor(2)
-        info = None
+        info = ()
         step = PolicyStep(action=action, state=state)
         self.assertEqual(step.action, action)
         self.assertEqual(step.state, state)
