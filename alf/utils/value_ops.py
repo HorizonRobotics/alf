@@ -116,6 +116,18 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
     return importance_ratio, importance_ratio_clipped
 
 
+def discount_return(reward, done, bootstrap_value, discount, return_dest=None):
+    """Time-major inputs, optional other dimensions: [T], [T,B], etc."""
+    return_ = return_dest if return_dest is not None else zeros(
+        reward.shape, dtype=reward.dtype)
+    nd = 1 - done
+    nd = nd.type(reward.dtype) if isinstance(nd, torch.Tensor) else nd
+    return_[-1] = reward[-1] + discount * bootstrap_value * nd[-1]
+    for t in reversed(range(len(reward) - 1)):
+        return_[t] = reward[t] + return_[t + 1] * discount * nd[t]
+    return return_
+
+
 def discounted_return(rewards, values, step_types, discounts, time_major=True):
     """Computes discounted return for the first T-1 steps.
 
