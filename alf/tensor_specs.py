@@ -46,6 +46,7 @@ class TensorSpec(object):
         if isinstance(dtype, str):
             self._dtype = getattr(torch, dtype)
         else:
+            assert isinstance(dtype, torch.dtype)
             self._dtype = dtype
 
     @classmethod
