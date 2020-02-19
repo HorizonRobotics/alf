@@ -97,6 +97,24 @@ class TensorSpec(object):
     def __reduce__(self):
         return TensorSpec, (self._shape, self._dtype)
 
+    def constant(self, value, outer_dims=None):
+        """Create a constant tensor from the spec.
+
+        Args:
+            value : a scalar
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            tensor (torch.Tensor): a tensor of `self._dtype`
+        """
+        value = torch.as_tensor(value).to(self._dtype)
+        assert len(value.size()) == 0, "The input value must be a scalar!"
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        return torch.ones(size=shape, dtype=self._dtype) * value
+
     def zeros(self, outer_dims=None):
         """Create a zero tensor from the spec.
 
@@ -107,10 +125,19 @@ class TensorSpec(object):
         Returns:
             tensor (torch.Tensor): a tensor of `self._dtype`
         """
-        shape = self._shape
-        if outer_dims is not None:
-            shape = tuple(outer_dims) + shape
-        return torch.zeros(size=shape, dtype=self._dtype)
+        return self.constant(0, outer_dims)
+
+    def ones(self, outer_dims=None):
+        """Create an all-one tensor from the spec.
+
+        Args:
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            tensor (torch.Tensor): a tensor of `self._dtype`
+        """
+        return self.constant(1, outer_dims)
 
 
 class BoundedTensorSpec(TensorSpec):
