@@ -37,9 +37,6 @@ def _normalize_advantages(advantages, variance_epsilon=1e-8):
     return normalized_advantages
 
 
-writer = SummaryWriter()
-
-
 @gin.configurable
 class ActorCriticLoss(nn.Module):
     def __init__(self,
@@ -116,13 +113,14 @@ class ActorCriticLoss(nn.Module):
             training_info, value)
 
         def _summary():
-            with self.name_scope:
-                writer.add_scalar('values', value.mean())
-                writer.add_scalar("returns", returns.mean())
-                writer.add_scalar("advantages/mean", advantages.mean())
-                writer.add_histogram("advantages/value", advantages.mean())
-                writer.add_histogram("explained_variance_of_return_by_value",
-                                     common.explained_variance(value, returns))
+            alf.summary.scalar(self._name + '/values', value.mean())
+            alf.summary.scalar(self._name + "/returns", returns.mean())
+            alf.summary.scalar(self._name + "/advantages/mean",
+                               advantages.mean())
+            alf.summary.histogram(self._name + "/advantages/value", advantages)
+            alf.summary.histogram(
+                self._name + "/explained_variance_of_return_by_value",
+                common.explained_variance(value, returns))
 
         if self._debug_summaries:
             common.run_if(common.should_record_summaries(), _summary)
