@@ -16,7 +16,7 @@
 import gin.tf
 import tensorflow as tf
 
-from tf_agents.networks.network import Network, DistributionNetwork
+from alf.utils.networks import Network, DistributionNetwork
 
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
@@ -77,7 +77,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         if loss is None:
-            loss = loss_class(action_spec, debug_summaries=debug_summaries)
+            loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
 
     def convert_train_state_to_predict_state(self, state):

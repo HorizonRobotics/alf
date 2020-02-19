@@ -46,6 +46,8 @@ from alf.utils.nest_utils import is_namedtuple
 from alf.utils import nest_utils
 from alf.utils.scope_utils import get_current_scope
 
+from alf.utils.nest_utils import map_structure
+
 # `test_session` is deprecated and skipped test function, remove
 #   it for all unittest which inherit from `tf.test.TestCase`
 #   to exclude it from statistics of unittest result
@@ -583,27 +585,20 @@ def explained_variance(ypred, y):
     return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)
 
 
-def sample_action_distribution(distributions, seed=None):
+def sample_action_distribution(nested_distributions):
     """Sample actions from distributions
     Args:
-        distributions (nested Distribution]): action distributions
-        seed (Any):Any Python object convertible to string, supplying the
-            initial entropy.  If `None`, operations seeded with seeds
-            drawn from this `SeedStream` will follow TensorFlow semantics
-            for not being seeded.
+        nested_distributions (nested Distribution): action distributions
     Returns:
         sampled actions
     """
-
-    seed_stream = tfp.util.SeedStream(seed=seed, salt='sample')
-    return tf.nest.map_structure(lambda d: d.sample(seed=seed_stream()),
-                                 distributions)
+    return map_structure(lambda d: d.sample(), nested_distributions)
 
 
-def epsilon_greedy_sample(nested_dist, eps=0.1):
+def epsilon_greedy_sample(nested_distributions, eps=0.1):
     """Generate greedy sample that maximizes the probability.
     Args:
-        nested_dist (nested Distribution): distribution to sample from
+        nested_distributions (nested Distribution): distribution to sample from
         eps (float): a floating value in [0,1], representing the chance of
             action sampling instead of taking argmax. This can help prevent
             a dead loop in some deterministic environment like Breakout.
@@ -611,22 +606,23 @@ def epsilon_greedy_sample(nested_dist, eps=0.1):
         (nested) Tensor
     """
 
-    def dist_fn(dist):
-        try:
-            greedy_action = tf.cond(
-                tf.less(tf.random.uniform((), 0, 1), eps), dist.sample,
-                dist.mode)
-        except NotImplementedError:
-            raise ValueError(
-                "Your network's distribution does not implement mode "
-                "making it incompatible with a greedy policy.")
-
-        return greedy_action
+    def greedy_fn(dist):
+        # pytorch distribution has no 'mode' operation
+        sample_action = dist.sample()
+        greedy_mask = torch.rand(sample_action.shape) > eps
+        if isinstance(dist, torch.distributions.categorical.Categorical):
+            greedy_action = torch.argmax(dist.logits, -1)
+        elif isinstance(dist, torch.distributions.categorical.Normal):
+            greedy_action = dist.mean
+        else:
+            greedy_action = dist.sample()
+        sample_action[greedy_mask] = greedy_action[greedy_mask]
+        return sample_action
 
     if eps >= 1.0:
-        return sample_action_distribution(nested_dist)
+        return sample_action_distribution(nested_distributions)
     else:
-        return tf.nest.map_structure(dist_fn, nested_dist)
+        return map_structure(greedy_fn, nested_distributions)
 
 
 def get_initial_policy_state(batch_size, policy_state_spec):
