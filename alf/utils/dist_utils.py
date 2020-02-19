@@ -15,7 +15,13 @@
 import gin
 import torch
 import numpy as np
-import alf.utils.nest_utils as nest
+import alf.utils.nest_utils_pytorch as nest
+
+import tensorflow_probability as tfp
+import tensorflow as tf
+
+from tf_agents.distributions.utils import SquashToSpecNormal
+from tf_agents.specs import tensor_spec
 
 
 @gin.configurable
@@ -67,7 +73,7 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
     return entropy, entropy_for_gradient
 
 
-def total_entropy(distributions):
+def compute_entropy(distributions):
     """Computes total entropy of nested distribution.
     Args:
         distributions (nested Distribution): A possibly batched tuple of
@@ -81,11 +87,11 @@ def total_entropy(distributions):
         return entropy
 
     entropies = list(map(_compute_entropy, nest.flatten(distributions)))
-    total_entropies = torch.sum(torch.stack(entropies))
+    total_entropies = sum(entropies)
     return total_entropies
 
 
-def total_log_probability(distributions, actions):
+def compute_log_probability(distributions, actions):
     """Computes log probability of actions given distribution.
 
     Args:
@@ -106,8 +112,7 @@ def total_log_probability(distributions, actions):
             dist,
             action) in zip(nest.flatten(distributions), nest.flatten(actions))
     ]
-
-    total_log_probs = torch.sum(torch.stack(log_probs))
+    total_log_probs = sum(log_probs)
     return total_log_probs
 
 
