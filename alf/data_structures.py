@@ -109,11 +109,11 @@ class TimeStep(
             return torch.eq(self.step_type, StepType.LAST)
         raise ValueError('step_type is not a Torch Tensor')
 
-    def __hash__(self):
-        # TODO(b/130243327): Explore performance impact and consider converting
-        # dicts in the observation into ordered dicts in __new__ call.
-        # TODO(Jerry): wait for pytorch version of nest
-        return hash(tuple(tf.nest.flatten(self)))
+    # def __hash__(self):
+    # TODO(b/130243327): Explore performance impact and consider converting
+    # dicts in the observation into ordered dicts in __new__ call.
+    # TODO(Jerry): wait for pytorch version of nest
+    # return hash(tuple(tf.nest.flatten(self)))
 
 
 PolicyStep = namedtuple('PolicyStep', ('action', 'state', 'info'))
