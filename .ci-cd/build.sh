@@ -44,6 +44,7 @@ function test() {
     python3 -m unittest -v \
         alf.environments.simple.noisy_array_test
     python3 -m unittest -v alf.tensor_specs_test
+    python3 -m unittest -v alf.data_structures_test
     cd ..
 }
 
