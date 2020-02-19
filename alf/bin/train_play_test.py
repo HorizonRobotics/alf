@@ -155,7 +155,6 @@ MBRL_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
 ]
 MBRL_TRAIN_PARAMS = _to_gin_params(MBRL_TRAIN_CONF)
 
-
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
