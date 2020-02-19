@@ -74,6 +74,6 @@ TrainerConfig.initial_collect_steps=1000
 TrainerConfig.mini_batch_length=1
 TrainerConfig.mini_batch_size=128
 TrainerConfig.num_updates_per_train_step=1
-TrainerConfig.clear_replay_buffer=False
+TrainerConfig.whole_replay_buffer_training=False
 TrainerConfig.use_rollout_state=True
 ReplayBuffer.max_length=100000

@@ -45,7 +45,8 @@ class TrainerConfig(object):
     1. `num_steps_per_iter` is only for on_policy_trainer.
 
     2. `initial_collect_steps`, `num_updates_per_train_step`, `mini_batch_length`,
-    `mini_batch_size`, `clear_replay_buffer`, `num_envs` are used by sync_off_policy_trainer and
+    `mini_batch_size`, `whole_replay_buffer_training`, `clear_replay_buffer`,
+    `num_envs` are used by sync_off_policy_trainer and
     async_off_policy_trainer.
     """
 
@@ -77,6 +78,7 @@ class TrainerConfig(object):
                  num_updates_per_train_step=4,
                  mini_batch_length=None,
                  mini_batch_size=None,
+                 whole_replay_buffer_training=True,
                  clear_replay_buffer=True,
                  num_envs=1):
         """Configuration for Trainers
@@ -134,8 +136,10 @@ class TrainerConfig(object):
                 it's set to the replayer's `batch_size`.
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch. If None, it's set to `unroll_length`.
-            clear_replay_buffer (bool): whether use all data in replay buffer to
-                perform one update and then wiped clean
+            whole_replay_buffer_training (bool): whether use all data in replay
+                buffer to perform one update
+            clear_replay_buffer (bool): whether wiped clean replay buffer; this
+                flag only takes effect if whole_replay_buffer_training is True
             num_envs (int): the number of environments to run asynchronously.
         """
 
@@ -169,6 +173,7 @@ class TrainerConfig(object):
             num_updates_per_train_step=num_updates_per_train_step,
             mini_batch_length=mini_batch_length,
             mini_batch_size=mini_batch_size,
+            whole_replay_buffer_training=whole_replay_buffer_training,
             clear_replay_buffer=clear_replay_buffer,
             num_envs=num_envs)
 

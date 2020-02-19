@@ -42,6 +42,7 @@ class OffPolicyTrainer(Trainer):
         if self._mini_batch_length is None:
             self._mini_batch_length = self._unroll_length
         self._mini_batch_size = config.mini_batch_size
+        self._whole_replay_buffer_training = config.whole_replay_buffer_training
         self._clear_replay_buffer = config.clear_replay_buffer
 
 
@@ -72,6 +73,8 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
+                whole_replay_buffer_training=self.
+                _whole_replay_buffer_training,
                 clear_replay_buffer=self._clear_replay_buffer,
                 update_counter_every_mini_batch=self._config.
                 update_counter_every_mini_batch)
@@ -118,6 +121,8 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
                 num_updates=self._num_updates_per_train_step,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
+                whole_replay_buffer_training=self.
+                _whole_replay_buffer_training,
                 clear_replay_buffer=self._clear_replay_buffer,
                 update_counter_every_mini_batch=self._config.
                 update_counter_every_mini_batch)
