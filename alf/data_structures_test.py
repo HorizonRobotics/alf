@@ -21,10 +21,9 @@ from alf.data_structures import PolicyStep, StepType, TimeStep
 
 
 class PolicyStepTest(unittest.TestCase):
-
     def testCreate(self):
-        action = torch.tensor(1) 
-        state = torch.tensor(2) 
+        action = torch.tensor(1)
+        state = torch.tensor(2)
         info = torch.tensor(3)
         step = PolicyStep(action=action, state=state, info=info)
         self.assertEqual(step.action, action)
@@ -39,11 +38,11 @@ class PolicyStepTest(unittest.TestCase):
         self.assertEqual(step.action, action)
         self.assertEqual(step.state, state)
         self.assertEqual(step.info, info)
-        
+
     def testCreateWithDefaultInfo(self):
         action = torch.tensor(1)
-        state = torch.tensor(2) 
-        info = None 
+        state = torch.tensor(2)
+        info = None
         step = PolicyStep(action=action, state=state)
         self.assertEqual(step.action, action)
         self.assertEqual(step.state, state)
@@ -51,7 +50,6 @@ class PolicyStepTest(unittest.TestCase):
 
 
 class TimeStepTest(unittest.TestCase):
-
     def testCreate(self):
         step_type = torch.tensor(0, dtype=torch.int32)
         reward = torch.tensor(1, dtype=torch.int32)
@@ -59,12 +57,13 @@ class TimeStepTest(unittest.TestCase):
         observation = torch.tensor(-1)
         prev_action = torch.tensor(-1)
         env_id = 0
-        time_step = TimeStep(step_type=step_type,
-                             reward=reward,
-                             discount=discount,
-                             observation=observation,
-                             prev_action=prev_action,
-                             env_id=env_id)
+        time_step = TimeStep(
+            step_type=step_type,
+            reward=reward,
+            discount=discount,
+            observation=observation,
+            prev_action=prev_action,
+            env_id=env_id)
         self.assertEqual(StepType.FIRST, time_step.step_type)
         self.assertEqual(reward, time_step.reward)
         self.assertEqual(discount, time_step.discount)
