@@ -47,3 +47,4 @@ TrainerConfig.eval_interval=5
 TrainerConfig.debug_summaries=False
 TrainerConfig.summarize_grads_and_vars=False
 TrainerConfig.summary_interval=5
+TrainerConfig.use_tf_functions=False
