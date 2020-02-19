@@ -151,8 +151,8 @@ class ActorCriticLoss(nn.Module):
                 td_loss=td_loss, pg_loss=pg_loss, neg_entropy=entropy_loss))
 
     def _pg_loss(self, training_info, advantages):
-        action_log_prob = training_info.info.action_distribution.log_prob(
-            training_info.action)
+        action_log_prob = dist_utils.total_log_probability(
+            training_info.info.action_distribution, training_info.action)
         return -advantages * action_log_prob
 
     def _calc_returns_and_advantages(self, training_info, value):

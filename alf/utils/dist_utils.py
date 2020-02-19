@@ -15,7 +15,7 @@
 import gin
 import torch
 import numpy as np
-from alf.utils.nest_utils import flatten
+import alf.utils.nest_utils as nest
 
 
 @gin.configurable
@@ -80,8 +80,35 @@ def total_entropy(distributions):
         entropy = dist.entropy()
         return entropy
 
-    entropies = list(map(_compute_entropy, flatten(distributions)))
-    return torch.sum(torch.stack(entropies))
+    entropies = list(map(_compute_entropy, nest.flatten(distributions)))
+    total_entropies = torch.sum(torch.stack(entropies))
+    return total_entropies
+
+
+def total_log_probability(distributions, actions):
+    """Computes log probability of actions given distribution.
+
+    Args:
+        distributions: A possibly batched tuple of distributions.
+        actions: A possibly batched action tuple.
+
+    Returns:
+        A Tensor representing the log probability of each action in the batch.
+    """
+
+    def _compute_log_prob(single_distribution, single_action):
+        single_log_prob = single_distribution.log_prob(single_action)
+        return single_log_prob
+
+    nest.assert_same_structure(distributions, actions)
+    log_probs = [
+        _compute_log_prob(dist, action) for (
+            dist,
+            action) in zip(nest.flatten(distributions), nest.flatten(actions))
+    ]
+
+    total_log_probs = torch.sum(torch.stack(log_probs))
+    return total_log_probs
 
 
 def calc_default_target_entropy(spec):
