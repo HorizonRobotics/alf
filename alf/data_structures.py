@@ -63,18 +63,17 @@ class StepType(object):
 
 
 class TimeStep(
-        namedtuple(
-            'TimeStep',
-            [
-                'step_type',
-                'reward',
-                'discount',
-                'observation',
-                'prev_action',
-                'env_id',
-            ])):
+        namedtuple('TimeStep', [
+            'step_type',
+            'reward',
+            'discount',
+            'observation',
+            'prev_action',
+            'env_id',
+        ])):
     """TimeStep with action.
 
+    *TODO*
     Returned with every call to `step` and `reset` on an environment.
 
     A `TimeStep` contains the data emitted by an environment at each step of
@@ -117,8 +116,7 @@ class TimeStep(
         return hash(tuple(tf.nest.flatten(self)))
 
 
-PolicyStep = namedtuple('PolicyStep', 
-                        ('action', 'state', 'info'))
+PolicyStep = namedtuple('PolicyStep', ('action', 'state', 'info'))
 
 TrainingInfo = namedtuple(
     "TrainingInfo",
@@ -151,7 +149,6 @@ Experience = namedtuple(
         'rollout_info',  # PolicyStep.info from rollout()
         'state'  # state passed to rollout() to generate `action`
     ])
-
 
 LossInfo = namedtuple(
     "LossInfo",
