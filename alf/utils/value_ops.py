@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Various functions related to calculating values."""
-
+import torch
 import tensorflow as tf
 
-from tf_agents.trajectories.time_step import StepType
+from alf.data_structures import StepType
 from tf_agents.utils import common as tfa_common
 
 from alf.utils import common
@@ -116,18 +116,6 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
     return importance_ratio, importance_ratio_clipped
 
 
-def discount_return(reward, done, bootstrap_value, discount, return_dest=None):
-    """Time-major inputs, optional other dimensions: [T], [T,B], etc."""
-    return_ = return_dest if return_dest is not None else zeros(
-        reward.shape, dtype=reward.dtype)
-    nd = 1 - done
-    nd = nd.type(reward.dtype) if isinstance(nd, torch.Tensor) else nd
-    return_[-1] = reward[-1] + discount * bootstrap_value * nd[-1]
-    for t in reversed(range(len(reward) - 1)):
-        return_[t] = reward[t] + return_[t + 1] * discount * nd[t]
-    return return_
-
-
 def discounted_return(rewards, values, step_types, discounts, time_major=True):
     """Computes discounted return for the first T-1 steps.
 
@@ -155,43 +143,42 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
         A tensor with shape [T-1, B] (or [T-1]) representing the discounted
         returns. Shape is [B, T-1] when time_major is false.
     """
-
+    #time_major = True if len(values.shape) == 1
     if not time_major:
-        discounts = tf.transpose(a=discounts)
-        rewards = tf.transpose(a=rewards)
-        values = tf.transpose(a=values)
-        step_types = tf.transpose(a=step_types)
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
 
-    tf.Assert(
-        tf.shape(values)[0] >= 2, [
-            "The sequence length needs to be at least 2. Got ",
-            tf.shape(values)[0]
-        ])
+    assert values.shape[0] >= 2, "The sequence length needs to be \
+                                at least 2. Got {s}".format(s=values.shape[0])
 
+    returns = torch.zeros(rewards.shape, dtype=rewards.dtype)
     discounts = discounts[1:]
     rewards = rewards[1:]
     final_value = values[-1]
     values = values[:-1]
 
     step_types = step_types[:-1]
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    is_lasts = (step_types == torch.tensor(StepType.LAST, dtype=torch.int64))
+    is_lasts = is_lasts.to(dtype=torch.float32)
 
-    def discounted_return_fn(acc_discounted_reward, args):
-        (reward, value, is_last, discount) = args
+    def discounted_return_fn(acc_discounted_reward, reward, value, is_last,
+                             discount):
         acc_discounted_value = acc_discounted_reward * discount + reward
         return is_last * value + (1 - is_last) * acc_discounted_value
 
-    returns = tf.scan(
-        fn=discounted_return_fn,
-        elems=(rewards, values, is_lasts, discounts),
-        reverse=True,
-        initializer=final_value,
-        back_prop=False)
+    returns[-1] = final_value
+    for t in reversed(range(len(rewards))):
+        returns[t] = discounted_return_fn(returns[t + 1], rewards[t],
+                                          values[t], is_lasts[t], discounts[t])
 
+    print(returns)
+    returns = returns[:-1]
     if not time_major:
-        returns = tf.transpose(a=returns)
+        returns = returns.transpose(0, 1)
 
-    return tf.stop_gradient(returns)
+    return returns.detach()
 
 
 def one_step_discounted_return(rewards, values, step_types, discounts):
