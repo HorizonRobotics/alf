@@ -28,29 +28,14 @@ import gin
 import time
 import random
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
-from tf_agents.distributions.utils import scale_distribution_to_spec, SquashToSpecNormal
-from tf_agents.networks.network import Network
-from tf_agents.specs.distribution_spec import DistributionSpec
-from tf_agents.specs.tensor_spec import BoundedTensorSpec
-from tf_agents.specs import tensor_spec
-from tf_agents.trajectories.time_step import StepType, TimeStep
-from tf_agents.utils import common as tfa_common
-
-from alf.data_structures import LossInfo, make_action_time_step
-from alf.utils import summary_utils, gin_utils
+from alf.data_structures import LossInfo
 from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
-from alf.utils.nest_utils import is_namedtuple
-from alf.utils import nest_utils
 from alf.utils.scope_utils import get_current_scope
 
 # `test_session` is deprecated and skipped test function, remove
 #   it for all unittest which inherit from `tf.test.TestCase`
 #   to exclude it from statistics of unittest result
-
-del tf.test.TestCase.test_session
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -543,7 +528,7 @@ def tensor_extend(x, y):
     Returns:
         the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
     """
-    return tf.concat([x, tf.expand_dims(y, axis=0)], axis=0)
+    return torch.cat((x, y.unsqueeze(0)))
 
 
 def tensor_extend_zero(x):
@@ -555,10 +540,7 @@ def tensor_extend_zero(x):
     Returns:
         the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
     """
-    return tf.concat(
-        [x,
-         tf.expand_dims(tf.zeros(tf.shape(x)[1:], dtype=x.dtype), axis=0)],
-        axis=0)
+    return torch.cat((x, torch.zeros(x.shape[1:], dtype=x.dtype).unsqueeze(0)))
 
 
 def explained_variance(ypred, y):
