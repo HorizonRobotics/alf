@@ -29,7 +29,7 @@ import time
 import random
 import numpy as np
 import torch
-from alf.utils.nest_utils import map_structure
+from alf.nest import map_structure
 
 import tensorflow as tf
 import tensorflow_probability as tfp

@@ -13,14 +13,11 @@
 # limitations under the License.
 """Actor critic algorithm."""
 
-import gin.tf
-import tensorflow as tf
-
-from alf.utils.networks import Network, DistributionNetwork
-
+import gin
+from alf.networks import ActorNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.data_structures import ActionTimeStep, namedtuple, PolicyStep
+from alf.data_structures import TimeStep, namedtuple, PolicyStep
 from alf.utils import common
 
 ActorCriticState = namedtuple(
@@ -37,8 +34,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 actor_network: DistributionNetwork,
-                 value_network: Network,
+                 actor_network: ActorNetwork,
+                 value_network: ValueNetwork,
                  loss=None,
                  loss_class=ActorCriticLoss,
                  optimizer=None,
@@ -48,17 +45,17 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            actor_network (DistributionNetwork): A network that returns nested
+            actor_network : A network that returns nested
                 tensor of action distribution for each observation given observation
                 and network state.
-            value_network (Network): A function that returns value tensor from neural
-                net predictions for each observation given observation and nwtwork
+            value_network: A function that returns value tensor from neural
+                net predictions for each observation given observation and network
                 state.
             loss (None|ActorCriticLoss): an object for calculating loss. If
                 None, a default loss of class loss_class will be used.
             loss_class (type): the class of the loss. The signature of its
                 constructor: loss_class(action_spec, debug_summaries)
-            optimizer (tf.optimizers.Optimizer): The optimizer for training
+            optimizer (torch.optim.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
@@ -83,7 +80,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
-    def predict(self, time_step: ActionTimeStep, state: ActorCriticState,
+    def predict(self, time_step: TimeStep, state: ActorCriticState,
                 epsilon_greedy):
         """Predict for one step."""
         action_dist, actor_state = self._actor_network(
@@ -97,8 +94,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state=ActorCriticState(actor=actor_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
-    def rollout(self, time_step: ActionTimeStep, state: ActorCriticState,
-                mode):
+    def rollout(self, time_step: TimeStep, state: ActorCriticState, mode):
         """Rollout for one step."""
         value, value_state = self._value_network(
             time_step.observation,
