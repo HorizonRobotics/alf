@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gin
 import numpy as np
 import functools
 from typing import Callable
@@ -28,6 +29,7 @@ def DiagMultivariateNormal(loc, scale_diag):
     return td.Independent(td.Normal(loc, scale_diag), 1)
 
 
+@gin.configurable
 class CategoricalProjectionNetwork(nn.Module):
     def __init__(self, input_size, num_actions, logits_init_output_factor=0.1):
         """Creates a categorical projection network that outputs a discrete
@@ -49,6 +51,7 @@ class CategoricalProjectionNetwork(nn.Module):
         return torch.distributions.Categorical(logits=logits)
 
 
+@gin.configurable
 class NormalProjectionNetwork(nn.Module):
     def __init__(self,
                  input_size,

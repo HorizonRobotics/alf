@@ -247,6 +247,7 @@ class ImageDecodingNetwork(nn.Module):
         return z
 
 
+@gin.configurable
 class EncodingNetwork(nn.Module):
     """Feed Forward network with CNN and FC layers."""
 

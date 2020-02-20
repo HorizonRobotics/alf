@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gin
 import math
 from scipy.stats import truncnorm
 
@@ -19,6 +20,7 @@ import torch
 import torch.nn as nn
 
 
+@gin.configurable
 def variance_scaling_init(tensor,
                           gain=1.0,
                           mode="fan_in",
