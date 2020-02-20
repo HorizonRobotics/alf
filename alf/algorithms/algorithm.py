@@ -410,6 +410,10 @@ class Algorithm(tf.Module):
         """
         with tape:
             loss_info = self.calc_loss(training_info)
+            if isinstance(loss_info.scalar_loss, tf.Tensor):
+                assert len(loss_info.scalar_loss.shape) == 0
+                loss_info = loss_info._replace(
+                    loss=loss_info.loss + loss_info.scalar_loss)
             if valid_masks is not None:
                 loss_info = tf.nest.map_structure(
                     lambda l: tf.reduce_mean(l * valid_masks)
@@ -417,10 +421,6 @@ class Algorithm(tf.Module):
             else:
                 loss_info = tf.nest.map_structure(lambda l: tf.reduce_mean(l),
                                                   loss_info)
-            if isinstance(loss_info.scalar_loss, tf.Tensor):
-                assert len(loss_info.scalar_loss.shape) == 0
-                loss_info = loss_info._replace(
-                    loss=loss_info.loss + loss_info.scalar_loss)
             loss = weight * loss_info.loss
 
         opt_and_var_sets = self._get_cached_opt_and_var_sets()
