@@ -18,7 +18,7 @@ from alf.networks import ActorNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.data_structures import TimeStep, namedtuple, PolicyStep
-from alf.utils import common
+from alf.utils import dist_utils
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
@@ -88,7 +88,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             step_type=time_step.step_type,
             network_state=state.actor)
 
-        action = common.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
         return PolicyStep(
             action=action,
             state=ActorCriticState(actor=actor_state),
@@ -106,7 +106,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             step_type=time_step.step_type,
             network_state=state.actor)
 
-        action = common.sample_action_distribution(action_distribution)
+        action = dist_utils.sample_action_distribution(action_distribution)
         return PolicyStep(
             action=action,
             state=ActorCriticState(actor=actor_state, value=value_state),

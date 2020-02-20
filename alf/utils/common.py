@@ -586,46 +586,6 @@ def explained_variance(ypred, y):
     return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)
 
 
-def sample_action_distribution(nested_distributions):
-    """Sample actions from distributions
-    Args:
-        nested_distributions (nested Distribution): action distributions
-    Returns:
-        sampled actions
-    """
-    return map_structure(lambda d: d.sample(), nested_distributions)
-
-
-def epsilon_greedy_sample(nested_distributions, eps=0.1):
-    """Generate greedy sample that maximizes the probability.
-    Args:
-        nested_distributions (nested Distribution): distribution to sample from
-        eps (float): a floating value in [0,1], representing the chance of
-            action sampling instead of taking argmax. This can help prevent
-            a dead loop in some deterministic environment like Breakout.
-    Returns:
-        (nested) Tensor
-    """
-
-    def greedy_fn(dist):
-        # pytorch distribution has no 'mode' operation
-        sample_action = dist.sample()
-        greedy_mask = torch.rand(sample_action.shape[0]) > eps
-        if isinstance(dist, torch.distributions.categorical.Categorical):
-            greedy_action = torch.argmax(dist.logits, -1)
-        elif isinstance(dist, torch.distributions.normal.Normal):
-            greedy_action = dist.mean
-        else:
-            greedy_action = dist.sample()
-        sample_action[greedy_mask] = greedy_action[greedy_mask]
-        return sample_action
-
-    if eps >= 1.0:
-        return sample_action_distribution(nested_distributions)
-    else:
-        return map_structure(greedy_fn, nested_distributions)
-
-
 def get_initial_policy_state(batch_size, policy_state_spec):
     """
     Return zero tensors as the initial policy states.
