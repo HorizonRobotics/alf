@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from alf.data_structures import TrainingInfo, LossInfo
 from alf.utils.losses import element_wise_squared_loss
-from alf.utils import common, dist_utils, value_ops
+from alf.utils import tensor_utils, dist_utils, value_ops
 from torch.utils.tensorboard import SummaryWriter
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
@@ -112,7 +112,7 @@ class ActorCriticLoss(nn.Module):
         returns, advantages = self._calc_returns_and_advantages(
             training_info, value)
 
-        def _summary():
+        if self._debug_summaries and common.should_record_summaries():
             alf.summary.scalar(self._name + '/values', value.mean())
             alf.summary.scalar(self._name + "/returns", returns.mean())
             alf.summary.scalar(self._name + "/advantages/mean",
@@ -120,10 +120,7 @@ class ActorCriticLoss(nn.Module):
             alf.summary.histogram(self._name + "/advantages/value", advantages)
             alf.summary.histogram(
                 self._name + "/explained_variance_of_return_by_value",
-                common.explained_variance(value, returns))
-
-        if self._debug_summaries:
-            common.run_if(common.should_record_summaries(), _summary)
+                tensor_utils.explained_variance(value, returns))
 
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages)
@@ -161,7 +158,7 @@ class ActorCriticLoss(nn.Module):
             values=value,
             step_types=training_info.step_type,
             discounts=training_info.discount * self._gamma)
-        returns = common.tensor_extend(returns, value[-1])
+        returns = tensor_utils.tensor_extend(returns, value[-1])
 
         if not self._use_gae:
             advantages = returns - value
@@ -172,7 +169,7 @@ class ActorCriticLoss(nn.Module):
                 step_types=training_info.step_type,
                 discounts=training_info.discount * self._gamma,
                 td_lambda=self._lambda)
-            advantages = common.tensor_extend_zero(advantages)
+            advantages = tensor_utils.tensor_extend_zero(advantages)
             if self._use_td_lambda_return:
                 returns = advantages + value
 

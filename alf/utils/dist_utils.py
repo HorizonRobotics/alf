@@ -15,17 +15,50 @@
 import gin
 import torch
 import numpy as np
-import alf.utils.nest_utils_pytorch as nest
+import alf.nest as nest
 
-import tensorflow_probability as tfp
-import tensorflow as tf
 
-from tf_agents.distributions.utils import SquashToSpecNormal
-from tf_agents.specs import tensor_spec
+def compute_entropy(distributions):
+    """Computes total entropy of nested distribution.
+    Args:
+        distributions (nested Distribution): A possibly batched tuple of
+            distributions.
+    Returns:
+        entropy
+    """
+
+    def _compute_entropy(dist: torch.distributions.Distribution):
+        entropy = dist.entropy()
+        return entropy
+
+    entropies = nest.map_structure(_compute_entropy, distributions)
+    total_entropies = sum(nest.flatten(entropies))
+    return total_entropies
+
+
+def compute_log_probability(distributions, actions):
+    """Computes log probability of actions given distribution.
+
+    Args:
+        distributions: A possibly batched tuple of distributions.
+        actions: A possibly batched action tuple.
+
+    Returns:
+        A Tensor representing the log probability of each action in the batch.
+    """
+
+    def _compute_log_prob(single_distribution, single_action):
+        single_log_prob = single_distribution.log_prob(single_action)
+        return single_log_prob
+
+    nest.assert_same_structure(distributions, actions)
+    log_probs = nest.map_structure(_compute_log_prob, distributions, actions)
+    total_log_probs = sum(nest.flatten(log_probs))
+    return total_log_probs
 
 
 @gin.configurable
-def estimated_entropy(dist: tfp.distributions.Distribution,
+def estimated_entropy(dist,
                       seed=None,
                       assume_reparametrization=False,
                       num_samples=1,
@@ -71,49 +104,6 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
         entropy = tf.reduce_mean(entropy, axis=0)
         entropy_for_gradient = tf.reduce_mean(entropy_for_gradient, axis=0)
     return entropy, entropy_for_gradient
-
-
-def compute_entropy(distributions):
-    """Computes total entropy of nested distribution.
-    Args:
-        distributions (nested Distribution): A possibly batched tuple of
-            distributions.
-    Returns:
-        entropy
-    """
-
-    def _compute_entropy(dist: torch.distributions.Distribution):
-        entropy = dist.entropy()
-        return entropy
-
-    entropies = list(map(_compute_entropy, nest.flatten(distributions)))
-    total_entropies = sum(entropies)
-    return total_entropies
-
-
-def compute_log_probability(distributions, actions):
-    """Computes log probability of actions given distribution.
-
-    Args:
-        distributions: A possibly batched tuple of distributions.
-        actions: A possibly batched action tuple.
-
-    Returns:
-        A Tensor representing the log probability of each action in the batch.
-    """
-
-    def _compute_log_prob(single_distribution, single_action):
-        single_log_prob = single_distribution.log_prob(single_action)
-        return single_log_prob
-
-    nest.assert_same_structure(distributions, actions)
-    log_probs = [
-        _compute_log_prob(dist, action) for (
-            dist,
-            action) in zip(nest.flatten(distributions), nest.flatten(actions))
-    ]
-    total_log_probs = sum(log_probs)
-    return total_log_probs
 
 
 def calc_default_target_entropy(spec):

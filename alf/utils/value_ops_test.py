@@ -136,3 +136,7 @@ class GeneralizedAdvantageTest(unittest.TestCase):
                 discounts=discounts,
                 td_lambda=td_lambda,
                 time_major=False), expected)
+
+
+if __name__ == '__main__':
+    unittest.main()

@@ -30,8 +30,6 @@ import random
 import numpy as np
 
 from alf.data_structures import LossInfo
-from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
-from alf.utils.scope_utils import get_current_scope
 
 # `test_session` is deprecated and skipped test function, remove
 #   it for all unittest which inherit from `tf.test.TestCase`
@@ -258,7 +256,10 @@ def run_under_record_context(func,
         func()
 
 
-from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
+def should_record_summaries():
+    """A place holder function
+    """
+    return True
 
 
 def get_global_counter(default_counter=None):
@@ -516,53 +517,6 @@ def get_gin_file():
         gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
         assert gin_file, "No gin files are found! Please provide"
     return gin_file
-
-
-def tensor_extend(x, y):
-    """Extending tensor with new_slice.
-
-    new_slice.shape should be same as tensor.shape[1:]
-    Args:
-        x (Tensor): tensor to be extended
-        y (Tensor): the tensor which will be appended to `x`
-    Returns:
-        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
-    """
-    return torch.cat((x, y.unsqueeze(0)))
-
-
-def tensor_extend_zero(x):
-    """Extending tensor with zeros.
-
-    new_slice.shape should be same as tensor.shape[1:]
-    Args:
-        x (Tensor): tensor to be extended
-    Returns:
-        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
-    """
-    return torch.cat((x, torch.zeros(x.shape[1:], dtype=x.dtype).unsqueeze(0)))
-
-
-def explained_variance(ypred, y):
-    """Computes fraction of variance that ypred explains about y.
-
-    Adapted from baselines.ppo2 explained_variance()
-
-    Interpretation:
-        ev=0  =>  might as well have predicted zero
-        ev=1  =>  perfect prediction
-        ev<0  =>  worse than just predicting zero
-
-    Args:
-        ypred (Tensor): prediction for y
-        y (Tensor): target
-    Returns:
-        1 - Var[y-ypred] / Var[y]
-    """
-    ypred = tf.reshape(ypred, [-1])
-    y = tf.reshape(y, [-1])
-    _, vary = tf.nn.moments(y, axes=(0, ))
-    return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)
 
 
 def sample_action_distribution(distributions, seed=None):

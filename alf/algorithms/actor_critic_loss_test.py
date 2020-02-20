@@ -71,3 +71,7 @@ class TestLogProbability(unittest.TestCase):
         expected = torch.Tensor([-1.38629436, -0.6931471, -0.287682])
         obtained = compute_log_probability(M, actions)
         np.testing.assert_array_almost_equal(expected, obtained)
+
+
+if __name__ == '__main__':
+    unittest.main()
