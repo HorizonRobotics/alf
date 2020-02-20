@@ -25,7 +25,8 @@ def variance_scaling_init(tensor,
                           distribution="truncated_normal",
                           calc_gain_after_activation=True,
                           nonlinearity="identity",
-                          nonlinearity_param=0.01):
+                          nonlinearity_param=0.01,
+                          transposed=False):
     """Implements TensorFlow's `VarianceScaling` initializer.
     https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/ops/init_ops.py#L437
 
@@ -66,8 +67,13 @@ def variance_scaling_init(tensor,
         nonlinearity_param (float): additional parameter of the nonlinearity;
             currently only used by 'leaky_relu' as the negative slope (pytorch
             default 0.01)
+        transposed (bool): a flag indicating if the weight tensor has been
+            tranposed (e.g., nn.ConvTranspose2d). In that case, `fan_in` and
+            `fan_out` should be swapped.
     """
     fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(tensor)
+    if transposed:
+        fan_in, fan_out = fan_out, fan_in
 
     assert mode in ["fan_in", "fan_out", "fan_avg"], \
         "Unrecognized mode %s!" % mode

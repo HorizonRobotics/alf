@@ -37,7 +37,7 @@ class FC(nn.Module):
                  use_bias=True,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
-        """A fully connected layer that's also responsible for activaiton and
+        """A fully connected layer that's also responsible for activation and
         customized weights initialization. An auto gain calculation might depend
         on the activation following the linear layer. Suggest using this wrapper
         module instead of nn.Linear if you really care about weight std after
@@ -173,7 +173,8 @@ class ConvTranspose2D(nn.Module):
         variance_scaling_init(
             self._conv_trans2d.weight.data,
             gain=kernel_init_gain,
-            nonlinearity=self._activation.__name__)
+            nonlinearity=self._activation.__name__,
+            transposed=True)
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
 
