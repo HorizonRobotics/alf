@@ -40,13 +40,14 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         img = input_spec.zeros(outer_dims=(1, ))
         network = ImageEncodingNetwork(
             input_channels=input_spec.shape[0],
+            input_size=input_spec.shape[1:],
             conv_layer_params=[(16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1)],
             activation=torch.tanh,
             flatten_output=flatten_output)
 
         self.assertLen(list(network.parameters()), 4)  # two conv2d layers
 
-        output_shape = network.output_shape(input_spec.shape[1:])
+        output_shape = network.output_shape()
         output = network(img)
         self.assertEqual(output_shape, tuple(output.size()[1:]))
 
@@ -105,8 +106,7 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         self.assertLen(list(network.parameters()), 4)
 
         output = network(img)
-        output_shape = network._img_encoding_net.output_shape(
-            input_spec.shape[1:])
+        output_shape = network._img_encoding_net.output_shape()
         self.assertEqual(output.shape[-1], np.prod(output_shape))
 
 

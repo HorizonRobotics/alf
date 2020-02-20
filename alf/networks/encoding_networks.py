@@ -38,6 +38,7 @@ class ImageEncodingNetwork(nn.Module):
 
     def __init__(self,
                  input_channels,
+                 input_size,
                  conv_layer_params,
                  activation=torch.relu,
                  flatten_output=False):
@@ -46,6 +47,7 @@ class ImageEncodingNetwork(nn.Module):
 
         Args:
             input_channels (int): number of channels in the input image
+            input_size (int or tuple): the input image size (height, width)
             conv_layer_params (list[tuple]): a non-empty list of elements
                 (num_filters, kernel_size, strides, padding), where padding is
                 optional
@@ -59,6 +61,8 @@ class ImageEncodingNetwork(nn.Module):
         assert isinstance(conv_layer_params, list)
         assert len(conv_layer_params) > 0
 
+        self._input_size = _tuplify2d(input_size)
+        self._output_shape = None
         self._flatten_output = flatten_output
         self._conv_layer_params = conv_layer_params
         self._conv_layers = nn.ModuleList()
@@ -75,7 +79,7 @@ class ImageEncodingNetwork(nn.Module):
                     padding=padding))
             input_channels = filters
 
-    def output_shape(self, input_size):
+    def output_shape(self):
         """Return the output shape given the input image size.
 
         How to calculate the output size:
@@ -85,28 +89,27 @@ class ImageEncodingNetwork(nn.Module):
 
         where H = output size, H1 = input size, HF = size of kernel, P = padding
 
-        Args:
-            input_size (int or tuple): the input image size (height, width)
-
         Returns:
             a tuple representing the output shape
         """
-        input_size = _tuplify2d(input_size)
-        height, width = input_size
-        for paras in self._conv_layer_params:
-            filters, kernel_size, strides = paras[:3]
-            padding = paras[3] if len(paras) > 3 else 0
-            kernel_size = _tuplify2d(kernel_size)
-            strides = _tuplify2d(strides)
-            padding = _tuplify2d(padding)
-            height = (
-                height - kernel_size[0] + 2 * padding[0]) // strides[0] + 1
-            width = (width - kernel_size[1] + 2 * padding[1]) // strides[1] + 1
-        shape = (filters, height, width)
-        if not self._flatten_output:
-            return shape
-        else:
-            return (np.prod(shape), )
+        if self._output_shape is None:
+            height, width = self._input_size
+            for paras in self._conv_layer_params:
+                filters, kernel_size, strides = paras[:3]
+                padding = paras[3] if len(paras) > 3 else 0
+                kernel_size = _tuplify2d(kernel_size)
+                strides = _tuplify2d(strides)
+                padding = _tuplify2d(padding)
+                height = (
+                    height - kernel_size[0] + 2 * padding[0]) // strides[0] + 1
+                width = (
+                    width - kernel_size[1] + 2 * padding[1]) // strides[1] + 1
+            shape = (filters, height, width)
+            if not self._flatten_output:
+                self._output_shape = shape
+            else:
+                self._output_shape = (np.prod(shape), )
+        return self._output_shape
 
     def forward(self, inputs):
         assert len(inputs.size()) == 4, \
@@ -182,6 +185,7 @@ class ImageDecodingNetwork(nn.Module):
                 np.prod(self._start_decoding_shape),
                 activation=activation))
 
+        self._output_shape = None
         self._transconv_layer_params = transconv_layer_params
         self._transconv_layers = nn.ModuleList()
         in_channels = start_decoding_channels
@@ -214,17 +218,20 @@ class ImageDecodingNetwork(nn.Module):
         Returns:
             a tuple representing the output shape (C,H,W)
         """
-        _, height, width = self._start_decoding_shape
-        for paras in self._transconv_layer_params:
-            filters, kernel_size, strides = paras[:3]
-            padding = paras[3] if len(paras) > 3 else 0
-            kernel_size = _tuplify2d(kernel_size)
-            strides = _tuplify2d(strides)
-            padding = _tuplify2d(padding)
-            height = (
-                height - 1) * strides[0] + kernel_size[0] - 2 * padding[0]
-            width = (width - 1) * strides[1] + kernel_size[1] - 2 * padding[1]
-        return (filters, height, width)
+        if self._output_shape is None:
+            _, height, width = self._start_decoding_shape
+            for paras in self._transconv_layer_params:
+                filters, kernel_size, strides = paras[:3]
+                padding = paras[3] if len(paras) > 3 else 0
+                kernel_size = _tuplify2d(kernel_size)
+                strides = _tuplify2d(strides)
+                padding = _tuplify2d(padding)
+                height = (
+                    height - 1) * strides[0] + kernel_size[0] - 2 * padding[0]
+                width = (
+                    width - 1) * strides[1] + kernel_size[1] - 2 * padding[1]
+            self._output_shape = (filters, height, width)
+        return self._output_shape
 
     def forward(self, inputs):
         """Returns an image of shape (B,C,H,W)."""
@@ -278,12 +285,11 @@ class EncodingNetwork(nn.Module):
                     input_tensor_spec.shape)
             input_channels, height, width = input_tensor_spec.shape
             self._img_encoding_net = ImageEncodingNetwork(
-                input_channels,
+                input_channels, (height, width),
                 conv_layer_params,
                 activation,
                 flatten_output=True)
-            input_size = self._img_encoding_net.output_shape((height,
-                                                              width))[0]
+            input_size = self._img_encoding_net.output_shape()[0]
         else:
             assert len(input_tensor_spec.shape) == 1, \
                 "The input shape {} should be (N,)!".format(
