@@ -25,8 +25,10 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 import alf.layers as layers
 
 
-class TestCategoricalProjectionNetwork(unittest.TestCase):
+class TestCategoricalProjectionNetwork(parameterized.TestCase,
+                                       unittest.TestCase):
     def test_uniform_projection_net(self):
+        """A zero-weight net generates uniform actions."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(1, ))
 
@@ -37,7 +39,8 @@ class TestCategoricalProjectionNetwork(unittest.TestCase):
         dist = net(embedding)
         self.assertTrue(torch.all(dist.probs == 0.2))
 
-    def test_zero_mean_projection_net(self):
+    def test_close_uniform_projection_net(self):
+        """A random-weight net generates close-uniform actions on average."""
         input_spec = TensorSpec((10, ), torch.float32)
         embeddings = input_spec.ones(outer_dims=(1000, ))
 
@@ -50,7 +53,9 @@ class TestCategoricalProjectionNetwork(unittest.TestCase):
         self.assertTrue(
             torch.isclose(dists.probs.mean(), torch.as_tensor(0.2)))
 
-    def test_zero_normal_projection_net(self):
+    @parameterized.parameters((True, ), (False, ))
+    def test_zero_normal_projection_net(self, state_dependent_std):
+        """A zero-weight net generates zero actions."""
         input_spec = TensorSpec((10, ), torch.float32)
         action_spec = TensorSpec((8, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(2, ))
@@ -61,6 +66,7 @@ class TestCategoricalProjectionNetwork(unittest.TestCase):
             projection_output_init_gain=0,
             std_bias_initializer_value=0,
             squash_mean=False,
+            state_dependent_std=state_dependent_std,
             std_transform=layers.identity)
 
         out = net(embedding).sample((10, ))
@@ -71,6 +77,8 @@ class TestCategoricalProjectionNetwork(unittest.TestCase):
         self.assertTrue(torch.all(out == 0))
 
     def test_squash_mean_normal_projection_net(self):
+        """A net with `sqaush_mean=True` should generate means within the action
+        spec."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = input_spec.ones(outer_dims=(100, ))
 
@@ -93,6 +101,8 @@ class TestCategoricalProjectionNetwork(unittest.TestCase):
             torch.all(dist.mean < torch.as_tensor(action_spec.maximum)))
 
     def test_scale_distribution_normal_projection_net(self):
+        """A net with `scale_distribution=True` should always sample actions
+        within the action spec."""
         input_spec = TensorSpec((10, ), torch.float32)
         embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
 

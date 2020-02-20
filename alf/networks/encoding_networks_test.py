@@ -40,7 +40,7 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         img = input_spec.zeros(outer_dims=(1, ))
         network = ImageEncodingNetwork(
             input_channels=input_spec.shape[0],
-            conv_layer_params=[(16, 2, 1, 1), (15, 2, 1, 1)],
+            conv_layer_params=[(16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1)],
             activation=torch.tanh,
             flatten_output=flatten_output)
 
@@ -56,9 +56,9 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         embedding = input_spec.zeros(outer_dims=(1, ))
         network = ImageDecodingNetwork(
             input_size=input_spec.shape[0],
-            transconv_layer_params=[(16, 2, 1, 1), (64, 3, 2, 0)],
-            start_decoding_height=20,
-            start_decoding_width=31,
+            transconv_layer_params=[(16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
+                                                              0)],
+            start_decoding_size=(20, 31),
             start_decoding_channels=8,
             preprocess_fc_layer_params=preprocessing_fc_layers)
 
@@ -100,7 +100,7 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         img = input_spec.zeros(outer_dims=(1, ))
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            conv_layer_params=[(16, 5, 2, 1), (15, 3, 2, 0)])
+            conv_layer_params=[(16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)])
 
         self.assertLen(list(network.parameters()), 4)
 

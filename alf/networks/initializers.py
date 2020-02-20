@@ -70,6 +70,9 @@ def variance_scaling_init(tensor,
         transposed (bool): a flag indicating if the weight tensor has been
             tranposed (e.g., nn.ConvTranspose2d). In that case, `fan_in` and
             `fan_out` should be swapped.
+
+    Returns:
+        tensor (torch.Tensor): a randomly initialized weight tensor
     """
     fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(tensor)
     if transposed:

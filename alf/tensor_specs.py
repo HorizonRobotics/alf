@@ -139,6 +139,21 @@ class TensorSpec(object):
         """
         return self.constant(1, outer_dims)
 
+    def randn(self, outer_dims=None):
+        """Create a tensor filled with random numbers from a std normal dist.
+
+        Args:
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            tensor (torch.Tensor): a tensor of `self._dtype`
+        """
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        return torch.randn(*shape, dtype=self._dtype)
+
 
 class BoundedTensorSpec(TensorSpec):
     """A `TensorSpec` that specifies minimum and maximum values.

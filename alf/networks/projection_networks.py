@@ -57,6 +57,7 @@ class NormalProjectionNetwork(nn.Module):
                  projection_output_init_gain=0.1,
                  std_bias_initializer_value=0.0,
                  squash_mean=True,
+                 state_dependent_std=False,
                  std_transform=nn.functional.softplus,
                  scale_distribution=False):
         """Creates an instance of NormalProjectionNetwork.
@@ -74,6 +75,9 @@ class NormalProjectionNetwork(nn.Module):
             squash_mean (bool): If True, squash the output mean to fit the
                 action spec. If `scale_distribution` is also True, this value
                 will be ignored.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
             std_transform (Callable): Transform to apply to the std, on top of
                 `activation`.
             scale_distribution (bool): Whether or not to scale the output
@@ -115,12 +119,18 @@ class NormalProjectionNetwork(nn.Module):
             kernel_init_gain=projection_output_init_gain)
 
         # We always assume that std depends on states
-        self._std_projection_layer = layers.FC(
-            input_size,
-            action_spec.shape[0],
-            activation=activation,
-            kernel_init_gain=projection_output_init_gain,
-            bias_init_value=std_bias_initializer_value)
+        if state_dependent_std:
+            self._std_projection_layer = layers.FC(
+                input_size,
+                action_spec.shape[0],
+                activation=activation,
+                kernel_init_gain=projection_output_init_gain,
+                bias_init_value=std_bias_initializer_value)
+        else:
+            self._std = nn.Parameter(
+                action_spec.constant(std_bias_initializer_value),
+                requires_grad=True)
+            self._std_projection_layer = lambda _: self._std
 
     def forward(self, inputs):
         means = self._mean_transform(self._means_projection_layer(inputs))

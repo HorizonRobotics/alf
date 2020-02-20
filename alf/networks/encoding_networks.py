@@ -23,6 +23,13 @@ import alf.layers as layers
 from alf.tensor_specs import TensorSpec
 
 
+def _tuplify2d(x):
+    if isinstance(x, tuple):
+        assert len(x) == 2
+        return x
+    return (x, x)
+
+
 @gin.configurable
 class ImageEncodingNetwork(nn.Module):
     """
@@ -84,17 +91,18 @@ class ImageEncodingNetwork(nn.Module):
         Returns:
             a tuple representing the output shape
         """
-        if not isinstance(input_size, tuple):
-            input_size = (input_size, input_size)
-        assert len(
-            input_size) == 2, "Input size should contain at most two values!"
+        input_size = _tuplify2d(input_size)
         height, width = input_size
         for paras in self._conv_layer_params:
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
-            height = (height - kernel_size + 2 * padding) // strides + 1
-            width = (width - kernel_size + 2 * padding) // strides + 1
-        shape = (filters, width, height)
+            kernel_size = _tuplify2d(kernel_size)
+            strides = _tuplify2d(strides)
+            padding = _tuplify2d(padding)
+            height = (
+                height - kernel_size[0] + 2 * padding[0]) // strides[0] + 1
+            width = (width - kernel_size[1] + 2 * padding[1]) // strides[1] + 1
+        shape = (filters, height, width)
         if not self._flatten_output:
             return shape
         else:
@@ -121,8 +129,7 @@ class ImageDecodingNetwork(nn.Module):
     def __init__(self,
                  input_size,
                  transconv_layer_params,
-                 start_decoding_height,
-                 start_decoding_width,
+                 start_decoding_size,
                  start_decoding_channels,
                  preprocess_fc_layer_params=None,
                  activation=torch.relu,
@@ -135,10 +142,8 @@ class ImageDecodingNetwork(nn.Module):
             transconv_layer_params (list[tuple]): a non-empty list of elements
                 (num_filters, kernel_size, strides, padding), where `padding` is
                 optional.
-            start_decoding_height (int): the initial height we'd like to have for
-                the feature map
-            start_decoding_width (int): the initial width we'd like to have for
-                the feature map
+            start_decoding_size (int or tuple): the initial height and width
+                we'd like to have for the feature map
             start_decoding_channels (int): the initial number of channels we'd
                 like to have for the feature map. Note that we always first
                 project an input latent vector into a vector of an appropriate
@@ -165,10 +170,11 @@ class ImageDecodingNetwork(nn.Module):
                     layers.FC(input_size, size, activation=activation))
                 input_size = size
 
+        start_decoding_size = _tuplify2d(start_decoding_size)
         # Python assumes "channels_first" !
         self._start_decoding_shape = [
-            start_decoding_channels, start_decoding_height,
-            start_decoding_width
+            start_decoding_channels, start_decoding_size[0],
+            start_decoding_size[1]
         ]
         self._preprocess_fc_layers.append(
             layers.FC(
@@ -212,8 +218,12 @@ class ImageDecodingNetwork(nn.Module):
         for paras in self._transconv_layer_params:
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
-            height = (height - 1) * strides + kernel_size - 2 * padding
-            width = (width - 1) * strides + kernel_size - 2 * padding
+            kernel_size = _tuplify2d(kernel_size)
+            strides = _tuplify2d(strides)
+            padding = _tuplify2d(padding)
+            height = (
+                height - 1) * strides[0] + kernel_size[0] - 2 * padding[0]
+            width = (width - 1) * strides[1] + kernel_size[1] - 2 * padding[1]
         return (filters, height, width)
 
     def forward(self, inputs):

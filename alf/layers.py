@@ -94,10 +94,10 @@ class Conv2D(nn.Module):
         Args:
             in_channels (int): channels of the input image
             out_channels (int): channels of the output image
-            kernel_size (int):
+            kernel_size (int or tuple):
             activation (torch.nn.functional):
-            strides (int):
-            padding (int):
+            strides (int or tuple):
+            padding (int or tuple):
             use_bias (bool):
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution
@@ -152,10 +152,10 @@ class ConvTranspose2D(nn.Module):
         Args:
             in_channels (int): channels of the input image
             out_channels (int): channels of the output image
-            kernel_size (int):
+            kernel_size (int or tuple):
             activation (torch.nn.functional):
-            strides (int):
-            padding (int):
+            strides (int or tuple):
+            padding (int or tuple):
             use_bias (bool):
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution
