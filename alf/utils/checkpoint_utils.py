@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import os
+import warnings
+import torch
 
 
 class Checkpointer(object):
@@ -22,17 +23,12 @@ class Checkpointer(object):
     def __init__(self, ckpt_dir, **kwargs):
         """A class for making checkpoints.
 
-        If ckpt_dir doesn't exists it creates it.
-
         Args:
-        ckpt_dir: The directory to save checkpoints.
-        max_to_keep: Maximum number of checkpoints to keep (if greater than the
-            max are saved, the oldest checkpoints are deleted).
-        **kwargs: Items to include in the checkpoint.
+            ckpt_dir: The directory to save checkpoints. Create ckpt_dir if
+                it doesn't exist.
+            kwargs: Items to be included in the checkpoint. Each item needs
+                to have state_dict and load_state_dict implemented.
         """
-
-        # def _to_dict(**kwargs):
-        #     return {k: v for k, v in kwargs.items()}
 
         self._modules = kwargs
         self._ckpt_dir = ckpt_dir
@@ -40,8 +36,11 @@ class Checkpointer(object):
 
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
-    def load(self, model_pass="latest"):
+    def load(self, global_step="latest"):
         """Load checkpoint
+        Args:
+            global_step: the number of training steps corresponding to the
+                current state to be saved. It will be appended to the name of the chekpoint as a suffix.
         """
 
         def _load_checkpoint(checkpoint):
@@ -50,16 +49,20 @@ class Checkpointer(object):
                 self._modules[k].load_state_dict(checkpoint[k])
 
         f_path_latest = os.path.join(self._ckpt_dir, "latest")
-        f_path = os.path.join(args.model_dir,
-                              ('checkpoint-%s' % args.init_model_pass))
-        if model_pass == "latest" and os.path.isfile(f_path_latest):
+        f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
+        if global_step == "latest" and os.path.isfile(f_path_latest):
             checkpoint = torch.load(f_path_latest)
             _load_checkpoint(checkpoint)
         elif os.path.isfile(f_path):
+            checkpoint = torch.load(f_path)
             _load_checkpoint(checkpoint)
+        else:
+            warnings.warn(("Checkpoint 'ckpt-{}' does not exist. "
+                           "Train from scratch.".format(global_step)))
 
     def save(self, global_step):
-        """Save states of all modules to checkpoint."""
+        """Save states of all modules to checkpoint
+        """
         self._global_step = global_step
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
         state = {

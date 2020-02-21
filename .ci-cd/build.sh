@@ -47,7 +47,8 @@ function test() {
         alf.nest.nest_test \
         alf.data_structures_test \
         alf.algorithms.actor_critic_loss_test \
-        alf.utils.value_ops_test
+        alf.utils.value_ops_test \
+        alf.utils.checkpoint_utils_test
     cd ..
 }
 
