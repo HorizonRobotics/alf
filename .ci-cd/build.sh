@@ -45,7 +45,8 @@ function test() {
         alf.environments.simple.noisy_array_test \
         alf.tensor_specs_test \
         alf.nest.nest_test \
-        alf.data_structures_test
+        alf.data_structures_test \
+        alf.utils.dist_utils_test
     cd ..
 }
 
