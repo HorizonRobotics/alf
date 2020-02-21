@@ -147,7 +147,6 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     assert values.shape[0] >= 2, "The sequence length needs to be \
                                 at least 2. Got {s}".format(s=values.shape[0])
 
-    returns = torch.zeros(rewards.shape, dtype=rewards.dtype)
     discounts = discounts[1:]
     rewards = rewards[1:]
     final_value = values[-1]
@@ -161,12 +160,13 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
         acc_discounted_value = acc_discounted_reward * discount + reward
         return is_last * value + (1 - is_last) * acc_discounted_value
 
-    returns[-1] = final_value
+    returns = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    ret = final_value
     for t in reversed(range(rewards.shape[0])):
-        returns[t] = discounted_return_fn(returns[t + 1], rewards[t],
-                                          values[t], is_lasts[t], discounts[t])
+        ret = discounted_return_fn(ret, rewards[t], values[t], is_lasts[t],
+                                   discounts[t])
+        returns[t] = ret
 
-    returns = returns[:-1]
     if not time_major:
         returns = returns.transpose(0, 1)
 
@@ -245,9 +245,6 @@ def generalized_advantage_estimation(rewards,
     assert values.shape[0] >= 2, "The sequence length needs to be \
                                 at least 2. Got {s}".format(s=values.shape[0])
 
-    advantages = torch.zeros(rewards.shape, dtype=rewards.dtype)
-    accumulated_tds = torch.zeros(rewards.shape, dtype=rewards.dtype)
-
     rewards = rewards[1:]
     next_values = values[1:]
     final_value = values[-1]
@@ -263,11 +260,13 @@ def generalized_advantage_estimation(rewards,
                                   is_last):
         return (1 - is_last) * (td + weighted_discount * accumulated_td)
 
+    advantages = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    adv = 0
     for t in reversed(range(rewards.shape[0])):
-        advantages[t] = weighted_cumulative_td_fn(
-            advantages[t + 1], weighted_discounts[t], delta[t], is_lasts[t])
+        adv = weighted_cumulative_td_fn(adv, weighted_discounts[t], delta[t],
+                                        is_lasts[t])
+        advantages[t] = adv
 
-    advantages = advantages[:-1]
     if not time_major:
         advantages = advantages.transpose(0, 1)
 

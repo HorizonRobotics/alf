@@ -27,7 +27,7 @@ def element_wise_huber_loss(x, y):
     Returns:
         loss (Tensor)
     """
-    return torch.nn.L1Loss(reduction=None)
+    return torch.nn.SmoothL1Loss(reduction=None)
 
 
 @gin.configurable
