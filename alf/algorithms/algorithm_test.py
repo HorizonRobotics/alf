@@ -37,6 +37,29 @@ class MyAlg(Algorithm):
 
 
 class AlgorithmTest(unittest.TestCase):
+    def test_flatten_module(self):
+        a = nn.Module()
+        b = nn.Module()
+        c = nn.Module()
+        d = nn.Module()
+        pa = nn.Parameter()
+        pb = nn.Parameter()
+        pc = nn.Parameter()
+        pd = nn.Parameter()
+        nest = nn.ModuleDict({
+            'a': a,
+            'b': b,
+            'list': nn.ModuleList([c, d]),
+            'plist': nn.ParameterList([pa, pb]),
+            'pdict': nn.ParameterDict({
+                'pc': pc,
+                'pd': pd
+            })
+        })
+        flattend = alf.algorithms.algorithm._flatten_module(nest)
+        self.assertEqual(
+            set(map(id, flattend)), set(map(id, [a, b, c, d, pa, pb, pc, pd])))
+
     def test_get_optimizer_info(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
         alg_1 = MyAlg(params=[param_1], name="alg_1")

@@ -293,7 +293,7 @@ def cast_transformer(observation, dtype=torch.float32):
 
     def _cast(obs):
         if isinstance(obs, torch.Tensor):
-            return torch.cast(obs, dtype)
+            return torch.type(obs, dtype)
         return obs
 
     return alf.nest.map_structure(_cast, observation)

@@ -31,6 +31,19 @@ def _get_optimizer_params(optimizer: torch.optim.Optimizer):
     return set(sum([g['params'] for g in optimizer.param_groups], []))
 
 
+def _flatten_module(module):
+    if isinstance(module, nn.ModuleList):
+        return sum(map(_flatten_module, module), [])
+    elif isinstance(module, nn.ModuleDict):
+        return sum(map(_flatten_module, module.values()), [])
+    elif isinstance(module, nn.ParameterList):
+        return list(module)
+    elif isinstance(module, nn.ParameterDict):
+        return list(module.values())
+    else:
+        return [module]
+
+
 class Algorithm(nn.Module):
     """Algorithm base class.
 
@@ -133,11 +146,9 @@ class Algorithm(nn.Module):
             modules_and_params (list of Module or Parameter): The modules and
                 parameters to be optimized by `optimizer`
         """
-        params = []
         for module in modules_and_params:
-            if isinstance(module, nn.Parameter):
-                params.append(module)
-            self._module_to_optimizer[module] = optimizer
+            for m in _flatten_module(module):
+                self._module_to_optimizer[m] = optimizer
         self._optimizers.append(optimizer)
 
     def _trainable_attributes_to_ignore(self):
@@ -159,26 +170,15 @@ class Algorithm(nn.Module):
         return []
 
     def _get_children(self):
-        def _flatten(module):
-            if isinstance(module, nn.ModuleList):
-                return sum(map(_flatten, module), [])
-            else:
-                return [module]
-
         children = []
         for name, module in self.named_children():
             if name in self._trainable_attributes_to_ignore():
-                pass
-            if isinstance(module, nn.ModuleList):
-                children.extend(_flatten(module))
-            elif isinstance(module, nn.ParameterList):
-                children.extend(module)
-            else:
-                children.append(module)
+                continue
+            children.extend(_flatten_module(module))
 
         for name, param in self.named_parameters(recurse=False):
             if name in self._trainable_attributes_to_ignore():
-                pass
+                continue
             children.append(param)
 
         return children
@@ -234,9 +234,10 @@ class Algorithm(nn.Module):
             list of Optimizer
         """
         opts = copy.copy(self._optimizers)
-        for module in self.children():
-            if isinstance(module, Algorithm):
-                opts.extend(module.optimizers)
+        if recurse:
+            for module in self.children():
+                if isinstance(module, Algorithm):
+                    opts.extend(module.optimizers)
         return opts
 
     def get_optimizer_info(self):
