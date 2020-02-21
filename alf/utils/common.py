@@ -13,27 +13,24 @@
 # limitations under the License.
 """Various functions used by different alf modules."""
 
+from absl import flags
+from absl import logging
 import collections
 from collections import OrderedDict
 import functools
+import gin
 import glob
 import math
+import numpy as np
 import os
+import random
 import shutil
+import time
+import torch
 from typing import Callable
 
-from absl import flags
-from absl import logging
-import gin
-import time
-import random
-import numpy as np
-
+import alf
 from alf.data_structures import LossInfo
-
-# `test_session` is deprecated and skipped test function, remove
-#   it for all unittest which inherit from `tf.test.TestCase`
-#   to exclude it from statistics of unittest result
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -284,7 +281,7 @@ def get_global_counter(default_counter=None):
 
 
 @gin.configurable
-def cast_transformer(observation, dtype=tf.float32):
+def cast_transformer(observation, dtype=torch.float32):
     """Cast observation
 
     Args:
@@ -295,11 +292,11 @@ def cast_transformer(observation, dtype=tf.float32):
     """
 
     def _cast(obs):
-        if isinstance(obs, tf.Tensor):
-            return tf.cast(obs, dtype)
+        if isinstance(obs, torch.Tensor):
+            return torch.cast(obs, dtype)
         return obs
 
-    return tf.nest.map_structure(_cast, observation)
+    return alf.nest.map_structure(_cast, observation)
 
 
 def transform_observation(observation, field, func):
@@ -366,7 +363,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
 
 
 @gin.configurable
-def scale_transformer(observation, scale, dtype=tf.float32, fields=None):
+def scale_transformer(observation, scale, dtype=torch.float32, fields=None):
     """Scale observation
 
     Args:
@@ -380,8 +377,7 @@ def scale_transformer(observation, scale, dtype=tf.float32, fields=None):
     """
 
     def _scale_obs(obs, field):
-        obs = tf.cast(obs * scale, dtype)
-        return obs
+        return (obs * scale).type(dtype)
 
     fields = fields or [None]
     for field in fields:
@@ -708,27 +704,6 @@ def get_vocab_size():
         return _env.observation_spec()['sentence'].maximum + 1
     else:
         return 0
-
-
-SquashToSpecNormal__init__original = SquashToSpecNormal.__init__
-
-
-def SquashToSpecNormal__init__(self,
-                               distribution,
-                               spec,
-                               validate_args=False,
-                               name="SquashToSpecNormal"):
-    SquashToSpecNormal__init__original(self, distribution, spec, validate_args,
-                                       name)
-    self.spec = spec
-
-
-# This is a hack to SquashToSpecNormal so that `spec` provided at __init__ can
-# be recovered by `common.extract_spec`. `SquashToSpecNormal.action_means`
-# and `SquashToSpecNormal.action_magnitudes` are tf.Tensor and cannot be used
-# to recover `spec` because `BoundedTensorSpec` cannot accept tf.Tensor for
-# `minimum` and `maximum`.
-SquashToSpecNormal.__init__ = SquashToSpecNormal__init__
 
 
 def _build_squash_to_spec_normal(spec, *args, **kwargs):
