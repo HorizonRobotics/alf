@@ -13,13 +13,9 @@
 # limitations under the License.
 
 import gin
+import torch
 import numpy as np
-
-import tensorflow_probability as tfp
-import tensorflow as tf
-
-from tf_agents.distributions.utils import SquashToSpecNormal
-from tf_agents.specs import tensor_spec
+import alf.nest as nest
 
 
 def sample_action_distribution(nested_distributions):
@@ -29,7 +25,7 @@ def sample_action_distribution(nested_distributions):
     Returns:
         sampled actions
     """
-    return map_structure(lambda d: d.sample(), nested_distributions)
+    return nest.map_structure(lambda d: d.sample(), nested_distributions)
 
 
 def epsilon_greedy_sample(nested_distributions, eps=0.1):
@@ -52,18 +48,19 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
         elif isinstance(dist, torch.distributions.normal.Normal):
             greedy_action = dist.mean
         else:
-            greedy_action = dist.sample()
+            raise NotImplementedError("Mode sampling not implemented for \
+                {cls}".format(cls=type(dist)))
         sample_action[greedy_mask] = greedy_action[greedy_mask]
         return sample_action
 
     if eps >= 1.0:
         return sample_action_distribution(nested_distributions)
     else:
-        return map_structure(greedy_fn, nested_distributions)
+        return nest.map_structure(greedy_fn, nested_distributions)
 
 
 @gin.configurable
-def estimated_entropy(dist: tfp.distributions.Distribution,
+def estimated_entropy(dist,
                       seed=None,
                       assume_reparametrization=False,
                       num_samples=1,

@@ -12,58 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from absl import logging
-from absl.testing import parameterized
-
-import tensorflow as tf
-import tensorflow_probability as tfp
-
+import unittest
+import torch
 import alf.utils.dist_utils as dist_utils
 
 
-class EstimatedEntropyTest(parameterized.TestCase, tf.test.TestCase):
-    def assertArrayAlmostEqual(self, x, y, eps):
-        self.assertLess(tf.reduce_max(tf.abs(x - y)), eps)
+class TestActionSamplingCategorical(unittest.TestCase):
+    def test_action_sampling_categorical(self):
+        m = torch.distributions.categorical.Categorical(
+            torch.Tensor([0.25, 0.75]))
+        M = m.expand([10])
+        epsilon = 0.0
+        action_expected = torch.Tensor([1]).repeat(10)
+        action_obtained = dist_utils.epsilon_greedy_sample(M, epsilon)
+        self.assertTrue((action_expected == action_obtained).all())
 
-    @parameterized.parameters(False, True)
-    def test_estimated_entropy(self, assume_reparametrization):
-        logging.info("assume_reparametrization=%s" % assume_reparametrization)
-        num_samples = 1000000
-        seed_stream = tfp.util.SeedStream(
-            seed=1, salt='test_estimated_entropy')
-        batch_shape = (2, )
-        loc = tf.random.normal(shape=batch_shape, seed=seed_stream())
-        scale = tf.abs(tf.random.normal(shape=batch_shape, seed=seed_stream()))
 
-        with tf.GradientTape(persistent=True) as tape:
-            tape.watch(scale)
-            dist = tfp.distributions.Normal(loc=loc, scale=scale)
-            analytic_entropy = dist.entropy()
-            est_entropy, est_entropy_for_gradient = dist_utils.estimated_entropy(
-                dist=dist,
-                seed=seed_stream(),
-                assume_reparametrization=assume_reparametrization,
-                num_samples=num_samples)
-
-        analytic_grad = tape.gradient(analytic_entropy, scale)
-        est_grad = tape.gradient(est_entropy_for_gradient, scale)
-        logging.info("scale=%s" % scale)
-        logging.info("analytic_entropy=%s" % analytic_entropy)
-        logging.info("estimated_entropy=%s" % est_entropy)
-        self.assertArrayAlmostEqual(analytic_entropy, est_entropy, 5e-2)
-
-        logging.info("analytic_entropy_grad=%s" % analytic_grad)
-        logging.info("estimated_entropy_grad=%s" % est_grad)
-        self.assertArrayAlmostEqual(analytic_grad, est_grad, 5e-2)
-        if not assume_reparametrization:
-            est_grad_wrong = tape.gradient(est_entropy, scale)
-            logging.info("estimated_entropy_grad_wrong=%s", est_grad_wrong)
-            self.assertLess(tf.reduce_max(tf.abs(est_grad_wrong)), 5e-2)
+class TestActionSamplingNormal(unittest.TestCase):
+    def test_action_sampling_normal(self):
+        m = torch.distributions.normal.Normal(
+            torch.Tensor([0.3, 0.7]), torch.Tensor([1.0, 1.0]))
+        M = m.expand([10, 2])
+        epsilon = 0.0
+        action_expected = torch.Tensor([0.3, 0.7]).repeat(10, 1)
+        action_obtained = dist_utils.epsilon_greedy_sample(M, epsilon)
+        self.assertTrue((action_expected == action_obtained).all())
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
-    from alf.utils.common import set_per_process_memory_growth
-
-    set_per_process_memory_growth()
-    tf.test.main()
+    unittest.main()
