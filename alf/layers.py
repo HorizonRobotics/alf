@@ -11,104 +11,180 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Various layers."""
+"""Some basic layers."""
 
 import gin
-import six
 
-import tensorflow as tf
+import torch
+import torch.nn as nn
+
+from alf.networks.initializers import variance_scaling_init
 
 
-class ListWrapper(list):
-    """A wrapper of list.
-
-    It makes it possible to add some attributes to the object which is
-    necessary for keras Layer.
+def identity(x):
+    """PyTorch doesn't have an identity activation. This can be used as a
+    placeholder.
     """
+    return x
 
-    pass
 
-
-class Split(tf.keras.layers.Layer):
-    """Splits a tensor into sub tensors."""
-
-    def __init__(self, num_or_size_splits, axis):
-        """Create a Split layer.
-
-        If `num_or_size_splits` is an integer, then `input` is split along
-        dimension `axis` into `num_split` smaller tensors. This requires that
-        `num_split` evenly divides `value.shape[axis]`. If `num_or_size_splits`
-        is a 1-D Tensor (or list), we call it `size_splits` and `input` is split
-        into `len(size_splits)` elements. The shape of the `i`-th element has
-        the same size as the `value` except along dimension `axis` where the
-        size is `size_splits[i]`.
+@gin.configurable
+class FC(nn.Module):
+    def __init__(self,
+                 input_size,
+                 output_size,
+                 activation=identity,
+                 use_bias=True,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """A fully connected layer that's also responsible for activation and
+        customized weights initialization. An auto gain calculation might depend
+        on the activation following the linear layer. Suggest using this wrapper
+        module instead of nn.Linear if you really care about weight std after
+        init.
 
         Args:
-            num_or_size_splits (int|list[int]): Either an integer indicating the
-                number of splits along split_dim or a 1-D integer `Tensor` or Python
-                list containing the sizes of each output tensor along split_dim. If
-                a scalar then it must evenly divide `input.shape[axis]`; otherwise
-                the sum of sizes along the split dimension must match that of the
-                `input`.
-            axis: An integer or scalar `int32` `Tensor`. The dimension along which
-                to split. Must be in the range `[-rank(input), rank(input))`.
+            input_size (int): input size
+            output_size (int): output size
+            activation (torch.nn.functional):
+            use_bias (bool): whether use bias
+            kernel_init_gain (float): a scaling factor (gain) applied to
+                the std of kernel init distribution
+            bias_init_value (float): a constant
         """
-        self._num_or_size_splits = num_or_size_splits
-        self._axis = axis
-        super(Split, self).__init__()
+        super(FC, self).__init__()
+        self._activation = activation
+        self._linear = nn.Linear(input_size, output_size, bias=use_bias)
+        variance_scaling_init(
+            self._linear.weight.data,
+            gain=kernel_init_gain,
+            nonlinearity=self._activation.__name__)
+        if use_bias:
+            nn.init.constant_(self._linear.bias.data, bias_init_value)
 
-    def call(self, input):
-        """Split `input`."""
-        ret = ListWrapper(
-            tf.split(
-                input,
-                num_or_size_splits=self._num_or_size_splits,
-                axis=self._axis))
-        ret._keras_mask = None
-        return ret
+    def forward(self, inputs):
+        return self._activation(self._linear(inputs))
 
-    def compute_output_shape(self, input_shape):
-        """Compute output_shape given the `input_shape`."""
-        if isinstance(self._num_or_size_splits, six.integer_types):
-            shape = input_shape.as_list()
-            shape[self._axis] = shape[self._axis] / self._num_or_size_splits
-            shape = tf.TensorShape(shape)
-            return [shape] * self._num_or_size_splits
-        else:
-            shape = input_shape.as_list()
-            shapes = []
-            for size in self._num_or_size_splits:
-                shape[self._axis] = size
-                shapes.append(tf.TensorShape(shape))
-            return shapes
+    @property
+    def weight(self):
+        return self._linear.weight
 
-    def compute_mask(self, inputs, mask=None):
-        """Compute output_mask."""
-        if isinstance(self._num_or_size_splits, six.integer_types):
-            return [None] * self._num_or_size_splits
-        else:
-            return [None] * len(self._num_or_size_splits)
+    @property
+    def bias(self):
+        return self._linear.bias
 
 
 @gin.configurable
-class NestConcatenate(tf.keras.layers.Concatenate):
-    def build(self, input_shape):
-        return super().build(tf.nest.flatten(input_shape))
+class Conv2D(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 activation=torch.relu,
+                 strides=1,
+                 padding=0,
+                 use_bias=True,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """A 2D Conv layer that's also responsible for activation and customized
+        weights initialization. An auto gain calculation might depend on the
+        activation following the conv layer. Suggest using this wrapper module
+        instead of nn.Conv2d if you really care about weight std after init.
 
-    def _merge_function(self, inputs):
-        return super()._merge_function(tf.nest.flatten(inputs))
+        Args:
+            in_channels (int): channels of the input image
+            out_channels (int): channels of the output image
+            kernel_size (int or tuple):
+            activation (torch.nn.functional):
+            strides (int or tuple):
+            padding (int or tuple):
+            use_bias (bool):
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution
+            bias_init_value (float): a constant
+        """
+        super(Conv2D, self).__init__()
+        self._activation = activation
+        self._conv2d = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=strides,
+            padding=padding,
+            bias=use_bias)
+        variance_scaling_init(
+            self._conv2d.weight.data,
+            gain=kernel_init_gain,
+            nonlinearity=self._activation.__name__)
+        if use_bias:
+            nn.init.constant_(self._conv2d.bias.data, bias_init_value)
 
-    def compute_output_shape(self, input_shape):
-        return super().compute_output_shape(tf.nest.flatten(input_shape))
+    def forward(self, img):
+        return self._activation(self._conv2d(img))
 
-    def compute_mask(self, inputs, mask):
-        return super().compute_mask(tf.nest.flatten(inputs), mask)
+    @property
+    def weight(self):
+        return self._conv2d.weight
+
+    @property
+    def bias(self):
+        return self._conv2d.bias
 
 
 @gin.configurable
-def get_identity_layer():
-    return tf.keras.layers.Lambda(lambda x: x)
+class ConvTranspose2D(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 activation=torch.relu,
+                 strides=1,
+                 padding=0,
+                 use_bias=True,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """A 2D ConvTranspose layer that's also responsible for activation and
+        customized weights initialization. An auto gain calculation might depend
+        on the activation following the conv layer. Suggest using this wrapper
+        module instead of nn.ConvTranspose2d if you really care about weight std
+        after init.
 
+        Args:
+            in_channels (int): channels of the input image
+            out_channels (int): channels of the output image
+            kernel_size (int or tuple):
+            activation (torch.nn.functional):
+            strides (int or tuple):
+            padding (int or tuple):
+            use_bias (bool):
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution
+            bias_init_value (float): a constant
+        """
+        super(ConvTranspose2D, self).__init__()
+        self._activation = activation
+        self._conv_trans2d = nn.ConvTranspose2d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=strides,
+            padding=padding,
+            bias=use_bias)
+        variance_scaling_init(
+            self._conv_trans2d.weight.data,
+            gain=kernel_init_gain,
+            nonlinearity=self._activation.__name__,
+            transposed=True)
+        if use_bias:
+            nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
 
-def get_first_element_layer():
-    return tf.keras.layers.Lambda(lambda x: x[0])
+    def forward(self, img):
+        return self._activation(self._conv_trans2d(img))
+
+    @property
+    def weight(self):
+        return self._conv_trans2d.weight
+
+    @property
+    def bias(self):
+        return self._conv_trans2d.bias
