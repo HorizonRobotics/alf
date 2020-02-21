@@ -12,13 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Various functions related to calculating values."""
-
-import tensorflow as tf
-
-from tf_agents.trajectories.time_step import StepType
-from tf_agents.utils import common as tfa_common
-
-from alf.utils import common
+import torch
+from alf.data_structures import StepType
 
 
 def action_importance_ratio(action_distribution, collect_action_distribution,
@@ -143,18 +138,14 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
         A tensor with shape [T-1, B] (or [T-1]) representing the discounted
         returns. Shape is [B, T-1] when time_major is false.
     """
-
     if not time_major:
-        discounts = tf.transpose(a=discounts)
-        rewards = tf.transpose(a=rewards)
-        values = tf.transpose(a=values)
-        step_types = tf.transpose(a=step_types)
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
 
-    tf.Assert(
-        tf.shape(values)[0] >= 2, [
-            "The sequence length needs to be at least 2. Got ",
-            tf.shape(values)[0]
-        ])
+    assert values.shape[0] >= 2, "The sequence length needs to be \
+                                at least 2. Got {s}".format(s=values.shape[0])
 
     discounts = discounts[1:]
     rewards = rewards[1:]
@@ -162,24 +153,24 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
     values = values[:-1]
 
     step_types = step_types[:-1]
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
 
-    def discounted_return_fn(acc_discounted_reward, args):
-        (reward, value, is_last, discount) = args
+    def discounted_return_fn(acc_discounted_reward, reward, value, is_last,
+                             discount):
         acc_discounted_value = acc_discounted_reward * discount + reward
         return is_last * value + (1 - is_last) * acc_discounted_value
 
-    returns = tf.scan(
-        fn=discounted_return_fn,
-        elems=(rewards, values, is_lasts, discounts),
-        reverse=True,
-        initializer=final_value,
-        back_prop=False)
+    returns = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    ret = final_value
+    for t in reversed(range(rewards.shape[0])):
+        ret = discounted_return_fn(ret, rewards[t], values[t], is_lasts[t],
+                                   discounts[t])
+        returns[t] = ret
 
     if not time_major:
-        returns = tf.transpose(a=returns)
+        returns = returns.transpose(0, 1)
 
-    return tf.stop_gradient(returns)
+    return returns.detach()
 
 
 def one_step_discounted_return(rewards, values, step_types, discounts):
@@ -196,18 +187,15 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
         A tensor with shape [T-1, B] (or [T-1]) representing the discounted
         returns.
     """
-    tf.Assert(
-        tf.shape(values)[0] >= 2, [
-            "The sequence length needs to be at least 2. Got ",
-            tf.shape(values)[0]
-        ])
+    assert values.shape[0] >= 2, "The sequence length needs to be \
+                                at least 2. Got {s}".format(s=values.shape[0])
 
     discounts = discounts[1:]
     rewards = rewards[1:]
     values = values[1:]
     step_types = step_types[:-1]
 
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
     returns = rewards + (1 - is_lasts) * discounts * values
 
     return returns
@@ -249,16 +237,13 @@ def generalized_advantage_estimation(rewards,
     """
 
     if not time_major:
-        discounts = tf.transpose(a=discounts)
-        rewards = tf.transpose(a=rewards)
-        values = tf.transpose(a=values)
-        step_types = tf.transpose(a=step_types)
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
 
-    tf.Assert(
-        tf.shape(values)[0] >= 2, [
-            "The sequence length needs to be at least 2. Got ",
-            tf.shape(values)[0]
-        ])
+    assert values.shape[0] >= 2, "The sequence length needs to be \
+                                at least 2. Got {s}".format(s=values.shape[0])
 
     rewards = rewards[1:]
     next_values = values[1:]
@@ -266,23 +251,23 @@ def generalized_advantage_estimation(rewards,
     values = values[:-1]
     discounts = discounts[1:]
     step_types = step_types[:-1]
-    is_lasts = tf.cast(tf.equal(step_types, StepType.LAST), tf.float32)
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
 
     delta = rewards + discounts * next_values - values
     weighted_discounts = discounts * td_lambda
 
-    def weighted_cumulative_td_fn(accumulated_td, weights_td_is_last):
-        weighted_discount, td, is_last = weights_td_is_last
+    def weighted_cumulative_td_fn(accumulated_td, weighted_discount, td,
+                                  is_last):
         return (1 - is_last) * (td + weighted_discount * accumulated_td)
 
-    advantages = tf.scan(
-        fn=weighted_cumulative_td_fn,
-        elems=(weighted_discounts, delta, is_lasts),
-        initializer=tf.zeros_like(final_value),
-        reverse=True,
-        back_prop=False)
+    advantages = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    adv = 0
+    for t in reversed(range(rewards.shape[0])):
+        adv = weighted_cumulative_td_fn(adv, weighted_discounts[t], delta[t],
+                                        is_lasts[t])
+        advantages[t] = adv
 
     if not time_major:
-        advantages = tf.transpose(a=advantages)
+        advantages = advantages.transpose(0, 1)
 
-    return tf.stop_gradient(advantages)
+    return advantages.detach()

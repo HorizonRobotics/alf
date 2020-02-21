@@ -13,9 +13,8 @@
 # limitations under the License.
 """Various function/classes related to loss computation."""
 
-import tensorflow as tf
 import gin
-from tf_agents.utils import common as tfa_common
+import torch
 
 
 @gin.configurable
@@ -23,13 +22,12 @@ def element_wise_huber_loss(x, y):
     """Elementwise Huber loss.
 
     Args:
-        x (tf.Tensor): label
-        y (tf.Tensor): prediction
+        x (Tensor): label
+        y (Tensor): prediction
     Returns:
-        loss (tf.Tensor)
+        loss (Tensor)
     """
-    return tf.compat.v1.losses.huber_loss(
-        x, y, reduction=tf.compat.v1.losses.Reduction.NONE)
+    return torch.nn.SmoothL1Loss(reduction=None)
 
 
 @gin.configurable
@@ -37,10 +35,9 @@ def element_wise_squared_loss(x, y):
     """Elementwise squared loss.
 
     Args:
-        x (tf.Tensor): label
-        y (tf.Tensor): prediction
+        x (Tensor): label
+        y (Tensor): prediction
     Returns:
-        loss (tf.Tensor)
+        loss (Tensor)
     """
-    return tf.compat.v1.losses.mean_squared_error(
-        x, y, reduction=tf.compat.v1.losses.Reduction.NONE)
+    return nn.MSELoss(reduction=None)

@@ -14,30 +14,32 @@
 
 from collections import namedtuple
 
-import gin.tf
-import tensorflow as tf
-import tensorflow_probability as tfp
-
-from tf_agents.utils import common as tfa_common
+import gin
+import torch
+import torch.nn as nn
 from alf.data_structures import TrainingInfo, LossInfo
 from alf.utils.losses import element_wise_squared_loss
-from alf.utils import common, dist_utils, value_ops
+from alf.utils import tensor_utils, dist_utils, value_ops
+from torch.utils.tensorboard import SummaryWriter
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "neg_entropy"])
 
 
-def _normalize_advantages(advantages, axes=(0, ), variance_epsilon=1e-8):
-    adv_mean, adv_var = tf.nn.moments(x=advantages, axes=axes, keepdims=True)
+def _normalize_advantages(advantages, variance_epsilon=1e-8):
+    # advantages is of shape [rollout_steps, num_envs]
+    # this function normalizes over all elements in the input advantages
+    adv_mean = advantages.mean()
+    adv_var = torch.var(
+        advantages.view(-1, 1), dim=0, unbiased=False, keepdim=True)
     normalized_advantages = (
-        (advantages - adv_mean) / (tf.sqrt(adv_var) + variance_epsilon))
+        (advantages - adv_mean) / (torch.sqrt(adv_var) + variance_epsilon))
     return normalized_advantages
 
 
 @gin.configurable
-class ActorCriticLoss(tf.Module):
+class ActorCriticLoss(nn.Module):
     def __init__(self,
-                 action_spec,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
                  use_gae=False,
@@ -57,8 +59,6 @@ class ActorCriticLoss(tf.Module):
          - entropy_regularization * entropy)
 
         Args:
-            action_spec (nested BoundedTensorSpec): representing the actions.
-            gamma (float): A discount factor for future rewards.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
@@ -77,10 +77,10 @@ class ActorCriticLoss(tf.Module):
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
         """
-        super().__init__(name=name)
+        super().__init__()
 
-        self._action_spec = action_spec
         self._td_loss_weight = td_loss_weight
+        self._name = name
         self._gamma = gamma
         self._td_error_loss_fn = td_error_loss_fn
         self._use_gae = use_gae
@@ -93,7 +93,7 @@ class ActorCriticLoss(tf.Module):
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
 
-    def __call__(self, training_info: TrainingInfo, value):
+    def forward(self, training_info: TrainingInfo, value):
         """Cacluate actor critic loss
 
         The first dimension of all the tensors is time dimension and the second
@@ -103,7 +103,7 @@ class ActorCriticLoss(tf.Module):
             training_info (TrainingInfo): training_info collected by
                 OnPolicyDriver/OffPolicyAlgorithm. All tensors in training_info
                 are time-major
-            value (tf.Tensor): the time-major tensor for the value at each time
+            value (torch.Tensor): the time-major tensor for the value at each time
                 step
         Returns:
             loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
@@ -112,36 +112,33 @@ class ActorCriticLoss(tf.Module):
         returns, advantages = self._calc_returns_and_advantages(
             training_info, value)
 
-        def _summary():
-            with self.name_scope:
-                tf.summary.scalar("values", tf.reduce_mean(value))
-                tf.summary.scalar("returns", tf.reduce_mean(returns))
-                tf.summary.scalar("advantages/mean",
-                                  tf.reduce_mean(advantages))
-                tf.summary.histogram("advantages/value", advantages)
-                tf.summary.scalar("explained_variance_of_return_by_value",
-                                  common.explained_variance(value, returns))
-
-        if self._debug_summaries:
-            common.run_if(common.should_record_summaries(), _summary)
+        if self._debug_summaries and common.should_record_summaries():
+            alf.summary.scalar(self._name + '/values', value.mean())
+            alf.summary.scalar(self._name + "/returns", returns.mean())
+            alf.summary.scalar(self._name + "/advantages/mean",
+                               advantages.mean())
+            alf.summary.histogram(self._name + "/advantages/value", advantages)
+            alf.summary.histogram(
+                self._name + "/explained_variance_of_return_by_value",
+                tensor_utils.explained_variance(value, returns))
 
         if self._normalize_advantages:
-            advantages = _normalize_advantages(advantages, axes=(0, 1))
+            advantages = _normalize_advantages(advantages)
 
         if self._advantage_clip:
-            advantages = tf.clip_by_value(advantages, -self._advantage_clip,
-                                          self._advantage_clip)
+            advantages = torch.clamp(advantages, -self._advantage_clip,
+                                     self._advantage_clip)
 
-        pg_loss = self._pg_loss(training_info, tf.stop_gradient(advantages))
+        pg_loss = self._pg_loss(training_info, advantages.detach())
 
-        td_loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
+        td_loss = self._td_error_loss_fn(returns.detach(), value)
 
         loss = pg_loss + self._td_loss_weight * td_loss
 
         entropy_loss = ()
         if self._entropy_regularization is not None:
-            entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
-                training_info.info.action_distribution, self._action_spec)
+            entropy, entropy_for_gradient = dist_utils.compute_entropy(
+                training_info.info.action_distribution)
             entropy_loss = -entropy
             loss -= self._entropy_regularization * entropy_for_gradient
 
@@ -151,9 +148,8 @@ class ActorCriticLoss(tf.Module):
                 td_loss=td_loss, pg_loss=pg_loss, neg_entropy=entropy_loss))
 
     def _pg_loss(self, training_info, advantages):
-        action_log_prob = tfa_common.log_probability(
-            training_info.info.action_distribution, training_info.action,
-            self._action_spec)
+        action_log_prob = dist_utils.compute_log_probability(
+            training_info.info.action_distribution, training_info.action)
         return -advantages * action_log_prob
 
     def _calc_returns_and_advantages(self, training_info, value):
@@ -162,7 +158,7 @@ class ActorCriticLoss(tf.Module):
             values=value,
             step_types=training_info.step_type,
             discounts=training_info.discount * self._gamma)
-        returns = common.tensor_extend(returns, value[-1])
+        returns = tensor_utils.tensor_extend(returns, value[-1])
 
         if not self._use_gae:
             advantages = returns - value
@@ -173,7 +169,7 @@ class ActorCriticLoss(tf.Module):
                 step_types=training_info.step_type,
                 discounts=training_info.discount * self._gamma,
                 td_lambda=self._lambda)
-            advantages = common.tensor_extend_zero(advantages)
+            advantages = tensor_utils.tensor_extend_zero(advantages)
             if self._use_td_lambda_return:
                 returns = advantages + value
 

@@ -12,5 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from alf.networks.encoding_networks import *
-from alf.networks.projection_networks import *
+from alf.nest.nest import *
