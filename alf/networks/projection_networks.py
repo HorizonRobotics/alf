@@ -121,7 +121,6 @@ class NormalProjectionNetwork(nn.Module):
             activation=activation,
             kernel_init_gain=projection_output_init_gain)
 
-        # We always assume that std depends on states
         if state_dependent_std:
             self._std_projection_layer = layers.FC(
                 input_size,

@@ -265,7 +265,7 @@ class EncodingNetwork(nn.Module):
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
-            conv_layer_params (list[tuple[int]]): a list of tuples where each
+            conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
             fc_layer_params (list[int]): a list of integers representing FC layer
@@ -312,6 +312,8 @@ class EncodingNetwork(nn.Module):
             self._fc_layers.append(layers.FC(input_size, size, activation=act))
             input_size = size
 
+        self._output_size = input_size
+
     def forward(self, inputs):
         z = inputs
         if self._img_encoding_net is not None:
@@ -319,3 +321,10 @@ class EncodingNetwork(nn.Module):
         for fc in self._fc_layers:
             z = fc(z)
         return z
+
+    @property
+    def output_size(self):
+        """If `conv_layer_params` is used, then it's difficult for the caller
+        to know the output size in advance.
+        """
+        return self._output_size
