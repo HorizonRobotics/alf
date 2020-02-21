@@ -14,6 +14,27 @@
 
 import unittest
 import torch
-import torch.distributions as td
+import torch.nn as nn
 import numpy as np
 import alf.utils.checkpoint_utils as ckpt_utils
+
+
+class Net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv = nn.Conv2d(1, 6, 3)
+        self.fc = nn.Linear(20, 10)
+
+
+def weights_init_zero(m):
+    torch.nn.init.zeros_(m.weight.data)
+    torch.nn.init.zeros_(m.bias.data)
+
+
+net = Net()
+net.apply(weights_init_zero)
+
+net = Net()
+ckpt_dir = "/tmp/models/"
+ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, net=net)
+ckpt_mngr.save(0)

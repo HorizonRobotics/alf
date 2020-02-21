@@ -28,29 +28,12 @@ import gin
 import time
 import random
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
-from tf_agents.distributions.utils import scale_distribution_to_spec, SquashToSpecNormal
-from tf_agents.networks.network import Network
-from tf_agents.specs.distribution_spec import DistributionSpec
-from tf_agents.specs.tensor_spec import BoundedTensorSpec
-from tf_agents.specs import tensor_spec
-from tf_agents.trajectories.time_step import StepType, TimeStep
-from tf_agents.utils import common as tfa_common
-
-from alf.data_structures import LossInfo, make_action_time_step
-from alf.utils import summary_utils, gin_utils
-from alf.utils.conditional_ops import conditional_update, run_if, select_from_mask
-from alf.utils.nest_utils import is_namedtuple
-from alf.utils import nest_utils
-from alf.utils.scope_utils import get_current_scope
+from alf.data_structures import LossInfo
 
 # `test_session` is deprecated and skipped test function, remove
 #   it for all unittest which inherit from `tf.test.TestCase`
 #   to exclude it from statistics of unittest result
-
-del tf.test.TestCase.test_session
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -273,7 +256,10 @@ def run_under_record_context(func,
         func()
 
 
-from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
+def should_record_summaries():
+    """A place holder function
+    """
+    return True
 
 
 def get_global_counter(default_counter=None):
@@ -531,56 +517,6 @@ def get_gin_file():
         gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
         assert gin_file, "No gin files are found! Please provide"
     return gin_file
-
-
-def tensor_extend(x, y):
-    """Extending tensor with new_slice.
-
-    new_slice.shape should be same as tensor.shape[1:]
-    Args:
-        x (Tensor): tensor to be extended
-        y (Tensor): the tensor which will be appended to `x`
-    Returns:
-        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
-    """
-    return tf.concat([x, tf.expand_dims(y, axis=0)], axis=0)
-
-
-def tensor_extend_zero(x):
-    """Extending tensor with zeros.
-
-    new_slice.shape should be same as tensor.shape[1:]
-    Args:
-        x (Tensor): tensor to be extended
-    Returns:
-        the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
-    """
-    return tf.concat(
-        [x,
-         tf.expand_dims(tf.zeros(tf.shape(x)[1:], dtype=x.dtype), axis=0)],
-        axis=0)
-
-
-def explained_variance(ypred, y):
-    """Computes fraction of variance that ypred explains about y.
-
-    Adapted from baselines.ppo2 explained_variance()
-
-    Interpretation:
-        ev=0  =>  might as well have predicted zero
-        ev=1  =>  perfect prediction
-        ev<0  =>  worse than just predicting zero
-
-    Args:
-        ypred (Tensor): prediction for y
-        y (Tensor): target
-    Returns:
-        1 - Var[y-ypred] / Var[y]
-    """
-    ypred = tf.reshape(ypred, [-1])
-    y = tf.reshape(y, [-1])
-    _, vary = tf.nn.moments(y, axes=(0, ))
-    return 1 - tf.nn.moments(y - ypred, axes=(0, ))[1] / (vary + 1e-30)
 
 
 def sample_action_distribution(distributions, seed=None):

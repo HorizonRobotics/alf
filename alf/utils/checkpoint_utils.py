@@ -16,10 +16,10 @@ import torch
 import os
 
 
-class CheckpointManager(object):
+class Checkpointer(object):
     """Checkpoints training state, policy state, and replay_buffer state."""
 
-    def __init__(self, ckpt_dir, max_to_keep=20, **kwargs):
+    def __init__(self, ckpt_dir, **kwargs):
         """A class for making checkpoints.
 
         If ckpt_dir doesn't exists it creates it.
@@ -31,15 +31,14 @@ class CheckpointManager(object):
         **kwargs: Items to include in the checkpoint.
         """
 
-        def _to_dict(**kwargs):
-            return {k: v for k, v in kwargs.items()}
+        # def _to_dict(**kwargs):
+        #     return {k: v for k, v in kwargs.items()}
 
-        self._modules = _to_dict(kwargs)
+        self._modules = kwargs
         self._ckpt_dir = ckpt_dir
         self._global_step = -1
 
-        if not os.path.isdir(self._ckpt_dir):
-            os.mkdir(self._ckpt_dir)
+        os.makedirs(self._ckpt_dir, exist_ok=True)
 
     def load(self, model_pass="latest"):
         """Load checkpoint
@@ -66,7 +65,7 @@ class CheckpointManager(object):
         state = {
             k: v.module.state_dict()
             if type(v) == torch.nn.DataParallel else v.state_dict()
-            for k, v in self._modules
+            for k, v in self._modules.items()
         }
         state['global_step'] = global_step
         torch.save(state, f_path)
