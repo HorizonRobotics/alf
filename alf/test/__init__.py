@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Simple wrapper over unittest to provide extra functionality."""
 
-from .nest import *
-from . import utils
+from .case import TestCase
+from unittest import main

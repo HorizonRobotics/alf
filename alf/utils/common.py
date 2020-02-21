@@ -30,6 +30,7 @@ import random
 import numpy as np
 
 from alf.data_structures import LossInfo
+from alf.utils.dist_utils import DistributionSpec
 
 # `test_session` is deprecated and skipped test function, remove
 #   it for all unittest which inherit from `tf.test.TestCase`
@@ -708,75 +709,6 @@ def get_vocab_size():
         return _env.observation_spec()['sentence'].maximum + 1
     else:
         return 0
-
-
-SquashToSpecNormal__init__original = SquashToSpecNormal.__init__
-
-
-def SquashToSpecNormal__init__(self,
-                               distribution,
-                               spec,
-                               validate_args=False,
-                               name="SquashToSpecNormal"):
-    SquashToSpecNormal__init__original(self, distribution, spec, validate_args,
-                                       name)
-    self.spec = spec
-
-
-# This is a hack to SquashToSpecNormal so that `spec` provided at __init__ can
-# be recovered by `common.extract_spec`. `SquashToSpecNormal.action_means`
-# and `SquashToSpecNormal.action_magnitudes` are tf.Tensor and cannot be used
-# to recover `spec` because `BoundedTensorSpec` cannot accept tf.Tensor for
-# `minimum` and `maximum`.
-SquashToSpecNormal.__init__ = SquashToSpecNormal__init__
-
-
-def _build_squash_to_spec_normal(spec, *args, **kwargs):
-    distribution = tfp.distributions.Normal(*args, **kwargs)
-    return scale_distribution_to_spec(distribution, spec)
-
-
-def extract_spec(nest, from_dim=1):
-    """
-    Extract TensorSpec or DistributionSpec for each element of a nested structure.
-    It assumes that the first dimension of each element is the batch size.
-
-    Args:
-        from_dim (int): ignore dimension before this when constructing the spec.
-        nest (nested structure): each leaf node of the nested structure is a
-            Tensor or Distribution of the same batch size
-    Returns:
-        spec (nested structure): each leaf node of the returned nested spec is the
-            corresponding spec (excluding batch size) of the element of `nest`
-    """
-
-    def _extract_spec(obj):
-        if isinstance(obj, tf.Tensor):
-            return tf.TensorSpec(obj.shape[from_dim:], obj.dtype)
-        if not isinstance(obj, tfp.distributions.Distribution):
-            raise ValueError("Unsupported value type: %s" % type(obj))
-
-        params = obj.parameters
-        input_param = {
-            k: params[k]
-            for k in params if isinstance(params[k], tf.Tensor)
-        }
-        input_param_spec = extract_spec(input_param, from_dim)
-        sample_spec = tf.TensorSpec(obj.event_shape, obj.dtype)
-
-        if type(obj) in [
-                tfp.distributions.Deterministic, tfp.distributions.Normal,
-                tfp.distributions.Categorical
-        ]:
-            builder = type(obj)
-        elif isinstance(obj, SquashToSpecNormal):
-            builder = functools.partial(_build_squash_to_spec_normal, obj.spec)
-        else:
-            raise ValueError("Unsupported value type: %s" % type(obj))
-        return DistributionSpec(
-            builder, input_param_spec, sample_spec=sample_spec)
-
-    return tf.nest.map_structure(_extract_spec, nest)
 
 
 @gin.configurable
