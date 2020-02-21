@@ -26,6 +26,7 @@ from tf_agents.trajectories.time_step import StepType
 from alf.utils.encoding_network import EncodingNetwork
 from alf.utils.common import transpose2
 from alf.data_structures import ActionTimeStep
+from alf.utils import math_ops
 
 MISCInfo = namedtuple("MISCInfo", ["reward"])
 
@@ -106,6 +107,7 @@ class MISCAlgorithm(Algorithm):
         self._mi_r_scale = mi_r_scale
         self._n_objects = n_objects
         self._split_observation_fn = split_observation_fn
+        self._batch_size = batch_size
 
     def _mine(self, x_in, y_in):
         """Mutual Infomation Neural Estimator.
@@ -120,9 +122,7 @@ class MISCAlgorithm(Algorithm):
 
         """
         y_in_tran = transpose2(y_in, 1, 0)
-        # tf.random.shuffle() has no gradient defined, so use tf.gather()
-        y_shuffle_tran = tf.gather(
-            y_in_tran, tf.random.shuffle(tf.range(tf.shape(y_in_tran)[0])))
+        y_shuffle_tran = math_ops.shuffle(y_in_tran)
         y_shuffle = transpose2(y_shuffle_tran, 1, 0)
 
         # propagate the forward pass
@@ -152,7 +152,7 @@ class MISCAlgorithm(Algorithm):
                 state: tuple of observation and previous action
                 info: (MISCInfo):
         """
-        feature = time_step.observation
+        feature_state = time_step.observation
         prev_action = time_step.prev_action
         feature = tf.concat([feature_state, prev_action], axis=-1)
         prev_feature = tf.concat(state, axis=-1)
@@ -165,17 +165,21 @@ class MISCAlgorithm(Algorithm):
         def add_batch():
             self._buffer.add_batch(feature_reshaped_tran)
 
-        if calc_intrinsic_reward:
+        # The reason that the batch_size of time_step can be different from
+        # self._batch_size is that this is invoked in PREPARE_SPEC mode.
+        # TODO: handle PREPARE_SPEC properly
+        if (calc_intrinsic_reward
+                and time_step.step_type.shape[0] == self._batch_size):
             add_batch()
 
         if self._n_objects < 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal = \
-                self._split_observation_fn(feature_pair)
+            obs_tau_excludes_goal, obs_tau_achieved_goal = (
+                self._split_observation_fn(feature_pair))
             loss = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 \
-            = self._split_observation_fn(
-                feature_pair)
+            (obs_tau_excludes_goal, obs_tau_achieved_goal_1,
+             obs_tau_achieved_goal_2
+             ) = self._split_observation_fn(feature_pair)
             loss_1 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
             loss_2 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
             loss = loss_1 + loss_2
@@ -192,7 +196,8 @@ class MISCAlgorithm(Algorithm):
                     1) + 1 * tf.clip_by_value(self._mi_r_scale * loss_2, 0, 1)
 
         return AlgorithmStep(
-            outputs=(), state=[feature_state, prev_action], \
+            outputs=(),
+            state=[feature_state, prev_action],
             info=MISCInfo(reward=intrinsic_reward))
 
     def calc_loss(self, info: MISCInfo):
@@ -200,13 +205,13 @@ class MISCAlgorithm(Algorithm):
             batch_size=self._buffer_size)
         feature_tau_sampled_tran = transpose2(feature_tau_sampled, 1, 0)
         if self._n_objects < 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal = self._split_observation_fn(
-                feature_tau_sampled_tran)
+            obs_tau_excludes_goal, obs_tau_achieved_goal = (
+                self._split_observation_fn(feature_tau_sampled_tran))
             loss = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal)
         elif self._n_objects == 2:
-            obs_tau_excludes_goal, obs_tau_achieved_goal_1, obs_tau_achieved_goal_2 = \
-            self._split_observation_fn(
-                feature_tau_sampled_tran)
+            (obs_tau_excludes_goal, obs_tau_achieved_goal_1,
+             obs_tau_achieved_goal_2
+             ) = self._split_observation_fn(feature_tau_sampled_tran)
             loss_1 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_1)
             loss_2 = self._mine(obs_tau_excludes_goal, obs_tau_achieved_goal_2)
             loss = loss_1 + loss_2
