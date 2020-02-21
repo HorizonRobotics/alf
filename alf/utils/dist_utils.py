@@ -13,17 +13,52 @@
 # limitations under the License.
 
 import gin
+import torch
 import numpy as np
+import alf.nest as nest
 
-import tensorflow_probability as tfp
-import tensorflow as tf
 
-from tf_agents.distributions.utils import SquashToSpecNormal
-from tf_agents.specs import tensor_spec
+def compute_entropy(distributions):
+    """Computes total entropy of nested distribution.
+    Args:
+        distributions (nested Distribution): A possibly batched tuple of
+            distributions.
+    Returns:
+        entropy
+    """
+
+    def _compute_entropy(dist: torch.distributions.Distribution):
+        entropy = dist.entropy()
+        return entropy
+
+    entropies = nest.map_structure(_compute_entropy, distributions)
+    total_entropies = sum(nest.flatten(entropies))
+    return total_entropies
+
+
+def compute_log_probability(distributions, actions):
+    """Computes log probability of actions given distribution.
+
+    Args:
+        distributions: A possibly batched tuple of distributions.
+        actions: A possibly batched action tuple.
+
+    Returns:
+        A Tensor representing the log probability of each action in the batch.
+    """
+
+    def _compute_log_prob(single_distribution, single_action):
+        single_log_prob = single_distribution.log_prob(single_action)
+        return single_log_prob
+
+    nest.assert_same_structure(distributions, actions)
+    log_probs = nest.map_structure(_compute_log_prob, distributions, actions)
+    total_log_probs = sum(nest.flatten(log_probs))
+    return total_log_probs
 
 
 @gin.configurable
-def estimated_entropy(dist: tfp.distributions.Distribution,
+def estimated_entropy(dist,
                       seed=None,
                       assume_reparametrization=False,
                       num_samples=1,
@@ -69,76 +104,6 @@ def estimated_entropy(dist: tfp.distributions.Distribution,
         entropy = tf.reduce_mean(entropy, axis=0)
         entropy_for_gradient = tf.reduce_mean(entropy_for_gradient, axis=0)
     return entropy, entropy_for_gradient
-
-
-def entropy_with_fallback(distributions, action_spec, seed=None):
-    """Computes total entropy of nested distribution.
-
-    If entropy() of a distribution is not implemented, this function will
-    fallback to use sampling to calculate the entropy. It returns two values:
-    (entropy, entropy_for_gradient).
-    There are two situations:
-    * entropy() is implemented. entropy is same as entropy_for_gradient.
-    * entropy() is not implemented. We use sampling to calculate entropy. The
-        unbiased estimator for entropy is -log(p(x)). However, the gradient of
-        -log(p(x)) is not an unbiased estimator of the gradient of entropy. So
-        we also calculate a value whose gradient is an unbiased estimator of
-        the gradient of entropy. See estimated_entropy() for detail.
-
-    Example:
-        with tf.GradientTape() as tape:
-            ent, ent_for_grad = entropy_with_fall_back(dist, action_spec)
-        tf.summary.scalar("entropy", ent)
-        grad = tape.gradient(ent_for_grad, weight)
-
-    Args:
-        distributions (nested Distribution): A possibly batched tuple of
-            distributions.
-        action_spec (nested BoundedTensorSpec): A nested tuple representing the
-            action spec.
-        seed (Any): Any Python object convertible to string, supplying the
-            initial entropy.
-    Returns:
-        tuple of (entropy, entropy_for_gradient). You should use entropy in
-        situations where its value is needed, and entropy_for_gradient where
-        you need to calculate the gradient of entropy.
-    """
-    seed_stream = tfp.util.SeedStream(seed=seed, salt='entropy_with_fallback')
-
-    def _calc_outer_rank(dist: tfp.distributions.Distribution, action_spec):
-        if isinstance(dist, SquashToSpecNormal):
-            # SquashToSpecNormal does not implement the two necessary interface
-            # functions of Distribution. So we have to use the original
-            # distribution it transforms.
-            # SquashToSpecNormal is used by NormalProjectionNetwork with
-            # scale_distribution=True
-            dist = dist.input_distribution
-        return (dist.batch_shape.ndims + dist.event_shape.ndims -
-                action_spec.shape.ndims)
-
-    def _compute_entropy(dist: tfp.distributions.Distribution, action_spec):
-        if isinstance(dist, SquashToSpecNormal):
-            entropy, entropy_for_gradient = estimated_entropy(
-                dist, seed=seed_stream())
-        else:
-            entropy = dist.entropy()
-            entropy_for_gradient = entropy
-
-        outer_rank = _calc_outer_rank(dist, action_spec)
-        rank = entropy.shape.ndims
-        reduce_dims = list(range(outer_rank, rank))
-        entropy = tf.reduce_sum(input_tensor=entropy, axis=reduce_dims)
-        entropy_for_gradient = tf.reduce_sum(
-            input_tensor=entropy_for_gradient, axis=reduce_dims)
-        return entropy, entropy_for_gradient
-
-    entropies = list(
-        map(_compute_entropy, tf.nest.flatten(distributions),
-            tf.nest.flatten(action_spec)))
-    entropies_for_gradient = [eg for e, eg in entropies]
-    entropies = [e for e, eg in entropies]
-
-    return tf.add_n(entropies), tf.add_n(entropies_for_gradient)
 
 
 def calc_default_target_entropy(spec):
