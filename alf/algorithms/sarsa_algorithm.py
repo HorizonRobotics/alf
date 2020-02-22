@@ -261,7 +261,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             # put critic_loss to scalar_loss because loss will be masked by
             # ~is_last at train_complete(). The critic_loss here should be
             # masked by ~is_first instead, which is done above.
-            scalar_loss=critic_loss,
+            scalar_loss=tf.reduce_mean(critic_loss),
             extra=SarsaLossInfo(actor=info.actor_loss, critic=critic_loss))
 
     def after_train(self, training_info):
