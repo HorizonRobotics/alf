@@ -85,7 +85,8 @@ class TestNetAndOptimizer(unittest.TestCase):
             self.assertTrue((para == 0).all())
 
         # load latest
-        ckpt_mngr.load(global_step='latest')
+        next_step_num = ckpt_mngr.load(global_step='latest')
+        self.assertTrue(next_step_num == step_num + 1)
         self.assertTrue(get_learning_rate(optimizer)[0] == 0.01)
         for para in list(net.parameters()):
             self.assertTrue((para == 1).all())

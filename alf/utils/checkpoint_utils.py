@@ -18,7 +18,7 @@ import torch
 
 
 class Checkpointer(object):
-    """Checkpoints training state, policy state, and replay_buffer state."""
+    """A checkpoint manager for saving and loading checkpoints."""
 
     def __init__(self, ckpt_dir, **kwargs):
         """A class for making checkpoints.
@@ -41,6 +41,8 @@ class Checkpointer(object):
         Args:
             global_step: the number of training steps corresponding to the
                 current state to be saved. It will be appended to the name of the chekpoint as a suffix.
+        Returns:
+            next_step_num (int): the step_number for the next training step
         """
 
         def _load_checkpoint(checkpoint):
@@ -59,6 +61,8 @@ class Checkpointer(object):
         else:
             warnings.warn(("Checkpoint 'ckpt-{}' does not exist. "
                            "Train from scratch.".format(global_step)))
+
+        return self._global_step + 1
 
     def save(self, global_step):
         """Save states of all modules to checkpoint
