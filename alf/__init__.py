@@ -13,5 +13,7 @@
 # limitations under the License.
 
 from . import nest
-from .tensor_specs import *
 from . import test
+
+from .tensor_specs import *
+import alf.utils.external_configurables

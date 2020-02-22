@@ -14,23 +14,18 @@
 """Make various external gin-configurable objects."""
 
 import gin
-import gin.tf.external_configurables
 import gym
-import tensorflow as tf
-from tf_agents.specs.tensor_spec import BoundedTensorSpec
-from tf_agents.networks.utils import mlp_layers
-from tf_agents.networks.sequential_layer import SequentialLayer
+import torch
 
-from tf_agents.environments import atari_wrappers
+import alf
 
-from alf.utils import math_ops
+torch.optim.Adam = gin.external_configurable(torch.optim.Adam,
+                                             'torch.optim.Adam')
+gin.bind_parameter('torch.optim.Adam.params', [{'params': []}])
 
-tf.keras.layers.Conv2D = gin.external_configurable(tf.keras.layers.Conv2D,
-                                                   'tf.keras.layers.Conv2D')
-tf.optimizers.Adam = gin.external_configurable(tf.optimizers.Adam,
-                                               'tf.optimizers.Adam')
-gin.external_configurable(tf.keras.layers.Concatenate,
-                          'tf.keras.layers.Concatenate')
+torch.optim.AdamW = gin.external_configurable(torch.optim.AdamW,
+                                              'torch.optim.AdamW')
+gin.bind_parameter('torch.optim.AdamW.params', [{'params': []}])
 
 # This allows the environment creation arguments to be configurable by supplying
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
@@ -38,18 +33,14 @@ gym.envs.registration.EnvSpec.make = gin.external_configurable(
     gym.envs.registration.EnvSpec.make, 'gym.envs.registration.EnvSpec.make')
 
 # Activation functions.
-gin.external_configurable(tf.math.exp, 'tf.math.exp')
+gin.external_configurable(torch.exp, 'torch.exp')
 
-gin.external_configurable(tf.TensorSpec, 'tf.TensorSpec')
+gin.external_configurable(alf.TensorSpec, 'alf.TensorSpec')
 
-gin.external_configurable(BoundedTensorSpec, 'tf.BoundedTensorSpec')
+gin.external_configurable(alf.BoundedTensorSpec, 'alf.BoundedTensorSpec')
 
-gin.external_configurable(SequentialLayer, 'SequentialLayer')
+gin.external_configurable(torch.nn.functional.softsign,
+                          'torch.nn.funtional.softsign')
 
-gin.external_configurable(mlp_layers, 'mlp_layers')
-
-gin.external_configurable(tf.keras.activations.softsign,
-                          'tf.keras.activations.softsign')
-
-gin.external_configurable(tf.keras.initializers.GlorotUniform,
-                          'tf.keras.initializers.GlorotUniform')
+# gin.external_configurable(tf.keras.initializers.GlorotUniform,
+#                           'tf.keras.initializers.GlorotUniform')
