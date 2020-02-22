@@ -123,7 +123,6 @@ class Algorithm(nn.Module):
         self._debug_summaries = debug_summaries
         self._default_optimizer = optimizer
         self._optimizers = []
-        self._default_optimizer = optimizer
         self._module_to_optimizer = {}
         if optimizer:
             self._optimizers.append(optimizer)
@@ -188,21 +187,54 @@ class Algorithm(nn.Module):
         """Get the default optimizer for this algorithm."""
         return self._default_optimizer
 
+    def _assert_no_cycle(self):
+        visited = set()
+        to_be_visited = [self]
+        while to_be_visited:
+            node = to_be_visited.pop(0)
+            visited.add(node)
+            for child in node._get_children():
+                assert child not in visited, (
+                    "There is a cycle in the "
+                    "algorithm tree caused by '%s'" % child.name)
+                if isinstance(child, Algorithm):
+                    to_be_visited.append(child)
+
     def _setup_optimizers(self):
         """Setup the param groups for optimizers.
 
         Returns:
             list of parameters not handled by any optimizers under this algorithm
         """
+        self._assert_no_cycle()
+        return self._setup_optimizers_()[0]
+
+    def _setup_optimizers_(self):
+        """Setup the param groups for optimizers.
+
+        Returns:
+            tuple of
+                list of parameters not handled by any optimizers under this algorithm
+                list of parameters not handled under this algorithm
+        """
         default_optimizer = self.default_optimizer
         new_params = []
+        self_handled = set()
         handled = set()
+        duplicate_error = "Parameter %s is handled by muliple optimizers."
+
         for child in self._get_children():
             if child in handled:
                 continue
+            assert id(child) != id(self), "Child should not be self"
+            self_handled.add(child)
+            assert child not in handled, duplicate_error % child
             handled.add(child)
             if isinstance(child, Algorithm):
-                params = child._setup_optimizers()
+                params, child_handled = child._setup_optimizers_()
+                for m in child_handled:
+                    assert m not in handled, duplicate_error % m
+                    handled.add(m)
             elif isinstance(child, nn.Module):
                 params = child.parameters()
             elif isinstance(child, nn.Parameter):
@@ -221,9 +253,9 @@ class Algorithm(nn.Module):
         if default_optimizer is not None:
             if new_params:
                 default_optimizer.add_param_group({'params': new_params})
-            return []
+            return [], handled
         else:
-            return new_params
+            return new_params, handled
 
     def optimizers(self, recurse=True):
         """Get all the optimizers used by this algorithm.

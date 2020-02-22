@@ -35,6 +35,9 @@ class MyAlg(Algorithm):
             loss = loss + torch.sum(p)
         return LossInfo(loss=loss)
 
+    def _trainable_attributes_to_ignore(self):
+        return ['ignored_param']
+
 
 class AlgorithmTest(unittest.TestCase):
     def test_flatten_module(self):
@@ -106,6 +109,24 @@ class AlgorithmTest(unittest.TestCase):
 
         alg_root = MyAlg(sub_algs=[alg_1, alg_2], name="root")
         alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
+        info = json.loads(alg_root.get_optimizer_info())
+        self.assertEqual(len(info), 2)
+        self.assertEqual(info[0]['optimizer'], 'None')
+        self.assertEqual(info[0]['parameters'], [id(param_1)])
+        self.assertEqual(info[1]['parameters'], [id(param_2)])
+
+        # Test cycle detection
+        alg_2.root = alg_root
+        self.assertRaises(AssertionError, alg_root.get_optimizer_info)
+
+        # Test duplicated handling detection
+        alg_2.root = None
+        alg_2.p = param_1
+        self.assertRaises(AssertionError, alg_root.get_optimizer_info)
+
+        # Test _trainable_attributes_to_ignore
+        alg_2.p = None
+        alg_2.ignored_param = param_1
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 2)
         self.assertEqual(info[0]['optimizer'], 'None')
