@@ -187,7 +187,7 @@ class Algorithm(nn.Module):
         """Get the default optimizer for this algorithm."""
         return self._default_optimizer
 
-    def _assert_no_cycle(self):
+    def _assert_no_cycle_or_duplicate(self):
         visited = set()
         to_be_visited = [self]
         while to_be_visited:
@@ -195,7 +195,7 @@ class Algorithm(nn.Module):
             visited.add(node)
             for child in node._get_children():
                 assert child not in visited, (
-                    "There is a cycle in the "
+                    "There is a cycle or duplicate in the "
                     "algorithm tree caused by '%s'" % child.name)
                 if isinstance(child, Algorithm):
                     to_be_visited.append(child)
@@ -206,7 +206,7 @@ class Algorithm(nn.Module):
         Returns:
             list of parameters not handled by any optimizers under this algorithm
         """
-        self._assert_no_cycle()
+        self._assert_no_cycle_or_duplicate()
         return self._setup_optimizers_()[0]
 
     def _setup_optimizers_(self):
