@@ -110,8 +110,7 @@ class TimeStep(
         raise ValueError('step_type is not a Torch Tensor')
 
 
-PolicyStep = namedtuple(
-    'PolicyStep', ['action', 'state', 'info'], default_value=())
+AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
 
 TrainingInfo = namedtuple(
     "TrainingInfo",
@@ -121,11 +120,11 @@ TrainingInfo = namedtuple(
         "reward",
         "discount",
 
-        # For on-policy training, it's the PolicyStep.info from rollout
-        # For off-policy training, it's the PolicyStep.info from train_step
+        # For on-policy training, it's the AlgStep.info from rollout
+        # For off-policy training, it's the AlgStep.info from train_step
         "info",
 
-        # Only used for off-policy training. It's the PolicyStep.info from rollout
+        # Only used for off-policy training. It's the AlgStep.info from rollout
         "rollout_info",
         "env_id"
     ],
@@ -141,17 +140,17 @@ Experience = namedtuple(
         'prev_action',
         'env_id',
         'action',
-        'rollout_info',  # PolicyStep.info from rollout()
+        'rollout_info',  # AlgStep.info from rollout()
         'state'  # state passed to rollout() to generate `action`
     ])
 
 
-def make_experience(time_step: TimeStep, policy_step: PolicyStep, state):
-    """Make an instance of Experience from TimeStep and PolicyStep.
+def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
+    """Make an instance of Experience from TimeStep and AlgStep.
 
     Args:
         time_step (TimeStep): time step from the environment
-        policy_step (PolicyStep): policy step returned from rollout()
+        alg_step (AlgStep): policy step returned from rollout()
         state (nested Tensor): state used for calling rollout() to get the
             `policy_step`
     Returns:
@@ -164,8 +163,8 @@ def make_experience(time_step: TimeStep, policy_step: PolicyStep, state):
         observation=time_step.observation,
         prev_action=time_step.prev_action,
         env_id=time_step.env_id,
-        action=policy_step.action,
-        rollout_info=policy_step.info,
+        action=alg_step.output,
+        rollout_info=alg_step.info,
         state=state)
 
 
