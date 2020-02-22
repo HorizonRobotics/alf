@@ -12,49 +12,57 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import alf
+from alf.data_structures import timestep_first, timestep_mid, timestep_last
+from alf.metrics import EnvironmentSteps, NumberOfEpisodes, AverageReturnMetric, AverageEpisodeLengthMetric
+import torch as tc
+
 import unittest
 from absl.testing import parameterized
-from alf.metrics.metrics import EnvironmentSteps, NumberOfEpisodes, AverageReturnMetric, AverageEpisodeLengthMetric
 
 
 class TFMetricsTest(parameterized.TestCase, unittest.TestCase):
     def _create_trajectories(self):
         def _concat_nested_tensors(nest1, nest2):
-            return tf.nest.map_structure(
-                lambda t1, t2: tf.concat([t1, t2], axis=0), nest1, nest2)
+            return alf.nest.map_structure(
+                lambda t1, t2: tc.cat([t1, t2], dim=0), nest1, nest2)
 
-        # Order of args for trajectory methods:
-        # observation, action, policy_info, reward, discount
+        # Order of args for timestep_* methods:
+        # observation, prev_action, reward, discount, env_id
         ts0 = _concat_nested_tensors(
-            trajectory.boundary((), torch.tensor([1]), (),
-                                torch.tensor([0.], dtype=torch.float32), [1.]),
-            trajectory.boundary((), tf.constant([2]), (),
-                                tf.constant([0.], dtype=tf.float32), [1.]))
+            timestep_first((), tc.tensor([1]), tc.tensor([0.],
+                                                         dtype=tc.float32),
+                           [1.], [1]),
+            timestep_first((), tc.tensor([2]), tc.tensor([0.],
+                                                         dtype=tc.float32),
+                           [1.], [2]))
         ts1 = _concat_nested_tensors(
-            trajectory.first((), tf.constant([2]), (),
-                             tf.constant([1.], dtype=tf.float32), [1.]),
-            trajectory.first((), tf.constant([1]), (),
-                             tf.constant([2.], dtype=tf.float32), [1.]))
+            timestep_mid((), tc.tensor([2]), tc.tensor([1.], dtype=tc.float32),
+                         [1.], [1]),
+            timestep_mid((), tc.tensor([1]), tc.tensor([2.], dtype=tc.float32),
+                         [1.], [2]))
         ts2 = _concat_nested_tensors(
-            trajectory.last((), tf.constant([1]), (),
-                            tf.constant([3.], dtype=tf.float32), [1.]),
-            trajectory.last((), tf.constant([1]), (),
-                            tf.constant([4.], dtype=tf.float32), [1.]))
+            timestep_last((), tc.tensor([1]),
+                          tc.tensor([3.], dtype=tc.float32), [1.], [1]),
+            timestep_last((), tc.tensor([1]),
+                          tc.tensor([4.], dtype=tc.float32), [1.], [2]))
         ts3 = _concat_nested_tensors(
-            trajectory.boundary((), tf.constant([2]), (),
-                                tf.constant([0.], dtype=tf.float32), [1.]),
-            trajectory.boundary((), tf.constant([0]), (),
-                                tf.constant([0.], dtype=tf.float32), [1.]))
+            timestep_first((), tc.tensor([2]), tc.tensor([0.],
+                                                         dtype=tc.float32),
+                           [1.], [1]),
+            timestep_first((), tc.tensor([0]), tc.tensor([0.],
+                                                         dtype=tc.float32),
+                           [1.], [2]))
         ts4 = _concat_nested_tensors(
-            trajectory.first((), tf.constant([1]), (),
-                             tf.constant([5.], dtype=tf.float32), [1.]),
-            trajectory.first((), tf.constant([1]), (),
-                             tf.constant([6.], dtype=tf.float32), [1.]))
+            timestep_mid((), tc.tensor([1]), tc.tensor([5.], dtype=tc.float32),
+                         [1.], [1]),
+            timestep_mid((), tc.tensor([1]), tc.tensor([6.], dtype=tc.float32),
+                         [1.], [2]))
         ts5 = _concat_nested_tensors(
-            trajectory.last((), tf.constant([1]), (),
-                            tf.constant([7.], dtype=tf.float32), [1.]),
-            trajectory.last((), tf.constant([1]), (),
-                            tf.constant([8.], dtype=tf.float32), [1.]))
+            timestep_last((), tc.tensor([1]),
+                          tc.tensor([7.], dtype=tc.float32), [1.], [1]),
+            timestep_last((), tc.tensor([1]),
+                          tc.tensor([8.], dtype=tc.float32), [1.], [2]))
 
         return [ts0, ts1, ts2, ts3, ts4, ts5]
 

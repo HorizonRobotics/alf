@@ -14,6 +14,7 @@
 """Various data structures.
 Converted to PyTorch from the TF version.
 """
+from alf.nest import map_structure
 import collections
 import numpy as np
 import torch
@@ -108,6 +109,37 @@ class TimeStep(
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.LAST)
         raise ValueError('step_type is not a Torch Tensor')
+
+
+def _create_timestep(observation, prev_action, reward, discount, env_id,
+                     step_type):
+    discount = torch.tensor(discount)
+    # Warning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+    # Input struct might contain tensor.
+    # TODO: remove warning
+    make_tensors = lambda struct: map_structure(torch.tensor, struct)
+    return TimeStep(
+        step_type=step_type.view(discount.shape),
+        reward=make_tensors(reward),
+        discount=discount,
+        observation=make_tensors(observation),
+        prev_action=make_tensors(prev_action),
+        env_id=torch.tensor(env_id, dtype=torch.int64))
+
+
+def timestep_first(observation, prev_action, reward, discount, env_id):
+    return _create_timestep(observation, prev_action, reward, discount, env_id,
+                            StepType.FIRST)
+
+
+def timestep_mid(observation, prev_action, reward, discount, env_id):
+    return _create_timestep(observation, prev_action, reward, discount, env_id,
+                            StepType.MID)
+
+
+def timestep_last(observation, prev_action, reward, discount, env_id):
+    return _create_timestep(observation, prev_action, reward, discount, env_id,
+                            StepType.LAST)
 
 
 PolicyStep = namedtuple(

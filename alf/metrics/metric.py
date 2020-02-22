@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metric.py
-#
-# TODO: Replace tf and common
+"""A few metrics.
+Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metric.py
+"""
 
 import alf
 import os
@@ -30,6 +30,9 @@ class StepMetric(nn.Module):
         self.name = name
         self._prefix = prefix
 
+    def __call__(self, *args, **kwargs):
+        return self.call(*args, **kwargs)
+
     def call(self, *args, **kwargs):
         """Accumulates statistics for the metric.
     Args:
@@ -38,6 +41,9 @@ class StepMetric(nn.Module):
     """
         raise NotImplementedError(
             'Metrics must define a call() member function')
+
+    def forward(self, *args, **kwargs):
+        pass
 
     def reset(self):
         """Resets the values being tracked by the metric."""
@@ -63,11 +69,9 @@ class StepMetric(nn.Module):
         prefix = self._prefix
         tag = os.path.join(prefix, self.name)
         result = self.result()
-        # if train_step is not None:
-        #     summaries.append(
-        #         alf.summary.scalar(name=tag,
-        #                            data=result,
-        #                            step=train_step))
+        if train_step is not None:
+            summaries.append(
+                alf.summary.scalar(name=tag, data=result, step=train_step))
         if prefix:
             prefix += '_'
         for step_metric in step_metrics:
@@ -77,8 +81,6 @@ class StepMetric(nn.Module):
             step_tag = '{}vs_{}/{}'.format(prefix, step_metric.name, self.name)
             # Summaries expect the step value to be an int64.
             step = step_metric.result().int64()
-            # summaries.append(
-            #     alf.summary.scalar(name=step_tag,
-            #                        data=result,
-            #                        step=step))
+            summaries.append(
+                alf.summary.scalar(name=step_tag, data=result, step=step))
         return summaries

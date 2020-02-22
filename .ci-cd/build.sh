@@ -43,6 +43,7 @@ function test() {
     cd alf
     python3 -m unittest -v \
         alf.environments.simple.noisy_array_test \
+        alf.metrics.metrics_test \
         alf.networks.encoding_networks_test \
         alf.networks.projection_networks_test \
         alf.tensor_specs_test \

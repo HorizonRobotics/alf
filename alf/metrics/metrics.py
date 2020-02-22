@@ -35,22 +35,21 @@ class EnvironmentSteps(metric.StepMetric):
                  dtype=torch.int64):
         super(EnvironmentSteps, self).__init__(name=name, prefix=prefix)
         self.dtype = dtype
-        self.environment_steps = torch.zeros(0, self.dtype)
+        self.environment_steps = torch.zeros(1, dtype=self.dtype)
 
-    def call(self, trajectory):
-        """Increase the number of environment_steps according to trajectory.
-    Step count is not increased on trajectory.boundary() since that step
+    def call(self, time_step):
+        """Increase the number of environment_steps according to time_step.
+    Step count is not increased on time_step.is_first() since that step
     is not part of any episode.
     Args:
-      trajectory: A tf_agents.trajectory.Trajectory
+      time_step: A tf_agents.time_step.time_step
     Returns:
       The arguments, for easy chaining.
     """
-        # The __call__ will execute this.
-        steps = (~trajectory.is_boundary()).type(self.dtype)
+        steps = (torch.logical_not(time_step.is_first())).type(self.dtype)
         num_steps = torch.sum(steps)
         self.environment_steps.add_(num_steps)
-        return trajectory
+        return time_step
 
     def result(self):
         return self.environment_steps
@@ -68,21 +67,20 @@ class NumberOfEpisodes(metric.StepMetric):
                  dtype=torch.int64):
         super(NumberOfEpisodes, self).__init__(name=name, prefix=prefix)
         self.dtype = dtype
-        self.number_episodes = torch.zeros(0, self.dtype)
+        self.number_episodes = torch.zeros(1, dtype=self.dtype)
 
-    def call(self, trajectory):
-        """Increase the number of number_episodes according to trajectory.
-    It would increase for all trajectory.is_last().
+    def call(self, time_step):
+        """Increase the number of number_episodes according to time_step.
+    It would increase for all time_step.is_last().
     Args:
-      trajectory: A tf_agents.trajectory.Trajectory
+      time_step: A tf_agents.time_step.time_step
     Returns:
       The arguments, for easy chaining.
     """
-        # The __call__ will execute this.
-        episodes = trajectory.is_last().type(self.dtype)
+        episodes = time_step.is_last().type(self.dtype)
         num_episodes = torch.sum(episodes)
         self.number_episodes.add_(num_episodes)
-        return trajectory
+        return time_step
 
     def result(self):
         return self.number_episodes
@@ -101,33 +99,39 @@ class AverageReturnMetric(metric.StepMetric):
                  batch_size=1,
                  buffer_size=10):
         super(AverageReturnMetric, self).__init__(name=name, prefix=prefix)
-        self._buffer = collections.deque(maxlen=buffer_size)
+        # TODO: use tensor deque
+        self.buffer = collections.deque(maxlen=buffer_size)
         self._dtype = dtype
-        self._return_accumulator = torch.zeros(batch_size, dtype=dtype)
+        self.return_accumulator = torch.zeros(batch_size, dtype=dtype)
 
-    def call(self, trajectory):
+    def call(self, time_step):
         # Zero out batch indices where a new episode is starting.
-        self._return_accumulator[:] = torch.where(
-            trajectory.is_first(), torch.zeros_like(self._return_accumulator),
-            self._return_accumulator)
+        self.return_accumulator[:] = torch.where(
+            time_step.is_first(), torch.zeros_like(self.return_accumulator),
+            self.return_accumulator)
 
         # Update accumulator with received rewards.
-        self._return_accumulator.add_(trajectory.reward)
+        # Ignores first step whose reward comes from the boundary transition
+        # of the last step from the previous episode.
+        self.return_accumulator.add_(
+            torch.where(time_step.is_first(),
+                        torch.zeros_like(self.return_accumulator),
+                        time_step.reward))
 
         # Add final returns to buffer.
         last_episode_indices = torch.squeeze(*torch.where(
-            trajectory.is_last())).type(torch.int64)
+            time_step.is_last())).type(torch.int64)
         for indx in last_episode_indices:
-            self._buffer.append(self._return_accumulator[indx])
+            self.buffer.append(self.return_accumulator[indx].clone().detach())
 
-        return trajectory
+        return time_step
 
     def result(self):
-        return mean(self._buffer)
+        return mean(self.buffer)
 
     def reset(self):
-        self._buffer.clear()
-        self._return_accumulator.fill_(0)
+        self.buffer.clear()
+        self.return_accumulator.fill_(0)
 
 
 class AverageEpisodeLengthMetric(metric.StepMetric):
@@ -141,35 +145,36 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
                  buffer_size=10):
         super(AverageEpisodeLengthMetric, self).__init__(
             name=name, prefix=prefix)
-        self._buffer = collections.deque(max_len=buffer_size)
+        # TODO: use tensor deque
+        self.buffer = collections.deque(maxlen=buffer_size)
         self._dtype = dtype
-        self._length_accumulator = torch.zeros(batch_size, dtype=dtype)
+        self.length_accumulator = torch.zeros(batch_size, dtype=dtype)
 
-    def call(self, trajectory):
-        # Each non-boundary trajectory (first, mid or last) represents a step.
-        boundary = trajectory.is_boundary()
+    def call(self, time_step):
+        # Each non-boundary time_step (mid or last) represents a step.
+        is_first = time_step.is_first()
         non_boundary = torch.where(
-            torch.logical_not(boundary), torch.ones_like(boundary),
-            torch.zeros_like(trajectory))
-        self._length_accumulator.add_(non_boundary)
+            torch.logical_not(is_first),
+            torch.ones_like(self.length_accumulator),
+            torch.zeros_like(self.length_accumulator))
+        self.length_accumulator.add_(non_boundary)
 
         # Add lengths to buffer when we hit end of episode
-        is_last = trajectory.is_last()
+        is_last = time_step.is_last()
         last_indices = torch.squeeze(*torch.where(is_last)).type(torch.int64)
         for indx in last_indices:
-            self._buffer.append(self._length_accumulator[indx])
+            self.buffer.append(self.length_accumulator[indx].clone().detach())
 
         # Clear length accumulator at the end of episodes.
-        self._length_accumulator[:] = torch.where(
-            is_last,
-            torch.zeros_like(self._length_accumulator, dtype=self._dtype),
-            self._length_accumulator)
+        self.length_accumulator[:] = torch.where(
+            is_last, torch.zeros_like(self.length_accumulator),
+            self.length_accumulator)
 
-        return trajectory
+        return time_step
 
     def result(self):
-        return mean(self._buffer)
+        return mean(self.buffer)
 
     def reset(self):
-        self._buffer.clear()
-        self._length_accumulator.fill_(0)
+        self.buffer.clear()
+        self.length_accumulator.fill_(0)
