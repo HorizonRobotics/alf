@@ -189,8 +189,8 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     Returns:
         nested Tensor
     """
-    return tf.nest.map_structure(
-        lambda i_s, s: tf.where(expand_dims_as(reset_mask, i_s), i_s, s),
+    return alf.nest.map_structure(
+        lambda i_s, s: torch.where(expand_dims_as(reset_mask, i_s), i_s, s),
         initial_state, state)
 
 
@@ -557,8 +557,7 @@ def get_initial_time_step(env, first_env_id=0):
             tensors
     """
     time_step = env.current_time_step()
-    action = zero_tensor_from_nested_spec(env.action_spec(), env.batch_size)
-    return make_action_time_step(time_step, action, first_env_id)
+    return time_step._replace(env_id=time_step.env_id + first_env_id)
 
 
 def transpose2(x, dim1, dim2):
@@ -895,10 +894,22 @@ def function(func=None, **kwargs):
 
 
 def set_random_seed(seed):
-    """Set a seed for deterministic behaviors."""
+    """Set a seed for deterministic behaviors.
+
+    Args:
+        seed (int|None): seed to be used. If None, a default seed based on
+            pid and time will be used.
+    Returns:
+        The seed being used if `seed` is None. Note that you may not reproduce
+        a previous experiment even if use use its seed because when seed is None,
+        cudnn.deterministic is not set to True
+    """
     if seed is None:
         seed = os.getpid() + int(time.time())
+    else:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     random.seed(seed)
     np.random.seed(seed)
-    torch.random.manual_see(seed)
+    torch.random.manual_seed(seed)
     return seed

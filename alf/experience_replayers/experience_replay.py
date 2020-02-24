@@ -16,17 +16,15 @@ NOTE: The APIs in this file are subject to changes when we implement generic rep
 buffers for off-policy drivers in the future.
 """
 
-import six
 import abc
-import tensorflow as tf
-import gin.tf
-
-from tf_agents.utils.nest_utils import get_outer_rank
+import gin
+import six
+import torch
 
 from alf.utils.common import flatten_once
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 
-from alf.utils import common, nest_utils
+from alf.utils import common
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -148,7 +146,6 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
         self._buffer = ReplayBuffer(experience_spec, batch_size)
         self._data_iter = None
 
-    @tf.function
     def observe(self, exp):
         """
         For the sync driver, `exp` has the shape (`env_batch_size`, ...)

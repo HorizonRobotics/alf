@@ -21,143 +21,13 @@ import time
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 import alf
-from alf.algorithms.agent import Agent
+from alf.algorithms.config import TrainerConfig
 from alf.environments.utils import create_environment
 from alf.utils.metric_utils import eager_compute
 from alf.utils import common
 from alf.utils.checkpoint_utils import Checkpointer
 from alf.utils.summary_utils import record_time
 from alf.utils import git_utils
-
-
-@gin.configurable
-class TrainerConfig(object):
-    """TrainerConfig
-
-    Note: This is a mixture collection configuration for all trainers,
-    not all parameter is operative and its not necessary to config it.
-
-    1. `num_steps_per_iter` is only for on_policy_trainer.
-
-    2. `initial_collect_steps`, `num_updates_per_train_step`, `mini_batch_length`,
-    `mini_batch_size`, `clear_replay_buffer`, `num_envs` are used by sync_off_policy_trainer and
-    async_off_policy_trainer.
-    """
-
-    def __init__(self,
-                 root_dir,
-                 algorithm_ctor=None,
-                 random_seed=None,
-                 num_iterations=1000,
-                 num_env_steps=0,
-                 unroll_length=8,
-                 use_rollout_state=False,
-                 num_checkpoints=10,
-                 evaluate=False,
-                 eval_interval=10,
-                 epsilon_greedy=0.1,
-                 num_eval_episodes=10,
-                 summary_interval=50,
-                 update_counter_every_mini_batch=False,
-                 summaries_flush_secs=1,
-                 summary_max_queue=10,
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False,
-                 summarize_action_distributions=False,
-                 num_steps_per_iter=10000,
-                 initial_collect_steps=0,
-                 num_updates_per_train_step=4,
-                 mini_batch_length=None,
-                 mini_batch_size=None,
-                 clear_replay_buffer=True,
-                 num_envs=1):
-        """Configuration for Trainers
-
-        Args:
-            root_dir (str): directory for saving summary and checkpoints
-            algorithm_ctor (Callable): callable that create an
-                `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
-            random_seed (None|int): random seed, a random seed is used if None
-            num_iterations (int): number of update iterations (ignored if 0)
-            num_env_steps (int): number of environment steps (ignored if 0). The
-                total number of FRAMES will be (`num_env_steps`*`frame_skip`) for
-                calculating sample efficiency. See alf/environments/wrappers.py
-                for the definition of FrameSkip.
-            unroll_length (int):  number of time steps each environment proceeds per
-                iteration. The total number of time steps from all environments per
-                iteration can be computed as: `num_envs` * `env_batch_size`
-                * `unroll_length`.
-            use_rollout_state (bool): Include the RNN state for the experiences
-                used for off-policy training
-            checkpoint_interval (int): checkpoint every so many iterations
-            checkpoint_max_to_keep (int): Maximum number of checkpoints to keep
-                (if greater than the max are saved, the oldest checkpoints are
-                deleted). If None, all checkpoints will be kept.
-            evaluate (bool): A bool to evaluate when training
-            eval_interval (int): evaluate every so many iteration
-            epsilon_greedy (float): a floating value in [0,1], representing the
-                chance of action sampling instead of taking argmax. This can
-                help prevent a dead loop in some deterministic environment like
-                Breakout. Only used for evaluation.
-            num_eval_episodes (int) : number of episodes for one evaluation
-            summary_interval (int): write summary every so many training steps
-            update_counter_every_mini_batch (bool): whether to update counter
-                for every mini batch. The `summary_interval` is based on this
-                counter. Typically, this should be False. Set to True if you
-                want to have summary for every mini batch for the purpose of
-                debugging.
-            summaries_flush_secs (int): flush summary to disk every so many seconds
-            summary_max_queue (int): flush to disk every so mary summaries
-            debug_summaries (bool): A bool to gather debug summaries.
-            summarize_grads_and_vars (bool): If True, gradient and network variable
-                summaries will be written during training.
-            num_steps_per_iter (int): number of steps for one iteration. It is the
-                total steps from all individual environment in the batch
-                environment.
-            initial_collect_steps (int): if positive, number of steps each single
-                environment steps before perform first update
-            num_updates_per_train_step (int): number of optimization steps for
-                one iteration
-            mini_batch_size (int): number of sequences for each minibatch. If None,
-                it's set to the replayer's `batch_size`.
-            mini_batch_length (int): the length of the sequence for each
-                sample in the minibatch. If None, it's set to `unroll_length`.
-            clear_replay_buffer (bool): whether use all data in replay buffer to
-                perform one update and then wiped clean
-            num_envs (int): the number of environments to run asynchronously.
-        """
-        self._parameters = dict(
-            root_dir=root_dir,
-            algorithm_ctor=algorithm_ctor,
-            random_seed=random_seed,
-            num_iterations=num_iterations,
-            num_env_steps=num_env_steps,
-            unroll_length=unroll_length,
-            use_rollout_state=use_rollout_state,
-            num_checkpoints=num_checkpoints,
-            evaluate=evaluate,
-            eval_interval=eval_interval,
-            epsilon_greedy=epsilon_greedy,
-            num_eval_episodes=num_eval_episodes,
-            summary_interval=summary_interval,
-            update_counter_every_mini_batch=update_counter_every_mini_batch,
-            summaries_flush_secs=summaries_flush_secs,
-            summary_max_queue=summary_max_queue,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars,
-            summarize_action_distributions=summarize_action_distributions,
-            num_steps_per_iter=num_steps_per_iter,
-            initial_collect_steps=initial_collect_steps,
-            num_updates_per_train_step=num_updates_per_train_step,
-            mini_batch_length=mini_batch_length,
-            mini_batch_size=mini_batch_size,
-            clear_replay_buffer=clear_replay_buffer,
-            num_envs=num_envs)
-
-        self._trainer = trainer
-
-    def __getattr__(self, param_name):
-        return self._parameters.get(param_name)
 
 
 class Trainer(object):
@@ -177,14 +47,12 @@ class Trainer(object):
         self._envs = []
         self._algorithm_ctor = config.algorithm_ctor
         self._algorithm = None
-        self._driver = None
 
         self._random_seed = config.random_seed
         self._num_iterations = config.num_iterations
         self._num_env_steps = config.num_env_steps
         assert self._num_iterations + self._num_env_steps > 0, \
             "Must provide #iterations or #env_steps for training!"
-        self._unroll_length = config.unroll_length
 
         self._checkpoint_interval = config.checkpoint_interval
         self._checkpoint_max_to_keep = config.checkpoint_max_to_keep
@@ -227,6 +95,8 @@ class Trainer(object):
         self._algorithm = self._algorithm_ctor(
             observation_spec=env.observation_spec(),
             action_spec=env.action_spec(),
+            env=env,
+            config=self._config,
             debug_summaries=self._debug_summaries)
         self._algorithm.set_summary_settings(
             summarize_grads_and_vars=self._summarize_grads_and_vars,
@@ -348,7 +218,7 @@ class Trainer(object):
         self._checkpointer.save(global_step=global_step.numpy())
 
     def _eval(self):
-        time_step = get_initial_time_step(self._eval_env)
+        time_step = common.get_initial_time_step(self._eval_env)
         policy_state = self._algorithm.get_initial_predict_state(
             self._eval_env.batch_size)
         episodes = 0
@@ -363,11 +233,6 @@ class Trainer(object):
             if time_step.is_last():
                 episodes += 1
         metric_utils.log_metrics(self._eval_metrics)
-
-
-def get_initial_time_step(env):
-    return common.zero_tensor_from_nested_spec(env.time_step_spec,
-                                               env.batch_size)
 
 
 def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
@@ -441,7 +306,7 @@ def play(root_dir,
     env.reset()
     if recorder:
         recorder.capture_frame()
-    time_step = get_initial_time_step(env)
+    time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
     episode_reward = 0.
     episode_length = 0

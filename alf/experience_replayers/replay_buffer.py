@@ -14,13 +14,13 @@
 """Replay buffer."""
 
 import gin
-import tensorflow as tf
+import torch.nn as nn
 
-from alf.utils.nest_utils import get_nest_batch_size
+import alf
 
 
 @gin.configurable
-class ReplayBuffer(tf.Module):
+class ReplayBuffer(nn.Module):
     """Replay buffer.
 
     Different from tf_agents.replay_buffers.tf_uniform_replay_buffer, this

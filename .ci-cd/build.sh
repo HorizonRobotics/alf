@@ -44,6 +44,7 @@ function test() {
     python3 -m unittest -v \
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.rl_algorithm_test \
         alf.data_structures_test \
         alf.environments.simple.noisy_array_test \
         alf.nest.nest_test \

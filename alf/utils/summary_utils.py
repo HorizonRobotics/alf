@@ -17,6 +17,8 @@ import functools
 import gin
 from tensorboard.plugins.histogram import metadata
 import time
+import torch
+import torch.distributions as td
 
 import alf
 from alf.data_structures import LossInfo
@@ -60,6 +62,8 @@ def histogram_discrete(name,
             `tf.summary.experimental.get_step()`
         description (str): Optional long-form description for this summary
     """
+    # TODO: implement pytorch version
+    return
     summary_metadata = metadata.create_summary_metadata(
         display_name=None, description=description)
     summary_scope = (getattr(tf.summary.experimental, 'summary_scope', None)
@@ -107,6 +111,8 @@ def histogram_continuous(name,
             `tf.summary.experimental.get_step()`
         description (str): Optional long-form description for this summary
     """
+    # TODO: implement pytorch version
+    return
     summary_metadata = metadata.create_summary_metadata(
         display_name=None, description=description)
     summary_scope = (getattr(tf.summary.experimental, 'summary_scope', None)
@@ -155,6 +161,7 @@ def unique_var_names(vars):
     Returns:
         iterator of the unique variable names in the same order as vars.
     """
+    # TODO: get meaningful name for Parameter
     count = {}
     for var in vars:
         var_name = var.name.replace(':', '_')
@@ -168,60 +175,45 @@ def unique_var_names(vars):
 
 @_summary_wrapper
 @gin.configurable
-def add_variables_summaries(grads_and_vars, step=None, with_histogram=True):
+def summarize_variables(vars, with_histogram=True):
     """Add summaries for variables.
 
     Args:
         grads_and_vars (list): A list of (gradient, variable) pairs.
-        step (tf.Variable): Variable to use for summaries.
     """
     if not grads_and_vars:
         return
-    vars = [v for g, v in grads_and_vars]
     for var, var_name in zip(vars, unique_var_names(vars)):
-        if isinstance(var, tf.IndexedSlices):
-            var_values = var.values
-        else:
-            var_values = var
+        var_values = var
         if with_histogram:
-            tf.summary.histogram(
-                name='summarize_vars/' + var_name + '_value',
-                data=var_values,
-                step=step)
-        tf.summary.scalar(
+            alf.summary.histogram(
+                name='summarize_vars/' + var_name + '_value', data=var_values)
+        alf.summary.scalar(
             name='summarize_vars/' + var_name + '_value_norm',
-            data=tf.linalg.global_norm([var_values]),
-            step=step)
+            data=torch.norm([var_values]))
 
 
 @_summary_wrapper
 @gin.configurable
-def add_gradients_summaries(grads_and_vars, step=None, with_histogram=True):
+def summarize_gradients(grads_and_vars, step=None, with_histogram=True):
     """Add summaries to gradients.
 
     Args:
         grads_and_vars (list): A list of gradient to variable pairs (tuples).
-        step (tf.Variable): Variable to use for summaries.
     """
     if not grads_and_vars:
         return
-    grads, vars = zip(*grads_and_vars)
-    for grad, var_name in zip(grads, unique_var_names(vars)):
-        if grad is None:
+    for var, var_name in zip(vars, unique_var_names(vars)):
+        if var.grad is None:
             continue
-        if isinstance(grad, tf.IndexedSlices):
-            grad_values = grad.values
-        else:
-            grad_values = grad
+        grad_values = var.grad
         if with_histogram:
-            tf.summary.histogram(
+            alf.summary.histogram(
                 name='summarize_grads/' + var_name + '_gradient',
-                data=grad_values,
-                step=step)
-        tf.summary.scalar(
+                data=grad_values)
+        alf.summary.scalar(
             name='summarize_grads/' + var_name + '_gradient_norm',
-            data=tf.linalg.global_norm([grad_values]),
-            step=step)
+            data=torch.norm([grad_values]))
 
 
 alf.summary.histogram = _summary_wrapper(alf.summary.histogram)
@@ -240,11 +232,11 @@ def add_nested_summaries(prefix, data):
         name = prefix + '/' + field
         if isinstance(elem, dict) or is_namedtuple(elem):
             add_nested_summaries(name, elem)
-        elif isinstance(elem, tf.Tensor):
-            tf.summary.scalar(name, elem)
+        elif isinstance(elem, torch.Tensor):
+            alf.summary.scalar(name, elem)
 
 
-def add_loss_summaries(loss_info: LossInfo):
+def summarize_loss(loss_info: LossInfo):
     """Add summary about loss_info
 
     Args:
@@ -259,7 +251,7 @@ def add_loss_summaries(loss_info: LossInfo):
     add_nested_summaries('loss', loss_info.extra)
 
 
-def add_action_summaries(actions, action_specs, name="action"):
+def summarize_action(actions, action_specs, name="action"):
     """Generate histogram summaries for actions.
 
     Actions whose rank is more than 1 will be skipped.
@@ -268,14 +260,14 @@ def add_action_summaries(actions, action_specs, name="action"):
         actions (nested Tensor): actions to be summarized
         action_specs (nested TensorSpec): spec for the actions
     """
-    action_specs = tf.nest.flatten(action_specs)
-    actions = tf.nest.flatten(actions)
+    action_specs = alf.nest.flatten(action_specs)
+    actions = alf.nest.flatten(actions)
 
     for i, (action, action_spec) in enumerate(zip(actions, action_specs)):
         if len(action_spec.shape) > 1:
             continue
 
-        if tensor_spec.is_discrete(action_spec):
+        if action_spec.is_discrete:
             histogram_discrete(
                 name="%s/%s" % (name, i),
                 data=action,
@@ -286,7 +278,7 @@ def add_action_summaries(actions, action_specs, name="action"):
                 action_dim = 1
             else:
                 action_dim = action_spec.shape[-1]
-            action = tf.reshape(action, (-1, action_dim))
+            action = torch.reshape(action, (-1, action_dim))
 
             def _get_val(a, i):
                 return a if len(a.shape) == 0 else a[i]
@@ -311,24 +303,27 @@ def summarize_action_dist(action_distributions,
         action_specs (nested BoundedTensorSpec): specs for the actions
         name (str): name of the summary
     """
-    import tensorflow_probability as tfp
-    from tf_agents.distributions.utils import SquashToSpecNormal
-    action_specs = tf.nest.flatten(action_specs)
-    actions = tf.nest.flatten(action_distributions)
+    action_specs = alf.nest.flatten(action_specs)
+    actions = alf.nest.flatten(action_distributions)
+
+    def _get_base_dist(dist):
+        if isinstance(dist, td.Normal):
+            return dist
+        elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
+            return _get_base_dist(dist.base_dist)
+        else:
+            raise NotImplementedError(
+                "Distribution type %s is not supported" % type(dist))
 
     for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
-        if isinstance(dist, SquashToSpecNormal):
-            dist = dist.input_distribution
-        if not isinstance(dist, tfp.distributions.Normal):
-            # Only support Normal currently
-            continue
+        dist = _get_base_dist(dist)
         action_dim = action_spec.shape[-1]
-        log_scale = tf.math.log(dist.scale)
+        log_scale = alf.math.log(dist.scale)
         for a in range(action_dim):
-            tf.summary.histogram(
+            alf.summary.histogram(
                 name="%s_log_scale/%s/%s" % (name, i, a),
                 data=log_scale[..., a])
-            tf.summary.histogram(
+            alf.summary.histogram(
                 name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
 
 
