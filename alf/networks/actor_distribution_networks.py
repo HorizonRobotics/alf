@@ -20,7 +20,7 @@ import torch.nn as nn
 
 from alf.networks import EncodingNetwork
 from alf.networks import NormalProjectionNetwork, CategoricalProjectionNetwork
-from alf.networks.value_networks import _create_lstm_cell_state_spec
+from alf.layers import _create_lstm_cell_state_spec
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
 

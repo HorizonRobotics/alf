@@ -23,25 +23,6 @@ import alf.layers as layers
 from alf.tensor_specs import TensorSpec
 
 
-def _create_lstm_cell_state_spec(hidden_size, dtype):
-    """Create LSTMCell state specs given the hidden size and dtype. According to
-    PyTorch LSTMCell doc:
-
-    https://pytorch.org/docs/stable/nn.html#torch.nn.LSTMCell
-
-    Each LSTMCell has two states: h and c with the same shape.
-
-    Args:
-        hidden_size (int): the number of units in the hidden state
-        dtype (torch.dtype): dtype of the specs
-
-    Returns:
-        specs (tuple[TensorSpec]):
-    """
-    state_spec = TensorSpec(shape=(hidden_size, ), dtype=dtype)
-    return (state_spec, state_spec)
-
-
 @gin.configurable
 class ValueNetwork(nn.Module):
     """Output temporally uncorrelated values."""
@@ -120,7 +101,7 @@ class ValueRNNNetwork(nn.Module):
         self._lstm_cell = torch.nn.LSTMCell(
             input_size=self._before_lstm_encoding_net.output_size,
             hidden_size=lstm_hidden_size)
-        self._state_spec = _create_lstm_cell_state_spec(
+        self._state_spec = layers._create_lstm_cell_state_spec(
             lstm_hidden_size, input_tensor_spec.dtype)
 
         input_tensor_spec = TensorSpec((lstm_hidden_size, ),
