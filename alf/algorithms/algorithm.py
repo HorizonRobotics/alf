@@ -86,7 +86,7 @@ class Algorithm(nn.Module):
         """Create an Algorithm.
 
         Each algorithm can have a default optimimzer. By default, the parameters
-        and/or modules under an algorithm are optimzierd by the default
+        and/or modules under an algorithm are optimized by the default
         optimizer. One can also specify an optimizer for a set of parameters
         and/or modules using add_optimizer.
 
@@ -265,11 +265,12 @@ class Algorithm(nn.Module):
         Returns:
             list of Optimizer
         """
+        self._assert_no_cycle_or_duplicate()
         opts = copy.copy(self._optimizers)
         if recurse:
             for module in self.children():
                 if isinstance(module, Algorithm):
-                    opts.extend(module.optimizers)
+                    opts.extend(module.optimizers())
         return opts
 
     def get_optimizer_info(self):

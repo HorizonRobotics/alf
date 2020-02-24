@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import unittest
 import warnings
 import shutil
@@ -19,6 +20,9 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
+
+from alf.data_structures import LossInfo, TrainingInfo
+from alf.algorithms.algorithm import Algorithm
 import alf.utils.checkpoint_utils as ckpt_utils
 
 
@@ -43,14 +47,93 @@ def weights_init_ones(m):
         torch.nn.init.ones_(m.bias.data)
 
 
-def set_learning_rate(optimizer, lr):
-    for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+def set_learning_rate(optimizers, lr):
+    if isinstance(optimizers, torch.optim.Optimizer):
+        optimizers = [optimizers]
+    for optimizer in optimizers:
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
 
 
-def get_learning_rate(optimizer):
-    lrs = [param_group['lr'] for param_group in optimizer.param_groups]
+def decay_learning_rate(optimizers, decay_rate):
+    if isinstance(optimizers, torch.optim.Optimizer):
+        optimizers = [optimizers]
+    for optimizer in optimizers:
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = param_group['lr'] * decay_rate
+
+
+def get_learning_rate(optimizers):
+    lrs = []
+    if isinstance(optimizers, torch.optim.Optimizer):
+        optimizers = [optimizers]
+    for optimizer in optimizers:
+        lrs.append(optimizer.param_groups[0]['lr'])
     return lrs
+
+
+class SimpleAlg(Algorithm):
+    def __init__(self,
+                 optimizer=None,
+                 sub_algs=[],
+                 params=[],
+                 name="SimpleAlg"):
+        super().__init__(optimizer=optimizer, name=name)
+        self._module_list = nn.ModuleList(sub_algs)
+        self._param_list = nn.ParameterList(params)
+
+    def calc_loss(self, training_info):
+        loss = torch.tensor(0.)
+        for p in self.parameters():
+            loss = loss + torch.sum(p)
+        return LossInfo(loss=loss)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['ignored_param']
+
+
+class ComposedAlg(Algorithm):
+    def __init__(self,
+                 optimizer=None,
+                 sub_alg1=None,
+                 sub_alg2=None,
+                 params=[],
+                 name="SimpleAlg"):
+        super().__init__(optimizer=optimizer, name=name)
+        self._sub_alg1 = sub_alg1
+        self._sub_alg2 = sub_alg2
+        self._param_list = nn.ParameterList(params)
+
+    def calc_loss(self, training_info):
+        loss = torch.tensor(0.)
+        for p in self.parameters():
+            loss = loss + torch.sum(p)
+        return LossInfo(loss=loss)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['ignored_param']
+
+
+class ComposedAlgWithIgnore(Algorithm):
+    def __init__(self,
+                 optimizer=None,
+                 sub_alg1=None,
+                 sub_alg2=None,
+                 params=[],
+                 name="SimpleAlg"):
+        super().__init__(optimizer=optimizer, name=name)
+        self._sub_alg1 = sub_alg1
+        self._sub_alg2 = sub_alg2
+        self._param_list = nn.ParameterList(params)
+
+    def calc_loss(self, training_info):
+        loss = torch.tensor(0.)
+        for p in self.parameters():
+            loss = loss + torch.sum(p)
+        return LossInfo(loss=loss)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['_sub_alg2']
 
 
 class TestNetAndOptimizer(unittest.TestCase):
@@ -58,10 +141,8 @@ class TestNetAndOptimizer(unittest.TestCase):
         net = Net()
         optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
-        ckpt_dir = "/tmp/ckpt_data/"
+        ckpt_dir = "/tmp/ckpt_data/net/"
 
-        # remove data saved from previous runs in case the test is called
-        # mutiple times on a local machine
         if os.path.isdir(ckpt_dir):
             shutil.rmtree(ckpt_dir)
 
@@ -108,6 +189,249 @@ class TestNetAndOptimizer(unittest.TestCase):
         self.assertTrue(get_learning_rate(optimizer)[0] == 0.01)
         for para in list(net.parameters()):
             self.assertTrue((para == 1).all())
+
+
+class TestWithSubAlgorithm(unittest.TestCase):
+    def test_with_sub_algorithm(self):
+
+        ckpt_dir = "/tmp/ckpt_data/sub_alg/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        # construct algorithms
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
+
+        param_2_1 = nn.Parameter(torch.Tensor([2.1]))
+        alg_2_1 = SimpleAlg(params=[param_2_1], name="alg_2_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        alg_2 = SimpleAlg(params=[param_2], sub_algs=[alg_2_1], name="alg_2")
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root = SimpleAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_algs=[alg_1, alg_2],
+            name="root")
+
+        all_optimizers = alg_root.optimizers()
+
+        ckpt_mngr = ckpt_utils.Checkpointer(
+            ckpt_dir, alg=alg_root, opt=all_optimizers[0])
+
+        # a number of training steps
+        step_num = 0
+        ckpt_mngr.save(step_num)
+        step_num = 1
+        set_learning_rate(all_optimizers, 0.01)
+        alg_root.apply(weights_init_ones)
+        ckpt_mngr.save(step_num)
+
+        self.assertTrue(get_learning_rate(all_optimizers) == [0.01])
+
+        # load checkpoints
+        ckpt_mngr.load(0)
+
+        # check the recovered optimizers
+        self.assertTrue(get_learning_rate(all_optimizers) == [0.1])
+
+        # check the recovered paramerter values for all modules
+        sd = alg_root.state_dict()
+        self.assertTrue((list(sd.values()) == [
+            torch.tensor([1.0]),
+            torch.tensor([2.1]),
+            torch.tensor([2.0]),
+            torch.tensor([0.0])
+        ]))
+
+
+class TestMultiAlgMultiOpt(unittest.TestCase):
+    def test_multi_alg_multi_opt(self):
+
+        ckpt_dir = "/tmp/ckpt_data/ignored_sub_alg_multi_opt/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        # construct algorithms
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        optimizer_2 = torch.optim.Adam(lr=0.1)
+        alg_2 = SimpleAlg(
+            params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        loss_info, params = alg_root.train_complete(TrainingInfo())
+
+        all_optimizers = alg_root.optimizers()
+
+        # two optimizers
+        info = json.loads(alg_root.get_optimizer_info())
+        self.assertEqual(len(info), 2)
+
+        opt_dict = {"opt%d" % k: v for k, v in enumerate(all_optimizers)}
+
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root, **opt_dict)
+
+        # a number of training steps
+        step_num = 0
+        ckpt_mngr.save(step_num)
+        step_num = 1
+        set_learning_rate(all_optimizers, 0.01)
+
+        alg_root.apply(weights_init_ones)
+        ckpt_mngr.save(step_num)
+
+        # load checkpoints
+        ckpt_mngr.load(0)
+
+        # check the recovered optimizers
+        expected = torch.Tensor([0.1, 0.1])
+        np.testing.assert_array_almost_equal(
+            get_learning_rate(all_optimizers), expected)
+
+
+class TestWithIgnoredSubAlgorithm(unittest.TestCase):
+    def test_with_ignored_sub_algorithm(self):
+
+        ckpt_dir = "/tmp/ckpt_data/ignored_sub_alg_ignore/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        # construct algorithms
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        optimizer_2 = torch.optim.Adam(lr=0.2)
+        alg_2 = SimpleAlg(
+            params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root = ComposedAlgWithIgnore(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        all_optimizers = alg_root.optimizers()
+
+        opt_dict = {"opt%d" % k: v for k, v in enumerate(all_optimizers)}
+
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root, **opt_dict)
+
+        # a number of training steps
+        step_num = 0
+        ckpt_mngr.save(step_num)
+
+        step_num = 1
+        decay_learning_rate(all_optimizers, 1.0 / 10)
+        ckpt_mngr.save(step_num)
+
+        ckpt_mngr.load(1)
+        expected = torch.Tensor([0.01, 0.02])
+        np.testing.assert_array_almost_equal(
+            get_learning_rate(all_optimizers), expected)
+
+
+class TestWithParamSharing(unittest.TestCase):
+    def test_with_param_sharing(self):
+
+        ckpt_dir = "/tmp/ckpt_data/sub_alg_param_sharing/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        # construct algorithms
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        optimizer_2 = torch.optim.Adam(lr=0.2)
+        alg_2 = SimpleAlg(
+            params=[param_2], optimizer=optimizer_2, name="alg_2")
+        alg_2.p = param_1
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        all_optimizers = alg_root.optimizers()
+
+        opt_dict = {"opt%d" % k: v for k, v in enumerate(all_optimizers)}
+
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root, **opt_dict)
+
+        # a number of training steps
+        step_num = 0
+        ckpt_mngr.save(step_num)
+
+        ckpt_mngr.load(0)
+        expected = torch.Tensor([0.1, 0.2])
+        np.testing.assert_array_almost_equal(
+            get_learning_rate(all_optimizers), expected)
+
+        sd = alg_root.state_dict()
+
+        self.assertTrue((
+            list(sd.values()) == [
+                torch.tensor([1.0]),
+                torch.tensor([1.0]),  # the shared-parameter
+                torch.tensor([2.0]),
+                torch.tensor([0.0])
+            ]))
+
+
+class TestWithCycle(unittest.TestCase):
+    def test_with_cycle(self):
+
+        ckpt_dir = "/tmp/ckpt_data/sub_alg_cycle/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        # construct algorithms
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        optimizer_2 = torch.optim.Adam(lr=0.2)
+        alg_2 = SimpleAlg(
+            params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        alg_2.root = alg_root
+
+        self.assertRaises(AssertionError, alg_root.optimizers)
 
 
 if __name__ == '__main__':
