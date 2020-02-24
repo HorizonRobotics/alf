@@ -14,20 +14,18 @@
 """Base class for RL algorithms."""
 
 from abc import abstractmethod
+from collections import Iterable
 import os
 import psutil
+import torch
 from typing import Callable
-from collections import Iterable
 
-import gin.tf
+import gin
 
-import tensorflow as tf
-
+import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import ActionTimeStep, Experience, make_experience, PolicyStep, StepType, TrainingInfo
-from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
-from alf.utils import common, nest_utils, summary_utils
+from alf.data_structures import AlgStep, Experience, make_experience, StepType, TimeStep, TrainingInfo
+from alf.utils import common, dist_utils, summary_utils
 
 
 @gin.configurable
@@ -117,11 +115,14 @@ class RLAlgorithm(Algorithm):
         self._train_step_info_spec = None
         self._processed_experience_spec = None
 
+        self._current_time_step = None
+        self._current_policy_state = None
+
     def _set_children_property(self, property_name, value):
         """Set the property named `property_name` in child RLAlgorithm to `value`."""
-        children = self._get_children(lambda obj: isinstance(obj, RLAlgorithm))
-        for alg in children:
-            alg.__setattr__(property_name, value)
+        for child in self._get_children():
+            if isinstance(child, RLAlgorithm):
+                child.__setattr__(property_name, value)
 
     @property
     def use_rollout_state(self):
@@ -209,13 +210,13 @@ class RLAlgorithm(Algorithm):
     @property
     def time_step_spec(self):
         """Return spec for ActionTimeStep."""
-        return ActionTimeStep(
-            step_type=tf.TensorSpec((), tf.int32),
-            reward=tf.TensorSpec((), tf.float32),
-            discount=tf.TensorSpec((), tf.float32),
+        return TimeStep(
+            step_type=alf.TensorSpec((), 'int32'),
+            reward=alf.TensorSpec((), 'float32'),
+            discount=alf.TensorSpec((), 'float32'),
             observation=self.observation_spec,
             prev_action=self.action_spec,
-            env_id=tf.TensorSpec((), tf.int32))
+            env_id=alf.TensorSpec((), 'int32'))
 
     @property
     def action_spec(self):
@@ -272,7 +273,7 @@ class RLAlgorithm(Algorithm):
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
         elif exp_replayer == "uniform":
-            exp_spec = nest_utils.to_distribution_param_spec(
+            exp_spec = alf.nest.utils.to_distribution_param_spec(
                 self.experience_spec)
             self._exp_replayer = SyncUniformExperienceReplayer(
                 exp_spec, num_envs)
@@ -291,7 +292,7 @@ class RLAlgorithm(Algorithm):
         """
         if not self._use_rollout_state:
             exp = exp._replace(state=())
-        exp = nest_utils.distributions_to_params(exp)
+        exp = alf.nest.utils.distributions_to_params(exp)
         for observer in self._exp_observers:
             observer(exp)
 
@@ -314,8 +315,8 @@ class RLAlgorithm(Algorithm):
                                     training_info.reward)
 
         if self._summarize_action_distributions:
-            field = nest_utils.find_field(training_info.rollout_info,
-                                          'action_distribution')
+            field = alf.nest.find_field(training_info.rollout_info,
+                                        'action_distribution')
             if len(field) == 1:
                 summary_utils.summarize_action_dist(
                     action_distributions=field[0],
@@ -349,8 +350,8 @@ class RLAlgorithm(Algorithm):
             summary_utils.add_loss_summaries(loss_info)
 
         if self._summarize_action_distributions:
-            field = nest_utils.find_field(training_info.info,
-                                          'action_distribution')
+            field = alf.nest.find_field(training_info.info,
+                                        'action_distribution')
             if len(field) == 1:
                 summary_utils.summarize_action_dist(field[0],
                                                     self._action_spec)
@@ -363,16 +364,11 @@ class RLAlgorithm(Algorithm):
                     train_step=common.get_global_counter(),
                     step_metrics=self._metrics[:2])
 
-        mem = tf.py_function(
-            lambda: self._proc.memory_info().rss // 1e6, [],
-            tf.float32,
-            name='memory_usage')
-        if not tf.executing_eagerly():
-            mem.set_shape(())
-        tf.summary.scalar(name='memory_usage', data=mem)
+        mem = self._proc.memory_info().rss // 1e6
+        alf.summary.scalar(name='memory_usage', data=mem)
 
     # Subclass may override predict() to allow more efficient implementation
-    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+    def predict(self, time_step: TimeStep, state, epsilon_greedy):
         """Predict for one step of observation.
 
         This only used for evaluation. So it only need to perform compuations
@@ -387,8 +383,8 @@ class RLAlgorithm(Algorithm):
                 help prevent a dead loop in some deterministic environment like
                 Breakout.
         Returns:
-            policy_step (PolicyStep):
-              action (nested Tensor): should be consistent with
+            policy_step (AlgStep):
+              output (nested Tensor): should be consistent with
                 `action_spec`
               state (nested Tensor): should be consistent with
                 `predict_state_spec`
@@ -402,7 +398,7 @@ class RLAlgorithm(Algorithm):
     PREPARE_SPEC = 3
 
     @abstractmethod
-    def rollout(self, time_step: ActionTimeStep, state, mode):
+    def rollout(self, time_step: TimeStep, state, mode):
         """Perform one step of rollout.
 
         It is called to generate actions for every environment step.
@@ -420,8 +416,8 @@ class RLAlgorithm(Algorithm):
                     rollout() should not make any side effect during this, such
                     as making changes to Variable using the provided time_step.
         Returns:
-            policy_step (PolicyStep):
-              action (nested Tensor): should be consistent with
+            policy_step (AlgStep):
+              output (nested Tensor): should be consistent with
                 `action_spec`
               state (nested Tensor): should be consistent with `train_state_spec`
               info (nested Tensor): everything necessary for training. Note that
@@ -479,9 +475,9 @@ class RLAlgorithm(Algorithm):
             experience (Experience):
             state (nested Tensor): should be consistent with train_state_spec
 
-        Returns (PolicyStep):
-            action (nested tf.distribution): should be consistent with
-                `action_distribution_spec`
+        Returns (AlgStep):
+            output (nested tf.distribution): should be consistent with
+                `distribution_spec`
             state (nested Tensor): should be consistent with `train_state_spec`
             info (nested Tensor): everything necessary for training. Note that
                 ("action_distribution", "action", "reward", "discount",
@@ -492,19 +488,13 @@ class RLAlgorithm(Algorithm):
         pass
 
     # Subclass may override train_complete() to allow customized training
-    def train_complete(self,
-                       tape: tf.GradientTape,
-                       training_info: TrainingInfo,
-                       weight=1.0):
+    def train_complete(self, training_info: TrainingInfo, weight=1.0):
         """Complete one iteration of training.
 
         `train_complete` should calculate gradients and update parameters using
         those gradients.
 
         Args:
-            tape (tf.GradientTape): the tape which are used for calculating
-                gradient. All the previous `train_interval` `train_step()` for
-                are called under the context of this tape.
             training_info (TrainingInfo): information collected for training.
                 training_info.info are the batched from each policy_step.info
                 returned by train_step()
@@ -515,10 +505,10 @@ class RLAlgorithm(Algorithm):
             loss_info (LossInfo): loss information
             grads_and_vars (list[tuple]): list of gradient and variable tuples
         """
-        valid_masks = tf.cast(
-            tf.not_equal(training_info.step_type, StepType.LAST), tf.float32)
+        valid_masks = (training_info.step_type != StepType.LAST).to(
+            torch.float32)
 
-        return super().train_complete(tape, training_info, valid_masks, weight)
+        return super().train_complete(training_info, valid_masks, weight)
 
     @abstractmethod
     def calc_loss(self, training_info: TrainingInfo):
@@ -538,3 +528,74 @@ class RLAlgorithm(Algorithm):
             the tensors in loss_info should be (T, B)
         """
         pass
+
+    def unroll(self, time_step, policy_state, unroll_length):
+        training_info_list = []
+
+        for t in range(unroll_length):
+            policy_state = common.reset_state_if_necessary(
+                policy_state, self._initial_state, time_step.is_first())
+            transformed_time_step = self.transform_timestep(time_step)
+            policy_step = self.rollout(
+                transformed_time_step, policy_state, mode=RLAlgorithm.ROLLOUT)
+            next_time_step = self._env.step(policy_step.output)
+
+            exp = make_experience(time_step, policy_step, policy_state)
+            self.observe(exp)
+
+            action = alf.nest.map_structure(lambda t: t.detach(),
+                                            policy_step.output)
+
+            if t == 0:
+                rollout_info_spec = dist_utils.extract_spec(policy_step.info)
+
+            training_info = TrainingInfo(
+                action=action,
+                reward=transformed_time_step.reward,
+                discount=transformed_time_step.discount,
+                step_type=transformed_time_step.step_type,
+                rollout_info=nest_utils.distributions_to_params(
+                    policy_step.info),
+                env_id=transformed_time_step.env_id)
+
+            training_info_list.append(training_info)
+            time_step = next_time_step
+            policy_state = policy_step.state
+
+        def _stack(*tensors):
+            return torch.cat([t.unsqueeze(0) for t in tensors])
+
+        training_info = alf.nest.map_structure(_stack, *training_info)
+        training_info = training_info._replace(
+            rollout_info=dist_utils.params_to_distributions(
+                training_info.rollout_info, rollout_info_spec))
+        return time_step, policy_state, training_info
+
+    def train_iter(self):
+        """Perform one iteration of training.
+
+        Returns:
+            #(samples precessed) * #(repeats)
+        """
+
+        if self._on_policy:
+            return self._train_iter_on_policy()
+        else:
+            return self._train_iter_off_policy()
+
+    def _train_iter_on_policy(self):
+        if self._current_time_step is None:
+            self._current_time_step = self.get_initial_time_step()
+        if self._current_policy_state is None:
+            self._current_policy_state = self.get_initial_policy_state()
+
+        self._current_time_step, self._current_policy_state, training_info = \
+            self.unroll(self._current_time_step,
+                    self._current_policy_state,
+                    self._config.unroll_length)
+
+        loss_info, params = self.train_complete(training_info)
+        self.summarize_train(training_info, loss_info, params)
+        self.summarize_metrics()
+        alf.summary.get_global_counter().add_(1)
+        return training_info.step_type.shape().prod()

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from . import nest
+from . import summary
 from . import test
 
 from .tensor_specs import *

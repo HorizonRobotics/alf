@@ -12,25 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Utility functions for generate summary."""
+from absl import logging
 import functools
+import gin
+from tensorboard.plugins.histogram import metadata
 import time
 
-from absl import logging
-import gin
-
-import tensorflow as tf
-from tensorboard.plugins.histogram import metadata
-from tensorflow.python.ops import summary_ops_v2
-
-from tf_agents.specs import tensor_spec
-
-from alf.utils.conditional_ops import run_if
-from alf.utils.nest_utils import is_namedtuple
+import alf
 from alf.data_structures import LossInfo
+from alf.nest import is_namedtuple
+from alf.summary import should_record_summaries
 
 DEFAULT_BUCKET_COUNT = 30
-
-from tensorflow.python.ops.summary_ops_v2 import should_record_summaries
 
 
 def _summary_wrapper(summary_func):
@@ -41,9 +34,8 @@ def _summary_wrapper(summary_func):
 
     @functools.wraps(summary_func)
     def wrapper(*args, **kwargs):
-        from alf.utils.common import run_if
-        return run_if(
-            should_record_summaries(), lambda: summary_func(*args, **kwargs))
+        if should_record_summaries():
+            summary_func(*args, **kwargs)
 
     return wrapper
 
@@ -232,7 +224,7 @@ def add_gradients_summaries(grads_and_vars, step=None, with_histogram=True):
             step=step)
 
 
-tf.summary.histogram = _summary_wrapper(tf.summary.histogram)
+alf.summary.histogram = _summary_wrapper(alf.summary.histogram)
 
 
 def add_nested_summaries(prefix, data):
@@ -258,7 +250,7 @@ def add_loss_summaries(loss_info: LossInfo):
     Args:
         loss_info (LossInfo): loss_info.extra must be a namedtuple
     """
-    tf.summary.scalar('loss', data=loss_info.loss)
+    alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
     if not is_namedtuple(loss_info.extra):
@@ -436,7 +428,7 @@ class record_time(object):
         self._counter['time'] += time.time() - self._t0
         self._counter['n'] += 1
         if should_record_summaries():
-            tf.summary.scalar(self._tag,
-                              self._counter['time'] / self._counter['n'])
+            alf.summary.scalar(self._tag,
+                               self._counter['time'] / self._counter['n'])
             self._counter['time'] = .0
             self._counter['n'] = 0

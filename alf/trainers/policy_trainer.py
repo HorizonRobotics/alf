@@ -12,26 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-import sys
-import time
 import abc
 from absl import logging
 import gin.tf
-import tensorflow as tf
+import os
+import sys
+import time
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
-from tf_agents.eval import metric_utils
-from tf_agents.utils import common as tfa_common
-
+import alf
 from alf.algorithms.agent import Agent
-from alf.drivers.on_policy_driver import OnPolicyDriver
-from alf.utils.metric_utils import eager_compute
-from tf_agents.metrics import tf_metrics
-from alf.utils import common
-from alf.utils.common import run_under_record_context, get_global_counter
-from alf.utils.summary_utils import record_time
 from alf.environments.utils import create_environment
+from alf.utils.metric_utils import eager_compute
+from alf.utils import common
+from alf.utils.checkpoint_utils import Checkpointer
+from alf.utils.summary_utils import record_time
 from alf.utils import git_utils
 
 
@@ -51,16 +46,13 @@ class TrainerConfig(object):
 
     def __init__(self,
                  root_dir,
-                 trainer,
                  algorithm_ctor=None,
                  random_seed=None,
                  num_iterations=1000,
                  num_env_steps=0,
                  unroll_length=8,
                  use_rollout_state=False,
-                 use_tf_functions=True,
-                 checkpoint_interval=1000,
-                 checkpoint_max_to_keep=20,
+                 num_checkpoints=10,
                  evaluate=False,
                  eval_interval=10,
                  epsilon_greedy=0.1,
@@ -83,9 +75,6 @@ class TrainerConfig(object):
 
         Args:
             root_dir (str): directory for saving summary and checkpoints
-            trainer (class): cls that used for creating a `Trainer` instance,
-                and it should be one of [`on_policy_trainer`, `sync_off_policy_trainer`,
-                `async_off_policy_trainer`]
             algorithm_ctor (Callable): callable that create an
                 `OffPolicyAlgorithm` or `OnPolicyAlgorithm` instance
             random_seed (None|int): random seed, a random seed is used if None
@@ -100,7 +89,6 @@ class TrainerConfig(object):
                 * `unroll_length`.
             use_rollout_state (bool): Include the RNN state for the experiences
                 used for off-policy training
-            use_tf_functions (bool): whether to use tf.function
             checkpoint_interval (int): checkpoint every so many iterations
             checkpoint_max_to_keep (int): Maximum number of checkpoints to keep
                 (if greater than the max are saved, the oldest checkpoints are
@@ -138,10 +126,6 @@ class TrainerConfig(object):
                 perform one update and then wiped clean
             num_envs (int): the number of environments to run asynchronously.
         """
-
-        assert issubclass(trainer,
-                          Trainer), "trainer should be subclass of Trainer"
-
         self._parameters = dict(
             root_dir=root_dir,
             algorithm_ctor=algorithm_ctor,
@@ -150,9 +134,7 @@ class TrainerConfig(object):
             num_env_steps=num_env_steps,
             unroll_length=unroll_length,
             use_rollout_state=use_rollout_state,
-            use_tf_functions=use_tf_functions,
-            checkpoint_interval=checkpoint_interval,
-            checkpoint_max_to_keep=checkpoint_max_to_keep,
+            num_checkpoints=num_checkpoints,
             evaluate=evaluate,
             eval_interval=eval_interval,
             epsilon_greedy=epsilon_greedy,
@@ -173,14 +155,6 @@ class TrainerConfig(object):
             num_envs=num_envs)
 
         self._trainer = trainer
-
-    def create_trainer(self):
-        """Create a trainer from config
-
-        Returns:
-            An instance of `Trainer`
-        """
-        return self._trainer(self)
 
     def __getattr__(self, param_name):
         return self._parameters.get(param_name)
@@ -211,7 +185,6 @@ class Trainer(object):
         assert self._num_iterations + self._num_env_steps > 0, \
             "Must provide #iterations or #env_steps for training!"
         self._unroll_length = config.unroll_length
-        self._use_tf_functions = config.use_tf_functions
 
         self._checkpoint_interval = config.checkpoint_interval
         self._checkpoint_max_to_keep = config.checkpoint_max_to_keep
@@ -224,12 +197,12 @@ class Trainer(object):
         eval_summary_writer = None
         if self._evaluate:
             eval_metrics = [
-                tf_metrics.AverageReturnMetric(
+                metrics.AverageReturnMetric(
                     buffer_size=self._num_eval_episodes),
-                tf_metrics.AverageEpisodeLengthMetric(
+                metrics.AverageEpisodeLengthMetric(
                     buffer_size=self._num_eval_episodes)
             ]
-            eval_summary_writer = tf.summary.create_file_writer(
+            eval_summary_writer = alf.summary.create_file_writer(
                 self._eval_dir,
                 flush_millis=config.summaries_flush_secs * 1000)
         self._eval_env = None
@@ -242,14 +215,12 @@ class Trainer(object):
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
+        self._initialize()
 
-    def initialize(self):
+    def _initialize(self):
         """Initializes the Trainer."""
-        self._random_seed = common.set_random_seed(self._random_seed,
-                                                   not self._use_tf_functions)
+        self._random_seed = common.set_random_seed(self._random_seed)
 
-        tf.config.experimental_run_functions_eagerly(
-            not self._use_tf_functions)
         env = self._create_environment(random_seed=self._random_seed)
         common.set_global_env(env)
 
@@ -262,8 +233,6 @@ class Trainer(object):
             summarize_action_distributions=self._config.
             summarize_action_distributions)
         self._algorithm.use_rollout_state = self._config.use_rollout_state
-
-        self._driver = self._init_driver()
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
@@ -308,11 +277,9 @@ class Trainer(object):
 
     def train(self):
         """Perform training."""
-        assert (None not in (self._algorithm, self._driver)) and self._envs, \
-            "Trainer not initialized"
         self._restore_checkpoint()
         common.enable_summary(True)
-        run_under_record_context(
+        common.run_under_record_context(
             self._train,
             summary_dir=self._train_dir,
             summary_interval=self._summary_interval,
@@ -321,34 +288,14 @@ class Trainer(object):
         self._save_checkpoint()
         self._close_envs()
 
-    @abc.abstractmethod
-    def _train_iter(self, iter_num, policy_state, time_step):
-        """Perform one training iteration.
-
-        Args:
-            iter_num (int): iteration number
-            policy_state (nested Tensor): should be consistent with train_state_spec
-            time_step (ActionTimeStep): initial time_step
-        Returns:
-            policy_state (nested Tensor): final step policy state.
-            time_step (ActionTimeStep): named tuple with final observation, reward, etc.
-            steps (int): how many steps are trained
-        """
-        pass
-
     def _train(self):
         for env in self._envs:
             env.reset()
-        time_step = self._driver.get_initial_time_step()
-        policy_state = self._driver.get_initial_policy_state()
         iter_num = 0
         while True:
             t0 = time.time()
             with record_time("time/train_iter"):
-                time_step, policy_state, train_steps = self._train_iter(
-                    iter_num=iter_num,
-                    policy_state=policy_state,
-                    time_step=time_step)
+                train_steps = self._algorithm.train_iter()
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
@@ -363,20 +310,19 @@ class Trainer(object):
                 # We need to wait for one iteration to get the operative args
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
-                with tf.summary.record_if(True):
 
-                    def _markdownify(paragraph):
-                        return "    ".join(
-                            (os.linesep + paragraph).splitlines(keepends=True))
+                def _markdownify(paragraph):
+                    return "    ".join(
+                        (os.linesep + paragraph).splitlines(keepends=True))
 
-                    common.summarize_gin_config()
-                    tf.summary.text('commandline', ' '.join(sys.argv))
-                    tf.summary.text(
-                        'optimizers',
-                        _markdownify(self._algorithm.get_optimizer_info()))
-                    tf.summary.text('revision', git_utils.get_revision())
-                    tf.summary.text('diff', _markdownify(git_utils.get_diff()))
-                    tf.summary.text('seed', str(self._random_seed))
+                common.summarize_gin_config()
+                alf.summary.text('commandline', ' '.join(sys.argv))
+                alf.summary.text(
+                    'optimizers',
+                    _markdownify(self._algorithm.get_optimizer_info()))
+                alf.summary.text('revision', git_utils.get_revision())
+                alf.summary.text('diff', _markdownify(git_utils.get_diff()))
+                alf.summary.text('seed', str(self._random_seed))
 
             # check termination
             env_steps_metric = self._driver.get_step_metrics()[1]
@@ -387,49 +333,67 @@ class Trainer(object):
                 break
 
     def _restore_checkpoint(self):
-        global_step = get_global_counter()
-        checkpointer = tfa_common.Checkpointer(
+        global_step = alf.summary.get_global_counter()
+        checkpointer = Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
-            max_to_keep=self._checkpoint_max_to_keep,
             algorithm=self._algorithm,
             metrics=metric_utils.MetricsGroup(self._driver.get_metrics(),
                                               'metrics'),
             global_step=global_step)
-        checkpointer.initialize_or_restore()
+        checkpointer.load()
         self._checkpointer = checkpointer
 
     def _save_checkpoint(self):
-        global_step = get_global_counter()
+        global_step = alf.summary.get_global_counter()
         self._checkpointer.save(global_step=global_step.numpy())
 
     def _eval(self):
-        global_step = get_global_counter()
-        with tf.summary.record_if(True):
-            eager_compute(
-                metrics=self._eval_metrics,
-                environment=self._eval_env,
-                state_spec=self._algorithm.predict_state_spec,
-                action_fn=lambda time_step, state: self._algorithm.predict(
-                    time_step=self._algorithm.transform_timestep(time_step),
-                    state=state,
-                    epsilon_greedy=self._config.epsilon_greedy),
-                num_episodes=self._num_eval_episodes,
-                step_metrics=self._driver.get_step_metrics(),
-                train_step=global_step,
-                summary_writer=self._eval_summary_writer,
-                summary_prefix="Metrics")
-            metric_utils.log_metrics(self._eval_metrics)
+        time_step = get_initial_time_step(self._eval_env)
+        policy_state = self._algorithm.get_initial_predict_state(
+            self._eval_env.batch_size)
+        episodes = 0
+        while episodes < self._num_eval_episodes:
+            time_step, policy_state = _step(
+                algortihm=self._algorithm,
+                env=self._eval_env,
+                time_ste=time_step,
+                policy_state=policy_state,
+                epsilon_greedy=self._config.epsilon_greedy,
+                metrics=self._eval_metrics)
+            if time_step.is_last():
+                episodes += 1
+        metric_utils.log_metrics(self._eval_metrics)
+
+
+def get_initial_time_step(env):
+    return common.zero_tensor_from_nested_spec(env.time_step_spec,
+                                               env.batch_size)
+
+
+def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
+    policy_state = common.reset_state_if_necessary(
+        policy_state, algorithm.get_initial_predict_state(env.batch_size),
+        time_step.is_first())
+    transformed_time_step = algorithm.transform_timestep(time_step)
+    policy_step = algorithm.predict(transformed_time_step, policy_state,
+                                    epsilon_greedy)
+    next_time_step = env.step(policy_step.output)
+
+    exp = alf.data_structures.make_experience(time_step, policy_step,
+                                              policy_state)
+    for metric in metrics:
+        metric.observe(exp)
+    return next_time_step, policy_step.state
 
 
 def play(root_dir,
          env,
          algorithm,
-         checkpoint_name=None,
+         checkpoint_name="latest",
          epsilon_greedy=0.1,
          num_episodes=10,
          sleep_time_per_step=0.01,
-         record_file=None,
-         use_tf_functions=True):
+         record_file=None):
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
@@ -458,31 +422,15 @@ def play(root_dir,
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
-    global_step = get_global_counter()
-
-    driver = OnPolicyDriver(
-        env=env,
-        algorithm=algorithm,
-        training=False,
-        epsilon_greedy=epsilon_greedy)
+    global_step = alf.summary.get_global_counter()
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
-    checkpoint = tf.train.Checkpoint(
+    checkpointer = Checkpointer(
+        ckpt_dir=ckpt_dir,
         algorithm=algorithm,
-        metrics=metric_utils.MetricsGroup(driver.get_metrics(), 'metrics'),
+        metrics=metrics,
         global_step=global_step)
-    if checkpoint_name is not None:
-        ckpt_path = os.path.join(ckpt_dir, checkpoint_name)
-    else:
-        ckpt_path = tf.train.latest_checkpoint(ckpt_dir)
-    if ckpt_path is not None:
-        logging.info("Restore from checkpoint %s" % ckpt_path)
-        checkpoint.restore(ckpt_path)
-    else:
-        logging.info("Checkpoint is not found at %s" % ckpt_dir)
-
-    if not use_tf_functions:
-        tf.config.experimental_run_functions_eagerly(True)
+    checkpointer.load(checkpoint_name)
 
     recorder = None
     if record_file is not None:
@@ -493,14 +441,19 @@ def play(root_dir,
     env.reset()
     if recorder:
         recorder.capture_frame()
-    time_step = driver.get_initial_time_step()
-    policy_state = driver.get_initial_policy_state()
+    time_step = get_initial_time_step(env)
+    policy_state = algorithm.get_initial_predict_state(env.batch_size)
     episode_reward = 0.
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        time_step, policy_state = driver.run(
-            max_num_steps=1, time_step=time_step, policy_state=policy_state)
+        time_step, policy_state = _step(
+            algorithm=algorithm,
+            env=env,
+            time_ste=time_step,
+            policy_state=policy_state,
+            epsilon_greedy=epsilon_greedy,
+            metrics=[])
         if recorder:
             recorder.capture_frame()
         else:
