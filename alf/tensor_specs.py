@@ -35,7 +35,7 @@ class TensorSpec(object):
 
     __slots__ = ["_shape", "_dtype"]
 
-    def __init__(self, shape, dtype):
+    def __init__(self, shape, dtype=torch.float32):
         """Creates a TensorSpec.
         Args:
             shape (tuple[int]): The shape of the tensor.
@@ -181,7 +181,7 @@ class BoundedTensorSpec(TensorSpec):
 
     __slots__ = ("_minimum", "_maximum")
 
-    def __init__(self, shape, dtype, minimum=0, maximum=1):
+    def __init__(self, shape, dtype=torch.float32, minimum=0, maximum=1):
         """Initializes a new `BoundedTensorSpec`.
         Args:
             shape (tuple[int]): The shape of the tensor.

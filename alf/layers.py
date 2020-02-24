@@ -29,25 +29,6 @@ def identity(x):
     return x
 
 
-def _create_lstm_cell_state_spec(hidden_size, dtype):
-    """Create LSTMCell state specs given the hidden size and dtype. According to
-    PyTorch LSTMCell doc:
-
-    https://pytorch.org/docs/stable/nn.html#torch.nn.LSTMCell
-
-    Each LSTMCell has two states: h and c with the same shape.
-
-    Args:
-        hidden_size (int): the number of units in the hidden state
-        dtype (torch.dtype): dtype of the specs
-
-    Returns:
-        specs (tuple[TensorSpec]):
-    """
-    state_spec = TensorSpec(shape=(hidden_size, ), dtype=dtype)
-    return (state_spec, state_spec)
-
-
 @gin.configurable
 class FC(nn.Module):
     def __init__(self,

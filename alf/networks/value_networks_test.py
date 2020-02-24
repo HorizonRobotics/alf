@@ -28,19 +28,21 @@ class TestValueNetworks(parameterized.TestCase, unittest.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             network_ctor = functools.partial(
-                ValueRNNNetwork,
-                lstm_hidden_size=lstm_hidden_size,
-                value_fc_layer_params=[64, 32])
-            state = (torch.randn((
-                1,
-                lstm_hidden_size,
-            ), dtype=torch.float32), ) * 2
+                ValueRNNNetwork, lstm_hidden_size=lstm_hidden_size)
+            if isinstance(lstm_hidden_size, int):
+                lstm_hidden_size = [lstm_hidden_size]
+            state = []
+            for size in lstm_hidden_size:
+                state.append((torch.randn((
+                    1,
+                    size,
+                ), dtype=torch.float32), ) * 2)
         else:
             network_ctor = ValueNetwork
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ))
+    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
     def test_value_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
         conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
@@ -51,7 +53,7 @@ class TestValueNetworks(parameterized.TestCase, unittest.TestCase):
 
         value_net = network_ctor(
             input_spec, conv_layer_params=conv_layer_params)
-        value, _ = value_net(image, state)
+        value, state = value_net(image, state)
 
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))

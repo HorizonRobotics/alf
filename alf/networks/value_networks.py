@@ -18,7 +18,7 @@ import gin
 import torch
 import torch.nn as nn
 
-from alf.networks import EncodingNetwork
+from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec
 
@@ -67,6 +67,10 @@ class ValueNetwork(nn.Module):
         value = self._encoding_net(observation)
         return torch.squeeze(value, -1), state
 
+    @property
+    def state_spec(self):
+        return ()
+
 
 @gin.configurable
 class ValueRNNNetwork(nn.Module):
@@ -74,42 +78,36 @@ class ValueRNNNetwork(nn.Module):
 
     def __init__(self,
                  input_tensor_spec,
-                 lstm_hidden_size,
                  conv_layer_params=None,
                  fc_layer_params=None,
+                 lstm_hidden_size=100,
                  value_fc_layer_params=None,
                  activation=torch.relu):
         """Creates an instance of `ValueRNNNetwork`.
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
-            lstm_hidden_size (int): the hidden size of the LSTM cell
             conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
             fc_layer_params (list[int]): a list of integers representing hidden
                 FC layers for encoding the observation.
+            lstm_hidden_size (int or list[int] or tuple[int]): the hidden size(s)
+                of the LSTM cell(s). Each size corresponds to a cell. If there
+                are multiple sizes, then lstm cells are stacked.
             value_fc_layer_params (list[int]): a list of integers representing hidden
                 FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
         """
         super(ValueRNNNetwork, self).__init__()
-        self._before_lstm_encoding_net = EncodingNetwork(
+        self._encoding_net = EncodingNetwork(
             input_tensor_spec, conv_layer_params, fc_layer_params, activation)
-
-        self._lstm_cell = torch.nn.LSTMCell(
-            input_size=self._before_lstm_encoding_net.output_size,
-            hidden_size=lstm_hidden_size)
-        self._state_spec = layers._create_lstm_cell_state_spec(
-            lstm_hidden_size, input_tensor_spec.dtype)
-
-        input_tensor_spec = TensorSpec((lstm_hidden_size, ),
-                                       input_tensor_spec.dtype)
-        self._after_lstm_encoding_net = EncodingNetwork(
-            input_tensor_spec,
-            fc_layer_params=value_fc_layer_params,
-            activation=activation,
+        self._lstm_encoding_net = LSTMEncodingNetwork(
+            self._encoding_net.output_size,
+            lstm_hidden_size,
+            value_fc_layer_params,
+            activation,
             last_layer_size=1,
             last_activation=layers.identity)
 
@@ -118,19 +116,16 @@ class ValueRNNNetwork(nn.Module):
 
         Args:
             observation (torch.Tensor): consistent with `input_tensor_spec`
-            state (tuple): a state tuple (h, c)
+            state (nest[tuple]): a nest structure of state tuples (h, c)
 
         Returns:
             value (torch.Tensor): a 1D tensor
-            state (tuple): the updated states
+            new_state (nest[tuple]): the updated states
         """
-        assert isinstance(state, tuple) and len(state) == 2, \
-            "The LSTMCell state should be a tuple of (h,c)!"
-        encoding = self._before_lstm_encoding_net(observation)
-        h_state, c_state = self._lstm_cell(encoding, state)
-        value = self._after_lstm_encoding_net(h_state)
-        return torch.squeeze(value, -1), (h_state, c_state)
+        encoding = self._encoding_net(observation)
+        value, state = self._lstm_encoding_net(encoding, state)
+        return torch.squeeze(value, -1), state
 
     @property
     def state_spec(self):
-        return self._state_spec
+        return self._lstm_encoding_net.state_spec

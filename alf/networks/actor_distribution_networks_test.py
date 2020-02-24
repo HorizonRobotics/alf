@@ -32,16 +32,20 @@ class TestActorDistributionNetworks(parameterized.TestCase, unittest.TestCase):
                 ActorRNNDistributionNetwork,
                 lstm_hidden_size=lstm_hidden_size,
                 actor_fc_layer_params=[64, 32])
-            state = (torch.randn((
-                1,
-                lstm_hidden_size,
-            ), dtype=torch.float32), ) * 2
+            if isinstance(lstm_hidden_size, int):
+                lstm_hidden_size = [lstm_hidden_size]
+            state = []
+            for size in lstm_hidden_size:
+                state.append((torch.randn((
+                    1,
+                    size,
+                ), dtype=torch.float32), ) * 2)
         else:
             network_ctor = ActorDistributionNetwork
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ))
+    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
     def test_discrete_actor_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((), torch.int32)
@@ -73,7 +77,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, unittest.TestCase):
         self.assertTrue(
             torch.all(actions <= torch.as_tensor(action_spec.maximum)))
 
-    @parameterized.parameters((100, ), (None, ))
+    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
     def test_continuous_actor_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = BoundedTensorSpec((3, ), torch.float32)
