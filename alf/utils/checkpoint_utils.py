@@ -15,6 +15,7 @@
 import os
 import warnings
 import torch
+from absl import logging
 
 
 class Checkpointer(object):
@@ -44,7 +45,8 @@ class Checkpointer(object):
                 the most recent checkpoint named 'latest' will be loaded.
         Returns:
             current_step_num (int): the current step number for the loaded
-                checkpoint.
+                checkpoint. current_step_num is set to - 1 if the specified
+                checkpoint does not exist.
         """
 
         def _load_checkpoint(checkpoint):
@@ -57,12 +59,18 @@ class Checkpointer(object):
         if global_step == "latest" and os.path.isfile(f_path_latest):
             checkpoint = torch.load(f_path_latest)
             _load_checkpoint(checkpoint)
+            logging.info("Checkpoint 'latest' is loaded successfully.")
         elif os.path.isfile(f_path):
             checkpoint = torch.load(f_path)
             _load_checkpoint(checkpoint)
+            logging.info("Checkpoint 'ckpt-{}' is loaded successfully.".format(
+                global_step))
         else:
-            warnings.warn(("Checkpoint 'ckpt-{}' does not exist. "
-                           "Train from scratch.".format(global_step)))
+            warnings.warn(
+                ("Checkpoint '{}' does not exist. "
+                 "Train from scratch.".
+                 format(global_step if global_step == "latest" else "ckpt-%d" %
+                        global_step)))
 
         return self._global_step
 
@@ -83,6 +91,9 @@ class Checkpointer(object):
         }
         state['global_step'] = global_step
         torch.save(state, f_path)
+        logging.info(
+            "Checkpoint 'ckpt-{}' is saved successfully.".format(global_step))
 
         f_path_latest = os.path.join(self._ckpt_dir, "latest")
         torch.save(state, f_path_latest)
+        logging.info("Checkpoint 'latest' is saved successfully.")

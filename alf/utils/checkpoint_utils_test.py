@@ -14,9 +14,11 @@
 
 import unittest
 import warnings
+import shutil
+import os
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 import alf.utils.checkpoint_utils as ckpt_utils
 
 
@@ -56,9 +58,18 @@ class TestNetAndOptimizer(unittest.TestCase):
         net = Net()
         optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
 
-        ckpt_dir = "/tmp/models/"
+        ckpt_dir = "/tmp/ckpt_data/"
+
+        # remove data saved from previous runs in case the test is called
+        # mutiple times on a local machine
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
         ckpt_mngr = ckpt_utils.Checkpointer(
             ckpt_dir, net=net, optimizer=optimizer)
+
+        # test the case loading from 'latest' which does not exist
+        self.assertWarns(UserWarning, ckpt_mngr.load, 'latest')
 
         # training-step-0, all parameters are zeros
         step_num = 0
@@ -84,7 +95,7 @@ class TestNetAndOptimizer(unittest.TestCase):
         for para in list(net.parameters()):
             self.assertTrue((para == 0).all())
 
-        # load latest
+        # load 'latest'
         step_num_from_ckpt = ckpt_mngr.load(global_step='latest')
         self.assertTrue(step_num_from_ckpt == step_num)
         self.assertTrue(get_learning_rate(optimizer)[0] == 0.01)
