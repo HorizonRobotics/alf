@@ -66,7 +66,7 @@ class TestNetAndOptimizer(unittest.TestCase):
         set_learning_rate(optimizer, 0.1)
         ckpt_mngr.save(step_num)
 
-        # training-step-0, all parameters are zeros
+        # training-step-1, all parameters are ones
         step_num = 1
         net.apply(weights_init_ones)
         set_learning_rate(optimizer, 0.01)
@@ -85,8 +85,8 @@ class TestNetAndOptimizer(unittest.TestCase):
             self.assertTrue((para == 0).all())
 
         # load latest
-        next_step_num = ckpt_mngr.load(global_step='latest')
-        self.assertTrue(next_step_num == step_num + 1)
+        step_num_from_ckpt = ckpt_mngr.load(global_step='latest')
+        self.assertTrue(step_num_from_ckpt == step_num)
         self.assertTrue(get_learning_rate(optimizer)[0] == 0.01)
         for para in list(net.parameters()):
             self.assertTrue((para == 1).all())

@@ -39,10 +39,12 @@ class Checkpointer(object):
     def load(self, global_step="latest"):
         """Load checkpoint
         Args:
-            global_step: the number of training steps corresponding to the
-                current state to be saved. It will be appended to the name of the chekpoint as a suffix.
+            global_step (int|str): the number of training steps which is used to
+                specify the checkpoint to be loaded. If global_step is 'latest',
+                the most recent checkpoint named 'latest' will be loaded.
         Returns:
-            next_step_num (int): the step_number for the next training step
+            current_step_num (int): the current step number for the loaded
+                checkpoint.
         """
 
         def _load_checkpoint(checkpoint):
@@ -62,10 +64,15 @@ class Checkpointer(object):
             warnings.warn(("Checkpoint 'ckpt-{}' does not exist. "
                            "Train from scratch.".format(global_step)))
 
-        return self._global_step + 1
+        return self._global_step
 
     def save(self, global_step):
         """Save states of all modules to checkpoint
+        Args:
+            global_step (int): the number of training steps corresponding to the
+                current state to be saved. It will be appended to the name of
+                the checkpoint as a suffix. This function will also save a copy
+                of the latest checkpoint in a file named 'latest'.
         """
         self._global_step = global_step
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
