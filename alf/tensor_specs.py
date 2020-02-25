@@ -35,7 +35,7 @@ class TensorSpec(object):
 
     __slots__ = ["_shape", "_dtype"]
 
-    def __init__(self, shape, dtype):
+    def __init__(self, shape, dtype=torch.float32):
         """Creates a TensorSpec.
         Args:
             shape (tuple[int]): The shape of the tensor.
@@ -181,7 +181,7 @@ class BoundedTensorSpec(TensorSpec):
 
     __slots__ = ("_minimum", "_maximum")
 
-    def __init__(self, shape, dtype, minimum, maximum):
+    def __init__(self, shape, dtype=torch.float32, minimum=0, maximum=1):
         """Initializes a new `BoundedTensorSpec`.
         Args:
             shape (tuple[int]): The shape of the tensor.
@@ -194,12 +194,10 @@ class BoundedTensorSpec(TensorSpec):
         """
         super(BoundedTensorSpec, self).__init__(shape, dtype)
 
-        if minimum is None or maximum is None:
-            raise ValueError("minimum and maximum must be provided; but saw "
-                             "'%s' and '%s'" % (minimum, maximum))
-
         try:
-            np.broadcast(minimum, maximum, np.zeros(self.shape))
+            min_max = np.broadcast(minimum, maximum, np.zeros(self.shape))
+            for m, M, _ in min_max:
+                assert m <= M, "Min {} is greater than Max {}".format(m, M)
         except ValueError as exception:
             raise ValueError(
                 "minimum or maximum is not compatible with shape. "
