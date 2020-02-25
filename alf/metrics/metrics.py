@@ -17,16 +17,45 @@ Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
 
-import collections
 from alf.metrics import metric
 import torch
 
 
-def mean(q, default=0):
-    if len(q) > 0:
-        return sum(q) / len(q)
-    else:
-        return default
+class TCDeque(object):
+    """Deque backed by torch.tensor storage."""
+
+    def __init__(self, max_len, dtype):
+        shape = (max_len, )
+        self._dtype = dtype
+        self.max_len = torch.tensor(max_len, dtype=torch.int32)
+        self.buffer = torch.zeros(shape, dtype=dtype)
+
+        self.head = torch.zeros((), dtype=torch.int32)
+
+    @property
+    def data(self):
+        return self.buffer[:self.length]
+
+    def append(self, value):
+        self.add(value)
+
+    def add(self, value):
+        position = torch.remainder(self.head, self.max_len)
+        self.buffer[position] = value
+        self.head.add_(1)
+
+    @property
+    def length(self):
+        return torch.min(self.head, self.max_len)
+
+    def clear(self):
+        self.head.fill_(0)
+        self.buffer.fill_(0)
+
+    def mean(self):
+        if self.head == 0:
+            return torch.zeros((), dtype=self._dtype)
+        return torch.mean(self.buffer[:self.length])
 
 
 class EnvironmentSteps(metric.StepMetric):
@@ -105,7 +134,7 @@ class AverageReturnMetric(metric.StepMetric):
                  buffer_size=10):
         super(AverageReturnMetric, self).__init__(name=name, prefix=prefix)
         # TODO: use tensor deque
-        self.buffer = collections.deque(maxlen=buffer_size)
+        self.buffer = TCDeque(max_len=buffer_size, dtype=dtype)
         self._dtype = dtype
         self.return_accumulator = torch.zeros(batch_size, dtype=dtype)
 
@@ -140,7 +169,7 @@ class AverageReturnMetric(metric.StepMetric):
         return time_step
 
     def result(self):
-        return mean(self.buffer)
+        return self.buffer.mean()
 
     def reset(self):
         self.buffer.clear()
@@ -159,7 +188,7 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         super(AverageEpisodeLengthMetric, self).__init__(
             name=name, prefix=prefix)
         # TODO: use tensor deque
-        self.buffer = collections.deque(maxlen=buffer_size)
+        self.buffer = TCDeque(max_len=buffer_size, dtype=dtype)
         self._dtype = dtype
         self.length_accumulator = torch.zeros(batch_size, dtype=dtype)
 
@@ -195,7 +224,7 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         return time_step
 
     def result(self):
-        return mean(self.buffer)
+        return self.buffer.mean()
 
     def reset(self):
         self.buffer.clear()
