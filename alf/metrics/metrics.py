@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
+"""A set of metrics.
+Converted to PyTorch from the TF version.
+https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
+"""
 
 import collections
 from alf.metrics import metric
@@ -39,13 +42,14 @@ class EnvironmentSteps(metric.StepMetric):
 
     def call(self, time_step):
         """Increase the number of environment_steps according to time_step.
-    Step count is not increased on time_step.is_first() since that step
-    is not part of any episode.
-    Args:
-      time_step: A tf_agents.time_step.time_step
-    Returns:
-      The arguments, for easy chaining.
-    """
+        Step count is not increased on time_step.is_first() since that step
+        is not part of any episode.
+
+        Args:
+            time_step: A alf.data_structures.TimeStep
+        Returns:
+            The arguments, for easy chaining.
+        """
         steps = (torch.logical_not(time_step.is_first())).type(self.dtype)
         num_steps = torch.sum(steps)
         self.environment_steps.add_(num_steps)
@@ -71,12 +75,13 @@ class NumberOfEpisodes(metric.StepMetric):
 
     def call(self, time_step):
         """Increase the number of number_episodes according to time_step.
-    It would increase for all time_step.is_last().
-    Args:
-      time_step: A tf_agents.time_step.time_step
-    Returns:
-      The arguments, for easy chaining.
-    """
+        It would increase for all time_step.is_last().
+
+        Args:
+            time_step: A alf.data_structures.TimeStep
+        Returns:
+            The arguments, for easy chaining.
+        """
         episodes = time_step.is_last().type(self.dtype)
         num_episodes = torch.sum(episodes)
         self.number_episodes.add_(num_episodes)
@@ -105,6 +110,14 @@ class AverageReturnMetric(metric.StepMetric):
         self.return_accumulator = torch.zeros(batch_size, dtype=dtype)
 
     def call(self, time_step):
+        """Accumulates returns from time_step batched tensor.
+        It would accumulate all time_step.reward.
+
+        Args:
+            time_step: A alf.data_structures.TimeStep
+        Returns:
+            The arguments, for easy chaining.
+        """
         # Zero out batch indices where a new episode is starting.
         self.return_accumulator[:] = torch.where(
             time_step.is_first(), torch.zeros_like(self.return_accumulator),
@@ -151,6 +164,15 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         self.length_accumulator = torch.zeros(batch_size, dtype=dtype)
 
     def call(self, time_step):
+        """Accumulates the number of episode steps according to batched time_step.
+        It would increase for all non time_step.is_first().  The first time_step
+        is the boundary step and needs to be ignored, different from tf_agents.
+
+        Args:
+            time_step: A alf.data_structures.TimeStep
+        Returns:
+            The arguments, for easy chaining.
+        """
         # Each non-boundary time_step (mid or last) represents a step.
         is_first = time_step.is_first()
         non_boundary = torch.where(
