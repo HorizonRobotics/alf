@@ -209,9 +209,9 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                 on the current state; otherwise a global std will be generated
                 regardless of the current state.
             inverse_std_transform (torch.nn.functional): Currently supports
-                torch.exp and nn.functional.softplus. Transformation to obtain
-                inverse std. The transformed values are further transformed
-                according to min_std and max_std.
+                "exp" and "softplus". Transformation to obtain inverse std. The
+                transformed values are further transformed according to min_std
+                and max_std.
             scale_distribution (bool): Whether or not to scale the output
                 distribution to ensure that the output aciton fits within the
                 `action_spec`. Note that this is different from `mean_transform`
@@ -238,7 +238,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             std_bias_initializer_value = math.log(math.exp(c) - 1)
         else:
             raise ValueError(
-                "Unsupported std_transform %s" % inverse_std_transform)
+                "Unsupported inverse_std_transform %s" % inverse_std_transform)
 
         super().__init__(
             input_size=input_size,
