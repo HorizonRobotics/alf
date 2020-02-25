@@ -114,8 +114,10 @@ class TimeStep(
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
     discount = torch.tensor(discount)
+    # TODO: talk to Jerry how to convert to tensor for env.
+    # This function is used for metrics_test only for the moment.
     create_tensor = lambda t: t.detach() if torch.is_tensor(
-        t) else torch.tensor(t)
+        t) else torch.as_tensor(t).detach()
     make_tensors = lambda struct: map_structure(create_tensor, struct)
     return TimeStep(
         step_type=step_type.view(discount.shape),

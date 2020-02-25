@@ -21,7 +21,7 @@ import unittest
 from absl.testing import parameterized
 
 
-class TFMetricsTest(parameterized.TestCase, unittest.TestCase):
+class THMetricsTest(parameterized.TestCase, unittest.TestCase):
     def _create_trajectories(self):
         def _concat_nested_tensors(nest1, nest2):
             return alf.nest.map_structure(
@@ -67,12 +67,14 @@ class TFMetricsTest(parameterized.TestCase, unittest.TestCase):
         return [ts0, ts1, ts2, ts3, ts4, ts5]
 
     @parameterized.named_parameters([
-        ('testEnvironmentStepsGraph', EnvironmentSteps, 5, 6),
-        ('testNumberOfEpisodesGraph', NumberOfEpisodes, 4, 2),
-        ('testAverageReturnGraph', AverageReturnMetric, 6, 9.0),
-        ('testAverageEpisodeLengthGraph', AverageEpisodeLengthMetric, 6, 2.0),
+        ('testEnvironmentStepsGraph', EnvironmentSteps, 5, 6, 1),
+        ('testNumberOfEpisodesGraph', NumberOfEpisodes, 4, 2, 1),
+        ('testAverageReturnGraph', AverageReturnMetric, 6, 9.0, 4),
+        ('testAverageEpisodeLengthGraph', AverageEpisodeLengthMetric, 6, 2.0,
+         4),
     ])
-    def testMetric(self, metric_class, num_trajectories, expected_result):
+    def testMetric(self, metric_class, num_trajectories, expected_result,
+                   state_dict_length):
         trajectories = self._create_trajectories()
         if metric_class in [AverageReturnMetric, AverageEpisodeLengthMetric]:
             metric = metric_class(batch_size=2)
@@ -83,6 +85,9 @@ class TFMetricsTest(parameterized.TestCase, unittest.TestCase):
             metric(trajectories[i])
 
         self.assertEqual(expected_result, metric.result())
+
+        self.assertEqual(state_dict_length, len(metric.state_dict()))
+
         metric.reset()
         self.assertEqual(0.0, metric.result())
 
