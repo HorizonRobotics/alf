@@ -150,7 +150,6 @@ class AverageReturnMetric(metric.StepMetric):
                  batch_size=1,
                  buffer_size=10):
         super(AverageReturnMetric, self).__init__(name=name, prefix=prefix)
-        # TODO: use tensor deque
         self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
         self._return_accumulator = torch.nn.Parameter(
