@@ -17,16 +17,16 @@ import unittest
 import numpy as np
 import torch
 
-from alf.data_structures import PolicyStep, StepType, TimeStep
+from alf.data_structures import AlgStep, StepType, TimeStep
 
 
-class PolicyStepTest(unittest.TestCase):
+class AlgStepTest(unittest.TestCase):
     def testCreate(self):
         action = torch.tensor(1)
         state = torch.tensor(2)
         info = torch.tensor(3)
-        step = PolicyStep(action=action, state=state, info=info)
-        self.assertEqual(step.action, action)
+        step = AlgStep(output=action, state=state, info=info)
+        self.assertEqual(step.output, action)
         self.assertEqual(step.state, state)
         self.assertEqual(step.info, info)
 
@@ -34,8 +34,8 @@ class PolicyStepTest(unittest.TestCase):
         action = torch.tensor(1)
         state = ()
         info = ()
-        step = PolicyStep(action=action)
-        self.assertEqual(step.action, action)
+        step = AlgStep(output=action)
+        self.assertEqual(step.output, action)
         self.assertEqual(step.state, state)
         self.assertEqual(step.info, info)
 
@@ -43,8 +43,8 @@ class PolicyStepTest(unittest.TestCase):
         action = torch.tensor(1)
         state = torch.tensor(2)
         info = ()
-        step = PolicyStep(action=action, state=state)
-        self.assertEqual(step.action, action)
+        step = AlgStep(output=action, state=state)
+        self.assertEqual(step.output, action)
         self.assertEqual(step.state, state)
         self.assertEqual(step.info, info)
 

@@ -63,6 +63,10 @@ class TensorSpecTest(parameterized.TestCase, unittest.TestCase):
         self.assertTrue(torch.all(sample <= 3))
         self.assertTrue(torch.all(0 <= sample))
 
+        # last minimum is greater than last maximum
+        self.assertRaises(AssertionError, BoundedTensorSpec, self._shape,
+                          dtype, (0, ) * 29 + (2, ), (1, ) * 30)
+
     @parameterized.parameters(*TYPE_PARAMETERS)
     def testTensorSpecZero(self, dtype):
         spec = TensorSpec(self._shape, dtype)

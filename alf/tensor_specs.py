@@ -35,7 +35,7 @@ class TensorSpec(object):
 
     __slots__ = ["_shape", "_dtype"]
 
-    def __init__(self, shape, dtype):
+    def __init__(self, shape, dtype=torch.float32):
         """Creates a TensorSpec.
         Args:
             shape (tuple[int]): The shape of the tensor.
@@ -55,9 +55,17 @@ class TensorSpec(object):
         return cls(spec.shape, spec.dtype)
 
     @classmethod
-    def from_tensor(cls, tensor):
+    def from_tensor(cls, tensor, from_dim=0):
+        """Create TensorSpec from tensor.
+
+        Args:
+            tensor (Tensor): tensor from which the spec is extracted
+            from_dim (int): use tensor.shape[from_dim:] as shape
+        Returns:
+            TensorSpec
+        """
         assert isinstance(tensor, torch.Tensor)
-        return TensorSpec(tensor.shape, tensor.dtype)
+        return TensorSpec(tensor.shape[from_dim:], tensor.dtype)
 
     @classmethod
     def is_bounded(cls):
@@ -97,8 +105,50 @@ class TensorSpec(object):
     def __reduce__(self):
         return TensorSpec, (self._shape, self._dtype)
 
+    def constant(self, value, outer_dims=None):
+        """Create a constant tensor from the spec.
+
+        Args:
+            value : a scalar
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            tensor (torch.Tensor): a tensor of `self._dtype`
+        """
+        value = torch.as_tensor(value).to(self._dtype)
+        assert len(value.size()) == 0, "The input value must be a scalar!"
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        return torch.ones(size=shape, dtype=self._dtype) * value
+
     def zeros(self, outer_dims=None):
         """Create a zero tensor from the spec.
+
+        Args:
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            tensor (torch.Tensor): a tensor of `self._dtype`
+        """
+        return self.constant(0, outer_dims)
+
+    def ones(self, outer_dims=None):
+        """Create an all-one tensor from the spec.
+
+        Args:
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            tensor (torch.Tensor): a tensor of `self._dtype`
+        """
+        return self.constant(1, outer_dims)
+
+    def randn(self, outer_dims=None):
+        """Create a tensor filled with random numbers from a std normal dist.
 
         Args:
             outer_dims (tuple[int]): an optional list of integers specifying outer
@@ -110,7 +160,7 @@ class TensorSpec(object):
         shape = self._shape
         if outer_dims is not None:
             shape = tuple(outer_dims) + shape
-        return torch.zeros(size=shape, dtype=self._dtype)
+        return torch.randn(*shape, dtype=self._dtype)
 
 
 class BoundedTensorSpec(TensorSpec):
@@ -131,7 +181,7 @@ class BoundedTensorSpec(TensorSpec):
 
     __slots__ = ("_minimum", "_maximum")
 
-    def __init__(self, shape, dtype, minimum, maximum):
+    def __init__(self, shape, dtype=torch.float32, minimum=0, maximum=1):
         """Initializes a new `BoundedTensorSpec`.
         Args:
             shape (tuple[int]): The shape of the tensor.
@@ -144,12 +194,10 @@ class BoundedTensorSpec(TensorSpec):
         """
         super(BoundedTensorSpec, self).__init__(shape, dtype)
 
-        if minimum is None or maximum is None:
-            raise ValueError("minimum and maximum must be provided; but saw "
-                             "'%s' and '%s'" % (minimum, maximum))
-
         try:
-            np.broadcast(minimum, maximum, np.zeros(self.shape))
+            min_max = np.broadcast(minimum, maximum, np.zeros(self.shape))
+            for m, M, _ in min_max:
+                assert m <= M, "Min {} is greater than Max {}".format(m, M)
         except ValueError as exception:
             raise ValueError(
                 "minimum or maximum is not compatible with shape. "

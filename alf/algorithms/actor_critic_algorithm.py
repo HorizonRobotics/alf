@@ -14,10 +14,11 @@
 """Actor critic algorithm."""
 
 import gin
-from alf.networks import ActorNetwork, ValueNetwork
+
+from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
-from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.data_structures import TimeStep, namedtuple, PolicyStep
+from alf.data_structures import TimeStep, AlgStep, namedtuple
 from alf.utils import dist_utils
 
 ActorCriticState = namedtuple(
@@ -28,13 +29,15 @@ ActorCriticInfo = namedtuple("ActorCriticInfo",
 
 
 @gin.configurable
-class ActorCriticAlgorithm(OnPolicyAlgorithm):
+class ActorCriticAlgorithm(RLAlgorithm):
     """Actor critic algorithm."""
 
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 actor_network: ActorNetwork,
+                 env,
+                 config,
+                 actor_network: ActorDistributionNetwork,
                  value_network: ValueNetwork,
                  loss=None,
                  loss_class=ActorCriticLoss,
@@ -44,7 +47,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         """Create an ActorCriticAlgorithm.
 
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
+            env ():
+            config ():
             actor_network : A network that returns nested
                 tensor of action distribution for each observation given observation
                 and network state.
@@ -67,6 +73,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             train_state_spec=ActorCriticState(
                 actor=actor_network.state_spec,
                 value=value_network.state_spec),
+            env=env,
+            config=config,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
@@ -80,35 +88,32 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
+    def is_on_policy(self):
+        return True
+
     def predict(self, time_step: TimeStep, state: ActorCriticState,
                 epsilon_greedy):
         """Predict for one step."""
         action_dist, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
+            time_step.observation, network_state=state.actor)
 
         action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
-        return PolicyStep(
-            action=action,
+        return AlgStep(
+            output=action,
             state=ActorCriticState(actor=actor_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
     def rollout(self, time_step: TimeStep, state: ActorCriticState, mode):
         """Rollout for one step."""
         value, value_state = self._value_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.value)
+            time_step.observation, network_state=state.value)
 
         action_distribution, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
+            time_step.observation, network_state=state.actor)
 
         action = dist_utils.sample_action_distribution(action_distribution)
-        return PolicyStep(
-            action=action,
+        return AlgStep(
+            output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
                 value=value, action_distribution=action_distribution))
