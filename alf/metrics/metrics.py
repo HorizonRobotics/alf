@@ -155,7 +155,8 @@ class AverageReturnMetric(metric.StepMetric):
         self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
         self._return_accumulator = torch.zeros(batch_size, dtype=dtype)
-        self.register_buffer(tensor=self._return_accumulator, name='return_accumulator')
+        self.register_buffer(
+            tensor=self._return_accumulator, name='return_accumulator')
 
     def call(self, time_step):
         """Accumulates returns from time_step batched tensor.
