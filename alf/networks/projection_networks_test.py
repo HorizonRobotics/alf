@@ -18,8 +18,9 @@ import unittest
 
 import torch
 
-from alf.networks.projection_networks import CategoricalProjectionNetwork
-from alf.networks.projection_networks import NormalProjectionNetwork
+from alf.networks import CategoricalProjectionNetwork
+from alf.networks import NormalProjectionNetwork
+from alf.networks import StableNormalProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 import alf.layers as layers
@@ -53,6 +54,8 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         self.assertTrue(
             torch.isclose(dists.probs.mean(), torch.as_tensor(0.2)))
 
+
+class TestNormalProjectionNetwork(parameterized.TestCase, unittest.TestCase):
     @parameterized.parameters((True, ), (False, ))
     def test_zero_normal_projection_net(self, state_dependent_std):
         """A zero-weight net generates zero actions."""
@@ -76,7 +79,9 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         ) + action_spec.shape)
         self.assertTrue(torch.all(out == 0))
 
-    def test_squash_mean_normal_projection_net(self):
+    @parameterized.parameters((NormalProjectionNetwork, ),
+                              (StableNormalProjectionNetwork, ))
+    def test_squash_mean_normal_projection_net(self, network_ctor):
         """A net with `sqaush_mean=True` should generate means within the action
         spec."""
         input_spec = TensorSpec((10, ), torch.float32)
@@ -84,14 +89,14 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
 
         action_spec = TensorSpec((8, ), torch.float32)
         # For squashing mean, we need a bounded action spec
-        self.assertRaises(AssertionError, NormalProjectionNetwork, input_spec,
+        self.assertRaises(AssertionError, network_ctor, input_spec,
                           action_spec)
 
         action_spec = BoundedTensorSpec((2, ),
                                         torch.float32,
                                         minimum=(0, -0.01),
                                         maximum=(0.01, 0))
-        net = NormalProjectionNetwork(
+        net = network_ctor(
             input_spec.shape[0], action_spec, projection_output_init_gain=1.0)
         dist = net(embedding)
         self.assertTrue(dist.mean.std() > 0)
@@ -100,7 +105,9 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         self.assertTrue(
             torch.all(dist.mean < torch.as_tensor(action_spec.maximum)))
 
-    def test_scale_distribution_normal_projection_net(self):
+    @parameterized.parameters((NormalProjectionNetwork, ),
+                              (StableNormalProjectionNetwork, ))
+    def test_scale_distribution_normal_projection_net(self, network_ctor):
         """A net with `scale_distribution=True` should always sample actions
         within the action spec."""
         input_spec = TensorSpec((10, ), torch.float32)
@@ -108,14 +115,14 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
 
         action_spec = TensorSpec((8, ), torch.float32)
         # For scaling distribution, we need a bounded action spec
-        self.assertRaises(AssertionError, NormalProjectionNetwork, input_spec,
+        self.assertRaises(AssertionError, network_ctor, input_spec,
                           action_spec)
 
         action_spec = BoundedTensorSpec((2, ),
                                         torch.float32,
                                         minimum=(0, -0.01),
                                         maximum=(0.01, 0))
-        net = NormalProjectionNetwork(
+        net = network_ctor(
             input_spec.shape[0],
             action_spec,
             projection_output_init_gain=1.0,
@@ -136,6 +143,27 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
         self.assertTrue(out.std() > 0)
         self.assertTrue(torch.all(out > torch.as_tensor(action_spec.minimum)))
         self.assertTrue(torch.all(out < torch.as_tensor(action_spec.maximum)))
+
+    def test_stable_normal_projection_net_minmax_std(self):
+        """Test max and min stds for StableNormalProjectionNetwork."""
+        input_spec = TensorSpec((10, ), torch.float32)
+        embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
+        action_spec = TensorSpec((8, ), torch.float32)
+
+        min_std, max_std, init_std = 0.2, 0.4, 0.3
+        net = StableNormalProjectionNetwork(
+            input_spec.shape[0],
+            action_spec,
+            projection_output_init_gain=1.0,
+            state_dependent_std=True,
+            squash_mean=False,
+            init_std=init_std,
+            min_std=min_std,
+            max_std=max_std)
+
+        dist = net(embedding)
+        self.assertTrue(torch.all(dist.base_dist.scale > min_std))
+        self.assertTrue(torch.all(dist.base_dist.scale < max_std))
 
 
 if __name__ == "__main__":

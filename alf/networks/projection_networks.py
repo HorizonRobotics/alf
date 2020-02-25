@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gin
+import math
 import numpy as np
 import functools
 from typing import Callable
@@ -134,9 +135,7 @@ class NormalProjectionNetwork(nn.Module):
                 requires_grad=True)
             self._std_projection_layer = lambda _: self._std
 
-    def forward(self, inputs):
-        means = self._mean_transform(self._means_projection_layer(inputs))
-        stds = self._std_transform(self._std_projection_layer(inputs))
+    def _normal_dist(self, means, stds):
         normal_dist = DiagMultivariateNormal(loc=means, scale_diag=stds)
         if self._scale_distribution:
             # The transformed distribution can also do reparameterized sampling
@@ -160,3 +159,107 @@ class NormalProjectionNetwork(nn.Module):
             return squashed_dist
         else:
             return normal_dist
+
+    def forward(self, inputs):
+        means = self._mean_transform(self._means_projection_layer(inputs))
+        stds = self._std_transform(self._std_projection_layer(inputs))
+        return self._normal_dist(means, stds)
+
+
+@gin.configurable
+class StableNormalProjectionNetwork(NormalProjectionNetwork):
+    """Generates a Multi-variate normal by predicting a mean and std.
+
+    It parameterizes the normal distributions as std=c0+1/(c1+softplus(b))
+    and mean=a*std where a and b are outputs from means_projection_layer and
+    stds_projectin_layer respectively. c0 and c1 are chosen so that
+    min_std <= std <= max_std. The advantage of this parameterization is that
+    its second order derivatives with respect to a and b are bounded even when
+    the standard deviations become very small so that the optimization is
+    more stable. See docs/stable_gradient_descent_for_gaussian_distribution.py
+    for detail.
+    """
+
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 activation=layers.identity,
+                 projection_output_init_gain=0.1,
+                 squash_mean=True,
+                 state_dependent_std=False,
+                 inverse_std_transform='softplus',
+                 scale_distribution=False,
+                 init_std=1.0,
+                 min_std=0.0,
+                 max_std=None):
+        """Creates an instance of StableNormalProjectionNetwork.
+
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            activation (torch.nn.Functional): activation function to use in
+                dense layers.
+            projection_output_init_gain (float): Output gain for initializing
+                action means and std weights.
+            squash_mean (bool): If True, squash the output mean to fit the
+                action spec. If `scale_distribution` is also True, this value
+                will be ignored.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
+            inverse_std_transform (torch.nn.functional): Currently supports
+                torch.exp and nn.functional.softplus. Transformation to obtain
+                inverse std. The transformed values are further transformed
+                according to min_std and max_std.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output aciton fits within the
+                `action_spec`. Note that this is different from `mean_transform`
+                which merely squashes the mean to fit within the spec.
+            init_std (float): Initial value for standard deviation.
+            min_std (float): Minimum value for standard deviation.
+            max_std (float): Maximum value for standard deviation. If None, no
+                maximum is enforced.
+        """
+        self._min_std = min_std
+        self._max_std = max_std
+        assert init_std > min_std
+
+        c = 1 / (init_std - min_std)
+        if max_std is not None:
+            assert init_std < max_std
+            c -= 1 / (max_std - min_std)
+
+        if inverse_std_transform == 'exp':
+            std_transform = torch.exp
+            std_bias_initializer_value = math.log(c)
+        elif inverse_std_transform == 'softplus':
+            std_transform = nn.functional.softplus
+            std_bias_initializer_value = math.log(math.exp(c) - 1)
+        else:
+            raise ValueError(
+                "Unsupported std_transform %s" % inverse_std_transform)
+
+        super().__init__(
+            input_size=input_size,
+            action_spec=action_spec,
+            activation=activation,
+            projection_output_init_gain=projection_output_init_gain,
+            std_bias_initializer_value=std_bias_initializer_value,
+            squash_mean=squash_mean,
+            state_dependent_std=state_dependent_std,
+            std_transform=std_transform,
+            scale_distribution=scale_distribution)
+
+    def forward(self, inputs):
+        inv_stds = self._std_transform(self._std_projection_layer(inputs))
+        if self._max_std is not None:
+            inv_stds += 1 / (self._max_std - self._min_std)
+        stds = 1. / inv_stds
+        if self._min_std > 0:
+            stds += self._min_std
+
+        means = self._mean_transform(
+            self._means_projection_layer(inputs) * stds)
+
+        return self._normal_dist(means, stds)
