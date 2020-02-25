@@ -34,12 +34,12 @@ class THDeque(torch.nn.Module):
         super().__init__()
         shape = (max_len, )
         self.dtype = dtype
-        self._max_len = torch.nn.Parameter(
-            torch.tensor(max_len, dtype=torch.int64), requires_grad=False)
-        self._buffer = torch.nn.Parameter(
-            torch.zeros(shape, dtype=dtype), requires_grad=False)
-        self._head = torch.nn.Parameter(
-            torch.zeros((), dtype=torch.int64), requires_grad=False)
+        self._max_len = torch.tensor(max_len, dtype=torch.int64)
+        self.register_buffer(tensor=self._max_len, name='max_len')
+        self._buffer = torch.zeros(shape, dtype=dtype)
+        self.register_buffer(tensor=self._buffer, name='buffer')
+        self._head = torch.zeros((), dtype=torch.int64)
+        self.register_buffer(tensor=self._head, name='head')
 
     @property
     def data(self):
@@ -80,10 +80,11 @@ class EnvironmentSteps(metric.StepMetric):
                  name='EnvironmentSteps',
                  prefix='Metrics',
                  dtype=torch.int64):
-        super(EnvironmentSteps, self).__init__(name=name, prefix=prefix)
+        super().__init__(name=name, prefix=prefix)
         self.dtype = dtype
-        self._environment_steps = torch.nn.Parameter(
-            torch.zeros(1, dtype=self.dtype), requires_grad=False)
+        self._environment_steps = torch.zeros(1, dtype=self.dtype)
+        self.register_buffer(
+            tensor=self._environment_steps, name='environment_steps')
 
     def call(self, time_step):
         """Increase the number of environment_steps according to time_step.
@@ -116,8 +117,9 @@ class NumberOfEpisodes(metric.StepMetric):
                  dtype=torch.int64):
         super(NumberOfEpisodes, self).__init__(name=name, prefix=prefix)
         self.dtype = dtype
-        self._number_episodes = torch.nn.Parameter(
-            torch.zeros(1, dtype=self.dtype), requires_grad=False)
+        self._number_episodes = torch.zeros(1, dtype=self.dtype)
+        self.register_buffer(
+            tensor=self._number_episodes, name='number_episodes')
 
     def call(self, time_step):
         """Increase the number of number_episodes according to time_step.
@@ -152,8 +154,8 @@ class AverageReturnMetric(metric.StepMetric):
         super(AverageReturnMetric, self).__init__(name=name, prefix=prefix)
         self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
-        self._return_accumulator = torch.nn.Parameter(
-            torch.zeros(batch_size, dtype=dtype), requires_grad=False)
+        self._return_accumulator = torch.zeros(batch_size, dtype=dtype)
+        self.register_buffer(tensor=self._return_accumulator, name='return_accumulator')
 
     def call(self, time_step):
         """Accumulates returns from time_step batched tensor.
@@ -208,8 +210,9 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         # TODO: use tensor deque
         self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
-        self._length_accumulator = torch.nn.Parameter(
-            torch.zeros(batch_size, dtype=dtype), requires_grad=False)
+        self._length_accumulator = torch.zeros(batch_size, dtype=dtype)
+        self.register_buffer(
+            tensor=self._length_accumulator, name='length_accumulator')
 
     def call(self, time_step):
         """Accumulates the number of episode steps according to batched time_step.
