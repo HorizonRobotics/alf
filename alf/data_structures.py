@@ -117,7 +117,9 @@ def _create_timestep(observation, prev_action, reward, discount, env_id,
     # Warning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
     # Input struct might contain tensor.
     # TODO: remove warning
-    make_tensors = lambda struct: map_structure(torch.tensor, struct)
+    create_tensor = lambda t: t.clone().detach() if torch.is_tensor(
+        t) else torch.tensor(t)
+    make_tensors = lambda struct: map_structure(create_tensor, struct)
     return TimeStep(
         step_type=step_type.view(discount.shape),
         reward=make_tensors(reward),

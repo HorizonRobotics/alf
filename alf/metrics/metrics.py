@@ -21,10 +21,11 @@ from alf.metrics import metric
 import torch
 
 
-class TCDeque(object):
+class TCDeque(torch.nn.Module):
     """Deque backed by torch.tensor storage."""
 
     def __init__(self, max_len, dtype):
+        super().__init__()
         shape = (max_len, )
         self._dtype = dtype
         self.max_len = torch.tensor(max_len, dtype=torch.int32)
