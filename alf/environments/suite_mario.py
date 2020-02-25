@@ -16,13 +16,11 @@ import gym
 import numpy as np
 import gin
 
-from alf.environments import suite_gym
-
-from tf_agents.environments import wrappers
+from alf.environments import suite_gym, torch_wrappers, ProcessEnvironment
+from alf.environments.gym_wrappers import FrameSkip, FrameStack
+from alf.environments.utils import UnwrappedEnvChecker
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
-from alf.environments.wrappers import FrameSkip, FrameStack
-from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
 
@@ -53,7 +51,7 @@ def load(game,
          record=False,
          crop=True,
          gym_env_wrappers=(),
-         env_wrappers=(),
+         torch_env_wrappers=(),
          max_episode_steps=4500,
          spec_dtype_map=None):
     """Loads the selected mario game and wraps it .
@@ -104,16 +102,16 @@ def load(game,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            env_wrappers=env_wrappers,
+            torch_env_wrappers=torch_env_wrappers,
             spec_dtype_map=spec_dtype_map,
             auto_reset=True)
 
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
     if wrap_with_process:
-        process_env = ProcessPyEnvironment(lambda: env_ctor())
+        process_env = ProcessEnvironment(lambda: env_ctor())
         process_env.start()
-        py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
+        py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
         py_env = env_ctor()
     return py_env

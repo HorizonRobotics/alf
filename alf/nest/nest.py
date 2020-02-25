@@ -190,6 +190,18 @@ def map_structure_up_to(shallow_nest, func, *nests):
     return _map(shallow_nest, *nests)
 
 
+def fast_map_structure_flatten(func, structure, *flat_structure, **kwargs):
+    entries = zip(*flat_structure)
+    return pack_sequence_as(structure, [func(*x) for x in entries])
+
+
+def fast_map_structure(func, *structure, **kwargs):
+    flat_structure = [flatten(s) for s in structure]
+    entries = zip(*flat_structure)
+
+    return tf.nest.pack_sequence_as(structure[0], [func(*x) for x in entries])
+
+
 def pack_sequence_as(nest, flat_seq):
     """Returns a given flattened sequence packed into a given structure."""
     assert_same_length(flatten(nest), flat_seq)

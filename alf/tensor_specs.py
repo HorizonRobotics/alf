@@ -26,6 +26,20 @@ def torch_dtype_to_str(dtype):
     return dtype.__str__()[6:]
 
 
+def is_bounded(spec):
+    return isinstance(spec, BoundedTensorSpec)
+
+
+def is_discrete(spec):
+    assert isinstance(spec, TensorSpec)
+    return spec.dtype.is_integer
+
+
+def is_continuous(spec):
+    assert isinstance(spec, TensorSpec)
+    return spec.dtype.is_floating
+
+
 class TensorSpec(object):
     """Describes a torch.Tensor.
     A TensorSpec allows an API to describe the Tensors that it accepts or

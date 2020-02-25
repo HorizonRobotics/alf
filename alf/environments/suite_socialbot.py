@@ -23,11 +23,10 @@ import contextlib
 import socket
 import gym
 from fasteners.process_lock import InterProcessLock
-from tf_agents.environments import wrappers
 import gin.tf
 
-from alf.environments import suite_gym
-from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
+from alf.environments import suite_gym, torch_wrappers, ProcessEnvironment
+from alf.environments.utils import UnwrappedEnvChecker
 
 DEFAULT_SOCIALBOT_PORT = 11345
 
@@ -45,7 +44,7 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
-         env_wrappers=(),
+         torch_env_wrappers=(),
          spec_dtype_map=None):
     """Loads the selected environment and wraps it with the specified wrappers.
 
@@ -62,7 +61,7 @@ def load(environment_name,
             to 0 or if there is no timestep_limit set in the environment's spec.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
-        env_wrappers: Iterable with references to wrapper classes to use on the
+        torch_env_wrappers: Iterable with references to wrapper classes to use on the
             gym_wrapped environment.
         spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
             default dtype for the tensors. An easy way how to configure a custom
@@ -76,8 +75,8 @@ def load(environment_name,
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
     if gym_env_wrappers is None:
         gym_env_wrappers = ()
-    if env_wrappers is None:
-        env_wrappers = ()
+    if torch_env_wrappers is None:
+        torch_env_wrappers = ()
 
     gym_spec = gym.spec(environment_name)
     if max_episode_steps is None:
@@ -93,15 +92,15 @@ def load(environment_name,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            env_wrappers=env_wrappers,
+            torch_env_wrappers=torch_env_wrappers,
             spec_dtype_map=spec_dtype_map)
 
     port_range = [port, port + 1] if port else [DEFAULT_SOCIALBOT_PORT]
     with _get_unused_port(*port_range) as port:
         if wrap_with_process:
-            process_env = ProcessPyEnvironment(lambda: env_ctor(port))
+            process_env = ProcessEnvironment(lambda: env_ctor(port))
             process_env.start()
-            py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
+            py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
         else:
             py_env = env_ctor(port)
     return py_env

@@ -12,91 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from multiprocessing import dummy as mp_threads
-
 import random
-import sys
-import traceback
 import tensorflow as tf
+import torch
 import gin.tf
-from absl import logging
 import numpy as np
 
 from alf.environments import suite_gym
-from tf_agents.environments import parallel_py_environment
-from tf_agents.environments import tf_py_environment
-from tf_agents.environments import py_environment
+from alf.environments import thread_torch_environment, parallel_torch_environment
+from alf.environments import torch_wrappers
 
-
-class ThreadPyEnvironment(py_environment.PyEnvironment):
-    """Create, Step a single env in a separate thread
-    """
-
-    def __init__(self, env_constructor):
-        """Create a ThreadPyEnvironment
-
-        Args:
-            env_constructor (Callable): env_constructor for the OpenAI Gym environment
-        """
-        super().__init__()
-        self._pool = mp_threads.Pool(1)
-        self._env = self._pool.apply(env_constructor)
-
-    def observation_spec(self):
-        return self._apply('observation_spec')
-
-    def action_spec(self):
-        return self._apply('action_spec')
-
-    def _step(self, action):
-        return self._apply('step', (action, ))
-
-    def _reset(self):
-        return self._apply('reset')
-
-    def close(self):
-        self._apply('close')
-        self._pool.close()
-        self._pool.join()
-
-    def render(self, mode='rgb_array'):
-        return self._apply('render', (mode, ))
-
-    def seed(self, seed):
-        self._apply('seed', (seed, ))
-
-    def __getattr__(self, name):
-        return getattr(self._env, name)
-
-    def _apply(self, name, args=()):
-        func = getattr(self._env, name)
-        return self._pool.apply(func, args)
-
-
-class ProcessPyEnvironment(parallel_py_environment.ProcessPyEnvironment):
-    """tf_agents ProcessPyEnvironment with render()."""
-
-    def __init__(self, env_constructor, flatten=False):
-        super(ProcessPyEnvironment, self).__init__(
-            env_constructor, flatten=flatten)
-
-    def render(self, mode='human'):
-        """Render the environment.
-
-        Args:
-            mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
-                up a window where the environment can be visualized.
-        Returns:
-            An ndarray of shape [width, height, 3] denoting an RGB image if mode is
-            `rgb_array`. Otherwise return nothing and render directly to a display
-            window.
-        Raises:
-            NotImplementedError: If the environment does not support rendering.
-        """
-        return self.call('render', mode)()
-
-
-parallel_py_environment.ProcessPyEnvironment = ProcessPyEnvironment
+# from tf_agents.environments import tf_py_environment
 
 
 class UnwrappedEnvChecker(object):
@@ -157,13 +83,14 @@ def create_environment(env_name='CartPole-v0',
         # Create and step the env in a separate thread. env `step` and `reset` must
         #   run in the same thread which the env is created in for some simulation
         #   environments such as social_bot(gazebo)
-        py_env = ThreadPyEnvironment(lambda: env_load_fn(env_name))
+        py_env = thread_torch_environment.ThreadTorchEnvironment(
+            lambda: env_load_fn(env_name))
         if seed is None:
             py_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
         else:
             py_env.seed(seed)
     else:
-        py_env = parallel_py_environment.ParallelPyEnvironment(
+        py_env = parallel_torch_environment.ParallelTorchEnvironment(
             [lambda: env_load_fn(env_name)] * num_parallel_environments)
 
         if seed is None:
