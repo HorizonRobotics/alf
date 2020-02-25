@@ -46,7 +46,7 @@ class EnvironmentSteps(metric.StepMetric):
         is not part of any episode.
 
         Args:
-            time_step: A alf.data_structures.TimeStep
+            time_step (alf.data_structures.TimeStep): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
@@ -78,7 +78,7 @@ class NumberOfEpisodes(metric.StepMetric):
         It would increase for all time_step.is_last().
 
         Args:
-            time_step: A alf.data_structures.TimeStep
+            time_step (alf.data_structures.TimeStep): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
@@ -114,7 +114,7 @@ class AverageReturnMetric(metric.StepMetric):
         It would accumulate all time_step.reward.
 
         Args:
-            time_step: A alf.data_structures.TimeStep
+            time_step (alf.data_structures.TimeStep): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
@@ -169,7 +169,7 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         is the boundary step and needs to be ignored, different from tf_agents.
 
         Args:
-            time_step: A alf.data_structures.TimeStep
+            time_step (alf.data_structures.TimeStep): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
