@@ -38,8 +38,7 @@ class Checkpointer(object):
         ```python
             alg_root = MyAlg(params=[p1, p2], sub_algs=[a1, a2], optimizer=opt)
             ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir,
-                                alg=alg_root,
-                                **opt_dict)
+                                alg=alg_root)
         ```
 
         """
