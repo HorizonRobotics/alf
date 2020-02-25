@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from . import metrics
+from . import networks
 from . import nest
+from . import summary
 from . import test
 
 from .tensor_specs import *

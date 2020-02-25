@@ -68,8 +68,7 @@ def train_eval(root_dir):
     """
 
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
-    trainer = trainer_conf.create_trainer()
-    trainer.initialize()
+    trainer = policy_trainer.Trainer(trainer_conf)
     trainer.train()
 
 

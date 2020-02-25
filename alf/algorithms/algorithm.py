@@ -13,12 +13,11 @@
 # limitations under the License.
 """Algorithm base class."""
 
-from abc import abstractmethod
 from absl import logging
 import copy
 import json
 import os
-
+import six
 import torch
 import torch.nn as nn
 
@@ -49,34 +48,14 @@ class Algorithm(nn.Module):
 
     Algorithm is a generic interface for supervised training algorithms.
 
-    User needs to implement train_step() and calc_loss()/train_complete().
-
-    train_step() is called to generate actions for every environment step.
-    It also needs to generate necessary information for training.
-
-    train_complete() is called every train_interval steps (specified in
-    PolicyDriver). All the training information collected at each previous
-    train_step() are batched and provided as arguments for train_complete().
-
-    The following is the pseudo code to illustrate how Algorithm is used for
-    training.
-
-    ```python
-    while training not ends:
-        training_info = []
-        with GradientTape() as tape:
-        for i in range(train_interval):
-            get inputs
-            outputs, state, info = train_step(inputs, state)
-            add info to training_info
-
-        train_complete(tape, batched_training_info)
-    ```
+    User needs to implement predict_step(), train_step() and
+    calc_loss()/train_complete().
     """
 
     def __init__(self,
                  train_state_spec=None,
                  predict_state_spec=None,
+                 rollout_state_spec=None,
                  optimizer=None,
                  trainable_module_sets=None,
                  gradient_clipping=None,
@@ -116,6 +95,10 @@ class Algorithm(nn.Module):
         if predict_state_spec is None:
             predict_state_spec = train_state_spec
         self._predict_state_spec = predict_state_spec
+        if rollout_state_spec is None:
+            rollout_state_spec = train_state_spec
+        self._rollout_state_spec = rollout_state_spec
+
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
         self._gradient_clipping = gradient_clipping
@@ -309,10 +292,19 @@ class Algorithm(nn.Module):
                                        self._predict_state_spec)
         return state
 
+    def get_initial_predict_state(self, batch_size):
+        return common.zeros_from_spec(self._predict_state_spec, batch_size)
+
+    def get_initial_rollout_state(self, batch_size):
+        return common.zeros_from_spec(self._rollout_state_spec, batch_size)
+
+    def get_initial_train_step_state(self, batch_size):
+        return common.zeros_from_spec(self._train_state_spec, batch_size)
+
     #------------- User need to implement the following functions -------
 
     # Subclass may override predict() to allow more efficient implementation
-    def predict(self, inputs, state=None):
+    def predict_step(self, inputs, state=None):
         """Predict for one step of inputs.
 
         Args:
@@ -327,7 +319,6 @@ class Algorithm(nn.Module):
         algorithm_step = self.train_step(inputs, state)
         return algorithm_step._replace(info=None)
 
-    @abstractmethod
     def train_step(self, inputs, state=None):
         """Perform one step of predicting and training computation.
 
@@ -347,7 +338,7 @@ class Algorithm(nn.Module):
                     the user needs to override calc_loss() to calculate loss or
                     override train_complete() to do customized training.
         """
-        pass
+        return AlgStep()
 
     # Subclass may override train_complete() to allow customized training
     def train_complete(self, training_info, valid_masks=None, weight=1.0):

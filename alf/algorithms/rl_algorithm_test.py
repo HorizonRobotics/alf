@@ -18,13 +18,45 @@ import unittest
 
 import alf
 from alf.utils import common, dist_utils, tensor_utils
-from alf.data_structures import StepType, TimeStep
-from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, TrainingInfo
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 
 
-# adapted from alf.algorithms.rl_algorithm_test
+class MyAlg(RLAlgorithm):
+    def __init__(self, env, config):
+        super().__init__(
+            observation_spec=alf.TensorSpec((2, ), dtype='float32'),
+            action_spec=alf.BoundedTensorSpec(
+                shape=(), dtype='int32', minimum=0, maximum=2),
+            train_state_spec=(),
+            env=env,
+            config=config,
+            optimizer=torch.optim.Adam(lr=1e-2),
+            debug_summaries=True,
+            name="MyAlg")
+
+        self._proj_net = alf.networks.CategoricalProjectionNetwork(
+            input_size=2, num_actions=3)
+
+    def is_on_policy(self):
+        return True
+
+    def predict(self, time_step: TimeStep, state, epsilon_greedy):
+        dist = self._proj_net(time_step.observation)
+        return AlgStep(output=dist.sample(), state=(), info=())
+
+    def rollout(self, time_step: TimeStep, state, mode):
+        dist = self._proj_net(time_step.observation)
+        return AlgStep(output=dist.sample(), state=(), info=dist)
+
+    def calc_loss(self, training_info: TrainingInfo):
+        dist: td.Distribution = training_info.info
+        log_prob = dist.log_prob(training_info.action)
+        loss = -log_prob[:-1] * training_info.reward[1:]
+        loss = tensor_utils.tensor_extend_zero(loss)
+        return LossInfo(loss=loss)
+
+
 class MyEnv(object):
     def __init__(self, batch_size):
         super().__init__()
@@ -69,43 +101,18 @@ class Config(object):
         self.unroll_length = 5
 
 
-class ActorCriticAlgorithmTest(unittest.TestCase):
-    def test_ac_algorithm(self):
+class RLAlgorithmTest(unittest.TestCase):
+    def test_rl_algorithm(self):
         config = Config()
         env = MyEnv(batch_size=3)
-
-        obs_spec = alf.TensorSpec((2, ), dtype='float32')
-        action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int32', minimum=0, maximum=2)
-
-        fc_layer_params = [10, 8, 6]
-
-        actor_network = ActorDistributionNetwork(
-            obs_spec,
-            action_spec,
-            fc_layer_params=fc_layer_params,
-            discrete_projection_net_ctor=alf.networks.
-            CategoricalProjectionNetwork)
-
-        value_network = ValueNetwork(obs_spec, fc_layer_params=[10, 8, 1])
-
-        alg = ActorCriticAlgorithm(
-            observation_spec=obs_spec,
-            action_spec=action_spec,
-            env=env,
-            config=config,
-            actor_network=actor_network,
-            value_network=value_network,
-            optimizer=torch.optim.Adam(lr=1e-2),
-            debug_summaries=True,
-            name="MyActorCritic")
+        alg = MyAlg(env=env, config=config)
         for _ in range(50):
             alg.train_iter()
 
         time_step = common.get_initial_time_step(env)
         state = alg.get_initial_predict_state(env.batch_size)
         policy_step = alg.rollout(time_step, state, mode=RLAlgorithm.ROLLOUT)
-        logits = policy_step.info.action_distribution.logits
+        logits = policy_step.info.logits
         print("logits: ", logits)
         self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
         self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
