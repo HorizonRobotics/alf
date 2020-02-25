@@ -56,7 +56,7 @@ class THDeque(torch.nn.Module):
             Nothing
         """
         position = torch.remainder(self._head, self._max_len)
-        self._buffer[position] = value
+        self._buffer.scatter_(0, position, value)
         self._head.add_(1)
 
     @property
@@ -184,8 +184,7 @@ class AverageReturnMetric(metric.StepMetric):
         last_episode_indices = torch.squeeze(
             *torch.where(time_step.is_last())).type(torch.int64)
         for indx in last_episode_indices:
-            self._buffer.append(
-                self._return_accumulator[indx].clone().detach())
+            self._buffer.append(self._return_accumulator[indx])
 
         return time_step
 
@@ -227,23 +226,20 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         """
         # Each non-boundary time_step (mid or last) represents a step.
         is_first = time_step.is_first()
-        non_boundary = torch.where(
-            torch.logical_not(is_first),
-            torch.ones_like(self._length_accumulator),
-            torch.zeros_like(self._length_accumulator))
-        self._length_accumulator.add_(non_boundary)
+        non_boundary_indices = torch.squeeze(*torch.where(~is_first)).type(
+            torch.int64)
+        self._length_accumulator.scatter_add_(
+            0, non_boundary_indices, torch.ones_like(time_step.reward))
 
         # Add lengths to buffer when we hit end of episode
         is_last = time_step.is_last()
         last_indices = torch.squeeze(*torch.where(is_last)).type(torch.int64)
         for indx in last_indices:
-            self._buffer.append(
-                self._length_accumulator[indx].clone().detach())
+            self._buffer.append(self._length_accumulator[indx])
 
         # Clear length accumulator at the end of episodes.
-        self._length_accumulator[:] = torch.where(
-            is_last, torch.zeros_like(self._length_accumulator),
-            self._length_accumulator)
+        self._length_accumulator.scatter_(
+            0, last_indices, torch.zeros_like(self._length_accumulator))
 
         return time_step
 
