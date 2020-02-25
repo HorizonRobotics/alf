@@ -28,34 +28,34 @@ class THDeque(torch.nn.Module):
         super().__init__()
         shape = (max_len, )
         self.dtype = dtype
-        self.max_len = torch.nn.Parameter(
+        self._max_len = torch.nn.Parameter(
             torch.tensor(max_len, dtype=torch.int64), requires_grad=False)
-        self.buffer = torch.nn.Parameter(
+        self._buffer = torch.nn.Parameter(
             torch.zeros(shape, dtype=dtype), requires_grad=False)
-        self.head = torch.nn.Parameter(
+        self._head = torch.nn.Parameter(
             torch.zeros((), dtype=torch.int64), requires_grad=False)
 
     @property
     def data(self):
-        return self.buffer[:self.length]
+        return self._buffer[:self.length]
 
     def append(self, value):
-        position = torch.remainder(self.head, self.max_len)
-        self.buffer[position] = value
-        self.head.add_(1)
+        position = torch.remainder(self._head, self._max_len)
+        self._buffer[position] = value
+        self._head.add_(1)
 
     @property
     def length(self):
-        return torch.min(self.head, self.max_len)
+        return torch.min(self._head, self._max_len)
 
     def clear(self):
-        self.head.fill_(0)
-        self.buffer.fill_(0)
+        self._head.fill_(0)
+        self._buffer.fill_(0)
 
     def mean(self):
-        if self.head == 0:
+        if self._head == 0:
             return torch.zeros((), dtype=self.dtype)
-        return torch.mean(self.buffer[:self.length])
+        return torch.mean(self._buffer[:self.length])
 
 
 class EnvironmentSteps(metric.StepMetric):
@@ -67,7 +67,7 @@ class EnvironmentSteps(metric.StepMetric):
                  dtype=torch.int64):
         super(EnvironmentSteps, self).__init__(name=name, prefix=prefix)
         self.dtype = dtype
-        self.environment_steps = torch.nn.Parameter(
+        self._environment_steps = torch.nn.Parameter(
             torch.zeros(1, dtype=self.dtype), requires_grad=False)
 
     def call(self, time_step):
@@ -82,14 +82,14 @@ class EnvironmentSteps(metric.StepMetric):
         """
         steps = (torch.logical_not(time_step.is_first())).type(self.dtype)
         num_steps = torch.sum(steps)
-        self.environment_steps.add_(num_steps)
+        self._environment_steps.add_(num_steps)
         return time_step
 
     def result(self):
-        return self.environment_steps
+        return self._environment_steps
 
     def reset(self):
-        self.environment_steps.fill_(0)
+        self._environment_steps.fill_(0)
 
 
 class NumberOfEpisodes(metric.StepMetric):
@@ -101,7 +101,7 @@ class NumberOfEpisodes(metric.StepMetric):
                  dtype=torch.int64):
         super(NumberOfEpisodes, self).__init__(name=name, prefix=prefix)
         self.dtype = dtype
-        self.number_episodes = torch.nn.Parameter(
+        self._number_episodes = torch.nn.Parameter(
             torch.zeros(1, dtype=self.dtype), requires_grad=False)
 
     def call(self, time_step):
@@ -115,14 +115,14 @@ class NumberOfEpisodes(metric.StepMetric):
         """
         episodes = time_step.is_last().type(self.dtype)
         num_episodes = torch.sum(episodes)
-        self.number_episodes.add_(num_episodes)
+        self._number_episodes.add_(num_episodes)
         return time_step
 
     def result(self):
-        return self.number_episodes
+        return self._number_episodes
 
     def reset(self):
-        self.number_episodes.fill_(0)
+        self._number_episodes.fill_(0)
 
 
 class AverageReturnMetric(metric.StepMetric):
@@ -136,9 +136,9 @@ class AverageReturnMetric(metric.StepMetric):
                  buffer_size=10):
         super(AverageReturnMetric, self).__init__(name=name, prefix=prefix)
         # TODO: use tensor deque
-        self.buffer = THDeque(max_len=buffer_size, dtype=dtype)
+        self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
-        self.return_accumulator = torch.nn.Parameter(
+        self._return_accumulator = torch.nn.Parameter(
             torch.zeros(batch_size, dtype=dtype), requires_grad=False)
 
     def call(self, time_step):
@@ -151,32 +151,32 @@ class AverageReturnMetric(metric.StepMetric):
             The arguments, for easy chaining.
         """
         # Zero out batch indices where a new episode is starting.
-        self.return_accumulator[:] = torch.where(
-            time_step.is_first(), torch.zeros_like(self.return_accumulator),
-            self.return_accumulator)
+        self._return_accumulator[:] = torch.where(
+            time_step.is_first(), torch.zeros_like(self._return_accumulator),
+            self._return_accumulator)
 
         # Update accumulator with received rewards.
         # Ignores first step whose reward comes from the boundary transition
         # of the last step from the previous episode.
-        self.return_accumulator.add_(
+        self._return_accumulator.add_(
             torch.where(time_step.is_first(),
-                        torch.zeros_like(self.return_accumulator),
+                        torch.zeros_like(self._return_accumulator),
                         time_step.reward))
 
         # Add final returns to buffer.
         last_episode_indices = torch.squeeze(
             *torch.where(time_step.is_last())).type(torch.int64)
         for indx in last_episode_indices:
-            self.buffer.append(self.return_accumulator[indx].clone().detach())
+            self._buffer.append(self._return_accumulator[indx].clone().detach())
 
         return time_step
 
     def result(self):
-        return self.buffer.mean()
+        return self._buffer.mean()
 
     def reset(self):
-        self.buffer.clear()
-        self.return_accumulator.fill_(0)
+        self._buffer.clear()
+        self._return_accumulator.fill_(0)
 
 
 class AverageEpisodeLengthMetric(metric.StepMetric):
@@ -191,9 +191,9 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         super(AverageEpisodeLengthMetric, self).__init__(
             name=name, prefix=prefix)
         # TODO: use tensor deque
-        self.buffer = THDeque(max_len=buffer_size, dtype=dtype)
+        self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
-        self.length_accumulator = torch.nn.Parameter(
+        self._length_accumulator = torch.nn.Parameter(
             torch.zeros(batch_size, dtype=dtype), requires_grad=False)
 
     def call(self, time_step):
@@ -210,26 +210,26 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         is_first = time_step.is_first()
         non_boundary = torch.where(
             torch.logical_not(is_first),
-            torch.ones_like(self.length_accumulator),
-            torch.zeros_like(self.length_accumulator))
-        self.length_accumulator.add_(non_boundary)
+            torch.ones_like(self._length_accumulator),
+            torch.zeros_like(self._length_accumulator))
+        self._length_accumulator.add_(non_boundary)
 
         # Add lengths to buffer when we hit end of episode
         is_last = time_step.is_last()
         last_indices = torch.squeeze(*torch.where(is_last)).type(torch.int64)
         for indx in last_indices:
-            self.buffer.append(self.length_accumulator[indx].clone().detach())
+            self._buffer.append(self._length_accumulator[indx].clone().detach())
 
         # Clear length accumulator at the end of episodes.
-        self.length_accumulator[:] = torch.where(
-            is_last, torch.zeros_like(self.length_accumulator),
-            self.length_accumulator)
+        self._length_accumulator[:] = torch.where(
+            is_last, torch.zeros_like(self._length_accumulator),
+            self._length_accumulator)
 
         return time_step
 
     def result(self):
-        return self.buffer.mean()
+        return self._buffer.mean()
 
     def reset(self):
-        self.buffer.clear()
-        self.length_accumulator.fill_(0)
+        self._buffer.clear()
+        self._length_accumulator.fill_(0)
