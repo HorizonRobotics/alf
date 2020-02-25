@@ -22,9 +22,15 @@ import torch
 
 
 class THDeque(torch.nn.Module):
-    """Deque backed by torch.tensor storage."""
+    """Torch (TH) deque backed by torch.nn.Parameter storage."""
 
     def __init__(self, max_len, dtype):
+        """Constructor.
+
+        Args:
+            max_len (int): maximum length of the deque
+            dtype (torch.dtype): dtype of the content of the deque
+        """
         super().__init__()
         shape = (max_len, )
         self.dtype = dtype
@@ -40,6 +46,15 @@ class THDeque(torch.nn.Module):
         return self._buffer[:self.length]
 
     def append(self, value):
+        """Appends value to deque.
+        Overwrites earliest value if deque exceeds max_len.
+
+        Args:
+            value (scalar or tensor of dtype): input value to collect
+
+        Returns:
+            Nothing
+        """
         position = torch.remainder(self._head, self._max_len)
         self._buffer[position] = value
         self._head.add_(1)
@@ -167,7 +182,8 @@ class AverageReturnMetric(metric.StepMetric):
         last_episode_indices = torch.squeeze(
             *torch.where(time_step.is_last())).type(torch.int64)
         for indx in last_episode_indices:
-            self._buffer.append(self._return_accumulator[indx].clone().detach())
+            self._buffer.append(
+                self._return_accumulator[indx].clone().detach())
 
         return time_step
 
@@ -218,7 +234,8 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         is_last = time_step.is_last()
         last_indices = torch.squeeze(*torch.where(is_last)).type(torch.int64)
         for indx in last_indices:
-            self._buffer.append(self._length_accumulator[indx].clone().detach())
+            self._buffer.append(
+                self._length_accumulator[indx].clone().detach())
 
         # Clear length accumulator at the end of episodes.
         self._length_accumulator[:] = torch.where(
