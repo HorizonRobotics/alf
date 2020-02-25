@@ -14,10 +14,9 @@
 """Some nest utils functions."""
 
 import gin
-
 import torch
 
-import alf.nest as nest
+from . import nest
 
 
 @gin.configurable

@@ -55,9 +55,17 @@ class TensorSpec(object):
         return cls(spec.shape, spec.dtype)
 
     @classmethod
-    def from_tensor(cls, tensor):
+    def from_tensor(cls, tensor, from_dim=0):
+        """Create TensorSpec from tensor.
+
+        Args:
+            tensor (Tensor): tensor from which the spec is extracted
+            from_dim (int): use tensor.shape[from_dim:] as shape
+        Returns:
+            TensorSpec
+        """
         assert isinstance(tensor, torch.Tensor)
-        return TensorSpec(tensor.shape, tensor.dtype)
+        return TensorSpec(tensor.shape[from_dim:], tensor.dtype)
 
     @classmethod
     def is_bounded(cls):
