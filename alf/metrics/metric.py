@@ -35,10 +35,11 @@ class StepMetric(nn.Module):
 
     def call(self, *args, **kwargs):
         """Accumulates statistics for the metric.
-    Args:
-      *args:
-      **kwargs: A mini-batch of inputs to the Metric.
-    """
+
+        Args:
+            *args:
+            **kwargs: A mini-batch of inputs to the Metric.
+        """
         raise NotImplementedError(
             'Metrics must define a call() member function')
 
@@ -57,14 +58,16 @@ class StepMetric(nn.Module):
 
     def gen_summaries(self, train_step=None, step_metrics=()):
         """Generates summaries against train_step and all step_metrics.
-    Args:
-      train_step: (Optional) Step counter for training iterations. If None, no
-        metric is generated against the global step.
-      step_metrics: (Optional) Iterable of step metrics to generate summaries
-        against.
-    Returns:
-      A list of summaries.
-    """
+
+        Args:
+            train_step: (Optional) Step counter for training iterations. If None, no
+                metric is generated against the global step.
+            step_metrics: (Optional) Iterable of step metrics to generate summaries
+                against.
+
+        Returns:
+            A list of summaries.
+        """
         summaries = []
         prefix = self._prefix
         tag = os.path.join(prefix, self.name)

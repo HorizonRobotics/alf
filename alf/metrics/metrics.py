@@ -21,17 +21,16 @@ from alf.metrics import metric
 import torch
 
 
-class TCDeque(torch.nn.Module):
+class THDeque(torch.nn.Module):
     """Deque backed by torch.tensor storage."""
 
     def __init__(self, max_len, dtype):
         super().__init__()
         shape = (max_len, )
         self._dtype = dtype
-        self.max_len = torch.tensor(max_len, dtype=torch.int32)
+        self.max_len = torch.tensor(max_len, dtype=torch.int64)
         self.buffer = torch.zeros(shape, dtype=dtype)
-
-        self.head = torch.zeros((), dtype=torch.int32)
+        self.head = torch.zeros((), dtype=torch.int64)
 
     @property
     def data(self):
@@ -135,7 +134,7 @@ class AverageReturnMetric(metric.StepMetric):
                  buffer_size=10):
         super(AverageReturnMetric, self).__init__(name=name, prefix=prefix)
         # TODO: use tensor deque
-        self.buffer = TCDeque(max_len=buffer_size, dtype=dtype)
+        self.buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self._dtype = dtype
         self.return_accumulator = torch.zeros(batch_size, dtype=dtype)
 
@@ -189,7 +188,7 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         super(AverageEpisodeLengthMetric, self).__init__(
             name=name, prefix=prefix)
         # TODO: use tensor deque
-        self.buffer = TCDeque(max_len=buffer_size, dtype=dtype)
+        self.buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self._dtype = dtype
         self.length_accumulator = torch.zeros(batch_size, dtype=dtype)
 
