@@ -110,9 +110,6 @@ class ComposedAlg(Algorithm):
             loss = loss + torch.sum(p)
         return LossInfo(loss=loss)
 
-    def _trainable_attributes_to_ignore(self):
-        return ['ignored_param']
-
 
 class ComposedAlgWithIgnore(Algorithm):
     def __init__(self,
@@ -191,10 +188,10 @@ class TestNetAndOptimizer(unittest.TestCase):
             self.assertTrue((para == 1).all())
 
 
-class TestWithSubAlgorithm(unittest.TestCase):
-    def test_with_sub_algorithm(self):
+class TestMultiAlgSingleOpt(unittest.TestCase):
+    def test_multi_algo_single_opt(self):
 
-        ckpt_dir = "/tmp/ckpt_data/sub_alg/"
+        ckpt_dir = "/tmp/ckpt_data/multi_alg_single_opt/"
 
         if os.path.isdir(ckpt_dir):
             shutil.rmtree(ckpt_dir)
@@ -217,11 +214,9 @@ class TestWithSubAlgorithm(unittest.TestCase):
             sub_algs=[alg_1, alg_2],
             name="root")
 
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
+
         all_optimizers = alg_root.optimizers()
-
-        ckpt_mngr = ckpt_utils.Checkpointer(
-            ckpt_dir, alg=alg_root, opt=all_optimizers[0])
-
         # a number of training steps
         step_num = 0
         ckpt_mngr.save(step_num)
@@ -251,7 +246,7 @@ class TestWithSubAlgorithm(unittest.TestCase):
 class TestMultiAlgMultiOpt(unittest.TestCase):
     def test_multi_alg_multi_opt(self):
 
-        ckpt_dir = "/tmp/ckpt_data/ignored_sub_alg_multi_opt/"
+        ckpt_dir = "/tmp/ckpt_data/multi_alg_multi_opt/"
 
         if os.path.isdir(ckpt_dir):
             shutil.rmtree(ckpt_dir)
@@ -274,18 +269,9 @@ class TestMultiAlgMultiOpt(unittest.TestCase):
             sub_alg2=alg_2,
             name="root")
 
-        loss_info, params = alg_root.train_complete(TrainingInfo())
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
 
         all_optimizers = alg_root.optimizers()
-
-        # two optimizers
-        info = json.loads(alg_root.get_optimizer_info())
-        self.assertEqual(len(info), 2)
-
-        opt_dict = {"opt%d" % k: v for k, v in enumerate(all_optimizers)}
-
-        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root, **opt_dict)
-
         # a number of training steps
         step_num = 0
         ckpt_mngr.save(step_num)
@@ -307,7 +293,7 @@ class TestMultiAlgMultiOpt(unittest.TestCase):
 class TestWithIgnoredSubAlgorithm(unittest.TestCase):
     def test_with_ignored_sub_algorithm(self):
 
-        ckpt_dir = "/tmp/ckpt_data/ignored_sub_alg_ignore/"
+        ckpt_dir = "/tmp/ckpt_data/ignored_sub_alg/"
 
         if os.path.isdir(ckpt_dir):
             shutil.rmtree(ckpt_dir)
@@ -330,17 +316,14 @@ class TestWithIgnoredSubAlgorithm(unittest.TestCase):
             sub_alg2=alg_2,
             name="root")
 
-        all_optimizers = alg_root.optimizers()
-
-        opt_dict = {"opt%d" % k: v for k, v in enumerate(all_optimizers)}
-
-        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root, **opt_dict)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
 
         # a number of training steps
         step_num = 0
         ckpt_mngr.save(step_num)
 
         step_num = 1
+        all_optimizers = alg_root.optimizers()
         decay_learning_rate(all_optimizers, 1.0 / 10)
         ckpt_mngr.save(step_num)
 
@@ -379,9 +362,7 @@ class TestWithParamSharing(unittest.TestCase):
 
         all_optimizers = alg_root.optimizers()
 
-        opt_dict = {"opt%d" % k: v for k, v in enumerate(all_optimizers)}
-
-        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root, **opt_dict)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
 
         # a number of training steps
         step_num = 0
@@ -431,7 +412,8 @@ class TestWithCycle(unittest.TestCase):
 
         alg_2.root = alg_root
 
-        self.assertRaises(AssertionError, alg_root.optimizers)
+        self.assertRaises(
+            AssertionError, ckpt_utils.Checkpointer, ckpt_dir, alg=alg_root)
 
 
 if __name__ == '__main__':

@@ -17,6 +17,8 @@ import warnings
 import torch
 from absl import logging
 
+from alf.algorithms.algorithm import Algorithm
+
 
 class Checkpointer(object):
     """A checkpoint manager for saving and loading checkpoints."""
@@ -29,12 +31,30 @@ class Checkpointer(object):
                 it doesn't exist.
             kwargs: Items to be included in the checkpoint. Each item needs
                 to have state_dict and load_state_dict implemented.
+                For instance of Algorithm, only the root need to be passed in,
+                all the children modules and optimizers are automatically
+                extracted and checkpointed.
+        Example usage:
+        ```python
+            alg_root = MyAlg(params=[p1, p2], sub_algs=[a1, a2], optimizer=opt)
+            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir,
+                                alg=alg_root,
+                                **opt_dict)
+        ```
+
         """
 
         self._modules = kwargs
         self._ckpt_dir = ckpt_dir
         self._global_step = -1
 
+        # some pre-processing
+        opts = []
+        for k, v in self._modules.items():
+            if isinstance(v, Algorithm):
+                opts.extend(v.optimizers())
+        opts_dict = {"opt%d" % k: v for k, v in enumerate(opts)}
+        self._modules = {**self._modules, **opts_dict}
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
     def load(self, global_step="latest"):
