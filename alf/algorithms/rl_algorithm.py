@@ -82,10 +82,10 @@ class RLAlgorithm(Algorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             train_state_spec (nested TensorSpec): for the network state of
                 `rollout()`
-            env ():
-            config ():
-            action_distribution_spec (nested DistributionSpec): for the action
-                distributions.
+            env (Environment): The environment to interact with. env is a batched
+                environment, which means that it runs multiple simulations
+                simultateously.
+            config (TrainerConfig): config for training.
             predict_state_spec (nested TensorSpec): for the network state of
                 `predict()`. If None, it's assumed to be the same as train_state_spec
             rollout_state_spec ():
@@ -161,13 +161,19 @@ class RLAlgorithm(Algorithm):
             if isinstance(child, RLAlgorithm):
                 child.__setattr__(property_name, value)
 
+    @abstractmethod
+    def is_on_policy(self):
+        """Whehter this algorithm is an on-policy algorithm.
+
+        If it's on-policy algoirhtm, train_iter() will use
+         _train_iter_on_policy() to train. Otherwise, it will use
+        _train_iter_off_policy()
+        """
+        pass
+
     @property
     def use_rollout_state(self):
         return self._use_rollout_state
-
-    @abstractmethod
-    def is_on_policy(self):
-        pass
 
     @use_rollout_state.setter
     def use_rollout_state(self, flag):
@@ -188,37 +194,18 @@ class RLAlgorithm(Algorithm):
         return self._observation_spec
 
     @property
-    def train_step_info_spec(self):
-        """The spec for the PolicyInfo.info returned from train_step()."""
-        if self._train_step_info_spec is not None:
-            return self._train_step_info_spec
-        batch_size = 4
-        processed_exp = common.zeros_from_spec(self.processed_experience_spec,
-                                               batch_size)
-        state = common.zeros_from_spec(self.train_state_spec, batch_size)
-        policy_step = self.train_step(processed_exp, state)
-        self._train_step_info_spec = dist_utils.extract_spec(policy_step.info)
-        return self._train_step_info_spec
-
-    @property
     def rollout_info_spec(self):
-        """The spec for the PolicyInfo.info returned from rollout()."""
-        if self._rollout_info_spec is not None:
-            return self._rollout_info_spec
-        batch_size = 4
-        time_step = common.zeros_from_spec(self.time_step_spec, batch_size)
-        state = common.zeros_from_spec(self.train_state_spec, batch_size)
-        policy_step = self.rollout(
-            self.transform_timestep(time_step), state,
-            RLAlgorithm.PREPARE_SPEC)
-        self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
+        """The spec for the AlgStep.info returned from rollout_step()."""
+        assert self._rollout_info_spec is not None, (
+            "rollout_step() has not "
+            " been used. rollout_info_spec is not available.")
         return self._rollout_info_spec
 
     @property
     def experience_spec(self):
         """Spec for experience."""
         policy_step_spec = AlgStep(
-            action=self.action_spec,
+            output=self.action_spec,
             state=self.train_state_spec,
             info=self.rollout_info_spec)
         exp_spec = make_experience(self.time_step_spec, policy_step_spec,
@@ -226,27 +213,6 @@ class RLAlgorithm(Algorithm):
         if not self._use_rollout_state:
             exp_spec = exp_spec._replace(state=())
         return exp_spec
-
-    @property
-    def processed_experience_spec(self):
-        """Spec for processed experience.
-
-        Returns:
-            Spec for the experience returned by preprocess_experience().
-        """
-        if self._processed_experience_spec is not None:
-            return self._processed_experience_spec
-        batch_size = 4
-        exp = common.zeros_from_spec(self.experience_spec, batch_size)
-        transformed_exp = self.transform_timestep(exp)
-        processed_exp = self.preprocess_experience(transformed_exp)
-        self._processed_experience_spec = self.experience_spec._replace(
-            observation=dist_utils.extract_spec(processed_exp.observation),
-            rollout_info=dist_utils.extract_spec(processed_exp.rollout_info))
-        if not self._use_rollout_state:
-            self._procesed_experience_spec = \
-                self._processed_experience_spec._replace(state=())
-        return self._processed_experience_spec
 
     @property
     def time_step_spec(self):
@@ -263,11 +229,6 @@ class RLAlgorithm(Algorithm):
     def action_spec(self):
         """Return the action spec."""
         return self._action_spec
-
-    @property
-    def action_distribution_spec(self):
-        """Return the action distribution spec for the action distributions."""
-        return self._action_distribution_spec
 
     @property
     def exp_observers(self):
@@ -499,21 +460,6 @@ class RLAlgorithm(Algorithm):
                     observation=observation_transformer(time_step.observation))
         return time_step
 
-    def preprocess_experience(self, experience: Experience):
-        """Preprocess experience.
-
-        preprocess_experience is called for the experiences got from replay
-        buffer. An example is to calculate advantages and returns in PPOAlgorithm.
-
-        The shapes of tensors in experience are assumed to be (B, T, ...)
-
-        Args:
-            experience (Experience): original experience
-        Returns:
-            processed experience
-        """
-        return experience
-
     @abstractmethod
     def train_step(self, experience: Experience, state):
         """Perform one step of training computation.
@@ -576,33 +522,30 @@ class RLAlgorithm(Algorithm):
         """
         pass
 
-    def unroll(self, time_step: TimeStep, policy_state, unroll_length):
+    def unroll(self, unroll_length):
         """Unroll `unroll_length` steps using the current policy.
 
         Because the self._env is a batched environment. The total number of
         environment steps are `self._env.batch_size * unroll_length`
 
         Args:
-            time_step (TimeStep): the TimeStep returned from previous unroll().
-                For the first call to `unroll()`, time_step should be obtained
-                using common.get_initial_time_step()
-            policy_state (nested Tensor): the RNN state of the policy. For the
-                first call, it should be `self.get_initial_rollout_state()`. For
-                the subsequent calls, it should be the policy state returned
-                from `unroll()`
             unroll_length (int): number of steps to unroll
         Returns:
-            time_step (TimeStep): the time step from the last env.step() call
-                during the unroll.
-            policy_state (nested Tensor): the policy_step.state from the last
-                self.rollout() call during the unroll.
             training_info (TrainingInfo): The stacked information with shape
                 (T, B, ...) for each of its members.
         """
+        if self._current_time_step is None:
+            self._current_time_step = common.get_initial_time_step(self._env)
+        if self._current_policy_state is None:
+            self._current_policy_state = self.get_initial_rollout_state(
+                self._env.batch_size)
+        time_step = self._current_time_step
+        policy_state = self._current_policy_state
+
         training_info_list = []
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
 
-        for t in range(unroll_length):
+        for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
             transformed_time_step = self.transform_timestep(time_step)
@@ -616,8 +559,9 @@ class RLAlgorithm(Algorithm):
             action = alf.nest.map_structure(lambda t: t.detach(),
                                             policy_step.output)
 
-            if t == 0:
-                rollout_info_spec = dist_utils.extract_spec(policy_step.info)
+            if self._rollout_info_spec is None:
+                self._rollout_info_spec = dist_utils.extract_spec(
+                    policy_step.info)
 
             training_info = TrainingInfo(
                 action=action,
@@ -632,43 +576,32 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
-        def _stack(*tensors):
-            return torch.cat([t.unsqueeze(0) for t in tensors])
-
-        training_info = alf.nest.map_structure(_stack, *training_info_list)
+        training_info = alf.nest.utils.stack_nests(training_info_list)
         training_info = training_info._replace(
             rollout_info=dist_utils.params_to_distributions(
-                training_info.rollout_info, rollout_info_spec))
-        return time_step, policy_state, training_info
+                training_info.rollout_info, self._rollout_info_spec))
+
+        self._current_time_step = time_step
+        self._current_policy_state = policy_state
+
+        return training_info
 
     def train_iter(self):
         """Perform one iteration of training.
 
+        Users may choose to implement their own train_iter()
         Returns:
             #(samples precessed) * #(repeats)
         """
-
         if self.is_on_policy():
             return self._train_iter_on_policy()
         else:
             return self._train_iter_off_policy()
 
     def _train_iter_on_policy(self):
-        if self._current_time_step is None:
-            self._current_time_step = common.get_initial_time_step(self._env)
-        if self._current_policy_state is None:
-            self._current_policy_state = self.get_initial_rollout_state(
-                self._env.batch_size)
+        """Implemented in OnPolicyAlgorithm."""
+        raise NotImplementedError()
 
-        self._current_time_step, self._current_policy_state, training_info = \
-            self.unroll(self._current_time_step,
-                    self._current_policy_state,
-                    self._config.unroll_length)
-
-        training_info = training_info._replace(
-            rollout_info=(), info=training_info.rollout_info)
-        loss_info, params = self.train_complete(training_info)
-        self.summarize_train(training_info, loss_info, params)
-        self.summarize_metrics()
-        alf.summary.get_global_counter().add_(1)
-        return torch.tensor(training_info.step_type.shape).prod()
+    def _train_iter_off_policy(self):
+        """Implemented in OffPolicyAlgorithm."""
+        raise NotImplementedError()

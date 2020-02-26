@@ -13,52 +13,49 @@
 # limitations under the License.
 """Base class for on-policy RL algorithms."""
 
-from abc import abstractmethod
+import torch
 
-import tensorflow as tf
-
+import alf
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.data_structures import ActionTimeStep, Experience, TrainingInfo
-from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import TimeStep, Experience, TrainingInfo
 
 
-class OnPolicyAlgorithm(OffPolicyAlgorithm):
+class OnPolicyAlgorithm(RLAlgorithm):
     """
     OnPolicyAlgorithm works with alf.drivers.on_policy_driver.OnPolicyDriver
     to do training at the time of policy rollout.
 
     User needs to implement rollout() and train_complete().
 
-    rollout() is called to generate actions for every environment step.
+    rollout_step() is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
-    train_complete() is called every `train_interval` steps (specified in
-    OnPolicyDriver). All the training information collected at each previous
-    rollout() are batched and provided as arguments for train_complete().
+    train_complete() is called every `unroll_length` steps (specified in
+    config.TrainerConfig). All the training information collected at each previous
+    rollout_step() are batched and provided as arguments for train_complete().
 
-    The following is the pseudo code to illustrate how OnPolicyAlgorithm is used
-    by OnPolicyDriver:
+    The following is the pseudo code to illustrate how OnPolicyAlgorithm is used:
 
     ```python
-    with GradientTape as tape:
-        for _ in range(train_interval):
-            policy_step = rollout(time_step, policy_step.state)
-            action = sample action from policy_step.action
-            collect necessary information and policy_step.info into training_info
-            time_step = env.step(action)
-    train_complete(tape, training_info)
+    for _ in range(unroll_length):
+        policy_step = rollout(time_step, policy_step.state)
+        action = sample action from policy_step.action
+        collect necessary information and policy_step.info into training_info
+        time_step = env.step(action)
+    train_complete(training_info)
     ```
     """
 
-    # Implement train_step() to allow off-policy training for an
-    # OnPolicyAlgorithm
-    def train_step(self, exp: Experience, state):
-        time_step = ActionTimeStep(
-            step_type=exp.step_type,
-            reward=exp.reward,
-            discount=exp.discount,
-            observation=exp.observation,
-            prev_action=exp.prev_action,
-            env_id=exp.env_id)
-        return self.rollout(
-            time_step, state, mode=RLAlgorithm.OFF_POLICY_TRAINING)
+    def is_on_policy(self):
+        return True
+
+    def _train_iter_on_policy(self):
+        """User may override this for their own training procedure."""
+        training_info = self.unroll(self._config.unroll_length)
+        training_info = training_info._replace(
+            rollout_info=(), info=training_info.rollout_info)
+        loss_info, params = self.train_complete(training_info)
+        self.summarize_train(training_info, loss_info, params)
+        self.summarize_metrics()
+        alf.summary.get_global_counter().add_(1)
+        return torch.tensor(training_info.step_type.shape).prod()

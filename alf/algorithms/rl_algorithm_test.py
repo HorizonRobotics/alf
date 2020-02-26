@@ -20,9 +20,10 @@ import alf
 from alf.utils import common, dist_utils, tensor_utils
 from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, TrainingInfo
 from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 
 
-class MyAlg(RLAlgorithm):
+class MyAlg(OnPolicyAlgorithm):
     def __init__(self, env, config):
         super().__init__(
             observation_spec=alf.TensorSpec((2, ), dtype='float32'),
@@ -106,7 +107,7 @@ class RLAlgorithmTest(unittest.TestCase):
         config = Config()
         env = MyEnv(batch_size=3)
         alg = MyAlg(env=env, config=config)
-        for _ in range(50):
+        for _ in range(100):
             alg.train_iter()
 
         time_step = common.get_initial_time_step(env)
@@ -119,4 +120,5 @@ class RLAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    RLAlgorithmTest().test_rl_algorithm()
+    #unittest.main()

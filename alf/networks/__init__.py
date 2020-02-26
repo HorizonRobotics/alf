@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from alf.networks.encoding_networks import *
-from alf.networks.projection_networks import *
-from alf.networks.actor_distribution_networks import *
-from alf.networks.value_networks import *
+from .actor_distribution_networks import *
+from .encoding_networks import *
+from .network import Network
+from .projection_networks import *
+from .value_networks import *

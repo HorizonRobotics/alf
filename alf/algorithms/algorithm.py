@@ -395,7 +395,7 @@ class Algorithm(nn.Module):
                     # TODO: implement alf.clip_by_global_norm
                     global_norm = alf.clip_by_global_norm(
                         params, self._gradient_clipping)
-                    if common.should_record_summaries():
+                    if alf.summary.should_record_summaries():
                         alf.summary.scalar("global_grad_norm/%s" % i,
                                            global_norm)
                 else:
