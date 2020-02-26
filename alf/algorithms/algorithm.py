@@ -18,9 +18,11 @@ from absl import logging
 import copy
 import json
 import os
+from collections import OrderedDict
 
 import torch
 import torch.nn as nn
+from torch.nn.modules.module import _IncompatibleKeys
 
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo
@@ -123,6 +125,7 @@ class Algorithm(nn.Module):
         self._debug_summaries = debug_summaries
         self._default_optimizer = optimizer
         self._optimizers = []
+        self._opt_keys = []
         self._module_to_optimizer = {}
         if optimizer:
             self._optimizers.append(optimizer)
@@ -168,15 +171,20 @@ class Algorithm(nn.Module):
         """
         return []
 
-    def _get_children(self):
+    def _get_children(self, ignore=True):
+        """Get children
+
+        Only exclude the children marked in trainable_attributes_to_ignore
+        when ignore is True.
+        """
         children = []
         for name, module in self.named_children():
-            if name in self._trainable_attributes_to_ignore():
+            if name in self._trainable_attributes_to_ignore() and ignore:
                 continue
             children.extend(_flatten_module(module))
 
         for name, param in self.named_parameters(recurse=False):
-            if name in self._trainable_attributes_to_ignore():
+            if name in self._trainable_attributes_to_ignore() and ignore:
                 continue
             children.append(param)
 
@@ -187,13 +195,18 @@ class Algorithm(nn.Module):
         """Get the default optimizer for this algorithm."""
         return self._default_optimizer
 
-    def _assert_no_cycle_or_duplicate(self):
+    def _assert_no_cycle_or_duplicate(self, ignore=True):
+        """Check the existence of cycle.
+
+        Only exclude the attributes marked in trainable_attributes_to_ignore
+        when ignore is True.
+        """
         visited = set()
         to_be_visited = [self]
         while to_be_visited:
             node = to_be_visited.pop(0)
             visited.add(node)
-            for child in node._get_children():
+            for child in node._get_children(ignore):
                 assert child not in visited, (
                     "There is a cycle or duplicate in the "
                     "algorithm tree caused by '%s'" % child.name)
@@ -265,7 +278,6 @@ class Algorithm(nn.Module):
         Returns:
             list of Optimizer
         """
-        self._assert_no_cycle_or_duplicate()
         opts = copy.copy(self._optimizers)
         if recurse:
             for module in self.children():
@@ -309,6 +321,101 @@ class Algorithm(nn.Module):
         alf.nest.assert_same_structure(self._train_state_spec,
                                        self._predict_state_spec)
         return state
+
+    def state_dict(self, destination=None, prefix='', keep_vars=False):
+        """Get module dictionary for checkpoint, including both model state
+                and optimizers' state (if any)
+
+        Args:
+            destination (OrderedDict): the destination for storing the state
+        Returns:
+            destination (OrderedDict): the dictionary including both model state
+                and optimizers' state (if any)
+
+        """
+        self._assert_no_cycle_or_duplicate(ignore=False)
+        if destination is None:
+            destination = OrderedDict()
+            destination._metadata = OrderedDict()
+        destination._metadata[prefix[:-1]] = local_metadata = dict(
+            version=self._version)
+
+        self._save_to_state_dict(destination, prefix, keep_vars)
+        opts_dict = OrderedDict()
+        for name, module in self._modules.items():
+            if module is not None:
+                module.state_dict(
+                    destination, prefix + name + '.', keep_vars=keep_vars)
+        for i, opt in enumerate(self._optimizers):
+            new_key = prefix + '_optimizers.%d' % i
+            if new_key not in self._opt_keys:
+                self._opt_keys.append(new_key)
+            opts_dict[self._opt_keys[i]] = opt.state_dict()
+
+        destination.update(opts_dict)
+
+        return destination
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Load state dictionary for Algorithm
+        Arguments:
+            state_dict (dict): a dict containing parameters and
+                persistent buffers.
+            strict (bool, optional): whether to strictly enforce that the keys
+                in :attr:`state_dict` match the keys returned by this module's
+                :meth:`~torch.nn.Module.state_dict` function. Default: ``True``
+        Returns:
+            ``NamedTuple`` with ``missing_keys`` and ``unexpected_keys`` fields:
+                * **missing_keys** is a list of str containing the missing keys
+                * **unexpected_keys** is a list of str containing the unexpected keys
+        """
+        self._assert_no_cycle_or_duplicate(ignore=False)
+
+        missing_keys = []
+        unexpected_keys = []
+        error_msgs = []
+
+        # copy state_dict so _load_from_state_dict can modify it
+        metadata = getattr(state_dict, '_metadata', None)
+        state_dict = state_dict.copy()
+        if metadata is not None:
+            state_dict._metadata = metadata
+
+        def load(module, prefix=''):
+            if isinstance(module, Algorithm):
+                for i, opt in enumerate(module._optimizers):
+                    new_key = prefix + '_optimizers.%d' % i
+                    opt.load_state_dict(state_dict[new_key])
+                    del state_dict[new_key]
+
+            for name, child in module._modules.items():
+                if child is not None:
+                    load(child, prefix + name + '.')
+
+            local_metadata = {} if metadata is None else metadata.get(
+                prefix[:-1], {})
+            module._load_from_state_dict(state_dict, prefix, local_metadata,
+                                         True, missing_keys, unexpected_keys,
+                                         error_msgs)
+
+        load(self)
+        load = None  # break load->load reference cycle
+
+        if strict:
+            if len(unexpected_keys) > 0:
+                error_msgs.insert(
+                    0, 'Unexpected key(s) in state_dict: {}. '.format(
+                        ', '.join('"{}"'.format(k) for k in unexpected_keys)))
+            if len(missing_keys) > 0:
+                error_msgs.insert(
+                    0, 'Missing key(s) in state_dict: {}. '.format(', '.join(
+                        '"{}"'.format(k) for k in missing_keys)))
+
+        if len(error_msgs) > 0:
+            raise RuntimeError(
+                'Error(s) in loading state_dict for {}:\n\t{}'.format(
+                    self.__class__.__name__, "\n\t".join(error_msgs)))
+        return _IncompatibleKeys(missing_keys, unexpected_keys)
 
     #------------- User need to implement the following functions -------
 

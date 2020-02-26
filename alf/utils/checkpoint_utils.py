@@ -47,13 +47,6 @@ class Checkpointer(object):
         self._ckpt_dir = ckpt_dir
         self._global_step = -1
 
-        # some pre-processing
-        opts = []
-        for k, v in self._modules.items():
-            if isinstance(v, Algorithm):
-                opts.extend(v.optimizers())
-        opts_dict = {"opt%d" % k: v for k, v in enumerate(opts)}
-        self._modules = {**self._modules, **opts_dict}
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
     def load(self, global_step="latest"):

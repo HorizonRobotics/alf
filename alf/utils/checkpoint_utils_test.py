@@ -235,7 +235,7 @@ class TestMultiAlgSingleOpt(unittest.TestCase):
 
         # check the recovered paramerter values for all modules
         sd = alg_root.state_dict()
-        self.assertTrue((list(sd.values()) == [
+        self.assertTrue((list(sd.values())[0:4] == [
             torch.tensor([1.0]),
             torch.tensor([2.1]),
             torch.tensor([2.0]),
@@ -374,9 +374,9 @@ class TestWithParamSharing(unittest.TestCase):
             get_learning_rate(all_optimizers), expected)
 
         sd = alg_root.state_dict()
-
+        recovered_values = [list(sd.values())[i] for i in [0, 1, 2, 4]]
         self.assertTrue((
-            list(sd.values()) == [
+            recovered_values == [
                 torch.tensor([1.0]),
                 torch.tensor([1.0]),  # the shared-parameter
                 torch.tensor([2.0]),
@@ -411,9 +411,67 @@ class TestWithCycle(unittest.TestCase):
             name="root")
 
         alg_2.root = alg_root
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
+        self.assertRaises(AssertionError, ckpt_mngr.save, 0)
 
-        self.assertRaises(
-            AssertionError, ckpt_utils.Checkpointer, ckpt_dir, alg=alg_root)
+        # test cycle detection when some sub-algorithms are 'ignored'
+        alg_root2 = ComposedAlgWithIgnore(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        alg_2.root = alg_root2
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root2)
+        self.assertRaises(AssertionError, ckpt_mngr.save, 0)
+
+
+class TestMismatch(unittest.TestCase):
+    def test_mismatch(self):
+
+        ckpt_dir = "/tmp/ckpt_data/mis_match/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        # construct algorithms
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        optimizer_2 = torch.optim.Adam(lr=0.2)
+        alg_2 = SimpleAlg(
+            params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root12 = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        alg_root1 = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            name="root")
+
+        # case 1: save using alg_root12 and load using alg_root1
+        step_num = 0
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root12)
+        ckpt_mngr.save(step_num)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root1)
+        self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
+
+        # case 2: save using alg_root1 and load using alg_root12
+        step_num = 0
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root1)
+        ckpt_mngr.save(step_num)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root12)
+        self.assertRaises(KeyError, ckpt_mngr.load, step_num)
 
 
 if __name__ == '__main__':
