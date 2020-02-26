@@ -133,7 +133,7 @@ class AlgorithmTest(unittest.TestCase):
         self.assertEqual(info[0]['parameters'], [id(param_1)])
         self.assertEqual(info[1]['parameters'], [id(param_2)])
 
-    def test_train_complete(self):
+    def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
         alg_1 = MyAlg(params=[param_1], name="alg_1")
         param_2 = nn.Parameter(torch.Tensor([2]))
@@ -141,15 +141,16 @@ class AlgorithmTest(unittest.TestCase):
 
         alg_root = MyAlg(sub_algs=[alg_1, alg_2], name="root")
         alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
-        self.assertRaises(AssertionError, alg_root.train_complete,
-                          TrainingInfo())
+        loss = alg_root.calc_loss(TrainingInfo())
+        self.assertRaises(AssertionError, alg_root.update_with_gradient, loss)
 
         alg_root = MyAlg(
             optimizer=torch.optim.Adam(lr=0.25),
             sub_algs=[alg_1, alg_2],
             name="root")
         alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
-        loss_info, params = alg_root.train_complete(TrainingInfo())
+        loss_info, params = alg_root.update_with_gradient(
+            alg_root.calc_loss(TrainingInfo()))
         self.assertEqual(set(params), set(alg_root.parameters()))
         for param in alg_root.parameters():
             self.assertTrue(torch.all(param.grad == 1.0))

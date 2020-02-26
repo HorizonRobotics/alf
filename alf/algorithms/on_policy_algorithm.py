@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.data_structures import TimeStep, Experience, TrainingInfo
+from alf.data_structures import Experience, StepType, TimeStep, TrainingInfo
 
 
 class OnPolicyAlgorithm(RLAlgorithm):
@@ -25,24 +25,25 @@ class OnPolicyAlgorithm(RLAlgorithm):
     OnPolicyAlgorithm works with alf.drivers.on_policy_driver.OnPolicyDriver
     to do training at the time of policy rollout.
 
-    User needs to implement rollout() and train_complete().
+    User needs to implement rollout_step() and calc_loss()
 
     rollout_step() is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
-    train_complete() is called every `unroll_length` steps (specified in
+    update_with_gradient() is called every `unroll_length` steps (specified in
     config.TrainerConfig). All the training information collected at each previous
-    rollout_step() are batched and provided as arguments for train_complete().
+    rollout_step() are batched and provided as arguments for calc_loss()
 
     The following is the pseudo code to illustrate how OnPolicyAlgorithm is used:
 
     ```python
     for _ in range(unroll_length):
-        policy_step = rollout(time_step, policy_step.state)
+        policy_step = rollout_step(time_step, policy_step.state)
         action = sample action from policy_step.action
         collect necessary information and policy_step.info into training_info
         time_step = env.step(action)
-    train_complete(training_info)
+    loss = calc_loss(training_info)
+    update_with_gradient(loss)
     ```
     """
 
@@ -54,7 +55,11 @@ class OnPolicyAlgorithm(RLAlgorithm):
         training_info = self.unroll(self._config.unroll_length)
         training_info = training_info._replace(
             rollout_info=(), info=training_info.rollout_info)
-        loss_info, params = self.train_complete(training_info)
+        valid_masks = (training_info.step_type != StepType.LAST).to(
+            torch.float32)
+        loss_info, params = self.update_with_gradient(
+            self.calc_loss(training_info), valid_masks)
+        self.after_update(training_info)
         self.summarize_train(training_info, loss_info, params)
         self.summarize_metrics()
         alf.summary.get_global_counter().add_(1)

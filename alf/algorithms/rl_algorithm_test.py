@@ -32,7 +32,7 @@ class MyAlg(OnPolicyAlgorithm):
             train_state_spec=(),
             env=env,
             config=config,
-            optimizer=torch.optim.Adam(lr=1e-2),
+            optimizer=torch.optim.Adam(lr=1e-1),
             debug_summaries=True,
             name="MyAlg")
 
@@ -42,11 +42,11 @@ class MyAlg(OnPolicyAlgorithm):
     def is_on_policy(self):
         return True
 
-    def predict(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         dist = self._proj_net(time_step.observation)
         return AlgStep(output=dist.sample(), state=(), info=())
 
-    def rollout(self, time_step: TimeStep, state, mode):
+    def rollout_step(self, time_step: TimeStep, state):
         dist = self._proj_net(time_step.observation)
         return AlgStep(output=dist.sample(), state=(), info=dist)
 
@@ -112,7 +112,7 @@ class RLAlgorithmTest(unittest.TestCase):
 
         time_step = common.get_initial_time_step(env)
         state = alg.get_initial_predict_state(env.batch_size)
-        policy_step = alg.rollout(time_step, state, mode=RLAlgorithm.ROLLOUT)
+        policy_step = alg.rollout_step(time_step, state)
         logits = policy_step.info.logits
         print("logits: ", logits)
         self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
