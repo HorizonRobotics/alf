@@ -144,33 +144,26 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
         values = values.transpose(0, 1)
         step_types = step_types.transpose(0, 1)
 
-    assert values.shape[0] >= 2, "The sequence length needs to be \
-                                at least 2. Got {s}".format(s=values.shape[0])
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
 
-    discounts = discounts[1:]
-    rewards = rewards[1:]
-    final_value = values[-1]
-    values = values[:-1]
-
-    step_types = step_types[:-1]
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
 
-    def discounted_return_fn(acc_discounted_reward, reward, value, is_last,
-                             discount):
-        acc_discounted_value = acc_discounted_reward * discount + reward
-        return is_last * value + (1 - is_last) * acc_discounted_value
+    rets = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    rets[-1] = values[-1]
 
-    returns = torch.zeros(rewards.shape, dtype=rewards.dtype)
-    ret = final_value
-    for t in reversed(range(rewards.shape[0])):
-        ret = discounted_return_fn(ret, rewards[t], values[t], is_lasts[t],
-                                   discounts[t])
-        returns[t] = ret
+    with torch.no_grad():
+        for t in reversed(range(rewards.shape[0] - 1)):
+            acc_value = rets[t + 1] * discounts[t + 1] + rewards[t + 1]
+            rets[t] = is_lasts[t] * values[t] + (1 - is_lasts[t]) * acc_value
+
+    rets = rets[:-1]
 
     if not time_major:
-        returns = returns.transpose(0, 1)
+        rets = rets.transpose(0, 1)
 
-    return returns.detach()
+    return rets.detach()
 
 
 def one_step_discounted_return(rewards, values, step_types, discounts):
@@ -187,18 +180,14 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
         A tensor with shape [T-1, B] (or [T-1]) representing the discounted
         returns.
     """
-    assert values.shape[0] >= 2, "The sequence length needs to be \
-                                at least 2. Got {s}".format(s=values.shape[0])
-
-    discounts = discounts[1:]
-    rewards = rewards[1:]
-    values = values[1:]
-    step_types = step_types[:-1]
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-    returns = rewards + (1 - is_lasts) * discounts * values
+    rets = rewards[1:] + (1 - is_lasts[:-1]) * discounts[1:] * values[1:]
 
-    return returns
+    return rets.detach()
 
 
 def generalized_advantage_estimation(rewards,
@@ -242,32 +231,24 @@ def generalized_advantage_estimation(rewards,
         values = values.transpose(0, 1)
         step_types = step_types.transpose(0, 1)
 
-    assert values.shape[0] >= 2, "The sequence length needs to be \
-                                at least 2. Got {s}".format(s=values.shape[0])
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
 
-    rewards = rewards[1:]
-    next_values = values[1:]
-    final_value = values[-1]
-    values = values[:-1]
-    discounts = discounts[1:]
-    step_types = step_types[:-1]
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-
-    delta = rewards + discounts * next_values - values
     weighted_discounts = discounts * td_lambda
 
-    def weighted_cumulative_td_fn(accumulated_td, weighted_discount, td,
-                                  is_last):
-        return (1 - is_last) * (td + weighted_discount * accumulated_td)
+    advs = torch.zeros(rewards.shape, dtype=rewards.dtype)
 
-    advantages = torch.zeros(rewards.shape, dtype=rewards.dtype)
-    adv = 0
-    for t in reversed(range(rewards.shape[0])):
-        adv = weighted_cumulative_td_fn(adv, weighted_discounts[t], delta[t],
-                                        is_lasts[t])
-        advantages[t] = adv
+    with torch.no_grad():
+        for t in reversed(range(rewards.shape[0] - 1)):
+            delta = rewards[t + 1] + \
+                            discounts[t + 1] * values[t + 1] - values[t]
+            advs[t] = (1 - is_lasts[t]) * \
+                      (delta + weighted_discounts[t] * advs[t + 1])
+        advs = advs[:-1]
 
     if not time_major:
-        advantages = advantages.transpose(0, 1)
+        advs = advs.transpose(0, 1)
 
-    return advantages.detach()
+    return advs.detach()
