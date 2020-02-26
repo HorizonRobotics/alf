@@ -169,7 +169,9 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
 def one_step_discounted_return(rewards, values, step_types, discounts):
     """Calculate the one step discounted return  for the first T-1 steps.
 
-    return = next_reward + next_discount * next_value
+    return = next_reward + next_discount * next_value if is not the last step;
+    otherwise will set return = current_discount * current_value.
+
     Note: Input tensors must be time major
     Args:
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
@@ -185,8 +187,8 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
                                       s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-    rets = rewards[1:] + (1 - is_lasts[:-1]) * discounts[1:] * values[1:]
-
+    rets = (1 - is_lasts[:-1]) * rewards[1:] + discounts[1:] * values[1:] + \
+                 is_lasts[:-1] * discounts[:-1] * values[:-1]
     return rets.detach()
 
 
@@ -239,13 +241,12 @@ def generalized_advantage_estimation(rewards,
     weighted_discounts = discounts * td_lambda
 
     advs = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    delta = rewards[1:] + discounts[1:] * values[1:] - values[:-1]
 
     with torch.no_grad():
         for t in reversed(range(rewards.shape[0] - 1)):
-            delta = rewards[t + 1] + \
-                            discounts[t + 1] * values[t + 1] - values[t]
             advs[t] = (1 - is_lasts[t]) * \
-                      (delta + weighted_discounts[t] * advs[t + 1])
+                      (delta[t] + weighted_discounts[t] * advs[t + 1])
         advs = advs[:-1]
 
     if not time_major:
