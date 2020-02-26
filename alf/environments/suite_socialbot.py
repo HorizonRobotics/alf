@@ -25,7 +25,7 @@ import gym
 from fasteners.process_lock import InterProcessLock
 import gin.tf
 
-from alf.environments import suite_gym, torch_wrappers, ProcessEnvironment
+from alf.environments import suite_gym, torch_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
 DEFAULT_SOCIALBOT_PORT = 11345
@@ -98,7 +98,8 @@ def load(environment_name,
     port_range = [port, port + 1] if port else [DEFAULT_SOCIALBOT_PORT]
     with _get_unused_port(*port_range) as port:
         if wrap_with_process:
-            process_env = ProcessEnvironment(lambda: env_ctor(port))
+            process_env = process_environment.ProcessEnvironment(
+                lambda: env_ctor(port))
             process_env.start()
             py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
         else:

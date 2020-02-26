@@ -24,6 +24,7 @@ import numpy as np
 import torch
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.environments import torch_environment
 import alf.data_structures as ds
 
 
@@ -45,25 +46,26 @@ def tensor_spec_from_gym_space(space, dtype_map, simplify_box_bounds=True):
         else:
             return np_array
 
+    dtype = getattr(torch, space.dtype.name)
+
     if isinstance(space, gym.spaces.Discrete):
         # Discrete spaces span the set {0, 1, ... , n-1} while Bounded Array specs
         # are inclusive on their bounds.
         maximum = space.n - 1
         return BoundedTensorSpec(
-            shape=(), dtype=space.dtype, minimum=0, maximum=maximum)
+            shape=(), dtype=dtype, minimum=0, maximum=maximum)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         maximum = try_simplify_array_to_value(
-            np.asarray(space.nvec - 1, dtype=space.dtype))
+            np.asarray(space.nvec - 1, dtype=dtype))
         return BoundedTensorSpec(
-            shape=space.shape, dtype=space.dtype, minimum=0, maximum=maximum)
+            shape=space.shape, dtype=dtype, minimum=0, maximum=maximum)
     elif isinstance(space, gym.spaces.MultiBinary):
         shape = (space.n, )
         return BoundedTensorSpec(
-            shape=shape, dtype=space.dtype, minimum=0, maximum=1)
+            shape=shape, dtype=dtype, minimum=0, maximum=1)
     elif isinstance(space, gym.spaces.Box):
-        dtype = space.dtype
-        minimum = np.asarray(space.low, dtype=dtype)
-        maximum = np.asarray(space.high, dtype=dtype)
+        minimum = np.asarray(space.low, dtype=space.dtype)
+        maximum = np.asarray(space.high, dtype=space.dtype)
         if simplify_box_bounds:
             minimum = try_simplify_array_to_value(minimum)
             maximum = try_simplify_array_to_value(maximum)
@@ -100,17 +102,17 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
 
         self._gym_env = gym_env
         self._discount = discount
+        self._env_id = torch.tensor(0, dtype=torch.int32)
         self._action_is_discrete = isinstance(self._gym_env.action_space,
                                               gym.spaces.Discrete)
         self._match_obs_space_dtype = match_obs_space_dtype
         # TODO(sfishman): Add test for auto_reset param.
         self._auto_reset = auto_reset
-        observation_spec = tensor_spec_from_gym_space(
+        self._observation_spec = tensor_spec_from_gym_space(
             self._gym_env.observation_space, spec_dtype_map,
-            simplify_box_bounds, 'observation')
-        action_spec = tensor_spec_from_gym_space(self._gym_env.action_space,
-                                                 spec_dtype_map,
-                                                 simplify_box_bounds, 'action')
+            simplify_box_bounds)
+        self._action_spec = tensor_spec_from_gym_space(
+            self._gym_env.action_space, spec_dtype_map, simplify_box_bounds)
         self._flat_obs_spec = nest.flatten(self._observation_spec)
         self._time_step_spec = ds.time_step_spec(self._observation_spec,
                                                  self._action_spec)
@@ -131,7 +133,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
 
     def _convert_action(self, action):
         if isinstance(action, torch.Tensor):
-            action = action.view(-1).detach().data.cpu().numpy()
+            action = action.detach().data.cpu().numpy()
         return action
 
     def _reset(self):
@@ -142,7 +144,10 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         self._done = False
 
         observation = self._to_tensor_observation(observation)
-        return ds.restart(observation, self._discount, self._env_id)
+        return ds.restart(
+            observation=observation,
+            discount=self._discount,
+            env_id=self._env_id)
 
     @property
     def done(self):

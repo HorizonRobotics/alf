@@ -16,7 +16,7 @@ import gym
 import numpy as np
 import gin
 
-from alf.environments import suite_gym, torch_wrappers, ProcessEnvironment
+from alf.environments import suite_gym, torch_wrappers, process_environment
 from alf.environments.gym_wrappers import FrameSkip, FrameStack
 from alf.environments.utils import UnwrappedEnvChecker
 from alf.environments.mario_wrappers import MarioXReward, \
@@ -109,7 +109,8 @@ def load(game,
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
     if wrap_with_process:
-        process_env = ProcessEnvironment(lambda: env_ctor())
+        process_env = process_environment.ProcessEnvironment(lambda: env_ctor(
+        ))
         process_env.start()
         py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:

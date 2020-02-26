@@ -17,8 +17,8 @@ https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/t
 """
 
 import numpy as np
-
 import torch
+from alf.nest import nest
 
 
 def torch_dtype_to_str(dtype):
@@ -38,6 +38,29 @@ def is_discrete(spec):
 def is_continuous(spec):
     assert isinstance(spec, TensorSpec)
     return spec.dtype.is_floating
+
+
+def sample_spec_nest(structure, outer_dims=None):
+    """Samples the given nest of specs.
+
+    Args:
+      structure: An `TensorSpec`, or a nested dict, list or tuple of `TensorSpec`s.
+      outer_dims: An optional list/tuple specifying outer dimensions to add to the
+        spec shape before sampling.
+
+    Returns:
+      A nest of sampled values following the TensorSpec definition.
+    """
+
+    def sample_fn(spec):
+        shape = spec.shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        spec = BoundedTensorSpec.from_spec(spec)
+        spec = BoundedTensorSpec(shape, spec.dtype, spec.minimum, spec.maximum)
+        return spec.sample()
+
+    return nest.map_structure(sample_fn, structure)
 
 
 class TensorSpec(object):
@@ -232,10 +255,12 @@ class BoundedTensorSpec(TensorSpec):
 
     @classmethod
     def from_spec(cls, spec):
-        assert isinstance(spec, BoundedTensorSpec)
-        minimum = getattr(spec, "minimum")
-        maximum = getattr(spec, "maximum")
-        return BoundedTensorSpec(spec.shape, spec.dtype, minimum, maximum)
+        assert isinstance(spec, (TensorSpec, BoundedTensorSpec))
+        if hasattr(spec, 'minimum') and hasattr(spec, 'maximum'):
+            return BoundedTensorSpec(spec.shape, spec.dtype, spec.minimum,
+                                     spec.maximum)
+
+        return BoundedTensorSpec(spec.shape, spec.dtype)
 
     @property
     def minimum(self):

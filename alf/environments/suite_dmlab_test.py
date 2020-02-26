@@ -19,7 +19,6 @@ from __future__ import print_function
 # import gin.tf
 # import tensorflow as tf
 import gin
-import torch
 import unittest
 from absl.testing import parameterized
 

@@ -68,6 +68,7 @@ class TorchEnvironment(object):
 
     def __init__(self):
         self._current_time_step = None
+        # self._current_time_step = self._reset()
         # common.assert_members_are_not_overridden(
         #     base_cls=TorchEnvironment, instance=self, black_list=('reset', 'step'))
 

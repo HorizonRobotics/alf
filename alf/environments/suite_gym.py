@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import collections
+import gin
 import gym
 import gym.spaces
 from alf.environments import torch_wrappers, torch_gym_wrapper

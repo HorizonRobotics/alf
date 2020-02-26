@@ -145,6 +145,7 @@ def timestep_last(observation, prev_action, reward, discount, env_id):
 
 AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
 
+
 def restart(observation, batch_size=None, discount=1.0, env_id=None):
     """Returns a `TimeStep` with `step_type` set equal to `StepType.FIRST`.
 
@@ -162,7 +163,7 @@ def restart(observation, batch_size=None, discount=1.0, env_id=None):
     # TODO(b/130244501): Check leading dimension of first_observation
     # against batch_size if all are known statically.
     shape = _as_multi_dim(batch_size)
-    step_type = torch.full(shape, StepType.FIRST)
+    step_type = torch.full(shape, StepType.FIRST, dtype=torch.int32)
     reward = torch.full(shape, 0.0, dtype=torch.float32)
     discount = torch.full(shape, discount, dtype=torch.float32)
     prev_action = ()
@@ -187,7 +188,7 @@ def _as_multi_dim(maybe_scalar):
 def transition(observation, action, reward, discount=1.0, env_id=None):
     """Returns a `TimeStep` with `step_type` set equal to `StepType.MID`.
 
-    For TF transitions, the batch size is inferred from the shape of `reward`.
+    The batch size is inferred from the shape of `reward`.
 
     If `discount` is a scalar, and `observation` contains Tensors,
     then `discount` will be broadcasted to match `reward.shape`.
@@ -209,12 +210,11 @@ def transition(observation, action, reward, discount=1.0, env_id=None):
     assert torch.is_tensor(first_observation)
     first_action = nest.flatten(action)[0]
     assert torch.is_tensor(first_action)
-    assert first_observation.shape[:1] == first_action.shape[:1]
 
     # TODO(b/130245199): If reward.shape.rank == 2, and static
     # batch sizes are available for both first_observation and reward,
     # check that these match.
-    reward = torch.tensor(reward, dtype=tf.float32)
+    reward = torch.tensor(reward, dtype=torch.float32)
     if reward.dim() is None or reward.dim() > 1:
         raise ValueError(
             'Expected reward to be a scalar or vector; saw shape: %s' %
@@ -223,11 +223,12 @@ def transition(observation, action, reward, discount=1.0, env_id=None):
         shape = []
     else:
         assert first_observation.shape[:1] == reward.shape
+        assert first_action.shape[:1] == reward.shape
         if env_id is not None:
             assert env_id.shape == reward.shape
         shape = reward.shape
-    step_type = torch.full(shape, StepType.LAST)
-    discount = torch.tensor(discount, dtype=tf.float32)
+    step_type = torch.full(shape, StepType.MID, dtype=torch.int32)
+    discount = torch.tensor(discount, dtype=torch.float32)
     if env_id is None:
         env_id = torch.full(shape, 0, dtype=torch.int32)
 
@@ -258,7 +259,7 @@ def termination(observation, action, reward, env_id=None):
     # TODO(b/130245199): If reward.shape.rank == 2, and static
     # batch sizes are available for both first_observation and reward,
     # check that these match.
-    reward = torch.tensor(reward, dtype=tf.float32)
+    reward = torch.tensor(reward, dtype=torch.float32)
     if reward.dim() is None or reward.dim() > 1:
         raise ValueError(
             'Expected reward to be a scalar or vector; saw shape: %s' %
@@ -270,7 +271,7 @@ def termination(observation, action, reward, env_id=None):
         if env_id is not None:
             assert env_id.shape == reward.shape
         shape = reward.shape
-    step_type = torch.full(shape, StepType.LAST)
+    step_type = torch.full(shape, StepType.LAST, dtype=torch.int32)
     discount = torch.full(shape, 0.0, dtype=torch.float32)
     if env_id is None:
         env_id = torch.full(shape, 0, dtype=torch.int32)

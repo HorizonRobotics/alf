@@ -80,6 +80,7 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
         return self._env
 
 
+# Used in ALF
 @gin.configurable
 class TimeLimit(TorchEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
@@ -850,6 +851,7 @@ class OneHotActionWrapper(TorchEnvironmentBaseWrapper):
         return self._env.step(action)
 
 
+# Used in ALF
 @gin.configurable
 class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
     """
@@ -897,6 +899,7 @@ class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
         return time_step
 
 
+# Used in ALF
 @gin.configurable
 class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
     """Randomize the length of the first episode.

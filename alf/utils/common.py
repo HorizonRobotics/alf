@@ -32,6 +32,7 @@ from typing import Callable
 import alf
 from alf.data_structures import LossInfo
 from alf.utils.dist_utils import DistributionSpec
+from alf.nest.nest import is_namedtuple
 
 
 def zeros_from_spec(nested_spec, batch_size):

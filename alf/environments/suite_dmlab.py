@@ -15,7 +15,7 @@
 import numpy as np
 import gym
 import gin.tf
-from alf.environments import suite_gym, torch_wrappers, ProcessEnvironment
+from alf.environments import suite_gym, torch_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
@@ -221,7 +221,8 @@ def load(scene,
             torch_env_wrappers=torch_env_wrappers)
 
     if wrap_with_process:
-        process_env = ProcessEnvironment(lambda: env_ctor())
+        process_env = process_environment.ProcessEnvironment(lambda: env_ctor(
+        ))
         process_env.start()
         py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
