@@ -22,7 +22,7 @@ import torch
 
 
 class THDeque(torch.nn.Module):
-    """Torch (TH) deque backed by torch.nn.Parameter storage."""
+    """Torch (TH) deque backed by torch.tensor storage."""
 
     def __init__(self, max_len, dtype):
         """Constructor.
@@ -202,7 +202,6 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
                  buffer_size=10):
         super(AverageEpisodeLengthMetric, self).__init__(
             name=name, prefix=prefix)
-        # TODO: use tensor deque
         self._buffer = THDeque(max_len=buffer_size, dtype=dtype)
         self.dtype = dtype
         self.register_buffer('_length_accumulator',

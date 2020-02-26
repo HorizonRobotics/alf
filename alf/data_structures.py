@@ -113,10 +113,9 @@ class TimeStep(
 
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
-    discount = torch.tensor(discount)
+    discount = torch.as_tensor(discount)
     # as_tensor reuses the underlying data store of numpy array if possible.
-    create_tensor = lambda t: t.detach() if torch.is_tensor(
-        t) else torch.as_tensor(t).detach()
+    create_tensor = lambda t: torch.as_tensor(t).detach()
     make_tensors = lambda struct: map_structure(create_tensor, struct)
     return TimeStep(
         step_type=step_type.view(discount.shape),
@@ -124,7 +123,7 @@ def _create_timestep(observation, prev_action, reward, discount, env_id,
         discount=discount,
         observation=make_tensors(observation),
         prev_action=make_tensors(prev_action),
-        env_id=torch.tensor(env_id, dtype=torch.int64))
+        env_id=torch.as_tensor(env_id, dtype=torch.int64))
 
 
 def timestep_first(observation, prev_action, reward, discount, env_id):
