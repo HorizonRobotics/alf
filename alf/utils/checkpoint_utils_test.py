@@ -197,7 +197,7 @@ class TestMultiAlgSingleOpt(unittest.TestCase):
             shutil.rmtree(ckpt_dir)
 
         # construct algorithms
-        param_1 = nn.Parameter(torch.Tensor([1]))
+        param_1 = nn.Parameter(torch.Tensor([1.0]))
         alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
         param_2_1 = nn.Parameter(torch.Tensor([2.1]))
@@ -236,7 +236,7 @@ class TestMultiAlgSingleOpt(unittest.TestCase):
         # check the recovered paramerter values for all modules
         sd = alg_root.state_dict()
         self.assertTrue((list(sd.values())[0:4] == [
-            torch.tensor([1.0]),
+            torch.tensor([1]),
             torch.tensor([2.1]),
             torch.tensor([2.0]),
             torch.tensor([0.0])
@@ -403,6 +403,8 @@ class TestWithCycle(unittest.TestCase):
 
         optimizer_root = torch.optim.Adam(lr=0.1)
         param_root = nn.Parameter(torch.Tensor([0]))
+
+        # case 1: test cycle detection
         alg_root = ComposedAlg(
             params=[param_root],
             optimizer=optimizer_root,
@@ -414,7 +416,7 @@ class TestWithCycle(unittest.TestCase):
         ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
         self.assertRaises(AssertionError, ckpt_mngr.save, 0)
 
-        # test cycle detection when some sub-algorithms are 'ignored'
+        # case 2: test cycle detection when some sub-algorithms are 'ignored'
         alg_root2 = ComposedAlgWithIgnore(
             params=[param_root],
             optimizer=optimizer_root,
@@ -427,10 +429,11 @@ class TestWithCycle(unittest.TestCase):
         self.assertRaises(AssertionError, ckpt_mngr.save, 0)
 
 
-class TestMismatch(unittest.TestCase):
-    def test_mismatch(self):
+class TestModelMismatch(unittest.TestCase):
+    def test_model_mismatch(self):
+        # test model mis-match
 
-        ckpt_dir = "/tmp/ckpt_data/mis_match/"
+        ckpt_dir = "/tmp/ckpt_data/model_mis_match/"
 
         if os.path.isdir(ckpt_dir):
             shutil.rmtree(ckpt_dir)
@@ -471,7 +474,58 @@ class TestMismatch(unittest.TestCase):
         ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root1)
         ckpt_mngr.save(step_num)
         ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root12)
-        self.assertRaises(KeyError, ckpt_mngr.load, step_num)
+        self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
+
+
+class TestOptMismatch(unittest.TestCase):
+    def test_opt_mismatch(self):
+        # test optimizer mis-match
+
+        ckpt_dir = "/tmp/ckpt_data/opt_mis_match/"
+
+        if os.path.isdir(ckpt_dir):
+            shutil.rmtree(ckpt_dir)
+
+        param_1 = nn.Parameter(torch.Tensor([1]))
+        optimizer_1 = torch.optim.Adam(lr=0.2)
+        alg_1_no_op = SimpleAlg(params=[param_1], name="alg_1_no_op")
+        alg_1 = SimpleAlg(
+            params=[param_1], optimizer=optimizer_1, name="alg_1")
+
+        param_2 = nn.Parameter(torch.Tensor([2]))
+        optimizer_2 = torch.optim.Adam(lr=0.2)
+        alg_2 = SimpleAlg(
+            params=[param_2], optimizer=optimizer_2, name="alg_2")
+
+        optimizer_root = torch.optim.Adam(lr=0.1)
+        param_root = nn.Parameter(torch.Tensor([0]))
+        alg_root_1_no_op = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1_no_op,
+            sub_alg2=alg_2,
+            name="root")
+
+        alg_root_1 = ComposedAlg(
+            params=[param_root],
+            optimizer=optimizer_root,
+            sub_alg1=alg_1,
+            sub_alg2=alg_2,
+            name="root")
+
+        # case 1: save using alg_root_1_no_op and load using alg_root_1
+        step_num = 0
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root_1_no_op)
+        ckpt_mngr.save(step_num)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root_1)
+        self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
+
+        # case 2: save using alg_root_1 load using alg_root_1_no_op
+        step_num = 0
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root_1)
+        ckpt_mngr.save(step_num)
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root_1_no_op)
+        self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
 
 
 if __name__ == '__main__':

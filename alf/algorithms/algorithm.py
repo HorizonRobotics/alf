@@ -384,9 +384,12 @@ class Algorithm(nn.Module):
         def load(module, prefix=''):
             if isinstance(module, Algorithm):
                 for i, opt in enumerate(module._optimizers):
-                    new_key = prefix + '_optimizers.%d' % i
-                    opt.load_state_dict(state_dict[new_key])
-                    del state_dict[new_key]
+                    opt_key = prefix + '_optimizers.%d' % i
+                    if opt_key in state_dict:
+                        opt.load_state_dict(state_dict[opt_key])
+                        del state_dict[opt_key]
+                    elif strict:
+                        missing_keys.append(opt_key)
 
             for name, child in module._modules.items():
                 if child is not None:

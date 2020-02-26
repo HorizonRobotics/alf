@@ -19,6 +19,7 @@ import torch
 import torch.nn as nn
 
 from alf.networks.initializers import variance_scaling_init
+from alf.tensor_specs import TensorSpec
 
 
 def identity(x):

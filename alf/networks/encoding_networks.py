@@ -152,9 +152,9 @@ class ImageDecodingNetwork(nn.Module):
                 project an input latent vector into a vector of an appropriate
                 length so that it can be reshaped into (`start_decoding_channels`,
                 `start_decoding_height`, `start_decoding_width`).
-            preprocess_fc_layer_params (tuple[int]): a list of fc layer units.
-                These fc layers are used for preprocessing the latent vector before
-                transposed convolutions.
+            preprocess_fc_layer_params (list[int] or tuple[int]): a list of fc
+                layer units. These fc layers are used for preprocessing the
+                latent vector before transposed convolutions.
             activation (nn.functional): activation for hidden layers
             output_activation (nn.functional): activation for the output layer.
                 Usually our image inputs are normalized to [0, 1] or [-1, 1],
@@ -268,8 +268,8 @@ class EncodingNetwork(nn.Module):
             conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (list[int]): a list of integers representing FC layer
-                sizes.
+            fc_layer_params (tuple[int] or list[int]): a list of integers
+                representing FC layer sizes.
             activation (nn.functional): activation used for hidden layers
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
@@ -301,7 +301,7 @@ class EncodingNetwork(nn.Module):
         if fc_layer_params is None:
             fc_layer_params = []
         else:
-            assert isinstance(fc_layer_params, list)
+            assert isinstance(fc_layer_params, (tuple, list))
         if last_layer_size is not None:
             fc_layer_params.append(last_layer_size)
         for i, size in enumerate(fc_layer_params):
@@ -328,3 +328,102 @@ class EncodingNetwork(nn.Module):
         to know the output size in advance.
         """
         return self._output_size
+
+
+@gin.configurable
+class LSTMEncodingNetwork(nn.Module):
+    """LSTM cells followed by an encoding network."""
+
+    def __init__(self,
+                 input_size,
+                 hidden_size,
+                 fc_layer_params=None,
+                 activation=torch.relu,
+                 last_layer_size=None,
+                 last_activation=None):
+        """Creates an instance of `LSTMEncodingNetwork`.
+
+        Args:
+            input_size (int): the input vector size
+            hidden_size (int or list[int] or tuple[int]): the hidden size(s) of
+                the lstm cell(s). Each size corresponds to a cell. If there are
+                multiple sizes, then lstm cells are stacked.
+            fc_layer_params (tuple[int] or list[int]): an optional list of
+                integers representing hidden FC layers that are applied after
+                the cells' output.
+            activation (nn.functional): activation for the optional FC layers
+            last_layer_size (int): an optional size of the last layer
+            last_activation (nn.functional): activation function of the last
+                layer. If None, it will be the same with `activation`.
+        """
+        super(LSTMEncodingNetwork, self).__init__()
+        if isinstance(hidden_size, int):
+            hidden_size = [hidden_size]
+        else:
+            assert isinstance(hidden_size, (list, tuple))
+
+        self._cells = nn.ModuleList()
+        self._state_spec = []
+        for hs in hidden_size:
+            self._cells.append(
+                torch.nn.LSTMCell(input_size=input_size, hidden_size=hs))
+            self._state_spec.append(self._create_lstm_cell_state_spec(hs))
+            input_size = hs
+
+        self._encoding_net = EncodingNetwork(
+            input_tensor_spec=TensorSpec((input_size, )),
+            fc_layer_params=fc_layer_params,
+            activation=activation,
+            last_layer_size=last_layer_size,
+            last_activation=last_activation)
+
+    def _create_lstm_cell_state_spec(self, hidden_size, dtype=torch.float32):
+        """Create LSTMCell state specs given the hidden size and dtype. According to
+        PyTorch LSTMCell doc:
+
+        https://pytorch.org/docs/stable/nn.html#torch.nn.LSTMCell
+
+        Each LSTMCell has two states: h and c with the same shape.
+
+        Args:
+            hidden_size (int): the number of units in the hidden state
+            dtype (torch.dtype): dtype of the specs
+
+        Returns:
+            specs (tuple[TensorSpec]):
+        """
+        state_spec = TensorSpec(shape=(hidden_size, ), dtype=dtype)
+        return (state_spec, state_spec)
+
+    def forward(self, inputs, state):
+        """
+        Args:
+            inputs (torch.Tensor):
+            state (list[tuple]): a list of tuples, where each tuple is a pair
+                of `h_state` and `c_state`.
+
+        Returns:
+            output (torch.Tensor): output of the network
+            new_state (list[tuple]): the updated states
+        """
+        assert isinstance(state, list)
+        for s in state:
+            assert isinstance(s, tuple) and len(s) == 2, \
+                "Each LSTMCell state should be a tuple of (h,c)!"
+        assert len(self._cells) == len(state)
+
+        new_state = []
+        h_state = inputs
+        for cell, s in zip(self._cells, state):
+            h_state, c_state = cell(h_state, s)
+            new_state.append((h_state, c_state))
+        output = self._encoding_net(h_state)
+        return output, new_state
+
+    @property
+    def state_spec(self):
+        return self._state_spec
+
+    @property
+    def output_size(self):
+        return self._encoding_net.output_size
