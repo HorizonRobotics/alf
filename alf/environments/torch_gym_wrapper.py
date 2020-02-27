@@ -28,11 +28,11 @@ from alf.environments import torch_environment
 import alf.data_structures as ds
 
 
-def tensor_spec_from_gym_space(space, dtype_map, simplify_box_bounds=True):
+def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
     """
     Mostly adapted from `spec_from_gym_space` in
-    `tf_agents.environments.gym_wrapper`. This function no longer use `dtype_map`
-    to set data types; instead it always uses dtypes of gym spaces as gym is now
+    `tf_agents.environments.gym_wrapper`. Instead of using a `dtype_map`
+    as default data types, it always uses dtypes of gym spaces since gym is now
     updated to support this.
     """
 
@@ -46,23 +46,27 @@ def tensor_spec_from_gym_space(space, dtype_map, simplify_box_bounds=True):
         else:
             return np_array
 
-    dtype = getattr(torch, space.dtype.name)
+    def torch_dtype(data):
+        return getattr(torch, space.dtype.name)
 
     if isinstance(space, gym.spaces.Discrete):
         # Discrete spaces span the set {0, 1, ... , n-1} while Bounded Array specs
         # are inclusive on their bounds.
         maximum = space.n - 1
         return BoundedTensorSpec(
-            shape=(), dtype=dtype, minimum=0, maximum=maximum)
+            shape=(), dtype=torch_dtype(space), minimum=0, maximum=maximum)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         maximum = try_simplify_array_to_value(
-            np.asarray(space.nvec - 1, dtype=dtype))
+            np.asarray(space.nvec - 1, dtype=space.dtype))
         return BoundedTensorSpec(
-            shape=space.shape, dtype=dtype, minimum=0, maximum=maximum)
+            shape=space.shape,
+            dtype=torch_dtype(space),
+            minimum=0,
+            maximum=maximum)
     elif isinstance(space, gym.spaces.MultiBinary):
         shape = (space.n, )
         return BoundedTensorSpec(
-            shape=shape, dtype=dtype, minimum=0, maximum=1)
+            shape=shape, dtype=torch_dtype(space), minimum=0, maximum=1)
     elif isinstance(space, gym.spaces.Box):
         minimum = np.asarray(space.low, dtype=space.dtype)
         maximum = np.asarray(space.high, dtype=space.dtype)
@@ -70,14 +74,14 @@ def tensor_spec_from_gym_space(space, dtype_map, simplify_box_bounds=True):
             minimum = try_simplify_array_to_value(minimum)
             maximum = try_simplify_array_to_value(maximum)
         return BoundedTensorSpec(
-            shape=space.shape, dtype=dtype, minimum=minimum, maximum=maximum)
+            shape=space.shape,
+            dtype=torch_dtype(space),
+            minimum=minimum,
+            maximum=maximum)
     elif isinstance(space, gym.spaces.Tuple):
-        return tuple(
-            [tensor_spec_from_gym_space(s, dtype_map) for s in space.spaces])
+        return tuple([tensor_spec_from_gym_space(s) for s in space.spaces])
     elif isinstance(space, gym.spaces.Dict):
-        return collections.OrderedDict([(key,
-                                         tensor_spec_from_gym_space(
-                                             s, dtype_map))
+        return collections.OrderedDict([(key, tensor_spec_from_gym_space(s))
                                         for key, s in space.spaces.items()])
     else:
         raise ValueError(
@@ -94,7 +98,6 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
     def __init__(self,
                  gym_env,
                  discount=1.0,
-                 spec_dtype_map=None,
                  match_obs_space_dtype=True,
                  auto_reset=True,
                  simplify_box_bounds=True):
@@ -109,10 +112,9 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         # TODO(sfishman): Add test for auto_reset param.
         self._auto_reset = auto_reset
         self._observation_spec = tensor_spec_from_gym_space(
-            self._gym_env.observation_space, spec_dtype_map,
-            simplify_box_bounds)
+            self._gym_env.observation_space, simplify_box_bounds)
         self._action_spec = tensor_spec_from_gym_space(
-            self._gym_env.action_space, spec_dtype_map, simplify_box_bounds)
+            self._gym_env.action_space, simplify_box_bounds)
         self._flat_obs_spec = nest.flatten(self._observation_spec)
         self._time_step_spec = ds.time_step_spec(self._observation_spec,
                                                  self._action_spec)

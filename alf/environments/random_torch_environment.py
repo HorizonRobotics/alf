@@ -77,7 +77,8 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         """
         self._batch_size = batch_size
         self._observation_spec = observation_spec
-        self._time_step_spec = ds.time_step_spec(self._observation_spec)
+        self._time_step_spec = ds.time_step_spec(self._observation_spec,
+                                                 action_spec)
         self._action_spec = action_spec or []
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)

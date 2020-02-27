@@ -32,8 +32,7 @@ def load(game,
          frame_stack=None,
          gym_env_wrappers=(),
          env_wrappers=(),
-         max_episode_steps=0,
-         spec_dtype_map=None):
+         max_episode_steps=0):
     """Loads the specified simple game and wraps it.
     Args:
         game (str): name for the environment to load. The game should have been
@@ -46,18 +45,10 @@ def load(game,
         gym_env_wrappers (list): list of gym env wrappers
         env_wrappers (list): list of tf_agents env wrappers
         max_episode_steps (int): max number of steps for an episode.
-        spec_dtype_map (dict): a dict that maps gym specs to tf dtypes to use as
-            the default dtype for the tensors. An easy way how to configure a
-            custom mapping through Gin is to define a gin-configurable function
-            that returns desired mapping and call it in your Gin config file, for
-            example: `suite_socialbot.load.spec_dtype_map = @get_custom_mapping()`.
 
     Returns:
         A PyEnvironmentBase instance.
     """
-
-    if spec_dtype_map is None:
-        spec_dtype_map = {gym.spaces.Box: np.float32}
 
     if game == "NoisyArray":
         env = NoisyArray(**env_args)
@@ -73,5 +64,4 @@ def load(game,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
         env_wrappers=env_wrappers,
-        spec_dtype_map=spec_dtype_map,
         auto_reset=True)

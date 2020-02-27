@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import collections
-import gin
 import gym
 import gym.spaces
+import gin
 from alf.environments import torch_wrappers, torch_gym_wrapper
 
 
@@ -24,8 +24,7 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
-         torch_env_wrappers=(),
-         spec_dtype_map=None):
+         torch_env_wrappers=()):
     """Loads the selected environment and wraps it with the specified wrappers.
 
   Note that by default a TimeLimit wrapper is used to limit episode lengths
@@ -41,11 +40,6 @@ def load(environment_name,
       directly on the gym environment.
     torch_env_wrappers: Iterable with references to wrapper classes to use on the
       torch environment.
-    spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
-      default dtype for the tensors. An easy way how to configure a custom
-      mapping through Gin is to define a gin-configurable function that returns
-      desired mapping and call it in your Gin congif file, for example:
-      `suite_gym.load.spec_dtype_map = @get_custom_mapping()`.
 
   Returns:
     A PyEnvironment instance.
@@ -61,8 +55,7 @@ def load(environment_name,
         discount=discount,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
-        torch_env_wrappers=torch_env_wrappers,
-        spec_dtype_map=spec_dtype_map)
+        torch_env_wrappers=torch_env_wrappers)
 
 
 @gin.configurable
@@ -72,7 +65,6 @@ def wrap_env(gym_env,
              gym_env_wrappers=(),
              time_limit_wrapper=torch_wrappers.TimeLimit,
              torch_env_wrappers=(),
-             spec_dtype_map=None,
              auto_reset=True):
     """Wraps given gym environment with TF Agent's GymWrapper.
 
@@ -91,11 +83,6 @@ def wrap_env(gym_env,
       torch_wrappers.TimeLimit.
     torch_env_wrappers: Iterable with references to wrapper classes to use on the
       torch environment.
-    spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
-      default dtype for the tensors. An easy way how to configure a custom
-      mapping through Gin is to define a gin-configurable function that returns
-      desired mapping and call it in your Gin config file, for example:
-      `suite_gym.load.spec_dtype_map = @get_custom_mapping()`.
     auto_reset: If True (default), reset the environment automatically after a
       terminal state is reached.
 
@@ -109,7 +96,6 @@ def wrap_env(gym_env,
     env = torch_gym_wrapper.TorchGymWrapper(
         gym_env,
         discount=discount,
-        spec_dtype_map=spec_dtype_map,
         auto_reset=auto_reset,
     )
 

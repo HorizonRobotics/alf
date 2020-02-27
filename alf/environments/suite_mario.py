@@ -52,8 +52,7 @@ def load(game,
          crop=True,
          gym_env_wrappers=(),
          torch_env_wrappers=(),
-         max_episode_steps=4500,
-         spec_dtype_map=None):
+         max_episode_steps=4500):
     """Loads the selected mario game and wraps it .
     Args:
         game: Name for the environment to load.
@@ -71,11 +70,6 @@ def load(game,
         gym_env_wrappers: list of gym env wrappers
         env_wrappers: list of tf_agents env wrappers
         max_episode_steps: max episode step limit
-        spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
-            default dtype for the tensors. An easy way how to configure a custom
-            mapping through Gin is to define a gin-configurable function that returns
-            desired mapping and call it in your Gin config file, for example:
-            `suite_socialbot.load.spec_dtype_map = @get_custom_mapping()`.
 
     Returns:
         A PyEnvironmentBase instance.
@@ -103,7 +97,6 @@ def load(game,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
             torch_env_wrappers=torch_env_wrappers,
-            spec_dtype_map=spec_dtype_map,
             auto_reset=True)
 
     # wrap each env in a new process when parallel envs are used
