@@ -176,8 +176,8 @@ class AverageReturnMetric(metric.StepMetric):
                         exp.reward))
 
         # Add final returns to buffer.
-        last_episode_indices = torch.squeeze(
-            *torch.where(exp.is_last())).type(torch.int64)
+        last_episode_indices = torch.squeeze(*torch.where(exp.is_last())).type(
+            torch.int64)
         for indx in last_episode_indices:
             self._buffer.append(self._return_accumulator[indx])
 
