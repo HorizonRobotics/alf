@@ -161,19 +161,35 @@ TrainingInfo = namedtuple(
     ],
     default_value=())
 
-Experience = namedtuple(
-    "Experience",
-    [
-        'step_type',
-        'reward',
-        'discount',
-        'observation',
-        'prev_action',
-        'env_id',
-        'action',
-        'rollout_info',  # AlgStep.info from rollout()
-        'state'  # state passed to rollout() to generate `action`
-    ])
+
+class Experience(
+        namedtuple(
+            "Experience",
+            [
+                'step_type',
+                'reward',
+                'discount',
+                'observation',
+                'prev_action',
+                'env_id',
+                'action',
+                'rollout_info',  # AlgStep.info from rollout()
+                'state'  # state passed to rollout() to generate `action`
+            ])):
+    def is_first(self):
+        if torch.is_tensor(self.step_type):
+            return torch.eq(self.step_type, StepType.FIRST)
+        raise ValueError('step_type is not a Torch Tensor')
+
+    def is_mid(self):
+        if torch.is_tensor(self.step_type):
+            return torch.eq(self.step_type, StepType.MID)
+        raise ValueError('step_type is not a Torch Tensor')
+
+    def is_last(self):
+        if torch.is_tensor(self.step_type):
+            return torch.eq(self.step_type, StepType.LAST)
+        raise ValueError('step_type is not a Torch Tensor')
 
 
 def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
