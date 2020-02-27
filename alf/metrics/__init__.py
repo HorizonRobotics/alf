@@ -12,30 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# TODO: implement metrics
-
-
-class Metric(object):
-    def summarize(self, train_step, step_metrics):
-        pass
-
-    def __call__(self, experience):
-        pass
-
-
-class NumberOfEpisodes(Metric):
-    pass
-
-
-class EnvironmentSteps(Metric):
-    pass
-
-
-class AverageReturnMetric(Metric):
-    def __init__(self, batch_size, buffer_size):
-        pass
-
-
-class AverageEpisodeLengthMetric(Metric):
-    def __init__(self, batch_size, buffer_size):
-        pass
+from .metrics import *
