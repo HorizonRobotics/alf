@@ -23,7 +23,7 @@ import contextlib
 import socket
 import gym
 from fasteners.process_lock import InterProcessLock
-import gin.tf
+import gin
 
 from alf.environments import suite_gym, torch_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker

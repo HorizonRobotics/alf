@@ -18,7 +18,7 @@ https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/t
 
 import numpy as np
 import torch
-from alf.nest import nest
+from alf import nest
 
 
 def torch_dtype_to_str(dtype):

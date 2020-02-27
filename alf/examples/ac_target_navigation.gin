@@ -1,6 +1,6 @@
 include 'ac_simple_navigation.gin'
 
-CHANNEL_ORDER='channels_last'
+CHANNEL_ORDER='channels_first'
 FrameStack.channel_order=%CHANNEL_ORDER
 
 batch_size=30

@@ -14,7 +14,7 @@
 """Various data structures.
 Converted to PyTorch from the TF version.
 """
-from alf.nest import map_structure
+import alf.nest as nest
 import collections
 import numpy as np
 import torch
@@ -118,7 +118,7 @@ def _create_timestep(observation, prev_action, reward, discount, env_id,
     discount = torch.as_tensor(discount)
     # as_tensor reuses the underlying data store of numpy array if possible.
     create_tensor = lambda t: torch.as_tensor(t).detach()
-    make_tensors = lambda struct: map_structure(create_tensor, struct)
+    make_tensors = lambda struct: nest.map_structure(create_tensor, struct)
     return TimeStep(
         step_type=step_type.view(discount.shape),
         reward=make_tensors(reward),
