@@ -145,6 +145,9 @@ PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
 ]
 PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
 
+MISC_TRAIN_CONF = PPO_TRAIN_CONF + ['MISCAlgorithm.batch_size=1']
+MISC_TRAIN_PARAMS = _to_gin_params(MISC_TRAIN_CONF)
+
 MBRL_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=4',
     'TrainerConfig.whole_replay_buffer_training=True',
@@ -379,6 +382,30 @@ class TrainPlayTest(tf.test.TestCase):
             gin_file='icm_super_mario_intrinsic_only.gin',
             skip_checker=self._skip_if_dmlab_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
+
+    def test_misc_playground(self):
+        self._test(
+            gin_file='misc_playground.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=MISC_TRAIN_PARAMS)
+
+    def test_misc_playground_empowerment(self):
+        self._test(
+            gin_file='misc_playground_empowerment.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=MISC_TRAIN_PARAMS)
+
+    def test_misc_playground_no_objects(self):
+        self._test(
+            gin_file='misc_playground_no_objects.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=MISC_TRAIN_PARAMS)
+
+    def test_misc_playground_two_balls(self):
+        self._test(
+            gin_file='misc_playground_two_balls.gin',
+            skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=MISC_TRAIN_PARAMS)
 
     def test_off_policy_ac_breakout(self):
         self._test(

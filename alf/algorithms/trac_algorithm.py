@@ -146,7 +146,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
         rollout_ac_info = ()
         if training_info.rollout_info != ():
             rollout_ac_info = training_info.rollout_info.ac._replace(
-                action_distribution=training_info.info.action_distribution)
+                action_distribution=training_info.rollout_info.
+                action_distribution)
         ac_info = training_info.info.ac._replace(
             action_distribution=training_info.info.action_distribution)
         return self._ac_algorithm.calc_loss(

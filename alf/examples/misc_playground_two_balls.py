@@ -20,7 +20,7 @@ import tensorflow as tf
 def split_observation_fn(o):
 
     dimo = o.get_shape().as_list()[-1]
-    assert dimo == 26, ("The dimension does not match.")
+    assert dimo == 26, ("The dimension does not match. dimo=%s" % dimo)
 
     task_specific_ob_1, task_specific_ob_2, agent_pose, agent_vel, internal_states, action = tf.split(
         o, [3, 3, 6, 6, 6, 2], axis=-1)

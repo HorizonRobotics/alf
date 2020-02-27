@@ -16,6 +16,8 @@
 import gin
 import tensorflow as tf
 
+from alf.utils.nest_utils import get_nest_batch_size
+
 
 @gin.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
@@ -82,3 +84,22 @@ def max_n(inputs):
     for x in inputs:
         ret = tf.maximum(ret, x)
     return ret
+
+
+def shuffle(values, seed=None):
+    """Shuffle with gradient defined.
+
+    tf.random.shuffle() has no gradient defined for `value`.  This `shuffle`
+    can propagate gradient of `value` by using `gather`.
+
+    Args:
+        values (nested Tensor): nested Tensor to be shuffled. All the tensor
+            need to have the same batch size (i.e. shape[0]).
+        seed (int): Used to create a random seed for the distribution.
+    Returns:
+        shuffled value along dimension 0.
+    """
+    batch_size = get_nest_batch_size(values)
+    indices = tf.random.shuffle(tf.range(batch_size), seed=seed)
+    return tf.nest.map_structure(lambda value: tf.gather(value, indices),
+                                 values)

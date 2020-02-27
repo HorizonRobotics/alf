@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Mutual Information Estimator."""
+
 import math
 
 import tensorflow as tf
@@ -26,6 +28,7 @@ from alf.utils.averager import ScalarAdaptiveAverager
 from alf.utils.data_buffer import DataBuffer
 from alf.utils.encoding_network import EncodingNetwork, TFAEncodingNetwork
 from alf.utils.nest_utils import get_nest_batch_size
+from alf.utils import math_ops
 from alf.layers import NestConcatenate
 
 
@@ -204,7 +207,7 @@ class MIEstimator(Algorithm):
         return x1, y1
 
     def _shuffle_sampler(self, x, y):
-        return x, tf.nest.map_structure(tf.random.shuffle, y)
+        return x, math_ops.shuffle(y)
 
     def _shift_sampler(self, x, y):
         def _shift(y):
