@@ -18,6 +18,8 @@ import warnings
 import shutil
 import os
 import numpy as np
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 
@@ -256,7 +258,7 @@ class TestMultiAlgMultiOpt(unittest.TestCase):
         alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
         param_2 = nn.Parameter(torch.Tensor([2]))
-        optimizer_2 = torch.optim.Adam(lr=0.1)
+        optimizer_2 = torch.optim.Adam(lr=0.2)
         alg_2 = SimpleAlg(
             params=[param_2], optimizer=optimizer_2, name="alg_2")
 
@@ -285,50 +287,7 @@ class TestMultiAlgMultiOpt(unittest.TestCase):
         ckpt_mngr.load(0)
 
         # check the recovered optimizers
-        expected = torch.Tensor([0.1, 0.1])
-        np.testing.assert_array_almost_equal(
-            get_learning_rate(all_optimizers), expected)
-
-
-class TestWithIgnoredSubAlgorithm(unittest.TestCase):
-    def test_with_ignored_sub_algorithm(self):
-
-        ckpt_dir = "/tmp/ckpt_data/ignored_sub_alg/"
-
-        if os.path.isdir(ckpt_dir):
-            shutil.rmtree(ckpt_dir)
-
-        # construct algorithms
-        param_1 = nn.Parameter(torch.Tensor([1]))
-        alg_1 = SimpleAlg(params=[param_1], name="alg_1")
-
-        param_2 = nn.Parameter(torch.Tensor([2]))
-        optimizer_2 = torch.optim.Adam(lr=0.2)
-        alg_2 = SimpleAlg(
-            params=[param_2], optimizer=optimizer_2, name="alg_2")
-
-        optimizer_root = torch.optim.Adam(lr=0.1)
-        param_root = nn.Parameter(torch.Tensor([0]))
-        alg_root = ComposedAlgWithIgnore(
-            params=[param_root],
-            optimizer=optimizer_root,
-            sub_alg1=alg_1,
-            sub_alg2=alg_2,
-            name="root")
-
-        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
-
-        # a number of training steps
-        step_num = 0
-        ckpt_mngr.save(step_num)
-
-        step_num = 1
-        all_optimizers = alg_root.optimizers()
-        decay_learning_rate(all_optimizers, 1.0 / 10)
-        ckpt_mngr.save(step_num)
-
-        ckpt_mngr.load(1)
-        expected = torch.Tensor([0.01, 0.02])
+        expected = torch.Tensor([0.1, 0.2])
         np.testing.assert_array_almost_equal(
             get_learning_rate(all_optimizers), expected)
 
@@ -364,28 +323,35 @@ class TestWithParamSharing(unittest.TestCase):
 
         ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
 
+        # only one copy of the shared param is returned from state_dict
+        self.assertTrue('_sub_alg2.p' not in alg_root.state_dict())
+
         # a number of training steps
         step_num = 0
         ckpt_mngr.save(step_num)
 
-        ckpt_mngr.load(0)
-        expected = torch.Tensor([0.1, 0.2])
-        np.testing.assert_array_almost_equal(
-            get_learning_rate(all_optimizers), expected)
+        # modify the shared param after saving
+        with torch.no_grad():
+            alg_root._sub_alg2.state_dict()['p'].copy_(torch.Tensor([-1]))
 
-        sd = alg_root.state_dict()
-        recovered_values = [list(sd.values())[i] for i in [0, 1, 2, 4]]
-        self.assertTrue((
-            recovered_values == [
-                torch.tensor([1.0]),
-                torch.tensor([1.0]),  # the shared-parameter
-                torch.tensor([2.0]),
-                torch.tensor([0.0])
-            ]))
+        self.assertTrue(
+            (alg_root._sub_alg2.state_dict()['p'] == torch.Tensor([-1])))
+        self.assertTrue(
+            (alg_root.state_dict()['_sub_alg1._param_list.0'] == torch.Tensor(
+                [-1])))
+
+        # the value of the shared parameter is recovered back to saved value
+        ckpt_mngr.load(0)
+        self.assertTrue(
+            (alg_root._sub_alg2.state_dict()['p'] == torch.Tensor([1])))
+        self.assertTrue(
+            (alg_root.state_dict()['_sub_alg1._param_list.0'] == torch.Tensor(
+                [1])))
 
 
 class TestWithCycle(unittest.TestCase):
     def test_with_cycle(self):
+        # checkpointer should work regardless of cycles
 
         ckpt_dir = "/tmp/ckpt_data/sub_alg_cycle/"
 
@@ -404,7 +370,7 @@ class TestWithCycle(unittest.TestCase):
         optimizer_root = torch.optim.Adam(lr=0.1)
         param_root = nn.Parameter(torch.Tensor([0]))
 
-        # case 1: test cycle detection
+        # case 1: cycle without ignore
         alg_root = ComposedAlg(
             params=[param_root],
             optimizer=optimizer_root,
@@ -413,10 +379,50 @@ class TestWithCycle(unittest.TestCase):
             name="root")
 
         alg_2.root = alg_root
-        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
-        self.assertRaises(AssertionError, ckpt_mngr.save, 0)
 
-        # case 2: test cycle detection when some sub-algorithms are 'ignored'
+        expected_state_dict = OrderedDict([('_sub_alg1._param_list.0',
+                                            torch.tensor([1.])),
+                                           ('_sub_alg2._param_list.0',
+                                            torch.tensor([2.])),
+                                           ('_sub_alg2._optimizers.0', {
+                                               'state': {},
+                                               'param_groups': [{
+                                                   'lr': 0.2,
+                                                   'betas': (0.9, 0.999),
+                                                   'eps': 1e-08,
+                                                   'weight_decay': 0,
+                                                   'amsgrad': False,
+                                                   'params': []
+                                               }]
+                                           }),
+                                           ('_param_list.0',
+                                            torch.tensor([0.])),
+                                           ('_optimizers.0', {
+                                               'state': {},
+                                               'param_groups': [{
+                                                   'lr': 0.1,
+                                                   'betas': (0.9, 0.999),
+                                                   'eps': 1e-08,
+                                                   'weight_decay': 0,
+                                                   'amsgrad': False,
+                                                   'params': []
+                                               }]
+                                           })])
+
+        ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
+        ckpt_mngr.save(0)
+
+        # modify some parameter values after saving
+        with torch.no_grad():
+            alg_root._sub_alg1._param_list[0].copy_(torch.Tensor([-1]))
+
+        self.assertTrue((alg_root.state_dict() != expected_state_dict))
+
+        # recover the expected values after loading
+        ckpt_mngr.load(0)
+        self.assertTrue((alg_root.state_dict() == expected_state_dict))
+
+        # case 2: cycle with ignore
         alg_root2 = ComposedAlgWithIgnore(
             params=[param_root],
             optimizer=optimizer_root,
@@ -425,8 +431,19 @@ class TestWithCycle(unittest.TestCase):
             name="root")
 
         alg_2.root = alg_root2
+
         ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root2)
-        self.assertRaises(AssertionError, ckpt_mngr.save, 0)
+        ckpt_mngr.save(0)
+
+        # modify some parameter values after saving
+        with torch.no_grad():
+            alg_root._sub_alg1._param_list[0].copy_(torch.Tensor([-1]))
+
+        self.assertTrue((alg_root.state_dict() != expected_state_dict))
+
+        # recover the expected values after loading
+        ckpt_mngr.load(0)
+        self.assertTrue((alg_root2.state_dict() == expected_state_dict))
 
 
 class TestModelMismatch(unittest.TestCase):
