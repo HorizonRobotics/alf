@@ -128,7 +128,7 @@ class FrameStack(BaseObservationWrapper):
     def __init__(self,
                  env,
                  stack_size=4,
-                 channel_order='channels_last',
+                 channel_order='channels_first',
                  fields=None):
         """Create a FrameStack object.
 
