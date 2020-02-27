@@ -29,7 +29,7 @@ from alf.nest import nest
 class TorchEnvironmentTest(unittest.TestCase):
     def testResetSavesCurrentTimeStep(self):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
-        action_spec = BoundedTensorSpec((1, ), torch.int32)
+        action_spec = BoundedTensorSpec((1, ), torch.int64)
 
         random_env = RandomTorchEnvironment(
             observation_spec=obs_spec, action_spec=action_spec)
@@ -40,7 +40,7 @@ class TorchEnvironmentTest(unittest.TestCase):
 
     def testStepSavesCurrentTimeStep(self):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
-        action_spec = BoundedTensorSpec((1, ), torch.int32)
+        action_spec = BoundedTensorSpec((1, ), torch.int64)
 
         random_env = RandomTorchEnvironment(
             observation_spec=obs_spec, action_spec=action_spec)

@@ -260,7 +260,7 @@ class GymWrapperOnCartpoleTest(unittest.TestCase):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
         env.reset()
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         transition_time_step = env.step(action)
 
         self.assertTrue(transition_time_step.is_mid())
@@ -273,7 +273,7 @@ class GymWrapperOnCartpoleTest(unittest.TestCase):
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
         time_step = env.reset()
 
-        action = torch.tensor(1, dtype=torch.int32)
+        action = torch.tensor(1, dtype=torch.int64)
         while not time_step.is_last():
             time_step = env.step(action)
 
@@ -288,7 +288,7 @@ class GymWrapperOnCartpoleTest(unittest.TestCase):
         self.assertEqual(None, env.get_info())
         env.reset()
         self.assertEqual(None, env.get_info())
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         env.step(action)
         self.assertEqual({}, env.get_info())
 
@@ -296,7 +296,7 @@ class GymWrapperOnCartpoleTest(unittest.TestCase):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
 
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         first_time_step = env.step(action)
         self.assertTrue(first_time_step.is_first())
 
@@ -305,26 +305,26 @@ class GymWrapperOnCartpoleTest(unittest.TestCase):
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
         time_step = env.reset()
 
-        action = torch.tensor(1, dtype=torch.int32)
+        action = torch.tensor(1, dtype=torch.int64)
         while not time_step.is_last():
             time_step = env.step(action)
 
         self.assertTrue(time_step.is_last())
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         first_time_step = env.step(action)
         self.assertTrue(first_time_step.is_first())
 
     def test_automatic_reset_after_done_not_using_reset_directly(self):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
-        action = torch.tensor(1, dtype=torch.int32)
+        action = torch.tensor(1, dtype=torch.int64)
         time_step = env.step(action)
 
         while not time_step.is_last():
             time_step = env.step(action)
 
         self.assertTrue(time_step.is_last())
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         first_time_step = env.step(action)
         self.assertTrue(first_time_step.is_first())
 

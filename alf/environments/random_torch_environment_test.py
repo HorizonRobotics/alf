@@ -31,7 +31,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         env = RandomTorchEnvironment(obs_spec)
 
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         time_step = env.step(action)
         self.assertTrue(torch.all(time_step.observation >= -10))
         self.assertTrue(torch.all(time_step.observation <= 10))
@@ -57,7 +57,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
             obs_spec, episode_end_probability=0.9, min_duration=min_duration)
         num_episodes = 100
 
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         for _ in range(num_episodes):
             time_step = env.step(action)
             self.assertTrue(time_step.is_first())
@@ -77,7 +77,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
             obs_spec, episode_end_probability=0.1, max_duration=max_duration)
         num_episodes = 100
 
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         for _ in range(num_episodes):
             time_step = env.step(action)
             self.assertTrue(time_step.is_first())
@@ -104,12 +104,12 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
         def reward_fn(unused_step_type, action, unused_observation):
             return action
 
-        action_spec = BoundedTensorSpec((1, ), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec((1, ), torch.int64, -10, 10)
         observation_spec = BoundedTensorSpec((1, ), torch.int32, -10, 10)
         env = RandomTorchEnvironment(
             observation_spec, action_spec, reward_fn=reward_fn)
 
-        action = torch.tensor(1, dtype=torch.int32)
+        action = torch.tensor(1, dtype=torch.int64)
         time_step = env.step(action)  # No reward in first time_step
         self.assertEqual(
             torch.tensor(0.0, dtype=torch.float32), time_step.reward)
@@ -118,7 +118,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
             torch.tensor(1, dtype=torch.float32), time_step.reward)
 
     def testRendersImage(self):
-        action_spec = BoundedTensorSpec((1, ), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec((1, ), torch.int64, -10, 10)
         observation_spec = BoundedTensorSpec((1, ), torch.int32, -10, 10)
         env = RandomTorchEnvironment(
             observation_spec, action_spec, render_size=(4, 4, 3))
@@ -135,7 +135,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
         batch_size = 3
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         env = RandomTorchEnvironment(obs_spec, batch_size=batch_size)
-        time_step = env.step(torch.tensor(0, dtype=torch.int32))
+        time_step = env.step(torch.tensor(0, dtype=torch.int64))
         self.assertEqual(time_step.observation.shape, (3, 2, 3))
         self.assertEqual(time_step.reward.shape[0], batch_size)
         self.assertEqual(time_step.discount.shape[0], batch_size)
@@ -160,7 +160,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
             obs_spec, reward_fn=lambda *_: torch.tensor([1.0]), batch_size=1)
         env._done = False
         env.reset()
-        action = torch.tensor([0], dtype=torch.int32)
+        action = torch.tensor([0], dtype=torch.int64)
         time_step = env.step(action)
         self.assertEqual(time_step.reward, 1.0)
 
@@ -172,7 +172,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
             obs_spec, reward_fn=lambda *_: torch.tensor([1.0]), batch_size=5)
         env.reset()
         env._done = False
-        action = torch.tensor(0, dtype=torch.int32)
+        action = torch.tensor(0, dtype=torch.int64)
         with self.assertRaises(ValueError):
             env.step(action)
 
