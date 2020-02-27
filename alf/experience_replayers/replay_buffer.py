@@ -121,7 +121,7 @@ class ReplayBuffer(nn.Module):
             nested Tensors. The shapes are [batch_size, batch_length, ...]
         """
         with alf.device(self._device):
-            min_size = torch.min(self._current_size)
+            min_size = self._current_size.min()
             assert min_size >= batch_length, (
                 "Not all environments has enough data. The smallest data "
                 "size is: %s Try storing more data before calling get_batch" %
@@ -155,8 +155,9 @@ class ReplayBuffer(nn.Module):
                 self._flattened_buffer)
 
     def clear(self):
-        self._current_size.assign(torch.zeros_like(self._current_size))
-        self._current_pos.assign(tf.zeros_like(self._current_pos))
+        """Clear the replay bufer."""
+        self._current_size.fill_(0)
+        self._current_pos.fill_(0)
 
     def gather_all(self):
         """Returns all the items in buffer.
@@ -165,11 +166,11 @@ class ReplayBuffer(nn.Module):
             Returns all the items currently in the buffer. The shapes of the
             tensors are [B, T, ...] where B=num_environments, T=current_size
         Raises:
-            tf.errors.InvalidArgumentError: if the current_size is not same for
+            AssertionError: if the current_size is not same for
                 all the environments
         """
-        size = torch.min(self._current_size)
-        max_size = torch.max(self._current_size)
+        size = self._current_size.min()
+        max_size = self._current_size.max()
         assert size == max_size, (
             "Not all environment have the same size. min_size: %s "
             "max_size: %s" % (size, max_size))
@@ -183,3 +184,7 @@ class ReplayBuffer(nn.Module):
     @property
     def num_environments(self):
         return self._num_envs
+
+    def total_size(self):
+        """Total size from all environments."""
+        return self._current_size.sum()

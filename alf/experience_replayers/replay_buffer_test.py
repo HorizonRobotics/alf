@@ -142,6 +142,10 @@ class ReplayBufferTest(alf.test.TestCase):
         batch = replay_buffer.gather_all()
         self.assertEqual(list(batch.t.shape), [8, 4])
 
+        # Test clear()
+        replay_buffer.clear()
+        self.assertEqual(replay_buffer.total_size(), 0)
+
 
 if __name__ == '__main__':
     alf.test.main()
