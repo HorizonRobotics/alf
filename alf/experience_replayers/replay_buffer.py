@@ -20,6 +20,30 @@ import torch.nn as nn
 import alf
 
 
+def _convert_device(nests):
+    """Convert the device of the tensors in nests to default device."""
+
+    def _convert_cuda(tensor):
+        if tensor.device.type != 'cuda':
+            return tensor.cuda()
+        else:
+            return tensor
+
+    def _convert_cpu(tensor):
+        if tensor.device.type != 'cpu':
+            return tensor.cpu()
+        else:
+            return tensor
+
+    d = alf.get_default_device()
+    if d == 'cpu':
+        return alf.nest.map_structure(_convert_cpu, nests)
+    elif d == 'cuda':
+        return alf.nest.map_structure(_convert_cuda, nests)
+    else:
+        raise NotImplementedError("Unknown device %s" % d)
+
+
 @gin.configurable
 class ReplayBuffer(nn.Module):
     """Replay buffer.
@@ -82,6 +106,8 @@ class ReplayBuffer(nn.Module):
         """
         batch_size = alf.nest.get_nest_batch_size(batch)
         with alf.device(self._device):
+            env_ids = _convert_device(env_ids)
+            batch = _convert_device(batch)
             if env_ids is None:
                 env_ids = torch.arange(self._num_envs)
             else:
@@ -148,10 +174,11 @@ class ReplayBuffer(nn.Module):
             env_ids = env_ids.reshape(-1, 1).repeat(1, batch_length)  # [B, T]
             indices = env_ids * self._max_length + pos  # [B, T]
             indices = indices.reshape(-1)  # [B*T]
-            return alf.nest.map_structure(
+            result = alf.nest.map_structure(
                 lambda buffer: buffer[indices].reshape(
                     batch_size, batch_length, *buffer.shape[1:]),
                 self._flattened_buffer)
+        return _convert_device(result)
 
     def clear(self):
         """Clear the replay bufer."""
@@ -175,10 +202,11 @@ class ReplayBuffer(nn.Module):
             "max_size: %s" % (size, max_size))
 
         if size == self._max_length:
-            return self._buffer
+            result = self._buffer
         else:
-            return alf.nest.map_structure(lambda buf: buf[:, :size, ...],
-                                          self._buffer)
+            result = alf.nest.map_structure(lambda buf: buf[:, :size, ...],
+                                            self._buffer)
+        return _convert_device(result)
 
     @property
     def num_environments(self):
@@ -186,4 +214,4 @@ class ReplayBuffer(nn.Module):
 
     def total_size(self):
         """Total size from all environments."""
-        return self._current_size.sum()
+        return _convert_device(self._current_size.sum())

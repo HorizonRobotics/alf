@@ -35,24 +35,28 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
 
         net = CategoricalProjectionNetwork(
             input_size=input_spec.shape[0],
-            num_actions=5,
+            action_spec=BoundedTensorSpec((1, ), minimum=0, maximum=4),
             logits_init_output_factor=0)
         dist = net(embedding)
-        self.assertTrue(torch.all(dist.probs == 0.2))
+        self.assertEqual(dist.batch_shape, (1, ))
+        self.assertEqual(dist.base_dist.batch_shape, (1, 1))
+        self.assertTrue(torch.all(dist.base_dist.probs == 0.2))
 
     def test_close_uniform_projection_net(self):
         """A random-weight net generates close-uniform actions on average."""
         input_spec = TensorSpec((10, ), torch.float32)
-        embeddings = input_spec.ones(outer_dims=(1000, ))
+        embeddings = input_spec.ones(outer_dims=(100, ))
 
         net = CategoricalProjectionNetwork(
             input_size=input_spec.shape[0],
-            num_actions=5,
+            action_spec=BoundedTensorSpec((3, 2), minimum=0, maximum=4),
             logits_init_output_factor=1.0)
         dists = net(embeddings)
-        self.assertTrue(dists.probs.std() > 0)
+        self.assertEqual(dists.batch_shape, (100, ))
+        self.assertEqual(dists.base_dist.batch_shape, (100, 3, 2))
+        self.assertTrue(dists.base_dist.probs.std() > 0)
         self.assertTrue(
-            torch.isclose(dists.probs.mean(), torch.as_tensor(0.2)))
+            torch.isclose(dists.base_dist.probs.mean(), torch.as_tensor(0.2)))
 
 
 class TestNormalProjectionNetwork(parameterized.TestCase, unittest.TestCase):
@@ -167,4 +171,6 @@ class TestNormalProjectionNetwork(parameterized.TestCase, unittest.TestCase):
 
 
 if __name__ == "__main__":
+    TestCategoricalProjectionNetwork().test_close_uniform_projection_net()
+    TestCategoricalProjectionNetwork().test_uniform_projection_net()
     unittest.main()

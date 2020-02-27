@@ -15,11 +15,11 @@
 
 from collections import namedtuple
 import gin
-import tensorflow as tf
+import torch
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.data_structures import Experience, ActionTimeStep, TrainingInfo
+from alf.data_structures import Experience, TimeStep, TrainingInfo
 from alf.utils import common, value_ops
 
 PPOInfo = namedtuple("PPOInfo",
@@ -36,6 +36,9 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     baselines.ppo2.
     """
 
+    def is_on_policy(self):
+        return False
+
     def preprocess_experience(self, exp: Experience):
         """Compute advantages and put it into exp.rollout_info."""
         advantages = value_ops.generalized_advantage_estimation(
@@ -45,13 +48,11 @@ class PPOAlgorithm(ActorCriticAlgorithm):
             discounts=exp.discount * self._loss._gamma,
             td_lambda=self._loss._lambda,
             time_major=False)
-        advantages = tf.concat([
+        advantages = torch.cat([
             advantages,
-            tf.zeros(
-                shape=common.concat_shape(tf.shape(advantages)[:-1], [1]),
-                dtype=advantages.dtype)
+            torch.zeros(*advantages.shape[:-1], 1, dtype=advantages.dtype)
         ],
-                               axis=-1)
+                               dim=-1)
         returns = exp.rollout_info.value + advantages
         return exp._replace(
             rollout_info=PPOInfo(exp.rollout_info.action_distribution, returns,

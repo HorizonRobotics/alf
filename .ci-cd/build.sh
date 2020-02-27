@@ -45,10 +45,13 @@ function test() {
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
         alf.data_structures_test \
         alf.device_ctx_test \
+        alf.environments.suite_unittest_test \
         alf.environments.simple.noisy_array_test \
+        alf.experience_replayers.replay_buffer_test \
         alf.metrics.metrics_test \
         alf.nest.nest_test \
         alf.networks.actor_distribution_networks_test \
