@@ -83,20 +83,20 @@ class EnvironmentSteps(metric.StepMetric):
         self.register_buffer('_environment_steps',
                              torch.zeros(1, dtype=self.dtype))
 
-    def call(self, time_step):
-        """Increase the number of environment_steps according to time_step.
-        Step count is not increased on time_step.is_first() since that step
+    def call(self, exp):
+        """Increase the number of environment_steps according to exp.
+        Step count is not increased on exp.is_first() since that step
         is not part of any episode.
 
         Args:
-            time_step (alf.data_structures.TimeStep): batched tensor
+            exp (alf.data_structures.Experience): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
-        steps = (torch.logical_not(time_step.is_first())).type(self.dtype)
+        steps = (torch.logical_not(exp.is_first())).type(self.dtype)
         num_steps = torch.sum(steps)
         self._environment_steps.add_(num_steps)
-        return time_step
+        return exp
 
     def result(self):
         return self._environment_steps
@@ -117,19 +117,19 @@ class NumberOfEpisodes(metric.StepMetric):
         self.register_buffer('_number_episodes',
                              torch.zeros(1, dtype=self.dtype))
 
-    def call(self, time_step):
-        """Increase the number of number_episodes according to time_step.
-        It would increase for all time_step.is_last().
+    def call(self, exp):
+        """Increase the number of number_episodes according to exp.
+        It would increase for all exp.is_last().
 
         Args:
-            time_step (alf.data_structures.TimeStep): batched tensor
+            exp (alf.data_structures.Experience): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
-        episodes = time_step.is_last().type(self.dtype)
+        episodes = exp.is_last().type(self.dtype)
         num_episodes = torch.sum(episodes)
         self._number_episodes.add_(num_episodes)
-        return time_step
+        return exp
 
     def result(self):
         return self._number_episodes
@@ -153,35 +153,35 @@ class AverageReturnMetric(metric.StepMetric):
         self.register_buffer('_return_accumulator',
                              torch.zeros(batch_size, dtype=dtype))
 
-    def call(self, time_step):
-        """Accumulates returns from time_step batched tensor.
-        It would accumulate all time_step.reward.
+    def call(self, exp):
+        """Accumulates returns from exp batched tensor.
+        It would accumulate all exp.reward.
 
         Args:
-            time_step (alf.data_structures.TimeStep): batched tensor
+            exp (alf.data_structures.Experience): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
         # Zero out batch indices where a new episode is starting.
         self._return_accumulator[:] = torch.where(
-            time_step.is_first(), torch.zeros_like(self._return_accumulator),
+            exp.is_first(), torch.zeros_like(self._return_accumulator),
             self._return_accumulator)
 
         # Update accumulator with received rewards.
         # Ignores first step whose reward comes from the boundary transition
         # of the last step from the previous episode.
         self._return_accumulator.add_(
-            torch.where(time_step.is_first(),
+            torch.where(exp.is_first(),
                         torch.zeros_like(self._return_accumulator),
-                        time_step.reward))
+                        exp.reward))
 
         # Add final returns to buffer.
-        last_episode_indices = torch.squeeze(
-            *torch.where(time_step.is_last())).type(torch.int64)
+        last_episode_indices = torch.squeeze(*torch.where(exp.is_last())).type(
+            torch.int64)
         for indx in last_episode_indices:
             self._buffer.append(self._return_accumulator[indx])
 
-        return time_step
+        return exp
 
     def result(self):
         return self._buffer.mean()
@@ -207,25 +207,25 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         self.register_buffer('_length_accumulator',
                              torch.zeros(batch_size, dtype=dtype))
 
-    def call(self, time_step):
-        """Accumulates the number of episode steps according to batched time_step.
-        It would increase for all non time_step.is_first().  The first time_step
+    def call(self, exp):
+        """Accumulates the number of episode steps according to batched exp.
+        It would increase for all non exp.is_first().  The first exp
         is the boundary step and needs to be ignored, different from tf_agents.
 
         Args:
-            time_step (alf.data_structures.TimeStep): batched tensor
+            exp (alf.data_structures.Experience): batched tensor
         Returns:
             The arguments, for easy chaining.
         """
-        # Each non-boundary time_step (mid or last) represents a step.
-        is_first = time_step.is_first()
+        # Each non-boundary exp (mid or last) represents a step.
+        is_first = exp.is_first()
         non_boundary_indices = torch.squeeze(*torch.where(~is_first)).type(
             torch.int64)
-        self._length_accumulator.scatter_add_(
-            0, non_boundary_indices, torch.ones_like(time_step.reward))
+        self._length_accumulator.scatter_add_(0, non_boundary_indices,
+                                              torch.ones_like(exp.reward))
 
         # Add lengths to buffer when we hit end of episode
-        is_last = time_step.is_last()
+        is_last = exp.is_last()
         last_indices = torch.squeeze(*torch.where(is_last)).type(torch.int64)
         for indx in last_indices:
             self._buffer.append(self._length_accumulator[indx])
@@ -234,7 +234,7 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         self._length_accumulator[last_indices] = torch.zeros_like(
             last_indices, dtype=self.dtype)
 
-        return time_step
+        return exp
 
     def result(self):
         return self._buffer.mean()

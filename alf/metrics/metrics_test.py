@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import alf
-from alf.data_structures import timestep_first, timestep_mid, timestep_last
+from alf.data_structures import AlgStep, timestep_first, timestep_mid, timestep_last, make_experience
 from alf.metrics import EnvironmentSteps, NumberOfEpisodes, AverageReturnMetric, AverageEpisodeLengthMetric
 import torch as tc
 
@@ -30,39 +30,59 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         # Order of args for timestep_* methods:
         # observation, prev_action, reward, discount, env_id
         ts0 = _concat_nested_tensors(
-            timestep_first((), tc.tensor([1]), tc.tensor([0.],
-                                                         dtype=tc.float32),
-                           [1.], [1]),
-            timestep_first((), tc.tensor([2]), tc.tensor([0.],
-                                                         dtype=tc.float32),
-                           [1.], [2]))
+            make_experience(
+                timestep_first((), tc.tensor([1]),
+                               tc.tensor([0.], dtype=tc.float32), [1.], [1]),
+                AlgStep(), ()),
+            make_experience(
+                timestep_first((), tc.tensor([2]),
+                               tc.tensor([0.], dtype=tc.float32), [1.], [2]),
+                AlgStep(), ()))
         ts1 = _concat_nested_tensors(
-            timestep_mid((), tc.tensor([2]), tc.tensor([1.], dtype=tc.float32),
-                         [1.], [1]),
-            timestep_mid((), tc.tensor([1]), tc.tensor([2.], dtype=tc.float32),
-                         [1.], [2]))
+            make_experience(
+                timestep_mid((), tc.tensor([2]),
+                             tc.tensor([1.], dtype=tc.float32), [1.], [1]),
+                AlgStep(), ()),
+            make_experience(
+                timestep_mid((), tc.tensor([1]),
+                             tc.tensor([2.], dtype=tc.float32), [1.], [2]),
+                AlgStep(), ()))
         ts2 = _concat_nested_tensors(
-            timestep_last((), tc.tensor([1]),
-                          tc.tensor([3.], dtype=tc.float32), [1.], [1]),
-            timestep_last((), tc.tensor([1]),
-                          tc.tensor([4.], dtype=tc.float32), [1.], [2]))
+            make_experience(
+                timestep_last((), tc.tensor([1]),
+                              tc.tensor([3.], dtype=tc.float32), [1.], [1]),
+                AlgStep(), ()),
+            make_experience(
+                timestep_last((), tc.tensor([1]),
+                              tc.tensor([4.], dtype=tc.float32), [1.], [2]),
+                AlgStep(), ()))
         ts3 = _concat_nested_tensors(
-            timestep_first((), tc.tensor([2]), tc.tensor([0.],
-                                                         dtype=tc.float32),
-                           [1.], [1]),
-            timestep_first((), tc.tensor([0]), tc.tensor([0.],
-                                                         dtype=tc.float32),
-                           [1.], [2]))
+            make_experience(
+                timestep_first((), tc.tensor([2]),
+                               tc.tensor([0.], dtype=tc.float32), [1.], [1]),
+                AlgStep(), ()),
+            make_experience(
+                timestep_first((), tc.tensor([0]),
+                               tc.tensor([0.], dtype=tc.float32), [1.], [2]),
+                AlgStep(), ()))
         ts4 = _concat_nested_tensors(
-            timestep_mid((), tc.tensor([1]), tc.tensor([5.], dtype=tc.float32),
-                         [1.], [1]),
-            timestep_mid((), tc.tensor([1]), tc.tensor([6.], dtype=tc.float32),
-                         [1.], [2]))
+            make_experience(
+                timestep_mid((), tc.tensor([1]),
+                             tc.tensor([5.], dtype=tc.float32), [1.], [1]),
+                AlgStep(), ()),
+            make_experience(
+                timestep_mid((), tc.tensor([1]),
+                             tc.tensor([6.], dtype=tc.float32), [1.], [2]),
+                AlgStep(), ()))
         ts5 = _concat_nested_tensors(
-            timestep_last((), tc.tensor([1]),
-                          tc.tensor([7.], dtype=tc.float32), [1.], [1]),
-            timestep_last((), tc.tensor([1]),
-                          tc.tensor([8.], dtype=tc.float32), [1.], [2]))
+            make_experience(
+                timestep_last((), tc.tensor([1]),
+                              tc.tensor([7.], dtype=tc.float32), [1.], [1]),
+                AlgStep(), ()),
+            make_experience(
+                timestep_last((), tc.tensor([1]),
+                              tc.tensor([8.], dtype=tc.float32), [1.], [2]),
+                AlgStep(), ()))
 
         return [ts0, ts1, ts2, ts3, ts4, ts5]
 
