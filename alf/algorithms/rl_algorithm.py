@@ -135,15 +135,18 @@ class RLAlgorithm(Algorithm):
         self._use_rollout_state = False
 
         self._rollout_info_spec = None
-        self._train_step_info_spec = None
+        self._train_info_spec = None
         self._processed_experience_spec = None
 
         self._current_time_step = None
         self._current_policy_state = None
 
         self._observers = []
+
+        self._exp_replayer = None
+        self._exp_replayer_type = None
         if self._env is not None and not self.is_on_policy():
-            self.set_exp_replayer("uniform", self._config.num_envs)
+            self.set_exp_replayer("uniform", self._env.batch_size)
 
         self._metrics = []
         env = self._env
@@ -284,16 +287,22 @@ class RLAlgorithm(Algorithm):
             num_envs (int): the total number of environments from all batched
                 environments.
         """
+        assert exp_replayer in ("one_time", "uniform"), (
+            "Unsuppoted exp_replayer: %s" % exp_replayer)
+        self._exp_replayer_type = exp_replayer
+        self._exp_replayer_num_envs = num_envs
+
+    def _set_exp_replayer(self, exp_replayer: str, num_envs):
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
         elif exp_replayer == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
                 self.experience_spec)
             self._exp_replayer = SyncUniformExperienceReplayer(
-                exp_spec, num_envs)
+                exp_spec, self._exp_replayer_num_envs)
         else:
             raise ValueError("invalid experience replayer name")
-        self._exp_observers.append(self._exp_replayer.observe)
+        self._observers.append(self._exp_replayer.observe)
 
     def observe(self, exp: Experience):
         """An algorithm can override to manipulate experience.
@@ -307,6 +316,11 @@ class RLAlgorithm(Algorithm):
         if not self._use_rollout_state:
             exp = exp._replace(state=())
         exp = dist_utils.distributions_to_params(exp)
+
+        if self._exp_replayer is None and self._exp_replayer_type:
+            self._set_exp_replayer(self._exp_replayer_type,
+                                   self._config.num_envs)
+
         for observer in self._observers:
             observer(exp)
 
@@ -529,6 +543,10 @@ class RLAlgorithm(Algorithm):
             transformed_time_step = self.transform_timestep(time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
+            if self._rollout_info_spec is None:
+                self._rollout_info_spec = dist_utils.extract_spec(
+                    policy_step.info)
+
             next_time_step = self._env.step(policy_step.output)
 
             exp = make_experience(time_step, policy_step, policy_state)
@@ -536,10 +554,6 @@ class RLAlgorithm(Algorithm):
 
             action = alf.nest.map_structure(lambda t: t.detach(),
                                             policy_step.output)
-
-            if self._rollout_info_spec is None:
-                self._rollout_info_spec = dist_utils.extract_spec(
-                    policy_step.info)
 
             training_info = TrainingInfo(
                 action=action,

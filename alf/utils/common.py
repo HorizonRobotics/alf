@@ -196,12 +196,12 @@ def expand_dims_as(x, y):
         x with extra singular dimensions.
     """
     assert len(x.shape) <= len(y.shape)
-    tf.assert_equal(tf.shape(x), tf.shape(y)[:len(x.shape)])
+    assert x.shape == y.shape[:len(x.shape)]
     k = len(y.shape) - len(x.shape)
     if k == 0:
         return x
     else:
-        return tf.reshape(x, concat_shape(tf.shape(x), [1] * k))
+        return x.reshape(*x.shape, *([1] * k))
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):

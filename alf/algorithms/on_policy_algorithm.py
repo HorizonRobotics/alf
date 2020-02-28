@@ -17,10 +17,11 @@ import torch
 
 import alf
 from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import Experience, StepType, TimeStep, TrainingInfo
 
 
-class OnPolicyAlgorithm(RLAlgorithm):
+class OnPolicyAlgorithm(OffPolicyAlgorithm):
     """OnPolicyAlgorithm implements the basic on-policy training procedure.
 
     User needs to implement rollout_step() and calc_loss()
@@ -47,6 +48,18 @@ class OnPolicyAlgorithm(RLAlgorithm):
 
     def is_on_policy(self):
         return True
+
+    # Implement train_step() to allow off-policy training for an
+    # OnPolicyAlgorithm
+    def train_step(self, exp: Experience, state):
+        time_step = TimeStep(
+            step_type=exp.step_type,
+            reward=exp.reward,
+            discount=exp.discount,
+            observation=exp.observation,
+            prev_action=exp.prev_action,
+            env_id=exp.env_id)
+        return self.rollout_step(time_step, state)
 
     def _train_iter_on_policy(self):
         """User may override this for their own training procedure."""

@@ -18,9 +18,9 @@ import unittest
 
 import alf
 from alf.utils import common, dist_utils, tensor_utils
-from alf.data_structures import AlgStep, LossInfo, StepType, TimeStep, TrainingInfo
-from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep, TrainingInfo
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.config import TrainerConfig
 
 
 class MyAlg(OnPolicyAlgorithm):
@@ -29,11 +29,13 @@ class MyAlg(OnPolicyAlgorithm):
                  action_spec,
                  env,
                  config,
+                 on_policy=True,
                  debug_summaries=False):
+        self._on_policy = on_policy
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            train_state_spec=(),
+            train_state_spec=observation_spec,
             env=env,
             config=config,
             optimizer=torch.optim.Adam(lr=1e-1),
@@ -44,7 +46,7 @@ class MyAlg(OnPolicyAlgorithm):
             input_size=2, num_actions=3)
 
     def is_on_policy(self):
-        return True
+        return self._on_policy
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         dist = self._proj_net(time_step.observation)
@@ -52,7 +54,12 @@ class MyAlg(OnPolicyAlgorithm):
 
     def rollout_step(self, time_step: TimeStep, state):
         dist = self._proj_net(time_step.observation)
-        return AlgStep(output=dist.sample(), state=(), info=dist)
+        return AlgStep(
+            output=dist.sample(), state=time_step.observation, info=dist)
+
+    def train_step(self, exp: Experience, state):
+        dist = self._proj_net(exp.observation)
+        return AlgStep(output=dist.sample(), state=exp.observation, info=dist)
 
     def calc_loss(self, training_info: TrainingInfo):
         dist: td.Distribution = training_info.info
@@ -70,7 +77,7 @@ class MyEnv(object):
         self._rewards = torch.tensor([0.5, 1.0, -1.])
         self._observation_spec = alf.TensorSpec((2, ), dtype='float32')
         self._action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int32', minimum=0, maximum=2)
+            shape=(), dtype='int64', minimum=0, maximum=2)
         self.reset()
 
     def observation_spec(self):
@@ -80,7 +87,7 @@ class MyEnv(object):
         return self._action_spec
 
     def reset(self):
-        self._prev_action = torch.zeros(self._batch_size, dtype=torch.int32)
+        self._prev_action = torch.zeros(self._batch_size, dtype=torch.int64)
         self._current_time_step = TimeStep(
             observation=torch.randn(self._batch_size, 2),
             step_type=torch.full([self._batch_size],
@@ -89,7 +96,7 @@ class MyEnv(object):
             reward=torch.zeros(self._batch_size),
             discount=torch.zeros(self._batch_size),
             prev_action=self._prev_action,
-            env_id=torch.arange(self._batch_size))
+            env_id=torch.arange(self._batch_size, dtype=torch.int32))
         return self._current_time_step
 
     def close(self):
@@ -124,8 +131,7 @@ class MyEnv(object):
             reward=self._rewards[action],
             discount=torch.zeros(self._batch_size),
             prev_action=self._prev_action,
-            env_id=torch.arange(self._batch_size))
-
+            env_id=torch.arange(self._batch_size, dtype=torch.int32))
         self._prev_action = action
         return self._current_time_step
 
@@ -133,19 +139,46 @@ class MyEnv(object):
         return self._current_time_step
 
 
-class Config(object):
-    def __init__(self):
-        self.unroll_length = 5
-
-
 class RLAlgorithmTest(unittest.TestCase):
-    def test_rl_algorithm(self):
-        config = Config()
+    def test_on_policy_algorithm(self):
+        config = TrainerConfig(
+            root_dir='/tmp/rl_algorithm_test', unroll_length=5, num_envs=1)
         env = MyEnv(batch_size=3)
         alg = MyAlg(
             observation_spec=env.observation_spec(),
             action_spec=env.action_spec(),
             env=env,
+            config=config,
+            on_policy=True)
+        for _ in range(100):
+            alg.train_iter()
+
+        time_step = common.get_initial_time_step(env)
+        state = alg.get_initial_predict_state(env.batch_size)
+        policy_step = alg.rollout_step(time_step, state)
+        logits = policy_step.info.logits
+        print("logits: ", logits)
+        self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
+        self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+
+    def test_off_policy_algorithm(self):
+        config = TrainerConfig(
+            # root_dir is not used. We have to give it a value because
+            # it is a required argument of TrainerConfig.
+            root_dir='/tmp/rl_algorithm_test',
+            unroll_length=5,
+            num_envs=1,
+            num_updates_per_train_step=1,
+            mini_batch_length=5,
+            mini_batch_size=3,
+            use_rollout_state=True,
+            whole_replay_buffer_training=False)
+        env = MyEnv(batch_size=3)
+        alg = MyAlg(
+            observation_spec=env.observation_spec(),
+            action_spec=env.action_spec(),
+            env=env,
+            on_policy=False,
             config=config)
         for _ in range(100):
             alg.train_iter()

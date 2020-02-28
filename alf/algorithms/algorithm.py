@@ -308,7 +308,7 @@ class Algorithm(nn.Module):
     def get_initial_rollout_state(self, batch_size):
         return common.zeros_from_spec(self._rollout_state_spec, batch_size)
 
-    def get_initial_train_step_state(self, batch_size):
+    def get_initial_train_state(self, batch_size):
         return common.zeros_from_spec(self._train_state_spec, batch_size)
 
     @common.add_method(nn.Module)

@@ -54,6 +54,7 @@ class TrainerConfig(object):
                  num_updates_per_train_step=4,
                  mini_batch_length=None,
                  mini_batch_size=None,
+                 whole_replay_buffer_training=True,
                  clear_replay_buffer=True,
                  num_envs=1):
         """Configuration for Trainers
@@ -104,6 +105,8 @@ class TrainerConfig(object):
                 it's set to the replayer's `batch_size`.
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch. If None, it's set to `unroll_length`.
+            whole_replay_buffer_training (bool): whether use all data in replay
+                buffer to perform one update
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
             num_envs (int): the number of environments to run asynchronously.
@@ -133,8 +136,8 @@ class TrainerConfig(object):
             num_updates_per_train_step=num_updates_per_train_step,
             mini_batch_length=mini_batch_length,
             mini_batch_size=mini_batch_size,
+            whole_replay_buffer_training=whole_replay_buffer_training,
             clear_replay_buffer=clear_replay_buffer,
             num_envs=num_envs)
-
         for k, v in parameters.items():
             self.__setattr__(k, v)

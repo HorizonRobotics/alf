@@ -14,7 +14,7 @@
 """Various math ops."""
 
 import gin
-import tensorflow as tf
+import torch
 
 
 @gin.configurable
@@ -27,8 +27,8 @@ def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
          clip_value_min (float): The minimum value to clip by.
          clip_value_max (float): The maximum value to clip by.
     """
-    value = tf.clip_by_value(value, clip_value_min, clip_value_max)
-    return tf.exp(value)
+    value = torch.clamp(value, clip_value_min, clip_value_max)
+    return torch.exp(value)
 
 
 def add_ignore_empty(x, y):
@@ -66,7 +66,7 @@ def swish(x):
     Returns:
         Tensor
     """
-    return x * tf.math.sigmoid(x)
+    return x * torch.sigmoid(x)
 
 
 def max_n(inputs):
@@ -80,5 +80,5 @@ def max_n(inputs):
     ret = inputs[0]
     inputs = inputs[1:]
     for x in inputs:
-        ret = tf.maximum(ret, x)
+        ret = torch.max(ret, x)
     return ret
