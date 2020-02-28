@@ -15,7 +15,7 @@
 
 import gin
 
-from alf.algorithms.rl_algorithm import RLAlgorithm
+from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.data_structures import TimeStep, AlgStep, namedtuple
@@ -29,7 +29,7 @@ ActorCriticInfo = namedtuple("ActorCriticInfo",
 
 
 @gin.configurable
-class ActorCriticAlgorithm(RLAlgorithm):
+class ActorCriticAlgorithm(OnPolicyAlgorithm):
     """Actor critic algorithm."""
 
     def __init__(self,
@@ -88,11 +88,8 @@ class ActorCriticAlgorithm(RLAlgorithm):
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
-    def is_on_policy(self):
-        return True
-
-    def predict(self, time_step: TimeStep, state: ActorCriticState,
-                epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state: ActorCriticState,
+                     epsilon_greedy):
         """Predict for one step."""
         action_dist, actor_state = self._actor_network(
             time_step.observation, state=state.actor)
@@ -103,7 +100,7 @@ class ActorCriticAlgorithm(RLAlgorithm):
             state=ActorCriticState(actor=actor_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
-    def rollout(self, time_step: TimeStep, state: ActorCriticState, mode):
+    def rollout_step(self, time_step: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
         value, value_state = self._value_network(
             time_step.observation, state=state.value)

@@ -104,7 +104,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
         time_step = common.get_initial_time_step(env)
         state = alg.get_initial_predict_state(env.batch_size)
-        policy_step = alg.rollout(time_step, state, mode=RLAlgorithm.ROLLOUT)
+        policy_step = alg.rollout_step(time_step, state)
         logits = policy_step.info.action_distribution.logits
         print("logits: ", logits)
         self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
@@ -112,4 +112,4 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    ActorCriticAlgorithmTest().test_ac_algorithm()
