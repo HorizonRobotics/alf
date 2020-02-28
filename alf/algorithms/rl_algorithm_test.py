@@ -24,16 +24,20 @@ from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 
 
 class MyAlg(OnPolicyAlgorithm):
-    def __init__(self, env, config):
+    def __init__(self,
+                 observation_spec,
+                 action_spec,
+                 env,
+                 config,
+                 debug_summaries=False):
         super().__init__(
-            observation_spec=alf.TensorSpec((2, ), dtype='float32'),
-            action_spec=alf.BoundedTensorSpec(
-                shape=(), dtype='int32', minimum=0, maximum=2),
+            observation_spec=observation_spec,
+            action_spec=action_spec,
             train_state_spec=(),
             env=env,
             config=config,
             optimizer=torch.optim.Adam(lr=1e-1),
-            debug_summaries=True,
+            debug_summaries=debug_summaries,
             name="MyAlg")
 
         self._proj_net = alf.networks.CategoricalProjectionNetwork(
@@ -58,38 +62,65 @@ class MyAlg(OnPolicyAlgorithm):
         return LossInfo(loss=loss)
 
 
+#TODO: move this to environments.suite_unittest
 class MyEnv(object):
     def __init__(self, batch_size):
         super().__init__()
         self._batch_size = batch_size
         self._rewards = torch.tensor([0.5, 1.0, -1.])
+        self._observation_spec = alf.TensorSpec((2, ), dtype='float32'),
+        self._action_spec = alf.BoundedTensorSpec(
+            shape=(), dtype='int32', minimum=0, maximum=2),
         self.reset()
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def action_spec(self):
+        return self._action_spec
 
     def reset(self):
         self._prev_action = torch.zeros(self._batch_size, dtype=torch.int32),
         self._current_time_step = TimeStep(
             observation=torch.randn(self._batch_size, 2),
-            step_type=torch.ones(self._batch_size, dtype=torch.int32) *
-            StepType.MID,
+            step_type=torch.full([self._batch_size], StepType.FIRST),
             reward=torch.zeros(self._batch_size),
             discount=torch.zeros(self._batch_size),
             prev_action=self._prev_action,
             env_id=torch.arange(self._batch_size))
         return self._current_time_step
 
+    def close(self):
+        pass
+
     @property
     def batch_size(self):
         return self._batch_size
 
     def step(self, action):
+        prev_step_type = self._current_time_step.step_type
+        is_first = prev_step_type == StepType.FIRST
+        is_mid = prev_step_type == StepType.MID
+        is_last = prev_step_type == StepType.LAST
+
+        step_type = torch.where(is_mid & (torch.rand(self._batch_size) < 0.2),
+                                torch.full([self._batch_size], StepType.LAST),
+                                torch.full([self._batch_size], StepType.MID))
+        step_type = torch.where(is_last,
+                                torch.full([self._batch_size], StepType.FIRST),
+                                step_type)
+        step_type = torch.where(is_first,
+                                torch.full([self._batch_size], StepType.MID),
+                                step_type)
+
         self._current_time_step = TimeStep(
             observation=torch.randn(self._batch_size, 2),
-            step_type=torch.ones(self._batch_size, dtype=torch.int32) *
-            StepType.MID,
+            step_type=step_type,
             reward=self._rewards[action],
             discount=torch.zeros(self._batch_size),
             prev_action=self._prev_action,
             env_id=torch.arange(self._batch_size))
+
         self._prev_action = action
         return self._current_time_step
 
@@ -106,7 +137,11 @@ class RLAlgorithmTest(unittest.TestCase):
     def test_rl_algorithm(self):
         config = Config()
         env = MyEnv(batch_size=3)
-        alg = MyAlg(env=env, config=config)
+        alg = MyAlg(
+            observation_spec=env.observation_spec(),
+            action_spec=env.action_spec(),
+            env=env,
+            config=config)
         for _ in range(100):
             alg.train_iter()
 

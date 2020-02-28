@@ -30,6 +30,8 @@ _record_if_stack = [
     lambda: True,
 ]
 
+_summary_writer_stack = [None]
+
 # The default number of bins for histogram
 _default_bins = 30
 
@@ -98,10 +100,10 @@ def text(name, data, step=None, walltime=None):
         name (str): Data identifier
         data (str): String to save
         step (int): Global step value to record. None for using get_global_counter()
-        walltime (float) – Optional override default walltime (time.time())
+        walltime (float): Optional override default walltime (time.time())
             seconds after epoch of event
     """
-    _default_writer.add_text(name, data, step, walltime=walltime)
+    _summary_writer_stack[-1].add_text(name, data, step, walltime=walltime)
 
 
 @_summary_wrapper
@@ -116,10 +118,10 @@ def scalar(name, data, step=None, walltime=None):
         name (str): Data identifier
         data (float): Value to save
         step (int): Global step value to record. None for using get_global_counter()
-        walltime (float) – Optional override default walltime (time.time())
+        walltime (float): Optional override default walltime (time.time())
             seconds after epoch of event
     """
-    _default_writer.add_scalar(name, data, step, walltime=walltime)
+    _summary_writer_stack[-1].add_scalar(name, data, step, walltime=walltime)
 
 
 @_summary_wrapper
@@ -130,14 +132,14 @@ def histogram(name, data, step=None, bins=None, walltime=None, max_bins=None):
         name (str): Data identifier
         data (Tensor | numpy.array | str/blobname): Values to build histogram
         step (int): Global step value to record. None for using get_global_counter()
-        bins (int|str):  Number of buckets or one of {‘tensorflow’,’auto’, ‘fd’, …}.
+        bins (int|str): Number of buckets or one of {‘tensorflow’,’auto’, ‘fd’, …}.
             This determines how the bins are made. You can find other options in:
             https://docs.scipy.org/doc/numpy/reference/generated/numpy.histogram.html
-        walltime (float) – Optional override default walltime (time.time())
+        walltime (float): Optional override default walltime (time.time())
             seconds after epoch of event
     """
     bins = bins or _default_bins
-    _default_writer.add_histogram(
+    _summary_writer_stack[-1].add_histogram(
         name, data, step, bins=bins, walltime=walltime, max_bins=max_bins)
 
 
@@ -199,8 +201,7 @@ def create_summary_writer(summary_dir, flush_secs=10, max_queue=10):
 
 def set_default_writer(writer):
     """Set the default summary writer."""
-    global _default_writer
-    _default_writer = writer
+    _summary_writer_stack[0] = writer
 
 
 def enable_summary():
@@ -218,3 +219,14 @@ def disable_summary():
 def is_summary_enabled():
     """Return whether summary is enabled."""
     return _summary_enabled
+
+
+class push_summary_writer(object):
+    def __init__(self, writer):
+        self._writer = writer
+
+    def __enter__(self):
+        _summary_writer_stack.append(self._writer)
+
+    def __exit__(self, type, value, traceback):
+        _summary_writer_stack.pop()

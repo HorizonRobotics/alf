@@ -40,13 +40,12 @@ python -m alf.bin.play \
 
 """
 
-import os
-
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import os
 
-import gin.tf.external_configurables
 from alf.utils import common
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
@@ -66,7 +65,6 @@ def train_eval(root_dir):
     Args:
         root_dir (str): directory for saving summary and checkpoints
     """
-
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
     trainer = policy_trainer.Trainer(trainer_conf)
     trainer.train()
@@ -80,8 +78,5 @@ def main(_):
 
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
-    from alf.utils.common import set_per_process_memory_growth
-
-    set_per_process_memory_growth()
     flags.mark_flag_as_required('root_dir')
     app.run(main)

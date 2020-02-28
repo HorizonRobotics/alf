@@ -34,7 +34,7 @@ from functools import wraps
 import alf
 from alf.data_structures import LossInfo
 from alf.utils.dist_utils import DistributionSpec
-from . import dist_utils
+from . import dist_utils, gin_utils
 
 
 def add_method(cls):
@@ -222,7 +222,7 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
 def run_under_record_context(func,
                              summary_dir,
                              summary_interval,
-                             flush_millis,
+                             flush_secs,
                              summary_max_queue=10):
     """Run `func` under summary record context.
 
@@ -232,19 +232,21 @@ def run_under_record_context(func,
             "~/" will be expanded to "$HOME/"
         summary_interval (int): how often to generate summary based on the
             global counter
-        flush_millis (int): flush summary to disk every so many milliseconds
+        flush_secs (int): flush summary to disk every so many seconds
         summary_max_queue (int): the largest number of summaries to keep in a queue; will
           flush once the queue gets bigger than this. Defaults to 10.
     """
-
-    import alf.utils.summary_utils
     summary_dir = os.path.expanduser(summary_dir)
-    summary_writer = alf.summary.create_file_writer(
-        summary_dir, flush_millis=flush_millis, max_queue=summary_max_queue)
+    summary_writer = alf.summary.create_summary_writer(
+        summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
     alf.summary.set_default_writer(summary_writer)
     global_step = alf.summary.get_global_counter()
-    with alf.summary.record_if(lambda: is_summary_enabled() and global_step %
-                               summary_interval == 0):
+
+    def _cond():
+        return (alf.summary.is_summary_enabled()
+                and global_step % summary_interval == 0)
+
+    with alf.summary.record_if(_cond):
         func()
 
 
@@ -449,9 +451,9 @@ def summarize_gin_config():
     """Write the operative and inoperative gin config to Tensorboard summary.
     """
     md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
-    tf.summary.text('gin/operative_config', md_operative_config_str)
+    alf.summary.text('gin/operative_config', md_operative_config_str)
     if md_inoperative_config_str:
-        tf.summary.text('gin/inoperative_config', md_inoperative_config_str)
+        alf.summary.text('gin/inoperative_config', md_inoperative_config_str)
 
 
 def copy_gin_configs(root_dir, gin_files):
@@ -912,3 +914,13 @@ def set_random_seed(seed):
     np.random.seed(seed)
     torch.random.manual_seed(seed)
     return seed
+
+
+def log_metrics(metrics, prefix=''):
+    """Log metrics through logging.
+    Args:
+        metrics (list[alf.metrics.StepMetric]): list of metrics to be logged
+        prefix (str): prefix to the log segment
+    """
+    log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
+    logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
