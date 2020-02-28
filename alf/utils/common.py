@@ -27,12 +27,14 @@ import random
 import shutil
 import time
 import torch
+import torch.distributions as td
 from typing import Callable
 from functools import wraps
 
 import alf
 from alf.data_structures import LossInfo
 from alf.utils.dist_utils import DistributionSpec
+from . import dist_utils, gin_utils
 
 
 def add_method(cls):
@@ -75,17 +77,11 @@ def zeros_from_spec(nested_spec, batch_size):
     """
 
     def _zero_tensor(spec):
-        if batch_size is None:
-            shape = spec.shape
-        else:
-            spec_shape = tf.convert_to_tensor(value=spec.shape, dtype=tf.int32)
-            shape = tf.concat(([batch_size], spec_shape), axis=0)
-        dtype = spec.dtype
-        return tf.zeros(shape, dtype)
+        return spec.zeros([batch_size])
 
-    param_spec = nest_utils.to_distribution_param_spec(nested_spec)
-    params = tf.nest.map_structure(_zero_tensor, param_spec)
-    return nest_utils.params_to_distributions(params, nested_spec)
+    param_spec = dist_utils.to_distribution_param_spec(nested_spec)
+    params = alf.nest.map_structure(_zero_tensor, param_spec)
+    return dist_utils.params_to_distributions(params, nested_spec)
 
 
 zero_tensor_from_nested_spec = zeros_from_spec
@@ -218,15 +214,15 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     Returns:
         nested Tensor
     """
-    return tf.nest.map_structure(
-        lambda i_s, s: tf.where(expand_dims_as(reset_mask, i_s), i_s, s),
+    return alf.nest.map_structure(
+        lambda i_s, s: torch.where(expand_dims_as(reset_mask, i_s), i_s, s),
         initial_state, state)
 
 
 def run_under_record_context(func,
                              summary_dir,
                              summary_interval,
-                             flush_millis,
+                             flush_secs,
                              summary_max_queue=10):
     """Run `func` under summary record context.
 
@@ -236,48 +232,22 @@ def run_under_record_context(func,
             "~/" will be expanded to "$HOME/"
         summary_interval (int): how often to generate summary based on the
             global counter
-        flush_millis (int): flush summary to disk every so many milliseconds
+        flush_secs (int): flush summary to disk every so many seconds
         summary_max_queue (int): the largest number of summaries to keep in a queue; will
           flush once the queue gets bigger than this. Defaults to 10.
     """
-
-    import alf.utils.summary_utils
     summary_dir = os.path.expanduser(summary_dir)
-    summary_writer = tf.summary.create_file_writer(
-        summary_dir, flush_millis=flush_millis, max_queue=summary_max_queue)
-    summary_writer.set_as_default()
-    global_step = get_global_counter()
-    with tf.summary.record_if(lambda: tf.logical_and(
-            is_summary_enabled(), tf.equal(global_step % summary_interval, 0)
-    )):
+    summary_writer = alf.summary.create_summary_writer(
+        summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
+    alf.summary.set_default_writer(summary_writer)
+    global_step = alf.summary.get_global_counter()
+
+    def _cond():
+        return (alf.summary.is_summary_enabled()
+                and global_step % summary_interval == 0)
+
+    with alf.summary.record_if(_cond):
         func()
-
-
-def should_record_summaries():
-    """A place holder function
-    """
-    return True
-
-
-def get_global_counter(default_counter=None):
-    """Get the global counter.
-
-    Args:
-        default_counter (Variable): If not None, this counter will be returned.
-    Returns:
-        If default_counter is not None, it will be returned. Otherwise,
-        if tf.summary.experimental.get_step() is not None, it will be returned.
-        Othewise, a counter will be created and returned.
-        tf.summary.experimental.set_step() will be set to the created counter.
-
-    """
-    if default_counter is None:
-        default_counter = tf.summary.experimental.get_step()
-        if default_counter is None:
-            default_counter = tf.Variable(
-                0, dtype=tf.int64, trainable=False, name="global_counter")
-            tf.summary.experimental.set_step(default_counter)
-    return default_counter
 
 
 @gin.configurable
@@ -481,9 +451,9 @@ def summarize_gin_config():
     """Write the operative and inoperative gin config to Tensorboard summary.
     """
     md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
-    tf.summary.text('gin/operative_config', md_operative_config_str)
+    alf.summary.text('gin/operative_config', md_operative_config_str)
     if md_inoperative_config_str:
-        tf.summary.text('gin/inoperative_config', md_inoperative_config_str)
+        alf.summary.text('gin/inoperative_config', md_inoperative_config_str)
 
 
 def copy_gin_configs(root_dir, gin_files):
@@ -588,8 +558,7 @@ def get_initial_time_step(env, first_env_id=0):
             tensors
     """
     time_step = env.current_time_step()
-    action = zero_tensor_from_nested_spec(env.action_spec(), env.batch_size)
-    return make_action_time_step(time_step, action, first_env_id)
+    return time_step._replace(env_id=time_step.env_id + first_env_id)
 
 
 def transpose2(x, dim1, dim2):
@@ -925,20 +894,38 @@ def function(func=None, **kwargs):
     return decorate
 
 
-def set_random_seed(seed, eager_mode):
-    """Set a seed for deterministic behaviors."""
-    if seed is not None:
-        if not tf.config.list_physical_devices('GPU'):
-            assert eager_mode, (
-                "CPU mode: because you have specified a fixed " +
-                "random seed, make sure to turn on eager mode " +
-                "to have deterministic results!")
+def set_random_seed(seed):
+    """Set a seed for deterministic behaviors.
 
-        os.environ["TF_DETERMINISTIC_OPS"] = str(1)
-    else:
+    Note: If someone runs an experiment with a pre-selected manual seed, he can
+    definitely reproduce the results with the same seed; however, if he runs the
+    experiment with seed=None and re-run the experiments using the seed previously
+    returned from this function (e.g. the returned seed might be logged to
+    Tensorboard), and if cudnn is used in the code, then there is no guarantee
+    that the results will be reproduced with the recovered seed.
+
+    Args:
+        seed (int|None): seed to be used. If None, a default seed based on
+            pid and time will be used.
+    Returns:
+        The seed being used if `seed` is None.
+    """
+    if seed is None:
         seed = os.getpid() + int(time.time())
-
+    else:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
     random.seed(seed)
     np.random.seed(seed)
-    tf.random.set_seed(seed)
+    torch.random.manual_seed(seed)
     return seed
+
+
+def log_metrics(metrics, prefix=''):
+    """Log metrics through logging.
+    Args:
+        metrics (list[alf.metrics.StepMetric]): list of metrics to be logged
+        prefix (str): prefix to the log segment
+    """
+    log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
+    logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))

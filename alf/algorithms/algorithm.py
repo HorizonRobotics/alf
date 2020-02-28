@@ -13,15 +13,14 @@
 # limitations under the License.
 """Algorithm base class."""
 
-from abc import abstractmethod
 from absl import logging
 import copy
-import json
-import os
 from collections import OrderedDict
 from functools import wraps
 import itertools
-
+import json
+import os
+import six
 import torch
 import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys
@@ -53,33 +52,13 @@ class Algorithm(nn.Module):
 
     Algorithm is a generic interface for supervised training algorithms.
 
-    User needs to implement train_step() and calc_loss()/train_complete().
-
-    train_step() is called to generate actions for every environment step.
-    It also needs to generate necessary information for training.
-
-    train_complete() is called every train_interval steps (specified in
-    PolicyDriver). All the training information collected at each previous
-    train_step() are batched and provided as arguments for train_complete().
-
-    The following is the pseudo code to illustrate how Algorithm is used for
-    training.
-
-    ```python
-    while training not ends:
-        training_info = []
-        with GradientTape() as tape:
-        for i in range(train_interval):
-            get inputs
-            outputs, state, info = train_step(inputs, state)
-            add info to training_info
-
-        train_complete(tape, batched_training_info)
-    ```
+    User needs to implement predict_step(), train_step() and
+    calc_loss()/update_with_gradient().
     """
 
     def __init__(self,
                  train_state_spec=None,
+                 rollout_state_spec=None,
                  predict_state_spec=None,
                  optimizer=None,
                  trainable_module_sets=None,
@@ -103,7 +82,7 @@ class Algorithm(nn.Module):
             train_state_spec (nested TensorSpec): for the network state of
                 `train_step()`
             predict_state_spec (nested TensorSpec): for the network state of
-                `predict()`. If None, it's assume to be same as train_state_spec
+                `predict_step()`. If None, it's assume to be same as rollout_state_spec
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             trainable_module_sets (list[list]): See comments above for detail.
@@ -117,9 +96,13 @@ class Algorithm(nn.Module):
 
         self._name = name
         self._train_state_spec = train_state_spec
+        if rollout_state_spec is None:
+            rollout_state_spec = train_state_spec
+        self._rollout_state_spec = rollout_state_spec
         if predict_state_spec is None:
-            predict_state_spec = train_state_spec
+            predict_state_spec = rollout_state_spec
         self._predict_state_spec = predict_state_spec
+
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
         self._gradient_clipping = gradient_clipping
@@ -300,8 +283,13 @@ class Algorithm(nn.Module):
 
     @property
     def predict_state_spec(self):
-        """Returns the RNN state spec for predict()."""
+        """Returns the RNN state spec for predict_step()."""
         return self._predict_state_spec
+
+    @property
+    def rollout_state_spec(self):
+        """Returns the RNN state spec for rollout_step()."""
+        return self._rollout_state_spec
 
     @property
     def train_state_spec(self):
@@ -309,10 +297,19 @@ class Algorithm(nn.Module):
         return self._train_state_spec
 
     def convert_train_state_to_predict_state(self, state):
-        """Convert RNN state for train_step() to RNN state for predict()."""
+        """Convert RNN state for train_step() to RNN state for predict_step()."""
         alf.nest.assert_same_structure(self._train_state_spec,
                                        self._predict_state_spec)
         return state
+
+    def get_initial_predict_state(self, batch_size):
+        return common.zeros_from_spec(self._predict_state_spec, batch_size)
+
+    def get_initial_rollout_state(self, batch_size):
+        return common.zeros_from_spec(self._rollout_state_spec, batch_size)
+
+    def get_initial_train_step_state(self, batch_size):
+        return common.zeros_from_spec(self._train_state_spec, batch_size)
 
     @common.add_method(nn.Module)
     def state_dict(self, destination=None, prefix='', visited=None):
@@ -551,8 +548,8 @@ class Algorithm(nn.Module):
 
     #------------- User need to implement the following functions -------
 
-    # Subclass may override predict() to allow more efficient implementation
-    def predict(self, inputs, state=None):
+    # Subclass may override predict_step() for more efficient implementation
+    def predict_step(self, inputs, state=None):
         """Predict for one step of inputs.
 
         Args:
@@ -561,15 +558,29 @@ class Algorithm(nn.Module):
 
         Returns:
             AlgStep
-                outputs (nested Tensor): prediction result
+                output (nested Tensor): prediction result
                 state (nested Tensor): should match `predict_state_spec`
+        """
+        algorithm_step = self.rollout_step(inputs, state)
+        return algorithm_step._replace(info=None)
+
+    def rollout_step(self, inputs, state=None):
+        """Rollout for one step of inputs.
+
+        Args:
+            inputs (nested Tensor): inputs for prediction
+            state (nested Tensor): network state (for RNN)
+
+        Returns:
+            AlgStep
+                output (nested Tensor): prediction result
+                state (nested Tensor): should match `rollout_state_spec`
         """
         algorithm_step = self.train_step(inputs, state)
         return algorithm_step._replace(info=None)
 
-    @abstractmethod
     def train_step(self, inputs, state=None):
-        """Perform one step of predicting and training computation.
+        """Perform one step of training computation.
 
         It is called to generate actions for every environment step.
         It also needs to generate necessary information for training.
@@ -581,27 +592,23 @@ class Algorithm(nn.Module):
         Returns:
             AlgStep
                 output (nested Tensor): predict outputs
-                state (nested Tensor): should match `predict_state_spec`
+                state (nested Tensor): should match `train_state_spec`
                 info (nested Tensor): information for training. If this is
                     LossInfo, calc_loss() in Algorithm can be used. Otherwise,
                     the user needs to override calc_loss() to calculate loss or
-                    override train_complete() to do customized training.
+                    override update_with_gradient() to do customized training.
         """
-        pass
+        return AlgStep()
 
-    # Subclass may override train_complete() to allow customized training
-    def train_complete(self, training_info, valid_masks=None, weight=1.0):
+    # Subclass may override update_with_gradient() to allow customized training
+    def update_with_gradient(self, loss_info, valid_masks=None, weight=1.0):
         """Complete one iteration of training.
 
-        `train_complete` should calculate gradients and update parameters using
-        those gradients.
+        Update parameters using the gradient with respect to `loss_info`.
 
         Args:
-            tape (tf.GradientTape): the tape which are used for calculating
-                gradient. All the previous `train_interval` `train_step()`
-                are called under the context of this tape.
-            training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned bt `train_step()`
+            loss_info (LossInfo): loss with shape (T, B) (except for
+                `loss_info.scalar_loss`)
             valid_masks (tf.Tensor): masks indicating which samples are valid.
                 shape=(T, B), dtype=tf.float32
             weight (float): weight for this batch. Loss will be multiplied with
@@ -610,7 +617,6 @@ class Algorithm(nn.Module):
             loss_info (LossInfo): loss information
             params (list[Parameter]): list of parameters being updated.
         """
-        loss_info = self.calc_loss(training_info)
         if valid_masks is not None:
             loss_info = alf.nest.map_structure(
                 lambda l: torch.mean(l * valid_masks)
@@ -644,7 +650,7 @@ class Algorithm(nn.Module):
                     # TODO: implement alf.clip_by_global_norm
                     global_norm = alf.clip_by_global_norm(
                         params, self._gradient_clipping)
-                    if common.should_record_summaries():
+                    if alf.summary.should_record_summaries():
                         alf.summary.scalar("global_grad_norm/%s" % i,
                                            global_norm)
                 else:
@@ -652,17 +658,15 @@ class Algorithm(nn.Module):
                     alf.clip_gradient_norms(params, self._gradient_clipping)
             optimizer.step()
 
-        self.after_train(training_info)
-
         return loss_info, all_params
 
-    def after_train(self, training_info):
-        """Do things after complete one iteration of training, such as update
-        target network.
+    def after_update(self, training_info):
+        """Do things after complete one gradient update (i.e. update_with_gradient())
 
         Args:
             training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned bt `train_step()`
+                It is batched from each `info` returned by `rollout_step()` or
+                `train_step()`
         Returns:
             None
         """

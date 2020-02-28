@@ -16,9 +16,9 @@
 Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
-
-from alf.metrics import metric
 import torch
+
+from . import metric
 
 
 class THDeque(torch.nn.Module):
@@ -176,8 +176,7 @@ class AverageReturnMetric(metric.StepMetric):
                         exp.reward))
 
         # Add final returns to buffer.
-        last_episode_indices = torch.squeeze(*torch.where(exp.is_last())).type(
-            torch.int64)
+        last_episode_indices = torch.where(exp.is_last())[0].type(torch.int64)
         for indx in last_episode_indices:
             self._buffer.append(self._return_accumulator[indx])
 
@@ -219,14 +218,13 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
         """
         # Each non-boundary exp (mid or last) represents a step.
         is_first = exp.is_first()
-        non_boundary_indices = torch.squeeze(*torch.where(~is_first)).type(
-            torch.int64)
-        self._length_accumulator.scatter_add_(0, non_boundary_indices,
-                                              torch.ones_like(exp.reward))
+        non_boundary_indices = torch.where(~is_first)[0].type(torch.int64)
+        self._length_accumulator[non_boundary_indices] += \
+            torch.ones_like(non_boundary_indices)
 
         # Add lengths to buffer when we hit end of episode
         is_last = exp.is_last()
-        last_indices = torch.squeeze(*torch.where(is_last)).type(torch.int64)
+        last_indices = torch.where(is_last)[0].type(torch.int64)
         for indx in last_indices:
             self._buffer.append(self._length_accumulator[indx])
 

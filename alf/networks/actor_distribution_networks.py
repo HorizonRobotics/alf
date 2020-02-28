@@ -18,8 +18,8 @@ import gin
 import torch
 import torch.nn as nn
 
-from alf.networks import EncodingNetwork, LSTMEncodingNetwork
-from alf.networks import NormalProjectionNetwork, CategoricalProjectionNetwork
+from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
+from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
 

@@ -19,6 +19,7 @@ Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/met
 import alf
 import os
 
+import torch
 from torch import nn
 
 
@@ -64,26 +65,20 @@ class StepMetric(nn.Module):
                 metric is generated against the global step.
             step_metrics: (Optional) Iterable of step metrics to generate summaries
                 against.
-
-        Returns:
-            A list of summaries.
         """
-        summaries = []
         prefix = self._prefix
         tag = os.path.join(prefix, self.name)
         result = self.result()
         if train_step is not None:
-            summaries.append(
-                alf.summary.scalar(name=tag, data=result, step=train_step))
+            alf.summary.scalar(name=tag, data=result, step=train_step)
         if prefix:
             prefix += '_'
         for step_metric in step_metrics:
             # Skip plotting the metrics against itself.
             if self.name == step_metric.name:
                 continue
-            step_tag = '{}vs_{}/{}'.format(prefix, step_metric.name, self.name)
+            step_tag = '{}_vs_{}/{}'.format(prefix, step_metric.name,
+                                            self.name)
             # Summaries expect the step value to be an int64.
-            step = step_metric.result().int64()
-            summaries.append(
-                alf.summary.scalar(name=step_tag, data=result, step=step))
-        return summaries
+            step = step_metric.result().to(torch.int64)
+            alf.summary.scalar(name=step_tag, data=result, step=step)
