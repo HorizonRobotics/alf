@@ -16,15 +16,15 @@
 import torch
 
 
-def text(name, data):
+def text(name, data, step=None):
     pass
 
 
-def scalar(name, data):
+def scalar(name, data, step=None):
     pass
 
 
-def histogram(name, data):
+def histogram(name, data, step=None):
     pass
 
 

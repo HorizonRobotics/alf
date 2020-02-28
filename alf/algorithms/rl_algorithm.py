@@ -372,7 +372,7 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for metrics `AverageEpisodeLength`, `AverageReturn`..."""
         if self._metrics:
             for metric in self._metrics:
-                metric.summarize(
+                metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
                     step_metrics=self._metrics[:2])
 

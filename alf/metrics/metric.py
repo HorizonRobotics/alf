@@ -19,6 +19,7 @@ Code adapted from https://github.com/tensorflow/agents/blob/master/tf_agents/met
 import alf
 import os
 
+import torch
 from torch import nn
 
 
@@ -83,7 +84,7 @@ class StepMetric(nn.Module):
                 continue
             step_tag = '{}vs_{}/{}'.format(prefix, step_metric.name, self.name)
             # Summaries expect the step value to be an int64.
-            step = step_metric.result().int64()
+            step = step_metric.result().to(torch.int64)
             summaries.append(
                 alf.summary.scalar(name=step_tag, data=result, step=step))
         return summaries

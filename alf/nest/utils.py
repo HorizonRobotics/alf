@@ -30,7 +30,7 @@ def stack_nests(nests):
     Returns:
         a nest with same structure as nests[0]
     """
-    return nest.map_structure(torch.stack, *nests)
+    return nest.map_structure(lambda *tensors: torch.stack(tensors), *nests)
 
 
 @gin.configurable
