@@ -252,7 +252,7 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
     exp = alf.data_structures.make_experience(time_step, policy_step,
                                               policy_state)
     for metric in metrics:
-        metric.observe(exp)
+        metric(exp)
     return next_time_step, policy_step.state
 
 
@@ -278,7 +278,7 @@ def play(root_dir,
         env (TFEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_step (int|str): the number of training steps which is used to
-            specify the checkpoint to be loaded. If glocheckpoint_stepbal_step is 'latest',
+            specify the checkpoint to be loaded. If checkpoint_step is 'latest',
             the most recent checkpoint named 'latest' will be loaded.
         epsilon_greedy (float): a floating value in [0,1], representing the
             chance of action sampling instead of taking argmax. This can

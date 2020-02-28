@@ -558,7 +558,7 @@ class Algorithm(nn.Module):
 
         Returns:
             AlgStep
-                outputs (nested Tensor): prediction result
+                output (nested Tensor): prediction result
                 state (nested Tensor): should match `predict_state_spec`
         """
         algorithm_step = self.rollout_step(inputs, state)
@@ -573,7 +573,7 @@ class Algorithm(nn.Module):
 
         Returns:
             AlgStep
-                outputs (nested Tensor): prediction result
+                output (nested Tensor): prediction result
                 state (nested Tensor): should match `rollout_state_spec`
         """
         algorithm_step = self.train_step(inputs, state)
@@ -661,12 +661,12 @@ class Algorithm(nn.Module):
         return loss_info, all_params
 
     def after_update(self, training_info):
-        """Do things after complete one iteration of training, such as update
-        target network.
+        """Do things after complete one gradient update (i.e. update_with_gradient())
 
         Args:
             training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned bt `train_step()`
+                It is batched from each `info` returned by `rollout_step()` or
+                `train_step()`
         Returns:
             None
         """
