@@ -51,6 +51,7 @@ function test() {
         alf.nest.nest_test \
         alf.networks.encoding_networks_test \
         alf.networks.projection_networks_test \
+        alf.summary.summary_ops_test \
         alf.tensor_specs_test \
         alf.utils.dist_utils_test \
         alf.utils.value_ops_test \
