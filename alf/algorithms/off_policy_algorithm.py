@@ -20,11 +20,11 @@ from typing import Callable
 import torch
 
 import alf
+from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, StepType, TrainingInfo
 from alf.utils import common, dist_utils
 from alf.utils.summary_utils import record_time
-from alf.algorithms.config import TrainerConfig
 
 
 class OffPolicyAlgorithm(RLAlgorithm):

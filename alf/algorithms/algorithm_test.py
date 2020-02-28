@@ -73,7 +73,8 @@ class AlgorithmTest(unittest.TestCase):
             optimizer=torch.optim.Adam(lr=0.25), sub_algs=[alg_1], name="root")
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 1)
-        self.assertEqual(info[0]['parameters'], [id(param_1)])
+        self.assertEqual(info[0]['parameters'],
+                         [alg_root.get_param_name(param_1)])
 
         alg_1 = MyAlg(params=[param_1, param_1])
         alg_root = MyAlg(
@@ -82,7 +83,8 @@ class AlgorithmTest(unittest.TestCase):
             name="root")
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 1)
-        self.assertEqual(info[0]['parameters'], [id(param_1)])
+        self.assertEqual(info[0]['parameters'],
+                         [alg_root.get_param_name(param_1)])
 
         alg_root = MyAlg(
             optimizer=torch.optim.Adam(lr=0.25),
@@ -104,16 +106,20 @@ class AlgorithmTest(unittest.TestCase):
             opt_default = info[1]
             opt_2 = info[0]
 
-        self.assertEqual(opt_default['parameters'], [id(param_1)])
-        self.assertEqual(opt_2['parameters'], [id(param_2)])
+        self.assertEqual(opt_default['parameters'],
+                         [alg_root.get_param_name(param_1)])
+        self.assertEqual(opt_2['parameters'],
+                         [alg_root.get_param_name(param_2)])
 
         alg_root = MyAlg(sub_algs=[alg_1, alg_2], name="root")
         alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 2)
         self.assertEqual(info[0]['optimizer'], 'None')
-        self.assertEqual(info[0]['parameters'], [id(param_1)])
-        self.assertEqual(info[1]['parameters'], [id(param_2)])
+        self.assertEqual(info[0]['parameters'],
+                         [alg_root.get_param_name(param_1)])
+        self.assertEqual(info[1]['parameters'],
+                         [alg_root.get_param_name(param_2)])
 
         # Test cycle detection
         alg_2.root = alg_root
@@ -130,8 +136,10 @@ class AlgorithmTest(unittest.TestCase):
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 2)
         self.assertEqual(info[0]['optimizer'], 'None')
-        self.assertEqual(info[0]['parameters'], [id(param_1)])
-        self.assertEqual(info[1]['parameters'], [id(param_2)])
+        self.assertEqual(info[0]['parameters'],
+                         [alg_root.get_param_name(param_1)])
+        self.assertEqual(info[1]['parameters'],
+                         [alg_root.get_param_name(param_2)])
 
     def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
@@ -151,7 +159,7 @@ class AlgorithmTest(unittest.TestCase):
         alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
         loss_info, params = alg_root.update_with_gradient(
             alg_root.calc_loss(TrainingInfo()))
-        self.assertEqual(set(params), set(alg_root.parameters()))
+        self.assertEqual(set(params), set(alg_root.named_parameters()))
         for param in alg_root.parameters():
             self.assertTrue(torch.all(param.grad == 1.0))
         self.assertEqual(loss_info.loss, 3.)

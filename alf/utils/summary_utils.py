@@ -175,15 +175,14 @@ def unique_var_names(vars):
 
 @_summary_wrapper
 @gin.configurable
-def summarize_variables(vars, with_histogram=True):
+def summarize_variables(name_and_params, with_histogram=True):
     """Add summaries for variables.
 
     Args:
-        grads_and_vars (list): A list of (gradient, variable) pairs.
+        name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
+            tuples.
     """
-    if not vars:
-        return
-    for var, var_name in zip(vars, unique_var_names(vars)):
+    for var_name, var in name_and_params:
         var_values = var
         if with_histogram:
             alf.summary.histogram(
@@ -195,15 +194,14 @@ def summarize_variables(vars, with_histogram=True):
 
 @_summary_wrapper
 @gin.configurable
-def summarize_gradients(vars, step=None, with_histogram=True):
-    """Add summaries to gradients.
+def summarize_gradients(name_and_params, step=None, with_histogram=True):
+    """Add summaries for gradients.
 
     Args:
-        grads_and_vars (list): A list of gradient to variable pairs (tuples).
+        name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
+            tuples.
     """
-    if not vars:
-        return
-    for var, var_name in zip(vars, unique_var_names(vars)):
+    for var_name, var in name_and_params:
         if var.grad is None:
             continue
         grad_values = var.grad

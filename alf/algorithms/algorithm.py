@@ -188,6 +188,15 @@ class Algorithm(nn.Module):
                 if isinstance(child, Algorithm):
                     to_be_visited.append(child)
 
+    def get_param_name(self, param):
+        """Get the name of the parameter.
+
+        Returns:
+            string of the name if the parameter can be found.
+            None if the parameter cannot be found.
+        """
+        return self._param_to_name.get(param)
+
     def _setup_optimizers(self):
         """Setup the param groups for optimizers.
 
@@ -195,6 +204,11 @@ class Algorithm(nn.Module):
             list of parameters not handled by any optimizers under this algorithm
         """
         self._assert_no_cycle_or_duplicate()
+        self._param_to_name = {}
+
+        for name, param in self.named_parameters():
+            self._param_to_name[param] = name
+
         return self._setup_optimizers_()[0]
 
     def _setup_optimizers_(self):
@@ -267,7 +281,9 @@ class Algorithm(nn.Module):
         optimizer_info = []
         if unhandled:
             optimizer_info.append(
-                dict(optimizer="None", parameters=[id(p) for p in unhandled]))
+                dict(
+                    optimizer="None",
+                    parameters=[self._param_to_name[p] for p in unhandled]))
 
         for optimizer in self.optimizers():
             parameters = _get_optimizer_params(optimizer)
@@ -276,7 +292,7 @@ class Algorithm(nn.Module):
                     optimizer=optimizer.__class__.__name__,
                     hypers=optimizer.defaults,
                     # TODO: better name for each parameter
-                    parameters=[id(p) for p in parameters]))
+                    parameters=[self._param_to_name[p] for p in parameters]))
         json_pretty_str_info = json.dumps(obj=optimizer_info, indent=2)
 
         return json_pretty_str_info
@@ -360,7 +376,8 @@ class Algorithm(nn.Module):
 
     def load_state_dict(self, state_dict, strict=True):
         """Load state dictionary for Algorithm
-        Arguments:
+
+        Args:
             state_dict (dict): a dict containing parameters and
                 persistent buffers.
             strict (bool, optional): whether to strictly enforce that the keys
@@ -615,7 +632,7 @@ class Algorithm(nn.Module):
                 this weight before calculating gradient
         Returns:
             loss_info (LossInfo): loss information
-            params (list[Parameter]): list of parameters being updated.
+            params (list[(name, Parameter)]): list of parameters being updated.
         """
         if valid_masks is not None:
             loss_info = alf.nest.map_structure(
@@ -658,6 +675,7 @@ class Algorithm(nn.Module):
                     alf.clip_gradient_norms(params, self._gradient_clipping)
             optimizer.step()
 
+        all_params = [(self._param_to_name[p], p) for p in all_params]
         return loss_info, all_params
 
     def after_update(self, training_info):

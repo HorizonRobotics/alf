@@ -142,6 +142,8 @@ class MyEnv(object):
 
 class RLAlgorithmTest(unittest.TestCase):
     def test_on_policy_algorithm(self):
+        # root_dir is not used. We have to give it a value because
+        # it is a required argument of TrainerConfig.
         config = TrainerConfig(
             root_dir='/tmp/rl_algorithm_test', unroll_length=5, num_envs=1)
         env = MyEnv(batch_size=3)
@@ -174,8 +176,6 @@ class RLAlgorithmTest(unittest.TestCase):
     def _test_off_policy_algorithm(self, root_dir):
         alf.summary.enable_summary()
         config = TrainerConfig(
-            # root_dir is not used. We have to give it a value because
-            # it is a required argument of TrainerConfig.
             root_dir=root_dir,
             unroll_length=5,
             num_envs=1,

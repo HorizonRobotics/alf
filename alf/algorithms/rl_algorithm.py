@@ -291,7 +291,7 @@ class RLAlgorithm(Algorithm):
                 environments.
         """
         assert exp_replayer in ("one_time", "uniform"), (
-            "Unsuppoted exp_replayer: %s" % exp_replayer)
+            "Unsupported exp_replayer: %s" % exp_replayer)
         self._exp_replayer_type = exp_replayer
         self._exp_replayer_num_envs = num_envs
 
