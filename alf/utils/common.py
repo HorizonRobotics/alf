@@ -28,10 +28,35 @@ import shutil
 import time
 import torch
 from typing import Callable
+from functools import wraps
 
 import alf
 from alf.data_structures import LossInfo
 from alf.utils.dist_utils import DistributionSpec
+
+
+def add_method(cls):
+    """A decorator for adding a method to a class (cls)
+    Example usage:
+        class A:
+            pass
+        @add_method(A)
+        def new_method(self):
+            print('new method added')
+        # now new_method() is added to class A and is ready to be used
+        a = A()
+        a.new_method()
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        setattr(cls, func.__name__, wrapper)
+        return func
+
+    return decorator
 
 
 def zeros_from_spec(nested_spec, batch_size):
