@@ -29,11 +29,36 @@ import time
 import torch
 import torch.distributions as td
 from typing import Callable
+from functools import wraps
 
 import alf
 from alf.data_structures import LossInfo
 from alf.utils.dist_utils import DistributionSpec
 from . import dist_utils
+
+
+def add_method(cls):
+    """A decorator for adding a method to a class (cls)
+    Example usage:
+        class A:
+            pass
+        @add_method(A)
+        def new_method(self):
+            print('new method added')
+        # now new_method() is added to class A and is ready to be used
+        a = A()
+        a.new_method()
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        setattr(cls, func.__name__, wrapper)
+        return func
+
+    return decorator
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -192,32 +217,6 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
     return alf.nest.map_structure(
         lambda i_s, s: torch.where(expand_dims_as(reset_mask, i_s), i_s, s),
         initial_state, state)
-
-
-_summary_enabled_var = None
-
-
-def _get_summary_enabled_var():
-    global _summary_enabled_var
-    if _summary_enabled_var is None:
-        _summary_enabled_var = tf.Variable(
-            False, dtype=tf.bool, trainable=False, name="summary_enabled")
-    return _summary_enabled_var
-
-
-def enable_summary(flag):
-    """Enable or disable summary.
-
-    Args:
-        flag (bool): True to enable, False to disable
-    """
-    v = _get_summary_enabled_var()
-    v.assign(flag)
-
-
-def is_summary_enabled():
-    """Return whether summary is enabled."""
-    return _get_summary_enabled_var()
 
 
 def run_under_record_context(func,
