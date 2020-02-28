@@ -163,6 +163,9 @@ class RLAlgorithm(Algorithm):
             self._metrics = standard_metrics
             self._observers.extend(self._metrics)
 
+        if config:
+            self.use_rollout_state = config.use_rollout_state
+
     def _set_children_property(self, property_name, value):
         """Set the property named `property_name` in child RLAlgorithm to `value`."""
         for child in self._get_children():
@@ -342,7 +345,7 @@ class RLAlgorithm(Algorithm):
             self.summarize_reward("rollout_reward/extrinsic",
                                   training_info.reward)
 
-        if self._summarize_action_distributions:
+        if self._config.summarize_action_distributions:
             field = alf.nest.find_field(training_info.rollout_info,
                                         'action_distribution')
             if len(field) == 1:
@@ -369,7 +372,7 @@ class RLAlgorithm(Algorithm):
         Returns:
             None
         """
-        if self._summarize_grads_and_vars:
+        if self._config.summarize_grads_and_vars:
             summary_utils.summarize_variables(params)
             summary_utils.summarize_gradients(params)
         if self._debug_summaries:
@@ -377,7 +380,7 @@ class RLAlgorithm(Algorithm):
                                            self._action_spec)
             summary_utils.summarize_loss(loss_info)
 
-        if self._summarize_action_distributions:
+        if self._config.summarize_action_distributions:
             field = alf.nest.find_field(training_info.info,
                                         'action_distribution')
             if len(field) == 1:

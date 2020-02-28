@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import tempfile
 import torch
 import torch.distributions as td
 import unittest
@@ -149,7 +150,8 @@ class RLAlgorithmTest(unittest.TestCase):
             action_spec=env.action_spec(),
             env=env,
             config=config,
-            on_policy=True)
+            on_policy=True,
+            debug_summaries=True)
         for _ in range(100):
             alg.train_iter()
 
@@ -162,16 +164,27 @@ class RLAlgorithmTest(unittest.TestCase):
         self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
     def test_off_policy_algorithm(self):
+        with tempfile.TemporaryDirectory() as root_dir:
+            common.run_under_record_context(
+                lambda: self._test_off_policy_algorithm(root_dir),
+                summary_dir=root_dir,
+                summary_interval=1,
+                flush_secs=1)
+
+    def _test_off_policy_algorithm(self, root_dir):
+        alf.summary.enable_summary()
         config = TrainerConfig(
             # root_dir is not used. We have to give it a value because
             # it is a required argument of TrainerConfig.
-            root_dir='/tmp/rl_algorithm_test',
+            root_dir=root_dir,
             unroll_length=5,
             num_envs=1,
             num_updates_per_train_step=1,
             mini_batch_length=5,
             mini_batch_size=3,
             use_rollout_state=True,
+            summarize_grads_and_vars=True,
+            summarize_action_distributions=True,
             whole_replay_buffer_training=False)
         env = MyEnv(batch_size=3)
         alg = MyAlg(
@@ -193,4 +206,5 @@ class RLAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    RLAlgorithmTest().test_off_policy_algorithm()
+    #unittest.main()

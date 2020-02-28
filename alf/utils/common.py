@@ -249,6 +249,8 @@ def run_under_record_context(func,
     with alf.summary.record_if(_cond):
         func()
 
+    summary_writer.close()
+
 
 @gin.configurable
 def cast_transformer(observation, dtype=torch.float32):

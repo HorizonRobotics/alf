@@ -63,6 +63,7 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
 
     def _train_iter_on_policy(self):
         """User may override this for their own training procedure."""
+        alf.summary.get_global_counter().add_(1)
         training_info = self.unroll(self._config.unroll_length)
         training_info = training_info._replace(
             rollout_info=(), info=training_info.rollout_info)
@@ -73,5 +74,4 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
         self.after_update(training_info)
         self.summarize_train(training_info, loss_info, params)
         self.summarize_metrics()
-        alf.summary.get_global_counter().add_(1)
         return torch.tensor(training_info.step_type.shape).prod()

@@ -119,6 +119,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 for _ in range(num_unrolls):
                     training_info = self.unroll(config.unroll_length)
                     self.summarize_rollout(training_info)
+                    self.summarize_metrics()
 
         with record_time("time/train"):
             mini_batch_size = config.mini_batch_size
