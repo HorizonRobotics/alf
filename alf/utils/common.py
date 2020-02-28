@@ -29,12 +29,37 @@ import time
 import torch
 import torch.distributions as td
 from typing import Callable
+from functools import wraps
 
 import alf
 from alf.nest import map_structure
 from alf.data_structures import LossInfo
 from alf.utils.dist_utils import DistributionSpec
-from . import dist_utils
+from . import dist_utils, gin_utils
+
+
+def add_method(cls):
+    """A decorator for adding a method to a class (cls)
+    Example usage:
+        class A:
+            pass
+        @add_method(A)
+        def new_method(self):
+            print('new method added')
+        # now new_method() is added to class A and is ready to be used
+        a = A()
+        a.new_method()
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        setattr(cls, func.__name__, wrapper)
+        return func
+
+    return decorator
 
 
 def zeros_from_spec(nested_spec, batch_size):
@@ -195,36 +220,10 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
         initial_state, state)
 
 
-_summary_enabled_var = None
-
-
-def _get_summary_enabled_var():
-    global _summary_enabled_var
-    if _summary_enabled_var is None:
-        _summary_enabled_var = tf.Variable(
-            False, dtype=tf.bool, trainable=False, name="summary_enabled")
-    return _summary_enabled_var
-
-
-def enable_summary(flag):
-    """Enable or disable summary.
-
-    Args:
-        flag (bool): True to enable, False to disable
-    """
-    v = _get_summary_enabled_var()
-    v.assign(flag)
-
-
-def is_summary_enabled():
-    """Return whether summary is enabled."""
-    return _get_summary_enabled_var()
-
-
 def run_under_record_context(func,
                              summary_dir,
                              summary_interval,
-                             flush_millis,
+                             flush_secs,
                              summary_max_queue=10):
     """Run `func` under summary record context.
 
@@ -234,19 +233,21 @@ def run_under_record_context(func,
             "~/" will be expanded to "$HOME/"
         summary_interval (int): how often to generate summary based on the
             global counter
-        flush_millis (int): flush summary to disk every so many milliseconds
+        flush_secs (int): flush summary to disk every so many seconds
         summary_max_queue (int): the largest number of summaries to keep in a queue; will
           flush once the queue gets bigger than this. Defaults to 10.
     """
-
-    import alf.utils.summary_utils
     summary_dir = os.path.expanduser(summary_dir)
-    summary_writer = alf.summary.create_file_writer(
-        summary_dir, flush_millis=flush_millis, max_queue=summary_max_queue)
+    summary_writer = alf.summary.create_summary_writer(
+        summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
     alf.summary.set_default_writer(summary_writer)
     global_step = alf.summary.get_global_counter()
-    with alf.summary.record_if(lambda: is_summary_enabled() and global_step %
-                               summary_interval == 0):
+
+    def _cond():
+        return (alf.summary.is_summary_enabled()
+                and global_step % summary_interval == 0)
+
+    with alf.summary.record_if(_cond):
         func()
 
 
@@ -451,9 +452,9 @@ def summarize_gin_config():
     """Write the operative and inoperative gin config to Tensorboard summary.
     """
     md_operative_config_str, md_inoperative_config_str = get_gin_confg_strs()
-    tf.summary.text('gin/operative_config', md_operative_config_str)
+    alf.summary.text('gin/operative_config', md_operative_config_str)
     if md_inoperative_config_str:
-        tf.summary.text('gin/inoperative_config', md_inoperative_config_str)
+        alf.summary.text('gin/inoperative_config', md_inoperative_config_str)
 
 
 def copy_gin_configs(root_dir, gin_files):
@@ -868,3 +869,13 @@ def set_random_seed(seed):
     np.random.seed(seed)
     torch.random.manual_seed(seed)
     return seed
+
+
+def log_metrics(metrics, prefix=''):
+    """Log metrics through logging.
+    Args:
+        metrics (list[alf.metrics.StepMetric]): list of metrics to be logged
+        prefix (str): prefix to the log segment
+    """
+    log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
+    logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))

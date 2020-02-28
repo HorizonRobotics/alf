@@ -19,6 +19,20 @@ import torch
 from . import nest
 
 
+def stack_nests(nests):
+    """Stack tensors to a sequence.
+
+    All the nest should have same structure and shape. In the resulted nest,
+    each tensor has shape of [T,...] and is the concat of all the corresponding
+    tensors in nests
+    Args:
+        nests (list[nest]): list of nests with same structure and shape
+    Returns:
+        a nest with same structure as nests[0]
+    """
+    return nest.map_structure(lambda *tensors: torch.stack(tensors), *nests)
+
+
 @gin.configurable
 def nest_concatenate(nested, dim=-1):
     """Concatenate all elements in a nest along the specified axis. It assumes

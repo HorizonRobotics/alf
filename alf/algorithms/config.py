@@ -74,10 +74,7 @@ class TrainerConfig(object):
                 * `unroll_length`.
             use_rollout_state (bool): Include the RNN state for the experiences
                 used for off-policy training
-            checkpoint_interval (int): checkpoint every so many iterations
-            checkpoint_max_to_keep (int): Maximum number of checkpoints to keep
-                (if greater than the max are saved, the oldest checkpoints are
-                deleted). If None, all checkpoints will be kept.
+            num_checkpoints (int): how many checkpoints to save for the training
             evaluate (bool): A bool to evaluate when training
             eval_interval (int): evaluate every so many iteration
             epsilon_greedy (float): a floating value in [0,1], representing the
@@ -111,7 +108,7 @@ class TrainerConfig(object):
                 perform one update and then wiped clean
             num_envs (int): the number of environments to run asynchronously.
         """
-        self._parameters = dict(
+        parameters = dict(
             root_dir=root_dir,
             algorithm_ctor=algorithm_ctor,
             random_seed=random_seed,
@@ -139,5 +136,5 @@ class TrainerConfig(object):
             clear_replay_buffer=clear_replay_buffer,
             num_envs=num_envs)
 
-    def __getattr__(self, param_name):
-        return self._parameters.get(param_name)
+        for k, v in parameters.items():
+            self.__setattr__(k, v)

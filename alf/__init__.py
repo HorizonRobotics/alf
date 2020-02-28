@@ -18,5 +18,6 @@ from . import nest
 from . import summary
 from . import test
 
+from .device_ctx import *
 from .tensor_specs import *
 import alf.utils.external_configurables

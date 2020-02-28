@@ -15,11 +15,15 @@
 
 from absl import logging
 import copy
+from collections import OrderedDict
+from functools import wraps
+import itertools
 import json
 import os
 import six
 import torch
 import torch.nn as nn
+from torch.nn.modules.module import _IncompatibleKeys
 
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo
@@ -49,13 +53,13 @@ class Algorithm(nn.Module):
     Algorithm is a generic interface for supervised training algorithms.
 
     User needs to implement predict_step(), train_step() and
-    calc_loss()/train_complete().
+    calc_loss()/update_with_gradient().
     """
 
     def __init__(self,
                  train_state_spec=None,
-                 predict_state_spec=None,
                  rollout_state_spec=None,
+                 predict_state_spec=None,
                  optimizer=None,
                  trainable_module_sets=None,
                  gradient_clipping=None,
@@ -65,7 +69,7 @@ class Algorithm(nn.Module):
         """Create an Algorithm.
 
         Each algorithm can have a default optimimzer. By default, the parameters
-        and/or modules under an algorithm are optimzierd by the default
+        and/or modules under an algorithm are optimized by the default
         optimizer. One can also specify an optimizer for a set of parameters
         and/or modules using add_optimizer.
 
@@ -78,7 +82,7 @@ class Algorithm(nn.Module):
             train_state_spec (nested TensorSpec): for the network state of
                 `train_step()`
             predict_state_spec (nested TensorSpec): for the network state of
-                `predict()`. If None, it's assume to be same as train_state_spec
+                `predict_step()`. If None, it's assume to be same as rollout_state_spec
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             trainable_module_sets (list[list]): See comments above for detail.
@@ -92,12 +96,12 @@ class Algorithm(nn.Module):
 
         self._name = name
         self._train_state_spec = train_state_spec
-        if predict_state_spec is None:
-            predict_state_spec = train_state_spec
-        self._predict_state_spec = predict_state_spec
         if rollout_state_spec is None:
             rollout_state_spec = train_state_spec
         self._rollout_state_spec = rollout_state_spec
+        if predict_state_spec is None:
+            predict_state_spec = rollout_state_spec
+        self._predict_state_spec = predict_state_spec
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
@@ -106,6 +110,7 @@ class Algorithm(nn.Module):
         self._debug_summaries = debug_summaries
         self._default_optimizer = optimizer
         self._optimizers = []
+        self._opt_keys = []
         self._module_to_optimizer = {}
         if optimizer:
             self._optimizers.append(optimizer)
@@ -252,7 +257,7 @@ class Algorithm(nn.Module):
         if recurse:
             for module in self.children():
                 if isinstance(module, Algorithm):
-                    opts.extend(module.optimizers)
+                    opts.extend(module.optimizers())
         return opts
 
     def get_optimizer_info(self):
@@ -278,8 +283,13 @@ class Algorithm(nn.Module):
 
     @property
     def predict_state_spec(self):
-        """Returns the RNN state spec for predict()."""
+        """Returns the RNN state spec for predict_step()."""
         return self._predict_state_spec
+
+    @property
+    def rollout_state_spec(self):
+        """Returns the RNN state spec for rollout_step()."""
+        return self._rollout_state_spec
 
     @property
     def train_state_spec(self):
@@ -287,7 +297,7 @@ class Algorithm(nn.Module):
         return self._train_state_spec
 
     def convert_train_state_to_predict_state(self, state):
-        """Convert RNN state for train_step() to RNN state for predict()."""
+        """Convert RNN state for train_step() to RNN state for predict_step()."""
         alf.nest.assert_same_structure(self._train_state_spec,
                                        self._predict_state_spec)
         return state
@@ -301,9 +311,244 @@ class Algorithm(nn.Module):
     def get_initial_train_step_state(self, batch_size):
         return common.zeros_from_spec(self._train_state_spec, batch_size)
 
+    @common.add_method(nn.Module)
+    def state_dict(self, destination=None, prefix='', visited=None):
+        """Get state dictionary recursively, including both model state
+        and optimizers' state (if any). It can handle a number of special cases:
+            1) graph with cycle: save all the states and avoid infinite loop
+            2) parameter sharing: save only one copy of the shared module/param
+            3) optimizers: save the optimizers for all the (sub-)algorithms
+
+        Args:
+            destination (OrderedDict): the destination for storing the state
+            prefix (str): a string to be added before the name of the items
+                (modules, params, algorithms etc) as the key used in the
+                state dictionary
+            visited (set): a set keeping track of the visited objects
+        Returns:
+            destination (OrderedDict): the dictionary including both model state
+                and optimizers' state (if any)
+
+        """
+
+        if destination is None:
+            destination = OrderedDict()
+            destination._metadata = OrderedDict()
+        destination._metadata[prefix[:-1]] = local_metadata = dict(
+            version=self._version)
+
+        if visited is None:
+            visited = {self}
+
+        self._save_to_state_dict(destination, prefix, visited)
+        opts_dict = OrderedDict()
+        for name, child in self._modules.items():
+            if child is not None and child not in visited:
+                visited.add(child)
+                child.state_dict(
+                    destination, prefix + name + '.', visited=visited)
+        if isinstance(self, Algorithm):
+            for i, opt in enumerate(self._optimizers):
+                new_key = prefix + '_optimizers.%d' % i
+                if new_key not in self._opt_keys:
+                    self._opt_keys.append(new_key)
+                opts_dict[self._opt_keys[i]] = opt.state_dict()
+
+            destination.update(opts_dict)
+
+        return destination
+
+    def load_state_dict(self, state_dict, strict=True):
+        """Load state dictionary for Algorithm
+        Arguments:
+            state_dict (dict): a dict containing parameters and
+                persistent buffers.
+            strict (bool, optional): whether to strictly enforce that the keys
+                in :attr:`state_dict` match the keys returned by this module's
+                :meth:`~torch.nn.Module.state_dict` function. Default: ``True``
+            If 'strict=True', will keep lists of missing and unexpected keys and
+            raise error when any of the lists is non-empty; if `strict=False`,
+            missing/unexpected keys will be omitted and no error will be raised.
+            ''
+        Returns:
+            ``NamedTuple`` with ``missing_keys`` and ``unexpected_keys`` fields:
+                * **missing_keys** is a list of str containing the missing keys
+                * **unexpected_keys** is a list of str containing the unexpected keys
+        """
+        missing_keys = []
+        unexpected_keys = []
+        error_msgs = []
+
+        # copy state_dict so _load_from_state_dict can modify it
+        metadata = getattr(state_dict, '_metadata', None)
+        state_dict = state_dict.copy()
+        if metadata is not None:
+            state_dict._metadata = metadata
+
+        def load(module, prefix='', visited=None):
+            if visited is None:
+                visited = {self}
+            if isinstance(module, Algorithm):
+                for i, opt in enumerate(module._optimizers):
+                    opt_key = prefix + '_optimizers.%d' % i
+                    if opt_key in state_dict:
+                        opt.load_state_dict(state_dict[opt_key])
+                        del state_dict[opt_key]
+                    elif strict:
+                        missing_keys.append(opt_key)
+
+            for name, child in module._modules.items():
+                if child is not None and child not in visited:
+                    visited.add(child)
+                    load(child, prefix + name + '.', visited=visited)
+
+            local_metadata = {} if metadata is None else metadata.get(
+                prefix[:-1], {})
+            module._load_from_state_dict(state_dict, prefix, local_metadata,
+                                         True, missing_keys, unexpected_keys,
+                                         error_msgs, visited)
+
+        load(self)
+
+        if strict:
+            if len(unexpected_keys) > 0:
+                error_msgs.insert(
+                    0, 'Unexpected key(s) in state_dict: {}. '.format(
+                        ', '.join('"{}"'.format(k) for k in unexpected_keys)))
+            if len(missing_keys) > 0:
+                error_msgs.insert(
+                    0, 'Missing key(s) in state_dict: {}. '.format(', '.join(
+                        '"{}"'.format(k) for k in missing_keys)))
+
+        if len(error_msgs) > 0:
+            raise RuntimeError(
+                'Error(s) in loading state_dict for {}:\n\t{}'.format(
+                    self.__class__.__name__, "\n\t".join(error_msgs)))
+        return _IncompatibleKeys(missing_keys, unexpected_keys)
+
+    @common.add_method(nn.Module)
+    def _save_to_state_dict(self, destination, prefix, visited=None):
+        r"""Saves module state to `destination` dictionary, containing a state
+        of the module, but not its descendants. This is called on every
+        submodule in :meth:`~torch.nn.Module.state_dict`.
+        In rare cases, subclasses can achieve class-specific behavior by
+        overriding this method with custom logic.
+        Arguments:
+            destination (dict): a dict where state will be stored
+            prefix (str): the prefix for parameters and buffers used in this
+                module
+            visited (set): a set keeping track of the visited objects
+        """
+        if visited is None:
+            visited = set()
+
+        for name, param in self._parameters.items():
+            if param is not None and param not in visited:
+                visited.add(param)
+                destination[prefix + name] = param.detach()
+        for name, buf in self._buffers.items():
+            if buf is not None and buf not in visited:
+                visited.add(buf)
+                destination[prefix + name] = buf.detach()
+
+    @common.add_method(nn.Module)
+    def _load_from_state_dict(self,
+                              state_dict,
+                              prefix,
+                              local_metadata,
+                              strict,
+                              missing_keys,
+                              unexpected_keys,
+                              error_msgs,
+                              visited=None):
+        """Copies parameters and buffers from :attr:`state_dict` into only
+        this module, but not its descendants. This is called on every submodule
+        in :meth:`~torch.nn.Module.load_state_dict`. Metadata saved for this
+        module in input :attr:`state_dict` is provided as :attr:`local_metadata`.
+        For state dicts without metadata, :attr:`local_metadata` is empty.
+        Subclasses can achieve class-specific backward compatible loading using
+        the version number at `local_metadata.get("version", None)`.
+        .. note::
+            :attr:`state_dict` is not the same object as the input
+            :attr:`state_dict` to :meth:`~torch.nn.Module.load_state_dict`. So
+            it can be modified.
+        Arguments:
+            state_dict (dict): a dict containing parameters and
+                persistent buffers.
+            prefix (str): the prefix for parameters and buffers used in this
+                module
+            local_metadata (dict): a dict containing the metadata for this module.
+                See
+            strict (bool): whether to strictly enforce that the keys in
+                :attr:`state_dict` with :attr:`prefix` match the names of
+                parameters and buffers in this module; if 'strict=True',
+                will keep a list of missing and unexpected keys
+            missing_keys (list of str): if ``strict=True``, add missing keys to
+                this list
+            unexpected_keys (list of str): if ``strict=True``, add unexpected
+                keys to this list
+            error_msgs (list of str): error messages should be added to this
+                list, and will be reported together in
+                :meth:`~torch.nn.Module.load_state_dict`
+            visited (set): a set keeping track of the visited objects
+        """
+        if visited is None:
+            visited = set()
+
+        for hook in self._load_state_dict_pre_hooks.values():
+            hook(state_dict, prefix, local_metadata, strict, missing_keys,
+                 unexpected_keys, error_msgs)
+
+        local_name_params = itertools.chain(self._parameters.items(),
+                                            self._buffers.items())
+        local_state = {k: v for k, v in local_name_params if v is not None}
+
+        for name, param in local_state.items():
+            if param is not None and param not in visited:
+                visited.add(param)
+            else:
+                continue
+            key = prefix + name
+            if key in state_dict:
+                input_param = state_dict[key]
+
+                # Backward compatibility: loading 1-dim tensor from 0.3.* to version 0.4+
+                if len(param.shape) == 0 and len(input_param.shape) == 1:
+                    input_param = input_param[0]
+
+                if input_param.shape != param.shape:
+                    # local shape should match the one in checkpoint
+                    error_msgs.append(
+                        'size mismatch for {}: copying a param with shape {} from checkpoint, '
+                        'the shape in current model is {}.'.format(
+                            key, input_param.shape, param.shape))
+                    continue
+
+                try:
+                    with torch.no_grad():
+                        param.copy_(input_param)
+                except Exception as ex:
+                    error_msgs.append(
+                        'While copying the parameter named "{}", '
+                        'whose dimensions in the model are {} and '
+                        'whose dimensions in the checkpoint are {}, '
+                        'an exception occured : {}.'.format(
+                            key, param.size(), input_param.size(), ex.args))
+            elif strict:
+                missing_keys.append(key)
+
+        if strict:
+            for key in state_dict.keys():
+                if key.startswith(prefix):
+                    input_name = key[len(prefix):]
+                    input_name = input_name.split(
+                        '.', 1)[0]  # get the name of param/buffer/child
+                    if input_name not in self._modules and input_name not in local_state:
+                        unexpected_keys.append(key)
+
     #------------- User need to implement the following functions -------
 
-    # Subclass may override predict() to allow more efficient implementation
+    # Subclass may override predict_step() for more efficient implementation
     def predict_step(self, inputs, state=None):
         """Predict for one step of inputs.
 
@@ -316,11 +561,26 @@ class Algorithm(nn.Module):
                 outputs (nested Tensor): prediction result
                 state (nested Tensor): should match `predict_state_spec`
         """
+        algorithm_step = self.rollout_step(inputs, state)
+        return algorithm_step._replace(info=None)
+
+    def rollout_step(self, inputs, state=None):
+        """Rollout for one step of inputs.
+
+        Args:
+            inputs (nested Tensor): inputs for prediction
+            state (nested Tensor): network state (for RNN)
+
+        Returns:
+            AlgStep
+                outputs (nested Tensor): prediction result
+                state (nested Tensor): should match `rollout_state_spec`
+        """
         algorithm_step = self.train_step(inputs, state)
         return algorithm_step._replace(info=None)
 
     def train_step(self, inputs, state=None):
-        """Perform one step of predicting and training computation.
+        """Perform one step of training computation.
 
         It is called to generate actions for every environment step.
         It also needs to generate necessary information for training.
@@ -332,27 +592,23 @@ class Algorithm(nn.Module):
         Returns:
             AlgStep
                 output (nested Tensor): predict outputs
-                state (nested Tensor): should match `predict_state_spec`
+                state (nested Tensor): should match `train_state_spec`
                 info (nested Tensor): information for training. If this is
                     LossInfo, calc_loss() in Algorithm can be used. Otherwise,
                     the user needs to override calc_loss() to calculate loss or
-                    override train_complete() to do customized training.
+                    override update_with_gradient() to do customized training.
         """
         return AlgStep()
 
-    # Subclass may override train_complete() to allow customized training
-    def train_complete(self, training_info, valid_masks=None, weight=1.0):
+    # Subclass may override update_with_gradient() to allow customized training
+    def update_with_gradient(self, loss_info, valid_masks=None, weight=1.0):
         """Complete one iteration of training.
 
-        `train_complete` should calculate gradients and update parameters using
-        those gradients.
+        Update parameters using the gradient with respect to `loss_info`.
 
         Args:
-            tape (tf.GradientTape): the tape which are used for calculating
-                gradient. All the previous `train_interval` `train_step()`
-                are called under the context of this tape.
-            training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned bt `train_step()`
+            loss_info (LossInfo): loss with shape (T, B) (except for
+                `loss_info.scalar_loss`)
             valid_masks (tf.Tensor): masks indicating which samples are valid.
                 shape=(T, B), dtype=tf.float32
             weight (float): weight for this batch. Loss will be multiplied with
@@ -361,7 +617,6 @@ class Algorithm(nn.Module):
             loss_info (LossInfo): loss information
             params (list[Parameter]): list of parameters being updated.
         """
-        loss_info = self.calc_loss(training_info)
         if valid_masks is not None:
             loss_info = alf.nest.map_structure(
                 lambda l: torch.mean(l * valid_masks)
@@ -395,7 +650,7 @@ class Algorithm(nn.Module):
                     # TODO: implement alf.clip_by_global_norm
                     global_norm = alf.clip_by_global_norm(
                         params, self._gradient_clipping)
-                    if common.should_record_summaries():
+                    if alf.summary.should_record_summaries():
                         alf.summary.scalar("global_grad_norm/%s" % i,
                                            global_norm)
                 else:
@@ -403,11 +658,9 @@ class Algorithm(nn.Module):
                     alf.clip_gradient_norms(params, self._gradient_clipping)
             optimizer.step()
 
-        self.after_train(training_info)
-
         return loss_info, all_params
 
-    def after_train(self, training_info):
+    def after_update(self, training_info):
         """Do things after complete one iteration of training, such as update
         target network.
 
