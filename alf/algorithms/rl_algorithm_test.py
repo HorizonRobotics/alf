@@ -206,5 +206,4 @@ class RLAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    RLAlgorithmTest().test_off_policy_algorithm()
-    #unittest.main()
+    unittest.main()
