@@ -897,13 +897,18 @@ def function(func=None, **kwargs):
 def set_random_seed(seed):
     """Set a seed for deterministic behaviors.
 
+    Note: If someone runs an experiment with a pre-selected manual seed, he can
+    definitely reproduce the results with the same seed; however, if he runs the
+    experiment with seed=None and re-run the experiments using the seed previously
+    returned from this function (e.g. the returned seed might be logged to
+    Tensorboard), and if cudnn is used in the code, then there is no guarantee
+    that the results will be reproduced with the recovered seed.
+
     Args:
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None. Note that you may not reproduce
-        a previous experiment even if use use its seed because when seed is None,
-        cudnn.deterministic is not set to True
+        The seed being used if `seed` is None.
     """
     if seed is None:
         seed = os.getpid() + int(time.time())

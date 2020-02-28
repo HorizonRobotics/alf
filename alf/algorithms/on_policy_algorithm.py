@@ -21,9 +21,7 @@ from alf.data_structures import Experience, StepType, TimeStep, TrainingInfo
 
 
 class OnPolicyAlgorithm(RLAlgorithm):
-    """
-    OnPolicyAlgorithm works with alf.drivers.on_policy_driver.OnPolicyDriver
-    to do training at the time of policy rollout.
+    """OnPolicyAlgorithm implements the basic on-policy training procedure.
 
     User needs to implement rollout_step() and calc_loss()
 

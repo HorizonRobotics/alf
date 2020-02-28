@@ -24,7 +24,7 @@ import gin
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import AlgStep, Experience, make_experience, StepType, TimeStep, TrainingInfo
+from alf.data_structures import AlgStep, Experience, make_experience, TimeStep, TrainingInfo
 from alf.utils import common, dist_utils, summary_utils
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncUniformExperienceReplayer)
@@ -90,10 +90,12 @@ class RLAlgorithm(Algorithm):
                 `predict_step()`. If None, it's assumed to be the same as rollout_state_spec
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
-                simultateously.
-            config (TrainerConfig): config for training.
-            optimizer (tf.optimizers.Optimizer | list[Optimizer]): The
-                optimizer(s) for training.
+                simultateously. env only needs to be provided to the root
+                Algorithm.
+            config (TrainerConfig): config for training. config only needs to be
+                provided to the algorithm which performs `train_iter()` by
+                itself.
+            optimizer (torch.optim.Optimizer): The default optimizer for training.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             observation_transformer (Callable | list[Callable]): transformation(s)
@@ -168,7 +170,7 @@ class RLAlgorithm(Algorithm):
     def is_on_policy(self):
         """Whehter this algorithm is an on-policy algorithm.
 
-        If it's on-policy algoirhtm, train_iter() will use
+        If it's on-policy algorihtm, train_iter() will use
          _train_iter_on_policy() to train. Otherwise, it will use
         _train_iter_off_policy()
         """
@@ -242,7 +244,7 @@ class RLAlgorithm(Algorithm):
         """Get step metrics that used for generating summaries against
 
         Returns:
-             list[TFStepMetric]: step metrics `EnvironmentSteps` and `NumberOfEpisodes`
+             list[StepMetric]: step metrics `EnvironmentSteps` and `NumberOfEpisodes`
         """
         return self._metrics[:2]
 
@@ -250,7 +252,7 @@ class RLAlgorithm(Algorithm):
         """Returns the metrics monitored by this driver.
 
         Returns:
-            list[TFStepMetric]
+            list[StepMetric]
         """
         return self._metrics
 
@@ -469,8 +471,7 @@ class RLAlgorithm(Algorithm):
             state (nested Tensor): should be consistent with train_state_spec
 
         Returns (AlgStep):
-            output (nested tf.distribution): should be consistent with
-                `distribution_spec`
+            output (nested Tensor): should be consistent with `action_spec`
             state (nested Tensor): should be consistent with `train_state_spec`
             info (nested Tensor): everything necessary for training. Note that
                 ("action_distribution", "action", "reward", "discount",

@@ -68,9 +68,9 @@ class MyEnv(object):
         super().__init__()
         self._batch_size = batch_size
         self._rewards = torch.tensor([0.5, 1.0, -1.])
-        self._observation_spec = alf.TensorSpec((2, ), dtype='float32'),
+        self._observation_spec = alf.TensorSpec((2, ), dtype='float32')
         self._action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int32', minimum=0, maximum=2),
+            shape=(), dtype='int32', minimum=0, maximum=2)
         self.reset()
 
     def observation_spec(self):
@@ -80,10 +80,12 @@ class MyEnv(object):
         return self._action_spec
 
     def reset(self):
-        self._prev_action = torch.zeros(self._batch_size, dtype=torch.int32),
+        self._prev_action = torch.zeros(self._batch_size, dtype=torch.int32)
         self._current_time_step = TimeStep(
             observation=torch.randn(self._batch_size, 2),
-            step_type=torch.full([self._batch_size], StepType.FIRST),
+            step_type=torch.full([self._batch_size],
+                                 StepType.FIRST,
+                                 dtype=torch.int32),
             reward=torch.zeros(self._batch_size),
             discount=torch.zeros(self._batch_size),
             prev_action=self._prev_action,
@@ -103,15 +105,18 @@ class MyEnv(object):
         is_mid = prev_step_type == StepType.MID
         is_last = prev_step_type == StepType.LAST
 
-        step_type = torch.where(is_mid & (torch.rand(self._batch_size) < 0.2),
-                                torch.full([self._batch_size], StepType.LAST),
-                                torch.full([self._batch_size], StepType.MID))
-        step_type = torch.where(is_last,
-                                torch.full([self._batch_size], StepType.FIRST),
-                                step_type)
-        step_type = torch.where(is_first,
-                                torch.full([self._batch_size], StepType.MID),
-                                step_type)
+        step_type = torch.where(
+            is_mid & (torch.rand(self._batch_size) < 0.2),
+            torch.full([self._batch_size], StepType.LAST, dtype=torch.int32),
+            torch.full([self._batch_size], StepType.MID, dtype=torch.int32))
+        step_type = torch.where(
+            is_last,
+            torch.full([self._batch_size], StepType.FIRST, dtype=torch.int32),
+            step_type)
+        step_type = torch.where(
+            is_first,
+            torch.full([self._batch_size], StepType.MID, dtype=torch.int32),
+            step_type)
 
         self._current_time_step = TimeStep(
             observation=torch.randn(self._batch_size, 2),
@@ -155,5 +160,4 @@ class RLAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    RLAlgorithmTest().test_rl_algorithm()
-    #unittest.main()
+    unittest.main()
