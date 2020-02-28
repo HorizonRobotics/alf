@@ -209,21 +209,17 @@ def pack_sequence_as(nest, flat_seq):
     return _pack(nest, flat_seq)
 
 
-def get_nest_batch_size(nest, dtype=None):
+def get_nest_batch_size(nest):
     """Get the batch_size of a nest.
 
     Args:
         nest (nest): a nested structure
-        dtype : a python data type
-
     Returns:
         batch_size
     """
     flat_seq = flatten(nest)
     assert len(flat_seq) > 0, "Zero element in the nest!"
     batch_size = flat_seq[0].size()[0]
-    if dtype is not None:
-        batch_size = dtype(batch_size)
     return batch_size
 
 

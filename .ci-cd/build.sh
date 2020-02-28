@@ -46,6 +46,7 @@ function test() {
         alf.algorithms.algorithm_test \
         alf.algorithms.rl_algorithm_test \
         alf.data_structures_test \
+        alf.device_ctx_test \
         alf.environments.simple.noisy_array_test \
         alf.metrics.metrics_test \
         alf.nest.nest_test \
