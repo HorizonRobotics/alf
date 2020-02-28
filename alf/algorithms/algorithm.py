@@ -328,12 +328,17 @@ class Algorithm(nn.Module):
 
         Args:
             destination (OrderedDict): the destination for storing the state
+            prefix (str): a string to be added before the name of the items
+                (modules, params, algorithms etc) as the key used in the
+                state dictionary
+            keep_vars (bool): detach from params and buffers if False
+            visited (set): a set keeping track of the visited objects
         Returns:
             destination (OrderedDict): the dictionary including both model state
                 and optimizers' state (if any)
 
         """
-        #self._assert_no_cycle_or_duplicate()
+
         if destination is None:
             destination = OrderedDict()
             destination._metadata = OrderedDict()
@@ -411,7 +416,6 @@ class Algorithm(nn.Module):
                                          error_msgs, visited)
 
         load(self)
-        load = None  # break load->load reference cycle
 
         if strict:
             if len(unexpected_keys) > 0:
@@ -441,6 +445,7 @@ class Algorithm(nn.Module):
             destination (dict): a dict where state will be stored
             prefix (str): the prefix for parameters and buffers used in this
                 module
+            keep_vars (bool): detach from params and buffers if False
             visited (set): a set keeping track of the visited objects
         """
         if visited is None:
