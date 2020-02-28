@@ -223,32 +223,6 @@ def reset_state_if_necessary(state, initial_state, reset_mask):
         initial_state, state)
 
 
-_summary_enabled_var = None
-
-
-def _get_summary_enabled_var():
-    global _summary_enabled_var
-    if _summary_enabled_var is None:
-        _summary_enabled_var = tf.Variable(
-            False, dtype=tf.bool, trainable=False, name="summary_enabled")
-    return _summary_enabled_var
-
-
-def enable_summary(flag):
-    """Enable or disable summary.
-
-    Args:
-        flag (bool): True to enable, False to disable
-    """
-    v = _get_summary_enabled_var()
-    v.assign(flag)
-
-
-def is_summary_enabled():
-    """Return whether summary is enabled."""
-    return _get_summary_enabled_var()
-
-
 def run_under_record_context(func,
                              summary_dir,
                              summary_interval,
