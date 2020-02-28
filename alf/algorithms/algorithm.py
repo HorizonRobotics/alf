@@ -315,14 +315,10 @@ class Algorithm(nn.Module):
         return state
 
     @common.add_method(nn.Module)
-    def state_dict(self,
-                   destination=None,
-                   prefix='',
-                   keep_vars=False,
-                   visited=None):
+    def state_dict(self, destination=None, prefix='', visited=None):
         """Get state dictionary recursively, including both model state
         and optimizers' state (if any). It can handle a number of special cases:
-            1) graph with cycle: save all the states and avoid infinit loop
+            1) graph with cycle: save all the states and avoid infinite loop
             2) parameter sharing: save only one copy of the shared module/param
             3) optimizers: save the optimizers for all the (sub-)algorithms
 
@@ -331,7 +327,6 @@ class Algorithm(nn.Module):
             prefix (str): a string to be added before the name of the items
                 (modules, params, algorithms etc) as the key used in the
                 state dictionary
-            keep_vars (bool): detach from params and buffers if False
             visited (set): a set keeping track of the visited objects
         Returns:
             destination (OrderedDict): the dictionary including both model state
@@ -348,16 +343,13 @@ class Algorithm(nn.Module):
         if visited is None:
             visited = {self}
 
-        self._save_to_state_dict(destination, prefix, keep_vars, visited)
+        self._save_to_state_dict(destination, prefix, visited)
         opts_dict = OrderedDict()
         for name, child in self._modules.items():
             if child is not None and child not in visited:
                 visited.add(child)
                 child.state_dict(
-                    destination,
-                    prefix + name + '.',
-                    keep_vars=keep_vars,
-                    visited=visited)
+                    destination, prefix + name + '.', visited=visited)
         if isinstance(self, Algorithm):
             for i, opt in enumerate(self._optimizers):
                 new_key = prefix + '_optimizers.%d' % i
@@ -377,6 +369,10 @@ class Algorithm(nn.Module):
             strict (bool, optional): whether to strictly enforce that the keys
                 in :attr:`state_dict` match the keys returned by this module's
                 :meth:`~torch.nn.Module.state_dict` function. Default: ``True``
+            If 'strict=True', will keep lists of missing and unexpected keys and
+            raise error when any of the lists is non-empty; if `strict=False`,
+            missing/unexpected keys will be omitted and no error will be raised.
+            ''
         Returns:
             ``NamedTuple`` with ``missing_keys`` and ``unexpected_keys`` fields:
                 * **missing_keys** is a list of str containing the missing keys
@@ -434,8 +430,7 @@ class Algorithm(nn.Module):
         return _IncompatibleKeys(missing_keys, unexpected_keys)
 
     @common.add_method(nn.Module)
-    def _save_to_state_dict(self, destination, prefix, keep_vars,
-                            visited=None):
+    def _save_to_state_dict(self, destination, prefix, visited=None):
         r"""Saves module state to `destination` dictionary, containing a state
         of the module, but not its descendants. This is called on every
         submodule in :meth:`~torch.nn.Module.state_dict`.
@@ -445,7 +440,6 @@ class Algorithm(nn.Module):
             destination (dict): a dict where state will be stored
             prefix (str): the prefix for parameters and buffers used in this
                 module
-            keep_vars (bool): detach from params and buffers if False
             visited (set): a set keeping track of the visited objects
         """
         if visited is None:
@@ -454,12 +448,11 @@ class Algorithm(nn.Module):
         for name, param in self._parameters.items():
             if param is not None and param not in visited:
                 visited.add(param)
-                destination[prefix +
-                            name] = param if keep_vars else param.detach()
+                destination[prefix + name] = param.detach()
         for name, buf in self._buffers.items():
             if buf is not None and buf not in visited:
                 visited.add(buf)
-                destination[prefix + name] = buf if keep_vars else buf.detach()
+                destination[prefix + name] = buf.detach()
 
     @common.add_method(nn.Module)
     def _load_from_state_dict(self,
@@ -491,7 +484,8 @@ class Algorithm(nn.Module):
                 See
             strict (bool): whether to strictly enforce that the keys in
                 :attr:`state_dict` with :attr:`prefix` match the names of
-                parameters and buffers in this module
+                parameters and buffers in this module; if 'strict=True',
+                will keep a list of missing and unexpected keys
             missing_keys (list of str): if ``strict=True``, add missing keys to
                 this list
             unexpected_keys (list of str): if ``strict=True``, add unexpected

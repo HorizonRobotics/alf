@@ -33,7 +33,8 @@ class Checkpointer(object):
                 to have state_dict and load_state_dict implemented.
                 For instance of Algorithm, only the root need to be passed in,
                 all the children modules and optimizers are automatically
-                extracted and checkpointed.
+                extracted and checkpointed. If a children module is also passed
+                in, it will be treated as the root to be recursively processed.
         Example usage:
         ```python
             alg_root = MyAlg(params=[p1, p2], sub_algs=[a1, a2], optimizer=opt)
