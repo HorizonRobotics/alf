@@ -36,7 +36,7 @@ class SummaryTest(alf.test.TestCase):
             writer = alf.summary.create_summary_writer(
                 root_dir, flush_secs=10, max_queue=10)
             alf.summary.set_default_writer(writer)
-            alf.summary.enable_summary(True)
+            alf.summary.enable_summary()
             with alf.summary.scope("root") as scope_name:
                 self.assertEqual(scope_name, "root/")
                 alf.summary.scalar("scalar", 2020)
@@ -45,6 +45,9 @@ class SummaryTest(alf.test.TestCase):
                     alf.summary.text("text", "sample text")
                 with alf.summary.record_if(lambda: False):
                     alf.summary.text("test", "this should not appear")
+                alf.summary.disable_summary()
+                alf.summary.text("testa", "this should not appear")
+                alf.summary.enable_summary()
                 with alf.summary.scope("b") as scope_name:
                     self.assertEqual(scope_name, "root/b/")
                     alf.summary.histogram("histogram",

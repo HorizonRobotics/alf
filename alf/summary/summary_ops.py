@@ -30,6 +30,7 @@ _record_if_stack = [
     lambda: True,
 ]
 
+# The default number of bins for histogram
 _default_bins = 30
 
 
@@ -127,7 +128,7 @@ def histogram(name, data, step=None, bins=None, walltime=None, max_bins=None):
 
     Args:
         name (str): Data identifier
-        values (Tensor | numpy.array | str/blobname): Values to build histogram
+        data (Tensor | numpy.array | str/blobname): Values to build histogram
         step (int): Global step value to record. None for using get_global_counter()
         bins (int|str):  Number of buckets or one of {‘tensorflow’,’auto’, ‘fd’, …}.
             This determines how the bins are made. You can find other options in:
@@ -189,6 +190,8 @@ def create_summary_writer(summary_dir, flush_secs=10, max_queue=10):
             Default is ten items.
         flush_secs (int) – How often, in seconds, to flush the pending events
             and summaries to disk. Default is every 10 seconds.
+    Returns:
+        SummaryWriter
     """
     return SummaryWriter(
         log_dir=summary_dir, flush_secs=flush_secs, max_queue=max_queue)
@@ -200,14 +203,16 @@ def set_default_writer(writer):
     _default_writer = writer
 
 
-def enable_summary(flag):
-    """Enable or disable summary.
-
-    Args:
-        flag (bool): True to enable, False to disable
-    """
+def enable_summary():
+    """Enable summary."""
     global _summary_enabled
-    _summary_enabled = flag
+    _summary_enabled = True
+
+
+def disable_summary():
+    """Disable summary."""
+    global _summary_enabled
+    _summary_enabled = False
 
 
 def is_summary_enabled():
