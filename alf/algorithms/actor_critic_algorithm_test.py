@@ -22,46 +22,7 @@ from alf.data_structures import StepType, TimeStep
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
-
-
-# adapted from alf.algorithms.rl_algorithm_test
-class MyEnv(object):
-    def __init__(self, batch_size):
-        super().__init__()
-        self._batch_size = batch_size
-        self._rewards = torch.tensor([0.5, 1.0, -1.])
-        self.reset()
-
-    def reset(self):
-        self._prev_action = torch.zeros(self._batch_size, dtype=torch.int32),
-        self._current_time_step = TimeStep(
-            observation=torch.randn(self._batch_size, 2),
-            step_type=torch.ones(self._batch_size, dtype=torch.int32) *
-            StepType.MID,
-            reward=torch.zeros(self._batch_size),
-            discount=torch.zeros(self._batch_size),
-            prev_action=self._prev_action,
-            env_id=torch.arange(self._batch_size))
-        return self._current_time_step
-
-    @property
-    def batch_size(self):
-        return self._batch_size
-
-    def step(self, action):
-        self._current_time_step = TimeStep(
-            observation=torch.randn(self._batch_size, 2),
-            step_type=torch.ones(self._batch_size, dtype=torch.int32) *
-            StepType.MID,
-            reward=self._rewards[action],
-            discount=torch.zeros(self._batch_size),
-            prev_action=self._prev_action,
-            env_id=torch.arange(self._batch_size))
-        self._prev_action = action
-        return self._current_time_step
-
-    def current_time_step(self):
-        return self._current_time_step
+from alf.algorithms.rl_algorithm_test import MyEnv
 
 
 class Config(object):
@@ -92,10 +53,10 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         alg = ActorCriticAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
-            env=env,
-            config=config,
             actor_network=actor_network,
             value_network=value_network,
+            env=env,
+            config=config,
             optimizer=torch.optim.Adam(lr=1e-2),
             debug_summaries=True,
             name="MyActorCritic")
@@ -112,4 +73,4 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    ActorCriticAlgorithmTest().test_ac_algorithm()
+    unittest.main()

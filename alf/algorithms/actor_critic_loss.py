@@ -137,10 +137,10 @@ class ActorCriticLoss(nn.Module):
 
         entropy_loss = ()
         if self._entropy_regularization is not None:
-            entropy, entropy_for_gradient = dist_utils.compute_entropy(
+            entropy = dist_utils.compute_entropy(
                 training_info.info.action_distribution)
             entropy_loss = -entropy
-            loss -= self._entropy_regularization * entropy_for_gradient
+            loss -= self._entropy_regularization * entropy
 
         return LossInfo(
             loss=loss,

@@ -20,6 +20,7 @@ from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.data_structures import TimeStep, AlgStep, namedtuple
 from alf.utils import dist_utils
+from .config import TrainerConfig
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
@@ -35,10 +36,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 env,
-                 config,
                  actor_network: ActorDistributionNetwork,
                  value_network: ValueNetwork,
+                 env=None,
+                 config: TrainerConfig = None,
                  loss=None,
                  loss_class=ActorCriticLoss,
                  optimizer=None,
