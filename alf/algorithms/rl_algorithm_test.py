@@ -30,14 +30,15 @@ class MyAlg(OnPolicyAlgorithm):
                  env,
                  config,
                  debug_summaries=False):
-        super().__init__(observation_spec=observation_spec,
-                         action_spec=action_spec,
-                         train_state_spec=(),
-                         env=env,
-                         config=config,
-                         optimizer=torch.optim.Adam(lr=1e-1),
-                         debug_summaries=debug_summaries,
-                         name="MyAlg")
+        super().__init__(
+            observation_spec=observation_spec,
+            action_spec=action_spec,
+            train_state_spec=(),
+            env=env,
+            config=config,
+            optimizer=torch.optim.Adam(lr=1e-1),
+            debug_summaries=debug_summaries,
+            name="MyAlg")
 
         self._proj_net = alf.networks.CategoricalProjectionNetwork(
             input_size=2, num_actions=3)
@@ -68,10 +69,8 @@ class MyEnv(object):
         self._batch_size = batch_size
         self._rewards = torch.tensor([0.5, 1.0, -1.])
         self._observation_spec = alf.TensorSpec((2, ), dtype='float32')
-        self._action_spec = alf.BoundedTensorSpec(shape=(),
-                                                  dtype='int32',
-                                                  minimum=0,
-                                                  maximum=2)
+        self._action_spec = alf.BoundedTensorSpec(
+            shape=(), dtype='int32', minimum=0, maximum=2)
         self.reset()
 
     def observation_spec(self):
@@ -143,10 +142,11 @@ class RLAlgorithmTest(unittest.TestCase):
     def test_rl_algorithm(self):
         config = Config()
         env = MyEnv(batch_size=3)
-        alg = MyAlg(observation_spec=env.observation_spec(),
-                    action_spec=env.action_spec(),
-                    env=env,
-                    config=config)
+        alg = MyAlg(
+            observation_spec=env.observation_spec(),
+            action_spec=env.action_spec(),
+            env=env,
+            config=config)
         for _ in range(100):
             alg.train_iter()
 
