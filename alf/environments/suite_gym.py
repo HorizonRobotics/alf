@@ -15,68 +15,96 @@
 import collections
 import gym
 import gym.spaces
-import numpy as np
-from tf_agents import specs
-from tf_agents.environments import gym_wrapper
+import gin
+from alf.environments import torch_wrappers, torch_gym_wrapper
 
 
-def _spec_from_gym_space(space, dtype_map, simplify_box_bounds=True):
-    """
-    Mostly the same with `_spec_from_gym_space` in
-    `tf_agents.environments.gym_wrapper`. This function no longer use `dtype_map`
-    to set data types; instead it always uses dtypes of gym spaces as gym is now
-    updated to support this.
-    """
+@gin.configurable
+def load(environment_name,
+         discount=1.0,
+         max_episode_steps=None,
+         gym_env_wrappers=(),
+         torch_env_wrappers=()):
+    """Loads the selected environment and wraps it with the specified wrappers.
 
-    # We try to simplify redundant arrays to make logging and debugging less
-    # verbose and easier to read since the printed spec bounds may be large.
-    def try_simplify_array_to_value(np_array):
-        """If given numpy array has all the same values, returns that value."""
-        first_value = np_array.item(0)
-        if np.all(np_array == first_value):
-            return np.array(first_value, dtype=np_array.dtype)
-        else:
-            return np_array
+  Note that by default a TimeLimit wrapper is used to limit episode lengths
+  to the default benchmarks defined by the registered environments.
 
-    if isinstance(space, gym.spaces.Discrete):
-        # Discrete spaces span the set {0, 1, ... , n-1} while Bounded Array specs
-        # are inclusive on their bounds.
-        maximum = space.n - 1
-        return specs.BoundedArraySpec(
-            shape=(), dtype=space.dtype, minimum=0, maximum=maximum)
-    elif isinstance(space, gym.spaces.MultiDiscrete):
-        maximum = try_simplify_array_to_value(
-            np.asarray(space.nvec - 1, dtype=space.dtype))
-        return specs.BoundedArraySpec(
-            shape=space.shape, dtype=space.dtype, minimum=0, maximum=maximum)
-    elif isinstance(space, gym.spaces.MultiBinary):
-        shape = (space.n, )
-        return specs.BoundedArraySpec(
-            shape=shape, dtype=space.dtype, minimum=0, maximum=1)
-    elif isinstance(space, gym.spaces.Box):
-        dtype = space.dtype
-        minimum = np.asarray(space.low, dtype=dtype)
-        maximum = np.asarray(space.high, dtype=dtype)
-        if simplify_box_bounds:
-            minimum = try_simplify_array_to_value(minimum)
-            maximum = try_simplify_array_to_value(maximum)
-        return specs.BoundedArraySpec(
-            shape=space.shape, dtype=dtype, minimum=minimum, maximum=maximum)
-    elif isinstance(space, gym.spaces.Tuple):
-        return tuple(
-            [_spec_from_gym_space(s, dtype_map) for s in space.spaces])
-    elif isinstance(space, gym.spaces.Dict):
-        return collections.OrderedDict([(key, _spec_from_gym_space(
-            s, dtype_map)) for key, s in space.spaces.items()])
-    else:
-        raise ValueError(
-            'The gym space {} is currently not supported.'.format(space))
+  Args:
+      environment_name (string): Name for the environment to load.
+      discount (scalar): Discount to use for the environment.
+      max_episode_steps (int): If None the max_episode_steps will be set to the 
+          default step limit defined in the environment's spec. No limit is applied
+          if set to 0 or if there is no max_episode_steps set in the environment's
+          spec.
+      gym_env_wrappers (BaseObservationWrapper): Iterable with references to 
+          wrapper classes to use
+          directly on the gym environment.
+      torch_env_wrappers (TorchEnvironmentBaseWrapper): Iterable with references 
+          to wrapper classes to use on the torch environment.
+
+  Returns:
+      A PyEnvironment instance.
+  """
+    gym_spec = gym.spec(environment_name)
+    gym_env = gym_spec.make()
+
+    if max_episode_steps is None and gym_spec.max_episode_steps is not None:
+        max_episode_steps = gym_spec.max_episode_steps
+
+    return wrap_env(
+        gym_env,
+        discount=discount,
+        max_episode_steps=max_episode_steps,
+        gym_env_wrappers=gym_env_wrappers,
+        torch_env_wrappers=torch_env_wrappers)
 
 
-gym_wrapper._spec_from_gym_space = _spec_from_gym_space
+@gin.configurable
+def wrap_env(gym_env,
+             discount=1.0,
+             max_episode_steps=0,
+             gym_env_wrappers=(),
+             time_limit_wrapper=torch_wrappers.TimeLimit,
+             torch_env_wrappers=(),
+             auto_reset=True):
+    """Wraps given gym environment with TF Agent's GymWrapper.
 
-from tf_agents.environments import suite_gym
+  Note that by default a TimeLimit wrapper is used to limit episode lengths
+  to the default benchmarks defined by the registered environments.
 
-# forward tf_agents suite_gym's functions
-load = suite_gym.load
-wrap_env = suite_gym.wrap_env
+  Args:
+      gym_env: An instance of OpenAI gym environment.
+      discount: Discount to use for the environment.
+      max_episode_steps: Used to create a TimeLimitWrapper. No limit is applied
+          if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
+      gym_env_wrappers: Iterable with references to wrapper classes to use
+          directly on the gym environment.
+      time_limit_wrapper: Wrapper that accepts (env, max_episode_steps) params to
+          enforce a TimeLimit. Usuaully this should be left as the default,
+          torch_wrappers.TimeLimit.
+      torch_env_wrappers: Iterable with references to wrapper classes to use on the
+          torch environment.
+      auto_reset: If True (default), reset the environment automatically after a
+          terminal state is reached.
+
+  Returns:
+      A TorchEnvironment instance.
+  """
+
+    for wrapper in gym_env_wrappers:
+        gym_env = wrapper(gym_env)
+
+    env = torch_gym_wrapper.TorchGymWrapper(
+        gym_env,
+        discount=discount,
+        auto_reset=auto_reset,
+    )
+
+    if max_episode_steps > 0:
+        env = time_limit_wrapper(env, max_episode_steps)
+
+    for wrapper in torch_env_wrappers:
+        env = wrapper(env)
+
+    return env
