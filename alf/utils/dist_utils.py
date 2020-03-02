@@ -251,14 +251,18 @@ def compute_log_probability(distributions, actions):
     return total_log_probs
 
 
-def sample_action_distribution(nested_distributions):
+def sample_action_distribution(nested_distributions, rsample=True):
     """Sample actions from distributions
     Args:
         nested_distributions (nested Distribution): action distributions
+        rsample (bool): whether use reparameterization-based sampling to enable
+            pathwise derivative
     Returns:
         sampled actions
     """
-    return nest.map_structure(lambda d: d.sample(), nested_distributions)
+
+    return nest.map_structure(lambda d: d.rsample() if rsample else d.sample(),
+                              nested_distributions)
 
 
 def epsilon_greedy_sample(nested_distributions, eps=0.1):
@@ -281,8 +285,8 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
         elif isinstance(dist, torch.distributions.normal.Normal):
             greedy_action = dist.mean
         else:
-            raise NotImplementedError("Mode sampling not implemented for \
-                {cls}".format(cls=type(dist)))
+            raise NotImplementedError("Mode sampling not implemented for "
+                                      "{cls}".format(cls=type(dist)))
         sample_action[greedy_mask] = greedy_action[greedy_mask]
         return sample_action
 

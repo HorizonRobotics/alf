@@ -50,8 +50,13 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            env ():
-            config ():
+            env (Environment): The environment to interact with. env is a batched
+                environment, which means that it runs multiple simulations
+                simultateously. env only needs to be provided to the root
+                Algorithm.
+            config (TrainerConfig): config for training. config only needs to be
+                provided to the algorithm which performs `train_iter()` by
+                itself.
             actor_network : A network that returns nested
                 tensor of action distribution for each observation given observation
                 and network state.
