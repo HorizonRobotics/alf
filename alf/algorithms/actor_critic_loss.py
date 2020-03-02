@@ -17,10 +17,10 @@ from collections import namedtuple
 import gin
 import torch
 import torch.nn as nn
+import alf
 from alf.data_structures import TrainingInfo, LossInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, dist_utils, value_ops
-from torch.utils.tensorboard import SummaryWriter
 
 ActorCriticLossInfo = namedtuple("ActorCriticLossInfo",
                                  ["pg_loss", "td_loss", "neg_entropy"])
@@ -112,7 +112,7 @@ class ActorCriticLoss(nn.Module):
         returns, advantages = self._calc_returns_and_advantages(
             training_info, value)
 
-        if self._debug_summaries and common.should_record_summaries():
+        if self._debug_summaries and alf.summary.should_record_summaries():
             alf.summary.scalar(self._name + '/values', value.mean())
             alf.summary.scalar(self._name + "/returns", returns.mean())
             alf.summary.scalar(self._name + "/advantages/mean",
@@ -137,10 +137,10 @@ class ActorCriticLoss(nn.Module):
 
         entropy_loss = ()
         if self._entropy_regularization is not None:
-            entropy, entropy_for_gradient = dist_utils.compute_entropy(
+            entropy = dist_utils.compute_entropy(
                 training_info.info.action_distribution)
             entropy_loss = -entropy
-            loss -= self._entropy_regularization * entropy_for_gradient
+            loss -= self._entropy_regularization * entropy
 
         return LossInfo(
             loss=loss,

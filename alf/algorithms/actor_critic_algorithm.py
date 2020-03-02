@@ -13,15 +13,14 @@
 # limitations under the License.
 """Actor critic algorithm."""
 
-import gin.tf
-import tensorflow as tf
+import gin
 
-from tf_agents.networks.network import Network, DistributionNetwork
-
-from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
-from alf.data_structures import ActionTimeStep, namedtuple, PolicyStep
-from alf.utils import common
+from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.algorithms.actor_critic_loss import ActorCriticLoss
+from alf.data_structures import TimeStep, AlgStep, namedtuple
+from alf.utils import dist_utils
+from .config import TrainerConfig
 
 ActorCriticState = namedtuple(
     "ActorCriticState", ["actor", "value"], default_value=())
@@ -37,8 +36,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 actor_network: DistributionNetwork,
-                 value_network: Network,
+                 actor_network: ActorDistributionNetwork,
+                 value_network: ValueNetwork,
+                 env=None,
+                 config: TrainerConfig = None,
                  loss=None,
                  loss_class=ActorCriticLoss,
                  optimizer=None,
@@ -47,18 +48,26 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         """Create an ActorCriticAlgorithm.
 
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            actor_network (DistributionNetwork): A network that returns nested
+            env (Environment): The environment to interact with. env is a batched
+                environment, which means that it runs multiple simulations
+                simultateously. env only needs to be provided to the root
+                Algorithm.
+            config (TrainerConfig): config for training. config only needs to be
+                provided to the algorithm which performs `train_iter()` by
+                itself.
+            actor_network : A network that returns nested
                 tensor of action distribution for each observation given observation
                 and network state.
-            value_network (Network): A function that returns value tensor from neural
-                net predictions for each observation given observation and nwtwork
+            value_network: A function that returns value tensor from neural
+                net predictions for each observation given observation and network
                 state.
             loss (None|ActorCriticLoss): an object for calculating loss. If
                 None, a default loss of class loss_class will be used.
             loss_class (type): the class of the loss. The signature of its
                 constructor: loss_class(action_spec, debug_summaries)
-            optimizer (tf.optimizers.Optimizer): The optimizer for training
+            optimizer (torch.optim.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
@@ -70,6 +79,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             train_state_spec=ActorCriticState(
                 actor=actor_network.state_spec,
                 value=value_network.state_spec),
+            env=env,
+            config=config,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
@@ -77,42 +88,35 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         self._actor_network = actor_network
         self._value_network = value_network
         if loss is None:
-            loss = loss_class(action_spec, debug_summaries=debug_summaries)
+            loss = loss_class(debug_summaries=debug_summaries)
         self._loss = loss
 
     def convert_train_state_to_predict_state(self, state):
         return state._replace(value=())
 
-    def predict(self, time_step: ActionTimeStep, state: ActorCriticState,
-                epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state: ActorCriticState,
+                     epsilon_greedy):
         """Predict for one step."""
         action_dist, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
+            time_step.observation, state=state.actor)
 
-        action = common.epsilon_greedy_sample(action_dist, epsilon_greedy)
-        return PolicyStep(
-            action=action,
+        action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        return AlgStep(
+            output=action,
             state=ActorCriticState(actor=actor_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
-    def rollout(self, time_step: ActionTimeStep, state: ActorCriticState,
-                mode):
+    def rollout_step(self, time_step: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
         value, value_state = self._value_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.value)
+            time_step.observation, state=state.value)
 
         action_distribution, actor_state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.actor)
+            time_step.observation, state=state.actor)
 
-        action = common.sample_action_distribution(action_distribution)
-        return PolicyStep(
-            action=action,
+        action = dist_utils.sample_action_distribution(action_distribution)
+        return AlgStep(
+            output=action,
             state=ActorCriticState(actor=actor_state, value=value_state),
             info=ActorCriticInfo(
                 value=value, action_distribution=action_distribution))

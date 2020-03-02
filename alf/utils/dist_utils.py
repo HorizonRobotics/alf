@@ -251,6 +251,51 @@ def compute_log_probability(distributions, actions):
     return total_log_probs
 
 
+def sample_action_distribution(nested_distributions, rsample=True):
+    """Sample actions from distributions
+    Args:
+        nested_distributions (nested Distribution): action distributions
+        rsample (bool): whether use reparameterization-based sampling to enable
+            pathwise derivative
+    Returns:
+        sampled actions
+    """
+
+    return nest.map_structure(lambda d: d.rsample() if rsample else d.sample(),
+                              nested_distributions)
+
+
+def epsilon_greedy_sample(nested_distributions, eps=0.1):
+    """Generate greedy sample that maximizes the probability.
+    Args:
+        nested_distributions (nested Distribution): distribution to sample from
+        eps (float): a floating value in [0,1], representing the chance of
+            action sampling instead of taking argmax. This can help prevent
+            a dead loop in some deterministic environment like Breakout.
+    Returns:
+        (nested) Tensor
+    """
+
+    def greedy_fn(dist):
+        # pytorch distribution has no 'mode' operation
+        sample_action = dist.sample()
+        greedy_mask = torch.rand(sample_action.shape[0]) > eps
+        if isinstance(dist, torch.distributions.categorical.Categorical):
+            greedy_action = torch.argmax(dist.logits, -1)
+        elif isinstance(dist, torch.distributions.normal.Normal):
+            greedy_action = dist.mean
+        else:
+            raise NotImplementedError("Mode sampling not implemented for "
+                                      "{cls}".format(cls=type(dist)))
+        sample_action[greedy_mask] = greedy_action[greedy_mask]
+        return sample_action
+
+    if eps >= 1.0:
+        return sample_action_distribution(nested_distributions)
+    else:
+        return nest.map_structure(greedy_fn, nested_distributions)
+
+
 @gin.configurable
 def estimated_entropy(dist,
                       seed=None,
