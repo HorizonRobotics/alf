@@ -16,13 +16,11 @@ import gym
 import numpy as np
 import gin
 
-from alf.environments import suite_gym
-
-from tf_agents.environments import wrappers
+from alf.environments import suite_gym, torch_wrappers, process_environment
+from alf.environments.gym_wrappers import FrameSkip, FrameStack
+from alf.environments.utils import UnwrappedEnvChecker
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
-from alf.environments.wrappers import FrameSkip, FrameStack
-from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
 
@@ -53,9 +51,8 @@ def load(game,
          record=False,
          crop=True,
          gym_env_wrappers=(),
-         env_wrappers=(),
-         max_episode_steps=4500,
-         spec_dtype_map=None):
+         torch_env_wrappers=(),
+         max_episode_steps=4500):
     """Loads the selected mario game and wraps it .
     Args:
         game: Name for the environment to load.
@@ -73,11 +70,6 @@ def load(game,
         gym_env_wrappers: list of gym env wrappers
         env_wrappers: list of tf_agents env wrappers
         max_episode_steps: max episode step limit
-        spec_dtype_map: A dict that maps gym specs to tf dtypes to use as the
-            default dtype for the tensors. An easy way how to configure a custom
-            mapping through Gin is to define a gin-configurable function that returns
-            desired mapping and call it in your Gin config file, for example:
-            `suite_socialbot.load.spec_dtype_map = @get_custom_mapping()`.
 
     Returns:
         A PyEnvironmentBase instance.
@@ -104,16 +96,16 @@ def load(game,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            env_wrappers=env_wrappers,
-            spec_dtype_map=spec_dtype_map,
+            torch_env_wrappers=torch_env_wrappers,
             auto_reset=True)
 
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
     if wrap_with_process:
-        process_env = ProcessPyEnvironment(lambda: env_ctor())
+        process_env = process_environment.ProcessEnvironment(lambda: env_ctor(
+        ))
         process_env.start()
-        py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
+        py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
         py_env = env_ctor()
     return py_env
