@@ -56,7 +56,7 @@ class TimeStepTest(unittest.TestCase):
         discount = 0.99
         observation = torch.tensor(-1)
         prev_action = torch.tensor(-1)
-        env_id = 0
+        env_id = torch.tensor(0, dtype=torch.int32)
         time_step = TimeStep(
             step_type=step_type,
             reward=reward,
