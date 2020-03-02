@@ -185,7 +185,7 @@ class RLAlgorithmTest(unittest.TestCase):
             use_rollout_state=True,
             summarize_grads_and_vars=True,
             summarize_action_distributions=True,
-            whole_replay_buffer_training=False)
+            whole_replay_buffer_training=True)
         env = MyEnv(batch_size=3)
         alg = MyAlg(
             observation_spec=env.observation_spec(),

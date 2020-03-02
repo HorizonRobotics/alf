@@ -102,8 +102,7 @@ class ReplayBuffer(nn.Module):
                 lambda buf, bat: buf.__setitem__(indices, bat),
                 self._flattened_buffer, batch)
 
-            self._current_pos.scatter_(0, env_ids,
-                                       (current_pos + 1) % self._max_length)
+            self._current_pos[env_ids] = (current_pos + 1) % self._max_length
             current_size = self._current_size[env_ids]
             self._current_size[env_ids] = torch.min(
                 current_size + 1, torch.tensor(self._max_length))

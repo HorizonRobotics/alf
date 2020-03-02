@@ -239,15 +239,15 @@ def run_under_record_context(func,
     summary_dir = os.path.expanduser(summary_dir)
     summary_writer = alf.summary.create_summary_writer(
         summary_dir, flush_secs=flush_secs, max_queue=summary_max_queue)
-    alf.summary.set_default_writer(summary_writer)
     global_step = alf.summary.get_global_counter()
 
     def _cond():
         return (alf.summary.is_summary_enabled()
                 and global_step % summary_interval == 0)
 
-    with alf.summary.record_if(_cond):
-        func()
+    with alf.summary.push_summary_writer(summary_writer):
+        with alf.summary.record_if(_cond):
+            func()
 
     summary_writer.close()
 

@@ -148,4 +148,5 @@ class ReplayBufferTest(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    alf.test.main()
+    ReplayBufferTest().test_replay_buffer()
+    #alf.test.main()
