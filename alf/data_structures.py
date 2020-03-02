@@ -175,13 +175,13 @@ def restart(observation, action_spec, env_id=None, batched=False):
                                dtype=torch.int32)
         reward = torch.full((batch_size, ), 0.0, dtype=torch.float32)
         discount = torch.full((batch_size, ), 1.0, dtype=torch.float32)
-        prev_action = ts.zeros_from_spec(action_spec, batch_size)
+        prev_action = action_spec.zeros([batch_size])
         env_id = torch.arange(batch_size, dtype=torch.int32)
     else:
         step_type = torch.full((), StepType.FIRST, dtype=torch.int32)
         reward = torch.tensor(0.0, dtype=torch.float32)
         discount = torch.tensor(1.0, dtype=torch.float32)
-        prev_action = action_spec.sample()
+        prev_action = action_spec.zeros()
         if env_id is None:
             env_id = torch.tensor(0, dtype=torch.int32)
     return TimeStep(step_type, reward, discount, observation, prev_action,

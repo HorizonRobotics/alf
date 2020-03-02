@@ -17,79 +17,13 @@ https://github.com/tensorflow/tensorflow/blob/r1.8/tensorflow/python/framework/t
 """
 
 import numpy as np
+
 import torch
-from alf import nest
 
 
 def torch_dtype_to_str(dtype):
     assert isinstance(dtype, torch.dtype)
     return dtype.__str__()[6:]
-
-
-def is_bounded(spec):
-    return isinstance(spec, BoundedTensorSpec)
-
-
-def is_discrete(spec):
-    assert isinstance(spec, TensorSpec)
-    return spec.dtype.is_integer
-
-
-def is_continuous(spec):
-    assert isinstance(spec, TensorSpec)
-    return spec.dtype.is_floating
-
-
-# def zeros_from_spec(nested_spec, batch_size=None):
-#     """Create nested zero Tensors or Distributions.
-
-#     A zero tensor with shape[0]=`batch_size is created for each TensorSpec and
-#     A distribution with all the parameters as zero Tensors is created for each
-#     DistributionSpec.
-
-#     Args:
-#         nested_spec (nested TensorSpec or DistributionSpec):
-#         batch_size (int): batch size added as the first dimension to the shapes
-#              in TensorSpec
-#     Returns:
-#         nested Tensor or Distribution
-#     """
-
-#     def _zero_tensor(spec):
-#         print(spec)
-#         print('spec_shape: {}'.format(spec.shape))
-#         if batch_size is None:
-#             print('batch_size: {}'.format(batch_size))
-#             shape = spec.shape
-#         else:
-#             shape = (batch_size, ) + spec.shape
-#         dtype = spec.dtype
-#         return torch.zeros(shape, dtype)
-
-#     return nest.map_structure(_zero_tensor, nested_spec)
-
-
-def sample_spec_nest(structure, outer_dims=None):
-    """Samples the given nest of specs.
-
-    Args:
-      structure: An `TensorSpec`, or a nested dict, list or tuple of `TensorSpec`s.
-      outer_dims: An optional list/tuple specifying outer dimensions to add to the
-        spec shape before sampling.
-
-    Returns:
-      A nest of sampled values following the TensorSpec definition.
-    """
-
-    def sample_fn(spec):
-        shape = spec.shape
-        if outer_dims is not None:
-            shape = tuple(outer_dims) + shape
-        spec = BoundedTensorSpec.from_spec(spec)
-        spec = BoundedTensorSpec(shape, spec.dtype, spec.minimum, spec.maximum)
-        return spec.sample()
-
-    return nest.map_structure(sample_fn, structure)
 
 
 class TensorSpec(object):
@@ -284,12 +218,10 @@ class BoundedTensorSpec(TensorSpec):
 
     @classmethod
     def from_spec(cls, spec):
-        assert isinstance(spec, (TensorSpec, BoundedTensorSpec))
-        if hasattr(spec, 'minimum') and hasattr(spec, 'maximum'):
-            return BoundedTensorSpec(spec.shape, spec.dtype, spec.minimum,
-                                     spec.maximum)
-
-        return BoundedTensorSpec(spec.shape, spec.dtype)
+        assert isinstance(spec, BoundedTensorSpec)
+        minimum = getattr(spec, "minimum")
+        maximum = getattr(spec, "maximum")
+        return BoundedTensorSpec(spec.shape, spec.dtype, minimum, maximum)
 
     @property
     def minimum(self):
