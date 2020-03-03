@@ -292,7 +292,7 @@ class TestWithParamSharing(unittest.TestCase):
             optimizer_2 = torch.optim.Adam(lr=0.2)
             alg_2 = SimpleAlg(
                 params=[param_2], optimizer=optimizer_2, name="alg_2")
-            alg_2.p = param_1
+            alg_2.ignored_param = param_1
 
             optimizer_root = torch.optim.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
@@ -308,7 +308,8 @@ class TestWithParamSharing(unittest.TestCase):
             ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
 
             # only one copy of the shared param is returned from state_dict
-            self.assertTrue('_sub_alg2.p' not in alg_root.state_dict())
+            self.assertTrue(
+                '_sub_alg2.ignored_param' not in alg_root.state_dict())
 
             # a number of training steps
             step_num = 0
@@ -316,17 +317,18 @@ class TestWithParamSharing(unittest.TestCase):
 
             # modify the shared param after saving
             with torch.no_grad():
-                alg_root._sub_alg2.state_dict()['p'].copy_(torch.Tensor([-1]))
+                alg_root._sub_alg2.state_dict()['ignored_param'].copy_(
+                    torch.Tensor([-1]))
 
-            self.assertTrue(
-                (alg_root._sub_alg2.state_dict()['p'] == torch.Tensor([-1])))
+            self.assertTrue((alg_root._sub_alg2.state_dict()['ignored_param']
+                             == torch.Tensor([-1])))
             self.assertTrue((alg_root.state_dict()['_sub_alg1._param_list.0']
                              == torch.Tensor([-1])))
 
             # the value of the shared parameter is recovered back to saved value
             ckpt_mngr.load(0)
-            self.assertTrue(
-                (alg_root._sub_alg2.state_dict()['p'] == torch.Tensor([1])))
+            self.assertTrue((alg_root._sub_alg2.state_dict()['ignored_param']
+                             == torch.Tensor([1])))
             self.assertTrue((alg_root.state_dict()['_sub_alg1._param_list.0']
                              == torch.Tensor([1])))
 
@@ -357,47 +359,45 @@ class TestWithCycle(unittest.TestCase):
 
             alg_2.root = alg_root
 
-            expected_state_dict = OrderedDict([('_sub_alg1._param_list.0',
-                                                torch.tensor([1.])),
-                                               ('_sub_alg2._param_list.0',
-                                                torch.tensor([2.])),
-                                               ('_sub_alg2._optimizers.0', {
-                                                   'state': {},
-                                                   'param_groups': [{
-                                                       'lr': 0.2,
-                                                       'betas': (0.9, 0.999),
-                                                       'eps': 1e-08,
-                                                       'weight_decay': 0,
-                                                       'amsgrad': False,
-                                                       'params': []
-                                                   }]
-                                               }),
-                                               ('_param_list.0',
-                                                torch.tensor([0.])),
-                                               ('_optimizers.0', {
-                                                   'state': {},
-                                                   'param_groups': [{
-                                                       'lr': 0.1,
-                                                       'betas': (0.9, 0.999),
-                                                       'eps': 1e-08,
-                                                       'weight_decay': 0,
-                                                       'amsgrad': False,
-                                                       'params': []
-                                                   }]
-                                               })])
+            expected_state_dict = OrderedDict(
+                [('_sub_alg1._param_list.0', torch.tensor([1.])),
+                 ('_sub_alg2._param_list.0', torch.tensor([2.])),
+                 ('_sub_alg2._optimizers.0', {
+                     'state': {},
+                     'param_groups': [{
+                         'lr': 0.2,
+                         'betas': (0.9, 0.999),
+                         'eps': 1e-08,
+                         'weight_decay': 0,
+                         'amsgrad': False,
+                         'params': []
+                     }]
+                 }), ('_param_list.0', torch.tensor([0.])),
+                 ('_optimizers.0', {
+                     'state': {},
+                     'param_groups': [
+                         {
+                             'lr': 0.1,
+                             'betas': (0.9, 0.999),
+                             'eps': 1e-08,
+                             'weight_decay': 0,
+                             'amsgrad': False,
+                             'params': []
+                         },
+                         {
+                             'lr': 0.1,
+                             'betas': (0.9, 0.999),
+                             'eps': 1e-08,
+                             'weight_decay': 0,
+                             'amsgrad': False,
+                             'params': [id(param_1),
+                                        id(param_root)]
+                         }
+                     ]
+                 })])
 
-            ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
-            ckpt_mngr.save(0)
-
-            # modify some parameter values after saving
-            with torch.no_grad():
-                alg_root._sub_alg1._param_list[0].copy_(torch.Tensor([-1]))
-
-            self.assertTrue((alg_root.state_dict() != expected_state_dict))
-
-            # recover the expected values after loading
-            ckpt_mngr.load(0)
-            self.assertTrue((alg_root.state_dict() == expected_state_dict))
+            # cycles are not allowed with explicit ignoring
+            self.assertRaises(AssertionError, alg_root.state_dict)
 
             # case 2: cycle with ignore
             alg_root2 = ComposedAlgWithIgnore(
@@ -416,7 +416,7 @@ class TestWithCycle(unittest.TestCase):
             with torch.no_grad():
                 alg_root._sub_alg1._param_list[0].copy_(torch.Tensor([-1]))
 
-            self.assertTrue((alg_root.state_dict() != expected_state_dict))
+            self.assertTrue((alg_root2.state_dict() != expected_state_dict))
 
             # recover the expected values after loading
             ckpt_mngr.load(0)
@@ -456,6 +456,7 @@ class TestModelMismatch(unittest.TestCase):
             ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root12)
             ckpt_mngr.save(step_num)
             ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root1)
+
             self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
 
             # case 2: save using alg_root1 and load using alg_root12

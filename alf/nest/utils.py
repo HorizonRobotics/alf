@@ -61,3 +61,39 @@ def nest_reduce_sum(nested):
         tensor (torch.Tensor):
     """
     return torch.sum(torch.stack(nest.flatten(nested), dim=0), dim=0)
+
+
+def get_outer_rank(tensors, specs):
+    """Compares tensors to specs to determine the number of batch dimensions.
+
+    For each tensor, it checks the dimensions with respect to specs and
+    returns the number of batch dimensions if all nested tensors and
+    specs agree with each other.
+
+    Args:
+        tensors (nested Tensors): Nested list/tuple/dict of Tensors.
+        specs (nested TensorSpecs): Nested list/tuple/dict of TensorSpecs,
+            describing the shape of unbatched tensors.
+    Returns:
+        The number of outer dimensions for all Tensors (zero if all are
+        unbatched or empty).
+    Raises:
+        AssertionError: If
+        1. The shape of Tensors are not compatible with specs, or
+        2. A mix of batched and unbatched tensors are provided.
+        3. The tensors are batched but have an incorrect number of outer dims.
+    """
+
+    def _get_outer_rank(tensor, spec):
+        outer_rank = len(tensor.shape) - len(spec.shape)
+        assert outer_rank >= 0
+        assert list(tensor.shape[outer_rank:]) == list(spec.shape)
+        return outer_rank
+
+    outer_ranks = nest.map_structure(_get_outer_rank, tensors, specs)
+    outer_ranks = nest.flatten(outer_ranks)
+    outer_rank = outer_ranks[0]
+    assert all([r == outer_rank
+                for r in outer_ranks]), ("Tensors have different "
+                                         "outer_ranks %s" % outer_ranks)
+    return outer_rank

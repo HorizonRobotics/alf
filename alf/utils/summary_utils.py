@@ -150,60 +150,35 @@ def histogram_continuous(name,
             tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
 
 
-def unique_var_names(vars):
-    """Generate unique names for `vars`
-
-    Variable names may not be not unique, which can create problems for summary.
-    This function add a suffix when the names duplicate.
-
-    Args:
-        vars (iterable of Varaible): the list of Variables
-    Returns:
-        iterator of the unique variable names in the same order as vars.
-    """
-    # TODO: get meaningful name for Parameter
-    count = {}
-    for var in vars:
-        var_name = var.name.replace(':', '_')
-        if var_name in count:
-            count[var_name] += 1
-            var_name += "_" + str(count[var_name])
-        else:
-            count[var_name] = 0
-        yield var_name
-
-
 @_summary_wrapper
 @gin.configurable
-def summarize_variables(vars, with_histogram=True):
+def summarize_variables(name_and_params, with_histogram=True):
     """Add summaries for variables.
 
     Args:
-        grads_and_vars (list): A list of (gradient, variable) pairs.
+        name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
+            tuples.
     """
-    if not grads_and_vars:
-        return
-    for var, var_name in zip(vars, unique_var_names(vars)):
+    for var_name, var in name_and_params:
         var_values = var
         if with_histogram:
             alf.summary.histogram(
                 name='summarize_vars/' + var_name + '_value', data=var_values)
         alf.summary.scalar(
             name='summarize_vars/' + var_name + '_value_norm',
-            data=torch.norm([var_values]))
+            data=var_values.norm())
 
 
 @_summary_wrapper
 @gin.configurable
-def summarize_gradients(grads_and_vars, step=None, with_histogram=True):
-    """Add summaries to gradients.
+def summarize_gradients(name_and_params, step=None, with_histogram=True):
+    """Add summaries for gradients.
 
     Args:
-        grads_and_vars (list): A list of gradient to variable pairs (tuples).
+        name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
+            tuples.
     """
-    if not grads_and_vars:
-        return
-    for var, var_name in zip(vars, unique_var_names(vars)):
+    for var_name, var in name_and_params:
         if var.grad is None:
             continue
         grad_values = var.grad
@@ -213,7 +188,7 @@ def summarize_gradients(grads_and_vars, step=None, with_histogram=True):
                 data=grad_values)
         alf.summary.scalar(
             name='summarize_grads/' + var_name + '_gradient_norm',
-            data=torch.norm([grad_values]))
+            data=grad_values.norm())
 
 
 alf.summary.histogram = _summary_wrapper(alf.summary.histogram)
@@ -284,7 +259,6 @@ def summarize_action(actions, action_specs, name="action"):
                 return a if len(a.shape) == 0 else a[i]
 
             for a in range(action_dim):
-                # TODO: use a descriptive name for the summary
                 histogram_continuous(
                     name="%s/%s/%s" % (name, i, a),
                     data=action[:, a],

@@ -23,7 +23,7 @@ import os
 import six
 import torch
 import torch.nn as nn
-from torch.nn.modules.module import _IncompatibleKeys
+from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo
@@ -188,6 +188,15 @@ class Algorithm(nn.Module):
                 if isinstance(child, Algorithm):
                     to_be_visited.append(child)
 
+    def get_param_name(self, param):
+        """Get the name of the parameter.
+
+        Returns:
+            string of the name if the parameter can be found.
+            None if the parameter cannot be found.
+        """
+        return self._param_to_name.get(param)
+
     def _setup_optimizers(self):
         """Setup the param groups for optimizers.
 
@@ -195,6 +204,11 @@ class Algorithm(nn.Module):
             list of parameters not handled by any optimizers under this algorithm
         """
         self._assert_no_cycle_or_duplicate()
+        self._param_to_name = {}
+
+        for name, param in self.named_parameters():
+            self._param_to_name[param] = name
+
         return self._setup_optimizers_()[0]
 
     def _setup_optimizers_(self):
@@ -236,9 +250,13 @@ class Algorithm(nn.Module):
                 existing_params = _get_optimizer_params(optimizer)
                 params = list(
                     filter(lambda p: p not in existing_params, params))
-                optimizer.add_param_group({'params': params})
+                if params:
+                    optimizer.add_param_group({'params': params})
 
         if default_optimizer is not None:
+            existing_params = _get_optimizer_params(default_optimizer)
+            new_params = list(
+                filter(lambda p: p not in existing_params, new_params))
             if new_params:
                 default_optimizer.add_param_group({'params': new_params})
             return [], handled
@@ -267,7 +285,9 @@ class Algorithm(nn.Module):
         optimizer_info = []
         if unhandled:
             optimizer_info.append(
-                dict(optimizer="None", parameters=[id(p) for p in unhandled]))
+                dict(
+                    optimizer="None",
+                    parameters=[self._param_to_name[p] for p in unhandled]))
 
         for optimizer in self.optimizers():
             parameters = _get_optimizer_params(optimizer)
@@ -275,8 +295,7 @@ class Algorithm(nn.Module):
                 dict(
                     optimizer=optimizer.__class__.__name__,
                     hypers=optimizer.defaults,
-                    # TODO: better name for each parameter
-                    parameters=[id(p) for p in parameters]))
+                    parameters=[self._param_to_name[p] for p in parameters]))
         json_pretty_str_info = json.dumps(obj=optimizer_info, indent=2)
 
         return json_pretty_str_info
@@ -308,7 +327,7 @@ class Algorithm(nn.Module):
     def get_initial_rollout_state(self, batch_size):
         return common.zeros_from_spec(self._rollout_state_spec, batch_size)
 
-    def get_initial_train_step_state(self, batch_size):
+    def get_initial_train_state(self, batch_size):
         return common.zeros_from_spec(self._train_state_spec, batch_size)
 
     @common.add_method(nn.Module)
@@ -338,6 +357,8 @@ class Algorithm(nn.Module):
             version=self._version)
 
         if visited is None:
+            if isinstance(self, Algorithm):
+                self._setup_optimizers()
             visited = {self}
 
         self._save_to_state_dict(destination, prefix, visited)
@@ -360,7 +381,8 @@ class Algorithm(nn.Module):
 
     def load_state_dict(self, state_dict, strict=True):
         """Load state dictionary for Algorithm
-        Arguments:
+
+        Args:
             state_dict (dict): a dict containing parameters and
                 persistent buffers.
             strict (bool, optional): whether to strictly enforce that the keys
@@ -375,6 +397,8 @@ class Algorithm(nn.Module):
                 * **missing_keys** is a list of str containing the missing keys
                 * **unexpected_keys** is a list of str containing the unexpected keys
         """
+        self._setup_optimizers()
+
         missing_keys = []
         unexpected_keys = []
         error_msgs = []
@@ -546,6 +570,47 @@ class Algorithm(nn.Module):
                     if input_name not in self._modules and input_name not in local_state:
                         unexpected_keys.append(key)
 
+    @common.add_method(nn.Module)
+    def __repr__(self):
+        return self._repr()
+
+    @common.add_method(nn.Module)
+    def _repr(self, visited=None):
+        """Adapted from __repr__() in torch/nn/modules/module.nn. to handle cycles"""
+
+        if visited is None:
+            visited = [self]
+
+        # We treat the extra repr like the sub-module, one item per line
+        extra_lines = []
+        extra_repr = self.extra_repr()
+        # empty string will be split into list ['']
+        if extra_repr:
+            extra_lines = extra_repr.split('\n')
+        child_lines = []
+        for key, module in self._modules.items():
+            if module in visited:
+                continue
+            visited.append(module)
+            if isinstance(module, nn.Module):
+                mod_str = module._repr(visited)
+            else:
+                mod_str = repr(module)
+            mod_str = _addindent(mod_str, 2)
+            child_lines.append('(' + key + '): ' + mod_str)
+        lines = extra_lines + child_lines
+
+        main_str = self._get_name() + '('
+        if lines:
+            # simple one-liner info, which most builtin Modules will use
+            if len(extra_lines) == 1 and not child_lines:
+                main_str += extra_lines[0]
+            else:
+                main_str += '\n  ' + '\n  '.join(lines) + '\n'
+
+        main_str += ')'
+        return main_str
+
     #------------- User need to implement the following functions -------
 
     # Subclass may override predict_step() for more efficient implementation
@@ -615,7 +680,7 @@ class Algorithm(nn.Module):
                 this weight before calculating gradient
         Returns:
             loss_info (LossInfo): loss information
-            params (list[Parameter]): list of parameters being updated.
+            params (list[(name, Parameter)]): list of parameters being updated.
         """
         if valid_masks is not None:
             loss_info = alf.nest.map_structure(
@@ -658,6 +723,7 @@ class Algorithm(nn.Module):
                     alf.clip_gradient_norms(params, self._gradient_clipping)
             optimizer.step()
 
+        all_params = [(self._param_to_name[p], p) for p in all_params]
         return loss_info, all_params
 
     def after_update(self, training_info):

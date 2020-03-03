@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.rl_algorithm_test import MyEnv, MyAlg
-from alf.trainers.policy_trainer import Trainer, TrainerConfig
+from alf.trainers.policy_trainer import Trainer, TrainerConfig, play
 from alf.utils import common
 
 
@@ -40,6 +40,8 @@ class TrainerTest(alf.test.TestCase):
                 root_dir=root_dir,
                 unroll_length=5,
                 num_iterations=100)
+
+            # test train
             trainer = MyTrainer(conf)
             trainer.train()
 
@@ -53,7 +55,17 @@ class TrainerTest(alf.test.TestCase):
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
-            # TODO: test checkpoint
+            # test checkpoint
+            new_trainer = MyTrainer(conf)
+            new_trainer._restore_checkpoint()
+            time_step = common.get_initial_time_step(env)
+            state = alg.get_initial_predict_state(env.batch_size)
+            policy_step = alg.rollout_step(time_step, state)
+            logits = policy_step.info.logits
+            self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
+            self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+
+            # TODO: test play. Need real env to test.
 
 
 if __name__ == "__main__":

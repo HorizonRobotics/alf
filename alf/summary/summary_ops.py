@@ -83,7 +83,7 @@ def _summary_wrapper(summary_func):
             if step is None:
                 step = _global_counter
             name = _scope_stack[-1] + name
-            summary_func(name, data, step.numpy(), **kwargs)
+            summary_func(name, data, step, **kwargs)
 
     return wrapper
 
@@ -151,7 +151,8 @@ def should_record_summaries():
             are not recorded.
 
     """
-    return is_summary_enabled() and _record_if_stack[-1]()
+    return (_summary_writer_stack[-1] and is_summary_enabled()
+            and _record_if_stack[-1]())
 
 
 def get_global_counter():
@@ -204,10 +205,14 @@ def set_default_writer(writer):
     _summary_writer_stack[0] = writer
 
 
-def enable_summary():
-    """Enable summary."""
+def enable_summary(flag=True):
+    """Enable summary.
+
+    Args:
+        flag (bool): True to enable, False to disable
+    """
     global _summary_enabled
-    _summary_enabled = True
+    _summary_enabled = flag
 
 
 def disable_summary():

@@ -188,7 +188,7 @@ class Trainer(object):
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
-            total_time_steps = env_steps_metric.result().numpy()
+            total_time_steps = env_steps_metric.result()
             iter_num += 1
             if ((self._num_iterations and iter_num >= self._num_iterations)
                     or (self._num_env_steps
@@ -207,7 +207,7 @@ class Trainer(object):
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()))
         global_step = checkpointer.load()
-        alf.summary.get_global_counter().fill_(global_step)
+        alf.summary.get_global_counter().fill_(int(global_step))
         self._checkpointer = checkpointer
 
     def _save_checkpoint(self):

@@ -135,15 +135,19 @@ class RLAlgorithm(Algorithm):
         self._use_rollout_state = False
 
         self._rollout_info_spec = None
-        self._train_step_info_spec = None
+        self._train_info_spec = None
         self._processed_experience_spec = None
 
         self._current_time_step = None
         self._current_policy_state = None
 
         self._observers = []
+
+        self._exp_replayer = None
+        self._exp_replayer_type = None
         if self._env is not None and not self.is_on_policy():
-            self.set_exp_replayer("uniform", self._config.num_envs)
+            self.set_exp_replayer("uniform", self._env.batch_size,
+                                  config.replay_buffer_length)
 
         self._metrics = []
         env = self._env
@@ -159,6 +163,9 @@ class RLAlgorithm(Algorithm):
             ]
             self._metrics = standard_metrics
             self._observers.extend(self._metrics)
+
+        if config:
+            self.use_rollout_state = config.use_rollout_state
 
     def _set_children_property(self, property_name, value):
         """Set the property named `property_name` in child RLAlgorithm to `value`."""
@@ -275,7 +282,7 @@ class RLAlgorithm(Algorithm):
             observer (Callable): callable which accept Experience as argument.
         """
 
-    def set_exp_replayer(self, exp_replayer: str, num_envs):
+    def set_exp_replayer(self, exp_replayer: str, num_envs, max_length: int):
         """Set experience replayer.
 
         Args:
@@ -283,17 +290,27 @@ class RLAlgorithm(Algorithm):
                 "uniform")
             num_envs (int): the total number of environments from all batched
                 environments.
+            max_length (int): the maximum number of steps the replay
+                buffer store for each environment.
         """
+        assert exp_replayer in ("one_time", "uniform"), (
+            "Unsupported exp_replayer: %s" % exp_replayer)
+        self._exp_replayer_type = exp_replayer
+        self._exp_replayer_num_envs = num_envs
+        self._exp_replayer_length = max_length
+
+    def _set_exp_replayer(self, exp_replayer: str, num_envs):
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
         elif exp_replayer == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
                 self.experience_spec)
             self._exp_replayer = SyncUniformExperienceReplayer(
-                exp_spec, num_envs)
+                exp_spec, self._exp_replayer_num_envs,
+                self._exp_replayer_length)
         else:
             raise ValueError("invalid experience replayer name")
-        self._exp_observers.append(self._exp_replayer.observe)
+        self._observers.append(self._exp_replayer.observe)
 
     def observe(self, exp: Experience):
         """An algorithm can override to manipulate experience.
@@ -307,6 +324,11 @@ class RLAlgorithm(Algorithm):
         if not self._use_rollout_state:
             exp = exp._replace(state=())
         exp = dist_utils.distributions_to_params(exp)
+
+        if self._exp_replayer is None and self._exp_replayer_type:
+            self._set_exp_replayer(self._exp_replayer_type,
+                                   self._config.num_envs)
+
         for observer in self._observers:
             observer(exp)
 
@@ -328,7 +350,7 @@ class RLAlgorithm(Algorithm):
             self.summarize_reward("rollout_reward/extrinsic",
                                   training_info.reward)
 
-        if self._summarize_action_distributions:
+        if self._config.summarize_action_distributions:
             field = alf.nest.find_field(training_info.rollout_info,
                                         'action_distribution')
             if len(field) == 1:
@@ -355,7 +377,7 @@ class RLAlgorithm(Algorithm):
         Returns:
             None
         """
-        if self._summarize_grads_and_vars:
+        if self._config.summarize_grads_and_vars:
             summary_utils.summarize_variables(params)
             summary_utils.summarize_gradients(params)
         if self._debug_summaries:
@@ -363,7 +385,7 @@ class RLAlgorithm(Algorithm):
                                            self._action_spec)
             summary_utils.summarize_loss(loss_info)
 
-        if self._summarize_action_distributions:
+        if self._config.summarize_action_distributions:
             field = alf.nest.find_field(training_info.info,
                                         'action_distribution')
             if len(field) == 1:
@@ -529,6 +551,10 @@ class RLAlgorithm(Algorithm):
             transformed_time_step = self.transform_timestep(time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
+            if self._rollout_info_spec is None:
+                self._rollout_info_spec = dist_utils.extract_spec(
+                    policy_step.info)
+
             next_time_step = self._env.step(policy_step.output)
 
             exp = make_experience(time_step, policy_step, policy_state)
@@ -536,10 +562,6 @@ class RLAlgorithm(Algorithm):
 
             action = alf.nest.map_structure(lambda t: t.detach(),
                                             policy_step.output)
-
-            if self._rollout_info_spec is None:
-                self._rollout_info_spec = dist_utils.extract_spec(
-                    policy_step.info)
 
             training_info = TrainingInfo(
                 action=action,

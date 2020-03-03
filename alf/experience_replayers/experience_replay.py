@@ -21,7 +21,7 @@ import gin
 import six
 import torch
 
-from alf.utils.common import flatten_once
+import alf
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 
 from alf.utils import common
@@ -92,9 +92,6 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     only once.
 
     Example algorithms: IMPALA, PPO2
-
-    NOTE: this replayer can only be run in the eager mode, because
-    self._experience is updated by python assignment
     """
 
     def __init__(self):
@@ -103,9 +100,10 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
 
     def observe(self, exp):
         # The shape is [learn_queue_cap, unroll_length, env_batch_size, ...]
-        exp = tf.nest.map_structure(lambda e: common.transpose2(e, 1, 2), exp)
+        exp = alf.nest.map_structure(lambda e: e.transpose(1, 2), exp)
         # flatten the shape (num_envs, env_batch_size)
-        self._experience = tf.nest.map_structure(flatten_once, exp)
+        self._experience = alf.nest.map_structure(
+            lambda e: e.reshape(-1, *e.shape[2:]), exp)
         if self._batch_size is None:
             self._batch_size = self._experience.step_type.shape[0]
 
@@ -141,7 +139,16 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     Example algorithms: DDPG, SAC
     """
 
-    def __init__(self, experience_spec, batch_size):
+    def __init__(self, experience_spec, batch_size, max_length):
+        """Create a ReplayBuffer.
+
+        Args:
+            data_experience_specspec (nested TensorSpec): spec describing a
+                single item that can be stored in the replayer.
+            batch_size (int): number of environments.
+            max_length (int): The maximum number of items that can be stored
+                for a single environment.
+        """
         self._experience_spec = experience_spec
         self._buffer = ReplayBuffer(experience_spec, batch_size)
         self._data_iter = None
@@ -151,15 +158,15 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
         For the sync driver, `exp` has the shape (`env_batch_size`, ...)
         with `num_envs`==1 and `unroll_length`==1.
         """
-        outer_rank = get_outer_rank(exp, self._experience_spec)
+        outer_rank = alf.nest.utils.get_outer_rank(exp, self._experience_spec)
 
         if outer_rank == 1:
             self._buffer.add_batch(exp, exp.env_id)
         elif outer_rank == 3:
             # The shape is [learn_queue_cap, unroll_length, env_batch_size, ...]
-            for q in tf.range(tf.shape(exp.step_type)[0]):
-                for t in tf.range(tf.shape(exp.step_type)[1]):
-                    bat = tf.nest.map_structure(lambda x: x[q, t, ...], exp)
+            for q in range(exp.step_type.shape[0]):
+                for t in range(exp.step_type.shape[1]):
+                    bat = alf.nest.map_structure(lambda x: x[q, t, ...], exp)
                     self._buffer.add_batch(bat, bat.env_id)
         else:
             raise ValueError("Unsupported outer rank %s of `exp`" % outer_rank)
