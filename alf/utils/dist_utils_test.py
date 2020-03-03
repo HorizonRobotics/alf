@@ -14,11 +14,14 @@
 
 from absl import logging
 from absl.testing import parameterized
+from collections import namedtuple
 import torch
 import torch.distributions as td
 
 import alf
 import alf.utils.dist_utils as dist_utils
+
+ActionDistribution = namedtuple('ActionDistribution', ['a', 'b'])
 
 
 class EstimatedEntropyTest(parameterized.TestCase, alf.test.TestCase):
@@ -158,6 +161,24 @@ class TestActionSamplingNormal(alf.test.TestCase):
         action_expected = torch.Tensor([0.3, 0.7]).repeat(10, 1)
         action_obtained = dist_utils.epsilon_greedy_sample(M, epsilon)
         self.assertTrue((action_expected == action_obtained).all())
+
+
+class TestRSampleActionDistribution(alf.test.TestCase):
+    def test_rsample_action_distribution(self):
+        c = torch.distributions.categorical.Categorical(
+            torch.Tensor([0.25, 0.75]))
+        C = c.expand([10])
+        self.assertRaises(AssertionError,
+                          dist_utils.rsample_action_distribution, C)
+
+        n = torch.distributions.normal.Normal(
+            torch.Tensor([0.3, 0.7]), torch.Tensor([1.0, 1.0]))
+        N = n.expand([10, 2])
+
+        action_distribution = ActionDistribution(a=C, b=N)
+        self.assertRaises(AssertionError,
+                          dist_utils.rsample_action_distribution,
+                          action_distribution)
 
 
 if __name__ == '__main__':

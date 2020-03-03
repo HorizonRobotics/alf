@@ -251,18 +251,30 @@ def compute_log_probability(distributions, actions):
     return total_log_probs
 
 
-def sample_action_distribution(nested_distributions, rsample=True):
-    """Sample actions from distributions
+def rsample_action_distribution(nested_distributions):
+    """Sample actions from distributions with reparameterization-based sampling
+        (rsample) to enable backpropagation.
     Args:
-        nested_distributions (nested Distribution): action distributions
-        rsample (bool): whether use reparameterization-based sampling to enable
-            pathwise derivative
+        nested_distributions (nested Distribution): action distributions.
+    Returns:
+        rsampled actions
+    """
+    assert all(nest.flatten(nest.map_structure(lambda d: d.has_rsample,
+                nested_distributions))), \
+            ("all the distributions need to support rsample in order to enable "
+            "backpropagation")
+    return nest.map_structure(lambda d: d.rsample(), nested_distributions)
+
+
+def sample_action_distribution(nested_distributions):
+    """Sample actions from distributions with conventional sampling without
+        enabling backpropagation.
+    Args:
+        nested_distributions (nested Distribution): action distributions.
     Returns:
         sampled actions
     """
-
-    return nest.map_structure(lambda d: d.rsample() if rsample else d.sample(),
-                              nested_distributions)
+    return nest.map_structure(lambda d: d.sample(), nested_distributions)
 
 
 def epsilon_greedy_sample(nested_distributions, eps=0.1):
