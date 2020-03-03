@@ -41,5 +41,5 @@ def element_wise_squared_loss(x, y):
     Returns:
         loss (Tensor)
     """
-    loss = torch.nn.MSELoss(reduction=None)
-    return loss(x, y)
+    loss = torch.nn.MSELoss(reduction="none")
+    return loss(y, x)
