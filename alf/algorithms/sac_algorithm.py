@@ -17,16 +17,19 @@ import numpy as np
 import gin
 import copy
 
-from alf.networks import ActorDistributionNetwork, ValueNetwork
+import torch
+import torch.nn as nn
 
+from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, TrainingInfo
-from alf.utils import losses, common, dist_utils
 from alf.nest import nest
+from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.utils import losses, common, dist_utils
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -150,8 +153,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._critic_network1 = critic_network1
         self._critic_network2 = critic_network2
-        self._target_critic_network1 = copy.deepcopy(_critic_network1)
-        self._target_critic_network2 = copy.deepcopy(_critic_network2)
+        self._target_critic_network1 = copy.deepcopy(self._critic_network1)
+        self._target_critic_network2 = copy.deepcopy(self._critic_network2)
 
         self._actor_optimizer = actor_optimizer
         self._critic_optimizer = critic_optimizer
@@ -169,8 +172,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     map(dist_utils.calc_default_target_entropy,
                         flat_action_spec)))
         self._target_entropy = target_entropy
-
-        self._dqda_clipping = dqda_clipping
 
         self._update_target = common.get_target_updater(
             models=[self._critic_network1, self._critic_network2],

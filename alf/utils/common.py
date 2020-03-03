@@ -130,7 +130,7 @@ def as_list(x):
     return [x]
 
 
-class Periodically(nn.Modules):
+class Periodically(nn.Module):
     def __init__(self, body, period, name='periodically'):
         """Periodically performs the ops defined in body.
 

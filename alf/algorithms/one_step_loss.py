@@ -37,10 +37,11 @@ class OneStepTDLoss(nn.Module):
                 Q values and returns the loss for each element of the batch.
             debug_summaries (bool): True if debug summaries should be created
         """
-        super().__init__(name=name)
+        super().__init__()
         self._gamma = gamma
         self._td_error_loss_fn = td_error_loss_fn
         self._debug_summaries = debug_summaries
+        self._name = name
 
     def forward(self, training_info: TrainingInfo, value, target_value):
         returns = value_ops.one_step_discounted_return(
