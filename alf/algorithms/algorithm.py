@@ -23,7 +23,7 @@ import os
 import six
 import torch
 import torch.nn as nn
-from torch.nn.modules.module import _IncompatibleKeys
+from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo
@@ -254,6 +254,9 @@ class Algorithm(nn.Module):
                     optimizer.add_param_group({'params': params})
 
         if default_optimizer is not None:
+            existing_params = _get_optimizer_params(default_optimizer)
+            new_params = list(
+                filter(lambda p: p not in existing_params, new_params))
             if new_params:
                 default_optimizer.add_param_group({'params': new_params})
             return [], handled
@@ -355,6 +358,8 @@ class Algorithm(nn.Module):
             version=self._version)
 
         if visited is None:
+            if isinstance(self, Algorithm):
+                self._setup_optimizers()
             visited = {self}
 
         self._save_to_state_dict(destination, prefix, visited)
@@ -565,6 +570,47 @@ class Algorithm(nn.Module):
                         '.', 1)[0]  # get the name of param/buffer/child
                     if input_name not in self._modules and input_name not in local_state:
                         unexpected_keys.append(key)
+
+    @common.add_method(nn.Module)
+    def __repr__(self):
+        return self._repr()
+
+    @common.add_method(nn.Module)
+    def _repr(self, visited=None):
+        """Adapted from __repr__() in torch/nn/modules/module.nn. to handle cycles"""
+
+        if visited is None:
+            visited = [self]
+
+        # We treat the extra repr like the sub-module, one item per line
+        extra_lines = []
+        extra_repr = self.extra_repr()
+        # empty string will be split into list ['']
+        if extra_repr:
+            extra_lines = extra_repr.split('\n')
+        child_lines = []
+        for key, module in self._modules.items():
+            if module in visited:
+                continue
+            visited.append(module)
+            if isinstance(module, nn.Module):
+                mod_str = module._repr(visited)
+            else:
+                mod_str = repr(module)
+            mod_str = _addindent(mod_str, 2)
+            child_lines.append('(' + key + '): ' + mod_str)
+        lines = extra_lines + child_lines
+
+        main_str = self._get_name() + '('
+        if lines:
+            # simple one-liner info, which most builtin Modules will use
+            if len(extra_lines) == 1 and not child_lines:
+                main_str += extra_lines[0]
+            else:
+                main_str += '\n  ' + '\n  '.join(lines) + '\n'
+
+        main_str += ')'
+        return main_str
 
     #------------- User need to implement the following functions -------
 

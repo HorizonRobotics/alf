@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import json
 import pprint
 import torch
@@ -92,7 +93,7 @@ class AlgorithmTest(unittest.TestCase):
             name="root")
         alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
         info = json.loads(alg_root.get_optimizer_info())
-        pprint.pprint(info)
+        logging.info(pprint.pformat(info))
         self.assertEqual(len(info), 2)
         self.assertTrue(info[0]['hypers']['lr'] == 0.25
                         or info[1]['hypers']['lr'] == 0.25)
@@ -141,6 +142,9 @@ class AlgorithmTest(unittest.TestCase):
         self.assertEqual(info[1]['parameters'],
                          [alg_root.get_param_name(param_2)])
 
+        # test __repr__
+        logging.info("\n" + repr(alg_root))
+
     def test_update_with_gradient(self):
         param_1 = nn.Parameter(torch.Tensor([1]))
         alg_1 = MyAlg(params=[param_1], name="alg_1")
@@ -166,4 +170,7 @@ class AlgorithmTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    logging.use_absl_handler()
+    logging.set_verbosity(logging.INFO)
+    AlgorithmTest().test_get_optimizer_info()
     unittest.main()
