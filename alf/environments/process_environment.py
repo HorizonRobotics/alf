@@ -21,10 +21,15 @@ import atexit
 import multiprocessing
 import sys
 import traceback
+import torch
+import numpy as np
 
 from absl import logging
 
 import alf.nest as nest
+# import torch.multiprocessing as multiprocessing
+from torch.multiprocessing.queue import ConnectionWrapper
+from alf.data_structures import TimeStep
 
 
 class ProcessEnvironment(object):
@@ -68,6 +73,8 @@ class ProcessEnvironment(object):
       wait_to_start: Whether the call should wait for an env initialization.
     """
         self._conn, conn = multiprocessing.Pipe()
+        # self._conn = ConnectionWrapper(self._conn)
+        # conn = ConnectionWrapper(conn)
         self._process = multiprocessing.Process(
             target=self._worker,
             args=(conn, self._env_constructor, self._flatten))
@@ -183,6 +190,12 @@ class ProcessEnvironment(object):
       Payload object of the message.
     """
         message, payload = self._conn.recv()
+        # convert received numpy arrays back to tensors
+        if all(
+                map(lambda x: isinstance(x, np.ndarray),
+                    nest.flatten(payload))):
+            payload = nest.map_structure(lambda array: torch.from_numpy(array),
+                                         payload)
         # Re-raise exceptions in the main process.
         if message == self._EXCEPTION:
             stacktrace = payload
@@ -227,6 +240,10 @@ class ProcessEnvironment(object):
                     if flatten and name == 'step':
                         args = [nest.pack_sequence_as(action_spec, args[0])]
                     result = getattr(env, name)(*args, **kwargs)
+                    # convert tensors to numpy arrays before sending
+                    if all(map(torch.is_tensor, nest.flatten(result))):
+                        result = nest.map_structure(
+                            lambda tensor: tensor.numpy(), result)
                     if flatten and name in ['step', 'reset']:
                         result = nest.flatten(result)
                     conn.send((self._RESULT, result))
