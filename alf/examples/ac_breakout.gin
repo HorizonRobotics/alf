@@ -53,11 +53,11 @@ common.reward_clipping.minmax=(-1, 1)
 TrainerConfig.unroll_length=8
 TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=0
-TrainerConfig.num_env_steps=100000
+TrainerConfig.num_env_steps=5000000
 TrainerConfig.evaluate=False
-TrainerConfig.debug_summaries=0
-TrainerConfig.summarize_grads_and_vars=0
-TrainerConfig.summary_interval=10
+TrainerConfig.debug_summaries=1
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summary_interval=200
 
 RLAlgorithm.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
