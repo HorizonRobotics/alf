@@ -24,16 +24,18 @@ from alf.data_structures import Experience, StepType, TimeStep, TrainingInfo
 class OnPolicyAlgorithm(OffPolicyAlgorithm):
     """OnPolicyAlgorithm implements the basic on-policy training procedure.
 
-    User needs to implement rollout_step() and calc_loss()
+    User needs to implement `rollout_step()` and `calc_loss()`.
 
-    rollout_step() is called to generate actions for every environment step.
+    `rollout_step()` is called to generate actions for every environment step.
     It also needs to generate necessary information for training.
 
-    update_with_gradient() is called every `unroll_length` steps (specified in
-    config.TrainerConfig). All the training information collected at each previous
-    rollout_step() are batched and provided as arguments for calc_loss()
+    `update_with_gradient()` is called every `unroll_length` steps (specified in
+    `config.TrainerConfig`). All the training information collected by every
+    `rollout_step()` are batched and provided as arguments for
+    `calc_loss()`.
 
-    The following is the pseudo code to illustrate how OnPolicyAlgorithm is used:
+    The following is the pseudo code to illustrate how `OnPolicyAlgorithm` can
+    be used:
 
     ```python
     for _ in range(unroll_length):

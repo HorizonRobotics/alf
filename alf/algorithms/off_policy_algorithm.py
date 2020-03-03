@@ -28,15 +28,16 @@ from alf.utils.summary_utils import record_time
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
-    """OffPolicyAlgorithm implements basic off-policy training pipeline
+    """`OffPolicyAlgorithm` implements basic off-policy training pipeline.
 
-       User needs to implement rollout_step() and train_step().
+       User needs to implement `rollout_step()` and `train_step()`.
 
-       rollout_step() is called to generate actions for every environment step.
+       `rollout_step()` is called to generate actions at every environment step.
 
-       train_step() is called to generate necessary information for training.
+       `train_step()` is called to generate necessary information for training.
 
-       The following is the pseudo code to illustrate how OffPolicyAlgorithm is used
+       The following is the pseudo code to illustrate how `OffPolicyAlgorithm`
+       is used:
 
        ```python
         # (1) collect stage
@@ -64,7 +65,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
     @property
     def train_info_spec(self):
-        """The spec for the AlgStep.info returned from train_step()."""
+        """The spec for the `AlgStep.info` returned from train_step()."""
         assert self._train_info_spec is not None, (
             "train_step() has not been used. train_info_spec is not available")
         return self._train_info_spec
@@ -84,10 +85,11 @@ class OffPolicyAlgorithm(RLAlgorithm):
     def preprocess_experience(self, experience: Experience):
         """Preprocess experience.
 
-        preprocess_experience is called for the experiences got from replay
-        buffer. An example is to calculate advantages and returns in PPOAlgorithm.
+        `preprocess_experience()` is called on the experiences got from a replay
+        buffer. An example usage of this function is to calculate advantages and
+        returns in `PPOAlgorithm`.
 
-        The shapes of tensors in experience are assumed to be (B, T, ...)
+        The shapes of tensors in experience are assumed to be (B, T, ...).
 
         Args:
             experience (Experience): original experience
