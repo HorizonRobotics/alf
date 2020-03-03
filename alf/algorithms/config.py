@@ -55,6 +55,7 @@ class TrainerConfig(object):
                  mini_batch_length=None,
                  mini_batch_size=None,
                  whole_replay_buffer_training=True,
+                 replay_buffer_length=1024,
                  clear_replay_buffer=True,
                  num_envs=1):
         """Configuration for Trainers
@@ -109,6 +110,8 @@ class TrainerConfig(object):
                 buffer to perform one update
             clear_replay_buffer (bool): whether use all data in replay buffer to
                 perform one update and then wiped clean
+            replay_buffer_length (int): the maximum number of steps the replay
+                buffer store for each environment.
             num_envs (int): the number of environments to run asynchronously.
         """
         parameters = dict(
@@ -138,6 +141,7 @@ class TrainerConfig(object):
             mini_batch_size=mini_batch_size,
             whole_replay_buffer_training=whole_replay_buffer_training,
             clear_replay_buffer=clear_replay_buffer,
+            replay_buffer_length=replay_buffer_length,
             num_envs=num_envs)
         for k, v in parameters.items():
             self.__setattr__(k, v)

@@ -92,9 +92,6 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     only once.
 
     Example algorithms: IMPALA, PPO2
-
-    NOTE: this replayer can only be run in the eager mode, because
-    self._experience is updated by python assignment
     """
 
     def __init__(self):
@@ -142,7 +139,16 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     Example algorithms: DDPG, SAC
     """
 
-    def __init__(self, experience_spec, batch_size):
+    def __init__(self, experience_spec, batch_size, max_length):
+        """Create a ReplayBuffer.
+
+        Args:
+            data_experience_specspec (nested TensorSpec): spec describing a
+                single item that can be stored in the replayer.
+            batch_size (int): number of environments.
+            max_length (int): The maximum number of items that can be stored
+                for a single environment.
+        """
         self._experience_spec = experience_spec
         self._buffer = ReplayBuffer(experience_spec, batch_size)
         self._data_iter = None

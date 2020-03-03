@@ -17,7 +17,6 @@ import json
 import pprint
 import torch
 import torch.nn as nn
-import unittest
 
 import alf
 from alf.data_structures import LossInfo, TrainingInfo
@@ -40,7 +39,7 @@ class MyAlg(Algorithm):
         return ['ignored_param']
 
 
-class AlgorithmTest(unittest.TestCase):
+class AlgorithmTest(alf.test.TestCase):
     def test_flatten_module(self):
         a = nn.Module()
         b = nn.Module()
@@ -172,5 +171,4 @@ class AlgorithmTest(unittest.TestCase):
 if __name__ == '__main__':
     logging.use_absl_handler()
     logging.set_verbosity(logging.INFO)
-    AlgorithmTest().test_get_optimizer_info()
-    unittest.main()
+    alf.test.main()

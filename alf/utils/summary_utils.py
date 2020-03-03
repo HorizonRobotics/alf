@@ -150,29 +150,6 @@ def histogram_continuous(name,
             tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
 
 
-def unique_var_names(vars):
-    """Generate unique names for `vars`
-
-    Variable names may not be not unique, which can create problems for summary.
-    This function add a suffix when the names duplicate.
-
-    Args:
-        vars (iterable of Varaible): the list of Variables
-    Returns:
-        iterator of the unique variable names in the same order as vars.
-    """
-    count = {}
-    for var in vars:
-        # TODO: get meaningful name for Parameter
-        var_name = str(id(var))
-        if var_name in count:
-            count[var_name] += 1
-            var_name += "_" + str(count[var_name])
-        else:
-            count[var_name] = 0
-        yield var_name
-
-
 @_summary_wrapper
 @gin.configurable
 def summarize_variables(name_and_params, with_histogram=True):
@@ -282,7 +259,6 @@ def summarize_action(actions, action_specs, name="action"):
                 return a if len(a.shape) == 0 else a[i]
 
             for a in range(action_dim):
-                # TODO: use a descriptive name for the summary
                 histogram_continuous(
                     name="%s/%s/%s" % (name, i, a),
                     data=action[:, a],

@@ -146,7 +146,8 @@ class RLAlgorithm(Algorithm):
         self._exp_replayer = None
         self._exp_replayer_type = None
         if self._env is not None and not self.is_on_policy():
-            self.set_exp_replayer("uniform", self._env.batch_size)
+            self.set_exp_replayer("uniform", self._env.batch_size,
+                                  config.replay_buffer_length)
 
         self._metrics = []
         env = self._env
@@ -281,7 +282,7 @@ class RLAlgorithm(Algorithm):
             observer (Callable): callable which accept Experience as argument.
         """
 
-    def set_exp_replayer(self, exp_replayer: str, num_envs):
+    def set_exp_replayer(self, exp_replayer: str, num_envs, max_length: int):
         """Set experience replayer.
 
         Args:
@@ -289,11 +290,14 @@ class RLAlgorithm(Algorithm):
                 "uniform")
             num_envs (int): the total number of environments from all batched
                 environments.
+            max_length (int): the maximum number of steps the replay
+                buffer store for each environment.
         """
         assert exp_replayer in ("one_time", "uniform"), (
             "Unsupported exp_replayer: %s" % exp_replayer)
         self._exp_replayer_type = exp_replayer
         self._exp_replayer_num_envs = num_envs
+        self._exp_replayer_length = max_length
 
     def _set_exp_replayer(self, exp_replayer: str, num_envs):
         if exp_replayer == "one_time":
@@ -302,7 +306,8 @@ class RLAlgorithm(Algorithm):
             exp_spec = dist_utils.to_distribution_param_spec(
                 self.experience_spec)
             self._exp_replayer = SyncUniformExperienceReplayer(
-                exp_spec, self._exp_replayer_num_envs)
+                exp_spec, self._exp_replayer_num_envs,
+                self._exp_replayer_length)
         else:
             raise ValueError("invalid experience replayer name")
         self._observers.append(self._exp_replayer.observe)

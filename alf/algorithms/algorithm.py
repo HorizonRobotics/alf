@@ -295,7 +295,6 @@ class Algorithm(nn.Module):
                 dict(
                     optimizer=optimizer.__class__.__name__,
                     hypers=optimizer.defaults,
-                    # TODO: better name for each parameter
                     parameters=[self._param_to_name[p] for p in parameters]))
         json_pretty_str_info = json.dumps(obj=optimizer_info, indent=2)
 
