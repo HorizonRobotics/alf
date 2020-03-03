@@ -27,7 +27,7 @@ import six
 import torch
 import gin
 
-from alf.tensor_specs import is_bounded
+from alf.tensor_specs import BoundedTensorSpec
 from alf.data_structures import StepType, TimeStep
 from alf.environments import torch_environment
 import alf.nest as nest
@@ -426,7 +426,7 @@ class ActionOffsetWrapper(TorchEnvironmentBaseWrapper):
             raise ValueError(
                 'ActionOffsetWrapper only works with single-array '
                 'action specs (not nested specs).')
-        if not is_bounded(self._env.action_spec()):
+        if not BoundedTensorSpec.is_bounded(self._env.action_spec()):
             raise ValueError('ActionOffsetWrapper only works with bounded '
                              'action specs.')
         if not is_discrete(self._env.action_spec()):
