@@ -118,7 +118,7 @@ class ActorCriticLoss(nn.Module):
             alf.summary.scalar(self._name + "/advantages/mean",
                                advantages.mean())
             alf.summary.histogram(self._name + "/advantages/value", advantages)
-            alf.summary.histogram(
+            alf.summary.scalar(
                 self._name + "/explained_variance_of_return_by_value",
                 tensor_utils.explained_variance(value, returns))
 
