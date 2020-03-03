@@ -26,10 +26,32 @@ import numpy as np
 
 from absl import logging
 
+import alf
 import alf.nest as nest
 # import torch.multiprocessing as multiprocessing
 from torch.multiprocessing.queue import ConnectionWrapper
 from alf.data_structures import TimeStep
+
+
+def array_to_tensor(data):
+    def _array_to_tensor(obj):
+        if isinstance(obj, np.ndarray):
+            obj = torch.from_numpy(obj)
+            if alf.get_default_device() == "cuda":
+                obj = obj.cuda()
+        return obj
+
+    return nest.map_structure(_array_to_tensor, data)
+
+
+def tensor_to_array(data):
+    def _tensor_to_array(obj):
+        if torch.is_tensor(obj):
+            return obj.cpu().numpy()
+        else:
+            return obj
+
+    return nest.map_structure(_tensor_to_array, data)
 
 
 class ProcessEnvironment(object):
@@ -134,6 +156,7 @@ class ProcessEnvironment(object):
       Promise object that blocks and provides the return value when called.
     """
         payload = name, args, kwargs
+        payload = tensor_to_array(payload)
         self._conn.send((self._CALL, payload))
         return self._receive
 
@@ -190,12 +213,8 @@ class ProcessEnvironment(object):
       Payload object of the message.
     """
         message, payload = self._conn.recv()
-        # convert received numpy arrays back to tensors
-        if all(
-                map(lambda x: isinstance(x, np.ndarray),
-                    nest.flatten(payload))):
-            payload = nest.map_structure(lambda array: torch.from_numpy(array),
-                                         payload)
+        payload = array_to_tensor(payload)
+
         # Re-raise exceptions in the main process.
         if message == self._EXCEPTION:
             stacktrace = payload
@@ -219,6 +238,7 @@ class ProcessEnvironment(object):
       KeyError: When receiving a message of unknown type.
     """
         try:
+            alf.set_default_device("cpu")
             env = env_constructor()
             action_spec = env.action_spec()
             conn.send(self._READY)  # Ready.
@@ -236,14 +256,12 @@ class ProcessEnvironment(object):
                     conn.send((self._RESULT, result))
                     continue
                 if message == self._CALL:
+                    payload = array_to_tensor(payload)
                     name, args, kwargs = payload
                     if flatten and name == 'step':
                         args = [nest.pack_sequence_as(action_spec, args[0])]
                     result = getattr(env, name)(*args, **kwargs)
-                    # convert tensors to numpy arrays before sending
-                    if all(map(torch.is_tensor, nest.flatten(result))):
-                        result = nest.map_structure(
-                            lambda tensor: tensor.numpy(), result)
+                    result = tensor_to_array(result)
                     if flatten and name in ['step', 'reset']:
                         result = nest.flatten(result)
                     conn.send((self._RESULT, result))

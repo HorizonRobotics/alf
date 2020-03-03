@@ -45,6 +45,7 @@ from absl import flags
 from absl import logging
 import gin
 import os
+import torch
 
 from alf.utils import common
 import alf.utils.external_configurables
@@ -79,4 +80,6 @@ def main(_):
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir')
+    if torch.cuda.is_available():
+        alf.set_default_device("cuda")
     app.run(main)
