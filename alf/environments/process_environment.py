@@ -72,6 +72,8 @@ class ProcessEnvironment(object):
       wait_to_start: Whether the call should wait for an env initialization.
     """
         self._conn, conn = multiprocessing.Pipe()
+        # self._conn = ConnectionWrapper(self._conn)
+        # conn = ConnectionWrapper(conn)
         self._process = multiprocessing.Process(
             target=self._worker,
             args=(conn, self._env_constructor, self._flatten))
