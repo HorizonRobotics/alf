@@ -71,8 +71,6 @@ class StepMetric(nn.Module):
         result = self.result()
         if train_step is not None:
             alf.summary.scalar(name=tag, data=result, step=train_step)
-        if prefix:
-            prefix += '_'
         for step_metric in step_metrics:
             # Skip plotting the metrics against itself.
             if self.name == step_metric.name:
