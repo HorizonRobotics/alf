@@ -17,6 +17,7 @@ from abc import abstractmethod
 from collections import Iterable
 import os
 import psutil
+import time
 import torch
 from typing import Callable
 
@@ -543,6 +544,7 @@ class RLAlgorithm(Algorithm):
         training_info_list = []
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
 
+        env_step_time = 0.
         for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
@@ -553,7 +555,9 @@ class RLAlgorithm(Algorithm):
                 self._rollout_info_spec = dist_utils.extract_spec(
                     policy_step.info)
 
+            t0 = time.time()
             next_time_step = self._env.step(policy_step.output)
+            env_step_time += time.time() - t0
 
             exp = make_experience(time_step, policy_step, policy_state)
             self.observe(exp)
@@ -574,6 +578,7 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
+        alf.summary.scalar("time/env_step", env_step_time)
         training_info = alf.nest.utils.stack_nests(training_info_list)
         training_info = training_info._replace(
             rollout_info=dist_utils.params_to_distributions(
