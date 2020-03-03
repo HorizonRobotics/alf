@@ -14,26 +14,19 @@
 """Soft Actor Critic Algorithm."""
 
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
-import gin.tf
+import gin
+import copy
 
-from tf_agents.specs import tensor_spec
-from tf_agents.agents.ddpg.critic_network import CriticNetwork
-from tf_agents.agents.ddpg.critic_rnn_network import CriticRnnNetwork
-from tf_agents.networks.q_network import QNetwork
-from tf_agents.networks.q_rnn_network import QRnnNetwork
-from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
-from tf_agents.networks.actor_distribution_rnn_network import ActorDistributionRnnNetwork
-from tf_agents.networks.network import Network, DistributionNetwork
-from tf_agents.utils import common as tfa_common
+from alf.networks import ActorDistributionNetwork, ValueNetwork
 
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
-from alf.data_structures import ActionTimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import PolicyStep, TrainingInfo
+from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
+from alf.data_structures import AlgStep, TrainingInfo
 from alf.utils import losses, common, dist_utils
+from alf.nest import nest
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -88,15 +81,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def __init__(self,
                  observation_spec,
-                 action_spec,
-                 actor_network: DistributionNetwork,
-                 critic_network: Network,
+                 action_spec: BoundedTensorSpec,
+                 actor_network: ActorDistributionNetwork,
+                 critic_network: ValueNetwork,
+                 env=None,
+                 config: TrainerConfig = None,
                  critic_loss=None,
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  target_update_tau=0.05,
                  target_update_period=1,
-                 dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
@@ -119,9 +113,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
-            dqda_clipping (float): when computing the actor loss, clips the
-                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
-                Does not perform clipping if dqda_clipping == 0.
             actor_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
             critic_optimizer (tf.optimizers.Optimizer): The optimizer for critic.
             alpha_optimizer (tf.optimizers.Optimizer): The optimizer for alpha.
@@ -130,12 +121,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
         """
         critic_network1 = critic_network
-        critic_network2 = critic_network.copy(name='CriticNetwork2')
-        log_alpha = tfa_common.create_variable(
-            name='log_alpha',
-            initial_value=initial_log_alpha,
-            dtype=tf.float32,
-            trainable=True)
+        critic_network2 = copy.deepcopy(critic_network)
+
+        log_alpha = nn.Parameter(torch.Tensor([initial_log_alpha]))
+
         super().__init__(
             observation_spec,
             action_spec,
@@ -161,10 +150,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._critic_network1 = critic_network1
         self._critic_network2 = critic_network2
-        self._target_critic_network1 = self._critic_network1.copy(
-            name='target_critic_network1')
-        self._target_critic_network2 = self._critic_network2.copy(
-            name='target_critic_network2')
+        self._target_critic_network1 = copy.deepcopy(_critic_network1)
+        self._target_critic_network2 = copy.deepcopy(_critic_network2)
+
         self._actor_optimizer = actor_optimizer
         self._critic_optimizer = critic_optimizer
         self._alpha_optimizer = alpha_optimizer
@@ -173,8 +161,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_loss = OneStepTDLoss(debug_summaries=debug_summaries)
         self._critic_loss = critic_loss
 
-        flat_action_spec = tf.nest.flatten(self._action_spec)
-        self._is_continuous = tensor_spec.is_continuous(flat_action_spec[0])
+        flat_action_spec = nest.flatten(self._action_spec)
+        self._is_continuous = flat_action_spec[0].is_continuous
         if target_entropy is None:
             target_entropy = np.sum(
                 list(
@@ -192,27 +180,21 @@ class SacAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
-    def _predict(self,
-                 time_step: ActionTimeStep,
-                 state=None,
-                 epsilon_greedy=1.):
+    def _predict(self, time_step: TimeStep, state=None, epsilon_greedy=1.):
         action_dist, state = self._actor_network(
-            time_step.observation,
-            step_type=time_step.step_type,
-            network_state=state.share.actor)
-        empty_state = tf.nest.map_structure(lambda x: (),
-                                            self.train_state_spec)
+            time_step.observation, network_state=state.share.actor)
+        empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
         state = empty_state._replace(share=SacShareState(actor=state))
-        action = common.epsilon_greedy_sample(action_dist, epsilon_greedy)
-        return PolicyStep(
-            action=action,
+        action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        return AlgStep(
+            output=action,
             state=state,
             info=SacInfo(action_distribution=action_dist))
 
-    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
+    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._predict(time_step, state, epsilon_greedy)
 
-    def rollout(self, time_step: ActionTimeStep, state, mode):
+    def rollout_step(self, time_step: TimeStep, state, mode):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by SacAlgorithm")
@@ -224,35 +206,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._is_continuous:
             critic_input = (exp.observation, action)
 
-            with tf.GradientTape(watch_accessed_variables=False) as tape:
-                tape.watch(action)
-                critic1, critic1_state = self._critic_network1(
-                    critic_input,
-                    step_type=exp.step_type,
-                    network_state=state.critic1)
+            critic1, critic1_state = self._critic_network1(
+                critic_input, network_state=state.critic1)
 
-                critic2, critic2_state = self._critic_network2(
-                    critic_input,
-                    step_type=exp.step_type,
-                    network_state=state.critic2)
+            critic2, critic2_state = self._critic_network2(
+                critic_input, network_state=state.critic2)
 
-                target_q_value = tf.minimum(critic1, critic2)
+            target_q_value = torch.min(critic1, critic2)
 
-            dqda = tape.gradient(target_q_value, action)
-
-            def actor_loss_fn(dqda, action):
-                if self._dqda_clipping:
-                    dqda = tf.clip_by_value(dqda, -self._dqda_clipping,
-                                            self._dqda_clipping)
-                loss = 0.5 * losses.element_wise_squared_loss(
-                    tf.stop_gradient(dqda + action), action)
-                loss = tf.reduce_sum(
-                    loss, axis=list(range(1, len(loss.shape))))
-                return loss
-
-            actor_loss = tf.nest.map_structure(actor_loss_fn, dqda, action)
-            alpha = tf.stop_gradient(tf.exp(self._log_alpha))
-            actor_loss += alpha * log_pi
+            alpha = torch.exp(self._log_alpha)
+            actor_loss = alpha * log_pi - target_q_value
         else:
             critic1, critic1_state = self._critic_network1(
                 exp.observation,
@@ -265,19 +228,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 network_state=state.critic2)
 
             assert isinstance(action_distribution,
-                              tfp.distributions.Categorical), (
+                              td.distributions.categorical.Categorical), (
                                   "Only `tfp.distributions.Categorical` " +
                                   "was supported, received:" + str(
                                       type(action_distribution)))
 
-            action_probs = action_distribution.probs
-            log_action_probs = tf.math.log(action_probs + 1e-8)
+            log_action_probs = action_distribution.logits
 
-            target_q_value = tf.stop_gradient(tf.minimum(critic1, critic2))
-            alpha = tf.stop_gradient(tf.exp(self._log_alpha))
-            actor_loss = tf.reduce_mean(
-                action_probs * (alpha * log_action_probs - target_q_value),
-                axis=-1)
+            target_q_value = torch.min(critic1, critic2).detach()
+            alpha = torch.exp(self._log_alpha)
+            actor_loss = alpha * log_action_probs - target_q_value
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
@@ -293,33 +253,27 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic_input = exp.observation
 
         critic1, critic1_state = self._critic_network1(
-            critic_input, step_type=exp.step_type, network_state=state.critic1)
+            critic_input, network_state=state.critic1)
 
         critic2, critic2_state = self._critic_network2(
-            critic_input, step_type=exp.step_type, network_state=state.critic2)
+            critic_input, network_state=state.critic2)
 
         target_critic1, target_critic1_state = self._target_critic_network1(
-            target_critic_input,
-            step_type=exp.step_type,
-            network_state=state.target_critic1)
+            target_critic_input, network_state=state.target_critic1)
 
         target_critic2, target_critic2_state = self._target_critic_network2(
-            target_critic_input,
-            step_type=exp.step_type,
-            network_state=state.target_critic2)
+            target_critic_input, network_state=state.target_critic2)
 
         if not self._is_continuous:
-            exp_action = tf.cast(exp.action, tf.int32)
-            critic1 = tfa_common.index_with_actions(critic1, exp_action)
-            critic2 = tfa_common.index_with_actions(critic2, exp_action)
-            sampled_action = tf.cast(action, tf.int32)
-            target_critic1 = tfa_common.index_with_actions(
-                target_critic1, sampled_action)
-            target_critic2 = tfa_common.index_with_actions(
-                target_critic2, sampled_action)
+            exp_action = exp.action.to(torch.int32)
+            critic1 = critic1[exp_action]
+            critic2 = critic2[exp_action]
+            sampled_action = action.to(torch.int32)
+            target_critic1 = target_critic1[sampled_action]
+            target_critic2 = target_critic1[sampled_action]
 
-        target_critic = (tf.minimum(target_critic1, target_critic2) -
-                         tf.stop_gradient(tf.exp(self._log_alpha) * log_pi))
+        target_critic = troch.minimum(target_critic1, target_critic2) - \
+                         torch.exp(self._log_alpha) * log_pi
 
         state = SacCriticState(
             critic1=critic1_state,
@@ -333,20 +287,17 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _alpha_train_step(self, log_pi):
-        alpha_loss = self._log_alpha * tf.stop_gradient(-log_pi -
-                                                        self._target_entropy)
+        alpha_loss = self._log_alpha * (
+            -log_pi - self._target_entropy).detach()
         info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))
         return info
 
     def train_step(self, exp: Experience, state: SacState):
         action_distribution, share_actor_state = self._actor_network(
-            exp.observation,
-            step_type=exp.step_type,
-            network_state=state.share.actor)
-        action = tf.nest.map_structure(lambda d: d.sample(),
-                                       action_distribution)
-        log_pi = tfa_common.log_probability(action_distribution, action,
-                                            self._action_spec)
+            exp.observation, network_state=state.share.actor)
+        action = dist_utils.rsample_action_distribution(action_distribution)
+        log_pi = dist_utils.compute_log_probability(action_distribution,
+                                                    action)
 
         actor_state, actor_info = self._actor_train_step(
             exp, state.actor, action_distribution, action, log_pi)
@@ -362,7 +313,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor=actor_info,
             critic=critic_info,
             alpha=alpha_info)
-        return PolicyStep(action, state, info)
+        return AlgStep(action, state, info)
 
     def after_train(self, training_info):
         self._update_target()

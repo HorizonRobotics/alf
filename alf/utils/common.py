@@ -28,6 +28,7 @@ import shutil
 import time
 import torch
 import torch.distributions as td
+import torch.nn as nn
 from typing import Callable
 from functools import wraps
 
@@ -129,6 +130,37 @@ def as_list(x):
     return [x]
 
 
+class Periodically(nn.Modules):
+    def __init__(self, body, period, name='periodically'):
+        """Periodically performs the ops defined in body.
+
+        Args:
+        body: callable to be performed every time
+            an internal counter is divisible by the period.
+        period (int): inverse frequency with which to perform the operation.
+        name: name of the object.
+
+        Raises:
+        TypeError: if body is not a callable.
+
+        Returns:
+        An op that periodically performs the specified body operation.
+        """
+        super().__init__()
+        if not callable(body):
+            raise TypeError('body must be callable.')
+        self._body = body
+        self._period = period
+        self._counter = 0
+        self._name = name
+
+    def forward(self):
+        if self._counter % self._period == 0:
+            self._body()
+        elif self._period is None:
+            return
+
+
 def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     """Performs a soft update of the target model parameters.
 
@@ -152,22 +184,15 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
 
     if copy:
         for model, target_model in zip(models, target_models):
-            if isinstance(model, Network):
-                model.create_variables()
-            if isinstance(target_model, Network):
-                target_model.create_variables()
-            tfa_common.soft_variables_update(
-                model.variables, target_model.variables, tau=1.0)
+            target_model.load_state_dict(model.state_dict())
 
     def update():
         update_ops = []
         for model, target_model in zip(models, target_models):
-            update_op = tfa_common.soft_variables_update(
-                model.variables, target_model.variables, tau)
-            update_ops.append(update_op)
-        return tf.group(*update_ops)
+            for ws, wt in zip(models.parameters(), target_models.parameters()):
+                wt = (1 - tau) * wt + tau * ws
 
-    return tfa_common.Periodically(update, period, 'periodic_update_targets')
+    return Periodically(update, period, 'periodic_update_targets')
 
 
 def concat_shape(shape1, shape2):
