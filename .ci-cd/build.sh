@@ -42,6 +42,7 @@ function check_style() {
 function test() {
     cd alf
     python3 -m unittest -v \
+        alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.algorithm_test \
         alf.algorithms.rl_algorithm_test \
