@@ -38,10 +38,10 @@ from alf.trainers import policy_trainer
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
-flags.DEFINE_string(
-    'checkpoint_name', None, "name of the checkpoint "
-    "(e.g. 'ckpt-12800`). If None, the latest checkpoint under train_dir will "
-    "be used.")
+flags.DEFINE_integer(
+    'checkpoint_step', None, "the number of training steps which is used to "
+    "specify the checkpoint to be loaded. If None, the latest checkpoint under "
+    "train_dir will be used.")
 flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
 flags.DEFINE_integer('random_seed', None, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
@@ -59,8 +59,7 @@ FLAGS = flags.FLAGS
 
 
 def main(_):
-    seed = common.set_random_seed(FLAGS.random_seed,
-                                  not FLAGS.use_tf_functions)
+    seed = common.set_random_seed(FLAGS.random_seed)
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     algorithm_ctor = gin.query_parameter(
@@ -74,12 +73,11 @@ def main(_):
         FLAGS.root_dir,
         env,
         algorithm,
-        checkpoint_name=FLAGS.checkpoint_name,
+        checkpoint_step=FLAGS.checkpoint_step or "latest",
         epsilon_greedy=FLAGS.epsilon_greedy,
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
-        record_file=FLAGS.record_file,
-        use_tf_functions=FLAGS.use_tf_functions)
+        record_file=FLAGS.record_file)
     env.pyenv.close()
 
 

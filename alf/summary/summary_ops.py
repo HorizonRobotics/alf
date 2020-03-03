@@ -83,7 +83,7 @@ def _summary_wrapper(summary_func):
             if step is None:
                 step = _global_counter
             name = _scope_stack[-1] + name
-            summary_func(name, data, step.numpy(), **kwargs)
+            summary_func(name, data, step, **kwargs)
 
     return wrapper
 

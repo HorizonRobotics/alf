@@ -28,8 +28,8 @@ class MyAlg(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 env,
-                 config,
+                 env=None,
+                 config=None,
                  on_policy=True,
                  debug_summaries=False):
         self._on_policy = on_policy
@@ -72,11 +72,11 @@ class MyAlg(OnPolicyAlgorithm):
 
 #TODO: move this to environments.suite_unittest
 class MyEnv(object):
-    def __init__(self, batch_size):
+    def __init__(self, batch_size, obs_shape=(2, )):
         super().__init__()
         self._batch_size = batch_size
         self._rewards = torch.tensor([0.5, 1.0, -1.])
-        self._observation_spec = alf.TensorSpec((2, ), dtype='float32')
+        self._observation_spec = alf.TensorSpec(obs_shape, dtype='float32')
         self._action_spec = alf.BoundedTensorSpec(
             shape=(), dtype='int64', minimum=0, maximum=2)
         self.reset()
@@ -90,7 +90,7 @@ class MyEnv(object):
     def reset(self):
         self._prev_action = torch.zeros(self._batch_size, dtype=torch.int64)
         self._current_time_step = TimeStep(
-            observation=torch.randn(self._batch_size, 2),
+            observation=self._observation_spec.randn([self._batch_size]),
             step_type=torch.full([self._batch_size],
                                  StepType.FIRST,
                                  dtype=torch.int32),
@@ -127,7 +127,7 @@ class MyEnv(object):
             step_type)
 
         self._current_time_step = TimeStep(
-            observation=torch.randn(self._batch_size, 2),
+            observation=self._observation_spec.randn([self._batch_size]),
             step_type=step_type,
             reward=self._rewards[action],
             discount=torch.zeros(self._batch_size),

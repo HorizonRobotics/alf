@@ -250,7 +250,8 @@ class Algorithm(nn.Module):
                 existing_params = _get_optimizer_params(optimizer)
                 params = list(
                     filter(lambda p: p not in existing_params, params))
-                optimizer.add_param_group({'params': params})
+                if params:
+                    optimizer.add_param_group({'params': params})
 
         if default_optimizer is not None:
             if new_params:
@@ -392,6 +393,8 @@ class Algorithm(nn.Module):
                 * **missing_keys** is a list of str containing the missing keys
                 * **unexpected_keys** is a list of str containing the unexpected keys
         """
+        self._setup_optimizers()
+
         missing_keys = []
         unexpected_keys = []
         error_msgs = []

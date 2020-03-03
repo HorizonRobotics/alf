@@ -48,9 +48,9 @@ class ImageEncodingNetwork(nn.Module):
         Args:
             input_channels (int): number of channels in the input image
             input_size (int or tuple): the input image size (height, width)
-            conv_layer_params (list[tuple]): a non-empty list of elements
-                (num_filters, kernel_size, strides, padding), where padding is
-                optional
+            conv_layer_params (list[tuple] or tuppe[tuple]): a non-empty list of
+                tuple (num_filters, kernel_size, strides, padding), where
+                padding is optional
             activation (torch.nn.functional): activation for all the layers
             flatten_output (bool): If False, the output will be an image
                 structure of shape `BxCxHxW`; otherwise the output will be
@@ -58,7 +58,7 @@ class ImageEncodingNetwork(nn.Module):
         """
         super(ImageEncodingNetwork, self).__init__()
 
-        assert isinstance(conv_layer_params, list)
+        assert isinstance(conv_layer_params, (tuple, list))
         assert len(conv_layer_params) > 0
 
         self._input_size = _tuplify2d(input_size)
@@ -142,9 +142,9 @@ class ImageDecodingNetwork(nn.Module):
 
         Args:
             input_size (int): the size of the input latent vector
-            transconv_layer_params (list[tuple]): a non-empty list of elements
-                (num_filters, kernel_size, strides, padding), where `padding` is
-                optional.
+            transconv_layer_params (list[tuple] or tuple[tuple]): a non-empty
+                list of tuple (num_filters, kernel_size, strides, padding),
+                where `padding` is optional.
             start_decoding_size (int or tuple): the initial height and width
                 we'd like to have for the feature map
             start_decoding_channels (int): the initial number of channels we'd
@@ -163,7 +163,7 @@ class ImageDecodingNetwork(nn.Module):
         """
         super(ImageDecodingNetwork, self).__init__()
 
-        assert isinstance(transconv_layer_params, list)
+        assert isinstance(transconv_layer_params, (tuple, list))
         assert len(transconv_layer_params) > 0
 
         self._preprocess_fc_layers = nn.ModuleList()
