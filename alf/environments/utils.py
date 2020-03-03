@@ -13,9 +13,8 @@
 # limitations under the License.
 
 import random
-import tensorflow as tf
 import torch
-import gin.tf
+import gin
 import numpy as np
 
 from alf.environments import suite_gym
