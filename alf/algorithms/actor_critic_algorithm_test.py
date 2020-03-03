@@ -20,19 +20,15 @@ import alf
 from alf.utils import common, dist_utils, tensor_utils
 from alf.data_structures import StepType, TimeStep
 from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.rl_algorithm_test import MyEnv
 
 
-class Config(object):
-    def __init__(self):
-        self.unroll_length = 5
-
-
 class ActorCriticAlgorithmTest(unittest.TestCase):
     def test_ac_algorithm(self):
-        config = Config()
+        config = TrainerConfig(root_dir="dummy", unroll_length=5)
         env = MyEnv(batch_size=3)
 
         obs_spec = alf.TensorSpec((2, ), dtype='float32')
