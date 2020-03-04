@@ -228,12 +228,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic2, critic2_state = self._critic_network2(
                 exp.observation, state=state.critic2)
 
-            assert isinstance(
-                action_distribution, td.categorical.Categorical), (
-                    "Only `Categorical` " + "was supported, received:" + str(
-                        type(action_distribution)))
+            # assert isinstance(
+            #     action_distribution, td.categorical.Categorical), (
+            #         "Only `Categorical` " + "was supported, received:" + str(
+            #             type(action_distribution)))
 
-            log_action_probs = action_distribution.logits
+            log_action_probs = action_distribution.base_dist.logits.squeeze(1)
 
             target_q_value = torch.min(critic1, critic2).detach()
             alpha = torch.exp(self._log_alpha)
@@ -266,14 +266,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if not self._is_continuous:
             exp_action = exp.action.to(torch.int32)
-            critic1 = critic1[exp_action]
-            critic2 = critic2[exp_action]
+            critic1 = critic1.gather(-1, exp_action.long())
+            critic2 = critic2.gather(-1, exp_action.long())
             sampled_action = action.to(torch.int32)
-            target_critic1 = target_critic1[sampled_action]
-            target_critic2 = target_critic1[sampled_action]
+            target_critic1 = target_critic1.gather(-1, sampled_action.long())
+            target_critic2 = target_critic2.gather(-1, sampled_action.long())
 
         target_critic = torch.min(target_critic1, target_critic2) - \
                          torch.exp(self._log_alpha) * log_pi
+
+        critic1 = critic1.squeeze(-1)
+        critic2 = critic2.squeeze(-1)
+        target_critic = target_critic.squeeze(-1)
 
         state = SacCriticState(
             critic1=critic1_state,
@@ -303,10 +307,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
 
+        log_pi = log_pi.unsqueeze(-1)
+
         actor_state, actor_info = self._actor_train_step(
             exp, state.actor, action_distribution, action, log_pi)
         critic_state, critic_info = self._critic_train_step(
             exp, state.critic, action, log_pi)
+
         alpha_info = self._alpha_train_step(log_pi)
         state = SacState(
             share=SacShareState(actor=share_actor_state),
@@ -327,7 +334,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         alpha_loss = training_info.info.alpha.loss
         actor_loss = training_info.info.actor.loss
         return LossInfo(
-            loss=actor_loss.loss + critic_loss.loss + alpha_loss.loss,
+            loss=actor_loss.loss.mean() + critic_loss.loss.mean() +
+            alpha_loss.loss.mean(),
             extra=SacLossInfo(
                 actor=actor_loss.extra,
                 critic=critic_loss.extra,
