@@ -115,7 +115,8 @@ class TestNormalProjectionNetwork(parameterized.TestCase, unittest.TestCase):
         """A net with `scale_distribution=True` should always sample actions
         within the action spec."""
         input_spec = TensorSpec((10, ), torch.float32)
-        embedding = torch.rand((100, ) + input_spec.shape, dtype=torch.float32)
+        embedding = 10 * torch.rand(
+            (100, ) + input_spec.shape, dtype=torch.float32)
 
         action_spec = TensorSpec((8, ), torch.float32)
         # For scaling distribution, we need a bounded action spec
