@@ -31,9 +31,8 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         config = TrainerConfig(root_dir="dummy", unroll_length=5)
         env = MyEnv(batch_size=3)
 
-        obs_spec = alf.TensorSpec((2, ), dtype='float32')
-        action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int32', minimum=0, maximum=2)
+        obs_spec = env.observation_spec()
+        action_spec = env.action_spec()
 
         fc_layer_params = [10, 8, 6]
 
@@ -53,7 +52,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
             value_network=value_network,
             env=env,
             config=config,
-            optimizer=torch.optim.Adam(lr=1e-2),
+            optimizer=torch.optim.Adam(lr=1e-1),
             debug_summaries=True,
             name="MyActorCritic")
         for _ in range(50):

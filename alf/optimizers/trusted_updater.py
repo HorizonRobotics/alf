@@ -15,11 +15,13 @@
 
 from typing import Callable
 
-import tensorflow as tf
+import torch
+import torch.nn as nn
 
+import alf
 from alf.utils import math_ops
 
-nest_map = tf.nest.map_structure
+nest_map = alf.nest.map_structure
 
 
 class TrustedUpdater(object):
@@ -43,21 +45,20 @@ class TrustedUpdater(object):
     changes is greater than its corresponding max_change.
     """
 
-    def __init__(self, variables):
+    def __init__(self, parameters):
         """Create a TrustedUpdater instance.
 
         Args:
-            varialbes (list[Variables]): variables to be monitored.
+            varialbes (list[Parameter]): parameters to be monitored.
         """
-        self._variables = variables
+        self._variables = parameters
         assert len(self._variables) > 0
         self._prev_variables = [
-            tf.Variable(initial_value=v, dtype=v.dtype) for v in variables
+            nn.Parameter(v.clone(), requires_grad=False) for v in parameters
         ]
 
-    @tf.function
     def adjust_step(self, change_f: Callable, max_change):
-        """Adjust `variables` based change calculated by change_f
+        """Adjust `parameters` based change calculated by change_f
 
         This function will copy the new values of the variables to
         a backup to be used for the next call of adjust_step.
@@ -75,24 +76,25 @@ class TrustedUpdater(object):
             # `max_change`
             r = 0.9 / ratio
             for var, prev_var in zip(self._variables, self._prev_variables):
-                var.assign(prev_var + r * (var - prev_var))
+                var.data.copy_(prev_var + r * (var - prev_var))
 
-        steps = tf.zeros((), tf.int32)
+        steps = 0
         change0 = change_f()
         change = change0
-        ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
-        ratio = math_ops.max_n(tf.nest.flatten(ratio))
+        ratio = nest_map(lambda c, m: c.abs() / m, change, max_change)
+        ratio = math_ops.max_n(alf.nest.flatten(ratio))
         while ratio > 1. and steps < 100:
             _adjust_step(ratio)
             change = change_f()
-            ratio = nest_map(lambda c, m: tf.abs(c) / m, change, max_change)
-            ratio = math_ops.max_n(tf.nest.flatten(ratio))
+            ratio = nest_map(lambda c, m: c.abs() / m, change, max_change)
+            ratio = math_ops.max_n(alf.nest.flatten(ratio))
             steps += 1
         # This suggests something wrong. change cannot be reduced by making
         # the step smaller.
-        tf.Assert(steps < 100, [steps])
+        assert steps < 100, ("Something is wrong. change cannot be reduced by "
+                             "making the step smaller.")
 
         for var, prev_var in zip(self._variables, self._prev_variables):
-            prev_var.assign(var)
+            prev_var.data.copy_(var)
 
         return change0, steps
