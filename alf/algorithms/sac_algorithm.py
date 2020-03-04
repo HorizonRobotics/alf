@@ -19,6 +19,7 @@ import copy
 
 import torch
 import torch.nn as nn
+import torch.distributions as td
 from typing import Callable
 
 from alf.algorithms.config import TrainerConfig
@@ -228,8 +229,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 exp.observation, state=state.critic2)
 
             assert isinstance(
-                action_distribution,
-                td.distributions.categorical.Categorical), (
+                action_distribution, td.categorical.Categorical), (
                     "Only `Categorical` " + "was supported, received:" + str(
                         type(action_distribution)))
 

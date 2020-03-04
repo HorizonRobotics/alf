@@ -25,7 +25,8 @@ from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.data_structures import StepType, TimeStep
 from alf.environments.suite_unittest import PolicyUnittestEnv
-from alf.networks import ActorDistributionNetwork, CriticNetwork, ValueNetwork
+from alf.networks import (ActorDistributionNetwork, CriticNetwork,
+                          ValueNetwork, QNetwork)
 from alf.environments.suite_unittest import ActionType
 from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
@@ -126,8 +127,8 @@ class SACAlgorithmTest(alf.test.TestCase):
         actor_network = ActorDistributionNetwork(
             obs_spec, action_spec, fc_layer_params=fc_layer_params)
 
-        critic_network = CriticNetwork(obs_spec, \
-            joint_fc_layer_params=fc_layer_params)
+        critic_network = QNetwork(obs_spec, action_spec, \
+            fc_layer_params=fc_layer_params)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,
