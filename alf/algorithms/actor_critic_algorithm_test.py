@@ -32,8 +32,7 @@ class ActorCriticAlgorithmTest(unittest.TestCase):
         env = MyEnv(batch_size=3)
 
         obs_spec = alf.TensorSpec((2, ), dtype='float32')
-        action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int32', minimum=0, maximum=2)
+        action_spec = env.action_spec
 
         fc_layer_params = [10, 8, 6]
 

@@ -41,10 +41,11 @@ class SACAlgorithmTest(unittest.TestCase):
             obs_spec,
             action_spec,
             fc_layer_params=fc_layer_params,
-            continuous_projection_net=alf.networks.NormalProjectionNetwork)
+            continuous_projection_net_ctor=alf.networks.
+            NormalProjectionNetwork)
 
         critic_network = CriticNetwork((obs_spec, action_spec), \
-            fc_layer_params=fc_layer_params)
+            joint_fc_layer_params=fc_layer_params)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,

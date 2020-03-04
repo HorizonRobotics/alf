@@ -51,7 +51,8 @@ class OneStepTDLoss(nn.Module):
             discounts=training_info.discount * self._gamma)
         returns = tensor_utils.tensor_extend(returns, value[-1])
         if self._debug_summaries and alf.summary.should_record_summaries():
-            alf.summary.scalar(self._name + '/values', value.mean())
-            alf.summary.scalar(self._name + '/returns', returns.mean())
+            with alf.summary.scope(self._name):
+                alf.summary.scalar('values', value.mean())
+                alf.summary.scalar('returns', returns.mean())
         loss = self._td_error_loss_fn(returns.detach(), value)
         return LossInfo(loss=loss, extra=loss)
