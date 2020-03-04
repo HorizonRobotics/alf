@@ -52,6 +52,7 @@ function test() {
         alf.metrics.metrics_test \
         alf.nest.nest_test \
         alf.networks.actor_distribution_networks_test \
+        alf.networks.critic_networks_test \
         alf.networks.value_networks_test \
         alf.networks.encoding_networks_test \
         alf.networks.projection_networks_test \
