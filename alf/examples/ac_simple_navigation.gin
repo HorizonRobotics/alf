@@ -38,6 +38,11 @@ ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
 
+#import alf.algorithms.trac_algorithm
+#Agent.rl_algorithm_cls=@TracAlgorithm
+#TracAlgorithm.ac_algorithm_cls=@ActorCriticAlgorithm
+#TracAlgorithm.action_dist_clip_per_dim=0.01
+
 
 # training config
 TrainerConfig.trainer=@on_policy_trainer
