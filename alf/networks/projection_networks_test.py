@@ -171,6 +171,4 @@ class TestNormalProjectionNetwork(parameterized.TestCase, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    TestCategoricalProjectionNetwork().test_close_uniform_projection_net()
-    TestCategoricalProjectionNetwork().test_uniform_projection_net()
     unittest.main()
