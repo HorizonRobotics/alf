@@ -14,10 +14,9 @@
 """Loss for PPO algorithm."""
 
 import gin
-import tensorflow as tf
+import torch
 
-from tf_agents.utils import common as tfa_common
-from tf_agents.specs import tensor_spec
+import alf
 
 from alf.data_structures import TrainingInfo, LossInfo
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
@@ -32,7 +31,6 @@ class PPOLoss(ActorCriticLoss):
     """PPO loss."""
 
     def __init__(self,
-                 action_spec,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
@@ -61,7 +59,6 @@ class PPOLoss(ActorCriticLoss):
         much.
 
         Args:
-            action_spec (nested BoundedTensorSpec): representing the actions.
             gamma (float): A discount factor for future rewards.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
@@ -79,12 +76,11 @@ class PPOLoss(ActorCriticLoss):
             log_prob_clipping (float): If >0, clipping log probs to the range
                 (-log_prob_clipping, log_prob_clipping) to prevent inf / NaN
                 values.
-            check_numerics (bool):  If true, adds tf.debugging.check_numerics to
-                help find NaN / Inf values. For debugging only.
+            check_numerics (bool):  If true, checking for NaN / Inf values. For
+                debugging only.
         """
 
         super(PPOLoss, self).__init__(
-            action_spec=action_spec,
             gamma=gamma,
             td_error_loss_fn=td_error_loss_fn,
             use_gae=True,
@@ -101,13 +97,12 @@ class PPOLoss(ActorCriticLoss):
         self._check_numerics = check_numerics
 
     def _pg_loss(self, training_info: TrainingInfo, advantages):
-        scope = tf.name_scope(self.__class__.__name__)
+        scope = alf.summary.scope(self.__class__.__name__)
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
             action_distribution=training_info.info.action_distribution,
             collect_action_distribution=training_info.rollout_info.
             action_distribution,
             action=training_info.action,
-            action_spec=self._action_spec,
             clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,
@@ -118,20 +113,16 @@ class PPOLoss(ActorCriticLoss):
         # unclipped importance ratios.
         pg_objective = -importance_ratio * advantages
         pg_objective_clipped = -importance_ratio_clipped * advantages
-        policy_gradient_loss = tf.maximum(pg_objective, pg_objective_clipped)
+        policy_gradient_loss = torch.max(pg_objective, pg_objective_clipped)
 
-        def _summary():
+        if self._debug_summaries and alf.summary.should_record_summaries():
             with scope:
-                tf.summary.histogram('pg_objective', pg_objective)
-                tf.summary.histogram('pg_objective_clipped',
-                                     pg_objective_clipped)
-
-        if self._debug_summaries:
-            common.run_if(common.should_record_summaries(), _summary)
+                alf.summary.histogram('pg_objective', pg_objective)
+                alf.summary.histogram('pg_objective_clipped',
+                                      pg_objective_clipped)
 
         if self._check_numerics:
-            policy_gradient_loss = tf.debugging.check_numerics(
-                policy_gradient_loss, 'policy_gradient_loss')
+            assert torch.all(torch.isfinite(policy_gradient_loss))
 
         return policy_gradient_loss
 
