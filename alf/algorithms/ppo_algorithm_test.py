@@ -99,14 +99,12 @@ class PpoTest(alf.test.TestCase):
             logging.info("%d reward=%f", i,
                          float(eval_time_step.reward.mean()))
 
-        eval_env.reset()
-        eval_time_step = unroll(eval_env, algorithm, steps_per_episode - 1)
-        logging.info("%d reward=%f", i, float(eval_time_step.reward.mean()))
         self.assertAlmostEqual(
             1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
 
 def unroll(env, algorithm, steps):
+    """Run `steps` environment steps using algoirthm.predict_step()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
     for _ in range(steps):
