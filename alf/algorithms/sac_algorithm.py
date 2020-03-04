@@ -141,13 +141,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     critic2=critic_network.state_spec,
                     target_critic1=critic_network.state_spec,
                     target_critic2=critic_network.state_spec)),
-            optimizer=[actor_optimizer, critic_optimizer, alpha_optimizer],
-            trainable_module_sets=[[actor_network],
-                                   [critic_network1, critic_network2],
-                                   [log_alpha]],
+            env=env,
+            config=config,
             gradient_clipping=gradient_clipping,
             debug_summaries=debug_summaries,
             name=name)
+        self.add_optimizer(actor_optimizer, [actor_network])
+        self.add_optimizer(critic_optimizer,
+                           [critic_network1, critic_network2])
+        self.add_optimizer(alpha_optimizer, [log_alpha])
 
         self._log_alpha = log_alpha
         self._actor_network = actor_network
@@ -183,7 +185,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def _predict(self, time_step: TimeStep, state=None, epsilon_greedy=1.):
         action_dist, state = self._actor_network(
-            time_step.observation, network_state=state.share.actor)
+            time_step.observation, state=state.share.actor)
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
         state = empty_state._replace(share=SacShareState(actor=state))
         action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
@@ -195,7 +197,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._predict(time_step, state, epsilon_greedy)
 
-    def rollout_step(self, time_step: TimeStep, state, mode):
+    def rollout_step(self, time_step: TimeStep, state):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by SacAlgorithm")
@@ -208,10 +210,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_input = (exp.observation, action)
 
             critic1, critic1_state = self._critic_network1(
-                critic_input, network_state=state.critic1)
+                critic_input, state=state.critic1)
 
             critic2, critic2_state = self._critic_network2(
-                critic_input, network_state=state.critic2)
+                critic_input, state=state.critic2)
 
             target_q_value = torch.min(critic1, critic2)
 
@@ -219,14 +221,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor_loss = alpha * log_pi - target_q_value
         else:
             critic1, critic1_state = self._critic_network1(
-                exp.observation,
-                step_type=exp.step_type,
-                network_state=state.critic1)
+                exp.observation, step_type=exp.step_type, state=state.critic1)
 
             critic2, critic2_state = self._critic_network2(
-                exp.observation,
-                step_type=exp.step_type,
-                network_state=state.critic2)
+                exp.observation, step_type=exp.step_type, state=state.critic2)
 
             assert isinstance(action_distribution,
                               td.distributions.categorical.Categorical), (
@@ -254,16 +252,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic_input = exp.observation
 
         critic1, critic1_state = self._critic_network1(
-            critic_input, network_state=state.critic1)
+            critic_input, state=state.critic1)
 
         critic2, critic2_state = self._critic_network2(
-            critic_input, network_state=state.critic2)
+            critic_input, state=state.critic2)
 
         target_critic1, target_critic1_state = self._target_critic_network1(
-            target_critic_input, network_state=state.target_critic1)
+            target_critic_input, state=state.target_critic1)
 
         target_critic2, target_critic2_state = self._target_critic_network2(
-            target_critic_input, network_state=state.target_critic2)
+            target_critic_input, state=state.target_critic2)
 
         if not self._is_continuous:
             exp_action = exp.action.to(torch.int32)
@@ -273,7 +271,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic1 = target_critic1[sampled_action]
             target_critic2 = target_critic1[sampled_action]
 
-        target_critic = troch.minimum(target_critic1, target_critic2) - \
+        target_critic = torch.min(target_critic1, target_critic2) - \
                          torch.exp(self._log_alpha) * log_pi
 
         state = SacCriticState(
@@ -295,7 +293,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def train_step(self, exp: Experience, state: SacState):
         action_distribution, share_actor_state = self._actor_network(
-            exp.observation, network_state=state.share.actor)
+            exp.observation, state=state.share.actor)
         action = dist_utils.rsample_action_distribution(action_distribution)
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)

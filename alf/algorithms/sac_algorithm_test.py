@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import torch
 import torch.distributions as td
 import unittest
@@ -19,6 +20,8 @@ import unittest
 import alf
 from alf.utils import common, dist_utils, tensor_utils
 from alf.data_structures import StepType, TimeStep
+from alf.environments.suite_unittest import PolicyUnittestEnv
+from alf.environments.suite_unittest import ActionType
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
@@ -28,12 +31,20 @@ from alf.algorithms.rl_algorithm_test import MyEnv
 
 class SACAlgorithmTest(unittest.TestCase):
     def test_sac_algorithm(self):
-        config = TrainerConfig(root_dir="dummy", unroll_length=5)
-        env = MyEnv(batch_size=3)
+        config = TrainerConfig(
+            root_dir="dummy", unroll_length=5, initial_collect_steps=100)
+        env_class = PolicyUnittestEnv
+        batch_size = 100
+        steps_per_episode = 13
+        env = env_class(
+            batch_size, steps_per_episode, action_type=ActionType.Continuous)
 
-        obs_spec = alf.TensorSpec((2, ), dtype='float32')
-        action_spec = alf.BoundedTensorSpec(
-            shape=(), dtype='int32', minimum=0, maximum=2)
+        eval_env = env_class(
+            batch_size, steps_per_episode, action_type=ActionType.Continuous)
+
+        obs_spec = env._observation_spec
+        print(obs_spec)
+        action_spec = env._action_spec
 
         fc_layer_params = [100, 100]
 
@@ -59,16 +70,32 @@ class SACAlgorithmTest(unittest.TestCase):
             alpha_optimizer=torch.optim.Adam(lr=1e-2),
             debug_summaries=True,
             name="MySAC")
+
+        eval_env.reset()
         for _ in range(50):
             alg.train_iter()
 
-        time_step = common.get_initial_time_step(env)
-        state = alg.get_initial_predict_state(env.batch_size)
-        policy_step = alg.rollout_step(time_step, state)
-        logits = policy_step.info.action_distribution.logits
-        print("logits: ", logits)
-        self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
-        self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+        eval_env.reset()
+        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
+        print(eval_time_step.reward.mean())
+
+        self.assertAlmostEqual(
+            1.0, float(eval_time_step.reward.mean()), delta=1e-1)
+
+
+def unroll(env, algorithm, steps):
+    time_step = common.get_initial_time_step(env)
+    policy_state = algorithm.get_initial_predict_state(env.batch_size)
+    for _ in range(steps):
+        policy_state = common.reset_state_if_necessary(
+            policy_state, algorithm.get_initial_predict_state(env.batch_size),
+            time_step.is_first())
+        transformed_time_step = algorithm.transform_timestep(time_step)
+        policy_step = algorithm.predict_step(
+            transformed_time_step, policy_state, epsilon_greedy=1.0)
+        time_step = env.step(policy_step.output)
+        policy_state = policy_step.state
+    return time_step
 
 
 if __name__ == '__main__':
