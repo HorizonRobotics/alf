@@ -32,7 +32,14 @@ from alf.algorithms.rl_algorithm_test import MyEnv
 class SACAlgorithmTest(unittest.TestCase):
     def test_sac_algorithm(self):
         config = TrainerConfig(
-            root_dir="dummy", unroll_length=5, initial_collect_steps=100)
+            root_dir="dummy",
+            unroll_length=1,
+            mini_batch_length=2,
+            mini_batch_size=64,
+            initial_collect_steps=100,
+            whole_replay_buffer_training=False,
+            clear_replay_buffer=False,
+        )
         env_class = PolicyUnittestEnv
         batch_size = 100
         steps_per_episode = 13
@@ -65,14 +72,14 @@ class SACAlgorithmTest(unittest.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-2),
-            critic_optimizer=torch.optim.Adam(lr=1e-2),
-            alpha_optimizer=torch.optim.Adam(lr=1e-2),
+            actor_optimizer=torch.optim.Adam(lr=1e-1),
+            critic_optimizer=torch.optim.Adam(lr=1e-1),
+            alpha_optimizer=torch.optim.Adam(lr=1e-1),
             debug_summaries=True,
             name="MySAC")
 
         eval_env.reset()
-        for _ in range(50):
+        for _ in range(20):
             alg.train_iter()
 
         eval_env.reset()
