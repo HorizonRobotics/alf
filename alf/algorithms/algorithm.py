@@ -44,6 +44,7 @@ def _flatten_module(module):
     elif isinstance(module, nn.ParameterDict):
         return list(module.values())
     else:
+        # `module` is an nn.Module or nn.Parameter
         return [module]
 
 
@@ -61,7 +62,6 @@ class Algorithm(nn.Module):
                  rollout_state_spec=None,
                  predict_state_spec=None,
                  optimizer=None,
-                 trainable_module_sets=None,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
                  debug_summaries=False,
@@ -85,7 +85,6 @@ class Algorithm(nn.Module):
                 `predict_step()`. If None, it's assume to be same as rollout_state_spec
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
-            trainable_module_sets (list[list]): See comments above for detail.
             gradient_clipping (float): If not None, serve as a positive threshold
             clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to
                 clip gradient. If False, use tf.clip_by_norm for each grad.
@@ -96,12 +95,8 @@ class Algorithm(nn.Module):
 
         self._name = name
         self._train_state_spec = train_state_spec
-        if rollout_state_spec is None:
-            rollout_state_spec = train_state_spec
-        self._rollout_state_spec = rollout_state_spec
-        if predict_state_spec is None:
-            predict_state_spec = rollout_state_spec
-        self._predict_state_spec = predict_state_spec
+        self._rollout_state_spec = rollout_state_spec or self._train_state_spec
+        self._predict_state_spec = predict_state_spec or self._rollout_state_spec
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
