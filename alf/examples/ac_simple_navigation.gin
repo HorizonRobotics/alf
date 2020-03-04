@@ -38,6 +38,11 @@ ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
 
+#import alf.algorithms.trac_algorithm
+#Agent.rl_algorithm_cls=@TracAlgorithm
+#TracAlgorithm.ac_algorithm_cls=@ActorCriticAlgorithm
+#TracAlgorithm.action_dist_clip_per_dim=0.01
+
 
 # training config
 TrainerConfig.trainer=@on_policy_trainer
@@ -48,6 +53,7 @@ TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=1
+TrainerConfig.checkpoint_interval=500
 
 Agent.observation_transformer=@image_scale_transformer
 

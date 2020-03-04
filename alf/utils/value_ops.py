@@ -23,10 +23,16 @@ from alf.utils import common
 
 
 @gin.configurable
-def action_importance_ratio(action_distribution, collect_action_distribution,
-                            action, action_spec, clipping_mode, scope,
-                            importance_ratio_clipping, log_prob_clipping,
-                            check_numerics, debug_summaries):
+def action_importance_ratio(action_distribution,
+                            collect_action_distribution,
+                            action,
+                            action_spec,
+                            clipping_mode,
+                            scope,
+                            importance_ratio_clipping=0,
+                            log_prob_clipping=0,
+                            check_numerics=False,
+                            debug_summaries=False):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
 
         Caller has to save tf.name_scope() and pass scope to this function.
@@ -400,9 +406,6 @@ def calc_vtrace_returns_and_advantages(training_info,
         action_spec=action_spec,
         clipping_mode='capping',
         scope=scope,
-        importance_ratio_clipping=0,
-        log_prob_clipping=0,
-        check_numerics=False,
         debug_summaries=debug_summaries)
 
     rewards = training_info.reward
