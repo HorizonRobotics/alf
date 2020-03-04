@@ -187,10 +187,9 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
             target_model.load_state_dict(model.state_dict())
 
     def update():
-        update_ops = []
         for model, target_model in zip(models, target_models):
             for ws, wt in zip(model.parameters(), target_model.parameters()):
-                wt = (1 - tau) * wt + tau * ws
+                wt.data.copy_((1 - tau) * wt + tau * ws)
 
     return Periodically(update, period, 'periodic_update_targets')
 

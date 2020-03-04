@@ -19,6 +19,7 @@ import copy
 
 import torch
 import torch.nn as nn
+from typing import Callable
 
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
@@ -27,7 +28,7 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, TrainingInfo
 from alf.nest import nest
-from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils
 
@@ -86,7 +87,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  observation_spec,
                  action_spec: BoundedTensorSpec,
                  actor_network: ActorDistributionNetwork,
-                 critic_network: ValueNetwork,
+                 critic_network: CriticNetwork,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss=None,
@@ -218,25 +219,25 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_q_value = torch.min(critic1, critic2)
 
             alpha = torch.exp(self._log_alpha)
-            actor_loss = alpha * log_pi - target_q_value
+            actor_loss = alpha.detach() * log_pi - target_q_value
         else:
             critic1, critic1_state = self._critic_network1(
-                exp.observation, step_type=exp.step_type, state=state.critic1)
+                exp.observation, state=state.critic1)
 
             critic2, critic2_state = self._critic_network2(
-                exp.observation, step_type=exp.step_type, state=state.critic2)
+                exp.observation, state=state.critic2)
 
-            assert isinstance(action_distribution,
-                              td.distributions.categorical.Categorical), (
-                                  "Only `tfp.distributions.Categorical` " +
-                                  "was supported, received:" + str(
-                                      type(action_distribution)))
+            assert isinstance(
+                action_distribution,
+                td.distributions.categorical.Categorical), (
+                    "Only `Categorical` " + "was supported, received:" + str(
+                        type(action_distribution)))
 
             log_action_probs = action_distribution.logits
 
             target_q_value = torch.min(critic1, critic2).detach()
             alpha = torch.exp(self._log_alpha)
-            actor_loss = alpha * log_action_probs - target_q_value
+            actor_loss = alpha.detach() * log_action_probs - target_q_value
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
@@ -294,7 +295,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def train_step(self, exp: Experience, state: SacState):
         action_distribution, share_actor_state = self._actor_network(
             exp.observation, state=state.share.actor)
-        action = dist_utils.rsample_action_distribution(action_distribution)
+        if self._is_continuous:
+            action = dist_utils.rsample_action_distribution(
+                action_distribution)
+        else:
+            action = dist_utils.sample_action_distribution(action_distribution)
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
 
