@@ -36,21 +36,21 @@ class SACAlgorithmTest(unittest.TestCase):
             unroll_length=1,
             mini_batch_length=2,
             mini_batch_size=64,
-            initial_collect_steps=100,
+            initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
+            num_envs=1,
         )
         env_class = PolicyUnittestEnv
-        batch_size = 100
+        num_env = 1
         steps_per_episode = 13
         env = env_class(
-            batch_size, steps_per_episode, action_type=ActionType.Continuous)
+            num_env, steps_per_episode, action_type=ActionType.Continuous)
 
         eval_env = env_class(
-            batch_size, steps_per_episode, action_type=ActionType.Continuous)
+            num_env, steps_per_episode, action_type=ActionType.Continuous)
 
         obs_spec = env._observation_spec
-        print(obs_spec)
         action_spec = env._action_spec
 
         fc_layer_params = [100, 100]
@@ -72,14 +72,14 @@ class SACAlgorithmTest(unittest.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-1),
-            critic_optimizer=torch.optim.Adam(lr=1e-1),
-            alpha_optimizer=torch.optim.Adam(lr=1e-1),
-            debug_summaries=True,
+            actor_optimizer=torch.optim.Adam(lr=1e-2),
+            critic_optimizer=torch.optim.Adam(lr=1e-2),
+            alpha_optimizer=torch.optim.Adam(lr=1e-2),
+            debug_summaries=False,
             name="MySAC")
 
         eval_env.reset()
-        for _ in range(20):
+        for _ in range(200):
             alg.train_iter()
 
         eval_env.reset()

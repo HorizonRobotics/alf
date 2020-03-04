@@ -116,9 +116,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
-            actor_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
-            critic_optimizer (tf.optimizers.Optimizer): The optimizer for critic.
-            alpha_optimizer (tf.optimizers.Optimizer): The optimizer for alpha.
+            actor_optimizer (torch.optim.optimizer): The optimizer for actor.
+            critic_optimizer (torch.optim.optimizer): The optimizer for critic.
+            alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
             gradient_clipping (float): Norm length to clip gradients.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
@@ -314,7 +314,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             alpha=alpha_info)
         return AlgStep(action, state, info)
 
-    def after_train(self, training_info):
+    def after_update(self, training_info):
         self._update_target()
 
     def calc_loss(self, training_info: TrainingInfo):
