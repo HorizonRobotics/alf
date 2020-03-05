@@ -110,6 +110,8 @@ class Algorithm(nn.Module):
         if optimizer:
             self._optimizers.append(optimizer)
 
+        alf.summary.reset_global_counter()
+
     @property
     def name(self):
         """The name of this algorithm."""
