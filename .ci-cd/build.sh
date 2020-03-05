@@ -47,6 +47,7 @@ function test() {
         alf.algorithms.algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
+        alf.algorithms.trac_algorithm_test \
         alf.data_structures_test \
         alf.device_ctx_test \
         alf.environments.suite_unittest_test \
@@ -60,6 +61,7 @@ function test() {
         alf.networks.encoding_networks_test \
         alf.networks.projection_networks_test \
         alf.networks.q_networks_test \
+        alf.optimizers.trusted_updater_test \
         alf.summary.summary_ops_test \
         alf.tensor_specs_test \
         alf.trainers.policy_trainer_test \
