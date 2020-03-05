@@ -255,7 +255,7 @@ class EncodingNetwork(nn.Module):
                  input_tensor_spec,
                  conv_layer_params=None,
                  fc_layer_params=None,
-                 activation=layers.identity,
+                 activation=torch.relu,
                  last_layer_size=None,
                  last_activation=None):
         """Create an EncodingNetwork
@@ -273,11 +273,13 @@ class EncodingNetwork(nn.Module):
             activation (nn.functional): activation used for hidden layers
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
-                layer. If None, it will be the same with `activation`.
+                layer. If None, it will be the SAME with `activation`.
         """
         super(EncodingNetwork, self).__init__()
         assert isinstance(input_tensor_spec, TensorSpec), \
             "The spec must be an instance of TensorSpec!"
+        if fc_layer_params is not None:
+            fc_layer_params = list(fc_layer_params)
 
         self._img_encoding_net = None
         if conv_layer_params:
