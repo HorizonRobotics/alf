@@ -120,6 +120,7 @@ class SACAlgorithmTest(alf.test.TestCase):
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
+        print(action_spec)
 
         fc_layer_params = [100, 100]
 
@@ -171,6 +172,6 @@ def unroll(env, algorithm, steps):
 
 
 if __name__ == '__main__':
-    #SACAlgorithmTest().test_sac_algorithm()
-    SACAlgorithmTest().test_sac_algorithm_discrete()
+    SACAlgorithmTest().test_sac_algorithm()
+    #SACAlgorithmTest().test_sac_algorithm_discrete()
     #unittest.main()

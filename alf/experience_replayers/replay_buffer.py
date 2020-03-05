@@ -146,8 +146,6 @@ class ReplayBuffer(nn.Module):
             nested Tensors. The shapes are [batch_size, batch_length, ...]
         """
         with alf.device(self._device):
-            print(self._device)
-            print(self._current_size)
             min_size = self._current_size.min()
             assert min_size >= batch_length, (
                 "Not all environments has enough data. The smallest data "

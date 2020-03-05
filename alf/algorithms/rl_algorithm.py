@@ -308,7 +308,6 @@ class RLAlgorithm(Algorithm):
         self._exp_replayer_length = max_length
 
     def _set_exp_replayer(self, exp_replayer: str, num_envs):
-        print("set-------")
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
         elif exp_replayer == "uniform":

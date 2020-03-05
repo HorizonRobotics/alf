@@ -105,6 +105,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         """Create a SacAlgorithm
 
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network): The network will be called with
                 call(observation, step_type).
@@ -272,7 +273,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic1 = target_critic1.gather(-1, sampled_action.long())
             target_critic2 = target_critic2.gather(-1, sampled_action.long())
 
-        target_critic = torch.min(target_critic1, target_critic2) - \
+
+
+        target_critic = torch.min(target_critic1, target_critic2).view(log_pi.shape) - \
                          torch.exp(self._log_alpha) * log_pi
 
         critic1 = critic1.squeeze(-1)

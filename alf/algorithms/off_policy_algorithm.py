@@ -110,12 +110,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
             unroll_steps = config.unroll_length * self._env.batch_size
             num_unrolls = math.ceil(
                 config.initial_collect_steps / unroll_steps)
-            print("num_unrolls")
-            print(num_unrolls)
         else:
             num_unrolls = 1
-            print("reentry")
-            print(self._exp_replayer._buffer._current_size)
 
         if not config.update_counter_every_mini_batch:
             alf.summary.get_global_counter().add_(1)
@@ -126,9 +122,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     training_info = self.unroll(config.unroll_length)
                     self.summarize_rollout(training_info)
                     self.summarize_metrics()
-
-        print("==========done with unroll")
-        print(self._exp_replayer._buffer._current_size)
 
         with record_time("time/train"):
             mini_batch_size = config.mini_batch_size
@@ -143,15 +136,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     sample_batch_size=mini_batch_size,
                     mini_batch_length=config.mini_batch_length)
 
-            print("==========done with unroll 2 ")
-            print(self._exp_replayer._buffer._current_size)
-
             res = self._train_experience(
                 experience, config.num_updates_per_train_step, mini_batch_size,
                 config.mini_batch_length,
                 config.update_counter_every_mini_batch)
-            print("==========done with unroll 3 ")
-            print(self._exp_replayer._buffer._current_size)
             return res
 
     def _train_experience(self, experience, num_updates, mini_batch_size,
@@ -257,7 +245,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
             rollout_info=experience.rollout_info,
             info=info,
             env_id=experience.env_id)
-
         loss_info = self.calc_loss(training_info)
         valid_masks = (training_info.step_type != StepType.LAST).to(
             torch.float32)

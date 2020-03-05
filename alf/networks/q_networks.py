@@ -71,7 +71,7 @@ class QNetwork(nn.Module):
             state: empty
         """
         value = self._encoding_net(observation)
-        return torch.squeeze(value, -1), state
+        return value, state
 
     @property
     def state_spec(self):
@@ -136,7 +136,7 @@ class QRNNNetwork(nn.Module):
         """
         encoding = self._encoding_net(observation)
         q_value, state = self._lstm_encoding_net(encoding, state)
-        return torch.squeeze(q_value, -1), state
+        return q_value, state
 
     @property
     def state_spec(self):
