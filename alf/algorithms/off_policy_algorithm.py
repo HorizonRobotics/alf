@@ -105,6 +105,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """User may override this for their own training procedure."""
         config: TrainerConfig = self._config
 
+        print("global counter")
+        print(alf.summary.get_global_counter())
         if (alf.summary.get_global_counter() == 0
                 and config.initial_collect_steps != 0):
             unroll_steps = config.unroll_length * self._env.batch_size

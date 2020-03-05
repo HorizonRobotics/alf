@@ -25,7 +25,7 @@ import torch.nn as nn
 
 import alf
 from alf.algorithms.config import TrainerConfig
-# from alf.environments.utils import create_environment
+from alf.environments.utils import create_environment
 from alf.utils import common
 from alf.utils import git_utils
 from alf.utils.checkpoint_utils import Checkpointer
@@ -206,7 +206,7 @@ class Trainer(object):
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()))
-        global_step = checkpointer.load()
+        global_step = checkpointer.load() + 1
         alf.summary.get_global_counter().fill_(int(global_step))
         self._checkpointer = checkpointer
 

@@ -1,6 +1,6 @@
 # environment config
 import alf.environments.suite_gym
-import alf.environments.wrappers
+import alf.environments.gym_wrappers
 
 # Do not use suite_atari.load as it has some resetting issue!
 create_environment.env_load_fn=@suite_gym.load

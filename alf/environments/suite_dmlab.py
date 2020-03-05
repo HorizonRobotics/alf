@@ -15,9 +15,8 @@
 import numpy as np
 import gym
 import gin.tf
-from tf_agents.environments import wrappers
-from alf.environments import suite_gym
-from alf.environments.utils import UnwrappedEnvChecker, ProcessPyEnvironment
+from alf.environments import suite_gym, torch_wrappers, process_environment
+from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
 
@@ -190,7 +189,7 @@ def load(scene,
          discount=1.0,
          frame_skip=4,
          gym_env_wrappers=(),
-         env_wrappers=(),
+         torch_env_wrappers=(),
          wrap_with_process=False,
          max_episode_steps=None):
     """Load deepmind lab envs.
@@ -201,8 +200,8 @@ def load(scene,
         frame_skip (int): the frequency at which the agent experiences the game
         gym_env_wrappers (list): Iterable with references to wrapper classes to use
             directly on the gym environment.
-        env_wrappers (list): Iterable with references to wrapper classes to use
-            directly on the tf_agents environment.
+        torch_env_wrappers (list): Iterable with references to wrapper classes to use
+            directly on the torch environment.
         wrap_with_process (bool): Whether wrap env in a process
         max_episode_steps (int): max episode step limit
     Returns:
@@ -219,12 +218,13 @@ def load(scene,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            env_wrappers=env_wrappers)
+            torch_env_wrappers=torch_env_wrappers)
 
     if wrap_with_process:
-        process_env = ProcessPyEnvironment(lambda: env_ctor())
+        process_env = process_environment.ProcessEnvironment(lambda: env_ctor(
+        ))
         process_env.start()
-        py_env = wrappers.PyEnvironmentBaseWrapper(process_env)
+        py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
         py_env = env_ctor()
     return py_env

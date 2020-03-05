@@ -16,18 +16,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gin.tf
-import tensorflow as tf
+# import gin.tf
+# import tensorflow as tf
+import gin
+import unittest
 from absl.testing import parameterized
-from tf_agents.policies import random_tf_policy
-from tf_agents.environments import parallel_py_environment
-from tf_agents.environments import tf_py_environment
-from tf_agents.drivers import dynamic_step_driver
-from alf.environments import wrappers
+
+from alf.environments import parallel_torch_environment
+from alf.environments import gym_wrappers
 from alf.environments import suite_dmlab
 
+# from tf_agents.policies import random_tf_policy
+# from tf_agents.environments import parallel_py_environment
+# from tf_agents.environments import tf_py_environment
+# from tf_agents.drivers import dynamic_step_driver
 
-class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
+
+class SuiteDMLabTest(parameterized.TestCase, unittest.TestCase):
     def setUp(self):
         super().setUp()
         if not suite_dmlab.is_available():
@@ -60,39 +65,44 @@ class SuiteDMLabTest(parameterized.TestCase, tf.test.TestCase):
         self.assertEqual(self._env.action_space.n, action_length)
 
     def test_dmlab_env(self):
-        ctor = lambda: suite_dmlab.load(
-            scene='lt_chasm',
-            gym_env_wrappers=[
-                wrappers.FrameGrayScale, wrappers.FrameResize, wrappers.
-                FrameStack
-            ],
-            wrap_with_process=False)
-        self._env = parallel_py_environment.ParallelPyEnvironment([ctor] * 2)
-        env = tf_py_environment.TFPyEnvironment(self._env)
-        self.assertEqual((84, 84, 4), env.observation_spec().shape)
+        def ctor():
+            return suite_dmlab.load(
+                scene='lt_chasm',
+                gym_env_wrappers=[
+                    gym_wrappers.FrameGrayScale, gym_wrappers.FrameResize,
+                    gym_wrappers.FrameStack
+                ],
+                wrap_with_process=False)
+
+        self._env = parallel_torch_environment.ParallelTorchEnvironment(
+            [ctor] * 2)
+        # env = tf_py_environment.TFPyEnvironment(self._env)
+        self.assertEqual((84, 84, 4), self._env.observation_spec().shape)
 
     @parameterized.parameters([
         'nav_maze_random_goal_03', 'contributed/dmlab30/rooms_watermaze',
         'contributed/psychlab/arbitrary_visuomotor_mapping'
     ])
     def test_dmlab_env_run(self, scene):
-        ctor = lambda: suite_dmlab.load(
-            scene=scene,
-            gym_env_wrappers=[wrappers.FrameResize],
-            wrap_with_process=False)
+        def ctor():
+            return suite_dmlab.load(
+                scene=scene,
+                gym_env_wrappers=[gym_wrappers.FrameResize],
+                wrap_with_process=False)
 
-        self._env = parallel_py_environment.ParallelPyEnvironment([ctor] * 4)
-        env = tf_py_environment.TFPyEnvironment(self._env)
-        self.assertEqual((84, 84, 3), env.observation_spec().shape)
+        self._env = parallel_torch_environment.ParallelTorchEnvironment(
+            [ctor] * 4)
+        # env = tf_py_environment.TFPyEnvironment(self._env)
+        self.assertEqual((84, 84, 3), self._env.observation_spec().shape)
 
-        random_policy = random_tf_policy.RandomTFPolicy(
-            env.time_step_spec(), env.action_spec())
+        # random_policy = random_tf_policy.RandomTFPolicy(
+        #     env.time_step_spec(), env.action_spec())
 
-        driver = dynamic_step_driver.DynamicStepDriver(
-            env=env, policy=random_policy, observers=None, num_steps=10)
+        # driver = dynamic_step_driver.DynamicStepDriver(
+        #     env=env, policy=random_policy, observers=None, num_steps=10)
 
-        driver.run(maximum_iterations=10)
+        # driver.run(maximum_iterations=10)
 
 
 if __name__ == '__main__':
-    tf.test.main()
+    unittest.main()

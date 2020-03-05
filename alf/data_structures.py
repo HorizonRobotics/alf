@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,10 +14,12 @@
 """Various data structures.
 Converted to PyTorch from the TF version.
 """
-from alf.nest import map_structure
+import alf.nest as nest
 import collections
 import numpy as np
 import torch
+import alf.nest as nest
+import alf.tensor_specs as ts
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -92,7 +94,7 @@ class TimeStep(
       discount: A discount value in the range `[0, 1]`.
       observation: A (nested) 'Tensor' for observation
       prev_action: A 'Tensor' for action from previous time step
-      env_id: the ID of the environment from which this time_step is
+      env_id: A scalar 'Tensor' of the environment ID of the time step
     """
 
     def is_first(self):
@@ -114,9 +116,14 @@ class TimeStep(
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
     discount = torch.as_tensor(discount)
+
     # as_tensor reuses the underlying data store of numpy array if possible.
-    create_tensor = lambda t: torch.as_tensor(t).detach()
-    make_tensors = lambda struct: map_structure(create_tensor, struct)
+    def create_tensor(t):
+        return torch.as_tensor(t).detach()
+
+    def make_tensors(struct):
+        return nest.map_structure(create_tensor, struct)
+
     return TimeStep(
         step_type=step_type.view(discount.shape),
         reward=make_tensors(reward),
@@ -142,6 +149,155 @@ def timestep_last(observation, prev_action, reward, discount, env_id):
 
 
 AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
+
+
+def restart(observation, action_spec, env_id=None, batched=False):
+    """Returns a `TimeStep` with `step_type` set equal to `StepType.FIRST`.
+
+    Args:
+        observation: A (nested) 'tensor' of observation
+        batch_size: (Optional) A python or torch integer scalar.
+
+    Returns:
+      A `TimeStep`.
+    """
+    first_observation = nest.flatten(observation)
+    assert all(
+        map(torch.is_tensor,
+            first_observation)), ("Elements in observation must be Tensor")
+
+    # TODO(b/130244501): Check leading dimension of first_observation
+    # against batch_size if all are known statically.
+    if batched:
+        batch_size = first_observation[0].shape[0]
+        step_type = torch.full((batch_size, ),
+                               StepType.FIRST,
+                               dtype=torch.int32)
+        reward = torch.full((batch_size, ), 0.0, dtype=torch.float32)
+        discount = torch.full((batch_size, ), 1.0, dtype=torch.float32)
+        prev_action = action_spec.zeros([batch_size])
+        env_id = torch.arange(batch_size, dtype=torch.int32)
+    else:
+        step_type = torch.full((), StepType.FIRST, dtype=torch.int32)
+        reward = torch.tensor(0.0, dtype=torch.float32)
+        discount = torch.tensor(1.0, dtype=torch.float32)
+        prev_action = action_spec.zeros()
+        if env_id is None:
+            env_id = torch.tensor(0, dtype=torch.int32)
+    return TimeStep(step_type, reward, discount, observation, prev_action,
+                    env_id)
+
+
+def transition(observation, action, reward, discount=1.0, env_id=None):
+    """Returns a `TimeStep` with `step_type` set equal to `StepType.MID`.
+
+    The batch size is inferred from the shape of `reward`.
+
+    If `discount` is a scalar, and `observation` contains Tensors,
+    then `discount` will be broadcasted to match `reward.shape`.
+
+    Args:
+        observation: A (nested) 'tensor'.
+        action: A (nested) 'tensor'.
+        reward: A scalar, or 1D NumPy array, or tensor.
+        discount: (optional) A scalar, or 1D NumPy array, or tensor.
+
+    Returns:
+        A `TimeStep`.
+
+    Raises:
+        ValueError: If observations are tensors but reward's statically known rank
+            is not `0` or `1`.
+    """
+    first_observation = nest.flatten(observation)
+    first_action = nest.flatten(action)
+    assert all(
+        map(torch.is_tensor,
+            first_observation)), ("Elements in observation must be Tensor")
+
+    # TODO(b/130245199): If reward.shape.rank == 2, and static
+    # batch sizes are available for both first_observation and reward,
+    # check that these match.
+    reward = torch.tensor(reward, dtype=torch.float32)
+    assert reward.dim() <= 1, "Expected reward to be a scalar or vector."
+    if reward.dim() == 0:
+        shape = []
+        if env_id is not None:
+            env_id = torch.tensor(0, dtype=torch.int32)
+    else:
+        assert first_observation[0].shape[:1] == reward.shape
+        assert first_action[0].shape[:1] == reward.shape
+        shape = reward.shape
+        env_id = torch.arange(shape, dtype=torch.int32)
+    step_type = torch.full(shape, StepType.MID, dtype=torch.int32)
+    discount = torch.tensor(discount, dtype=torch.float32)
+
+    if discount.dim() == 0:
+        discount = torch.full(shape, discount, dtype=torch.float32)
+    else:
+        assert reward.shape == discount.shape
+    return TimeStep(step_type, reward, discount, observation, action, env_id)
+
+
+def termination(observation, action, reward, env_id=None):
+    """Returns a `TimeStep` with `step_type` set to `StepType.LAST`.
+
+    Args:
+        observation: A (nested) 'tensor'.
+        reward: A scalar, or 1D NumPy array, or tensor.
+
+    Returns:
+        A `TimeStep`.
+
+    Raises:
+        ValueError: If observations are tensors but reward's statically known rank
+            is not `0` or `1`.
+    """
+    first_observation = nest.flatten(observation)
+    first_action = nest.flatten(action)
+    assert all(
+        map(torch.is_tensor,
+            first_observation)), ("Elements in observation must be Tensor")
+
+    # TODO(b/130245199): If reward.shape.rank == 2, and static
+    # batch sizes are available for both first_observation and reward,
+    # check that these match.
+    reward = torch.tensor(reward, dtype=torch.float32)
+    assert reward.dim() <= 1, "Expected reward to be a scalar or vector."
+    if reward.dim() == 0:
+        shape = []
+        if env_id is not None:
+            env_id = torch.tensor(0, dtype=torch.int32)
+    else:
+        assert first_observation[0].shape[:1] == reward.shape
+        assert first_action[0].shape[:1] == reward.shape
+        shape = reward.shape
+        env_id = torch.arange(shape, dtype=torch.int32)
+    step_type = torch.full(shape, StepType.LAST, dtype=torch.int32)
+    discount = torch.full(shape, 0.0, dtype=torch.float32)
+    return TimeStep(step_type, reward, discount, observation, action, env_id)
+
+
+def time_step_spec(observation_spec, action_spec):
+    """Returns a `TimeStep` spec given the observation_spec and the action_spec.
+    """
+
+    def is_valid_tensor_spec(spec):
+        return isinstance(spec, ts.TensorSpec)
+
+    assert all(map(is_valid_tensor_spec, nest.flatten(observation_spec)))
+    assert all(map(is_valid_tensor_spec, nest.flatten(action_spec)))
+    return TimeStep(
+        step_type=ts.TensorSpec([], torch.int32),
+        reward=ts.TensorSpec([], torch.float32),
+        discount=ts.BoundedTensorSpec([],
+                                      torch.float32,
+                                      minimum=0.0,
+                                      maximum=1.0),
+        observation=observation_spec,
+        prev_action=action_spec,
+        env_id=ts.TensorSpec([], torch.int32))
+
 
 TrainingInfo = namedtuple(
     "TrainingInfo",
