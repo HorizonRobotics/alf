@@ -15,12 +15,16 @@
 
 import torch
 import unittest
+import alf
 
 
 class TestCase(unittest.TestCase):
     def __init__(self, methodName='runTest'):
         super().__init__(methodName)
         self.addTypeEqualityFunc(torch.Tensor, 'assertTensorEqual')
+
+    def setUp(self):
+        alf.summary.reset_global_counter()
 
     def assertTensorEqual(self, t1, t2, msg=None):
         self.assertIsInstance(t1, torch.Tensor,
