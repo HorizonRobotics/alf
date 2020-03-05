@@ -44,7 +44,7 @@ class MyAlg(OnPolicyAlgorithm):
             name="MyAlg")
 
         self._proj_net = alf.networks.CategoricalProjectionNetwork(
-            input_size=2, num_actions=3)
+            input_size=2, action_spec=action_spec)
 
     def is_on_policy(self):
         return self._on_policy
@@ -160,10 +160,10 @@ class RLAlgorithmTest(unittest.TestCase):
         time_step = common.get_initial_time_step(env)
         state = alg.get_initial_predict_state(env.batch_size)
         policy_step = alg.rollout_step(time_step, state)
-        logits = policy_step.info.logits
+        logits = policy_step.info.log_prob(torch.arange(3).reshape(3, 1))
         print("logits: ", logits)
-        self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
-        self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+        self.assertTrue(torch.all(logits[1, :] > logits[0, :]))
+        self.assertTrue(torch.all(logits[1, :] > logits[2, :]))
 
     def test_off_policy_algorithm(self):
         with tempfile.TemporaryDirectory() as root_dir:
@@ -199,10 +199,10 @@ class RLAlgorithmTest(unittest.TestCase):
         time_step = common.get_initial_time_step(env)
         state = alg.get_initial_predict_state(env.batch_size)
         policy_step = alg.rollout_step(time_step, state)
-        logits = policy_step.info.logits
+        logits = policy_step.info.log_prob(torch.arange(3).reshape(3, 1))
         print("logits: ", logits)
-        self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
-        self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+        self.assertTrue(torch.all(logits[1, :] > logits[0, :]))
+        self.assertTrue(torch.all(logits[1, :] > logits[2, :]))
 
 
 if __name__ == '__main__':

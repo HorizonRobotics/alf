@@ -206,7 +206,7 @@ class Trainer(object):
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()))
-        global_step = checkpointer.load()
+        global_step = checkpointer.load() + 1
         alf.summary.get_global_counter().fill_(int(global_step))
         self._checkpointer = checkpointer
 
@@ -245,8 +245,8 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
     transformed_time_step = algorithm.transform_timestep(time_step)
-    policy_step = algorithm.predict(transformed_time_step, policy_state,
-                                    epsilon_greedy)
+    policy_step = algorithm.predict_step(transformed_time_step, policy_state,
+                                         epsilon_greedy)
     next_time_step = env.step(policy_step.output)
 
     exp = alf.data_structures.make_experience(time_step, policy_step,

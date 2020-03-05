@@ -28,6 +28,6 @@ class TestCase(unittest.TestCase):
         self.assertIsInstance(t2, torch.Tensor,
                               'Second argument is not a Tensor')
 
-        if not torch.all(t1 == t2):
+        if not torch.all(t1.cpu() == t2.cpu()):
             standardMsg = '%s != %s' % (t1, t2)
             self.fail(self._formatMessage(msg, standardMsg))

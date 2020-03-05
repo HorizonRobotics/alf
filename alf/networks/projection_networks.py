@@ -15,7 +15,6 @@
 import gin
 import math
 import numpy as np
-import functools
 from typing import Callable
 
 import torch
@@ -32,24 +31,41 @@ def DiagMultivariateNormal(loc, scale_diag):
 
 @gin.configurable
 class CategoricalProjectionNetwork(nn.Module):
-    def __init__(self, input_size, num_actions, logits_init_output_factor=0.1):
+    def __init__(self, input_size, action_spec, logits_init_output_factor=0.1):
         """Creates a categorical projection network that outputs a discrete
         distribution over a number of classes.
 
         Args:
             input_size (int): the input vector size
-            num_actions (int): number of actions
+            action_spec (BounedTensorSpec): a tensor spec containing the information
+                of the output distribution.
         """
         super(CategoricalProjectionNetwork, self).__init__()
 
+        unique_num_actions = np.unique(action_spec.maximum -
+                                       action_spec.minimum + 1)
+        if len(unique_num_actions) > 1 or np.any(unique_num_actions <= 0):
+            raise ValueError(
+                'Bounds on discrete actions must be the same for all '
+                'dimensions and have at least 1 action. Projection '
+                'Network requires num_actions to be equal across '
+                'action dimensions. Implement a more general '
+                'categorical projection if you need more flexibility.')
+
+        output_shape = action_spec.shape + (int(unique_num_actions), )
+        self._output_shape = output_shape
+
         self._projection_layer = layers.FC(
             input_size,
-            num_actions,
+            np.prod(output_shape),
             kernel_init_gain=logits_init_output_factor)
 
     def forward(self, inputs):
         logits = self._projection_layer(inputs)
-        return torch.distributions.Categorical(logits=logits)
+        logits = logits.reshape(inputs.shape[0], *self._output_shape)
+        return td.Independent(
+            td.Categorical(logits=logits),
+            reinterpreted_batch_ndims=len(self._output_shape) - 1)
 
 
 @gin.configurable
