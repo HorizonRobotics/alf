@@ -21,7 +21,7 @@ import torch
 
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks import ActorDistributionNetwork
-from alf.networks import ActorRNNDistributionNetwork
+from alf.networks import ActorDistributionRNNNetwork
 from alf.networks import NormalProjectionNetwork
 
 
@@ -29,7 +29,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, unittest.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             network_ctor = functools.partial(
-                ActorRNNDistributionNetwork,
+                ActorDistributionRNNNetwork,
                 lstm_hidden_size=lstm_hidden_size,
                 actor_fc_layer_params=[64, 32])
             if isinstance(lstm_hidden_size, int):

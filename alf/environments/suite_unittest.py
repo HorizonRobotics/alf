@@ -14,19 +14,18 @@
 """Environments for unittest."""
 
 from abc import abstractmethod
-import numpy as np
-
-import tensorflow as tf
-from tf_agents.environments.py_environment import PyEnvironment
-from tf_agents.specs.tensor_spec import TensorSpec, BoundedTensorSpec
-from tf_agents.trajectories.time_step import TimeStep, StepType
-
 from enum import Enum
+import numpy as np
+import torch
+
+import alf
+from alf.data_structures import StepType, TimeStep
+from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
 ActionType = Enum('ActionType', ('Discrete', 'Continuous'))
 
 
-class UnittestEnv(PyEnvironment):
+class UnittestEnv(object):
     """Abstract base for unittest environment.
 
     Every episode ends in `episode_length` steps (including LAST step).
@@ -54,13 +53,13 @@ class UnittestEnv(PyEnvironment):
         self._action_type = action_type
         if action_type == ActionType.Discrete:
             self._action_spec = BoundedTensorSpec(
-                shape=(1, ), dtype=tf.int64, minimum=0, maximum=1)
+                shape=(1, ), dtype=torch.int64, minimum=0, maximum=1)
         else:
             self._action_spec = BoundedTensorSpec(
-                shape=(1, ), dtype=tf.float32, minimum=[0], maximum=[1])
+                shape=(1, ), dtype=torch.float32, minimum=[0], maximum=[1])
 
         self._observation_spec = TensorSpec(
-            shape=(obs_dim, ), dtype=tf.float32)
+            shape=(obs_dim, ), dtype=torch.float32)
         self._batch_size = batch_size
         self.reset()
 
@@ -78,15 +77,24 @@ class UnittestEnv(PyEnvironment):
     def observation_spec(self):
         return self._observation_spec
 
-    def _reset(self):
+    def reset(self):
         self._steps = 0
-        self._current_time_step = self._gen_time_step(0, None)
+        time_step = self._gen_time_step(0, None)
+        self._current_time_step = time_step._replace(
+            prev_action=self._action_spec.zeros([self.batch_size]),
+            env_id=torch.arange(self.batch_size, dtype=torch.int32))
         return self._current_time_step
 
-    def _step(self, action):
+    def step(self, action):
         self._steps += 1
-        self._current_time_step = self._gen_time_step(
-            self._steps % self._episode_length, action)
+        time_step = self._gen_time_step(self._steps % self._episode_length,
+                                        action)
+        self._current_time_step = time_step._replace(
+            prev_action=action,
+            env_id=torch.arange(self.batch_size, dtype=torch.int32))
+        return self._current_time_step
+
+    def current_time_step(self):
         return self._current_time_step
 
     @abstractmethod
@@ -123,10 +131,14 @@ class ValueUnittestEnv(UnittestEnv):
             discount = 0.0
 
         return TimeStep(
-            step_type=tf.constant([step_type] * self.batch_size),
-            reward=tf.constant([1.] * self.batch_size),
-            discount=tf.constant([discount] * self.batch_size),
-            observation=tf.constant([[1.]] * self.batch_size))
+            step_type=torch.full([self.batch_size],
+                                 step_type,
+                                 dtype=torch.int32),
+            reward=torch.ones(self.batch_size),
+            discount=torch.full([
+                self.batch_size,
+            ], discount),
+            observation=torch.ones(self.batch_size))
 
 
 class PolicyUnittestEnv(UnittestEnv):
@@ -146,20 +158,21 @@ class PolicyUnittestEnv(UnittestEnv):
             discount = 0.0
 
         if s == 0:
-            reward = tf.constant([0.] * self.batch_size)
+            reward = torch.zeros(self.batch_size)
         else:
             prev_observation = self._current_time_step.observation
-            reward = 1.0 - tf.abs(prev_observation -
-                                  tf.cast(action, tf.float32))
-            reward = tf.reshape(reward, shape=(self.batch_size, ))
+            reward = 1.0 - torch.abs(prev_observation - action)
+            reward = reward.reshape(self.batch_size)
 
-        observation = tf.constant(
-            np.random.randint(2, size=(self.batch_size, 1)), dtype=tf.float32)
+        observation = torch.randint(
+            0, 2, size=(self.batch_size, 1), dtype=torch.float32)
 
         return TimeStep(
-            step_type=tf.constant([step_type] * self.batch_size),
+            step_type=torch.full([self.batch_size],
+                                 step_type,
+                                 dtype=torch.int32),
             reward=reward,
-            discount=tf.constant([discount] * self.batch_size),
+            discount=torch.full([self.batch_size], discount),
             observation=observation)
 
 
@@ -190,36 +203,35 @@ class RNNPolicyUnittestEnv(UnittestEnv):
         obs_dim = self._obs_dim
 
         if s == 0:
-            self._observation0 = tf.constant(
-                2 * np.random.randint(2, size=(self.batch_size, 1)) - 1,
-                dtype=tf.float32)
+            self._observation0 = 2. * torch.randint(
+                0, 2, size=(self.batch_size, 1)) - 1.
             if obs_dim > 1:
-                self._observation0 = tf.concat([
+                self._observation0 = torch.cat([
                     self._observation0,
-                    tf.ones((self.batch_size, obs_dim - 1))
+                    torch.ones(self.batch_size, obs_dim - 1)
                 ],
-                                               axis=-1)
+                                               dim=-1)
             step_type = StepType.FIRST
         elif s == self._episode_length - 1:
             step_type = StepType.LAST
             discount = 0.0
 
         if s <= self._gap:
-            reward = tf.constant([0.] * self.batch_size)
+            reward = torch.zeros(self.batch_size)
         else:
-            obs0 = tf.reshape(
-                self._observation0[:, 0], shape=(self.batch_size, 1))
-            reward = 1.0 - 0.5 * tf.abs(
-                tf.cast(action, tf.float32) * 2 - 1 - obs0)
-            reward = tf.reshape(reward, shape=(self.batch_size, ))
+            obs0 = self._observation0[:, 0].reshape(self.batch_size, 1)
+            reward = 1.0 - 0.5 * torch.abs(2 * action - 1 - obs0)
+            reward = reward.reshape(self.batch_size)
 
         if s == 0:
             observation = self._observation0
         else:
-            observation = tf.zeros((self.batch_size, obs_dim))
+            observation = torch.zeros(self.batch_size, obs_dim)
 
         return TimeStep(
-            step_type=tf.constant([step_type] * self.batch_size),
+            step_type=torch.full([self.batch_size],
+                                 step_type,
+                                 dtype=torch.int32),
             reward=reward,
-            discount=tf.constant([discount] * self.batch_size),
+            discount=torch.full([self.batch_size], discount),
             observation=observation)

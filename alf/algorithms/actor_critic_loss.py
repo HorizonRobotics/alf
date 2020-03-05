@@ -17,6 +17,7 @@ from collections import namedtuple
 import gin
 import torch
 import torch.nn as nn
+
 import alf
 from alf.data_structures import TrainingInfo, LossInfo
 from alf.utils.losses import element_wise_squared_loss
@@ -30,8 +31,7 @@ def _normalize_advantages(advantages, variance_epsilon=1e-8):
     # advantages is of shape [rollout_steps, num_envs]
     # this function normalizes over all elements in the input advantages
     adv_mean = advantages.mean()
-    adv_var = torch.var(
-        advantages.view(-1, 1), dim=0, unbiased=False, keepdim=True)
+    adv_var = torch.var(advantages, unbiased=False)
     normalized_advantages = (
         (advantages - adv_mean) / (torch.sqrt(adv_var) + variance_epsilon))
     return normalized_advantages
@@ -113,14 +113,14 @@ class ActorCriticLoss(nn.Module):
             training_info, value)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
-            alf.summary.scalar(self._name + '/values', value.mean())
-            alf.summary.scalar(self._name + "/returns", returns.mean())
-            alf.summary.scalar(self._name + "/advantages/mean",
-                               advantages.mean())
-            alf.summary.histogram(self._name + "/advantages/value", advantages)
-            alf.summary.scalar(
-                self._name + "/explained_variance_of_return_by_value",
-                tensor_utils.explained_variance(value, returns))
+            with alf.summary.scope(self._name):
+                alf.summary.scalar("values", value.mean())
+                alf.summary.scalar("returns", returns.mean())
+                alf.summary.scalar("advantages/mean", advantages.mean())
+                alf.summary.histogram("advantages/value", advantages)
+                alf.summary.scalar(
+                    "explained_variance_of_return_by_value",
+                    tensor_utils.explained_variance(value, returns))
 
         if self._normalize_advantages:
             advantages = _normalize_advantages(advantages)

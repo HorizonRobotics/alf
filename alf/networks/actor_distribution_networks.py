@@ -62,8 +62,7 @@ class ActorDistributionNetwork(nn.Module):
                 assert isinstance(action_spec, BoundedTensorSpec), \
                     "The action spec of discrete actions must be bounded!"
                 self._projection_net = discrete_projection_net_ctor(
-                    input_size=input_size,
-                    num_actions=action_spec.maximum - action_spec.minimum + 1)
+                    input_size=input_size, action_spec=action_spec)
             else:
                 self._projection_net = continuous_projection_net_ctor(
                     input_size=input_size, action_spec=action_spec)
@@ -91,7 +90,7 @@ class ActorDistributionNetwork(nn.Module):
 
 
 @gin.configurable
-class ActorRNNDistributionNetwork(ActorDistributionNetwork):
+class ActorDistributionRNNNetwork(ActorDistributionNetwork):
     """Outputs temporally uncorrelated actions."""
 
     def __init__(self,
@@ -127,7 +126,7 @@ class ActorRNNDistributionNetwork(ActorDistributionNetwork):
                 generates a continuous projection network that outputs
                 continuous actions.
         """
-        super(ActorRNNDistributionNetwork, self).__init__(
+        super(ActorDistributionRNNNetwork, self).__init__(
             input_tensor_spec, action_spec, conv_layer_params, fc_layer_params,
             activation, discrete_projection_net_ctor,
             continuous_projection_net_ctor)

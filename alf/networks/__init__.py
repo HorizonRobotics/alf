@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from .actor_distribution_networks import *
+from .critic_networks import *
 from .encoding_networks import *
 from .projection_networks import *
+from .q_networks import *
 from .value_networks import *
