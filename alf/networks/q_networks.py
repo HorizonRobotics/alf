@@ -25,7 +25,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 @gin.configurable
 class QNetwork(nn.Module):
-    """Create a q-network."""
+    """Create an instance of QNetwork."""
 
     def __init__(self,
                  input_tensor_spec: TensorSpec,
@@ -33,7 +33,11 @@ class QNetwork(nn.Module):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu):
-        """Creates a q-network.
+        """Creates an instance of `QNetwork` for estimating action-value of
+        discrete actions. The action-value is defined as the expected return
+        starting from the given input observation and taking the given action.
+        It takes observation as input and outputs an action-value tensor with
+        the shape of [batch_size, num_of_actions].
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
@@ -60,18 +64,18 @@ class QNetwork(nn.Module):
             last_activation=layers.identity)
 
     def forward(self, observation, state=()):
-        """Computes a value given an observation.
+        """Computes action values given an observation.
 
         Args:
             observation (torch.Tensor): consistent with `input_tensor_spec`
-            state: empty for API consistent with ValueRNNNetwork
+            state: empty for API consistent with QRNNNetwork
 
         Returns:
-            q_value (torch.Tensor): a tensor of the size (num_actions,)
+            action_value (torch.Tensor): a tensor of the size [batch_size, num_actions]
             state: empty
         """
-        value = self._encoding_net(observation)
-        return torch.squeeze(value, -1), state
+        action_value = self._encoding_net(observation)
+        return action_value, state
 
     @property
     def state_spec(self):
@@ -90,8 +94,11 @@ class QRNNNetwork(nn.Module):
                  lstm_hidden_size=100,
                  post_rnn_fc_layer_params=None,
                  activation=torch.relu):
-        """Creates an instance of `QRNNNetwork`.
-
+        """Creates an instance of `QRNNNetwork` for estimating action-value of
+        discrete actions. The action-value is defined as the expected return
+        starting from the given inputs (observation and state) and taking the
+        given action. It takes observation and state as input and outputs an
+        action-value tensor with the shape of [batch_size, num_of_actions].
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
@@ -124,19 +131,19 @@ class QRNNNetwork(nn.Module):
             last_activation=layers.identity)
 
     def forward(self, observation, state):
-        """Computes a value given an observation.
+        """Computes action values given an observation.
 
         Args:
             observation (torch.Tensor): consistent with `input_tensor_spec`
             state (nest[tuple]): a nest structure of state tuples (h, c)
 
         Returns:
-            value (torch.Tensor): a 1D tensor
+            action_value (torch.Tensor): a tensor of the size [batch_size, num_actions]
             new_state (nest[tuple]): the updated states
         """
         encoding = self._encoding_net(observation)
-        q_value, state = self._lstm_encoding_net(encoding, state)
-        return torch.squeeze(q_value, -1), state
+        action_value, state = self._lstm_encoding_net(encoding, state)
+        return action_value, state
 
     @property
     def state_spec(self):
