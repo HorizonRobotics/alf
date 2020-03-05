@@ -207,11 +207,9 @@ class Trainer(object):
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()))
 
-        recovered_step = checkpointer.load()
-        if recovered_step == -1:
-            alf.summary.reset_global_counter()
-        else:
-            alf.summary.get_global_counter().fill_(int(recovered_step))
+        recovered_global_step = checkpointer.load()
+        if recovered_global_step != -1:
+            alf.summary.get_global_counter().fill_(int(recovered_global_step))
 
         self._checkpointer = checkpointer
 
