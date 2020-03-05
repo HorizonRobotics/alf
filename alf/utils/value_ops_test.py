@@ -491,12 +491,7 @@ class VTraceTest(tf.test.TestCase):
             step_types,
             discounts,
             time_major=False)
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
-        self.assertAllClose(
-            sa_adv, advantages, msg='advantages differ from scalable_agent')
-        self.assertAllClose(
-            sa_returns, returns, msg='returns differ from scalable_agent')
+
         expected_advantages = value_ops.generalized_advantage_estimation(
             rewards=rewards,
             values=values,
@@ -546,13 +541,6 @@ class VTraceTest(tf.test.TestCase):
             discounts,
             time_major=False)
 
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
-        self.assertAllClose(
-            sa_adv, advantages, msg='advantages differ from scalable_agent')
-        self.assertAllClose(
-            sa_returns, returns, msg='returns differ from scalable_agent')
-
         td3 = (3. + 2. * d - 2.) * r
         expected_returns = tf.constant(
             [[td3 + d * r * (3. - 2.) * r, r, 0, td3, 0]], tf.float32) + values
@@ -579,13 +567,6 @@ class VTraceTest(tf.test.TestCase):
             step_types,
             discounts,
             time_major=False)
-
-        sa_returns, sa_adv = vtrace_scalable_agent(importance_ratio_clipped,
-                                                   discounts, rewards, values)
-        self.assertAllClose(
-            sa_adv, advantages, msg='advantages differ from scalable_agent')
-        self.assertAllClose(
-            sa_returns, returns, msg='returns differ from scalable_agent')
 
         td3 = (3. + 4. * d - 3) * r
         td1 = 2 * r
