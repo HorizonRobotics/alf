@@ -302,6 +302,8 @@ class EncodingNetwork(nn.Module):
             fc_layer_params = []
         else:
             assert isinstance(fc_layer_params, (tuple, list))
+        if isinstance(fc_layer_params, tuple):
+            fc_layer_params = list(fc_layer_params)
         if last_layer_size is not None:
             fc_layer_params.append(last_layer_size)
         for i, size in enumerate(fc_layer_params):

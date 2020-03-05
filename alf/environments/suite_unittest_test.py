@@ -13,23 +13,19 @@
 # limitations under the License.
 
 from absl import logging
-import numpy as np
-
 from absl.testing import parameterized
-import tensorflow as tf
+import numpy as np
+import torch
 
+import alf
+from alf.data_structures import TimeStep, StepType
 from alf.environments.suite_unittest import ActionType
 from alf.environments.suite_unittest import ValueUnittestEnv
 from alf.environments.suite_unittest import PolicyUnittestEnv
 from alf.environments.suite_unittest import RNNPolicyUnittestEnv
-from tf_agents.trajectories.time_step import TimeStep, StepType
 
 
-class SuiteUnittestEnvTest(parameterized.TestCase, tf.test.TestCase):
-    def assertArrayEqual(self, x, y):
-        self.assertEqual(x.shape, y.shape)
-        self.assertEqual(float(tf.reduce_max(abs(x - y))), 0.)
-
+class SuiteUnittestEnvTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(ActionType.Discrete, ActionType.Continuous)
     def test_value_unittest_env(self, action_type):
         batch_size = 1
@@ -51,17 +47,13 @@ class SuiteUnittestEnvTest(parameterized.TestCase, tf.test.TestCase):
                     step_type = StepType.MID
                     discount = 1.0
 
-                self.assertArrayEqual(time_step.step_type,
-                                      tf.constant([step_type] * batch_size))
-                self.assertArrayEqual(time_step.reward,
-                                      tf.constant([1.0] * batch_size))
-                self.assertArrayEqual(time_step.discount,
-                                      tf.constant([discount] * batch_size))
+                self.assertEqual(time_step.step_type,
+                                 torch.full([batch_size], step_type))
+                self.assertEqual(time_step.reward, torch.ones(batch_size))
+                self.assertEqual(time_step.discount,
+                                 torch.full([batch_size], discount))
 
-                action = tf.random.uniform((batch_size, 1),
-                                           minval=0,
-                                           maxval=2,
-                                           dtype=tf.int64)
+                action = torch.randint(0, 2, (batch_size, 1))
                 time_step = env.step(action)
 
     @parameterized.parameters(ActionType.Discrete, ActionType.Continuous)
@@ -86,23 +78,19 @@ class SuiteUnittestEnvTest(parameterized.TestCase, tf.test.TestCase):
                     discount = 1.0
 
                 if s == 0:
-                    reward = tf.constant([0.] * batch_size)
+                    reward = torch.zeros(batch_size)
                 else:
-                    reward = tf.cast(
-                        tf.equal(action, tf.cast(prev_observation, tf.int64)),
-                        tf.float32)
-                    reward = tf.reshape(reward, shape=(batch_size, ))
+                    reward = (action == prev_observation.to(torch.int64)).to(
+                        torch.float32)
+                    reward = reward.reshape(batch_size)
 
-                self.assertArrayEqual(time_step.step_type,
-                                      tf.constant([step_type] * batch_size))
-                self.assertArrayEqual(time_step.reward, reward)
-                self.assertArrayEqual(time_step.discount,
-                                      tf.constant([discount] * batch_size))
+                self.assertEqual(time_step.step_type,
+                                 torch.full([batch_size], step_type))
+                self.assertEqual(time_step.reward, reward)
+                self.assertEqual(time_step.discount,
+                                 torch.full([batch_size], discount))
 
-                action = tf.random.uniform((batch_size, 1),
-                                           minval=0,
-                                           maxval=2,
-                                           dtype=tf.int64)
+                action = torch.randint(0, 2, (batch_size, 1))
                 prev_observation = time_step.observation
 
                 time_step = env.step(action)
@@ -130,27 +118,21 @@ class SuiteUnittestEnvTest(parameterized.TestCase, tf.test.TestCase):
                     discount = 1.0
 
                 if s <= gap:
-                    reward = tf.zeros((batch_size, ), dtype=tf.float32)
+                    reward = torch.zeros(batch_size)
                 else:
-                    reward = tf.cast(
-                        tf.equal(action * 2 - 1, tf.cast(
-                            observation0, tf.int64)), tf.float32)
-                    reward = tf.reshape(reward, shape=(batch_size, ))
+                    reward = (2 * action - 1 == observation0.to(
+                        torch.int64)).to(torch.float32)
+                    reward = reward.reshape(batch_size)
 
-                self.assertArrayEqual(time_step.step_type,
-                                      tf.constant([step_type] * batch_size))
-                self.assertArrayEqual(time_step.reward, reward)
-                self.assertArrayEqual(time_step.discount,
-                                      tf.constant([discount] * batch_size))
+                self.assertEqual(time_step.step_type,
+                                 torch.full([batch_size], step_type))
+                self.assertEqual(time_step.reward, reward)
+                self.assertEqual(time_step.discount,
+                                 torch.full([batch_size], discount))
 
-                action = tf.random.uniform((batch_size, 1),
-                                           minval=0,
-                                           maxval=2,
-                                           dtype=tf.int64)
+                action = torch.randint(0, 2, (batch_size, 1))
                 time_step = env.step(action)
 
 
 if __name__ == '__main__':
-    from alf.utils.common import set_per_process_memory_growth
-    set_per_process_memory_growth()
-    tf.test.main()
+    alf.test.main()
