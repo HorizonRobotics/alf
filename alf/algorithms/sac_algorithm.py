@@ -296,7 +296,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _alpha_train_step(self, log_pi):
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
-        info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))
+        info = SacAlphaInfo(
+            loss=LossInfo(loss=alpha_loss, extra=alpha_loss.mean()))
         return info
 
     def train_step(self, exp: Experience, state: SacState):
@@ -360,7 +361,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_value=target_critic)
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
-        return LossInfo(loss=critic_loss, extra=critic_loss)
+        return LossInfo(loss=critic_loss, extra=critic_loss.mean())
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_network1', '_target_critic_network2']

@@ -50,7 +50,7 @@ TrainerConfig.algorithm_ctor=@SacAlgorithm
 TrainerConfig.num_iterations=10000
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=False
-TrainerConfig.debug_summaries=False
+TrainerConfig.debug_summaries=True
 TrainerConfig.summary_interval=100
 
 ReplayBuffer.max_length=100000
