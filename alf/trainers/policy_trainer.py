@@ -206,8 +206,13 @@ class Trainer(object):
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()))
-        global_step = checkpointer.load() + 1
-        alf.summary.get_global_counter().fill_(int(global_step))
+
+        recovered_step = checkpointer.load()
+        if recovered_step == -1:
+            alf.summary.reset_global_counter()
+        else:
+            alf.summary.get_global_counter().fill_(int(recovered_step))
+
         self._checkpointer = checkpointer
 
     def _save_checkpoint(self):
