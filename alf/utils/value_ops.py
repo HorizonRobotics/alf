@@ -13,11 +13,14 @@
 # limitations under the License.
 """Various functions related to calculating values."""
 import torch
+
+import alf
 from alf.data_structures import StepType
+from alf.utils import dist_utils
 
 
 def action_importance_ratio(action_distribution, collect_action_distribution,
-                            action, action_spec, clipping_mode, scope,
+                            action, clipping_mode, scope,
                             importance_ratio_clipping, log_prob_clipping,
                             check_numerics, debug_summaries):
     """ ratio for importance sampling, used in PPO loss and vtrace loss.
@@ -32,7 +35,6 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
                 the rollout.
             action (nested tf.distribution): possibly batched action tuple
                 taken during rollout.
-            action_spec (nested BoundedTensorSpec): representing the actions.
             clipping_mode (str): mode for clipping the importance ratio.
                 'double_sided': clips the range of importance ratio into
                     [1-importance_ratio_clipping, 1+importance_ratio_clipping],
@@ -57,56 +59,48 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
     """
     current_policy_distribution = action_distribution
 
-    sample_action_log_probs = tfa_common.log_probability(
-        collect_action_distribution, action, action_spec)
-    sample_action_log_probs = tf.stop_gradient(sample_action_log_probs)
+    sample_action_log_probs = dist_utils.compute_log_probability(
+        collect_action_distribution, action)
+    sample_action_log_probs = sample_action_log_probs.detach()
 
-    action_log_prob = tfa_common.log_probability(current_policy_distribution,
-                                                 action, action_spec)
+    action_log_prob = dist_utils.compute_log_probability(
+        current_policy_distribution, action)
     if log_prob_clipping > 0.0:
-        action_log_prob = tf.clip_by_value(action_log_prob, -log_prob_clipping,
-                                           log_prob_clipping)
+        action_log_prob = action_log_prob.clamp(-log_prob_clipping,
+                                                log_prob_clipping)
     if check_numerics:
-        action_log_prob = tf.debugging.check_numerics(action_log_prob,
-                                                      'action_log_prob')
+        assert torch.all(torch.isfinite(action_log_prob))
 
     # Prepare both clipped and unclipped importance ratios.
-    importance_ratio = tf.exp(action_log_prob - sample_action_log_probs)
+    importance_ratio = (action_log_prob - sample_action_log_probs).exp()
     if check_numerics:
-        importance_ratio = tf.debugging.check_numerics(importance_ratio,
-                                                       'importance_ratio')
+        assert torch.all(torch.isfinite(importance_ratio))
 
     if clipping_mode == 'double_sided':
-        importance_ratio_clipped = tf.clip_by_value(
-            importance_ratio, 1 - importance_ratio_clipping,
-            1 + importance_ratio_clipping)
+        importance_ratio_clipped = importance_ratio.clamp(
+            1 - importance_ratio_clipping, 1 + importance_ratio_clipping)
     elif clipping_mode == 'capping':
-        importance_ratio_clipped = tf.minimum(importance_ratio,
-                                              1 + importance_ratio_clipping)
+        importance_ratio_clipped = torch.min(
+            importance_ratio, torch.tensor(1 + importance_ratio_clipping))
     else:
         raise Exception('Unsupported clipping mode: ' + clipping_mode)
 
-    def _summary():
+    if debug_summaries and alf.summary.should_record_summaries():
         with scope:
             if importance_ratio_clipping > 0.0:
-                clip_fraction = tf.reduce_mean(
-                    input_tensor=tf.cast(
-                        tf.greater(
-                            tf.abs(importance_ratio - 1.0),
-                            importance_ratio_clipping), tf.float32))
-                tf.summary.scalar('clip_fraction', clip_fraction)
+                clip_fraction = (torch.abs(importance_ratio - 1.0) >
+                                 importance_ratio_clipping).to(
+                                     torch.float32).mean()
+                alf.summary.scalar('clip_fraction', clip_fraction)
 
-            tf.summary.histogram('action_log_prob', action_log_prob)
-            tf.summary.histogram('action_log_prob_sample',
-                                 sample_action_log_probs)
-            tf.summary.histogram('importance_ratio', importance_ratio)
-            tf.summary.scalar('importance_ratio_mean',
-                              tf.reduce_mean(input_tensor=importance_ratio))
-            tf.summary.histogram('importance_ratio_clipped',
-                                 importance_ratio_clipped)
-
-    if debug_summaries:
-        common.run_if(common.should_record_summaries(), _summary)
+            alf.summary.histogram('action_log_prob', action_log_prob)
+            alf.summary.histogram('action_log_prob_sample',
+                                  sample_action_log_probs)
+            alf.summary.histogram('importance_ratio', importance_ratio)
+            alf.summary.scalar('importance_ratio_mean',
+                               importance_ratio.mean())
+            alf.summary.histogram('importance_ratio_clipped',
+                                  importance_ratio_clipped)
 
     return importance_ratio, importance_ratio_clipped
 
