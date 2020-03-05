@@ -18,6 +18,8 @@ import gin
 import torch
 import torch.nn as nn
 
+from alf.networks.utils import BatchSquash
+from alf.nest.utils import get_outer_rank
 from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
 
@@ -26,6 +28,40 @@ def identity(x):
     """PyTorch doesn't have an identity activation. This can be used as a
     placeholder.
     """
+    return x
+
+
+def square(x):
+    """torch doesn't have square."""
+    return torch.pow(x, 2)
+
+
+def batch_normalization(x, mean, variance, variance_epsilon):
+    """A simplified version of batch normalization, wihtout scale and offset.
+    Normalizes a tensor by `mean` and `variance`, which are expected to have the
+    same tensor spec with the inner dims of `x`.
+
+    Args:
+        x (Tensor): a tensor of ([D1, D2, ..] + `shape`), where D1, D2, .. are
+            arbitrary leading batch dims (can be empty).
+        mean (Tensor): a tensor of `shape`
+        variance (Tensor): a tensor of `shape`
+        variance_epsilon (float): A small float number to avoid dividing by 0.
+    Returns:
+        Normalized tensor.
+    """
+    spec = TensorSpec.from_tensor(mean)
+    assert spec == TensorSpec.from_tensor(variance), \
+        "The specs of mean and variance must be equal!"
+
+    bs = BatchSquash(get_outer_rank(x, spec))
+    x = bs.flatten(x)
+
+    variance_epsilon = torch.as_tensor(variance_epsilon).to(variance.dtype)
+    inv = torch.rsqrt(variance + variance_epsilon)
+    x = (x - mean.to(x.dtype)) * inv.to(x.dtype)
+
+    x = bs.unflatten(x)
     return x
 
 

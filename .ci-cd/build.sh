@@ -69,6 +69,7 @@ function test() {
         alf.utils.checkpoint_utils_test \
         alf.utils.data_buffer_test \
         alf.utils.dist_utils_test \
+        alf.utils.normalizers_test \
         alf.utils.value_ops_test \
 
     cd ..
