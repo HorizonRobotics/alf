@@ -31,7 +31,7 @@ from alf.data_structures import AlgStep, TrainingInfo
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, dist_utils
+from alf.utils import losses, common, dist_utils, module_utils
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -209,6 +209,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _actor_train_step(self, exp: Experience, state: SacActorState,
                           action_distribution, action, log_pi):
 
+        module_utils.set_trainable_flag(
+            [self._critic_network1, self._critic_network2], False)
+
         if self._is_continuous:
             critic_input = (exp.observation, action)
 
@@ -241,7 +244,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor_loss = alpha.detach() * log_action_probs - target_q_value
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
-        info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
+        info = SacActorInfo(
+            loss=LossInfo(loss=actor_loss, extra=actor_loss.mean()))
+
+        module_utils.set_trainable_flag(
+            [self._critic_network1, self._critic_network2], True)
         return state, info
 
     def _critic_train_step(self, exp: Experience, state: SacCriticState,
@@ -280,7 +287,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         critic1 = critic1.squeeze(-1)
         critic2 = critic2.squeeze(-1)
-        target_critic = target_critic.squeeze(-1)
+        target_critic = target_critic.squeeze(-1).detach()
 
         state = SacCriticState(
             critic1=critic1_state,
@@ -317,8 +324,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             exp, state.actor, action_distribution, action, log_pi)
         critic_state, critic_info = self._critic_train_step(
             exp, state.critic, action, log_pi)
-
         alpha_info = self._alpha_train_step(log_pi)
+
         state = SacState(
             share=SacShareState(actor=share_actor_state),
             actor=actor_state,
