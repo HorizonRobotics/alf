@@ -64,6 +64,8 @@ class TracAlgorithmTest(alf.test.TestCase):
         logits = policy_step.info.action_distribution.log_prob(
             torch.arange(3).reshape(3, 1))
         print("logits: ", logits)
+        # action 1 gets the most reward. So its probability should be higher
+        # than other actions after training.
         self.assertTrue(torch.all(logits[1, :] > logits[0, :]))
         self.assertTrue(torch.all(logits[1, :] > logits[2, :]))
 

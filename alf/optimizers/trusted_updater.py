@@ -49,7 +49,7 @@ class TrustedUpdater(object):
         """Create a TrustedUpdater instance.
 
         Args:
-            varialbes (list[Parameter]): parameters to be monitored.
+            parameters (list[Parameter]): parameters to be monitored.
         """
         self._variables = parameters
         assert len(self._variables) > 0
