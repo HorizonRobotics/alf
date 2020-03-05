@@ -105,8 +105,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """User may override this for their own training procedure."""
         config: TrainerConfig = self._config
 
-        print("global counter")
-        print(alf.summary.get_global_counter())
         if (alf.summary.get_global_counter() == 0
                 and config.initial_collect_steps != 0):
             unroll_steps = config.unroll_length * self._env.batch_size
@@ -117,7 +115,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         if not config.update_counter_every_mini_batch:
             alf.summary.get_global_counter().add_(1)
-
         with record_time("time/unroll"):
             with torch.no_grad():
                 for _ in range(num_unrolls):
