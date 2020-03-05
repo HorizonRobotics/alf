@@ -19,7 +19,6 @@ import torch.nn as nn
 import alf
 from alf.utils import common
 from alf.nest import get_nest_batch_size
-from alf.networks.utils import BatchSquash
 from alf.tensor_specs import TensorSpec
 
 
