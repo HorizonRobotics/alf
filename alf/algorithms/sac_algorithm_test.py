@@ -24,10 +24,10 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.data_structures import StepType, TimeStep
-from alf.environments.suite_unittest import PolicyUnittestEnv
+from alf.environments.suite_unittest import PolicyUnittestEnv, ActionType
 from alf.networks import (ActorDistributionNetwork, CriticNetwork,
                           ValueNetwork, QNetwork)
-from alf.environments.suite_unittest import ActionType
+from alf.algorithms.ppo_algorithm_test import unroll
 from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
 
@@ -80,9 +80,9 @@ class SACAlgorithmTest(alf.test.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-3),
-            critic_optimizer=torch.optim.Adam(lr=1e-3),
-            alpha_optimizer=torch.optim.Adam(lr=1e-3),
+            actor_optimizer=torch.optim.Adam(lr=1e-4),
+            critic_optimizer=torch.optim.Adam(lr=1e-4),
+            alpha_optimizer=torch.optim.Adam(lr=1e-4),
             debug_summaries=False,
             name="MySAC")
 
@@ -138,14 +138,14 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-2),
-            critic_optimizer=torch.optim.Adam(lr=1e-2),
-            alpha_optimizer=torch.optim.Adam(lr=1e-2),
+            actor_optimizer=torch.optim.Adam(lr=1e-4),
+            critic_optimizer=torch.optim.Adam(lr=1e-4),
+            alpha_optimizer=torch.optim.Adam(lr=1e-4),
             debug_summaries=False,
             name="MySAC")
 
         eval_env.reset()
-        for i in range(20):
+        for i in range(100):
             alg2.train_iter()
 
         eval_env.reset()
@@ -156,22 +156,5 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
 
-def unroll(env, algorithm, steps):
-    time_step = common.get_initial_time_step(env)
-    policy_state = algorithm.get_initial_predict_state(env.batch_size)
-    for _ in range(steps):
-        policy_state = common.reset_state_if_necessary(
-            policy_state, algorithm.get_initial_predict_state(env.batch_size),
-            time_step.is_first())
-        transformed_time_step = algorithm.transform_timestep(time_step)
-        policy_step = algorithm.predict_step(
-            transformed_time_step, policy_state, epsilon_greedy=1.0)
-        time_step = env.step(policy_step.output)
-        policy_state = policy_step.state
-    return time_step
-
-
 if __name__ == '__main__':
-    #SACAlgorithmTest().test_sac_algorithm()
-    #SACAlgorithmTest().test_sac_algorithm_discrete()
     unittest.main()
