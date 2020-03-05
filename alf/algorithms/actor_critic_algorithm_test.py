@@ -32,7 +32,7 @@ class ActorCriticAlgorithmWithGlobalCounterTest(unittest.TestCase):
         env = MyEnv(batch_size=3)
 
         obs_spec = alf.TensorSpec((2, ), dtype='float32')
-        action_spec = env.action_spec
+        action_spec = env.action_spec()
 
         fc_layer_params = [10, 8, 6]
 
