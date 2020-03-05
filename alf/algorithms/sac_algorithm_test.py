@@ -97,6 +97,8 @@ class SACAlgorithmTest(alf.test.TestCase):
         self.assertAlmostEqual(
             1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
+
+class SACAlgorithmTestDiscrete(alf.test.TestCase):
     def test_sac_algorithm_discrete(self):
         num_env = 1
         config = TrainerConfig(
@@ -120,7 +122,6 @@ class SACAlgorithmTest(alf.test.TestCase):
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
-        print(action_spec)
 
         fc_layer_params = [100, 100]
 
@@ -130,7 +131,7 @@ class SACAlgorithmTest(alf.test.TestCase):
         critic_network = QNetwork(obs_spec, action_spec, \
             fc_layer_params=fc_layer_params)
 
-        alg = SacAlgorithm(
+        alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
             actor_network=actor_network,
@@ -145,15 +146,14 @@ class SACAlgorithmTest(alf.test.TestCase):
 
         eval_env.reset()
         for i in range(20):
-            print(i)
-            alg.train_iter()
+            alg2.train_iter()
 
         eval_env.reset()
-        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
+        eval_time_step = unroll(eval_env, alg2, steps_per_episode - 1)
         print(eval_time_step.reward.mean())
 
-        # self.assertAlmostEqual(
-        #     1.0, float(eval_time_step.reward.mean()), delta=1e-1)
+        self.assertAlmostEqual(
+            1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
 
 def unroll(env, algorithm, steps):
@@ -172,6 +172,6 @@ def unroll(env, algorithm, steps):
 
 
 if __name__ == '__main__':
-    SACAlgorithmTest().test_sac_algorithm()
+    #SACAlgorithmTest().test_sac_algorithm()
     #SACAlgorithmTest().test_sac_algorithm_discrete()
-    #unittest.main()
+    unittest.main()
