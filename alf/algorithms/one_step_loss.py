@@ -17,9 +17,10 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.data_structures import TrainingInfo, LossInfo
+from alf.data_structures import TrainingInfo, LossInfo, StepType
 from alf.utils import common, losses, value_ops
 from alf.utils import tensor_utils
+from alf.utils.summary_utils import safe_mean_hist_summary
 
 
 @gin.configurable
@@ -51,8 +52,17 @@ class OneStepTDLoss(nn.Module):
             discounts=training_info.discount * self._gamma)
         returns = tensor_utils.tensor_extend(returns, value[-1])
         if self._debug_summaries and alf.summary.should_record_summaries():
+            mask = training_info.step_type != StepType.LAST
             with alf.summary.scope(self._name):
-                alf.summary.scalar('values', value.mean())
-                alf.summary.scalar('returns', returns.mean())
+                alf.summary.scalar(
+                    "explained_variance_of_return_by_value",
+                    tensor_utils.explained_variance(value, returns, mask))
+                safe_mean_hist_summary('values', value, mask)
+                safe_mean_hist_summary('returns', returns, mask)
+                safe_mean_hist_summary("td_error", returns - value, mask)
         loss = self._td_error_loss_fn(returns.detach(), value)
         return LossInfo(loss=loss, extra=loss)
+
+    @property
+    def discount(self):
+        return self._gamma

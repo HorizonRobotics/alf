@@ -26,7 +26,7 @@ class DIAYNAlgorithmTest(alf.test.TestCase):
     def setUp(self):
         input_tensor_spec = TensorSpec((10, ))
         self._time_step = TimeStep(
-            step_type=StepType.MID,
+            step_type=torch.tensor(StepType.MID, dtype=torch.int32),
             reward=0,
             discount=1,
             observation=input_tensor_spec.zeros(outer_dims=(1, )),

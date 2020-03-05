@@ -16,6 +16,7 @@
 import torch
 import unittest
 import alf
+from alf.utils import common
 
 
 class TestCase(unittest.TestCase):
@@ -24,6 +25,7 @@ class TestCase(unittest.TestCase):
         self.addTypeEqualityFunc(torch.Tensor, 'assertTensorEqual')
 
     def setUp(self):
+        common.set_random_seed(1)
         alf.summary.reset_global_counter()
 
     def assertTensorEqual(self, t1, t2, msg=None):

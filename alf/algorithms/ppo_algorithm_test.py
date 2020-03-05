@@ -61,7 +61,8 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         root_dir="dummy",
         unroll_length=13,
         num_updates_per_train_step=4,
-        mini_batch_size=25)
+        mini_batch_size=25,
+        summarize_grads_and_vars=DEBUGGING)
 
     return PPOAlgorithm(
         observation_spec=observation_spec,
@@ -87,7 +88,6 @@ class PpoTest(alf.test.TestCase):
         eval_env = env_class(batch_size, steps_per_episode)
 
         algorithm = create_algorithm(env, learning_rate=learning_rate)
-        algorithm.set_summary_settings(summarize_grads_and_vars=DEBUGGING)
 
         env.reset()
         eval_env.reset()

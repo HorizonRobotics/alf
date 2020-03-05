@@ -48,6 +48,8 @@ function test() {
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
+        alf.algorithms.sarsa_algorithm_test \
+        alf.algorithms.sac_algorithm_test \
         alf.algorithms.trac_algorithm_test \
         alf.data_structures_test \
         alf.device_ctx_test \

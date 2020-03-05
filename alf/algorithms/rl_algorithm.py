@@ -139,8 +139,6 @@ class RLAlgorithm(Algorithm):
         self._observation_transformers = observation_transformers
         self._proc = psutil.Process(os.getpid())
         self._debug_summaries = debug_summaries
-        self._summarize_grads_and_vars = summarize_grads_and_vars
-        self._summarize_action_distributions = summarize_action_distributions
         self._use_rollout_state = False
 
         self._rollout_info_spec = None
@@ -271,13 +269,6 @@ class RLAlgorithm(Algorithm):
             list[StepMetric]
         """
         return self._metrics
-
-    def set_summary_settings(self,
-                             summarize_grads_and_vars=False,
-                             summarize_action_distributions=False):
-        """Set summary flags."""
-        self._summarize_grads_and_vars = summarize_grads_and_vars
-        self._summarize_action_distributions = summarize_action_distributions
 
     def summarize_reward(self, name, rewards):
         if self._debug_summaries:
@@ -555,15 +546,14 @@ class RLAlgorithm(Algorithm):
                 self._rollout_info_spec = dist_utils.extract_spec(
                     policy_step.info)
 
+            action = common.detach(policy_step.output)
+
             t0 = time.time()
-            next_time_step = self._env.step(policy_step.output)
+            next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
             exp = make_experience(time_step, policy_step, policy_state)
             self.observe(exp)
-
-            action = alf.nest.map_structure(lambda t: t.detach(),
-                                            policy_step.output)
 
             training_info = TrainingInfo(
                 action=action,
@@ -585,7 +575,10 @@ class RLAlgorithm(Algorithm):
                 training_info.rollout_info, self._rollout_info_spec))
 
         self._current_time_step = time_step
-        self._current_policy_state = policy_state
+        # Need to detach so that the graph from this unroll is disconnected from
+        # the next unroll. Otherwise backward() will report error for on-policy
+        # training after the next unroll.
+        self._current_policy_state = common.detach(policy_state)
 
         return training_info
 

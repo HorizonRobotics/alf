@@ -96,11 +96,6 @@ class Trainer(object):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
-        self._algorithm.set_summary_settings(
-            summarize_grads_and_vars=self._summarize_grads_and_vars,
-            summarize_action_distributions=self._config.
-            summarize_action_distributions)
-        self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
@@ -148,6 +143,9 @@ class Trainer(object):
     def _train(self):
         for env in self._envs:
             env.reset()
+        if self._eval_env:
+            self._eval_env.reset()
+
         iter_num = 0
 
         checkpoint_interval = math.ceil(
@@ -174,18 +172,21 @@ class Trainer(object):
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
 
-                def _markdownify(paragraph):
-                    return "    ".join(
-                        (os.linesep + paragraph).splitlines(keepends=True))
+                with alf.summary.record_if(lambda: True):
 
-                common.summarize_gin_config()
-                alf.summary.text('commandline', ' '.join(sys.argv))
-                alf.summary.text(
-                    'optimizers',
-                    _markdownify(self._algorithm.get_optimizer_info()))
-                alf.summary.text('revision', git_utils.get_revision())
-                alf.summary.text('diff', _markdownify(git_utils.get_diff()))
-                alf.summary.text('seed', str(self._random_seed))
+                    def _markdownify(paragraph):
+                        return "    ".join(
+                            (os.linesep + paragraph).splitlines(keepends=True))
+
+                    common.summarize_gin_config()
+                    alf.summary.text('commandline', ' '.join(sys.argv))
+                    alf.summary.text(
+                        'optimizers',
+                        _markdownify(self._algorithm.get_optimizer_info()))
+                    alf.summary.text('revision', git_utils.get_revision())
+                    alf.summary.text('diff',
+                                     _markdownify(git_utils.get_diff()))
+                    alf.summary.text('seed', str(self._random_seed))
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
@@ -237,7 +238,7 @@ class Trainer(object):
         step_metrics = self._algorithm.get_step_metrics()
         with alf.summary.push_summary_writer(self._eval_summary_writer):
             for metric in self._eval_metrics:
-                metric.gen_summary(
+                metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
                     step_metrics=step_metrics)
 

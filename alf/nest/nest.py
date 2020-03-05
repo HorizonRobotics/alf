@@ -223,6 +223,7 @@ def pack_sequence_as(nest, flat_seq):
             ret = type(nest)(**ret)
         return ret
 
+    flat_seq = list(flat_seq)
     return _pack(nest, flat_seq)
 
 

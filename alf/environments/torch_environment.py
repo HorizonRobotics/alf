@@ -88,7 +88,7 @@ class TorchEnvironment(object):
         """The batch size of the environment.
 
         Returns:
-            The batch size of the environment, or `None` if the environment is not
+            The batch size of the environment, or 1 if the environment is not
             batched.
 
         Raises:
@@ -99,7 +99,7 @@ class TorchEnvironment(object):
             raise RuntimeError(
                 'Environment %s marked itself as batched but did not override the '
                 'batch_size property' % type(self))
-        return None
+        return 1
 
     @abc.abstractmethod
     def observation_spec(self):

@@ -296,10 +296,10 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
         inputs, state = Network.forward(self, inputs, state)
         inv_stds = self._std_transform(self._std_projection_layer(inputs))
         if self._max_std is not None:
-            inv_stds += 1 / (self._max_std - self._min_std)
+            inv_stds = inv_stds + 1 / (self._max_std - self._min_std)
         stds = 1. / inv_stds
         if self._min_std > 0:
-            stds += self._min_std
+            stds = stds + self._min_std
 
         means = self._mean_transform(
             self._means_projection_layer(inputs) * stds)

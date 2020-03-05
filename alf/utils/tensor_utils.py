@@ -13,6 +13,7 @@
 # limitations under the License.
 """Collection of tensor utility functions."""
 
+import numpy as np
 import torch
 
 import alf
@@ -40,10 +41,34 @@ def tensor_extend_zero(x):
     Returns:
         the extended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
     """
-    return torch.cat((x, torch.zeros(x.shape[1:], dtype=x.dtype).unsqueeze(0)))
+    return torch.cat((x, torch.zeros(1, *x.shape[1:], dtype=x.dtype)))
 
 
-def explained_variance(ypred, y):
+def tensor_prepend(x, y):
+    """Prepending tensor with y.
+
+    y.shape should be same as tensor.shape[1:]
+    Args:
+        x (Tensor): tensor to be prepended
+        y (Tensor): the tensor which will be appended to `x`
+    Returns:
+        the prepended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+    """
+    return torch.cat([y.unsqueeze(0), x])
+
+
+def tensor_prepend_zero(x):
+    """Prepending tensor with zeros.
+
+    Args:
+        x (Tensor): tensor to be extended
+    Returns:
+        the prepended tensor. Its shape is (x.shape[0]+1, x.shape[1:])
+    """
+    return torch.cat((torch.zeros(1, *x.shape[1:], dtype=x.dtype), x))
+
+
+def explained_variance(ypred, y, valid_mask):
     """Computes fraction of variance that ypred explains about y.
 
     Adapted from baselines.ppo2 explained_variance()
@@ -56,20 +81,36 @@ def explained_variance(ypred, y):
     Args:
         ypred (Tensor): prediction for y
         y (Tensor): target
+        valid_mask (Tensor): an optional
     Returns:
         1 - Var[y-ypred] / Var[y]
     """
-    ypred = ypred.view(-1)
-    y = y.view(-1)
-    vary = torch.var(y, dim=0, unbiased=False)
-    return 1 - torch.var(y - ypred, dim=0, unbiased=False) / (vary + 1e-30)
+    if valid_mask is not None:
+        n = torch.max(valid_mask.sum().to(y.dtype),
+                      torch.tensor(1, dtype=y.dtype))
+    else:
+        n = np.prod(y.shape)
+
+    def _var(x):
+        if valid_mask is not None:
+            x = x * valid_mask
+        mean = x.sum() / n
+        x2 = (x - mean)**2
+        if valid_mask is not None:
+            x2 = x2 * valid_mask
+        var = x2.sum() / n
+        return var
+
+    vary = _var(y)
+    r = 1 - _var(y - ypred) / (vary + 1e-30)
+    return r
 
 
 def to_tensor(data, dtype=None):
     """Convert the data to a torch tensor.
 
-    Args: 
-        data (array like): data for the tensor. Can be a list, tuple, 
+    Args:
+        data (array like): data for the tensor. Can be a list, tuple,
             numpy ndarray, scalar, and other types.
         dtype (torch.dtype): dtype of the converted tensors.
 

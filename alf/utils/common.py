@@ -869,7 +869,7 @@ def set_random_seed(seed):
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None. 
+        The seed being used if `seed` is None.
     """
     if seed is None:
         seed = os.getpid() + int(time.time())
@@ -879,6 +879,8 @@ def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     return seed
 
 
@@ -890,3 +892,77 @@ def log_metrics(metrics, prefix=''):
     """
     log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
+
+
+class OUProcess(nn.Module):
+    """A zero-mean Ornstein-Uhlenbeck process."""
+
+    def __init__(self,
+                 initial_value,
+                 damping=0.15,
+                 stddev=0.2,
+                 seed=None,
+                 scope='ornstein_uhlenbeck_noise'):
+        """A Class for generating noise from a zero-mean Ornstein-Uhlenbeck process.
+
+        The Ornstein-Uhlenbeck process is a process that generates temporally
+        correlated noise via a random walk with damping. This process describes
+        the velocity of a particle undergoing brownian motion in the presence of
+        friction. This can be useful for exploration in continuous action
+        environments with momentum.
+
+        The temporal update equation is:
+        `x_next = (1 - damping) * x + N(0, std_dev)`
+
+        Args:
+            initial_value (Tensor): Initial value of the process.
+            damping (float): The rate at which the noise trajectory is damped towards the
+                mean. We must have 0 <= damping <= 1, where a value of 0 gives an
+                undamped random walk and a value of 1 gives uncorrelated Gaussian noise.
+                Hence in most applications a small non-zero value is appropriate.
+            stddev (float): Standard deviation of the Gaussian component.
+        """
+        super(OUProcess, self).__init__()
+        self._damping = damping
+        self._stddev = stddev
+        self.register_buffer("_x", initial_value.clone())
+
+    def __call__(self):
+        noise = torch.randn(self._x.shape) * self._stddev
+        return self._x.copy_((1. - self._damping) * self._x + noise)
+
+
+def create_ou_process(action_spec, ou_stddev, ou_damping):
+    """Create nested zero-mean Ornstein-Uhlenbeck processes.
+
+    The temporal update equation is:
+    `x_next = (1 - damping) * x + N(0, std_dev)`
+
+    Note: if action_spec is nested, the returned nested OUProcess will not bec
+    checkpointed.
+
+    Args:
+        action_spec (nested BountedTensorSpec): action spec
+        ou_damping (float): Damping rate in the above equation. We must have
+            0 <= damping <= 1.
+        ou_stddev (float): Standard deviation of the Gaussian component.
+    Returns:
+        nested OUProcess with the same structure as action_spec.
+    """
+
+    def _create_ou_process(action_spec):
+        return OUProcess(action_spec.zeros(), ou_damping, ou_stddev)
+
+    ou_process = alf.nest.map_structure(_create_ou_process, action_spec)
+    return ou_process
+
+
+def detach(nests):
+    """Detach nested Tensors.
+
+    Args:
+        nests (nested Tensor): tensors to be detached
+    Returns:
+        detached Tensors with same structure as nests
+    """
+    return nest.map_structure(lambda t: t.detach(), nests)

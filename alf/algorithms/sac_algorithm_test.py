@@ -43,7 +43,7 @@ class SACAlgorithmTest(alf.test.TestCase):
             initial_collect_steps=500,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
-            num_envs=num_env,
+            num_envs=1,
         )
         env_class = PolicyUnittestEnv
         steps_per_episode = 13
@@ -51,7 +51,7 @@ class SACAlgorithmTest(alf.test.TestCase):
             num_env, steps_per_episode, action_type=ActionType.Continuous)
 
         eval_env = env_class(
-            num_env, steps_per_episode, action_type=ActionType.Continuous)
+            100, steps_per_episode, action_type=ActionType.Continuous)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -70,8 +70,8 @@ class SACAlgorithmTest(alf.test.TestCase):
             fc_layer_params=fc_layer_params,
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
-        critic_network = CriticNetwork((obs_spec, action_spec), \
-            joint_fc_layer_params=fc_layer_params)
+        critic_network = CriticNetwork((obs_spec, action_spec),
+                                       joint_fc_layer_params=fc_layer_params)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,
@@ -87,15 +87,17 @@ class SACAlgorithmTest(alf.test.TestCase):
             name="MySAC")
 
         eval_env.reset()
-        for _ in range(100):
+        for i in range(200):
             alg.train_iter()
-
-        eval_env.reset()
-        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
-        print(eval_time_step.reward.mean())
+            eval_env.reset()
+            eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
+            logging.log_every_n_seconds(
+                logging.INFO,
+                "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
+                n_seconds=1)
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=5e-1)
+            1.0, float(eval_time_step.reward.mean()), delta=0.3)
 
 
 class SACAlgorithmTestDiscrete(alf.test.TestCase):
@@ -118,7 +120,7 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             num_env, steps_per_episode, action_type=ActionType.Discrete)
 
         eval_env = env_class(
-            num_env, steps_per_episode, action_type=ActionType.Discrete)
+            100, steps_per_episode, action_type=ActionType.Discrete)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -145,15 +147,18 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             name="MySAC")
 
         eval_env.reset()
-        for i in range(100):
+        for i in range(200):
             alg2.train_iter()
 
-        eval_env.reset()
-        eval_time_step = unroll(eval_env, alg2, steps_per_episode - 1)
-        print(eval_time_step.reward.mean())
+            eval_env.reset()
+            eval_time_step = unroll(eval_env, alg2, steps_per_episode - 1)
+            logging.log_every_n_seconds(
+                logging.INFO,
+                "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
+                n_seconds=1)
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=5e-1)
+            1.0, float(eval_time_step.reward.mean()), delta=0.2)
 
 
 if __name__ == '__main__':
