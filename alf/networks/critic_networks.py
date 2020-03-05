@@ -25,7 +25,7 @@ from alf.tensor_specs import TensorSpec
 
 @gin.configurable
 class CriticNetwork(nn.Module):
-    """Creates a critic network."""
+    """Create an instance of CriticNetwork."""
 
     def __init__(self,
                  input_tensor_spec,
@@ -34,7 +34,11 @@ class CriticNetwork(nn.Module):
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  activation=torch.relu):
-        """Creates an instance of `CriticNetwork`.
+        """Creates an instance of `CriticNetwork` for estimating action-value of
+        continuous actions. The action-value is defined as the expected return
+        starting from the given input observation and taking the given action.
+        This module takes observation as input and action as input and outputs
+        an action-value tensor with the shape of [batch_size].
 
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
@@ -83,14 +87,24 @@ class CriticNetwork(nn.Module):
             last_activation=layers.identity)
 
     def forward(self, inputs, state=()):
+        """Computes action-value given an observation.
+
+        Args:
+            inputs:  A tuple of Tensors consistent with `input_tensor_spec`
+            state: empty for API consistent with CriticRNNNetwork
+
+        Returns:
+            action_value (torch.Tensor): a tensor of the size [batch_size]
+            state: empty
+        """
         observations, actions = inputs
         actions = actions.to(torch.float32)
 
         encoded_obs = self._obs_encoder(observations)
         encoded_action = self._action_encoder(actions)
         joint = torch.cat([encoded_obs, encoded_action], -1)
-        critic_value = self._joint_encoder(joint)
-        return torch.squeeze(critic_value, -1), state
+        action_value = self._joint_encoder(joint)
+        return torch.squeeze(action_value, -1), state
 
     @property
     def state_spec(self):
@@ -110,7 +124,11 @@ class CriticRNNNetwork(nn.Module):
                  lstm_hidden_size=100,
                  post_rnn_fc_layer_params=None,
                  activation=torch.relu):
-        """Creates an instance of `CriticRNNNetwork`.
+        """Creates an instance of `CriticRNNNetwork` for estimating action-value
+        of continuous actions. The action-value is defined as the expected return
+        starting from the given inputs (observation and state) and taking the
+        given action. It takes observation and state as input and outputs an
+        action-value tensor with the shape of [batch_size].
 
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
@@ -171,6 +189,16 @@ class CriticRNNNetwork(nn.Module):
             last_activation=layers.identity)
 
     def forward(self, inputs, state=()):
+        """Computes action-value given an observation.
+
+        Args:
+            inputs:  A tuple of Tensors consistent with `input_tensor_spec`
+            state (nest[tuple]): a nest structure of state tuples (h, c)
+
+        Returns:
+            action_value (torch.Tensor): a tensor of the size [batch_size]
+            new_state (nest[tuple]): the updated states
+        """
         observations, actions = inputs
         actions = actions.to(torch.float32)
 
@@ -178,8 +206,8 @@ class CriticRNNNetwork(nn.Module):
         encoded_action = self._action_encoder(actions)
         joint = torch.cat([encoded_obs, encoded_action], -1)
         encoded_joint = self._joint_encoder(joint)
-        critic_value, state = self._lstm_encoding_net(encoded_joint, state)
-        return torch.squeeze(critic_value, -1), state
+        action_value, state = self._lstm_encoding_net(encoded_joint, state)
+        return torch.squeeze(action_value, -1), state
 
     @property
     def state_spec(self):
