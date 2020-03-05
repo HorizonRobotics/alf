@@ -167,7 +167,7 @@ def get_global_counter():
 def reset_global_counter():
     """Reset the global counter to zero
     """
-    _global_counter = torch.tensor(0, dtype=torch.int64)
+    _global_counter.data.fill_(0)
 
 
 class record_if(object):

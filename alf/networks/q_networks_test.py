@@ -24,7 +24,7 @@ from alf.networks import QNetwork
 from alf.networks import QRNNNetwork
 
 
-class TestValueNetworks(parameterized.TestCase, unittest.TestCase):
+class TestQNetworks(parameterized.TestCase, unittest.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             network_ctor = functools.partial(
