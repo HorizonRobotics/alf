@@ -12,14 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import abc
 import gin
 import numpy as np
 
 import torch
 import torch.nn as nn
 
+import alf
 import alf.layers as layers
-
+from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 
 
@@ -31,7 +33,7 @@ def _tuplify2d(x):
 
 
 @gin.configurable
-class ImageEncodingNetwork(nn.Module):
+class ImageEncodingNetwork(Network):
     """
     A general template class for creating convolutional encoding networks.
     """
@@ -41,9 +43,12 @@ class ImageEncodingNetwork(nn.Module):
                  input_size,
                  conv_layer_params,
                  activation=torch.relu,
-                 flatten_output=False):
+                 flatten_output=False,
+                 name="ImageEncodingNetwork"):
         """
         Initialize the layers for encoding an image into a latent vector.
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_channels (int): number of channels in the input image
@@ -56,13 +61,14 @@ class ImageEncodingNetwork(nn.Module):
                 structure of shape `BxCxHxW`; otherwise the output will be
                 flattened into a feature of shape `BxN`
         """
-        super(ImageEncodingNetwork, self).__init__()
+        input_size = _tuplify2d(input_size)
+        super(ImageEncodingNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_channels, ) + input_size),
+            name=name)
 
         assert isinstance(conv_layer_params, tuple)
         assert len(conv_layer_params) > 0
 
-        self._input_size = _tuplify2d(input_size)
-        self._output_shape = None
         self._flatten_output = flatten_output
         self._conv_layer_params = conv_layer_params
         self._conv_layers = nn.ModuleList()
@@ -79,8 +85,9 @@ class ImageEncodingNetwork(nn.Module):
                     padding=padding))
             input_channels = filters
 
-    def output_shape(self):
-        """Return the output shape given the input image size.
+    @property
+    def output_spec(self):
+        """Return the output spec.
 
         How to calculate the output size:
         https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d
@@ -90,41 +97,26 @@ class ImageEncodingNetwork(nn.Module):
         where H = output size, H1 = input size, HF = size of kernel, P = padding
 
         Returns:
-            a tuple representing the output shape
+            output tensor spec
         """
-        if self._output_shape is None:
-            height, width = self._input_size
-            for paras in self._conv_layer_params:
-                filters, kernel_size, strides = paras[:3]
-                padding = paras[3] if len(paras) > 3 else 0
-                kernel_size = _tuplify2d(kernel_size)
-                strides = _tuplify2d(strides)
-                padding = _tuplify2d(padding)
-                height = (
-                    height - kernel_size[0] + 2 * padding[0]) // strides[0] + 1
-                width = (
-                    width - kernel_size[1] + 2 * padding[1]) // strides[1] + 1
-            shape = (filters, height, width)
-            if not self._flatten_output:
-                self._output_shape = shape
-            else:
-                self._output_shape = (np.prod(shape), )
-        return self._output_shape
+        if self._output_spec is None:
+            self._output_spec = TensorSpec.from_tensor(
+                self._test_forward(), from_dim=1)
+        return self._output_spec
 
-    def forward(self, inputs):
-        assert len(inputs.size()) == 4, \
-            "The input dims {} are incorrect! Should be (B,C,H,W)".format(
-                inputs.size())
-        z = inputs
+    def forward(self, inputs, state=()):
+        """The empty state just keeps the interface same with other networks."""
+        # call super to handle nested inputs
+        z, state = super().forward(inputs, state)
         for conv_l in self._conv_layers:
             z = conv_l(z)
         if self._flatten_output:
-            z = z.view(z.size()[0], -1)
-        return z
+            z = torch.reshape(z, (z.size()[0], -1))
+        return z, state
 
 
 @gin.configurable
-class ImageDecodingNetwork(nn.Module):
+class ImageDecodingNetwork(Network):
     """
     A general template class for creating transposed convolutional decoding networks.
     """
@@ -136,9 +128,12 @@ class ImageDecodingNetwork(nn.Module):
                  start_decoding_channels,
                  preprocess_fc_layer_params=None,
                  activation=torch.relu,
-                 output_activation=torch.tanh):
+                 output_activation=torch.tanh,
+                 name="ImageDecodingNetwork"):
         """
         Initialize the layers for decoding a latent vector into an image.
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_size (int): the size of the input latent vector
@@ -160,8 +155,10 @@ class ImageDecodingNetwork(nn.Module):
                 Usually our image inputs are normalized to [0, 1] or [-1, 1],
                 so this function should be `torch.sigmoid` or
                 `torch.tanh`.
+            name (str):
         """
-        super(ImageDecodingNetwork, self).__init__()
+        super(ImageDecodingNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
 
         assert isinstance(transconv_layer_params, tuple)
         assert len(transconv_layer_params) > 0
@@ -185,7 +182,6 @@ class ImageDecodingNetwork(nn.Module):
                 np.prod(self._start_decoding_shape),
                 activation=activation))
 
-        self._output_shape = None
         self._transconv_layer_params = transconv_layer_params
         self._transconv_layers = nn.ModuleList()
         in_channels = start_decoding_channels
@@ -205,8 +201,9 @@ class ImageDecodingNetwork(nn.Module):
                     padding=padding))
             in_channels = filters
 
-    def output_shape(self):
-        """Return the output image shape given the start_decoding_shape.
+    @property
+    def output_spec(self):
+        """Return the output spec.
 
         How to calculate the output size:
         https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
@@ -216,68 +213,80 @@ class ImageDecodingNetwork(nn.Module):
         where H = output size, H1 = input size, HF = size of kernel, P = padding
 
         Returns:
-            a tuple representing the output shape (C,H,W)
+            output tensor spec
         """
-        if self._output_shape is None:
-            _, height, width = self._start_decoding_shape
-            for paras in self._transconv_layer_params:
-                filters, kernel_size, strides = paras[:3]
-                padding = paras[3] if len(paras) > 3 else 0
-                kernel_size = _tuplify2d(kernel_size)
-                strides = _tuplify2d(strides)
-                padding = _tuplify2d(padding)
-                height = (
-                    height - 1) * strides[0] + kernel_size[0] - 2 * padding[0]
-                width = (
-                    width - 1) * strides[1] + kernel_size[1] - 2 * padding[1]
-            self._output_shape = (filters, height, width)
-        return self._output_shape
+        if self._output_spec is None:
+            self._output_spec = TensorSpec.from_tensor(
+                self._test_forward(), from_dim=1)
+        return self._output_spec
 
-    def forward(self, inputs):
-        """Returns an image of shape (B,C,H,W)."""
-        assert len(inputs.size()) == 2, \
-            "The input dims {} are incorrect! Should be (B,N)".format(
-                inputs.size())
-        z = inputs
+    def forward(self, inputs, state=()):
+        """Returns an image of shape (B,C,H,W). The empty state just keeps the
+        interface same with other networks.
+        """
+        # call super to handle nested inputs
+        z, state = super().forward(inputs, state)
         for fc_l in self._preprocess_fc_layers:
             z = fc_l(z)
-        z = z.view(-1, *self._start_decoding_shape)
+        z = torch.reshape(z, (-1, ) + self._start_decoding_shape)
         for deconv_l in self._transconv_layers:
             z = deconv_l(z)
-        return z
+        return z, state
 
 
 @gin.configurable
-class EncodingNetwork(nn.Module):
+class EncodingNetwork(Network):
     """Feed Forward network with CNN and FC layers."""
 
     def __init__(self,
                  input_tensor_spec,
+                 input_preprocessors=None,
+                 preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
                  last_layer_size=None,
-                 last_activation=None):
+                 last_activation=None,
+                 name="EncodingNetwork"):
         """Create an EncodingNetwork
 
         This EncodingNetwork allows the last layer to have different settings
         from the other layers.
 
         Args:
-            input_tensor_spec (TensorSpec): the tensor spec of the input
-            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If nested, then `preprocessing_combiner` must not be
+                None.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with `input_tensor_spec`. This arg is helpful if you
+                want to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                `input_tensor_spec` as the input to compute the processed
+                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            conv_layer_params (tuple[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
-            activation (nn.functional): activation used for hidden layers
+            activation (nn.functional): activation used for all the layers but
+                the last layer.
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the SAME with `activation`.
+            name (str):
         """
-        super(EncodingNetwork, self).__init__()
-        assert isinstance(input_tensor_spec, TensorSpec), \
-            "The spec must be an instance of TensorSpec!"
+        super(EncodingNetwork,
+              self).__init__(input_tensor_spec, input_preprocessors,
+                             preprocessing_combiner, name)
+
         if fc_layer_params is not None:
             fc_layer_params = list(fc_layer_params)
 
@@ -285,21 +294,21 @@ class EncodingNetwork(nn.Module):
         if conv_layer_params:
             assert isinstance(conv_layer_params, tuple), \
                 "The input params {} should be tuple".format(conv_layer_params)
-            assert len(input_tensor_spec.shape) == 3, \
-                "The input shape {} should be (C,H,W)!".format(
-                    input_tensor_spec.shape)
-            input_channels, height, width = input_tensor_spec.shape
+            assert len(self._input_tensor_spec.shape) == 3, \
+                "The input shape {} should be like (C,H,W)!".format(
+                    self._input_tensor_spec.shape)
+            input_channels, height, width = self._input_tensor_spec.shape
             self._img_encoding_net = ImageEncodingNetwork(
                 input_channels, (height, width),
                 conv_layer_params,
                 activation,
                 flatten_output=True)
-            input_size = self._img_encoding_net.output_shape()[0]
+            input_size = self._img_encoding_net.output_spec.shape[0]
         else:
-            assert len(input_tensor_spec.shape) == 1, \
-                "The input shape {} should be (N,)!".format(
-                    input_tensor_spec.shape)
-            input_size = input_tensor_spec.shape[0]
+            assert len(self._input_tensor_spec.shape) == 1, \
+                "The input shape {} should be like (N,)!".format(
+                    self._input_tensor_spec.shape)
+            input_size = self._input_tensor_spec.shape[0]
 
         self._fc_layers = nn.ModuleList()
         if fc_layer_params is None:
@@ -320,49 +329,91 @@ class EncodingNetwork(nn.Module):
 
         self._output_size = input_size
 
-    def forward(self, inputs):
-        z = inputs
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (nested Tensor):
+        """
+        # call super to preprocess inputs
+        z, state = super().forward(inputs, state)
         if self._img_encoding_net is not None:
-            z = self._img_encoding_net(inputs)
+            z, _ = self._img_encoding_net(z)
         for fc in self._fc_layers:
             z = fc(z)
-        return z
+        return z, state
 
     @property
-    def output_size(self):
-        """If `conv_layer_params` is used, then it's difficult for the caller
-        to know the output size in advance.
-        """
-        return self._output_size
+    def output_spec(self):
+        if self._output_spec is None:
+            self._output_spec = TensorSpec((self._output_size, ),
+                                           dtype=self._input_tensor_spec.dtype)
+        return self._output_spec
 
 
 @gin.configurable
-class LSTMEncodingNetwork(nn.Module):
+class LSTMEncodingNetwork(Network):
     """LSTM cells followed by an encoding network."""
 
     def __init__(self,
-                 input_size,
-                 hidden_size,
-                 fc_layer_params=None,
+                 input_tensor_spec,
+                 input_preprocessors=None,
+                 preprocessing_combiner=None,
+                 conv_layer_params=None,
+                 pre_fc_layer_params=None,
+                 hidden_size=(100, ),
+                 post_fc_layer_params=None,
                  activation=torch.relu,
                  last_layer_size=None,
-                 last_activation=None):
+                 last_activation=None,
+                 name="LSTMEncodingNetwork"):
         """Creates an instance of `LSTMEncodingNetwork`.
 
         Args:
-            input_size (int): the input vector size
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If nested, then `preprocessing_combiner` must not be
+                None.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with `input_tensor_spec`. This arg is helpful if you
+                want to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                `input_tensor_spec` as the input to compute the processed
+                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format `(filters, kernel_size, strides, padding)`,
+                where `padding` is optional.
+            pre_fc_layer_params (tuple[int]): a tuple of integers
+                representing FC layers that are applied before the LSTM cells.
             hidden_size (int or tuple[int]): the hidden size(s) of
                 the lstm cell(s). Each size corresponds to a cell. If there are
                 multiple sizes, then lstm cells are stacked.
-            fc_layer_params (tuple[int]): an optional tuple of
+            post_fc_layer_params (tuple[int]): an optional tuple of
                 integers representing hidden FC layers that are applied after
-                the cells' output.
-            activation (nn.functional): activation for the optional FC layers
+                the LSTM cells.
+            activation (nn.functional): activation for all the layers but the
+                last layer.
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the same with `activation`.
         """
-        super(LSTMEncodingNetwork, self).__init__()
+        super(LSTMEncodingNetwork,
+              self).__init__(input_tensor_spec, input_preprocessors,
+                             preprocessing_combiner, name)
+
+        self._pre_encoding_net = EncodingNetwork(
+            input_tensor_spec=self._input_tensor_spec,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=pre_fc_layer_params,
+            activation=activation)
+        input_size = self._pre_encoding_net.output_spec.shape[0]
+
         if isinstance(hidden_size, int):
             hidden_size = [hidden_size]
         else:
@@ -379,9 +430,9 @@ class LSTMEncodingNetwork(nn.Module):
             self._state_spec.append(self._create_lstm_cell_state_spec(hs))
             input_size = hs
 
-        self._encoding_net = EncodingNetwork(
+        self._post_encoding_net = EncodingNetwork(
             input_tensor_spec=TensorSpec((input_size, )),
-            fc_layer_params=fc_layer_params,
+            fc_layer_params=post_fc_layer_params,
             activation=activation,
             last_layer_size=last_layer_size,
             last_activation=last_activation)
@@ -407,7 +458,7 @@ class LSTMEncodingNetwork(nn.Module):
     def forward(self, inputs, state):
         """
         Args:
-            inputs (torch.Tensor):
+            inputs (nested torch.Tensor):
             state (list[tuple]): a list of tuples, where each tuple is a pair
                 of `h_state` and `c_state`.
 
@@ -415,6 +466,9 @@ class LSTMEncodingNetwork(nn.Module):
             output (torch.Tensor): output of the network
             new_state (list[tuple]): the updated states
         """
+        # call super to preprocess inputs
+        inputs, state = super().forward(inputs, state)
+
         assert isinstance(state, list)
         for s in state:
             assert isinstance(s, tuple) and len(s) == 2, \
@@ -422,11 +476,11 @@ class LSTMEncodingNetwork(nn.Module):
         assert len(self._cells) == len(state)
 
         new_state = []
-        h_state = inputs
+        h_state, _ = self._pre_encoding_net(inputs)
         for cell, s in zip(self._cells, state):
             h_state, c_state = cell(h_state, s)
             new_state.append((h_state, c_state))
-        output = self._encoding_net(h_state)
+        output, _ = self._post_encoding_net(h_state)
         return output, new_state
 
     @property
@@ -434,5 +488,7 @@ class LSTMEncodingNetwork(nn.Module):
         return self._state_spec
 
     @property
-    def output_size(self):
-        return self._encoding_net.output_size
+    def output_spec(self):
+        if self._output_spec is None:
+            self._output_spec = self._post_encoding_net.output_spec
+        return self._output_spec

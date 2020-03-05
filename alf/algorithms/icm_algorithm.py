@@ -11,18 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections import namedtuple
 
-import gin.tf
-import tensorflow as tf
+import gin
 
-from tf_agents.networks.network import Network
-import tf_agents.specs.tensor_spec as tensor_spec
+import torch
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
+import alf
+from alf.networks import EncodingNetwork
+from alf.tensor_specs import TensorSpec
+from alf.algorithms.algorithm import Algorithm
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
-from alf.utils.encoding_network import EncodingNetwork
-from alf.data_structures import ActionTimeStep
+from alf.data_structures import TimeStep, namedtuple, AlgStep, LossInfo
 
 ICMInfo = namedtuple("ICMInfo", ["reward", "loss"])
 
@@ -42,9 +41,10 @@ class ICMAlgorithm(Algorithm):
                  feature_spec,
                  hidden_size=256,
                  reward_adapt_speed=8.0,
-                 encoding_net: Network = None,
-                 forward_net: Network = None,
-                 inverse_net: Network = None,
+                 encoding_net: EncodingNetwork = None,
+                 forward_net: EncodingNetwork = None,
+                 inverse_net: EncodingNetwork = None,
+                 optimizer=None,
                  name="ICMAlgorithm"):
         """Create an ICMAlgorithm.
 
@@ -67,21 +67,23 @@ class ICMAlgorithm(Algorithm):
                 the previous feature and current feature. It should accept input
                 with spec [feature_spec, feature_spec] and output tensor of
                 shape (num_actions,).
+            optimizer (torch.optim.Optimizer): The optimizer for training
+            name (str):
         """
         super(ICMAlgorithm, self).__init__(
-            train_state_spec=feature_spec, name=name)
+            train_state_spec=feature_spec, optimizer=optimizer, name=name)
 
-        flat_action_spec = tf.nest.flatten(action_spec)
+        flat_action_spec = alf.nest.flatten(action_spec)
         assert len(
             flat_action_spec) == 1, "ICM doesn't suport nested action_spec"
 
-        flat_feature_spec = tf.nest.flatten(feature_spec)
+        flat_feature_spec = alf.nest.flatten(feature_spec)
         assert len(
             flat_feature_spec) == 1, "ICM doesn't support nested feature_spec"
 
         action_spec = flat_action_spec[0]
 
-        if tensor_spec.is_discrete(action_spec):
+        if action_spec.is_discrete:
             self._num_actions = action_spec.maximum - action_spec.minimum + 1
         else:
             self._num_actions = action_spec.shape[-1]
@@ -96,8 +98,8 @@ class ICMAlgorithm(Algorithm):
             hidden_size = (hidden_size, )
 
         if forward_net is None:
-            encoded_action_spec = tensor_spec.TensorSpec((self._num_actions, ),
-                                                         dtype=tf.float32)
+            encoded_action_spec = TensorSpec((self._num_actions, ),
+                                             dtype=torch.float32)
             forward_net = EncodingNetwork(
                 name="forward_net",
                 input_tensor_spec=[feature_spec, encoded_action_spec],

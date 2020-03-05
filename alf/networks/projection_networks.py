@@ -23,6 +23,7 @@ import torch.distributions as td
 
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.networks.network import DistributionNetwork, Network
 
 
 def DiagMultivariateNormal(loc, scale_diag):
@@ -30,17 +31,26 @@ def DiagMultivariateNormal(loc, scale_diag):
 
 
 @gin.configurable
-class CategoricalProjectionNetwork(nn.Module):
-    def __init__(self, input_size, action_spec, logits_init_output_factor=0.1):
+class CategoricalProjectionNetwork(DistributionNetwork):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 logits_init_output_factor=0.1,
+                 name="CategoricalProjectionNetwork"):
         """Creates a categorical projection network that outputs a discrete
         distribution over a number of classes.
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_size (int): the input vector size
             action_spec (BounedTensorSpec): a tensor spec containing the information
                 of the output distribution.
+            name (str):
         """
-        super(CategoricalProjectionNetwork, self).__init__()
+        super(CategoricalProjectionNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
 
         unique_num_actions = np.unique(action_spec.maximum -
                                        action_spec.minimum + 1)
@@ -60,16 +70,17 @@ class CategoricalProjectionNetwork(nn.Module):
             np.prod(output_shape),
             kernel_init_gain=logits_init_output_factor)
 
-    def forward(self, inputs):
+    def forward(self, inputs, state=()):
+        inputs, state = Network.forward(self, inputs, state)
         logits = self._projection_layer(inputs)
         logits = logits.reshape(inputs.shape[0], *self._output_shape)
         return td.Independent(
             td.Categorical(logits=logits),
-            reinterpreted_batch_ndims=len(self._output_shape) - 1)
+            reinterpreted_batch_ndims=len(self._output_shape) - 1), state
 
 
 @gin.configurable
-class NormalProjectionNetwork(nn.Module):
+class NormalProjectionNetwork(DistributionNetwork):
     def __init__(self,
                  input_size,
                  action_spec,
@@ -79,8 +90,12 @@ class NormalProjectionNetwork(nn.Module):
                  squash_mean=True,
                  state_dependent_std=False,
                  std_transform=nn.functional.softplus,
-                 scale_distribution=False):
+                 scale_distribution=False,
+                 name="NormalProjectionNetwork"):
         """Creates an instance of NormalProjectionNetwork.
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_size (int): input vector dimension
@@ -104,12 +119,15 @@ class NormalProjectionNetwork(nn.Module):
                 distribution to ensure that the output aciton fits within the
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
+            name (str):
         """
-        super(NormalProjectionNetwork, self).__init__()
+        super(NormalProjectionNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
 
         assert isinstance(action_spec, TensorSpec)
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
 
+        self._action_spec = action_spec
         self._mean_transform = layers.identity
         self._scale_distribution = scale_distribution
 
@@ -176,10 +194,11 @@ class NormalProjectionNetwork(nn.Module):
         else:
             return normal_dist
 
-    def forward(self, inputs):
+    def forward(self, inputs, state=()):
+        inputs, state = Network.forward(self, inputs, state)
         means = self._mean_transform(self._means_projection_layer(inputs))
         stds = self._std_transform(self._std_projection_layer(inputs))
-        return self._normal_dist(means, stds)
+        return self._normal_dist(means, stds), state
 
 
 @gin.configurable
@@ -207,8 +226,12 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                  scale_distribution=False,
                  init_std=1.0,
                  min_std=0.0,
-                 max_std=None):
+                 max_std=None,
+                 name="StableNormalProjectionNetwork"):
         """Creates an instance of StableNormalProjectionNetwork.
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_size (int): input vector dimension
@@ -236,6 +259,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             min_std (float): Minimum value for standard deviation.
             max_std (float): Maximum value for standard deviation. If None, no
                 maximum is enforced.
+            name (str):
         """
         self._min_std = min_std
         self._max_std = max_std
@@ -265,9 +289,11 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             squash_mean=squash_mean,
             state_dependent_std=state_dependent_std,
             std_transform=std_transform,
-            scale_distribution=scale_distribution)
+            scale_distribution=scale_distribution,
+            name=name)
 
-    def forward(self, inputs):
+    def forward(self, inputs, state=()):
+        inputs, state = Network.forward(self, inputs, state)
         inv_stds = self._std_transform(self._std_projection_layer(inputs))
         if self._max_std is not None:
             inv_stds += 1 / (self._max_std - self._min_std)
@@ -278,4 +304,4 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
         means = self._mean_transform(
             self._means_projection_layer(inputs) * stds)
 
-        return self._normal_dist(means, stds)
+        return self._normal_dist(means, stds), state

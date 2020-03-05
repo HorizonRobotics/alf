@@ -23,10 +23,6 @@ from alf.utils.checkpoint_utils import Checkpointer
 
 
 class DataBufferTest(alf.test.TestCase):
-    def assertArrayEqual(self, x, y):
-        self.assertEqual(x.shape, y.shape)
-        self.assertEqual(float(torch.max(torch.abs(x - y))), 0)
-
     def test_data_buffer(self):
         dim = 20
         capacity = 256
@@ -46,17 +42,17 @@ class DataBufferTest(alf.test.TestCase):
         data_buffer.add_batch(batch)
         self.assertEqual(int(data_buffer.current_size), capacity)
         ret = data_buffer.get_batch_by_indices(torch.arange(capacity))
-        self.assertArrayEqual(ret[0], batch[0][-capacity:])
-        self.assertArrayEqual(ret[1], batch[1][-capacity:])
-        self.assertArrayEqual(ret[2], batch[2][-capacity:])
+        self.assertEqual(ret[0], batch[0][-capacity:])
+        self.assertEqual(ret[1], batch[1][-capacity:])
+        self.assertEqual(ret[2], batch[2][-capacity:])
         batch = _get_batch(100)
         data_buffer.add_batch(batch)
         ret = data_buffer.get_batch_by_indices(
             torch.arange(data_buffer.current_size - 100,
                          data_buffer.current_size))
-        self.assertArrayEqual(ret[0], batch[0])
-        self.assertArrayEqual(ret[1], batch[1])
-        self.assertArrayEqual(ret[2], batch[2][-capacity:])
+        self.assertEqual(ret[0], batch[0])
+        self.assertEqual(ret[1], batch[1])
+        self.assertEqual(ret[2], batch[2][-capacity:])
 
         # Test checkpoint working
         with tempfile.TemporaryDirectory() as checkpoint_directory:
@@ -72,9 +68,9 @@ class DataBufferTest(alf.test.TestCase):
         ret = data_buffer.get_batch_by_indices(
             torch.arange(data_buffer.current_size - 100,
                          data_buffer.current_size))
-        self.assertArrayEqual(ret[0], batch[0])
-        self.assertArrayEqual(ret[1], batch[1])
-        self.assertArrayEqual(ret[2], batch[2][-capacity:])
+        self.assertEqual(ret[0], batch[0])
+        self.assertEqual(ret[1], batch[1])
+        self.assertEqual(ret[2], batch[2][-capacity:])
 
 
 if __name__ == '__main__':

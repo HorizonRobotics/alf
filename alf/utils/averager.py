@@ -22,7 +22,6 @@ import alf
 from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import DataBuffer
 from alf.nest.utils import get_outer_rank
-from alf.networks.utils import BatchSquash
 
 
 def average_outer_dims(tensor, spec):
@@ -35,9 +34,7 @@ def average_outer_dims(tensor, spec):
         the average tensor across outer dims
     """
     outer_dims = get_outer_rank(tensor, spec)
-    batch_squash = BatchSquash(outer_dims)
-    tensor = batch_squash.flatten(tensor)
-    return torch.mean(tensor, dim=0)
+    return tensor.mean(dim=list(range(outer_dims)))
 
 
 @gin.configurable

@@ -20,6 +20,7 @@ import alf
 from alf.utils import common
 from alf.nest import get_nest_batch_size
 from alf.tensor_specs import TensorSpec
+from alf.experience_replayers.replay_buffer import _convert_device
 
 
 class DataBuffer(nn.Module):
@@ -64,7 +65,7 @@ class DataBuffer(nn.Module):
 
     @property
     def current_size(self):
-        return self._current_size
+        return _convert_device(self._current_size)
 
     def add_batch(self, batch):
         """Add a batch of items to the buffer.
@@ -74,6 +75,7 @@ class DataBuffer(nn.Module):
         """
         batch_size = alf.nest.get_nest_batch_size(batch)
         with alf.device(self._device):
+            batch = _convert_device(batch)
             n = torch.min(self._capacity, torch.as_tensor(batch_size))
             indices = torch.arange(self._current_pos,
                                    self._current_pos + n) % self._capacity
@@ -81,9 +83,9 @@ class DataBuffer(nn.Module):
                 lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
                 self._buffer, batch)
 
-            self._current_pos = (self._current_pos + n) % self._capacity
-            self._current_size = torch.min(self._current_size + n,
-                                           self._capacity)
+            self._current_pos.copy_((self._current_pos + n) % self._capacity)
+            self._current_size.copy_(
+                torch.min(self._current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
         """Get batsh_size random samples in the buffer.
@@ -99,7 +101,8 @@ class DataBuffer(nn.Module):
                 high=self._current_size,
                 size=(batch_size, ),
                 dtype=torch.int64)
-            return self.get_batch_by_indices(indices)
+            result = self.get_batch_by_indices(indices)
+        return _convert_device(result)
 
     def get_batch_by_indices(self, indices):
         """Get the samples by indices
@@ -112,13 +115,16 @@ class DataBuffer(nn.Module):
                 is indices.shape[0]
         """
         with alf.device(self._device):
-            indices = (indices + (self._current_pos - self._current_size)
-                       ) % self._capacity
-            return alf.nest.map_structure(lambda buf: buf[indices],
-                                          self._buffer)
+            indices = _convert_device(indices)
+            indices.copy_(
+                (indices +
+                 (self._current_pos - self._current_size)) % self._capacity)
+            result = alf.nest.map_structure(lambda buf: buf[indices],
+                                            self._buffer)
+        return _convert_device(result)
 
     def get_all(self):
-        return self._buffer
+        return _convert_device(self._buffer)
 
     def clear(self):
         """Clear the buffer.
@@ -131,5 +137,5 @@ class DataBuffer(nn.Module):
 
     def pop(self, n):
         n = torch.min(torch.as_tensor(n), self._current_size)
-        self._current_size = self._current_size - n
-        self._current_pos = (self._current_pos - n) % self._capacity
+        self._current_size.cppy_(self._current_size - n)
+        self._current_pos.copy_((self._current_pos - n) % self._capacity)

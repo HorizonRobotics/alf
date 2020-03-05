@@ -16,7 +16,7 @@ import torch
 import math
 
 import alf
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.data_structures import TimeStep, StepType
 from alf.networks import EncodingNetwork
 from alf.algorithms.diayn_algorithm import DIAYNAlgorithm
@@ -50,7 +50,7 @@ class DIAYNAlgorithmTest(alf.test.TestCase):
 
         # the discriminator should predict a uniform distribution
         self.assertTensorClose(
-            torch.sum(alg_step.info.loss.loss),
+            torch.sum(alg_step.info.loss),
             torch.as_tensor(
                 math.log(skill_spec.maximum - skill_spec.minimum + 1)))
 
@@ -66,7 +66,7 @@ class DIAYNAlgorithmTest(alf.test.TestCase):
 
         # the discriminator should predict a zero skill vector
         self.assertTensorClose(
-            torch.sum(alg_step.info.loss.loss), torch.as_tensor(0))
+            torch.sum(alg_step.info.loss), torch.as_tensor(0))
 
 
 if __name__ == "__main__":

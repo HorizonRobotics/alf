@@ -18,7 +18,6 @@ import gin
 import torch
 import torch.nn as nn
 
-from alf.networks.utils import BatchSquash
 from alf.nest.utils import get_outer_rank
 from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
@@ -31,13 +30,8 @@ def identity(x):
     return x
 
 
-def square(x):
-    """torch doesn't have square."""
-    return torch.pow(x, 2)
-
-
 def batch_normalization(x, mean, variance, variance_epsilon):
-    """A simplified version of batch normalization, wihtout scale and offset.
+    """A simplified version of batch normalization, without scale and offset.
     Normalizes a tensor by `mean` and `variance`, which are expected to have the
     same tensor spec with the inner dims of `x`.
 
@@ -63,6 +57,51 @@ def batch_normalization(x, mean, variance, variance_epsilon):
 
     x = bs.unflatten(x)
     return x
+
+
+class BatchSquash(object):
+    """Facilitates flattening and unflattening batch dims of a tensor. Copied
+    from tf_agents.
+
+    Exposes a pair of matched faltten and unflatten methods. After flattening
+    only 1 batch dimension will be left. This facilitates evaluating networks
+    that expect inputs to have only 1 batch dimension.
+    """
+
+    def __init__(self, batch_dims):
+        """Create two tied ops to flatten and unflatten the front dimensions.
+
+        Args:
+            batch_dims (int): Number of batch dimensions the flatten/unflatten
+                ops should handle.
+
+        Raises:
+            ValueError: if batch dims is negative.
+        """
+        if batch_dims < 0:
+            raise ValueError('Batch dims must be non-negative.')
+        self._batch_dims = batch_dims
+        self._original_tensor_shape = None
+
+    def flatten(self, tensor):
+        """Flattens and caches the tensor's batch_dims."""
+        if self._batch_dims == 1:
+            return tensor
+        self._original_tensor_shape = tensor.shape
+        return torch.reshape(tensor,
+                             (-1, ) + tuple(tensor.shape[self._batch_dims:]))
+
+    def unflatten(self, tensor):
+        """Unflattens the tensor's batch_dims using the cached shape."""
+        if self._batch_dims == 1:
+            return tensor
+
+        if self._original_tensor_shape is None:
+            raise ValueError('Please call flatten before unflatten.')
+
+        return torch.reshape(
+            tensor, (tuple(self._original_tensor_shape[:self._batch_dims]) +
+                     tuple(tensor.shape[1:])))
 
 
 @gin.configurable

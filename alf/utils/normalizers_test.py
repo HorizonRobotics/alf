@@ -17,6 +17,7 @@ import math
 import torch
 
 import alf
+from alf.utils import math_ops
 from alf.utils.normalizers import ScalarWindowNormalizer
 from alf.utils.normalizers import ScalarEMNormalizer
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
@@ -32,7 +33,7 @@ class NormalizersTest(alf.test.TestCase):
         def _verify_normalization(weights, normalized_tensor, eps):
             tensors_mean = torch.sum(weights * self._tensors)
             tensors_var = torch.sum(
-                weights * alf.layers.square(self._tensors - tensors_mean))
+                weights * math_ops.square(self._tensors - tensors_mean))
             target_normalized_tensor = alf.layers.batch_normalization(
                 self._tensors[-1],
                 tensors_mean,

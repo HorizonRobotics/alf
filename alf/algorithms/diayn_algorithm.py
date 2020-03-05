@@ -13,15 +13,14 @@
 # limitations under the License.
 
 import gin
-import functools
 
 import torch
 
 import alf
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.networks import EncodingNetwork
-from alf.data_structures import namedtuple, AlgStep, LossInfo, TimeStep, StepType
 from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, StepType
+from alf.networks import EncodingNetwork
+from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.normalizers import AdaptiveNormalizer
 
@@ -84,7 +83,7 @@ class DIAYNAlgorithm(Algorithm):
         self._encoding_net = encoding_net
 
         self._discriminator_net = EncodingNetwork(
-            input_tensor_spec=TensorSpec((encoding_net.output_size, )),
+            input_tensor_spec=encoding_net.output_spec,
             fc_layer_params=hidden_size,
             activation=hidden_activation,
             last_layer_size=skill_dim,
@@ -124,9 +123,9 @@ class DIAYNAlgorithm(Algorithm):
             observation = self._observation_normalizer.normalize(observation)
 
         if self._encoding_net is not None:
-            feature = self._encoding_net(observation)
+            feature, _ = self._encoding_net(observation)
 
-        skill_pred = self._discriminator_net(inputs=feature)
+        skill_pred, _ = self._discriminator_net(feature)
 
         if self._skill_spec.is_discrete:
             loss = torch.nn.CrossEntropyLoss(reduction='none')(
@@ -148,11 +147,9 @@ class DIAYNAlgorithm(Algorithm):
         return AlgStep(
             output=(),
             state=skill,
-            info=DIAYNInfo(
-                reward=intrinsic_reward,
-                loss=LossInfo(
-                    loss=loss, extra=dict(skill_discriminate_loss=loss))))
+            info=DIAYNInfo(reward=intrinsic_reward, loss=loss))
 
     def calc_loss(self, info: DIAYNInfo):
-        loss = alf.nest.map_structure(torch.mean, info.loss)
-        return LossInfo(scalar_loss=loss.loss, extra=loss.extra)
+        loss = torch.mean(info.loss)
+        return LossInfo(
+            scalar_loss=loss, extra=dict(skill_discriminate_loss=info.loss))

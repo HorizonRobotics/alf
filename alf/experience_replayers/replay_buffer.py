@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.networks.utils import BatchSquash
+from alf.layers import BatchSquash
 
 
 def _convert_device(nests):

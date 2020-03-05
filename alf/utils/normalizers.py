@@ -18,9 +18,10 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.tensor_specs import TensorSpec
+from alf.layers import BatchSquash
 from alf.nest.utils import get_outer_rank
-from alf.networks.utils import BatchSquash
+from alf.tensor_specs import TensorSpec
+from alf.utils import math_ops
 from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 
@@ -79,7 +80,7 @@ class Normalizer(nn.Module):
         """Update the statistics given a new tensor.
         """
         self._mean_averager.update(tensor)
-        sqr_tensor = alf.nest.map_structure(alf.layers.square, tensor)
+        sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
 
     def normalize(self, tensor, clip_value=-1.0):
@@ -101,7 +102,7 @@ class Normalizer(nn.Module):
         def _normalize(m, m2, t):
             # in some extreme cases, due to floating errors, var might be a very
             # large negative value (close to 0)
-            var = torch.relu(m2 - alf.layers.square(m))
+            var = torch.relu(m2 - math_ops.square(m))
             t = alf.layers.batch_normalization(
                 t, m, var, variance_epsilon=self._variance_epsilon)
             if clip_value > 0:

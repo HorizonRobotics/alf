@@ -22,6 +22,8 @@ import alf
 from alf.tensor_specs import TensorSpec
 from alf.networks import ValueNetwork
 from alf.networks import ValueRNNNetwork
+from alf.nest.utils import NestConcat
+from alf.networks.preprocessors import EmbeddingPreprocessor
 
 
 class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
@@ -44,17 +46,30 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_value_distribution(self, lstm_hidden_size):
-        input_spec = TensorSpec((3, 20, 20), torch.float32)
+        input_spec1 = TensorSpec((3, 20, 20))
+        input_spec2 = TensorSpec((100, ))
         conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
+        embedding_dim = 100
 
-        image = input_spec.zeros(outer_dims=(1, ))
+        image = input_spec1.zeros(outer_dims=(1, ))
+        vector = input_spec2.zeros(outer_dims=(1, ))
 
         network_ctor, state = self._init(lstm_hidden_size)
 
         value_net = network_ctor(
-            input_spec, conv_layer_params=conv_layer_params)
-        value, state = value_net(image, state)
+            input_tensor_spec=[input_spec1, input_spec2],
+            input_preprocessors=[
+                EmbeddingPreprocessor(
+                    input_spec1,
+                    embedding_dim=embedding_dim,
+                    conv_layer_params=conv_layer_params), None
+            ],
+            preprocessing_combiner=NestConcat())
 
+        value, state = value_net([image, vector], state)
+
+        self.assertEqual(value_net.input_tensor_spec.shape[0], 200)
+        self.assertEqual(value_net.output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))
 
