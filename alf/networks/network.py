@@ -111,7 +111,7 @@ class Network(nn.Module):
 
     @property
     def input_tensor_spec(self):
-        """Returns the spec of the input to the network of type InputSpec."""
+        """Returns the spec of the input to the network ."""
         return self._input_tensor_spec
 
     def copy(self, **kwargs):
@@ -122,29 +122,23 @@ class Network(nn.Module):
         (excepting any new kwargs).
 
         Args:
-        **kwargs: Args to override when recreating this network.  Commonly
+            **kwargs: Args to override when recreating this network. Commonly
             overridden args include 'name'.
 
         Returns:
-        A shallow copy of this network.
+            A shallow copy of this network.
         """
         return type(self)(**dict(self._saved_kwargs, **kwargs))
 
     def __call__(self, inputs, *args, **kwargs):
-        alf.nest.assert_same_structure(inputs, self.input_tensor_spec)
         return super(Network, self).__call__(inputs, *args, **kwargs)
 
 
 class DistributionNetwork(Network):
     """Base class for networks which generate Distributions as their output."""
 
-    def __init__(self, input_tensor_spec, state_spec, output_spec, name):
-        super(DistributionNetwork, self).__init__(
+    def __init__(self, input_tensor_spec, state_spec, name):
+        super().__init__(
             input_tensor_spec=input_tensor_spec,
             state_spec=state_spec,
             name=name)
-        self._output_spec = output_spec
-
-    @property
-    def output_spec(self):
-        return self._output_spec
