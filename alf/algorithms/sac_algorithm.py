@@ -97,6 +97,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  initial_log_alpha=0.0,
                  target_update_tau=0.05,
                  target_update_period=1,
+                 dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
@@ -178,6 +179,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     map(dist_utils.calc_default_target_entropy,
                         flat_action_spec)))
         self._target_entropy = target_entropy
+        self._dqda_clipping = dqda_clipping
 
         self._update_target = common.get_target_updater(
             models=[self._critic_network1, self._critic_network2],
@@ -210,26 +212,31 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _actor_train_step(self, exp: Experience, state: SacActorState,
                           action_distribution, action, log_pi):
 
-        # module_utils.set_trainable_flag(
-        #     [self._critic_network1, self._critic_network2], False)
-
         if self._is_continuous:
             critic_input = (exp.observation, action)
-            # critic_input = (torch.ones_like(exp.observation),
-            #                 torch.ones_like(action))
 
-            with no_grad(self._critic_network1, self._critic_network2):
-                critic1, critic1_state = self._critic_network1(
-                    critic_input, state=state.critic1)
-                critic2, critic2_state = self._critic_network2(
-                    critic_input, state=state.critic2)
+            critic1, critic1_state = self._critic_network1(
+                critic_input, state=state.critic1)
+            critic2, critic2_state = self._critic_network2(
+                critic_input, state=state.critic2)
 
             target_q_value = torch.min(critic1, critic2)
 
-            alpha = torch.exp(self._log_alpha)
-            actor_loss = alpha.detach() * log_pi - target_q_value
-            print("---actor----")
-            print(actor_loss[0:10])
+            dqda = torch.autograd.grad(target_q_value, action,
+                                       torch.ones(target_q_value.size()))[0]
+
+            def actor_loss_fn(dqda, action):
+                if self._dqda_clipping:
+                    dqda = torch.clamp(dqda, -self._dqda_clipping,
+                                       self._dqda_clipping)
+                loss = 0.5 * losses.element_wise_squared_loss(
+                    (dqda + action).detach(), action)
+                loss = loss.view(loss.size(0), -1).mean(1)
+                return loss
+
+            actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+            alpha = torch.exp(self._log_alpha).detach()
+            actor_loss += alpha * log_pi
         else:
             with no_grad(self._critic_network1, self._critic_network2):
                 critic1, critic1_state = self._critic_network1(
@@ -253,8 +260,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
 
-        # module_utils.set_trainable_flag(
-        #     [self._critic_network1, self._critic_network2], True)
         return state, info
 
     def _critic_train_step(self, exp: Experience, state: SacCriticState,
@@ -289,7 +294,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
 
         target_critic = torch.min(target_critic1, target_critic2).view(log_pi.shape) - \
-                         torch.exp(self._log_alpha) * log_pi
+                         torch.exp(self._log_alpha).detach() * log_pi
 
         critic1 = critic1.squeeze(-1)
         critic2 = critic2.squeeze(-1)
@@ -371,8 +376,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_value=target_critic)
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
-        print("---critic----")
-        print(critic_loss[0, 0:10])
         return LossInfo(loss=critic_loss, extra=critic_loss)
 
     def _trainable_attributes_to_ignore(self):
