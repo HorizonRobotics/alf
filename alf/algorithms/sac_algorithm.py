@@ -215,6 +215,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._is_continuous:
             critic_input = (exp.observation, action)
+            critic_input = (torch.ones_like(exp.observation),
+                            torch.ones_like(action))
 
             with no_grad(self._critic_network1, self._critic_network2):
                 critic1, critic1_state = self._critic_network1(

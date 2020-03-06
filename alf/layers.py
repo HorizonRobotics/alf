@@ -56,12 +56,14 @@ class FC(nn.Module):
         super(FC, self).__init__()
         self._activation = activation
         self._linear = nn.Linear(input_size, output_size, bias=use_bias)
-        variance_scaling_init(
-            self._linear.weight.data,
-            gain=kernel_init_gain,
-            nonlinearity=self._activation.__name__)
+        # variance_scaling_init(
+        #     self._linear.weight.data,
+        #     gain=kernel_init_gain,
+        #     nonlinearity=self._activation.__name__)
+        nn.init.xavier_normal_(self._linear.weight)
         if use_bias:
-            nn.init.constant_(self._linear.bias.data, bias_init_value)
+            #nn.init.constant_(self._linear.bias.data, bias_init_value)
+            nn.init.zeros_(self._linear.bias.data)
 
     def forward(self, inputs):
         return self._activation(self._linear(inputs))
