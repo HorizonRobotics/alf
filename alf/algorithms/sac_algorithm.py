@@ -245,7 +245,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
             target_q_value = torch.min(critic1, critic2).detach()
             alpha = torch.exp(self._log_alpha)
-            actor_loss = alpha.detach() * log_action_probs - target_q_value
+            actor_loss = action_probs * (
+                alpha.detach() * log_action_probs - target_q_value)
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))

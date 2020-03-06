@@ -156,6 +156,7 @@ class Periodically(nn.Module):
         self._name = name
 
     def forward(self):
+        self._counter += 1
         if self._counter % self._period == 0:
             self._body()
         elif self._period is None:
