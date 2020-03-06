@@ -21,6 +21,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, StepType
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.utils import math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.normalizers import AdaptiveNormalizer
 
@@ -116,7 +117,7 @@ class DIAYNAlgorithm(Algorithm):
         observations_aug = time_step.observation
         step_type = time_step.step_type
         observation, skill = observations_aug
-        prev_skill = state
+        prev_skill = state.detach()
 
         # normalize observation for easier prediction
         if self._observation_normalizer is not None:
@@ -131,8 +132,8 @@ class DIAYNAlgorithm(Algorithm):
             loss = torch.nn.CrossEntropyLoss(reduction='none')(
                 input=skill_pred, target=prev_skill.to(torch.int64))
         else:
-            loss = torch.nn.MSELoss(reduction='none')(
-                input=skill_pred, target=prev_skill)
+            # nn.MSELoss doesn't support reducing along a dim
+            loss = torch.sum(math_ops.square(skill_pred - prev_skill), dim=-1)
 
         valid_masks = (step_type != StepType.FIRST).to(torch.float32)
         loss *= valid_masks
