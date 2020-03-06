@@ -101,7 +101,7 @@ class ImageEncodingNetwork(Network):
         """
         if self._output_spec is None:
             self._output_spec = TensorSpec.from_tensor(
-                self._test_forward(), from_dim=1)
+                self._test_forward()[0], from_dim=1)
         return self._output_spec
 
     def forward(self, inputs, state=()):
@@ -217,7 +217,7 @@ class ImageDecodingNetwork(Network):
         """
         if self._output_spec is None:
             self._output_spec = TensorSpec.from_tensor(
-                self._test_forward(), from_dim=1)
+                self._test_forward()[0], from_dim=1)
         return self._output_spec
 
     def forward(self, inputs, state=()):

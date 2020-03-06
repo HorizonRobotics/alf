@@ -158,7 +158,7 @@ class ICMAlgorithm(Algorithm):
             inputs=[prev_feature.detach(),
                     self._encode_action(prev_action)])
         # nn.MSELoss doesn't support reducing along a dim
-        forward_loss = torch.sum(
+        forward_loss = 0.5 * torch.mean(
             math_ops.square(forward_pred - feature.detach()), dim=-1)
 
         action_pred, _ = self._inverse_net([prev_feature, feature])
@@ -168,7 +168,7 @@ class ICMAlgorithm(Algorithm):
                 input=action_pred, target=prev_action.to(torch.int64))
         else:
             # nn.MSELoss doesn't support reducing along a dim
-            inverse_loss = torch.sum(
+            inverse_loss = 0.5 * torch.mean(
                 math_ops.square(action_pred - prev_action), dim=-1)
 
         intrinsic_reward = ()

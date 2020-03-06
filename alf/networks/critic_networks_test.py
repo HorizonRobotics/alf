@@ -19,11 +19,9 @@ import functools
 import torch
 
 import alf
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.tensor_specs import TensorSpec
 from alf.networks import CriticNetwork
 from alf.networks import CriticRNNNetwork
-from alf.nest.utils import NestConcat
-from alf.networks.preprocessors import EmbeddingPreprocessor
 
 
 class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
@@ -47,40 +45,33 @@ class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, True), (None, True), ((200, 100), False))
-    def test_critic_continuous_action(self, lstm_hidden_size, discrete_action):
+    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
+    def test_critic(self, lstm_hidden_size):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
-        if discrete_action:
-            action_spec = BoundedTensorSpec((), dtype='int64')
-        else:
-            action_spec = TensorSpec((5, ), torch.float32)
-        input_spec = (obs_spec, [action_spec])
+        action_spec = TensorSpec((5, ), torch.float32)
+        input_spec = (obs_spec, action_spec)
 
         observation_conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
         action_fc_layer_params = (10, 8)
-        preprocessors = [
-            EmbeddingPreprocessor(
-                input_tensor_spec=obs_spec,
-                conv_layer_params=observation_conv_layer_params),
-            EmbeddingPreprocessor(
-                input_tensor_spec=action_spec,
-                fc_layer_params=action_fc_layer_params)
-        ]
-
         joint_fc_layer_params = (6, 4)
 
         image = obs_spec.zeros(outer_dims=(1, ))
-        action = action_spec.ones(outer_dims=(1, ))
+        action = action_spec.randn(outer_dims=(1, ))
 
-        network_input = (image, [action])
+        network_input = (image, action)
 
         network_ctor, state = self._init(lstm_hidden_size)
 
         critic_net = network_ctor(
             input_spec,
-            input_preprocessors=preprocessors,
-            preprocessing_combiner=NestConcat(),
-            fc_layer_params=joint_fc_layer_params)
+            observation_conv_layer_params=observation_conv_layer_params,
+            action_fc_layer_params=action_fc_layer_params,
+            joint_fc_layer_params=joint_fc_layer_params)
+
+        value, state = critic_net._test_forward()
+        self.assertEqual(value.shape, (1, ))
+        if lstm_hidden_size is None:
+            self.assertEqual(state, ())
 
         value, state = critic_net(network_input, state)
 

@@ -30,10 +30,10 @@ class CriticNetwork(Network):
 
     def __init__(self,
                  input_tensor_spec,
-                 preprocessing_combiner,
-                 input_preprocessors=None,
-                 conv_layer_params=None,
-                 fc_layer_params=None,
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=None,
+                 action_fc_layer_params=None,
+                 joint_fc_layer_params=None,
                  activation=torch.relu,
                  name="CriticNetwork"):
         """Creates an instance of `CriticNetwork` for estimating action-value of
@@ -42,45 +42,56 @@ class CriticNetwork(Network):
         This module takes observation as input and action as input and outputs
         an action-value tensor with the shape of [batch_size].
 
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
+
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
                 representing the inputs.
-            preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
-                arg is helpful if you want to combine inputs by configuring a
-                gin file without changing the code. Required for a critic network
-                because the inputs will always be a nest (observations and
-                actions).
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
-            conv_layer_params (list[tuple]): a list of tuples where each
+            observation_conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (list[int]): a list of integers representing
-                hidden FC layer sizes.
+            observation_fc_layer_params (list[int]): a list of integers representing
+                hidden FC layer sizes for observations.
+            action_fc_layer_params (list[int]): a list of integers representing
+                hidden FC layer sizes for actions.
+            joint_fc_layer_params (list[int]): a list of integers representing
+                hidden FC layer sizes FC layers after merging observations and
+                actions.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             name (str):
         """
-        super(CriticNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
-        self._encoding_net = EncodingNetwork(
-            input_tensor_spec=self._input_tensor_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
+        super(CriticNetwork, self).__init__(
+            input_tensor_spec, skip_input_preprocessing=True, name=name)
+
+        observation_spec, action_spec = input_tensor_spec
+
+        flat_action_spec = nest.flatten(action_spec)
+        if len(flat_action_spec) > 1:
+            raise ValueError(
+                'Only a single action is supported by this network')
+
+        self._single_action_spec = flat_action_spec[0]
+        self._obs_encoder = EncodingNetwork(
+            observation_spec,
+            conv_layer_params=observation_conv_layer_params,
+            fc_layer_params=observation_fc_layer_params,
+            activation=activation)
+
+        self._action_encoder = EncodingNetwork(
+            action_spec,
+            fc_layer_params=action_fc_layer_params,
+            activation=activation)
+
+        self._joint_encoder = EncodingNetwork(
+            TensorSpec((self._obs_encoder.output_spec.shape[0] +
+                        self._action_encoder.output_spec.shape[0], )),
+            fc_layer_params=joint_fc_layer_params,
             activation=activation,
             last_layer_size=1,
             last_activation=layers.identity)
+
         self._output_spec = TensorSpec(())
 
     def forward(self, inputs, state=()):
@@ -94,9 +105,16 @@ class CriticNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size]
             state: empty
         """
+        # this line is just a placeholder doing nothing
         inputs, state = Network.forward(self, inputs, state)
-        # `inputs` should now be a single tensor after this
-        action_value, _ = self._encoding_net(inputs)
+
+        observations, actions = inputs
+        actions = actions.to(torch.float32)
+
+        encoded_obs, _ = self._obs_encoder(observations)
+        encoded_action, _ = self._action_encoder(actions)
+        joint = torch.cat([encoded_obs, encoded_action], -1)
+        action_value, _ = self._joint_encoder(joint)
         return torch.squeeze(action_value, -1), state
 
 
@@ -106,10 +124,10 @@ class CriticRNNNetwork(Network):
 
     def __init__(self,
                  input_tensor_spec,
-                 preprocessing_combiner,
-                 input_preprocessors=None,
-                 conv_layer_params=None,
-                 fc_layer_params=None,
+                 observation_conv_layer_params=None,
+                 observation_fc_layer_params=None,
+                 action_fc_layer_params=None,
+                 joint_fc_layer_params=None,
                  lstm_hidden_size=100,
                  critic_fc_layer_params=None,
                  activation=torch.relu,
@@ -120,27 +138,20 @@ class CriticRNNNetwork(Network):
         given action. It takes observation and state as input and outputs an
         action-value tensor with the shape of [batch_size].
 
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
+
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
                 representing the inputs.
-            preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
-                arg is helpful if you want to combine inputs by configuring a
-                gin file without changing the code. Required for a critic network
-                because the inputs will always be a nest (observations and
-                actions).
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
-            fc_layer_params (list[int]): a list of integers representing
+            observation_conv_layer_params (list[tuple]): a list of tuples where each
+                tuple takes a format `(filters, kernel_size, strides, padding)`,
+                where `padding` is optional.
+            observation_fc_layer_params (list[int]): a list of integers representing
+                hidden FC layer sizes for observations.
+            action_fc_layer_params (list[int]): a list of integers representing
+                hidden FC layer sizes for actions.
+            joint_fc_layer_params (list[int]): a list of integers representing
                 hidden FC layer sizes FC layers after merging observations and
                 actions.
             lstm_hidden_size (int or tuple[int]): the hidden size(s)
@@ -152,19 +163,42 @@ class CriticRNNNetwork(Network):
                 last layer will not be activated.
             name (str):
         """
-        super(CriticRNNNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(CriticRNNNetwork, self).__init__(
+            input_tensor_spec, skip_input_preprocessing=True, name=name)
 
-        self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=self._input_tensor_spec,
-            conv_layer_params=conv_layer_params,
-            pre_fc_layer_params=fc_layer_params,
+        observation_spec, action_spec = input_tensor_spec
+
+        flat_action_spec = nest.flatten(action_spec)
+        if len(flat_action_spec) > 1:
+            raise ValueError(
+                'Only a single action is supported by this network')
+
+        self._single_action_spec = flat_action_spec[0]
+        self._obs_encoder = EncodingNetwork(
+            observation_spec,
+            conv_layer_params=observation_conv_layer_params,
+            fc_layer_params=observation_fc_layer_params,
+            activation=activation)
+
+        self._action_encoder = EncodingNetwork(
+            action_spec,
+            fc_layer_params=action_fc_layer_params,
+            activation=activation)
+
+        self._joint_encoder = EncodingNetwork(
+            TensorSpec((self._obs_encoder.output_spec.shape[0] +
+                        self._action_encoder.output_spec.shape[0], )),
+            fc_layer_params=joint_fc_layer_params,
+            activation=activation)
+
+        self._lstm_encoding_net = LSTMEncodingNetwork(
+            input_tensor_spec=self._joint_encoder.output_spec,
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=critic_fc_layer_params,
             activation=activation,
             last_layer_size=1,
             last_activation=layers.identity)
+
         self._output_spec = TensorSpec(())
 
     def forward(self, inputs, state):
@@ -178,11 +212,19 @@ class CriticRNNNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size]
             new_state (nest[tuple]): the updated states
         """
+        # this line is just a placeholder doing nothing
         inputs, state = Network.forward(self, inputs, state)
-        # `inputs` should now be a single tensor after this
-        action_value, state = self._encoding_net(inputs, state)
+
+        observations, actions = inputs
+        actions = actions.to(torch.float32)
+
+        encoded_obs, _ = self._obs_encoder(observations)
+        encoded_action, _ = self._action_encoder(actions)
+        joint = torch.cat([encoded_obs, encoded_action], -1)
+        encoded_joint, _ = self._joint_encoder(joint)
+        action_value, state = self._lstm_encoding_net(encoded_joint, state)
         return torch.squeeze(action_value, -1), state
 
     @property
     def state_spec(self):
-        return self._encoding_net.state_spec
+        return self._lstm_encoding_net.state_spec
