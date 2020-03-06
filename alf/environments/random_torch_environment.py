@@ -34,7 +34,8 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
 
     def __init__(self,
                  observation_spec,
-                 action_spec=None,
+                 action_spec,
+                 env_id=None,
                  episode_end_probability=0.1,
                  discount=1.0,
                  reward_fn=None,
@@ -73,11 +74,15 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         """
         self._batch_size = batch_size
         self._observation_spec = observation_spec
+        self._action_spec = action_spec
         self._time_step_spec = ds.time_step_spec(self._observation_spec,
                                                  action_spec)
-        self._action_spec = action_spec or []
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)
+        if env_id is None:
+            self._env_id = torch.tensor(0, dtype=torch.int32)
+        else:
+            self._env_id = env_id
 
         if self._batch_size:
             if not discount.shape:
@@ -122,11 +127,22 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
 
     def _get_observation(self):
         batch_size = (self._batch_size, ) if self._batch_size else ()
-        return ts.sample_spec_nest(self._observation_spec, batch_size)
+        return nest.map_structure(
+            lambda spec: self._sample_spec(spec, batch_size),
+            self._observation_spec)
 
     def _reset(self):
         self._done = False
-        return ds.restart(self._get_observation(), self._batch_size)
+        batched = self._batch_size is not None
+        return ds.restart(self._get_observation(), self._action_spec,
+                          self._env_id, batched)
+
+    def _sample_spec(self, spec, outer_dims):
+        """Sample the given TensorSpec."""
+        shape = spec.shape
+        if not isinstance(spec, ts.BoundedTensorSpec):
+            spec = ts.BoundedTensorSpec(shape, spec.dtype)
+        return spec.sample(outer_dims=outer_dims)
 
     def _check_reward_shape(self, reward):
         expected_shape = () if self._batch_size is None else (
@@ -153,16 +169,22 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         else:
             self._done = self._rng.uniform() < self._episode_end_probability
 
+        if self._batch_size:
+            action = nest.map_structure(
+                lambda t: torch.cat([t.unsqueeze(0)] * self._batch_size),
+                action)
+
         if self._done:
             reward = self._reward_fn(ds.StepType.LAST, action, observation)
             self._check_reward_shape(reward)
-            time_step = ds.termination(observation, action, reward)
+            time_step = ds.termination(observation, action, reward,
+                                       self._env_id)
             self._num_steps = 0
         else:
             reward = self._reward_fn(ds.StepType.MID, action, observation)
             self._check_reward_shape(reward)
             time_step = ds.transition(observation, action, reward,
-                                      self._discount)
+                                      self._discount, self._env_id)
 
         return time_step
 

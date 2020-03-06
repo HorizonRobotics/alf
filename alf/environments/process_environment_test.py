@@ -70,8 +70,9 @@ class ProcessEnvironmentTest(unittest.TestCase):
             env.reset()
 
     def test_reraise_exception_in_step(self):
-        constructor = functools.partial(
-            MockEnvironmentCrashInStep, crash_at_step=3)
+        crash_at_step = 3
+        constructor = functools.partial(MockEnvironmentCrashInStep,
+                                        crash_at_step)
         env = ProcessEnvironment(constructor)
         env.start()
         env.reset()
@@ -108,11 +109,14 @@ class MockEnvironmentCrashInReset(object):
 class MockEnvironmentCrashInStep(RandomTorchEnvironment):
     """Raise an error after specified number of steps in an episode."""
 
-    def __init__(self, crash_at_step):
+    def __init__(self, crash_at_step, env_id=None):
         super(MockEnvironmentCrashInStep, self).__init__(
-            ts.TensorSpec((3, 3), torch.float32),
-            ts.BoundedTensorSpec([1], torch.float32, minimum=-1.0,
-                                 maximum=1.0),
+            observation_spec=ts.TensorSpec((3, 3), torch.float32),
+            action_spec=ts.BoundedTensorSpec([1],
+                                             torch.float32,
+                                             minimum=-1.0,
+                                             maximum=1.0),
+            env_id=env_id,
             episode_end_probability=0,
             min_duration=crash_at_step + 1,
             max_duration=crash_at_step + 1)

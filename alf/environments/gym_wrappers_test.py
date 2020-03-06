@@ -47,7 +47,7 @@ class FakeDictObservationEnvironment(FakeEnvironment):
     def __init__(self, *args, **kwargs):
         self.observation_space = spaces.Dict({
             'image':
-                spaces.Box(shape=(2, 2, 3), low=-1, high=1, dtype=np.float32),
+                spaces.Box(shape=(4, 4, 3), low=-1, high=1, dtype=np.float32),
             'states':
                 spaces.Box(shape=(4, ), low=-1, high=1, dtype=np.float32),
             'language':
@@ -78,7 +78,7 @@ class FrameStackTest(unittest.TestCase):
             obs['dict']['inner_states'].shape,
         )
         expected = (
-            (2, 2, 3 * 4),  # 3 channels * 4
+            (3 * 4, 4, 4),  # 3 channels * 4
             (4 * 4, ),
             (3 * 4, ),
             (7 * 4, ),
@@ -96,7 +96,7 @@ class FrameStackTest(unittest.TestCase):
             obs['dict']['inner_states'].shape,
         )
         expected = (
-            (2, 2, 3 * 4),  # 3 channels * 4
+            (3 * 4, 4, 4),  # 3 channels * 4
             (4, ),  # not stacking
             (3, ),  # not stacking
             (7 * 4, ),  # stacking nested field referred by path

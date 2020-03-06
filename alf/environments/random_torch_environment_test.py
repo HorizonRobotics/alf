@@ -25,7 +25,8 @@ from alf.tensor_specs import BoundedTensorSpec
 class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
     def testEnvResetAutomatically(self):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
-        env = RandomTorchEnvironment(obs_spec)
+        action_spec = BoundedTensorSpec([], torch.int32)
+        env = RandomTorchEnvironment(obs_spec, action_spec)
 
         action = torch.tensor(0, dtype=torch.int64)
         time_step = env.step(action)
@@ -49,8 +50,12 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
     ])
     def testEnvMinDuration(self, min_duration):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec([], torch.int32)
         env = RandomTorchEnvironment(
-            obs_spec, episode_end_probability=0.9, min_duration=min_duration)
+            obs_spec,
+            action_spec,
+            episode_end_probability=0.9,
+            min_duration=min_duration)
         num_episodes = 100
 
         action = torch.tensor(0, dtype=torch.int64)
@@ -69,8 +74,12 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
     ])
     def testEnvMaxDuration(self, max_duration):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec([], torch.int32)
         env = RandomTorchEnvironment(
-            obs_spec, episode_end_probability=0.1, max_duration=max_duration)
+            obs_spec,
+            action_spec,
+            episode_end_probability=0.1,
+            max_duration=max_duration)
         num_episodes = 100
 
         action = torch.tensor(0, dtype=torch.int64)
@@ -130,17 +139,22 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
     def testBatchSize(self):
         batch_size = 3
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
-        env = RandomTorchEnvironment(obs_spec, batch_size=batch_size)
+        action_spec = BoundedTensorSpec((1, ), torch.int64)
+        env = RandomTorchEnvironment(
+            obs_spec, action_spec, batch_size=batch_size)
         time_step = env.step(torch.tensor(0, dtype=torch.int64))
+        # import pdb; pdb.set_trace()
         self.assertEqual(time_step.observation.shape, (3, 2, 3))
         self.assertEqual(time_step.reward.shape[0], batch_size)
         self.assertEqual(time_step.discount.shape[0], batch_size)
 
     def testCustomRewardFn(self):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec((1, ), torch.int64)
         batch_size = 3
         env = RandomTorchEnvironment(
             obs_spec,
+            action_spec,
             reward_fn=lambda *_: torch.ones(batch_size),
             batch_size=batch_size)
         env._done = False
@@ -152,8 +166,12 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
     def testRewardCheckerBatchSizeOne(self):
         # Ensure batch size 1 with scalar reward works
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec((1, ), torch.int64)
         env = RandomTorchEnvironment(
-            obs_spec, reward_fn=lambda *_: torch.tensor([1.0]), batch_size=1)
+            obs_spec,
+            action_spec,
+            reward_fn=lambda *_: torch.tensor([1.0]),
+            batch_size=1)
         env._done = False
         env.reset()
         action = torch.tensor([0], dtype=torch.int64)
@@ -164,8 +182,12 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
         # Ensure custom scalar reward with batch_size greater than 1 raises
         # ValueError
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
+        action_spec = BoundedTensorSpec((1, ), torch.int64)
         env = RandomTorchEnvironment(
-            obs_spec, reward_fn=lambda *_: torch.tensor([1.0]), batch_size=5)
+            obs_spec,
+            action_spec,
+            reward_fn=lambda *_: torch.tensor([1.0]),
+            batch_size=5)
         env.reset()
         env._done = False
         action = torch.tensor(0, dtype=torch.int64)

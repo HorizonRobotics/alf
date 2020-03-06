@@ -97,6 +97,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
 
     def __init__(self,
                  gym_env,
+                 env_id=None,
                  discount=1.0,
                  match_obs_space_dtype=True,
                  auto_reset=True,
@@ -105,7 +106,10 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
 
         self._gym_env = gym_env
         self._discount = discount
-        self._env_id = torch.tensor(0, dtype=torch.int32)
+        if env_id is None:
+            self._env_id = torch.tensor(0, dtype=torch.int32)
+        else:
+            self._env_id = env_id
         self._action_is_discrete = isinstance(self._gym_env.action_space,
                                               gym.spaces.Discrete)
         self._match_obs_space_dtype = match_obs_space_dtype

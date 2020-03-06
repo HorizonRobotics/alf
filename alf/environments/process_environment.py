@@ -63,7 +63,7 @@ class ProcessEnvironment(object):
     _EXCEPTION = 5
     _CLOSE = 6
 
-    def __init__(self, env_constructor, flatten=False):
+    def __init__(self, env_constructor, env_id=None, flatten=False):
         """Step environment in a separate process for lock free paralellism.
 
         The environment is created in an external process by calling the provided
@@ -73,6 +73,7 @@ class ProcessEnvironment(object):
 
         Args:
             env_constructor: Callable that creates and returns a Python environment.
+            env_id: id of the the env
             flatten: Boolean, whether to assume flattened actions and time_steps
                 during communication to avoid overhead.
 
@@ -83,6 +84,7 @@ class ProcessEnvironment(object):
         """
         self._env_constructor = env_constructor
         self._flatten = flatten
+        self._env_id = env_id
         self._observation_spec = None
         self._action_spec = None
         self._time_step_spec = None
@@ -94,11 +96,9 @@ class ProcessEnvironment(object):
             wait_to_start: Whether the call should wait for an env initialization.
         """
         self._conn, conn = multiprocessing.Pipe()
-        # self._conn = ConnectionWrapper(self._conn)
-        # conn = ConnectionWrapper(conn)
         self._process = multiprocessing.Process(
             target=self._worker,
-            args=(conn, self._env_constructor, self._flatten))
+            args=(conn, self._env_constructor, self._env_id, self._flatten))
         atexit.register(self.close)
         self._process.start()
         if wait_to_start:
@@ -224,7 +224,7 @@ class ProcessEnvironment(object):
         raise KeyError(
             'Received message of unexpected type {}'.format(message))
 
-    def _worker(self, conn, env_constructor, flatten=False):
+    def _worker(self, conn, env_constructor, env_id=None, flatten=False):
         """The process waits for actions and sends back environment results.
 
         Args:
@@ -238,7 +238,7 @@ class ProcessEnvironment(object):
         """
         try:
             alf.set_default_device("cpu")
-            env = env_constructor()
+            env = env_constructor(env_id)
             action_spec = env.action_spec()
             conn.send(self._READY)  # Ready.
             while True:

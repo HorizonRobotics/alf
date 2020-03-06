@@ -57,6 +57,23 @@ def transform_space(observation_space, field, func):
         space=observation_space, levels=field.split('.') if field else [])
 
 
+def need_channel_transpose(shape):
+    """Determine if the input shape needs a transpose to make the corresponding array/tensor
+        channel_first.
+
+    Args:
+        shape (int tuple): shape of the inquiry array / tensor
+
+    Returns:
+        A boolean: the inquiry array / tensor needs tranpose (True) or not (False)
+    """
+
+    if len(shape) == 3 and shape[2] < shape[0] and shape[2] < shape[1]:
+        return True
+    else:
+        return False
+
+
 @gin.configurable
 class BaseObservationWrapper(gym.ObservationWrapper):
     """Base observation Wrapper
@@ -149,25 +166,21 @@ class FrameStack(BaseObservationWrapper):
         self._stack_axis = stack_axis
         self._stack_size = stack_size
         self._frames = dict()
-        shape = env.observation_space.shape
-        if len(shape) == 3 and shape[2] < shape[0] and shape[2] < shape[1]:
-            self._obs_transpose = True
-        else:
-            self._obs_transpose = False
         super().__init__(env, fields=fields)
 
     def transform_space(self, observation_space, field=None):
         if isinstance(observation_space, gym.spaces.Box):
+            transpose = need_channel_transpose(observation_space.shape)
             low = np.repeat(
                 observation_space.low,
                 repeats=self._stack_size,
                 axis=self._stack_axis)
-            low = self.channel_first(low)
+            low = self.channel_first(low, transpose)
             high = np.repeat(
                 observation_space.high,
                 repeats=self._stack_size,
                 axis=self._stack_axis)
-            high = self.channel_first(high)
+            high = self.channel_first(high, transpose)
             return gym.spaces.Box(
                 low=low, high=high, dtype=observation_space.dtype)
         elif isinstance(observation_space, gym.spaces.MultiDiscrete):
@@ -177,6 +190,7 @@ class FrameStack(BaseObservationWrapper):
             raise ValueError("Unsupported space:%s" % observation_space)
 
     def transform_observation(self, observation, field=None):
+        transpose = need_channel_transpose(observation.shape)
         queue = self._frames.get(field, None)
         if not queue:
             queue = deque(maxlen=self._stack_size)
@@ -185,10 +199,11 @@ class FrameStack(BaseObservationWrapper):
             self._frames[field] = queue
         else:
             queue.append(observation)
-        return self.channel_first(np.concatenate(queue, axis=self._stack_axis))
+        return self.channel_first(
+            np.concatenate(queue, axis=self._stack_axis), transpose)
 
-    def channel_first(self, np_array):
-        if self._obs_transpose:
+    def channel_first(self, np_array, transpose=False):
+        if transpose:
             np_array = np.transpose(np_array, (2, 0, 1))
         return np_array
 

@@ -70,7 +70,8 @@ class ThreadTorchEnvironmentTest(unittest.TestCase):
 
         # Take one step and assert observation is batched the right way.
         time_step = env.step(action)
-        self.assertEqual(observation_spec.shape, time_step.observation.shape)
+        self.assertEqual(observation_spec.shape,
+                         time_step.observation.shape[1:])
         self.assertEqual(torch.Size(action_spec.shape), action.shape)
 
         # Take another step and assert that observations have the same shape.

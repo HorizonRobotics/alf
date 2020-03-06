@@ -14,6 +14,7 @@
 """Various data structures.
 Converted to PyTorch from the TF version.
 """
+import alf
 import alf.nest as nest
 import collections
 import numpy as np
@@ -151,6 +152,17 @@ def timestep_last(observation, prev_action, reward, discount, env_id):
 AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
 
 
+def to_tensor(data, dtype):
+    def _to_tensor(obj):
+        if not torch.is_tensor(obj):
+            obj = torch.tensor(obj, dtype=dtype)
+            if alf.get_default_device() == "cuda":
+                obj = obj.cuda()
+        return obj
+
+    return nest.map_structure(_to_tensor, data)
+
+
 def restart(observation, action_spec, env_id=None, batched=False):
     """Returns a `TimeStep` with `step_type` set equal to `StepType.FIRST`.
 
@@ -175,7 +187,7 @@ def restart(observation, action_spec, env_id=None, batched=False):
                                dtype=torch.int32)
         reward = torch.full((batch_size, ), 0.0, dtype=torch.float32)
         discount = torch.full((batch_size, ), 1.0, dtype=torch.float32)
-        prev_action = action_spec.zeros([batch_size])
+        prev_action = action_spec.zeros(outer_dims=(batch_size, ))
         env_id = torch.arange(batch_size, dtype=torch.int32)
     else:
         step_type = torch.full((), StepType.FIRST, dtype=torch.int32)
@@ -218,17 +230,17 @@ def transition(observation, action, reward, discount=1.0, env_id=None):
     # TODO(b/130245199): If reward.shape.rank == 2, and static
     # batch sizes are available for both first_observation and reward,
     # check that these match.
-    reward = torch.tensor(reward, dtype=torch.float32)
+    reward = to_tensor(reward, dtype=torch.float32)
     assert reward.dim() <= 1, "Expected reward to be a scalar or vector."
     if reward.dim() == 0:
         shape = []
-        if env_id is not None:
+        if env_id is None:
             env_id = torch.tensor(0, dtype=torch.int32)
     else:
         assert first_observation[0].shape[:1] == reward.shape
         assert first_action[0].shape[:1] == reward.shape
         shape = reward.shape
-        env_id = torch.arange(shape, dtype=torch.int32)
+        env_id = torch.arange(shape[0], dtype=torch.int32)
     step_type = torch.full(shape, StepType.MID, dtype=torch.int32)
     discount = torch.tensor(discount, dtype=torch.float32)
 
@@ -262,17 +274,17 @@ def termination(observation, action, reward, env_id=None):
     # TODO(b/130245199): If reward.shape.rank == 2, and static
     # batch sizes are available for both first_observation and reward,
     # check that these match.
-    reward = torch.tensor(reward, dtype=torch.float32)
+    reward = to_tensor(reward, dtype=torch.float32)
     assert reward.dim() <= 1, "Expected reward to be a scalar or vector."
     if reward.dim() == 0:
         shape = []
-        if env_id is not None:
+        if env_id is None:
             env_id = torch.tensor(0, dtype=torch.int32)
     else:
         assert first_observation[0].shape[:1] == reward.shape
         assert first_action[0].shape[:1] == reward.shape
         shape = reward.shape
-        env_id = torch.arange(shape, dtype=torch.int32)
+        env_id = torch.arange(shape[0], dtype=torch.int32)
     step_type = torch.full(shape, StepType.LAST, dtype=torch.int32)
     discount = torch.full(shape, 0.0, dtype=torch.float32)
     return TimeStep(step_type, reward, discount, observation, action, env_id)

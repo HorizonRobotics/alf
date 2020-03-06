@@ -16,6 +16,7 @@ import random
 import torch
 import gin
 import numpy as np
+import functools
 
 from alf.environments import suite_gym
 from alf.environments import thread_torch_environment, parallel_torch_environment
@@ -88,7 +89,8 @@ def create_environment(env_name='CartPole-v0',
             torch_env.seed(seed)
     else:
         torch_env = parallel_torch_environment.ParallelTorchEnvironment(
-            [lambda: env_load_fn(env_name)] * num_parallel_environments)
+            [functools.partial(env_load_fn, env_name)
+             ] * num_parallel_environments)
 
         if seed is None:
             torch_env.seed([

@@ -21,6 +21,7 @@ from alf.environments import torch_wrappers, torch_gym_wrapper
 
 @gin.configurable
 def load(environment_name,
+         env_id=None,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
@@ -54,6 +55,7 @@ def load(environment_name,
 
     return wrap_env(
         gym_env,
+        env_id=env_id,
         discount=discount,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
@@ -62,6 +64,7 @@ def load(environment_name,
 
 @gin.configurable
 def wrap_env(gym_env,
+             env_id=None,
              discount=1.0,
              max_episode_steps=0,
              gym_env_wrappers=(),
@@ -75,6 +78,7 @@ def wrap_env(gym_env,
   
     Args:
         gym_env: An instance of OpenAI gym environment.
+        env_id: id of the environment.
         discount: Discount to use for the environment.
         max_episode_steps: Used to create a TimeLimitWrapper. No limit is applied
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
@@ -96,7 +100,8 @@ def wrap_env(gym_env,
         gym_env = wrapper(gym_env)
 
     env = torch_gym_wrapper.TorchGymWrapper(
-        gym_env,
+        gym_env=gym_env,
+        env_id=env_id,
         discount=discount,
         auto_reset=auto_reset,
     )
