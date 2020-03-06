@@ -15,6 +15,7 @@
 from .actor_distribution_networks import *
 from .critic_networks import *
 from .encoding_networks import *
+from .network import Network, DistributionNetwork
 from .projection_networks import *
 from .q_networks import *
 from .value_networks import *
