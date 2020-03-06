@@ -26,16 +26,17 @@ from alf.tensor_specs import TensorSpec
 from alf.nest import nest
 from alf.networks.encoding_networks import MLPNetwork
 
+
 class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
     def test_empty_layers(self):
-        input_spec = TensorSpec((3,), torch.float32)
+        input_spec = TensorSpec((3, ), torch.float32)
         network = EncodingNetwork(input_spec)
         self.assertEmpty(list(network.parameters()))
 
-    @parameterized.parameters((True,), (False,))
+    @parameterized.parameters((True, ), (False, ))
     def test_image_encoding_network(self, flatten_output):
         input_spec = TensorSpec((3, 32, 32), torch.float32)
-        img = input_spec.zeros(outer_dims=(1,))
+        img = input_spec.zeros(outer_dims=(1, ))
         network = ImageEncodingNetwork(
             input_channels=input_spec.shape[0],
             input_size=input_spec.shape[1:],
@@ -49,10 +50,10 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         output = network(img)
         self.assertEqual(output_shape, tuple(output.size()[1:]))
 
-    @parameterized.parameters((None,), ((100, 100),))
+    @parameterized.parameters((None, ), ((100, 100), ))
     def test_image_decoding_network(self, preprocessing_fc_layers):
-        input_spec = TensorSpec((100,), torch.float32)
-        embedding = input_spec.zeros(outer_dims=(1,))
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(1, ))
         network = ImageDecodingNetwork(
             input_size=input_spec.shape[0],
             transconv_layer_params=[(16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
@@ -70,8 +71,8 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
 
     @parameterized.parameters((None, None), (200, None), (50, torch.relu))
     def test_encoding_network_nonimg(self, last_layer_size, last_activation):
-        input_spec = TensorSpec((100,), torch.float32)
-        embedding = input_spec.zeros(outer_dims=(1,))
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(1, ))
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
             fc_layer_params=[30, 40, 50],
@@ -90,7 +91,7 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
 
     def test_encoding_network_img(self):
         input_spec = TensorSpec((3, 80, 80), torch.float32)
-        img = input_spec.zeros(outer_dims=(1,))
+        img = input_spec.zeros(outer_dims=(1, ))
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
             conv_layer_params=[(16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)])
@@ -105,34 +106,40 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         input_specs = {
             'sensors': {
                 'camera': TensorSpec((3, 64, 64), torch.float32),
-                'finger_touch': TensorSpec((2,), torch.float32),
+                'finger_touch': TensorSpec((2, ), torch.float32),
             },
-            'velocity': TensorSpec((8,), torch.float32),
-            'position': TensorSpec((6,), torch.float32)
+            'velocity': TensorSpec((8, ), torch.float32),
+            'position': TensorSpec((6, ), torch.float32)
         }
         preprocessing_layers = {
             'sensors': {
-                'camera': MLPNetwork(
-                    input_tensor_spec=input_specs['sensors']['camera'],
-                    conv_layer_params=[(4, 3, (2, 2), 0)]),
-                'finger_touch': lambda x: x / 1000.0,
+                'camera':
+                    MLPNetwork(
+                        input_tensor_spec=input_specs['sensors']['camera'],
+                        conv_layer_params=[(4, 3, (2, 2), 0)]),
+                'finger_touch':
+                    lambda x: x / 1000.0,
             },
-            'velocity': MLPNetwork(
-                input_tensor_spec=input_specs['velocity'],
-                fc_layer_params=(8, 8)),
-            'position': None,
+            'velocity':
+                MLPNetwork(
+                    input_tensor_spec=input_specs['velocity'],
+                    fc_layer_params=(8, 8)),
+            'position':
+                None,
         }
         network = EncodingNetwork(
             input_tensor_spec=input_specs,
             preprocessing_layers=preprocessing_layers,
             preprocessing_combiner=lambda x: torch.cat(x, dim=-1),
-            fc_layer_params=(16, 16), )
+            fc_layer_params=(16, 16),
+        )
 
-        outer_dims = (1,)
+        outer_dims = (1, )
         inputs = nest.map_structure(
-            lambda input_spec: input_spec.zeros(outer_dims=outer_dims), input_specs)
+            lambda input_spec: input_spec.zeros(outer_dims=outer_dims),
+            input_specs)
         output = network(inputs)
-        self.assertEqual((16,), tuple(output.size()[1:]))
+        self.assertEqual((16, ), tuple(output.size()[1:]))
 
         # 1 conv layer for pre-processing  `:sensors:camera`,
         #   2 fc layers for pre-processing `:velocity`,

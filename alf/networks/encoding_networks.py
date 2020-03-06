@@ -332,7 +332,6 @@ class MLPNetwork(nn.Module):
 
 @gin.configurable
 class EncodingNetwork(nn.Module):
-
     def __init__(self,
                  input_tensor_spec,
                  preprocessing_layers=None,
@@ -374,17 +373,16 @@ class EncodingNetwork(nn.Module):
                 lambda x: x or layers.identity, preprocessing_layers)
             output_tensor_spec = nest.map_structure(
                 lambda layer, input_spec: TensorSpec.from_tensor(
-                    tensor=layer(input_spec.zeros(outer_dims=(1,))),
-                    from_dim=1),
-                preprocessing_layers,
-                input_tensor_spec)
+                    tensor=layer(input_spec.zeros(outer_dims=(1, ))),
+                    from_dim=1), preprocessing_layers, input_tensor_spec)
 
             # It's a trick here, add all nn.Module instances in preprocessing_layers
             #   to variable  `self._preprocessing_module` so that `self.parameters()`
             #   can capture corresponding parameters
             self._preprocessing_module = nn.ModuleList(
-                list(filter(lambda x: isinstance(x, nn.Module),
-                       nest.flatten(preprocessing_layers))))
+                list(
+                    filter(lambda x: isinstance(x, nn.Module),
+                           nest.flatten(preprocessing_layers))))
             flat_input_tensor_spec = nest.flatten(output_tensor_spec)
             self._preprocessing_layers = preprocessing_layers
 
@@ -396,8 +394,9 @@ class EncodingNetwork(nn.Module):
                     'input_tensor_spec is provided.')
             output_tensor_spec = TensorSpec.from_tensor(
                 tensor=preprocessing_combiner(
-                    nest.map_structure(lambda input_spec: input_spec.zeros(outer_dims=(1,)),
-                                       flat_input_tensor_spec)),
+                    nest.map_structure(
+                        lambda input_spec: input_spec.zeros(outer_dims=(1, )),
+                        flat_input_tensor_spec)),
                 from_dim=1)
             flat_input_tensor_spec = [output_tensor_spec]
 
@@ -413,10 +412,8 @@ class EncodingNetwork(nn.Module):
         z = inputs
 
         if self._preprocessing_layers is not None:
-            z = nest.map_structure(
-                lambda layer, input: layer(input),
-                self._preprocessing_layers,
-                z)
+            z = nest.map_structure(lambda layer, input: layer(input),
+                                   self._preprocessing_layers, z)
 
         if self._preprocessing_combiner is not None:
             z = self._preprocessing_combiner(nest.flatten(z))
@@ -473,7 +470,7 @@ class LSTMEncodingNetwork(nn.Module):
             input_size = hs
 
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec=TensorSpec((input_size,)),
+            input_tensor_spec=TensorSpec((input_size, )),
             fc_layer_params=fc_layer_params,
             activation=activation,
             last_layer_size=last_layer_size,
@@ -494,7 +491,7 @@ class LSTMEncodingNetwork(nn.Module):
         Returns:
             specs (tuple[TensorSpec]):
         """
-        state_spec = TensorSpec(shape=(hidden_size,), dtype=dtype)
+        state_spec = TensorSpec(shape=(hidden_size, ), dtype=dtype)
         return (state_spec, state_spec)
 
     def forward(self, inputs, state):
