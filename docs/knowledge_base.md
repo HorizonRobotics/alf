@@ -125,3 +125,40 @@ The following table summarizes how step type and discount affect the learning.
 | MID     | 1   |Yes  |  Yes | Any step other than FIRST and LAST |
 | LAST | 0      |   No | No | Last step because of a normal game end |
 | LAST | 1 | Yes | No | Last step because of time limit |
+
+### Missing one TimeStep of losses every rollout length for on-policy training
+TrainingInfo fields are populated in sync_off_policy_driver around line 143.
+
+For every `T` (unroll_length) number of transitions, only the ending `TimeStep`
+of each transition is stored into `TrainingInfo`.  `TimeStep` `0` is not stored,
+only `1` through `T` `TimeStep`s are.  Also, according to
+how `TrainingInfo` is populated (sync_off_policy_driver.py around line 143)
+the reward in `TimeStep` `1` comes from executing the action of `TimeStep` `0`,
+and is not used in loss calculation.  This leaves only the rewards of steps `2`
+to `T`, a total of `T - 1` steps, for calculating losses.  Would this cause
+any significant problem with training?  Most likely, it wouldn't.
+
+Case 1) When episode length varies or when it is fixed but is not divisible by unroll
+length, then the time step that's being dropped could appear randomly
+throughout the episode, no serious bias in training.
+
+Case 2) When rewards are only given at episode end,
+and each episode is of the same length that's divisible by the unroll length,
+for example, unroll 2 steps for episodes of equal length 4, step `0`
+is discarded, steps `1`, `2` make into training, and `3`, `4` make into
+training (step `4` being the first step of the next episode).  The reward for
+the first episode (steps `0` to `3`) is stored at step `4` and is used in
+training.  No reward is dropped.  It's not randomly dropping `TimeStep`s,
+so there is still some bias, but at least all the rewards are taken into
+account during training.
+
+Case 3) This actually becomes a problem when rewards are given at the second
+last step of each episode, and when episode lengths are fixed and divisible
+by unroll length, in which case, rewards are dropped consistently out of
+training.
+
+Case 3 is probably very rare, but documenting here just in case.
+
+For off policy training, we plan to include the very first TimeStep of each
+unroll in the replay buffer and use them for training.  No steps will be
+discarded.
