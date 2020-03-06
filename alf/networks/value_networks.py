@@ -64,9 +64,11 @@ class ValueNetwork(Network):
                 last layer will not be activated.
             name (str):
         """
-        super(ValueNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(ValueNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
         self._encoding_net = EncodingNetwork(
             input_tensor_spec=self._input_tensor_spec,
             conv_layer_params=conv_layer_params,
@@ -138,9 +140,11 @@ class ValueRNNNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
         """
-        super(ValueRNNNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(ValueRNNNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
         self._encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=self._input_tensor_spec,
             conv_layer_params=conv_layer_params,

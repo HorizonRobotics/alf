@@ -260,10 +260,11 @@ class DistributionNetwork(Network):
                  input_tensor_spec,
                  input_preprocessors=None,
                  preprocessing_combiner=None,
+                 skip_input_preprocessing=False,
                  name="DistributionNetwork"):
-        super(DistributionNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(DistributionNetwork, self).__init__(
+            input_tensor_spec, input_preprocessors, preprocessing_combiner,
+            skip_input_preprocessing, name)
 
     @property
     def output_spec(self):

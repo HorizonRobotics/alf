@@ -52,7 +52,8 @@ class DIAYNAlgorithmTest(alf.test.TestCase):
         self.assertTensorClose(
             torch.sum(alg_step.info.loss),
             torch.as_tensor(
-                math.log(skill_spec.maximum - skill_spec.minimum + 1)))
+                math.log(skill_spec.maximum - skill_spec.minimum + 1)),
+            epsilon=1e-4)
 
     def test_continuous_skill_loss(self):
         skill_spec = TensorSpec((4, ))

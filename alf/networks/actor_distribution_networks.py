@@ -73,9 +73,11 @@ class ActorDistributionNetwork(DistributionNetwork):
                 continuous actions.
             name (str):
         """
-        super(ActorDistributionNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(ActorDistributionNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
         self._action_spec = action_spec
         self._encoding_net = EncodingNetwork(
             input_tensor_spec=self._input_tensor_spec,

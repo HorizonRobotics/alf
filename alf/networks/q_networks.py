@@ -69,8 +69,11 @@ class QNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
         """
-        super(QNetwork, self).__init__(input_tensor_spec, input_preprocessors,
-                                       preprocessing_combiner, name)
+        super(QNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
         self._output_spec = TensorSpec((num_actions, ))
@@ -150,9 +153,11 @@ class QRNNNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
         """
-        super(QRNNNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(QRNNNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
         self._output_spec = TensorSpec((num_actions, ))

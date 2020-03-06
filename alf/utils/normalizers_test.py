@@ -39,7 +39,8 @@ class NormalizersTest(alf.test.TestCase):
                 tensors_mean,
                 tensors_var,
                 variance_epsilon=eps)
-            self.assertTensorClose(normalized_tensor, target_normalized_tensor)
+            self.assertTensorClose(
+                normalized_tensor, target_normalized_tensor, epsilon=1e-4)
 
         self._verify_normalization = _verify_normalization
 

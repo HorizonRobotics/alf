@@ -283,9 +283,11 @@ class EncodingNetwork(Network):
                 layer. If None, it will be the SAME with `activation`.
             name (str):
         """
-        super(EncodingNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(EncodingNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
 
         if fc_layer_params is not None:
             fc_layer_params = list(fc_layer_params)
@@ -403,9 +405,11 @@ class LSTMEncodingNetwork(Network):
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the same with `activation`.
         """
-        super(LSTMEncodingNetwork,
-              self).__init__(input_tensor_spec, input_preprocessors,
-                             preprocessing_combiner, name)
+        super(LSTMEncodingNetwork, self).__init__(
+            input_tensor_spec,
+            input_preprocessors,
+            preprocessing_combiner,
+            name=name)
 
         self._pre_encoding_net = EncodingNetwork(
             input_tensor_spec=self._input_tensor_spec,

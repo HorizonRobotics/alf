@@ -53,7 +53,8 @@ class ICMAlgorithmTest(alf.test.TestCase):
         self.assertTensorClose(
             torch.sum(alg_step.info.loss.extra['inverse_loss']),
             torch.as_tensor(
-                math.log(action_spec.maximum - action_spec.minimum + 1)))
+                math.log(action_spec.maximum - action_spec.minimum + 1)),
+            epsilon=1e-4)
 
     def test_continuous_action(self):
         action_spec = TensorSpec((4, ))
