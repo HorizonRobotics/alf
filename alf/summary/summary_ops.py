@@ -164,6 +164,12 @@ def get_global_counter():
     return _global_counter
 
 
+def reset_global_counter():
+    """Reset the global counter to zero
+    """
+    _global_counter.data.fill_(0)
+
+
 class record_if(object):
     """Context manager to set summary recording on or off according to `cond`."""
 
