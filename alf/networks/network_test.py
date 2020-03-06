@@ -69,5 +69,4 @@ class NetworkTest(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    NetworkTest().test_copy_works()
     alf.test.main()
