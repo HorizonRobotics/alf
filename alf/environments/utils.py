@@ -21,8 +21,6 @@ from alf.environments import suite_gym
 from alf.environments import thread_torch_environment, parallel_torch_environment
 from alf.environments import torch_wrappers
 
-# from tf_agents.environments import tf_py_environment
-
 
 class UnwrappedEnvChecker(object):
     """

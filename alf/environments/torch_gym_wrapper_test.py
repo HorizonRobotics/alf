@@ -14,10 +14,6 @@
 """Tests for torch_gym_wrapper. Adapted from tf_agents' gym_wrapper_test.py.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import math
 from absl.testing.absltest import mock
 import gym

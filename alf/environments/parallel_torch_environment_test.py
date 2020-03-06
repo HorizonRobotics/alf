@@ -15,10 +15,6 @@
 Adapted from TF-Agents' parallel_py_environment_test.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 import functools
 import multiprocessing.dummy as dummy_multiprocessing

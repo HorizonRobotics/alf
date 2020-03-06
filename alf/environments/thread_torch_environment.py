@@ -14,7 +14,7 @@
 """Runs a single environments in a separate thread.
 
 Adapted from ALF's Environment API as seen in:
-    https://github.com/HorizonRobotics/alf/blob/master/alf/environments/utils.py
+    https://github.com/HorizonRobotics/alf/blob/tf2/alf/environments/utils.py
 """
 
 from multiprocessing import dummy as mp_threads

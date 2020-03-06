@@ -17,10 +17,6 @@ Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/parallel_py_environment.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import logging
 
 import gin
@@ -35,11 +31,11 @@ import alf.nest as nest
 class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
     """Batch together environments and simulate them in external processes.
 
-  The environments are created in external processes by calling the provided
-  callables. This can be an environment class, or a function creating the
-  environment and potentially wrapping it. The returned environment should not
-  access global variables.
-  """
+    The environments are created in external processes by calling the provided
+    callables. This can be an environment class, or a function creating the
+    environment and potentially wrapping it. The returned environment should not
+    access global variables.
+    """
 
     def __init__(self,
                  env_constructors,
@@ -48,19 +44,19 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
                  flatten=False):
         """Batch together environments and simulate them in external processes.
 
-    The environments can be different but must use the same action and
-    observation specs.
+        The environments can be different but must use the same action and
+        observation specs.
 
-    Args:
-      env_constructors: List of callables that create environments.
-      start_serially: Whether to start environments serially or in parallel.
-      blocking: Whether to step environments one after another.
-      flatten: Boolean, whether to use flatten action and time_steps during
-        communication to reduce overhead.
+        Args:
+            env_constructors (callable): List of callables that create environments.
+            start_serially (boolean): Whether to start environments serially or in parallel.
+            blocking (boollean): Whether to step environments one after another.
+            flatten (boolean): whether to use flatten action and time_steps during
+                communication to reduce overhead.
 
-    Raises:
-      ValueError: If the action or observation specs don't match.
-    """
+        Raises:
+            ValueError: If the action or observation specs don't match.
+        """
         super(ParallelTorchEnvironment, self).__init__()
         self._envs = []
         self._env_ids = []
@@ -117,9 +113,9 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
     def _reset(self):
         """Reset all environments and combine the resulting observation.
 
-    Returns:
-      Time step with batch dimension.
-    """
+        Returns:
+            Time step with batch dimension.
+        """
         time_steps = [env.reset(self._blocking) for env in self._envs]
         if not self._blocking:
             time_steps = [promise() for promise in time_steps]
@@ -128,15 +124,15 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
     def _step(self, actions):
         """Forward a batch of actions to the wrapped environments.
 
-    Args:
-      actions: Batched action, possibly nested, to apply to the environment.
+        Args:
+            actions: Batched action, possibly nested, to apply to the environment.
 
-    Raises:
-      ValueError: Invalid actions.
+        Raises:
+            ValueError: Invalid actions.
 
-    Returns:
-      Batch of observations, rewards, and done flags.
-    """
+        Returns:
+            Batch of observations, rewards, and done flags.
+        """
         time_steps = [
             env.step(action, self._blocking)
             for env, action in zip(self._envs, self._unstack_actions(actions))

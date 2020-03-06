@@ -14,7 +14,7 @@
 """Wrappers for gym (numpy) environments.  
 
 Adapted from ALF's Environment API as seen in:
-    https://github.com/HorizonRobotics/alf/blob/master/alf/environments/wrappers.py
+    https://github.com/HorizonRobotics/alf/blob/tf2/alf/environments/wrappers.py
 """
 
 import copy

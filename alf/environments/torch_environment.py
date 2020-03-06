@@ -18,15 +18,10 @@ Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/tf_environment.py
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import six
 
 from alf.data_structures import time_step_spec
-# from alf.utils import common
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -57,20 +52,17 @@ class TorchEnvironment(object):
 
     Example for collecting an episode:
 
-      env = TorchEnvironment()
-
-      # reset() creates the initial time_step and resets the environment.
-      time_step = env.reset()
-      while not time_step.is_last():
-        action_step = policy.action(time_step)
-        time_step = tf_env.step(action_step.action)
+        env = TorchEnvironment()
+  
+        # reset() creates the initial time_step and resets the environment.
+        time_step = env.reset()
+        while not time_step.is_last():
+            action_step = policy.action(time_step)
+            time_step = tf_env.step(action_step.action)
     """
 
     def __init__(self):
         self._current_time_step = None
-        # self._current_time_step = self._reset()
-        # common.assert_members_are_not_overridden(
-        #     base_cls=TorchEnvironment, instance=self, black_list=('reset', 'step'))
 
     @property
     def batched(self):
@@ -87,7 +79,7 @@ class TorchEnvironment(object):
         or the observation_spec and corresponds to the batch dimension.
 
         Returns:
-          A boolean indicating whether the environment is batched or not.
+            A boolean indicating whether the environment is batched or not.
         """
         return False
 
@@ -96,12 +88,12 @@ class TorchEnvironment(object):
         """The batch size of the environment.
 
         Returns:
-          The batch size of the environment, or `None` if the environment is not
-          batched.
+            The batch size of the environment, or `None` if the environment is not
+            batched.
 
         Raises:
           RuntimeError: If a subclass overrode batched to return True but did not
-            override the batch_size property.
+              override the batch_size property.
         """
         if self.batched:
             raise RuntimeError(
@@ -122,22 +114,22 @@ class TorchEnvironment(object):
     def observation_spec(self):
         """Defines the observations provided by the environment.
 
-        May use a subclass of `ArraySpec` that specifies additional properties such
+        May use a subclass of `TensorSpec` that specifies additional properties such
         as min and max bounds on the values.
 
         Returns:
-          An `ArraySpec`, or a nested dict, list or tuple of `ArraySpec`s.
+            An `TensorSpec`, or a nested dict, list or tuple of `TensorSpec`s.
         """
 
     @abc.abstractmethod
     def action_spec(self):
         """Defines the actions that should be provided to `step()`.
 
-        May use a subclass of `ArraySpec` that specifies additional properties such
+        May use a subclass of `TensorSpec` that specifies additional properties such
         as min and max bounds on the values.
 
         Returns:
-          An `ArraySpec`, or a nested dict, list or tuple of `ArraySpec`s.
+            An `TensorSpec`, or a nested dict, list or tuple of `TensorSpec`s.
         """
 
     def time_step_spec(self):
@@ -145,7 +137,7 @@ class TorchEnvironment(object):
 
         Override this method to define an environment that uses non-standard values
         for any of the items returned by `step()`. For example, an environment with
-        array-valued rewards.
+        tensor-valued rewards.
 
         Returns:
             A 'TimeStep' namedtuple containing (possibly nested) 'TensorSpec's defining
@@ -165,12 +157,13 @@ class TorchEnvironment(object):
         be cached and made available through current_time_step().
 
         Returns:
-          A `TimeStep` namedtuple containing:
-            step_type: A `StepType` of `FIRST`.
-            reward: 0.0, indicating the reward.
-            discount: 1.0, indicating the discount.
-            observation: A NumPy array, or a nested dict, list or tuple of arrays
-              corresponding to `observation_spec()`.
+            A `TimeStep` namedtuple containing:
+                step_type: a `Tensor` of `StepType` enum values.
+                reward: a `Tensor` of reward values from executing 'prev_action'.
+                discount: A discount value in the range `[0, 1]`.
+                observation: A (nested) 'Tensor' for observation
+                prev_action: A (nested) 'Tensor' for action from previous time step
+                env_id: the ID of the environment from which this time_step is
         """
         self._current_time_step = self._reset()
         return self._current_time_step
@@ -199,7 +192,7 @@ class TorchEnvironment(object):
               reward: a `Tensor` of reward values from executing 'prev_action'.
               discount: A discount value in the range `[0, 1]`.
               observation: A (nested) 'Tensor' for observation
-              prev_action: A 'Tensor' for action from previous time step
+              prev_action: A (nested) 'Tensor' for action from previous time step
               env_id: the ID of the environment from which this time_step is
         """
         if self._current_time_step is None:
@@ -243,15 +236,15 @@ class TorchEnvironment(object):
         """Renders the environment.
 
         Args:
-          mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
-            up a window where the environment can be visualized.
+            mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
+                up a window where the environment can be visualized.
 
         Returns:
-          An ndarray of shape [width, height, 3] denoting an RGB image if mode is
-          `rgb_array`. Otherwise return nothing and render directly to a display
-          window.
+            An ndarray of shape [width, height, 3] denoting an RGB image if mode is
+            `rgb_array`. Otherwise return nothing and render directly to a display
+            window.
         Raises:
-          NotImplementedError: If the environment does not support rendering.
+            NotImplementedError: If the environment does not support rendering.
         """
         del mode  # unused
         raise NotImplementedError('No rendering support.')
@@ -260,7 +253,7 @@ class TorchEnvironment(object):
         """Seeds the environment.
 
         Args:
-          seed: Value to use as seed for the environment.
+            seed: Value to use as seed for the environment.
         """
         del seed  # unused
         raise NotImplementedError('No seed support for this environment.')
@@ -269,10 +262,10 @@ class TorchEnvironment(object):
         """Returns the environment info returned on the last step.
 
         Returns:
-          Info returned by last call to step(). None by default.
+            Info returned by last call to step(). None by default.
 
         Raises:
-          NotImplementedError: If the environment does not use info.
+            NotImplementedError: If the environment does not use info.
         """
         raise NotImplementedError(
             'No support of get_info for this environment.')
@@ -286,8 +279,8 @@ class TorchEnvironment(object):
         See `step(self, action)` docstring for more details.
 
         Args:
-          action: A NumPy array, or a nested dict, list or tuple of arrays
-            corresponding to `action_spec()`.
+            action: A tensor, or a nested dict, list or tuple of tensors
+                corresponding to `action_spec()`.
         """
 
     @abc.abstractmethod

@@ -66,21 +66,21 @@ class ProcessEnvironment(object):
     def __init__(self, env_constructor, flatten=False):
         """Step environment in a separate process for lock free paralellism.
 
-    The environment is created in an external process by calling the provided
-    callable. This can be an environment class, or a function creating the
-    environment and potentially wrapping it. The returned environment should
-    not access global variables.
+        The environment is created in an external process by calling the provided
+        callable. This can be an environment class, or a function creating the
+        environment and potentially wrapping it. The returned environment should
+        not access global variables.
 
-    Args:
-      env_constructor: Callable that creates and returns a Python environment.
-      flatten: Boolean, whether to assume flattened actions and time_steps
-        during communication to avoid overhead.
+        Args:
+            env_constructor: Callable that creates and returns a Python environment.
+            flatten: Boolean, whether to assume flattened actions and time_steps
+                during communication to avoid overhead.
 
-    Attributes:
-      observation_spec: The cached observation spec of the environment.
-      action_spec: The cached action spec of the environment.
-      time_step_spec: The cached time step spec of the environment.
-    """
+        Attributes:
+            observation_spec: The cached observation spec of the environment.
+            action_spec: The cached action spec of the environment.
+            time_step_spec: The cached time step spec of the environment.
+        """
         self._env_constructor = env_constructor
         self._flatten = flatten
         self._observation_spec = None
@@ -90,9 +90,9 @@ class ProcessEnvironment(object):
     def start(self, wait_to_start=True):
         """Start the process.
 
-    Args:
-      wait_to_start: Whether the call should wait for an env initialization.
-    """
+        Args:
+            wait_to_start: Whether the call should wait for an env initialization.
+        """
         self._conn, conn = multiprocessing.Pipe()
         # self._conn = ConnectionWrapper(self._conn)
         # conn = ConnectionWrapper(conn)
@@ -131,29 +131,29 @@ class ProcessEnvironment(object):
     def __getattr__(self, name):
         """Request an attribute from the environment.
 
-    Note that this involves communication with the external process, so it can
-    be slow.
+        Note that this involves communication with the external process, so it can
+        be slow.
 
-    Args:
-      name: Attribute to access.
+        Args:
+            name: Attribute to access.
 
-    Returns:
-      Value of the attribute.
-    """
+        Returns:
+            Value of the attribute.
+        """
         self._conn.send((self._ACCESS, name))
         return self._receive()
 
     def call(self, name, *args, **kwargs):
         """Asynchronously call a method of the external environment.
 
-    Args:
-      name: Name of the method to call.
-      *args: Positional arguments to forward to the method.
-      **kwargs: Keyword arguments to forward to the method.
+        Args:
+            name: Name of the method to call.
+            *args: Positional arguments to forward to the method.
+            **kwargs: Keyword arguments to forward to the method.
 
-    Returns:
-      Promise object that blocks and provides the return value when called.
-    """
+        Returns:
+            Promise object that blocks and provides the return value when called.
+        """
         payload = name, args, kwargs
         payload = tensor_to_array(payload)
         self._conn.send((self._CALL, payload))
@@ -172,13 +172,13 @@ class ProcessEnvironment(object):
     def step(self, action, blocking=True):
         """Step the environment.
 
-    Args:
-      action: The action to apply to the environment.
-      blocking: Whether to wait for the result.
+        Args:
+            action: The action to apply to the environment.
+            blocking: Whether to wait for the result.
 
-    Returns:
-      time step when blocking, otherwise callable that returns the time step.
-    """
+        Returns:
+            time step when blocking, otherwise callable that returns the time step.
+        """
         promise = self.call('step', action)
         if blocking:
             return promise()
@@ -188,13 +188,13 @@ class ProcessEnvironment(object):
     def reset(self, blocking=True):
         """Reset the environment.
 
-    Args:
-      blocking: Whether to wait for the result.
+        Args:
+            blocking: Whether to wait for the result.
 
-    Returns:
-      New observation when blocking, otherwise callable that returns the new
-      observation.
-    """
+        Returns:
+            New observation when blocking, otherwise callable that returns the new
+            observation.
+        """
         promise = self.call('reset')
         if blocking:
             return promise()
@@ -204,13 +204,13 @@ class ProcessEnvironment(object):
     def _receive(self):
         """Wait for a message from the worker process and return its payload.
 
-    Raises:
-      Exception: An exception was raised inside the worker process.
-      KeyError: The reveived message is of an unknown type.
+        Raises:
+            Exception: An exception was raised inside the worker process.
+            KeyError: The reveived message is of an unknown type.
 
-    Returns:
-      Payload object of the message.
-    """
+        Returns:
+            Payload object of the message.
+        """
         message, payload = self._conn.recv()
         payload = array_to_tensor(payload)
 
@@ -227,15 +227,15 @@ class ProcessEnvironment(object):
     def _worker(self, conn, env_constructor, flatten=False):
         """The process waits for actions and sends back environment results.
 
-    Args:
-      conn: Connection for communication to the main process.
-      env_constructor: env_constructor for the OpenAI Gym environment.
-      flatten: Boolean, whether to assume flattened actions and time_steps
-        during communication to avoid overhead.
+        Args:
+            conn: Connection for communication to the main process.
+            env_constructor: env_constructor for the OpenAI Gym environment.
+            flatten: Boolean, whether to assume flattened actions and time_steps
+              during communication to avoid overhead.
 
-    Raises:
-      KeyError: When receiving a message of unknown type.
-    """
+        Raises:
+            KeyError: When receiving a message of unknown type.
+        """
         try:
             alf.set_default_device("cpu")
             env = env_constructor()
@@ -283,14 +283,14 @@ class ProcessEnvironment(object):
         def render(self, mode='human'):
             """Render the environment.
 
-        Args:
-            mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
-                up a window where the environment can be visualized.
-        Returns:
-            An ndarray of shape [width, height, 3] denoting an RGB image if mode is
-            `rgb_array`. Otherwise return nothing and render directly to a display
-            window.
-        Raises:
-            NotImplementedError: If the environment does not support rendering.
-        """
+            Args:
+                mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
+                    up a window where the environment can be visualized.
+            Returns:
+                An ndarray of shape [width, height, 3] denoting an RGB image if mode is
+                `rgb_array`. Otherwise return nothing and render directly to a display
+                window.
+            Raises:
+                NotImplementedError: If the environment does not support rendering.
+            """
             return self.call('render', mode)()

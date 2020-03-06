@@ -16,10 +16,6 @@
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/random_py_environment.py
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import torch
 
@@ -50,30 +46,30 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         """Initializes the environment.
 
         Args:
-          observation_spec: An `ArraySpec`, or a nested dict, list or tuple of
-            `ArraySpec`s.
-          action_spec: An `ArraySpec`, or a nested dict, list or tuple of
-            `ArraySpec`s.
-          episode_end_probability: Probability an episode will end when the
-            environment is stepped.
-          discount: Discount to set in time_steps.
-          reward_fn: Callable that takes in step_type, action, an observation(s),
-            and returns a numpy array of rewards.
-          batch_size: (Optional) Number of observations generated per call.
-            If this value is not `None`, then all actions are expected to
-            have an additional major axis of size `batch_size`, and all outputs
-            will have an additional major axis of size `batch_size`.
-          seed: Seed to use for rng used in observation generation.
-          render_size: Size of the random render image to return when calling
-            render.
-          min_duration: Number of steps at the beginning of the
-            episode during which the episode can not terminate.
-          max_duration: Optional number of steps after which the episode
-            terminates regarless of the termination probability.
+            observation_spec: An 'TensorSpec', or a nested dict, list or tuple of
+                'TensorSpec's.
+            action_spec: An `TensorSpec`, or a nested dict, list or tuple of
+                `TensorSpec`s.
+            episode_end_probability (scalar): Probability an episode will end when the
+                environment is stepped.
+            discount (scalar): Discount to set in time_steps.
+            reward_fn (callable): Callable that takes in step_type, action, an observation(s),
+                and returns a numpy array of rewards.
+            batch_size (int): (Optional) Number of observations generated per call.
+                If this value is not `None`, then all actions are expected to
+                have an additional major axis of size `batch_size`, and all outputs
+                will have an additional major axis of size `batch_size`.
+            seed (int): Seed to use for rng used in observation generation.
+            render_size (tuple of ints): Size of the random render image to return when calling 
+                render.
+            min_duration (int): Number of steps at the beginning of the
+                episode during which the episode can not terminate.
+            max_duration (int): Optional number of steps after which the episode
+                terminates regarless of the termination probability.
 
         Raises:
-          ValueError: If batch_size argument is not None and does not match the
-          shapes of discount or reward.
+            ValueError: If batch_size argument is not None and does not match the
+            shapes of discount or reward.
         """
         self._batch_size = batch_size
         self._observation_spec = observation_spec

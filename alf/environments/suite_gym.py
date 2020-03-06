@@ -27,25 +27,25 @@ def load(environment_name,
          torch_env_wrappers=()):
     """Loads the selected environment and wraps it with the specified wrappers.
 
-  Note that by default a TimeLimit wrapper is used to limit episode lengths
-  to the default benchmarks defined by the registered environments.
-
-  Args:
-      environment_name (string): Name for the environment to load.
-      discount (scalar): Discount to use for the environment.
-      max_episode_steps (int): If None the max_episode_steps will be set to the 
-          default step limit defined in the environment's spec. No limit is applied
-          if set to 0 or if there is no max_episode_steps set in the environment's
-          spec.
-      gym_env_wrappers (BaseObservationWrapper): Iterable with references to 
-          wrapper classes to use
-          directly on the gym environment.
-      torch_env_wrappers (TorchEnvironmentBaseWrapper): Iterable with references 
-          to wrapper classes to use on the torch environment.
-
-  Returns:
-      A PyEnvironment instance.
-  """
+    Note that by default a TimeLimit wrapper is used to limit episode lengths
+    to the default benchmarks defined by the registered environments.
+  
+    Args:
+        environment_name (string): Name for the environment to load.
+        discount (scalar): Discount to use for the environment.
+        max_episode_steps (int): If None the max_episode_steps will be set to the 
+            default step limit defined in the environment's spec. No limit is applied
+            if set to 0 or if there is no max_episode_steps set in the environment's
+            spec.
+        gym_env_wrappers (BaseObservationWrapper): Iterable with references to 
+            wrapper classes to use
+            directly on the gym environment.
+        torch_env_wrappers (TorchEnvironmentBaseWrapper): Iterable with references 
+            to wrapper classes to use on the torch environment.
+  
+    Returns:
+        A TorchEnvironment instance.
+    """
     gym_spec = gym.spec(environment_name)
     gym_env = gym_spec.make()
 
@@ -70,27 +70,27 @@ def wrap_env(gym_env,
              auto_reset=True):
     """Wraps given gym environment with TF Agent's GymWrapper.
 
-  Note that by default a TimeLimit wrapper is used to limit episode lengths
-  to the default benchmarks defined by the registered environments.
-
-  Args:
-      gym_env: An instance of OpenAI gym environment.
-      discount: Discount to use for the environment.
-      max_episode_steps: Used to create a TimeLimitWrapper. No limit is applied
-          if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
-      gym_env_wrappers: Iterable with references to wrapper classes to use
-          directly on the gym environment.
-      time_limit_wrapper: Wrapper that accepts (env, max_episode_steps) params to
-          enforce a TimeLimit. Usuaully this should be left as the default,
-          torch_wrappers.TimeLimit.
-      torch_env_wrappers: Iterable with references to wrapper classes to use on the
-          torch environment.
-      auto_reset: If True (default), reset the environment automatically after a
-          terminal state is reached.
-
-  Returns:
-      A TorchEnvironment instance.
-  """
+    Note that by default a TimeLimit wrapper is used to limit episode lengths
+    to the default benchmarks defined by the registered environments.
+  
+    Args:
+        gym_env: An instance of OpenAI gym environment.
+        discount: Discount to use for the environment.
+        max_episode_steps: Used to create a TimeLimitWrapper. No limit is applied
+            if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
+        gym_env_wrappers: Iterable with references to wrapper classes to use
+            directly on the gym environment.
+        time_limit_wrapper: Wrapper that accepts (env, max_episode_steps) params to
+            enforce a TimeLimit. Usuaully this should be left as the default,
+            torch_wrappers.TimeLimit.
+        torch_env_wrappers: Iterable with references to wrapper classes to use on the
+            torch environment.
+        auto_reset: If True (default), reset the environment automatically after a
+            terminal state is reached.
+  
+    Returns:
+        A TorchEnvironment instance.
+    """
 
     for wrapper in gym_env_wrappers:
         gym_env = wrapper(gym_env)

@@ -13,10 +13,6 @@
 # limitations under the License.
 """Test cases adpated from tf_agents' random_py_environment_test.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import torch
 import numpy as np
 import unittest
