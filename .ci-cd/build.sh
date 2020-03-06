@@ -55,6 +55,7 @@ function test() {
         alf.experience_replayers.replay_buffer_test \
         alf.metrics.metrics_test \
         alf.nest.nest_test \
+        alf.networks.network_test \
         alf.networks.actor_distribution_networks_test \
         alf.networks.critic_networks_test \
         alf.networks.value_networks_test \
