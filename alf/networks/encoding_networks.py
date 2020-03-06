@@ -228,7 +228,7 @@ class ImageDecodingNetwork(Network):
         z, state = super().forward(inputs, state)
         for fc_l in self._preprocess_fc_layers:
             z = fc_l(z)
-        z = torch.reshape(z, (-1, ) + self._start_decoding_shape)
+        z = torch.reshape(z, [-1] + self._start_decoding_shape)
         for deconv_l in self._transconv_layers:
             z = deconv_l(z)
         return z, state

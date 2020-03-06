@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf.tensor_specs import TensorSpec
 
 
 class BaseNetwork(alf.networks.Network):
@@ -30,7 +31,7 @@ class MockNetwork(BaseNetwork):
         self.kwarg1 = kwarg1
         self.kwarg2 = kwarg2
 
-        super().__init__(param1, state_spec=(), name='mock')
+        super().__init__(param1, name='mock')
 
         self.var1 = nn.Parameter(torch.tensor(1., requires_grad=False))
         self.var2 = nn.Parameter(torch.tensor(2., requires_grad=True))
@@ -45,21 +46,23 @@ class NoInitNetwork(MockNetwork):
 
 class NetworkTest(alf.test.TestCase):
     def test_copy_works(self):
-        network1 = MockNetwork(0, 1)
+        # pass a TensorSpec to prevent assertion error in Network
+        network1 = MockNetwork(TensorSpec([2]), 1)
         network2 = network1.copy()
 
         self.assertNotEqual(network1, network2)
-        self.assertEqual(0, network2.param1)
+        self.assertEqual(TensorSpec([2]), network2.param1)
         self.assertEqual(1, network2.param2)
         self.assertEqual(2, network2.kwarg1)
         self.assertEqual(3, network2.kwarg2)
 
     def test_noinit_copy_works(self):
-        network1 = NoInitNetwork(0, 1)
+        # pass a TensorSpec to prevent assertion error in Network
+        network1 = NoInitNetwork(TensorSpec([2]), 1)
         network2 = network1.copy()
 
         self.assertNotEqual(network1, network2)
-        self.assertEqual(0, network2.param1)
+        self.assertEqual(TensorSpec([2]), network2.param1)
         self.assertEqual(1, network2.param2)
         self.assertEqual(2, network2.kwarg1)
         self.assertEqual(3, network2.kwarg2)
