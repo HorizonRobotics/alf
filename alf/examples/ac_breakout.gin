@@ -13,7 +13,7 @@ include 'atari.gin'
 # use 'NoFrameSkip' Atari environments from OpenAI gym
 create_environment.env_name='BreakoutNoFrameskip-v4'
 # Do not use suite_atari.load as it has some resetting issue!
-create_environment.num_parallel_environments=6 #4
+create_environment.num_parallel_environments=64
 
 # algorithm config
 ActorCriticLoss.entropy_regularization=0.01
@@ -53,7 +53,7 @@ common.reward_clipping.minmax=(-1, 1)
 TrainerConfig.unroll_length=8
 TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
 TrainerConfig.num_iterations=0
-TrainerConfig.num_env_steps=500 #0000
+TrainerConfig.num_env_steps=5000000
 TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
