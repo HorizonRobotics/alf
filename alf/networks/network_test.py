@@ -67,11 +67,6 @@ class NetworkTest(alf.test.TestCase):
     def test_too_many_args_raises_appropriate_error(self):
         self.assertRaises(TypeError, MockNetwork, 0, 1, 2, 3, 4, 5, 6)
 
-    def test_assert_input_spec(self):
-        spec = alf.TensorSpec([], torch.int32)
-        net = MockNetwork(spec, 1)
-        self.assertRaises(AssertionError, net, (1, 2), 2)
-
 
 if __name__ == '__main__':
     NetworkTest().test_copy_works()
