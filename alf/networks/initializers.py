@@ -89,12 +89,14 @@ def variance_scaling_init(tensor,
     else:
         size = max(1.0, (fan_in + fan_out) / 2.0)
 
+    gain /= size
+
     if (calc_gain_after_activation and mode == "fan_in"
             and nonlinearity != "identity"):
         gain *= nn.init.calculate_gain(nonlinearity, nonlinearity_param)
 
-    std = gain / math.sqrt(size)
     if distribution == "truncated_normal":
+        std = math.sqrt(gain)
         threshold = 2.0  # truncate within 2 std
         std /= truncnorm.std(-threshold, threshold)
         with torch.no_grad():
@@ -103,6 +105,11 @@ def variance_scaling_init(tensor,
                 torch.as_tensor(
                     truncnorm.rvs(-threshold, threshold, size=tensor.size()) *
                     std))
+    elif distribution == "uniform":
+        limit = math.sqrt(3.0 * gain)
+        with torch.no_grad():
+            return tensor.uniform_(-limit, limit)
     else:
+        std = math.sqrt(gain)
         with torch.no_grad():
             return tensor.normal_(0, std)

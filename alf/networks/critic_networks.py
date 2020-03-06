@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gin
+import functools
 
 import torch
 import torch.nn as nn
@@ -20,6 +21,7 @@ import torch.nn as nn
 import alf.layers as layers
 import alf.nest as nest
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
+from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
 from .network import Network
 
@@ -79,13 +81,30 @@ class CriticNetwork(Network):
             fc_layer_params=action_fc_layer_params,
             activation=activation)
 
+        kernel_initializer = functools.partial(
+            variance_scaling_init,
+            gain=1. / 3,
+            mode='fan_in',
+            distribution='uniform',
+            calc_gain_after_activation=False,
+            nonlinearity=activation.__name__)
+
         self._joint_encoder = EncodingNetwork(
             TensorSpec((self._obs_encoder.output_size +
                         self._action_encoder.output_size, )),
             fc_layer_params=joint_fc_layer_params,
             activation=activation,
-            last_layer_size=1,
-            last_activation=layers.identity)
+            kernel_initializer=kernel_initializer)
+
+
+        kernel_initializer_final = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
+
+        self._final_encoder = EncodingNetwork(
+            TensorSpec((self._joint_encoder.output_size, )),
+            fc_layer_params=[1],
+            activation=layers.identity,
+            kernel_initializer=kernel_initializer_final)
 
     def forward(self, inputs, state=()):
         """Computes action-value given an observation.
@@ -104,7 +123,8 @@ class CriticNetwork(Network):
         encoded_obs = self._obs_encoder(observations)
         encoded_action = self._action_encoder(actions)
         joint = torch.cat([encoded_obs, encoded_action], -1)
-        action_value = self._joint_encoder(joint)
+        encoded_joint = self._joint_encoder(joint)
+        action_value = self._final_encoder(encoded_joint)
         return torch.squeeze(action_value, -1), state
 
     @property

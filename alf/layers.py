@@ -36,6 +36,7 @@ class FC(nn.Module):
                  output_size,
                  activation=identity,
                  use_bias=True,
+                 kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """A fully connected layer that's also responsible for activation and
@@ -49,6 +50,7 @@ class FC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
+            kernel_initializer (Callable): initializer for all the layers
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution
             bias_init_value (float): a constant
@@ -60,10 +62,18 @@ class FC(nn.Module):
         #     self._linear.weight.data,
         #     gain=kernel_init_gain,
         #     nonlinearity=self._activation.__name__)
-        nn.init.xavier_normal_(self._linear.weight)
+        # nn.init.xavier_normal_(self._linear.weight)
+        if kernel_initializer is None:
+            variance_scaling_init(
+                self._linear.weight.data,
+                gain=kernel_init_gain,
+                nonlinearity=self._activation.__name__)
+        else:
+            kernel_initializer(self._linear.weight)
+
         if use_bias:
-            #nn.init.constant_(self._linear.bias.data, bias_init_value)
-            nn.init.zeros_(self._linear.bias.data)
+            nn.init.constant_(self._linear.bias.data, bias_init_value)
+            #nn.init.zeros_(self._linear.bias.data)
 
     def forward(self, inputs):
         return self._activation(self._linear(inputs))
