@@ -227,7 +227,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             alpha = torch.exp(self._log_alpha)
             actor_loss = alpha.detach() * log_pi - target_q_value
             print("---actor----")
-            print(actor_loss.shape)
+            print(actor_loss[0:10])
         else:
             with no_grad(self._critic_network1, self._critic_network2):
                 critic1, critic1_state = self._critic_network1(
@@ -248,8 +248,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor_loss = alpha.detach() * log_action_probs - target_q_value
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
-        info = SacActorInfo(
-            loss=LossInfo(loss=actor_loss, extra=actor_loss.mean()))
+        info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
 
         # module_utils.set_trainable_flag(
         #     [self._critic_network1, self._critic_network2], True)
@@ -307,8 +306,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _alpha_train_step(self, log_pi):
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
-        info = SacAlphaInfo(
-            loss=LossInfo(loss=alpha_loss, extra=alpha_loss.mean()))
+        info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))
         return info
 
     def train_step(self, exp: Experience, state: SacState):
@@ -350,9 +348,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return LossInfo(
             loss=actor_loss.loss + critic_loss.loss + alpha_loss.loss,
             extra=SacLossInfo(
-                actor=actor_loss.extra,
-                critic=critic_loss.extra,
-                alpha=alpha_loss.extra))
+                actor=actor_loss.extra.view(-1).mean(),
+                critic=critic_loss.extra.view(-1).mean(),
+                alpha=alpha_loss.extra.view(-1).mean()))
 
     def _calc_critic_loss(self, training_info):
         critic_info = training_info.info.critic
@@ -371,8 +369,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
         print("---critic----")
-        print(critic_loss.shape)
-        return LossInfo(loss=critic_loss, extra=critic_loss.mean())
+        print(critic_loss[0, 0:10])
+        return LossInfo(loss=critic_loss, extra=critic_loss)
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_network1', '_target_critic_network2']

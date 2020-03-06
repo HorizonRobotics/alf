@@ -34,7 +34,7 @@ class no_grad(object):
         for m in self._modules:
             for p in m.parameters():
                 self._parameters.append((p, p.requires_grad))
-                p.required_grad = True
+                p.required_grad = False
 
     def __exit__(self, type, value, traceback):
         for p, flag in self._parameters:
