@@ -72,6 +72,13 @@ class MyAlg(OnPolicyAlgorithm):
 
 #TODO: move this to environments.suite_unittest
 class MyEnv(object):
+    """A simple environment for unittesting algorithms.
+
+    At each step, each episode ends with probability 0.2 (independently among
+    the batch). Reward depends only on the action. Action 0 gets reward 0.5,
+    action 1 gets 1.0, action 2 gets reward -1.
+    """
+
     def __init__(self, batch_size, obs_shape=(2, )):
         super().__init__()
         self._batch_size = batch_size
