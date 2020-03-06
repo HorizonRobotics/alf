@@ -698,6 +698,8 @@ class Algorithm(nn.Module):
             optimizer.zero_grad()
 
         loss.backward()
+        if alf.summary.get_global_counter() % 100 == 0:
+            print(loss)
 
         all_params = []
         for i, optimizer in enumerate(optimizers):

@@ -32,6 +32,7 @@ from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, module_utils
+from alf.utils.module_utils import no_grad
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -209,28 +210,31 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _actor_train_step(self, exp: Experience, state: SacActorState,
                           action_distribution, action, log_pi):
 
-        module_utils.set_trainable_flag(
-            [self._critic_network1, self._critic_network2], False)
+        # module_utils.set_trainable_flag(
+        #     [self._critic_network1, self._critic_network2], False)
 
         if self._is_continuous:
             critic_input = (exp.observation, action)
 
-            critic1, critic1_state = self._critic_network1(
-                critic_input, state=state.critic1)
-
-            critic2, critic2_state = self._critic_network2(
-                critic_input, state=state.critic2)
+            with no_grad(self._critic_network1, self._critic_network2):
+                critic1, critic1_state = self._critic_network1(
+                    critic_input, state=state.critic1)
+                critic2, critic2_state = self._critic_network2(
+                    critic_input, state=state.critic2)
 
             target_q_value = torch.min(critic1, critic2)
 
             alpha = torch.exp(self._log_alpha)
             actor_loss = alpha.detach() * log_pi - target_q_value
+            print("---actor----")
+            print(actor_loss.shape)
         else:
-            critic1, critic1_state = self._critic_network1(
-                exp.observation, state=state.critic1)
+            with no_grad(self._critic_network1, self._critic_network2):
+                critic1, critic1_state = self._critic_network1(
+                    exp.observation, state=state.critic1)
 
-            critic2, critic2_state = self._critic_network2(
-                exp.observation, state=state.critic2)
+                critic2, critic2_state = self._critic_network2(
+                    exp.observation, state=state.critic2)
 
             # assert isinstance(
             #     action_distribution, td.categorical.Categorical), (
@@ -247,8 +251,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         info = SacActorInfo(
             loss=LossInfo(loss=actor_loss, extra=actor_loss.mean()))
 
-        module_utils.set_trainable_flag(
-            [self._critic_network1, self._critic_network2], True)
+        # module_utils.set_trainable_flag(
+        #     [self._critic_network1, self._critic_network2], True)
         return state, info
 
     def _critic_train_step(self, exp: Experience, state: SacCriticState,
@@ -319,9 +323,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
 
-        #log_pi = log_pi.unsqueeze(-1)
-        #log_pi = log_pi.unsqueeze(0) #[batch_size]
-
         actor_state, actor_info = self._actor_train_step(
             exp, state.actor, action_distribution, action, log_pi)
         critic_state, critic_info = self._critic_train_step(
@@ -369,6 +370,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_value=target_critic)
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
+        print("---critic----")
+        print(critic_loss.shape)
         return LossInfo(loss=critic_loss, extra=critic_loss.mean())
 
     def _trainable_attributes_to_ignore(self):
