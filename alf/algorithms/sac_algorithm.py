@@ -32,7 +32,6 @@ from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, module_utils
-from alf.utils.module_utils import no_grad
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
@@ -252,9 +251,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             log_action_probs = action_distribution.base_dist.logits.squeeze(1)
 
             target_q_value = torch.min(critic1, critic2).detach()
-            alpha = torch.exp(self._log_alpha)
+            alpha = torch.exp(self._log_alpha).detach()
             actor_loss = action_probs * (
-                alpha.detach() * log_action_probs - target_q_value)
+                alpha * log_action_probs - target_q_value)
+            actor_loss = actor_loss.view(actor_loss.size(0), -1).mean(1)
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
@@ -355,9 +355,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return LossInfo(
             loss=actor_loss.loss + critic_loss.loss + alpha_loss.loss,
             extra=SacLossInfo(
-                actor=actor_loss.extra.view(-1).mean(),
-                critic=critic_loss.extra.view(-1).mean(),
-                alpha=alpha_loss.extra.view(-1).mean()))
+                actor=actor_loss.extra,
+                critic=critic_loss.extra,
+                alpha=alpha_loss.extra))
 
     def _calc_critic_loss(self, training_info):
         critic_info = training_info.info.critic

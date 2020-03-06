@@ -18,13 +18,14 @@ import gin
 import torch
 import torch.nn as nn
 
-from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 import alf.layers as layers
+from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from .network import Network
 
 
 @gin.configurable
-class QNetwork(nn.Module):
+class QNetwork(Network):
     """Create an instance of QNetwork."""
 
     def __init__(self,
@@ -54,7 +55,7 @@ class QNetwork(nn.Module):
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
 
-        super(QNetwork, self).__init__()
+        super(QNetwork, self).__init__(input_tensor_spec, (), "")
         self._encoding_net = EncodingNetwork(
             input_tensor_spec,
             conv_layer_params,
@@ -83,7 +84,7 @@ class QNetwork(nn.Module):
 
 
 @gin.configurable
-class QRNNNetwork(nn.Module):
+class QRNNNetwork(Network):
     """Create a RNN-based that outputs temporally correlated q-values."""
 
     def __init__(self,
@@ -119,7 +120,7 @@ class QRNNNetwork(nn.Module):
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
 
-        super(QRNNNetwork, self).__init__()
+        super(QRNNNetwork, self).__init__(input_tensor_spec, (), "")
         self._encoding_net = EncodingNetwork(
             input_tensor_spec, conv_layer_params, fc_layer_params, activation)
         self._lstm_encoding_net = LSTMEncodingNetwork(
