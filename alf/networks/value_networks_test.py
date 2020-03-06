@@ -52,7 +52,7 @@ class TestValueNetworks(parameterized.TestCase, unittest.TestCase):
         network_ctor, state = self._init(lstm_hidden_size)
 
         value_net = network_ctor(
-            input_spec, conv_layer_params=conv_layer_params)
+            input_tensor_spec=input_spec, conv_layer_params=conv_layer_params)
         value, state = value_net(image, state)
 
         # (batch_size,)

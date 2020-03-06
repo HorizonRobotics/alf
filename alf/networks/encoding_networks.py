@@ -21,6 +21,7 @@ import torch.nn as nn
 import alf.layers as layers
 
 from alf.tensor_specs import TensorSpec
+from alf.nest import nest
 
 
 def _tuplify2d(x):
@@ -248,7 +249,7 @@ class ImageDecodingNetwork(nn.Module):
 
 
 @gin.configurable
-class EncodingNetwork(nn.Module):
+class MLPNetwork(nn.Module):
     """Feed Forward network with CNN and FC layers."""
 
     def __init__(self,
@@ -258,10 +259,7 @@ class EncodingNetwork(nn.Module):
                  activation=layers.identity,
                  last_layer_size=None,
                  last_activation=None):
-        """Create an EncodingNetwork
-
-        This EncodingNetwork allows the last layer to have different settings
-        from the other layers.
+        """Create an MLPNetwork
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
@@ -275,7 +273,7 @@ class EncodingNetwork(nn.Module):
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the same with `activation`.
         """
-        super(EncodingNetwork, self).__init__()
+        super(MLPNetwork, self).__init__()
         assert isinstance(input_tensor_spec, TensorSpec), \
             "The spec must be an instance of TensorSpec!"
 
@@ -333,6 +331,108 @@ class EncodingNetwork(nn.Module):
 
 
 @gin.configurable
+class EncodingNetwork(nn.Module):
+
+    def __init__(self,
+                 input_tensor_spec,
+                 preprocessing_layers=None,
+                 preprocessing_combiner=None,
+                 conv_layer_params=None,
+                 fc_layer_params=None,
+                 activation=layers.identity,
+                 last_layer_size=None,
+                 last_activation=None):
+        """Create an EncodingNetwork
+
+        Args:
+            input_tensor_spec (nested TensorSpec): nested tensor spec of the input
+            preprocessing_layers: (Optional.) A nest of `Callable` or `None`
+                representing preprocessing for the different inputs. Good options
+                include nested `alf.networks.networks.MLPNetwork`. See
+                `EncodingNetworkTest.test_encoding_network_with_preprocessing_layers` for usage example.
+            preprocessing_combiner: (Optional.) A callable that takes a flat list of tensors
+                and combines them. Good options include `lambda tensors: torch.cat(tensors, dim=-1)`,
+                and `lambda tensors: F.relu(tensors[0]-tensors[1])` etc. See
+                `EncodingNetworkTest.test_encoding_network_with_preprocessing_layers` for usage example.
+            conv_layer_params (list[tuple]): a list of tuples where each
+                tuple takes a format `(filters, kernel_size, strides, padding)`,
+                where `padding` is optional.
+            fc_layer_params (tuple[int] or list[int]): a list of integers
+                representing FC layer sizes.
+            activation (nn.functional): activation used for hidden layers
+            last_layer_size (int): an optional size of the last layer
+            last_activation (nn.functional): activation function of the last
+                layer. If None, it will be the same with `activation`.
+        """
+        super(EncodingNetwork, self).__init__()
+        self._preprocessing_layers = preprocessing_layers
+
+        flat_input_tensor_spec = nest.flatten(input_tensor_spec)
+        if preprocessing_layers is not None:
+            # replace `None` preprocessing_layer to `layers.identity`
+            preprocessing_layers = nest.map_structure(
+                lambda x: x or layers.identity, preprocessing_layers)
+            output_tensor_spec = nest.map_structure(
+                lambda layer, input_spec: TensorSpec.from_tensor(
+                    tensor=layer(input_spec.zeros(outer_dims=(1,))),
+                    from_dim=1),
+                preprocessing_layers,
+                input_tensor_spec)
+
+            # It's a trick here, add all nn.Module instances in preprocessing_layers
+            #   to variable  `self._preprocessing_module` so that `self.parameters()`
+            #   can capture corresponding parameters
+            self._preprocessing_module = nn.ModuleList(
+                list(filter(lambda x: isinstance(x, nn.Module),
+                       nest.flatten(preprocessing_layers))))
+            flat_input_tensor_spec = nest.flatten(output_tensor_spec)
+            self._preprocessing_layers = preprocessing_layers
+
+        self._preprocessing_combiner = preprocessing_combiner
+        if len(flat_input_tensor_spec) > 1:
+            if preprocessing_combiner is None:
+                raise ValueError(
+                    'preprocessing_combiner layer is required when more than 1 '
+                    'input_tensor_spec is provided.')
+            output_tensor_spec = TensorSpec.from_tensor(
+                tensor=preprocessing_combiner(
+                    nest.map_structure(lambda input_spec: input_spec.zeros(outer_dims=(1,)),
+                                       flat_input_tensor_spec)),
+                from_dim=1)
+            flat_input_tensor_spec = [output_tensor_spec]
+
+        self._mlp_network = MLPNetwork(
+            input_tensor_spec=flat_input_tensor_spec[0],
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            activation=activation,
+            last_layer_size=last_layer_size,
+            last_activation=last_activation)
+
+    def forward(self, inputs):
+        z = inputs
+
+        if self._preprocessing_layers is not None:
+            z = nest.map_structure(
+                lambda layer, input: layer(input),
+                self._preprocessing_layers,
+                z)
+
+        if self._preprocessing_combiner is not None:
+            z = self._preprocessing_combiner(nest.flatten(z))
+
+        return self._mlp_network(z)
+
+    @property
+    def output_size(self):
+        """If preprocessing_mlp_layers_params` `preprocessing_combiner` or
+        `conv_layer_params` is used, then it's difficult for the caller to know
+        the output size in advance.
+        """
+        return self._mlp_network._output_size
+
+
+@gin.configurable
 class LSTMEncodingNetwork(nn.Module):
     """LSTM cells followed by an encoding network."""
 
@@ -373,7 +473,7 @@ class LSTMEncodingNetwork(nn.Module):
             input_size = hs
 
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec=TensorSpec((input_size, )),
+            input_tensor_spec=TensorSpec((input_size,)),
             fc_layer_params=fc_layer_params,
             activation=activation,
             last_layer_size=last_layer_size,
@@ -394,7 +494,7 @@ class LSTMEncodingNetwork(nn.Module):
         Returns:
             specs (tuple[TensorSpec]):
         """
-        state_spec = TensorSpec(shape=(hidden_size, ), dtype=dtype)
+        state_spec = TensorSpec(shape=(hidden_size,), dtype=dtype)
         return (state_spec, state_spec)
 
     def forward(self, inputs, state):

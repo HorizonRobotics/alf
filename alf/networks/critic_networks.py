@@ -29,6 +29,8 @@ class CriticNetwork(nn.Module):
 
     def __init__(self,
                  input_tensor_spec,
+                 observation_preprocessing_layers=None,
+                 observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
                  action_fc_layer_params=None,
@@ -46,6 +48,11 @@ class CriticNetwork(nn.Module):
             observation_conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
+            observation_preprocessing_layers: (Optional.) A nest of `Callable` or `None`
+                representing preprocessing for the different inputs. See `EncodingNetwork`
+                for details.
+            observation_preprocessing_combiner: (Optional.) A callable that takes a flat
+                list of tensors and combines them. See `EncodingNetwork` for details.
             observation_fc_layer_params (list[int]): a list of integers representing
                 hidden FC layer sizes for observations.
             action_fc_layer_params (list[int]): a list of integers representing
@@ -68,7 +75,9 @@ class CriticNetwork(nn.Module):
 
         self._single_action_spec = flat_action_spec[0]
         self._obs_encoder = EncodingNetwork(
-            observation_spec,
+            input_tensor_spec=observation_spec,
+            preprocessing_layers=observation_preprocessing_layers,
+            preprocessing_combiner=observation_preprocessing_combiner,
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
             activation=activation)
@@ -117,6 +126,8 @@ class CriticRNNNetwork(nn.Module):
 
     def __init__(self,
                  input_tensor_spec,
+                 observation_preprocessing_layers=None,
+                 observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
                  action_fc_layer_params=None,
@@ -133,6 +144,11 @@ class CriticRNNNetwork(nn.Module):
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
                 representing the inputs.
+            observation_preprocessing_layers: (Optional.) A nest of `Callable` or `None`
+                representing preprocessing for the different inputs. See  `EncodingNetwork`
+                for details.
+            observation_preprocessing_combiner: (Optional.) A callable that takes a flat
+                list of tensors and combines them. See `EncodingNetwork` for details.
             observation_conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.

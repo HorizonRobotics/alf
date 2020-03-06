@@ -30,6 +30,8 @@ class QNetwork(nn.Module):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
+                 preprocessing_layers=None,
+                 preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu):
@@ -42,7 +44,12 @@ class QNetwork(nn.Module):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
-        actions.
+                actions.
+            preprocessing_layers: (Optional.) A nest of `Callable` or `None`
+                representing preprocessing for the different inputs. See
+                `EncodingNetwork` for details.
+            preprocessing_combiner: (Optional.) A callable that takes a flat list of tensors
+                and combines them. See `EncodingNetwork` for details.
             conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
@@ -56,10 +63,12 @@ class QNetwork(nn.Module):
 
         super(QNetwork, self).__init__()
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec,
-            conv_layer_params,
-            fc_layer_params,
-            activation,
+            input_tensor_spec=input_tensor_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            activation=activation,
             last_layer_size=num_actions,
             last_activation=layers.identity)
 
@@ -89,6 +98,8 @@ class QRNNNetwork(nn.Module):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
+                 preprocessing_layers=None,
+                 preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  lstm_hidden_size=100,
@@ -102,7 +113,12 @@ class QRNNNetwork(nn.Module):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
-        actions.
+                actions.
+            preprocessing_layers: (Optional.) A nest of `Callable` or `None`
+                representing preprocessing for the different inputs. See
+                `EncodingNetwork` for details.
+            preprocessing_combiner: (Optional.) A callable that takes a flat list of tensors
+                and combines them. See `EncodingNetwork` for details.
             conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
@@ -121,7 +137,12 @@ class QRNNNetwork(nn.Module):
 
         super(QRNNNetwork, self).__init__()
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec, conv_layer_params, fc_layer_params, activation)
+            input_tensor_spec=input_tensor_spec,
+            preprocessing_layers=preprocessing_layers,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
+            activation=activation)
         self._lstm_encoding_net = LSTMEncodingNetwork(
             self._encoding_net.output_size,
             lstm_hidden_size,
