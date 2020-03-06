@@ -34,7 +34,7 @@ class NormalizersTest(alf.test.TestCase):
             tensors_mean = torch.sum(weights * self._tensors)
             tensors_var = torch.sum(
                 weights * math_ops.square(self._tensors - tensors_mean))
-            target_normalized_tensor = alf.layers.batch_normalization(
+            target_normalized_tensor = alf.layers.normalize_along_batch_dims(
                 self._tensors[-1],
                 tensors_mean,
                 tensors_var,

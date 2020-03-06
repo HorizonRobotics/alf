@@ -30,10 +30,9 @@ def identity(x):
     return x
 
 
-def batch_normalization(x, mean, variance, variance_epsilon):
-    """A simplified version of batch normalization, without scale and offset.
-    Normalizes a tensor by `mean` and `variance`, which are expected to have the
-    same tensor spec with the inner dims of `x`.
+def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
+    """Normalizes a tensor by `mean` and `variance`, which are expected to have
+    the same tensor spec with the inner dims of `x`.
 
     Args:
         x (Tensor): a tensor of ([D1, D2, ..] + `shape`), where D1, D2, .. are

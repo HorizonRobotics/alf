@@ -103,7 +103,7 @@ class Normalizer(nn.Module):
             # in some extreme cases, due to floating errors, var might be a very
             # large negative value (close to 0)
             var = torch.relu(m2 - math_ops.square(m))
-            t = alf.layers.batch_normalization(
+            t = alf.layers.normalize_along_batch_dims(
                 t, m, var, variance_epsilon=self._variance_epsilon)
             if clip_value > 0:
                 t = torch.clamp(t, -clip_value, clip_value)
