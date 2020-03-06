@@ -127,9 +127,13 @@ The following table summarizes how step type and discount affect the learning.
 | LAST | 1 | Yes | No | Last step because of time limit |
 
 ### Missing one TimeStep of losses every rollout length for on-policy training
+<<<<<<< HEAD
 TrainingInfo fields are populated in `OnPolicyDriver:_train_loop_body` for
 on-policy training, and `SyncOffPolicyDriver:_rollout_loop_body` for
 off-policy.
+=======
+TrainingInfo fields are populated in sync_off_policy_driver around line 143.
+>>>>>>> adding documentation for TrainingInfo, and the case of missing one TimeStep in training.
 
 For every `T` (unroll_length) number of transitions, only the ending `TimeStep`
 of each transition is stored into `TrainingInfo`.  `TimeStep` `0` is not stored,
