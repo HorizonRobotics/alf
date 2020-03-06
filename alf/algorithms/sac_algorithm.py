@@ -238,12 +238,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             alpha = torch.exp(self._log_alpha).detach()
             actor_loss += alpha * log_pi
         else:
-            with no_grad(self._critic_network1, self._critic_network2):
-                critic1, critic1_state = self._critic_network1(
-                    exp.observation, state=state.critic1)
+            critic1, critic1_state = self._critic_network1(
+                exp.observation, state=state.critic1)
 
-                critic2, critic2_state = self._critic_network2(
-                    exp.observation, state=state.critic2)
+            critic2, critic2_state = self._critic_network2(
+                exp.observation, state=state.critic2)
 
             # assert isinstance(
             #     action_distribution, td.categorical.Categorical), (
@@ -294,7 +293,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
 
         target_critic = torch.min(target_critic1, target_critic2).view(log_pi.shape) - \
-                         torch.exp(self._log_alpha).detach() * log_pi
+                         (torch.exp(self._log_alpha) * log_pi).detach()
 
         critic1 = critic1.squeeze(-1)
         critic2 = critic2.squeeze(-1)

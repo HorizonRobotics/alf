@@ -256,7 +256,6 @@ class EncodingNetwork(nn.Module):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=layers.identity,
-                 kernel_initializer=None,
                  last_layer_size=None,
                  last_activation=None):
         """Create an EncodingNetwork
@@ -272,7 +271,6 @@ class EncodingNetwork(nn.Module):
             fc_layer_params (tuple[int] or list[int]): a list of integers
                 representing FC layer sizes.
             activation (nn.functional): activation used for hidden layers
-            kernel_initializer (Callable): initializer for all the layers
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the same with `activation`.
@@ -313,12 +311,7 @@ class EncodingNetwork(nn.Module):
             if i == len(fc_layer_params) - 1:
                 act = (activation
                        if last_activation is None else last_activation)
-            self._fc_layers.append(
-                layers.FC(
-                    input_size,
-                    size,
-                    activation=act,
-                    kernel_initializer=kernel_initializer))
+            self._fc_layers.append(layers.FC(input_size, size, activation=act))
             input_size = size
 
         self._output_size = input_size
