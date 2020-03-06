@@ -127,7 +127,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             name (str): The name of this algorithm.
         """
         critic_network1 = critic_network
-        critic_network2 = copy.deepcopy(critic_network)
+        critic_network2 = critic_network.copy()
 
         log_alpha = nn.Parameter(torch.Tensor([initial_log_alpha]))
 
@@ -315,10 +315,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 action_distribution)
         else:
             action = dist_utils.sample_action_distribution(action_distribution)
+
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
 
-        log_pi = log_pi.unsqueeze(-1)
+        #log_pi = log_pi.unsqueeze(-1)
+        #log_pi = log_pi.unsqueeze(0) #[batch_size]
 
         actor_state, actor_info = self._actor_train_step(
             exp, state.actor, action_distribution, action, log_pi)
@@ -345,8 +347,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         alpha_loss = training_info.info.alpha.loss
         actor_loss = training_info.info.actor.loss
         return LossInfo(
-            loss=actor_loss.loss.mean() + critic_loss.loss.mean() +
-            alpha_loss.loss.mean(),
+            loss=actor_loss.loss + critic_loss.loss + alpha_loss.loss,
             extra=SacLossInfo(
                 actor=actor_loss.extra,
                 critic=critic_loss.extra,
