@@ -15,16 +15,15 @@
 
 import collections
 import functools
-import time
-
 import numpy as np
+import time
 import torch
-import unittest
 
-from alf.environments.thread_torch_environment import ThreadTorchEnvironment
-from alf.environments.random_torch_environment import RandomTorchEnvironment
-import alf.tensor_specs as ts
+import alf
 import alf.data_structures as ds
+from alf.environments.random_torch_environment import RandomTorchEnvironment
+from alf.environments.thread_torch_environment import ThreadTorchEnvironment
+import alf.tensor_specs as ts
 
 
 class SlowStartingEnvironment(RandomTorchEnvironment):
@@ -34,7 +33,7 @@ class SlowStartingEnvironment(RandomTorchEnvironment):
         super(SlowStartingEnvironment, self).__init__(*args, **kwargs)
 
 
-class ThreadTorchEnvironmentTest(unittest.TestCase):
+class ThreadTorchEnvironmentTest(alf.test.TestCase):
     def _set_default_specs(self):
         self.observation_spec = ts.TensorSpec((3, 3), torch.float32)
         self.action_spec = ts.BoundedTensorSpec([7],
@@ -82,4 +81,4 @@ class ThreadTorchEnvironmentTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

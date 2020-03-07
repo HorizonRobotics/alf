@@ -17,26 +17,32 @@ Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/wrappers.py
 """
 
-import random
-
 import abc
-import collections
 import cProfile
+import gin
 import numpy as np
+import random
 import six
 import torch
-import gin
 
-from alf.tensor_specs import BoundedTensorSpec
 from alf.data_structures import StepType, TimeStep
 from alf.environments import torch_environment
 import alf.nest as nest
+from alf.tensor_specs import BoundedTensorSpec
 
 
 class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
     """TorchEnvironment wrapper forwards calls to the given environment."""
 
     def __init__(self, env):
+        """Create a torch environment base wrapper. 
+        
+        Args:
+            env (TorchEnvironment): A TorchEnvironment instance to wrap.
+
+        Returns:
+            A wrapped TorchEnvironment
+        """
         super(TorchEnvironmentBaseWrapper, self).__init__()
         self._env = env
 
@@ -86,6 +92,14 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
     def __init__(self, env, duration):
+        """Create a TimeLimit torch environment.
+
+        Args:
+            env (TorchEnvironment): An TorchEnvironment instance to wrap.
+            duration (int): time limit, usually set to be the max_eposode_steps
+                of the environment.
+        
+        """
         super(TimeLimit, self).__init__(env)
         self._duration = duration
         self._num_steps = None
@@ -122,10 +136,10 @@ class PerformanceProfiler(TorchEnvironmentBaseWrapper):
         """Create a PerformanceProfiler that uses cProfile to profile env execution.
 
         Args:
-            env: Environment to wrap.
-            process_profile_fn: A callback that accepts a `Profile` object.
+            env (TorchEnvironment): A TorchEnvironment instance to wrap.
+            process_profile_fn (Callable): A callback that accepts a `Profile` object.
                 After `process_profile_fn` is called, profile information is reset.
-            process_steps: The frequency with which `process_profile_fn` is
+            process_steps (int): The frequency with which `process_profile_fn` is
                 called.  The counter is incremented each time `step` is called
                 (not `reset`); every `process_steps` steps, `process_profile_fn`
                 is called and the profiler is reset.
@@ -172,6 +186,7 @@ class PerformanceProfiler(TorchEnvironmentBaseWrapper):
         return self._duration
 
 
+# TODO: trajectory is not a data structure in alf.
 @six.add_metaclass(abc.ABCMeta)
 class GoalReplayEnvWrapper(TorchEnvironmentBaseWrapper):
     """Adds a goal to the observation, used for HER (Hindsight Experience Replay).
@@ -184,10 +199,10 @@ class GoalReplayEnvWrapper(TorchEnvironmentBaseWrapper):
     """
 
     def __init__(self, env):
-        """Initializes a wrapper to add a goal to the observation.
+        """Create a wrapper to add a goal to the observation.
 
         Args:
-            env: A `torch_environment.TorchEnvironment` environment to wrap.
+            env (TorchEnvironment): A TorchEnvironment isinstance to wrap.
 
         Raises:
             ValueError: If environment observation is not a dict
@@ -278,6 +293,12 @@ class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
     """
 
     def __init__(self, env, discount=1.0):
+        """Create a NonEpisodicAgent wrapper.
+
+        Args:
+            env (TorchEnvironment): A TorchEnvironment instance to wrap.
+            discount (float): discount of the environment.
+        """
         super().__init__(env)
         self._discount = discount
 
@@ -308,6 +329,7 @@ class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
         """Create a RandomFirstEpisodeLength wrapper.
 
         Args:
+            env (TorchEnvironment): A TorchEnvironment isinstance to wrap.  
             random_length_range (int): [1, random_length_range]
             num_episodes (int): randomize the episode length for the first so
                 many episodes.

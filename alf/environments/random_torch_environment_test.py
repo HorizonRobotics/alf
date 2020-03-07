@@ -13,16 +13,16 @@
 # limitations under the License.
 """Test cases adpated from tf_agents' random_py_environment_test.py."""
 
+import alf
+from absl.testing import parameterized
 import torch
 import numpy as np
-import unittest
-from absl.testing import parameterized
 
 from alf.environments.random_torch_environment import RandomTorchEnvironment
 from alf.tensor_specs import BoundedTensorSpec
 
 
-class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
+class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
     def testEnvResetAutomatically(self):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec([], torch.int32)
@@ -196,4 +196,4 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

@@ -22,10 +22,11 @@ import gym
 import gym.spaces
 import numpy as np
 import torch
+
+import alf.data_structures as ds
+from alf.environments import torch_environment
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.environments import torch_environment
-import alf.data_structures as ds
 
 
 def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
@@ -92,16 +93,26 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
     """Base wrapper implementing TorchEnvironmentBaseWrapper interface for Gym envs.
 
     Action and observation specs are automatically generated from the action and
-    observation spaces. See base class for py_environment.Base details.
+    observation spaces. See base class for TorchEnvironment details.
     """
 
     def __init__(self,
                  gym_env,
                  env_id=None,
                  discount=1.0,
-                 match_obs_space_dtype=True,
                  auto_reset=True,
                  simplify_box_bounds=True):
+        """Create a TorchEnvironment.
+
+        Args:
+            gym_env (gym.Env): An instance of OpenAI gym environment.
+            env_id (int or torch.int32): (optional) ID of the environment.
+            discount (float): Discount to use for the environment.
+            auto_reset (bool): whether or not to reset the environment when done.
+            simplify_box_bounds (bool): whether or not to simplify redundant
+                arrays to values for spec bounds.
+
+        """
         super(TorchGymWrapper, self).__init__()
 
         self._gym_env = gym_env
@@ -112,8 +123,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
             self._env_id = env_id
         self._action_is_discrete = isinstance(self._gym_env.action_space,
                                               gym.spaces.Discrete)
-        self._match_obs_space_dtype = match_obs_space_dtype
-        # TODO(sfishman): Add test for auto_reset param.
+        # TODO: Add test for auto_reset param.
         self._auto_reset = auto_reset
         self._observation_spec = tensor_spec_from_gym_space(
             self._gym_env.observation_space, simplify_box_bounds)
@@ -143,7 +153,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         return action
 
     def _reset(self):
-        # TODO(oars): Upcoming update on gym adds **kwargs on reset. Update this to
+        # TODO: Upcoming update on gym adds **kwargs on reset. Update this to
         # support that.
         observation = self._gym_env.reset()
         self._info = None
@@ -182,15 +192,16 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         """Make sure observation from env is converted to (nested) torch tensor.
 
         Args:
-            observation: A (nested) observation from env.
+            observation (nested arrays or tensors): observations from env.
 
         Returns:
-            A (nested) 'tensor' of observation
+            A (nested) tensors of observation
         """
         flat_obs = nest.flatten(observation)
-        tensor_observations = []
-        for spec, obs in zip(self._flat_obs_spec, flat_obs):
-            tensor_observations.append(torch.tensor(obs, dtype=spec.dtype))
+        tensor_observations = [
+            torch.as_tensor(obs, dtype=spec.dtype)
+            for spec, obs in zip(self._flat_obs_spec, flat_obs)
+        ]
         return nest.pack_sequence_as(self._observation_spec,
                                      tensor_observations)
 

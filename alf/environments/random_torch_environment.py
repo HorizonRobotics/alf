@@ -19,10 +19,10 @@ Adapted from TF-Agents Environment API as seen in:
 import numpy as np
 import torch
 
-from alf.environments import torch_environment
-import alf.tensor_specs as ts
 import alf.data_structures as ds
+from alf.environments import torch_environment
 from alf.nest import nest
+import alf.tensor_specs as ts
 
 
 class RandomTorchEnvironment(torch_environment.TorchEnvironment):
@@ -47,15 +47,14 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         """Initializes the environment.
 
         Args:
-            observation_spec: An 'TensorSpec', or a nested dict, list or tuple of
-                'TensorSpec's.
-            action_spec: An `TensorSpec`, or a nested dict, list or tuple of
-                `TensorSpec`s.
-            episode_end_probability (scalar): Probability an episode will end when the
+            observation_spec (nested TensorSpec): tensor spec for observations 
+            action_spec (nested TensorSpec): tensor spec for actions.
+            env_id (torch.int32): (optional) ID of the environment.
+            episode_end_probability (float): Probability an episode will end when the
                 environment is stepped.
-            discount (scalar): Discount to set in time_steps.
-            reward_fn (callable): Callable that takes in step_type, action, an observation(s),
-                and returns a numpy array of rewards.
+            discount (float): Discount to set in time_steps.
+            reward_fn (Callable): Callable that takes in step_type, action, an observation(s),
+                and returns a tensor of rewards.
             batch_size (int): (Optional) Number of observations generated per call.
                 If this value is not `None`, then all actions are expected to
                 have an additional major axis of size `batch_size`, and all outputs
@@ -150,7 +149,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         if reward.shape != expected_shape:
             raise ValueError(
                 '%r != %r. Size of reward must equal the batch size.' %
-                (np.asarray(reward).shape, self._batch_size))
+                (np.asarray(reward.cpu()).shape, self._batch_size))
 
     def _step(self, action):
         if self._done:

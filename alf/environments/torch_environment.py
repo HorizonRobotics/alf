@@ -184,7 +184,7 @@ class TorchEnvironment(object):
         cached and made available through current_time_step().
 
         Args:
-          action: (nested) 'Tensor'.
+            action (nested Tensor): input actions.
 
         Returns:
           A `TimeStep` namedtuple containing:
@@ -253,7 +253,7 @@ class TorchEnvironment(object):
         """Seeds the environment.
 
         Args:
-            seed: Value to use as seed for the environment.
+            seed (int): Value to use as seed for the environment.
         """
         del seed  # unused
         raise NotImplementedError('No seed support for this environment.')

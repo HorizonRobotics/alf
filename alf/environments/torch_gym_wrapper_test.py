@@ -11,21 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for torch_gym_wrapper. Adapted from tf_agents' gym_wrapper_test.py.
+"""Tests for torch_gym_wrapper. Adapted from tf_agents gym_wrapper_test.py.
 """
 
-import math
 from absl.testing.absltest import mock
 import gym
 import gym.spaces
+import math
 import numpy as np
 import torch
 
-import unittest
+import alf
 from alf.environments import torch_gym_wrapper
 
 
-class GymWrapperSpecTest(unittest.TestCase):
+class GymWrapperSpecTest(alf.test.TestCase):
     def test_tensor_spec_from_gym_space_discrete(self):
         discrete_space = gym.spaces.Discrete(3)
         spec = torch_gym_wrapper.tensor_spec_from_gym_space(discrete_space)
@@ -218,7 +218,7 @@ class GymWrapperSpecTest(unittest.TestCase):
         )
 
 
-class GymWrapperOnCartpoleTest(unittest.TestCase):
+class GymWrapperOnCartpoleTest(alf.test.TestCase):
     def test_wrapped_cartpole_specs(self):
         # Note we use spec.make on gym envs to avoid getting a TimeLimit wrapper on
         # the environment.
@@ -346,4 +346,4 @@ class GymWrapperOnCartpoleTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

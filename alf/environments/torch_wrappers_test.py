@@ -14,24 +14,18 @@
 """Test cases adpated from tf_agents' wrappers_test.py."""
 # TODO: just test TimeLimit wrapper for now, add other tests later.
 
-import collections
-import cProfile
-import math
-import pstats
-
-import unittest
 from absl.testing import parameterized
 from absl.testing.absltest import mock
-
 import gym
-import gym.spaces
+import math
 import torch
 import numpy as np
 
+import alf
+import alf.data_structures as ds
 from alf.environments import torch_environment, torch_gym_wrapper, torch_wrappers
 from alf.environments.random_torch_environment import RandomTorchEnvironment
 import alf.tensor_specs as ts
-import alf.data_structures as ds
 
 
 class TorchEnvironmentBaseWrapperTest(parameterized.TestCase):
@@ -84,7 +78,7 @@ class TorchEnvironmentBaseWrapperTest(parameterized.TestCase):
         self.assertEqual(1, mock_env.close.call_count)
 
 
-class TimeLimitWrapperTest(unittest.TestCase):
+class TimeLimitWrapperTest(alf.test.TestCase):
     def test_limit_duration_wrapped_env_forwards_calls(self):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
@@ -177,4 +171,4 @@ class TimeLimitWrapperTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

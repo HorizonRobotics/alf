@@ -12,24 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Test for tf_agents.environments.suite_gym."""
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+"""Test for suite_gym. Adapted from tf_agent suite_gym_test. """
 
 import functools
-
 import gin
-import unittest
 
-from alf.environments.torch_environment import TorchEnvironment
+import alf
 from alf.environments import suite_gym
-from alf.environments.gym_wrappers import DMAtariPreprocessing, FrameStack
 from alf.environments import torch_wrappers
+from alf.environments.gym_wrappers import DMAtariPreprocessing, FrameStack
+from alf.environments.torch_environment import TorchEnvironment
 
 
-class SuiteGymTest(unittest.TestCase):
+class SuiteGymTest(alf.test.TestCase):
     def tearDown(self):
         gin.clear_config()
         super(SuiteGymTest, self).tearDown()
@@ -66,7 +61,7 @@ class SuiteGymTest(unittest.TestCase):
             gym_env_wrappers=(DMAtariPreprocessing, FrameStack))
         self.assertIsInstance(env, TorchEnvironment)
 
-    # # unittest does not have test_src_dir_path
+    # # TODO: unittest does not have test_src_dir_path
     # def testGinConfig(self):
     #     gin.parse_config_file(
     #         unittest.test_src_dir_path('environments/configs/suite_gym.gin')
@@ -77,4 +72,4 @@ class SuiteGymTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

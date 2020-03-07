@@ -13,20 +13,16 @@
 # limitations under the License.
 """Test cases adpated from tf_agents' py_environment_test.py."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import torch
-import unittest
 
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+import alf
 from alf.environments.random_torch_environment import RandomTorchEnvironment
-from alf.nest import nest
+import alf.nest as nest
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
-class TorchEnvironmentTest(unittest.TestCase):
+class TorchEnvironmentTest(alf.test.TestCase):
     def testResetSavesCurrentTimeStep(self):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
@@ -52,4 +48,4 @@ class TorchEnvironmentTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()
