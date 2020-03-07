@@ -63,7 +63,12 @@ python -m alf.bin.play --root_dir=LOG_DIR
 
   <img src="alf/examples/ac_breakout.png" width="300" height="200" alt="breakout-training-curve"/> <img src="alf/examples/ac_breakout.gif" width="150" height="200" alt="breakout-playing-screen"/>
 
-For Vtrace/IMPALA:
+For Vtrace/IMPALA with two actors and one learner (double the total number of parallel
+environments than that of A2C).  Vtrace is slower than A2C in executing the same number
+of environment steps, because on a single GPU, vtrace needs an additional forward
+evaluation of the learner's actor and value networks for all TimeSteps.  Vtrace appears
+to be more sample efficient most of the way, until the very last where A2C seems to be
+gaining slightly more return per episode.
 
   <img src="alf/examples/ac_vtrace_breakout.png" width="400" height="400" alt="vtrace-breakout-training-curve"/> 
 
