@@ -64,7 +64,8 @@ python -m alf.bin.play --root_dir=LOG_DIR
   <img src="alf/examples/ac_breakout.png" width="300" height="200" alt="breakout-training-curve"/> <img src="alf/examples/ac_breakout.gif" width="150" height="200" alt="breakout-playing-screen"/>
 
 For Vtrace/IMPALA:
-  <img src="alf/examples/ac_vtrace_breakout.png" width="300" height="200" alt="vtrace-breakout-training-curve"/> 
+
+  <img src="alf/examples/ac_vtrace_breakout.png" width="400" height="400" alt="vtrace-breakout-training-curve"/> 
 
 * [Simple navigation with visual input](alf/examples/ac_simple_navigation.gin). Follow the instruction at [SocialRobot](https://github.com/HorizonRobotics/SocialRobot) to install the environment.
 
