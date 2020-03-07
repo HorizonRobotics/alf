@@ -112,13 +112,15 @@ class TimeStep(
 
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
+    discount = _to_tensor(discount)
+
     def make_tensors(struct):
         return nest.map_structure(_to_tensor, struct)
 
     return TimeStep(
         step_type=step_type.view(discount.shape),
         reward=_to_tensor(reward, dtype=torch.float32),
-        discount=_to_tensor(discount),
+        discount=discount,
         observation=make_tensors(observation),
         prev_action=make_tensors(prev_action),
         env_id=_to_tensor(env_id, dtype=torch.int32))

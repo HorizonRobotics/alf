@@ -150,12 +150,12 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
     def _stack_time_steps(self, time_steps):
         """Given a list of TimeStep, combine to one with a batch dimension."""
         if self._flatten:
-            return nest.map_structure_flatten(
+            return nest.fast_map_structure_flatten(
                 lambda *arrays: torch.stack(arrays), self._time_step_spec,
                 *time_steps)
         else:
-            return nest.map_structure(lambda *arrays: torch.stack(arrays),
-                                      *time_steps)
+            return nest.fast_map_structure(lambda *arrays: torch.stack(arrays),
+                                           *time_steps)
 
     def _unstack_actions(self, batched_actions):
         """Returns a list of actions from potentially nested batch of actions."""

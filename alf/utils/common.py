@@ -18,6 +18,7 @@ from absl import logging
 import collections
 from collections import OrderedDict
 import functools
+from functools import wraps
 import gin
 import glob
 import math
@@ -30,14 +31,13 @@ import torch
 import torch.distributions as td
 import torch.nn as nn
 from typing import Callable
-from functools import wraps
 
 import alf
 from alf.data_structures import LossInfo
-from alf.utils.dist_utils import DistributionSpec
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from . import dist_utils, gin_utils
 import alf.nest as nest
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.utils.dist_utils import DistributionSpec
+from . import dist_utils, gin_utils
 
 
 def add_method(cls):
@@ -569,14 +569,13 @@ def get_observation_spec(field=None):
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
-    # print(specs)
-    # specs = nest.map_structure(
-    #     lambda spec: (TensorSpec(spec.shape, torch.float32)
-    #                   if spec.dtype == torch.uint8 else spec), specs)
+    specs = nest.map_structure(
+        lambda spec: (TensorSpec(spec.shape, torch.float32)
+                      if spec.dtype == torch.uint8 else spec), specs)
 
-    # if field:
-    #     for f in field.split('.'):
-    #         specs = specs[f]
+    if field:
+        for f in field.split('.'):
+            specs = specs[f]
     return specs
 
 
@@ -863,9 +862,7 @@ def set_random_seed(seed):
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None. Note that you may not reproduce
-        a previous experiment even if use use its seed because when seed is None,
-        cudnn.deterministic is not set to True
+        The seed being used if `seed` is None. 
     """
     if seed is None:
         seed = os.getpid() + int(time.time())
@@ -886,53 +883,3 @@ def log_metrics(metrics, prefix=''):
     """
     log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
-
-
-def assert_members_are_not_overridden(base_cls,
-                                      instance,
-                                      white_list=(),
-                                      black_list=()):
-    """Asserts public members of `base_cls` are not overridden in `instance`.
-     Copyright tf_agents/utils/common.py
-
-  If both `white_list` and `black_list` are empty, no public member of
-  `base_cls` can be overridden. If a `white_list` is provided, only public
-  members in `white_list` can be overridden. If a `black_list` is provided,
-  all public members except those in `black_list` can be overridden. Both
-  `white_list` and `black_list` cannot be provided at the same, if so a
-  ValueError will be raised.
-
-  Args:
-    base_cls: A Base class.
-    instance: An instance of a subclass of `base_cls`.
-    white_list: Optional list of `base_cls` members that can be overridden.
-    black_list: Optional list of `base_cls` members that cannot be overridden.
-
-  Raises:
-    ValueError if both white_list and black_list are provided.
-  """
-
-    if black_list and white_list:
-        raise ValueError(
-            'Both `black_list` and `white_list` cannot be provided.')
-
-    instance_type = type(instance)
-    subclass_members = set(instance_type.__dict__.keys())
-    public_members = set(
-        [m for m in base_cls.__dict__.keys() if not m.startswith('_')])
-    common_members = public_members & subclass_members
-
-    if white_list:
-        common_members = common_members - set(white_list)
-    elif black_list:
-        common_members = common_members & set(black_list)
-
-    overridden_members = [
-        m for m in common_members
-        if base_cls.__dict__[m] != instance_type.__dict__[m]
-    ]
-    if overridden_members:
-        raise ValueError(
-            'Subclasses of {} cannot override most of its base members, but '
-            '{} overrides: {}'.format(base_cls, instance_type,
-                                      overridden_members))

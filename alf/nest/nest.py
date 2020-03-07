@@ -192,12 +192,14 @@ def map_structure_up_to(shallow_nest, func, *nests):
     return _map(shallow_nest, *nests)
 
 
-def fast_map_structure_flatten(func, structure, *flat_structure, **kwargs):
+def fast_map_structure_flatten(func, structure, *flat_structure):
+    """Applies func to each entry in structure and returns a flattened structure."""
     entries = zip(*flat_structure)
     return pack_sequence_as(structure, [func(*x) for x in entries])
 
 
-def fast_map_structure(func, *structure, **kwargs):
+def fast_map_structure(func, *structure):
+    """map_structure using pack_sequence_as()."""
     flat_structure = [flatten(s) for s in structure]
     entries = zip(*flat_structure)
 
@@ -225,10 +227,12 @@ def pack_sequence_as(nest, flat_seq):
 
 
 def batch_nested_tensor(nested_tensor):
+    """Unsqueeze a zero (batch) dimention for each entry in nested_tensor."""
     return map_structure(lambda x: torch.unsqueeze(x, dim=0), nested_tensor)
 
 
 def unbatch_nested_tensor(nested_tensor):
+    """Squeeze the first (batch) dimension of each entry in nested_tensor."""
     return map_structure(lambda x: torch.squeeze(x, dim=0), nested_tensor)
 
 

@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import random
-import torch
+import functools
 import gin
 import numpy as np
-import functools
+import random
+import torch
 
 from alf.environments import suite_gym
 from alf.environments import thread_torch_environment, parallel_torch_environment
@@ -88,9 +88,12 @@ def create_environment(env_name='CartPole-v0',
         else:
             torch_env.seed(seed)
     else:
+        # flatten=True will use flattened action and time_step in
+        #   process environments to reduce communication overhead.
         torch_env = parallel_torch_environment.ParallelTorchEnvironment(
-            [functools.partial(env_load_fn, env_name)
-             ] * num_parallel_environments)
+            [functools.partial(env_load_fn, env_name)] *
+            num_parallel_environments,
+            flatten=True)
 
         if seed is None:
             torch_env.seed([
@@ -106,7 +109,6 @@ def create_environment(env_name='CartPole-v0',
                 [seed + i for i in range(num_parallel_environments)])
 
     return torch_env
-    # return tf_py_environment.TFPyEnvironment(py_env)
 
 
 @gin.configurable
