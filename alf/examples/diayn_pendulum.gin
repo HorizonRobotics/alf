@@ -1,10 +1,8 @@
 import alf.algorithms.sac_algorithm
-import alf.trainers.off_policy_trainer
+import alf.trainers.policy_trainer
 import alf.algorithms.diayn_algorithm
-
 import alf.algorithms.goal_generator
 import alf.networks.critic_network
-
 
 
 # skill related
@@ -12,50 +10,38 @@ num_of_skills=5
 skill_feature_size=%num_of_skills # one-hot representation
 
 # environment config
-NUM_PARALLEL_ENVIRONMENTS=1
 create_environment.env_load_fn=@suite_gym.load
-create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+create_environment.num_parallel_environments=1
 create_environment.env_name='Pendulum-v0'
 
 
 # algorithm config
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
-goal/TensorSpec.shape=(%skill_feature_size,)
+goal/alf.TensorSpec.shape=(%skill_feature_size,)
 
 
-actor/NestConcatenate.axis=-1
-actor/ActorDistributionNetwork.input_tensor_spec=[%observation_spec, @goal/TensorSpec()]
-actor/ActorDistributionNetwork.preprocessing_combiner=@actor/NestConcatenate()
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.input_tensor_spec=[%observation_spec, @goal/alf.TensorSpec()]
+actor/ActorDistributionNetwork.preprocessing_combiner=@NestConcat()
+actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(10, 10)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.relu
-
 actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
-
 NormalProjectionNetwork.state_dependent_std=True
 NormalProjectionNetwork.mean_transform=None
 NormalProjectionNetwork.scale_distribution=True
 NormalProjectionNetwork.std_transform=@clipped_exp
 
-
-critic/NestConcatenate.axis=-1
-critic/alf.networks.critic_network.CriticNetwork.input_tensor_spec=([%observation_spec, @goal/TensorSpec()], %action_spec)
-critic/alf.networks.critic_network.CriticNetwork.observation_preprocessing_combiner=@critic/NestConcatenate()
-critic/alf.networks.critic_network.CriticNetwork.joint_fc_layer_params=(10, 10)
-critic/alf.networks.critic_network.CriticNetwork.activation_fn=@tf.nn.relu
-
-
+critic/CriticNetwork.input_tensor_spec=([%observation_spec, @goal/alf.TensorSpec()], %action_spec)
+critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.joint_fc_layer_params=(10, 10)
 
 feature_size=10
-diayn/encoding_net_fc_layer_params=(10, %feature_size)
 diayn/EncodingNetwork.input_tensor_spec=%observation_spec
-diayn/EncodingNetwork.fc_layer_params=%diayn/encoding_net_fc_layer_params
-diayn/EncodingNetwork.activation_fn=@tf.nn.relu
-diayn/TensorSpec.shape=(%feature_size,)
+diayn/EncodingNetwork.fc_layer_params=(10, %feature_size)
+diayn/alf.TensorSpec.shape=()
+diayn/alf.TensorSpec.dtype='int64'
 
-DIAYNAlgorithm.num_of_skills=%num_of_skills
-DIAYNAlgorithm.feature_spec=@diayn/TensorSpec()
+DIAYNAlgorithm.skill_spec=@diayn/alf.TensorSpec()
 DIAYNAlgorithm.encoding_net=@diayn/EncodingNetwork()
 DIAYNAlgorithm.hidden_size=(10, 10)
 
@@ -65,15 +51,16 @@ RandomCategoricalGoalGenerator.observation_spec=%observation_spec
 RandomCategoricalGoalGenerator.num_of_goals=%num_of_skills
 
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-SacAlgorithm.critic_network=@critic/alf.networks.critic_network.CriticNetwork()
+SacAlgorithm.critic_network=@critic/CriticNetwork()
 SacAlgorithm.target_update_tau=0.005
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 
 
 # agent config with the goal generator
-Agent/Adam.learning_rate=5e-4
+Agent/Adam.lr=5e-4
 Agent.intrinsic_reward_coef=1
 Agent.extrinsic_reward_coef=0
+Agent.observation_spec=%observation_spec
 Agent.action_spec=%action_spec
 Agent.rl_algorithm_cls=@SacAlgorithm
 Agent.intrinsic_curiosity_module=@DIAYNAlgorithm()
@@ -81,9 +68,7 @@ Agent.goal_generator=@RandomCategoricalGoalGenerator()
 Agent.optimizer=@Agent/Adam()
 
 
-
 # training config
-TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=1000
 TrainerConfig.mini_batch_length=2
 TrainerConfig.unroll_length=1
@@ -92,14 +77,12 @@ TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.clear_replay_buffer=False
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=100000
-TrainerConfig.checkpoint_interval=10000
 TrainerConfig.evaluate=1
 TrainerConfig.eval_interval=500
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
 TrainerConfig.use_rollout_state=True
-TrainerConfig.use_tf_functions=True
 
 ReplayBuffer.max_length=100000
 

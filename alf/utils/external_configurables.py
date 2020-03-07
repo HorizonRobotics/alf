@@ -34,6 +34,9 @@ gym.envs.registration.EnvSpec.make = gin.external_configurable(
 
 # Activation functions.
 gin.external_configurable(torch.exp, 'torch.exp')
+gin.external_configurable(torch.tanh, 'torch.tanh')
+gin.external_configurable(torch.relu, 'torch.relu')
+gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
 
 gin.external_configurable(alf.TensorSpec, 'alf.TensorSpec')
 

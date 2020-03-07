@@ -132,7 +132,7 @@ class RNDAlgorithm(Algorithm):
 
         if self._keep_stacked_frames > 0:
             # Assuming stacking in the first dim, we only keep the last frames.
-            observation = observation[-self._keep_stacked_frames:, ...]
+            observation = observation[:, -self._keep_stacked_frames:, ...]
 
         if self._observation_normalizer is not None:
             observation = self._observation_normalizer.normalize(observation)

@@ -1,10 +1,9 @@
 # base config for ppo (PPOAlgorithm)
 
+import alf.algorithms.agent
 import alf.algorithms.ppo_algorithm
 import alf.algorithms.ppo_loss
-import alf.trainers.off_policy_trainer
 
-TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.algorithm_ctor=@Agent
 Agent.rl_algorithm_cls=@PPOAlgorithm
 ActorCriticAlgorithm.loss_class=@PPOLoss

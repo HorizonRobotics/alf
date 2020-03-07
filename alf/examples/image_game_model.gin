@@ -4,26 +4,23 @@
 import alf.algorithms.actor_critic_algorithm
 
 # CNNs
-tf.keras.layers.Conv2D.padding = "valid"
-CONV_LAYER_PARAMS = [(32, 8, 4), (64, 4, 2), (64, 3, 1)]
+CONV_LAYER_PARAMS = ((32, 8, 4), (64, 4, 2), (64, 3, 1))
 FC_LAYER_PARAMS = (512, 512)
 observation_spec = @get_observation_spec()
 action_spec = @get_action_spec()
 
 # actor/ActorDistributionNetwork
 actor/ActorDistributionNetwork.input_tensor_spec = %observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec = %action_spec
+actor/ActorDistributionNetwork.action_spec = %action_spec
 actor/ActorDistributionNetwork.conv_layer_params = %CONV_LAYER_PARAMS
 actor/ActorDistributionNetwork.fc_layer_params = %FC_LAYER_PARAMS
-actor/ActorDistributionNetwork.activation_fn = @tf.nn.elu
-actor/ActorDistributionNetwork.discrete_projection_net = @actor/CategoricalProjectionNetwork
+actor/ActorDistributionNetwork.discrete_projection_net_ctor = @actor/CategoricalProjectionNetwork
 actor/CategoricalProjectionNetwork.logits_init_output_factor = 1e-10
 
 # value/ValueNetwork
 value/ValueNetwork.input_tensor_spec = %observation_spec
 value/ValueNetwork.conv_layer_params = %CONV_LAYER_PARAMS
 value/ValueNetwork.fc_layer_params = %FC_LAYER_PARAMS
-value/ValueNetwork.activation_fn = @tf.nn.elu
 
 # config ac algorithm
 Agent.action_spec = %action_spec

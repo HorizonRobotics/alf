@@ -585,7 +585,10 @@ class RLAlgorithm(Algorithm):
                 training_info.rollout_info, self._rollout_info_spec))
 
         self._current_time_step = time_step
-        self._current_policy_state = policy_state
+        # Need to detach the states here because we don't want to maintain the
+        # graphs to the next unroll
+        self._current_policy_state = alf.nest.map_structure(
+            lambda state: state.detach(), policy_state)
 
         return training_info
 

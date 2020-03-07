@@ -3,8 +3,6 @@
 # include configurations from  file `icm_super_mario.gin`
 include 'icm_super_mario.gin'
 
-ac/Adam.learning_rate=3e-5
-
 # use only intrinsic reward for training policy
 Agent.extrinsic_reward_coef=0.0
 Agent.intrinsic_reward_coef=1.0
