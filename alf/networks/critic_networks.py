@@ -21,10 +21,11 @@ import alf.layers as layers
 import alf.nest as nest
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.tensor_specs import TensorSpec
+from .network import Network
 
 
 @gin.configurable
-class CriticNetwork(nn.Module):
+class CriticNetwork(Network):
     """Create an instance of CriticNetwork."""
 
     def __init__(self,
@@ -57,7 +58,7 @@ class CriticNetwork(nn.Module):
                 last layer will not be activated.
 
         """
-        super(CriticNetwork, self).__init__()
+        super(CriticNetwork, self).__init__(input_tensor_spec, (), "")
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -112,7 +113,7 @@ class CriticNetwork(nn.Module):
 
 
 @gin.configurable
-class CriticRNNNetwork(nn.Module):
+class CriticRNNNetwork(Network):
     """Creates a critic network with RNN."""
 
     def __init__(self,
@@ -153,7 +154,7 @@ class CriticRNNNetwork(nn.Module):
 
 
         """
-        super(CriticRNNNetwork, self).__init__()
+        super(CriticRNNNetwork, self).__init__(input_tensor_spec, (), "")
 
         observation_spec, action_spec = input_tensor_spec
 
