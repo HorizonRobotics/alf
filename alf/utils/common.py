@@ -133,19 +133,16 @@ def as_list(x):
 
 class Periodically(nn.Module):
     def __init__(self, body, period, name='periodically'):
-        """Periodically performs the ops defined in body.
+        """Periodically performs the operation defined in body.
 
         Args:
-        body: callable to be performed every time
-            an internal counter is divisible by the period.
-        period (int): inverse frequency with which to perform the operation.
-        name: name of the object.
+            body (Callable): callable to be performed every time
+                an internal counter is divisible by the period.
+            period (int): inverse frequency with which to perform the operation.
+            name (str): name of the object.
 
         Raises:
-        TypeError: if body is not a callable.
-
-        Returns:
-        An op that periodically performs the specified body operation.
+            TypeError: if body is not a callable.
         """
         super().__init__()
         if not callable(body):
@@ -315,7 +312,7 @@ def transform_observation(observation, field, func):
         if not levels:
             return func(obs, field)
         level = levels[0]
-        if nest.is_namedtuple(obs):
+        if is_namedtuple(obs):
             new_val = _traverse_transform(
                 obs=getattr(obs, level), levels=levels[1:])
             return obs._replace(**{level: new_val})
@@ -349,9 +346,9 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """
 
     def _transform_image(obs, field):
-        assert isinstance(obs, torch.Tensor), str(type(obs)) + ' is not Tensor'
-        assert obs.dtype == torch.uint8, "Image must have dtype uint8!"
-        obs = obs.type(torch.float32)
+        assert isinstance(obs, tf.Tensor), str(type(obs)) + ' is not Tensor'
+        assert obs.dtype == tf.uint8, "Image must have dtype uint8!"
+        obs = tf.cast(obs, tf.float32)
         return ((max - min) / 255.) * obs + min
 
     fields = fields or [None]
@@ -394,7 +391,7 @@ def reward_clipping(r, minmax=(-1, 1)):
     (e.g. ActorCriticAlgorithm).
     """
     assert minmax[0] <= minmax[1], "range error"
-    return torch.clamp(r, minmax[0], minmax[1])
+    return tf.clip_by_value(r, minmax[0], minmax[1])
 
 
 @gin.configurable
@@ -591,14 +588,13 @@ def get_observation_spec(field=None):
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
-    # print(specs)
-    # specs = nest.map_structure(
-    #     lambda spec: (TensorSpec(spec.shape, torch.float32)
-    #                   if spec.dtype == torch.uint8 else spec), specs)
+    specs = tf.nest.map_structure(
+        lambda spec: (tf.TensorSpec(spec.shape, tf.float32)
+                      if spec.dtype == tf.uint8 else spec), specs)
 
-    # if field:
-    #     for f in field.split('.'):
-    #         specs = specs[f]
+    if field:
+        for f in field.split('.'):
+            specs = specs[f]
     return specs
 
 
@@ -746,7 +742,7 @@ def create_tensor_array(spec, num_steps, batch_size, clear_after_read=None):
             clear_after_read=clear_after_read,
             element_shape=tf.TensorShape([batch_size]).concatenate(s.shape))
 
-    return nest.map_structure(_create_ta, spec)
+    return tf.nest.map_structure(_create_ta, spec)
 
 
 def create_and_unstack_tensor_array(tensors, clear_after_read=True):
@@ -762,7 +758,7 @@ def create_and_unstack_tensor_array(tensors, clear_after_read=True):
     """
     flattened = tf.nest.flatten(tensors)
     if len(flattened) == 0:
-        return nest.map_structure(lambda a: a, tensors)
+        return tf.nest.map_structure(lambda a: a, tensors)
     spec = extract_spec(tensors, from_dim=2)
     # element_shape of TensorArray must be explicit shape (i.e., known)
     batch_size = flattened[0].shape[1]
@@ -770,7 +766,7 @@ def create_and_unstack_tensor_array(tensors, clear_after_read=True):
     num_steps = tf.shape(flattened[0])[0]
     ta = create_tensor_array(
         spec, num_steps, batch_size, clear_after_read=clear_after_read)
-    ta = nest.map_structure(lambda elem, ta: ta.unstack(elem), tensors, ta)
+    ta = tf.nest.map_structure(lambda elem, ta: ta.unstack(elem), tensors, ta)
     return ta
 
 
@@ -881,13 +877,18 @@ def function(func=None, **kwargs):
 def set_random_seed(seed):
     """Set a seed for deterministic behaviors.
 
+    Note: If someone runs an experiment with a pre-selected manual seed, he can
+    definitely reproduce the results with the same seed; however, if he runs the
+    experiment with seed=None and re-run the experiments using the seed previously
+    returned from this function (e.g. the returned seed might be logged to
+    Tensorboard), and if cudnn is used in the code, then there is no guarantee
+    that the results will be reproduced with the recovered seed.
+
     Args:
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None. Note that you may not reproduce
-        a previous experiment even if use use its seed because when seed is None,
-        cudnn.deterministic is not set to True
+        The seed being used if `seed` is None.
     """
     if seed is None:
         seed = os.getpid() + int(time.time())
@@ -908,53 +909,3 @@ def log_metrics(metrics, prefix=''):
     """
     log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
-
-
-def assert_members_are_not_overridden(base_cls,
-                                      instance,
-                                      white_list=(),
-                                      black_list=()):
-    """Asserts public members of `base_cls` are not overridden in `instance`.
-     Copyright tf_agents/utils/common.py
-
-  If both `white_list` and `black_list` are empty, no public member of
-  `base_cls` can be overridden. If a `white_list` is provided, only public
-  members in `white_list` can be overridden. If a `black_list` is provided,
-  all public members except those in `black_list` can be overridden. Both
-  `white_list` and `black_list` cannot be provided at the same, if so a
-  ValueError will be raised.
-
-  Args:
-    base_cls: A Base class.
-    instance: An instance of a subclass of `base_cls`.
-    white_list: Optional list of `base_cls` members that can be overridden.
-    black_list: Optional list of `base_cls` members that cannot be overridden.
-
-  Raises:
-    ValueError if both white_list and black_list are provided.
-  """
-
-    if black_list and white_list:
-        raise ValueError(
-            'Both `black_list` and `white_list` cannot be provided.')
-
-    instance_type = type(instance)
-    subclass_members = set(instance_type.__dict__.keys())
-    public_members = set(
-        [m for m in base_cls.__dict__.keys() if not m.startswith('_')])
-    common_members = public_members & subclass_members
-
-    if white_list:
-        common_members = common_members - set(white_list)
-    elif black_list:
-        common_members = common_members & set(black_list)
-
-    overridden_members = [
-        m for m in common_members
-        if base_cls.__dict__[m] != instance_type.__dict__[m]
-    ]
-    if overridden_members:
-        raise ValueError(
-            'Subclasses of {} cannot override most of its base members, but '
-            '{} overrides: {}'.format(base_cls, instance_type,
-                                      overridden_members))

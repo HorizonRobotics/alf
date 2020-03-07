@@ -126,6 +126,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
+            dqda_clipping (float): when computing the actor loss, clips the
+                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
+                Does not perform clipping if dqda_clipping == 0.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
@@ -136,7 +139,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critic_network1 = critic_network.copy()
         critic_network2 = critic_network.copy()
 
-        log_alpha = nn.Parameter(torch.Tensor([initial_log_alpha]))
+        log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
 
         super().__init__(
             observation_spec,
