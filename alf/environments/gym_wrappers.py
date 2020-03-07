@@ -11,21 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Wrappers for gym (numpy) environments.  
+"""Wrappers for gym (numpy) environments. """
 
-Adapted from ALF's Environment API as seen in:
-    https://github.com/HorizonRobotics/alf/blob/tf2/alf/environments/wrappers.py
-"""
-
-import copy
+from alf.utils import common
 from collections import deque
-import random
-
-import gym
-import numpy as np
+import copy
 import cv2
 import gin
-from alf.utils import common
+import gym
+import numpy as np
+import random
 
 
 def transform_space(observation_space, field, func):
@@ -65,13 +60,13 @@ def need_channel_transpose(shape):
         shape (int tuple): shape of the inquiry array / tensor
 
     Returns:
-        A boolean: the inquiry array / tensor needs tranpose (True) or not (False)
+        A bool: the inquiry array / tensor needs tranpose (True) or not (False)
     """
 
-    if len(shape) == 3 and shape[2] < shape[0] and shape[2] < shape[1]:
-        return True
-    else:
-        return False
+    if len(shape) == 3:
+        if shape[2] < shape[0] and shape[2] < shape[1]:
+            return True
+    return False
 
 
 @gin.configurable
@@ -149,11 +144,13 @@ class FrameStack(BaseObservationWrapper):
                  fields=None):
         """Create a FrameStack object.
 
+        Any images from the wrapped observations will always be 'channels first'. 
+
         Args:
             env (gym.Space): gym environment.
             stack_size (int): stack so many frames
-            channel_order (str): The ordering of the dimensions in the images.
-                should be one of `channels_last` or `channels_first`.
+            channel_order (str): The ordering of the dimensions in the input images 
+                from the env, should be one of `channels_last` or `channels_first`.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
@@ -175,12 +172,12 @@ class FrameStack(BaseObservationWrapper):
                 observation_space.low,
                 repeats=self._stack_size,
                 axis=self._stack_axis)
-            low = self.channel_first(low, transpose)
+            low = self._channel_first(low, transpose)
             high = np.repeat(
                 observation_space.high,
                 repeats=self._stack_size,
                 axis=self._stack_axis)
-            high = self.channel_first(high, transpose)
+            high = self._channel_first(high, transpose)
             return gym.spaces.Box(
                 low=low, high=high, dtype=observation_space.dtype)
         elif isinstance(observation_space, gym.spaces.MultiDiscrete):
@@ -199,12 +196,14 @@ class FrameStack(BaseObservationWrapper):
             self._frames[field] = queue
         else:
             queue.append(observation)
-        return self.channel_first(
+        return self._channel_first(
             np.concatenate(queue, axis=self._stack_axis), transpose)
 
-    def channel_first(self, np_array, transpose=False):
+    def _channel_first(self, np_array, transpose=False):
         if transpose:
-            np_array = np.transpose(np_array, (2, 0, 1))
+            rank = np_array.ndim
+            np_array = np.transpose(np_array,
+                                    (rank - 1, ) + tuple(range(rank - 1)))
         return np_array
 
     def reset(self):

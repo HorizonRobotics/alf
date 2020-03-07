@@ -11,11 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Runs a single environments in a separate thread.
-
-Adapted from ALF's Environment API as seen in:
-    https://github.com/HorizonRobotics/alf/blob/tf2/alf/environments/utils.py
-"""
+"""Runs a single environments in a separate thread. """
 
 from multiprocessing import dummy as mp_threads
 from alf.environments import torch_environment

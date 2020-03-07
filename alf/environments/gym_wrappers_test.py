@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import alf
+from alf.environments.gym_wrappers import FrameStack
 import gym
 from gym import spaces
 import numpy as np
-import unittest
-
-from alf.environments.gym_wrappers import FrameStack
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
@@ -62,7 +61,7 @@ class FakeDictObservationEnvironment(FakeEnvironment):
         super().__init__(*args, **kwargs)
 
 
-class FrameStackTest(unittest.TestCase):
+class FrameStackTest(alf.test.TestCase):
     def _create_env(self, stack_fields):
         return FrameStack(
             env=FakeDictObservationEnvironment(), fields=stack_fields)
@@ -106,4 +105,4 @@ class FrameStackTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()
