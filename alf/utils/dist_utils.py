@@ -365,7 +365,7 @@ def calc_default_target_entropy(spec):
     """
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
-    cont = tensor_spec.is_continuous(spec)
+    cont = spec.is_continuous
     min_prob = 0.01
     log_mp = np.log(min_prob)
     # continuous: suppose the prob concentrates on a delta of 0.01*(M-m)
