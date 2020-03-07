@@ -178,7 +178,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(network.output_spec, TensorSpec((100, )))
             self.assertEqual(output.size()[-1], 100)
         else:
-            self.assertEqual(len(list(network.parameters())), 4 + 2 + 2)
+            self.assertEqual(len(list(network.parameters())), 4 + 2 + 1)
             self.assertEqual(network.output_spec, TensorSpec((500, )))
             self.assertEqual(output.size()[-1], 500)
 

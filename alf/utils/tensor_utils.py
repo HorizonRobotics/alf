@@ -57,7 +57,5 @@ def explained_variance(ypred, y):
     Returns:
         1 - Var[y-ypred] / Var[y]
     """
-    ypred = torch.reshape(ypred, (-1, ))
-    y = torch.reshape(y, (-1, ))
-    vary = torch.var(y, dim=0, unbiased=False)
-    return 1 - torch.var(y - ypred, dim=0, unbiased=False) / (vary + 1e-30)
+    vary = torch.var(y, unbiased=False)
+    return 1 - torch.var(y - ypred, unbiased=False) / (vary + 1e-30)

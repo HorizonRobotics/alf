@@ -85,7 +85,7 @@ class EmbeddingPreprocessor(InputPreprocessor):
 
     def __init__(self,
                  input_tensor_spec,
-                 embedding_dim=None,
+                 embedding_dim,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
@@ -108,23 +108,22 @@ class EmbeddingPreprocessor(InputPreprocessor):
         super(EmbeddingPreprocessor, self).__init__(input_tensor_spec, name)
         if input_tensor_spec.is_discrete:
             assert isinstance(input_tensor_spec, BoundedTensorSpec)
-            input_tensor_spec = TensorSpec(
-                (input_tensor_spec.maximum - input_tensor_spec.minimum + 1, ))
-
-        self._embedding_net = alf.networks.EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            activation=activation,
-            last_layer_size=embedding_dim,
-            last_activation=last_activation)
+            N = input_tensor_spec.maximum - input_tensor_spec.minimum + 1
+            # use nn.Embedding to support a large dictionary
+            self._embedding_net = nn.Embedding(N, embedding_dim)
+        else:
+            # Only use an MLP for embedding a continuous input
+            self._embedding_net = alf.networks.EncodingNetwork(
+                input_tensor_spec=input_tensor_spec,
+                conv_layer_params=conv_layer_params,
+                fc_layer_params=fc_layer_params,
+                activation=activation,
+                last_layer_size=embedding_dim,
+                last_activation=last_activation)
 
     def _preprocess(self, tensor):
         assert get_outer_rank(tensor, self._input_tensor_spec) == 1, \
             "Only supports one outer rank (batch dim)!"
-        if self._input_tensor_spec.is_discrete:
-            tensor = nn.functional.one_hot(
-                tensor,
-                int((self._input_tensor_spec.maximum -
-                     self._input_tensor_spec.minimum + 1))).to(torch.float32)
-        return self._embedding_net(tensor)[0]
+        ret = self._embedding_net(tensor)
+        # EncodingNetwork returns a pair
+        return (ret if self._input_tensor_spec.is_discrete else ret[0])

@@ -27,7 +27,7 @@ import alf.layers as layers
 from alf.tensor_specs import TensorSpec
 from alf.networks.preprocessors import InputPreprocessor
 from alf.nest.utils import get_outer_rank
-from alf.utils.dist_utils import DistributionSpec
+from alf.utils.dist_utils import DistributionSpec, extract_spec
 from alf.utils import common
 
 
@@ -223,9 +223,6 @@ class Network(nn.Module):
         """
         return type(self)(**dict(self._saved_kwargs, **kwargs))
 
-    def __call__(self, inputs, *args, **kwargs):
-        return super(Network, self).__call__(inputs, *args, **kwargs)
-
     @property
     def nested_input_tensor_spec(self):
         """Return the input tensor spec BEFORE preprocessings have been applied.
@@ -244,7 +241,14 @@ class Network(nn.Module):
 
     @property
     def output_spec(self):
-        """Return the spec of the network's encoding output."""
+        """Return the spec of the network's encoding output. By default, we use
+        `_test_forward` to automatically compute the output and get its spec.
+        For efficiency, subclasses can overwrite this function if the output spec
+        can be obtained easily in other ways.
+        """
+        if self._output_spec is None:
+            self._output_spec = TensorSpec.from_tensor(
+                self._test_forward()[0], from_dim=1)
         return self._output_spec
 
     @property
@@ -269,6 +273,6 @@ class DistributionNetwork(Network):
     @property
     def output_spec(self):
         if self._output_spec is None:
-            self._output_spec = DistributionSpec.from_distribution(
+            self._output_spec = extract_spec(
                 self._test_forward()[0], from_dim=1)
         return self._output_spec

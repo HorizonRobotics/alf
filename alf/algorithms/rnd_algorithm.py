@@ -51,7 +51,7 @@ class RNDAlgorithm(Algorithm):
                  observation_spec=None,
                  optimizer=None,
                  clip_value=-1.0,
-                 stacked_frames=True,
+                 keep_stacked_frames=1,
                  name="RNDAlgorithm"):
         """
         Args:
@@ -72,11 +72,14 @@ class RNDAlgorithm(Algorithm):
             optimizer (torch.optim.Optimizer): The optimizer for training
             clip_value (float): if positive, the rewards will be clipped to
                 [-clip_value, clip_value]; only used for reward normalization.
-            stacked_frames (bool): a boolean flag indicating whether the input
-                observation has stacked frames. If True, then we only keep the
-                last frame for RND to make predictions on, as suggested by the
-                original paper Burda et al. 2019. For Atari games, this flag is
-                usually True (`frame_stacking==4`).
+            keep_stacked_frames (int): a non-negative integer indicating how many
+                stacked frames we want to keep as the observation. If >0, we only
+                keep the last so many frames for RND to make predictions on,
+                as suggested by the original paper Burda et al. 2019. For Atari
+                games, this argument is usually 1 (with `frame_stacking==4`). If
+                it's 0, the observation is unchanged. For other games, the user
+                is responsible for setting this value correctly depending on
+                how many channels an observation has at each time step.
             name (str):
         """
         super(RNDAlgorithm, self).__init__(
@@ -91,11 +94,12 @@ class RNDAlgorithm(Algorithm):
         else:
             self._reward_normalizer = None
 
-        self._stacked_frames = stacked_frames
-        if stacked_frames and (observation_spec is not None):
-            # Assuming stacking in the last dim, we only keep the last frame.
+        self._keep_stacked_frames = keep_stacked_frames
+        if keep_stacked_frames > 0 and (observation_spec is not None):
+            # Assuming stacking in the first dim, we only keep the last frames.
             shape = observation_spec.shape
-            new_shape = tuple(shape[:-1]) + (1, )
+            assert keep_stacked_frames <= shape[0]
+            new_shape = (keep_stacked_frames, ) + tuple(shape[1:])
             observation_spec = TensorSpec(
                 shape=new_shape, dtype=observation_spec.dtype)
 
@@ -126,9 +130,9 @@ class RNDAlgorithm(Algorithm):
         """
         observation = time_step.observation
 
-        if self._stacked_frames:
-            # Assuming stacking in the last dim, we only keep the last frame.
-            observation = observation[..., -1:]
+        if self._keep_stacked_frames > 0:
+            # Assuming stacking in the first dim, we only keep the last frames.
+            observation = observation[-self._keep_stacked_frames:, ...]
 
         if self._observation_normalizer is not None:
             observation = self._observation_normalizer.normalize(observation)

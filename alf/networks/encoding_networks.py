@@ -50,6 +50,13 @@ class ImageEncodingNetwork(Network):
         Currently there seems no need for this class to handle nested inputs;
         If necessary, extend the argument list to support it in the future.
 
+        How to calculate the output size:
+        https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d
+
+            H = (H1 - HF + 2P) // strides + 1
+
+        where H = output size, H1 = input size, HF = size of kernel, P = padding
+
         Args:
             input_channels (int): number of channels in the input image
             input_size (int or tuple): the input image size (height, width)
@@ -85,25 +92,6 @@ class ImageEncodingNetwork(Network):
                     padding=padding))
             input_channels = filters
 
-    @property
-    def output_spec(self):
-        """Return the output spec.
-
-        How to calculate the output size:
-        https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d
-
-            H = (H1 - HF + 2P) // strides + 1
-
-        where H = output size, H1 = input size, HF = size of kernel, P = padding
-
-        Returns:
-            output tensor spec
-        """
-        if self._output_spec is None:
-            self._output_spec = TensorSpec.from_tensor(
-                self._test_forward()[0], from_dim=1)
-        return self._output_spec
-
     def forward(self, inputs, state=()):
         """The empty state just keeps the interface same with other networks."""
         # call super to handle nested inputs
@@ -134,6 +122,13 @@ class ImageDecodingNetwork(Network):
         Initialize the layers for decoding a latent vector into an image.
         Currently there seems no need for this class to handle nested inputs;
         If necessary, extend the argument list to support it in the future.
+
+        How to calculate the output size:
+        https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
+
+            H = (H1-1) * strides + HF - 2P
+
+        where H = output size, H1 = input size, HF = size of kernel, P = padding
 
         Args:
             input_size (int): the size of the input latent vector
@@ -200,25 +195,6 @@ class ImageDecodingNetwork(Network):
                     strides=strides,
                     padding=padding))
             in_channels = filters
-
-    @property
-    def output_spec(self):
-        """Return the output spec.
-
-        How to calculate the output size:
-        https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
-
-            H = (H1-1) * strides + HF - 2P
-
-        where H = output size, H1 = input size, HF = size of kernel, P = padding
-
-        Returns:
-            output tensor spec
-        """
-        if self._output_spec is None:
-            self._output_spec = TensorSpec.from_tensor(
-                self._test_forward()[0], from_dim=1)
-        return self._output_spec
 
     def forward(self, inputs, state=()):
         """Returns an image of shape (B,C,H,W). The empty state just keeps the
@@ -493,6 +469,4 @@ class LSTMEncodingNetwork(Network):
 
     @property
     def output_spec(self):
-        if self._output_spec is None:
-            self._output_spec = self._post_encoding_net.output_spec
-        return self._output_spec
+        return self._post_encoding_net.output_spec

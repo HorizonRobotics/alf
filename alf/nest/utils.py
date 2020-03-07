@@ -23,7 +23,7 @@ from . import nest
 from alf.tensor_specs import TensorSpec
 
 
-class NestCombiner(object):
+class NestCombiner(abc.ABC):
     """A base class for combining all elements in a nested structure."""
 
     def __init__(self, name):
@@ -101,7 +101,7 @@ class NestSum(NestCombiner):
     def _combine_flat(self, tensors):
         ret = sum(tensors)
         if self._average:
-            ret = ret / float(len(tensors))
+            ret *= 1 / float(len(tensors))
         return ret
 
 
