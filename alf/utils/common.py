@@ -18,6 +18,7 @@ from absl import logging
 import collections
 from collections import OrderedDict
 import functools
+from functools import wraps
 import gin
 import glob
 import math
@@ -30,14 +31,13 @@ import torch
 import torch.distributions as td
 import torch.nn as nn
 from typing import Callable
-from functools import wraps
 
 import alf
 from alf.data_structures import LossInfo
-from alf.utils.dist_utils import DistributionSpec
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from . import dist_utils, gin_utils
 import alf.nest as nest
+from alf.tensor_specs import BoundedTensorSpec
+from alf.utils.dist_utils import DistributionSpec
+from . import dist_utils, gin_utils
 
 
 def add_method(cls):
@@ -88,6 +88,19 @@ def zeros_from_spec(nested_spec, batch_size):
 
 
 zero_tensor_from_nested_spec = zeros_from_spec
+
+
+def clip_to_spec(value, spec: BoundedTensorSpec):
+    """Clips value to a given bounded tensor spec.
+
+    Args:
+        value: (tensor) value to be clipped.
+        spec: (BoundedTensorSpec) spec containing min and max values for clipping.
+
+    Returns:
+        clipped_value: (tensor) `value` clipped to be compatible with `spec`.
+    """
+    return torch.clamp(value, spec.minimum, spec.maximum)
 
 
 def set_per_process_memory_growth(flag=True):

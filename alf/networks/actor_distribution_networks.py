@@ -21,11 +21,12 @@ import torch.nn as nn
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from .network import Network
 
 
 @gin.configurable
-class ActorDistributionNetwork(nn.Module):
-    """Outputs temporally correlated actions."""
+class ActorDistributionNetwork(Network):
+    """Outputs temporally uncorrelated actions."""
 
     def __init__(self,
                  input_tensor_spec,
@@ -53,7 +54,8 @@ class ActorDistributionNetwork(nn.Module):
                 generates a continuous projection network that outputs
                 continuous actions.
         """
-        super(ActorDistributionNetwork, self).__init__()
+        super(ActorDistributionNetwork, self).__init__(input_tensor_spec, (),
+                                                       "")
         self._encoding_net = EncodingNetwork(
             input_tensor_spec, conv_layer_params, fc_layer_params, activation)
 
@@ -91,7 +93,7 @@ class ActorDistributionNetwork(nn.Module):
 
 @gin.configurable
 class ActorDistributionRNNNetwork(ActorDistributionNetwork):
-    """Outputs temporally uncorrelated actions."""
+    """Outputs temporally correlated actions."""
 
     def __init__(self,
                  input_tensor_spec,
