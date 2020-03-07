@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gin
 import numpy as np
 
@@ -279,6 +280,9 @@ class EncodingNetwork(nn.Module):
         assert isinstance(input_tensor_spec, TensorSpec), \
             "The spec must be an instance of TensorSpec!"
 
+        # avoid side effects on the input
+        _fc_layer_params = copy.deepcopy(fc_layer_params)
+
         self._img_encoding_net = None
         if conv_layer_params:
             assert len(input_tensor_spec.shape) == 3, \
@@ -298,17 +302,17 @@ class EncodingNetwork(nn.Module):
             input_size = input_tensor_spec.shape[0]
 
         self._fc_layers = nn.ModuleList()
-        if fc_layer_params is None:
-            fc_layer_params = []
+        if _fc_layer_params is None:
+            _fc_layer_params = []
         else:
-            assert isinstance(fc_layer_params, (tuple, list))
-        if isinstance(fc_layer_params, tuple):
-            fc_layer_params = list(fc_layer_params)
+            assert isinstance(_fc_layer_params, (tuple, list))
+        if isinstance(_fc_layer_params, tuple):
+            _fc_layer_params = list(_fc_layer_params)
         if last_layer_size is not None:
-            fc_layer_params.append(last_layer_size)
-        for i, size in enumerate(fc_layer_params):
+            _fc_layer_params.append(last_layer_size)
+        for i, size in enumerate(_fc_layer_params):
             act = activation
-            if i == len(fc_layer_params) - 1:
+            if i == len(_fc_layer_params) - 1:
                 act = (activation
                        if last_activation is None else last_activation)
             self._fc_layers.append(layers.FC(input_size, size, activation=act))

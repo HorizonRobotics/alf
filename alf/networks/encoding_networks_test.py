@@ -24,6 +24,7 @@ from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
+from .network import Network
 
 
 class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
@@ -108,6 +109,41 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         output = network(img)
         output_shape = network._img_encoding_net.output_shape()
         self.assertEqual(output.shape[-1], np.prod(output_shape))
+
+
+class MyEncodingNetwork(Network):
+    def __init__(self,
+                 input_tensor_spec: TensorSpec,
+                 fc_layer_params=None,
+                 last_layer_size=None,
+                 activation=torch.relu):
+        super().__init__(input_tensor_spec, (), "")
+        self._encoding_net = EncodingNetwork(
+            input_tensor_spec=input_tensor_spec,
+            fc_layer_params=fc_layer_params,
+            activation=activation,
+            last_layer_size=last_layer_size)
+
+
+class EncodingNetworkSideEffectsTest(unittest.TestCase):
+    def test_encoding_network_side_effects(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+        fc_layer_params = [20, 10]
+        enc_net = MyEncodingNetwork(
+            input_tensor_spec=input_spec,
+            fc_layer_params=fc_layer_params,
+            last_layer_size=3)
+        # test there is no side effects
+        # with side effects, fc_layer_params would be [20, 10, 3]
+        self.assertTrue((fc_layer_params == [20, 10]))
+
+        # test there is no side effects on network copy; with side effects,
+        # target_net would have fc layes of output-size [20, 10, 3, 3],
+        # i.e., the last layer specified by last_layer_size is duplicated
+        target_net = enc_net.copy()
+        self.assertTrue(
+            len(list(target_net.parameters())) == \
+                len(list(enc_net.parameters())))
 
 
 if __name__ == '__main__':
