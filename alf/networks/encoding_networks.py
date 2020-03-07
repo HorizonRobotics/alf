@@ -272,10 +272,10 @@ class EncodingNetwork(Network):
         if conv_layer_params:
             assert isinstance(conv_layer_params, tuple), \
                 "The input params {} should be tuple".format(conv_layer_params)
-            assert len(self._input_tensor_spec.shape) == 3, \
+            assert len(self._processed_input_tensor_spec.shape) == 3, \
                 "The input shape {} should be like (C,H,W)!".format(
-                    self._input_tensor_spec.shape)
-            input_channels, height, width = self._input_tensor_spec.shape
+                    self._processed_input_tensor_spec.shape)
+            input_channels, height, width = self._processed_input_tensor_spec.shape
             self._img_encoding_net = ImageEncodingNetwork(
                 input_channels, (height, width),
                 conv_layer_params,
@@ -283,10 +283,10 @@ class EncodingNetwork(Network):
                 flatten_output=True)
             input_size = self._img_encoding_net.output_spec.shape[0]
         else:
-            assert len(self._input_tensor_spec.shape) == 1, \
+            assert len(self._processed_input_tensor_spec.shape) == 1, \
                 "The input shape {} should be like (N,)!".format(
-                    self._input_tensor_spec.shape)
-            input_size = self._input_tensor_spec.shape[0]
+                    self._processed_input_tensor_spec.shape)
+            input_size = self._processed_input_tensor_spec.shape[0]
 
         self._fc_layers = nn.ModuleList()
         if fc_layer_params is None:
@@ -323,8 +323,9 @@ class EncodingNetwork(Network):
     @property
     def output_spec(self):
         if self._output_spec is None:
-            self._output_spec = TensorSpec((self._output_size, ),
-                                           dtype=self._input_tensor_spec.dtype)
+            self._output_spec = TensorSpec(
+                (self._output_size, ),
+                dtype=self._processed_input_tensor_spec.dtype)
         return self._output_spec
 
 
@@ -388,7 +389,7 @@ class LSTMEncodingNetwork(Network):
             name=name)
 
         self._pre_encoding_net = EncodingNetwork(
-            input_tensor_spec=self._input_tensor_spec,
+            input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=pre_fc_layer_params,
             activation=activation)

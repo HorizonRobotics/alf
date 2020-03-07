@@ -129,7 +129,8 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             preprocessing_combiner=NestSum(average=True),
             conv_layer_params=[(1, 2, 2, 0)])
 
-        self.assertEqual(network._input_tensor_spec, TensorSpec((3, 80, 80)))
+        self.assertEqual(network._processed_input_tensor_spec,
+                         TensorSpec((3, 80, 80)))
 
         output, _ = network(imgs)
         self.assertTensorEqual(output, torch.zeros((40 * 40, )))

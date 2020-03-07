@@ -133,7 +133,7 @@ class Network(nn.Module):
         super(Network, self).__init__()
         self._name = name
         self._skip_input_preprocessing = skip_input_preprocessing
-        self._nested_input_tensor_spec = input_tensor_spec
+        self._input_tensor_spec = input_tensor_spec
 
         if not skip_input_preprocessing:
             # make sure the network holds the parameters of any trainable input
@@ -175,7 +175,7 @@ class Network(nn.Module):
 
         # This input spec is the final resulting spec after input preprocessors
         # and the nest combiner.
-        self._input_tensor_spec = input_tensor_spec
+        self._processed_input_tensor_spec = input_tensor_spec
         self._output_spec = None
 
     def forward(self, inputs, state=()):
@@ -186,15 +186,15 @@ class Network(nn.Module):
             proc_inputs = self._preprocessing_combiner(
                 alf.nest.map_structure(lambda preproc, tensor: preproc(tensor),
                                        self._input_preprocessors, inputs))
-            assert get_outer_rank(proc_inputs, self._input_tensor_spec) == 1, \
+            assert get_outer_rank(proc_inputs, self._processed_input_tensor_spec) == 1, \
                 ("Only supports one outer rank (batch dim)! "
                 + "After preprocessing: inputs size {} vs. input tensor spec {}".format(
-                    proc_inputs.size(), self._input_tensor_spec)
+                    proc_inputs.size(), self._processed_input_tensor_spec)
                 + "\n Make sure that you have provided the right input preprocessors"
                 + " and nest combiner!\n"
                 + "Before preprocessing: inputs size {} vs. input tensor spec {}".format(
                     alf.nest.map_structure(lambda tensor: tensor.size(), inputs),
-                    self._nested_input_tensor_spec))
+                    self._input_tensor_spec))
             return proc_inputs, state
 
     def _test_forward(self):
@@ -202,7 +202,7 @@ class Network(nn.Module):
         forward. Can be used to calculate output spec or testing the network.
         """
         inputs = common.zero_tensor_from_nested_spec(
-            self._nested_input_tensor_spec, batch_size=1)
+            self._input_tensor_spec, batch_size=1)
         states = common.zero_tensor_from_nested_spec(
             self.state_spec, batch_size=1)
         return self.forward(inputs, states)
@@ -224,14 +224,8 @@ class Network(nn.Module):
         return type(self)(**dict(self._saved_kwargs, **kwargs))
 
     @property
-    def nested_input_tensor_spec(self):
-        """Return the input tensor spec BEFORE preprocessings have been applied.
-        """
-        return self._nested_input_tensor_spec
-
-    @property
     def input_tensor_spec(self):
-        """Return the input tensor spec AFTER preprocessings have been applied.
+        """Return the input tensor spec BEFORE preprocessings have been applied.
         """
         return self._input_tensor_spec
 

@@ -70,7 +70,7 @@ class ValueNetwork(Network):
             preprocessing_combiner,
             name=name)
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec=self._input_tensor_spec,
+            input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
@@ -146,7 +146,7 @@ class ValueRNNNetwork(Network):
             preprocessing_combiner,
             name=name)
         self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=self._input_tensor_spec,
+            input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
