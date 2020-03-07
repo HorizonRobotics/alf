@@ -43,7 +43,7 @@ class ActorDistributionNetwork(nn.Module):
             conv_layer_params (list[tuple]): a list of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (list[int]): a list of integers representing hidden
+            fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers.
             discrete_projection_net_ctor (ProjectionNetwork): constructor that

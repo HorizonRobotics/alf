@@ -43,10 +43,10 @@ class QNetwork(nn.Module):
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
         actions.
-            conv_layer_params (list[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (list[int]): a list of integers representing hidden
+            fc_layer_params (tuple[int]): a list of integers representing hidden
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
@@ -103,10 +103,10 @@ class QRNNNetwork(nn.Module):
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
         actions.
-            conv_layer_params (list[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (list[int]): a list of integers representing hidden
+            fc_layer_params (list[int]): a tuple of integers representing hidden
                 FC layers for encoding the observation.
             lstm_hidden_size (int or list[int] or tuple[int]): the hidden size(s)
                 of the LSTM cell(s). Each size corresponds to a cell. If there

@@ -43,14 +43,14 @@ class CriticNetwork(nn.Module):
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
                 representing the inputs.
-            observation_conv_layer_params (list[tuple]): a list of tuples where each
+            observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            observation_fc_layer_params (list[int]): a list of integers representing
+            observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
-            action_fc_layer_params (list[int]): a list of integers representing
+            action_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for actions.
-            joint_fc_layer_params (list[int]): a list of integers representing
+            joint_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes FC layers after merging observations and
                 actions.
             activation (nn.functional): activation used for hidden layers. The

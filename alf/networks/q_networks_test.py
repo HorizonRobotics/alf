@@ -42,13 +42,13 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
+    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_q_value_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = BoundedTensorSpec((1, ), torch.int64, 0, 2)
         num_actions = action_spec.maximum - action_spec.minimum + 1
 
-        conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
+        conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
 
         image = input_spec.zeros(outer_dims=(1, ))
 

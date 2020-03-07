@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import json
-import unittest
 import warnings
 import shutil
 import tempfile
@@ -21,6 +20,7 @@ import os
 import numpy as np
 from collections import OrderedDict
 
+import alf
 import torch
 import torch.nn as nn
 
@@ -136,7 +136,7 @@ class ComposedAlgWithIgnore(Algorithm):
         return ['_sub_alg2']
 
 
-class TestNetAndOptimizer(unittest.TestCase):
+class TestNetAndOptimizer(alf.test.TestCase):
     def test_net_and_optimizer(self):
         net = Net()
         optimizer = torch.optim.Adam(net.parameters(), lr=0.1)
@@ -187,7 +187,7 @@ class TestNetAndOptimizer(unittest.TestCase):
                 self.assertTrue((para == 1).all())
 
 
-class TestMultiAlgSingleOpt(unittest.TestCase):
+class TestMultiAlgSingleOpt(alf.test.TestCase):
     def test_multi_algo_single_opt(self):
 
         with tempfile.TemporaryDirectory() as ckpt_dir:
@@ -239,7 +239,7 @@ class TestMultiAlgSingleOpt(unittest.TestCase):
             ]))
 
 
-class TestMultiAlgMultiOpt(unittest.TestCase):
+class TestMultiAlgMultiOpt(alf.test.TestCase):
     def test_multi_alg_multi_opt(self):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
@@ -281,7 +281,7 @@ class TestMultiAlgMultiOpt(unittest.TestCase):
                 get_learning_rate(all_optimizers), expected)
 
 
-class TestWithParamSharing(unittest.TestCase):
+class TestWithParamSharing(alf.test.TestCase):
     def test_with_param_sharing(self):
         with tempfile.TemporaryDirectory() as ckpt_dir:
             # construct algorithms
@@ -333,7 +333,7 @@ class TestWithParamSharing(unittest.TestCase):
                              == torch.Tensor([1])))
 
 
-class TestWithCycle(unittest.TestCase):
+class TestWithCycle(alf.test.TestCase):
     def test_with_cycle(self):
         # checkpointer should work regardless of cycles
         with tempfile.TemporaryDirectory() as ckpt_dir:
@@ -423,7 +423,7 @@ class TestWithCycle(unittest.TestCase):
             self.assertTrue((alg_root2.state_dict() == expected_state_dict))
 
 
-class TestModelMismatch(unittest.TestCase):
+class TestModelMismatch(alf.test.TestCase):
     def test_model_mismatch(self):
         # test model mis-match
         with tempfile.TemporaryDirectory() as ckpt_dir:
@@ -467,7 +467,7 @@ class TestModelMismatch(unittest.TestCase):
             self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
 
 
-class TestOptMismatch(unittest.TestCase):
+class TestOptMismatch(alf.test.TestCase):
     def test_opt_mismatch(self):
         # test optimizer mis-match
         with tempfile.TemporaryDirectory() as ckpt_dir:
