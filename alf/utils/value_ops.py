@@ -352,7 +352,7 @@ def vtrace_returns_and_advantages_impl(importance_ratio_clipped,
         reverse=True,
         back_prop=False)
 
-    returns = (1 - is_lasts) * vs_target_minus_vs + values
+    returns = vs_target_minus_vs + values
     returns = common.tensor_extend(returns, final_value)
 
     next_vs_targets = returns[1:]
@@ -395,7 +395,7 @@ def calc_vtrace_returns_and_advantages(training_info,
         The advantages returned are importance-weighted.
     """
     scope = tf.name_scope('vtrace_loss')
-    # allow vtrace to be used in on policy trainers
+    # for on-policy training, rollout_info may be empty tuple ().
     collect_action_distribution = training_info.rollout_info.action_distribution
     if not collect_action_distribution:
         collect_action_distribution = training_info.info.action_distribution

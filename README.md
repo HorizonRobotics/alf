@@ -13,6 +13,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [DDPG](alf/algorithms/ddpg_algorithm.py): Lillicrap et al. "Continuous control with deep reinforcement learning" [arXiv:1509.02971](https://arxiv.org/abs/1509.02971)
 * [PPO](alf/algorithms/ppo_algorithm.py): Schulman et al. "Proximal Policy Optimization Algorithms" [arXiv:1707.06347](https://arxiv.org/abs/1707.06347)
 * [SAC](alf/algorithms/sac_algorithm.py): Haarnoja et al. "Soft Actor-Critic Algorithms and Applications" [arXiv:1812.05905](https://arxiv.org/abs/1812.05905)
+* [VTrace/IMPALA]: Espeholt et al. "IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures" [arXiv:1802.01561v3]
 * [ICM](alf/algorithms/icm_algorithm.py): Pathak et al. "Curiosity-driven Exploration by Self-supervised Prediction" [arXiv:1705.05363](https://arxiv.org/abs/1705.05363)
 * [MERLIN](alf/algorithms/merlin_algorithm.py): Wayne et al. "Unsupervised Predictive Memory in a Goal-Directed Agent"[arXiv:1803.10760](https://arxiv.org/abs/1803.10760)
 * [Amortized SVGD](alf/algorithms/generator.py): Feng et al "Learning to Draw Samples with Amortized Stein Variational Gradient Descent"[arXiv:1707.06626](https://arxiv.org/abs/1707.06626)
@@ -61,6 +62,9 @@ python -m alf.bin.play --root_dir=LOG_DIR
 * [Atari games](alf/examples/ac_breakout.gin). Need to install python package atari-py for atari game environments. The evaluation score (by taking argmax of the policy) took 1.5 hours to reach 800 on Breakout, using 64 environments.
 
   <img src="alf/examples/ac_breakout.png" width="300" height="200" alt="breakout-training-curve"/> <img src="alf/examples/ac_breakout.gif" width="150" height="200" alt="breakout-playing-screen"/>
+
+For Vtrace/IMPALA:
+  <img src="alf/examples/ac_vtrace_breakout.png" width="300" height="200" alt="vtrace-breakout-training-curve"/> 
 
 * [Simple navigation with visual input](alf/examples/ac_simple_navigation.gin). Follow the instruction at [SocialRobot](https://github.com/HorizonRobotics/SocialRobot) to install the environment.
 

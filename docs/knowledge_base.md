@@ -127,7 +127,9 @@ The following table summarizes how step type and discount affect the learning.
 | LAST | 1 | Yes | No | Last step because of time limit |
 
 ### Missing one TimeStep of losses every rollout length for on-policy training
-TrainingInfo fields are populated in sync_off_policy_driver around line 143.
+TrainingInfo fields are populated in `OnPolicyDriver:_train_loop_body` for
+on-policy training, and `SyncOffPolicyDriver:_rollout_loop_body` for
+off-policy.
 
 For every `T` (unroll_length) number of transitions, only the ending `TimeStep`
 of each transition is stored into `TrainingInfo`.  `TimeStep` `0` is not stored,
@@ -159,6 +161,7 @@ training.
 
 Case 3 is probably very rare, but documenting here just in case.
 
-For off policy training, we plan to include the very first TimeStep of each
-unroll in the replay buffer and use them for training.  No steps will be
-discarded.
+In ALF, some RL algorithm which only process rollout experience once (e.g. PPO,
+IMPALA) is implemented as an off policy training which retrieves the experience
+from a replay buffer.  In order to make sure the first step from the rollout is
+used, the length of the replay buffer should be `unroll_length + 1`.

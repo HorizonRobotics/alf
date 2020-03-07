@@ -1,0 +1,19 @@
+# You need to install following packages
+# pip3 install atari-py opencv-python
+
+include 'off_policy_ac_breakout.gin'
+
+# algorithm config
+ActorCriticLoss.use_vtrace=True
+
+#TrainerConfig.num_updates_per_train_step=1  # becomes on policy
+
+TrainerConfig.trainer=@async_off_policy_trainer
+
+N = 2
+TrainerConfig.num_envs = %N
+AsyncOffPolicyDriver.num_actor_queues = %N
+AsyncOffPolicyDriver.actor_queue_cap = 1
+AsyncOffPolicyDriver.learn_queue_cap = 1
+
+TrainerConfig.use_tf_functions=True
