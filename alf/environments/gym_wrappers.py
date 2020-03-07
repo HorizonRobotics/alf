@@ -13,7 +13,6 @@
 # limitations under the License.
 """Wrappers for gym (numpy) environments. """
 
-from alf.utils import common
 from collections import deque
 import copy
 import cv2
@@ -21,6 +20,8 @@ import gin
 import gym
 import numpy as np
 import random
+
+from alf.utils import common
 
 
 def transform_space(observation_space, field, func):

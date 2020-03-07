@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import alf
-from alf.environments.gym_wrappers import FrameStack
 import gym
 from gym import spaces
 import numpy as np
+
+import alf
+from alf.environments.gym_wrappers import FrameStack
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py

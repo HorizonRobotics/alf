@@ -16,16 +16,15 @@ Adapted from TF-Agents' parallel_py_environment_test.py
 """
 
 import functools
-
 import torch
-import unittest
 
-from alf.environments.random_torch_environment import RandomTorchEnvironment
+import alf
 from alf.environments.process_environment import ProcessEnvironment
+from alf.environments.random_torch_environment import RandomTorchEnvironment
 import alf.tensor_specs as ts
 
 
-class ProcessEnvironmentTest(unittest.TestCase):
+class ProcessEnvironmentTest(alf.test.TestCase):
     def test_close_no_hang_after_init(self):
         constructor = functools.partial(
             RandomTorchEnvironment,
@@ -36,6 +35,7 @@ class ProcessEnvironmentTest(unittest.TestCase):
             min_duration=2,
             max_duration=2)
         env = ProcessEnvironment(constructor)
+        alf.set_default_device('cuda')
         env.start()
         env.close()
 
@@ -49,6 +49,7 @@ class ProcessEnvironmentTest(unittest.TestCase):
             min_duration=5,
             max_duration=5)
         env = ProcessEnvironment(constructor)
+        alf.set_default_device('cuda')
         env.start()
         action_spec = env.action_spec()
         env.reset()
@@ -59,12 +60,14 @@ class ProcessEnvironmentTest(unittest.TestCase):
     def test_reraise_exception_in_init(self):
         constructor = MockEnvironmentCrashInInit
         env = ProcessEnvironment(constructor)
+        alf.set_default_device('cuda')
         with self.assertRaises(Exception):
             env.start()
 
     def test_reraise_exception_in_reset(self):
         constructor = MockEnvironmentCrashInReset
         env = ProcessEnvironment(constructor)
+        alf.set_default_device('cuda')
         env.start()
         with self.assertRaises(Exception):
             env.reset()
@@ -74,6 +77,7 @@ class ProcessEnvironmentTest(unittest.TestCase):
         constructor = functools.partial(MockEnvironmentCrashInStep,
                                         crash_at_step)
         env = ProcessEnvironment(constructor)
+        alf.set_default_device('cuda')
         env.start()
         env.reset()
         action_spec = env.action_spec()
@@ -133,4 +137,4 @@ class MockEnvironmentCrashInStep(RandomTorchEnvironment):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main(launch_cuda=False)

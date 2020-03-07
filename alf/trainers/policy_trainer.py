@@ -21,6 +21,7 @@ import math
 import os
 import sys
 import time
+import torch
 import torch.nn as nn
 
 import alf
@@ -87,6 +88,9 @@ class Trainer(object):
         self._random_seed = common.set_random_seed(self._random_seed)
 
         env = self._create_environment(random_seed=self._random_seed)
+        # if parallel env is used, avoid using cuda before lauching all processes.
+        if torch.cuda.is_available():
+            alf.set_default_device("cuda")
         common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(

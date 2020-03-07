@@ -169,7 +169,7 @@ def restart(observation, action_spec, env_id=None, batched=False):
     Args:
         observation (nested tensors): observations of the env
         action_spec (nested TensorSpec): tensor spec of actions
-        env_id (batched or not torch.int32): (optional) ID of the env
+        env_id (batched or scalar torch.int32): (optional) ID of the env
         batched (bool): (optional) whether batched envs or not 
 
     Returns:

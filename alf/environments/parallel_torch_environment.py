@@ -18,7 +18,6 @@ Adapted from TF-Agents Environment API as seen in:
 """
 
 from absl import logging
-
 import gin
 import torch
 
@@ -48,10 +47,10 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
         observation specs.
 
         Args:
-            env_constructors (callable): List of callables that create environments.
-            start_serially (boolean): Whether to start environments serially or in parallel.
-            blocking (boollean): Whether to step environments one after another.
-            flatten (boolean): whether to use flatten action and time_steps during
+            env_constructors (list[Callable]): a list of callable environment creators.
+            start_serially (bool): whether to start environments serially or in parallel.
+            blocking (bool): whether to step environments one after another.
+            flatten (bool): whether to use flatten action and time_steps during
                 communication to reduce overhead.
 
         Raises:
@@ -61,7 +60,7 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
         self._envs = []
         self._env_ids = []
         for env_id, ctor in enumerate(env_constructors):
-            env_id = torch.tensor(env_id, dtype=torch.int32)
+            env_id = torch.as_tensor(env_id, dtype=torch.int32)
             env = ProcessEnvironment(ctor, env_id=env_id, flatten=flatten)
             self._envs.append(env)
             self._env_ids.append(env_id)

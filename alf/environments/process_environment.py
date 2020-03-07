@@ -17,30 +17,31 @@ Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/parallel_py_environment.py
 """
 
+from absl import logging
 import atexit
 import multiprocessing
-import sys
-import traceback
-import torch
 import numpy as np
-
-from absl import logging
+import sys
+import torch
+import traceback
 
 import alf
-import alf.nest as nest
-from torch.multiprocessing.queue import ConnectionWrapper
 from alf.data_structures import TimeStep
+import alf.nest as nest
 
 
 def array_to_tensor(data):
-    def _array_to_tensor(obj):
-        if isinstance(obj, np.ndarray):
-            obj = torch.from_numpy(obj)
-            if alf.get_default_device() == "cuda":
-                obj = obj.cuda()
-        return obj
+    def _array_to_cpu_tensor(obj):
+        return torch.as_tensor(obj) if isinstance(obj, np.ndarray) else obj
 
-    return nest.map_structure(_array_to_tensor, data)
+    def _array_to_cuda_tensor(obj):
+        return torch.as_tensor(obj).cuda() if isinstance(obj,
+                                                         np.ndarray) else obj
+
+    if alf.get_default_device() == "cuda":
+        return nest.map_structure(_array_to_cuda_tensor, data)
+    else:
+        return nest.map_structure(_array_to_cpu_tensor, data)
 
 
 def tensor_to_array(data):
@@ -72,9 +73,9 @@ class ProcessEnvironment(object):
         not access global variables.
 
         Args:
-            env_constructor: Callable that creates and returns a Python environment.
-            env_id: id of the the env
-            flatten: Boolean, whether to assume flattened actions and time_steps
+            env_constructor (Callable): callable environment creator.
+            env_id (torch.int32): ID of the the env
+            flatten (bool): whether to assume flattened actions and time_steps
                 during communication to avoid overhead.
 
         Attributes:
@@ -93,7 +94,7 @@ class ProcessEnvironment(object):
         """Start the process.
 
         Args:
-            wait_to_start: Whether the call should wait for an env initialization.
+            wait_to_start (bool): Whether the call should wait for an env initialization.
         """
         self._conn, conn = multiprocessing.Pipe()
         self._process = multiprocessing.Process(
@@ -135,7 +136,7 @@ class ProcessEnvironment(object):
         be slow.
 
         Args:
-            name: Attribute to access.
+            name (str): Attribute to access.
 
         Returns:
             Value of the attribute.
@@ -147,7 +148,7 @@ class ProcessEnvironment(object):
         """Asynchronously call a method of the external environment.
 
         Args:
-            name: Name of the method to call.
+            name (str): Name of the method to call.
             *args: Positional arguments to forward to the method.
             **kwargs: Keyword arguments to forward to the method.
 
@@ -173,8 +174,8 @@ class ProcessEnvironment(object):
         """Step the environment.
 
         Args:
-            action: The action to apply to the environment.
-            blocking: Whether to wait for the result.
+            action (nested tensors): The action to apply to the environment.
+            blocking (bool): Whether to wait for the result.
 
         Returns:
             time step when blocking, otherwise callable that returns the time step.
@@ -189,7 +190,7 @@ class ProcessEnvironment(object):
         """Reset the environment.
 
         Args:
-            blocking: Whether to wait for the result.
+            blocking (bool): Whether to wait for the result.
 
         Returns:
             New observation when blocking, otherwise callable that returns the new
@@ -228,9 +229,9 @@ class ProcessEnvironment(object):
         """The process waits for actions and sends back environment results.
 
         Args:
-            conn: Connection for communication to the main process.
-            env_constructor: env_constructor for the OpenAI Gym environment.
-            flatten: Boolean, whether to assume flattened actions and time_steps
+            conn (multiprocessing.connection): Connection for communication to the main process.
+            env_constructor (Callable): callable environment creator.
+            flatten (bool): whether to assume flattened actions and time_steps
               during communication to avoid overhead.
 
         Raises:
@@ -284,7 +285,7 @@ class ProcessEnvironment(object):
             """Render the environment.
 
             Args:
-                mode: One of ['rgb_array', 'human']. Renders to an numpy array, or brings
+                mode (str): One of ['rgb_array', 'human']. Renders to an numpy array, or brings
                     up a window where the environment can be visualized.
             Returns:
                 An ndarray of shape [width, height, 3] denoting an RGB image if mode is

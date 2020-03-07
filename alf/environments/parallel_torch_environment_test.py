@@ -18,16 +18,15 @@ Adapted from TF-Agents' parallel_py_environment_test.py
 import collections
 import functools
 import multiprocessing.dummy as dummy_multiprocessing
-import time
-
 import numpy as np
+import time
 import torch
-import unittest
 
+import alf
+import alf.data_structures as ds
 from alf.environments import parallel_torch_environment
 from alf.environments.random_torch_environment import RandomTorchEnvironment
 import alf.tensor_specs as ts
-import alf.data_structures as ds
 
 
 class SlowStartingEnvironment(RandomTorchEnvironment):
@@ -37,7 +36,7 @@ class SlowStartingEnvironment(RandomTorchEnvironment):
         super(SlowStartingEnvironment, self).__init__(*args, **kwargs)
 
 
-class ParallelTorchEnvironmentTest(unittest.TestCase):
+class ParallelTorchEnvironmentTest(alf.test.TestCase):
     def setUp(self):
         parallel_torch_environment.multiprocessing = dummy_multiprocessing
 
@@ -78,6 +77,9 @@ class ParallelTorchEnvironmentTest(unittest.TestCase):
     def test_step(self):
         num_envs = 2
         env = self._make_parallel_torch_environment(num_envs=num_envs)
+
+        alf.set_default_device('cuda')
+
         action_spec = env.action_spec()
         observation_spec = env.observation_spec()
         action = torch.stack([action_spec.sample() for _ in range(num_envs)])
@@ -190,4 +192,4 @@ class ParallelTorchEnvironmentTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main(launch_cuda=False)
