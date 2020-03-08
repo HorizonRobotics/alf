@@ -205,6 +205,9 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         return nest.pack_sequence_as(self._observation_spec,
                                      tensor_observations)
 
+    def time_step_spec(self):
+        return self._time_step_spec
+
     def observation_spec(self):
         return self._observation_spec
 

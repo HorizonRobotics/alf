@@ -28,7 +28,7 @@ import torch
 from alf.data_structures import StepType, TimeStep
 from alf.environments import torch_environment
 import alf.nest as nest
-from alf.tensor_specs import BoundedTensorSpec
+import alf.tensor_specs as ts
 
 
 class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
@@ -36,7 +36,7 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
 
     def __init__(self, env):
         """Create a torch environment base wrapper. 
-        
+
         Args:
             env (TorchEnvironment): A TorchEnvironment instance to wrap.
 
@@ -66,6 +66,9 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
 
     def get_info(self):
         return self._env.get_info()
+
+    def time_step_spec(self):
+        return self._env.time_step_spec()
 
     def observation_spec(self):
         return self._env.observation_spec()
@@ -98,7 +101,6 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
             env (TorchEnvironment): An TorchEnvironment instance to wrap.
             duration (int): time limit, usually set to be the max_eposode_steps
                 of the environment.
-        
         """
         super(TimeLimit, self).__init__(env)
         self._duration = duration
@@ -126,6 +128,59 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
     @property
     def duration(self):
         return self._duration
+
+
+def _spec_channel_transpose(spec):
+    """Transpose the third (channel) dimension of the spec to the first.
+    """
+    assert isinstance(spec, ts.TensorSpec)
+    if len(spec.shape) == 3:
+        if spec.is_bounded():
+            return ts.BoundedTensorSpec(spec.shape[::-1], spec.dtype,
+                                        spec.minimum, spec.maximum)
+        else:
+            return ts.TensorSpec(spec.shape[::-1])
+    return spec
+
+
+def _observation_channel_transpose(time_step):
+    """Transpose the third (channel) dimension of observation to the first. 
+    """
+
+    def _channel_transpose(tensor):
+        if tensor.dim() == 3:
+            return tensor.transpose(0, 2)
+        return tensor
+
+    observation = nest.map_structure(_channel_transpose, time_step.observation)
+    return time_step._replace(observation=observation)
+
+
+@gin.configurable
+class ImageChannelFirst(TorchEnvironmentBaseWrapper):
+    """Make images in observations channel_first. """
+
+    def __init__(self, env):
+        """Create a TimeLimit torch environment.
+
+        Args:
+            env (TorchEnvironment): An TorchEnvironment instance to wrap.
+        """
+        super(ImageChannelFirst, self).__init__(env)
+
+    def time_step_spec(self):
+        time_step_spec = self._env.time_step_spec()
+        return time_step_spec._replace(observation=self.observation_spec())
+
+    def observation_spec(self):
+        return nest.map_structure(_spec_channel_transpose,
+                                  self._env.observation_spec())
+
+    def _reset(self):
+        return _observation_channel_transpose(self._env.reset())
+
+    def _step(self, action):
+        return _observation_channel_transpose(self._env.step(action))
 
 
 @gin.configurable
@@ -193,7 +248,7 @@ class GoalReplayEnvWrapper(TorchEnvironmentBaseWrapper):
 
     Sources:
         [1] Hindsight Experience Replay. https://arxiv.org/abs/1707.01495.
-  
+
     To use this wrapper, create an environment-specific version by inheriting this
     class.
     """

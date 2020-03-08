@@ -17,7 +17,7 @@ import gin
 import gym
 import gym.spaces
 
-from alf.environments import torch_wrappers, torch_gym_wrapper
+from alf.environments import gym_wrappers, torch_wrappers, torch_gym_wrapper
 
 
 @gin.configurable
@@ -26,7 +26,8 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
-         torch_env_wrappers=()):
+         torch_env_wrappers=(),
+         image_channel_first=True):
     """Loads the selected environment and wraps it with the specified wrappers.
 
     Note that by default a TimeLimit wrapper is used to limit episode lengths
@@ -44,6 +45,7 @@ def load(environment_name,
             classes to use directly on the gym environment.
         torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
             classes to use on the torch environment.
+        image_channel_first (bool): whether transpose image channels to first dimension. 
   
     Returns:
         A TorchEnvironment instance.
@@ -60,7 +62,8 @@ def load(environment_name,
         discount=discount,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
-        torch_env_wrappers=torch_env_wrappers)
+        torch_env_wrappers=torch_env_wrappers,
+        image_channel_first=image_channel_first)
 
 
 @gin.configurable
@@ -71,6 +74,7 @@ def wrap_env(gym_env,
              gym_env_wrappers=(),
              time_limit_wrapper=torch_wrappers.TimeLimit,
              torch_env_wrappers=(),
+             image_channel_first=True,
              auto_reset=True):
     """Wraps given gym environment with TorchGymWrapper.
 
@@ -90,6 +94,7 @@ def wrap_env(gym_env,
             should be left as the default, torch_wrappers.TimeLimit.
         torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
             classes to use on the torch environment.
+        image_channel_first (bool): whether transpose image channels to first dimension. 
         auto_reset (bool): If True (default), reset the environment automatically after a
             terminal state is reached.
   
@@ -99,6 +104,10 @@ def wrap_env(gym_env,
 
     for wrapper in gym_env_wrappers:
         gym_env = wrapper(gym_env)
+
+    # To apply channel_first transpose on gym (py) env
+    if image_channel_first:
+        gym_env = gym_wrappers.ImageChannelFirst(gym_env)
 
     env = torch_gym_wrapper.TorchGymWrapper(
         gym_env=gym_env,
@@ -112,5 +121,9 @@ def wrap_env(gym_env,
 
     for wrapper in torch_env_wrappers:
         env = wrapper(env)
+
+    # # To apply channel_first transpose on torch env
+    # if image_channel_first:
+    #     env = torch_wrappers.ImageChannelFirst(env)
 
     return env

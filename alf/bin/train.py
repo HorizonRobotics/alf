@@ -45,7 +45,6 @@ from absl import flags
 from absl import logging
 import gin
 import os
-import torch
 
 from alf.utils import common
 import alf.utils.external_configurables

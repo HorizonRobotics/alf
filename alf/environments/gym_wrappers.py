@@ -54,19 +54,10 @@ def transform_space(observation_space, field, func):
 
 
 def need_channel_transpose(shape):
-    """Determine if the input shape needs a transpose to make the corresponding array/tensor
-        channel_first.
-
-    Args:
-        shape (int tuple): shape of the inquiry array / tensor
-
-    Returns:
-        A bool: the inquiry array / tensor needs tranpose (True) or not (False)
-    """
 
     if len(shape) == 3:
-        if shape[2] < shape[0] and shape[2] < shape[1]:
-            return True
+        # if shape[2] < shape[0] and shape[2] < shape[1]:
+        return True
     return False
 
 
@@ -135,6 +126,46 @@ class BaseObservationWrapper(gym.ObservationWrapper):
 
 
 @gin.configurable
+class ImageChannelFirst(BaseObservationWrapper):
+    """Make images in observations channel_first. """
+
+    def __init__(self, env, fields=None):
+        super().__init__(env, fields=fields)
+
+    def transform_space(self, observation_space, field=None):
+        if isinstance(observation_space, gym.spaces.Box):
+            if need_channel_transpose(observation_space.shape):
+                low = observation_space.low
+                high = observation_space.high
+                if np.isscalar(low) and np.isscalar(high):
+                    shape = observation_space.shape[::-1]
+                    return gym.spaces.Box(
+                        low=low,
+                        high=high,
+                        shape=shape,
+                        dtype=observation_space.dtype)
+                else:
+                    low = self._channel_first(
+                        observation_space.low, transpose=True)
+                    high = self._channel_first(
+                        observation_space.high, transpose=True)
+                    return gym.spaces.Box(
+                        low=low, high=high, dtype=observation_space.dtype)
+        return observation_space
+
+    def transform_observation(self, observation, field=None):
+        transpose = need_channel_transpose(observation.shape)
+        return self._channel_first(observation, transpose)
+
+    def _channel_first(self, np_array, transpose=False):
+        if transpose:
+            rank = np_array.ndim
+            np_array = np.transpose(np_array,
+                                    (rank - 1, ) + tuple(range(rank - 1)))
+        return np_array
+
+
+@gin.configurable
 class FrameStack(BaseObservationWrapper):
     """Stack previous `stack_size` frames, applied to Gym env."""
 
@@ -144,8 +175,6 @@ class FrameStack(BaseObservationWrapper):
                  channel_order='channels_last',
                  fields=None):
         """Create a FrameStack object.
-
-        Any images from the wrapped observations will always be 'channels first'. 
 
         Args:
             env (gym.Space): gym environment.
@@ -168,17 +197,14 @@ class FrameStack(BaseObservationWrapper):
 
     def transform_space(self, observation_space, field=None):
         if isinstance(observation_space, gym.spaces.Box):
-            transpose = need_channel_transpose(observation_space.shape)
             low = np.repeat(
                 observation_space.low,
                 repeats=self._stack_size,
                 axis=self._stack_axis)
-            low = self._channel_first(low, transpose)
             high = np.repeat(
                 observation_space.high,
                 repeats=self._stack_size,
                 axis=self._stack_axis)
-            high = self._channel_first(high, transpose)
             return gym.spaces.Box(
                 low=low, high=high, dtype=observation_space.dtype)
         elif isinstance(observation_space, gym.spaces.MultiDiscrete):
@@ -188,7 +214,6 @@ class FrameStack(BaseObservationWrapper):
             raise ValueError("Unsupported space:%s" % observation_space)
 
     def transform_observation(self, observation, field=None):
-        transpose = need_channel_transpose(observation.shape)
         queue = self._frames.get(field, None)
         if not queue:
             queue = deque(maxlen=self._stack_size)
@@ -197,15 +222,7 @@ class FrameStack(BaseObservationWrapper):
             self._frames[field] = queue
         else:
             queue.append(observation)
-        return self._channel_first(
-            np.concatenate(queue, axis=self._stack_axis), transpose)
-
-    def _channel_first(self, np_array, transpose=False):
-        if transpose:
-            rank = np_array.ndim
-            np_array = np.transpose(np_array,
-                                    (rank - 1, ) + tuple(range(rank - 1)))
-        return np_array
+        return np.concatenate(queue, axis=self._stack_axis)
 
     def reset(self):
         self._frames = dict()
@@ -237,7 +254,8 @@ class FrameSkip(gym.Wrapper):
         for _ in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             accumulated_reward += reward
-            if done: break
+            if done:
+                break
         return obs, accumulated_reward, done, info
 
     def reset(self, **kwargs):

@@ -14,12 +14,14 @@
 """Various data structures.
 Converted to PyTorch from the TF version.
 """
-import alf
-import alf.nest as nest
-import alf.tensor_specs as ts
 import collections
 import numpy as np
 import torch
+
+import alf
+import alf.nest as nest
+import alf.tensor_specs as ts
+from alf.utils.tensor_utils import _to_tensor
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -142,25 +144,6 @@ def timestep_last(observation, prev_action, reward, discount, env_id):
 
 
 AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
-
-
-def _to_tensor(data, dtype=None):
-    """Convert the data to a torch tensor.
-
-    Args: 
-        data (array like): data for the tensor. Can be a list, tuple, 
-            numpy ndarray, scalar, and other types.
-        dtype (torch.dtype): dtype of the converted tensors.
-
-    Returns:
-        A tensor of dtype
-    """
-    if not torch.is_tensor(data):
-        # as_tensor reuses the underlying data store of numpy array if possible.
-        data = torch.as_tensor(data, dtype=dtype).detach()
-        if alf.get_default_device() == "cuda":
-            data = data.cuda()
-    return data
 
 
 def restart(observation, action_spec, env_id=None, batched=False):

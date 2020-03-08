@@ -102,15 +102,6 @@ class TorchEnvironment(object):
         return None
 
     @abc.abstractmethod
-    def time_step_spec(self):
-        """Defines the time_steps returned by 'step()'.
-
-        Returns:
-            A 'TimeStep' namedtuple containing (possibly nested) 'TensorSpec's defining
-            the step_type, reward, discount, observation, prev_action, and end_id.
-        """
-
-    @abc.abstractmethod
     def observation_spec(self):
         """Defines the observations provided by the environment.
 
