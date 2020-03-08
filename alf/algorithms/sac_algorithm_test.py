@@ -56,7 +56,7 @@ class SACAlgorithmTest(alf.test.TestCase):
         obs_spec = env._observation_spec
         action_spec = env._action_spec
 
-        fc_layer_params = [10, 10]
+        fc_layer_params = (10, 10)
 
         continuous_projection_net_ctor = functools.partial(
             alf.networks.NormalProjectionNetwork,
@@ -123,7 +123,7 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
         obs_spec = env._observation_spec
         action_spec = env._action_spec
 
-        fc_layer_params = [100, 100]
+        fc_layer_params = (10, 10)
 
         actor_network = ActorDistributionNetwork(
             obs_spec, action_spec, fc_layer_params=fc_layer_params)

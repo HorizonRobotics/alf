@@ -361,9 +361,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return LossInfo(
             loss=actor_loss.loss + critic_loss.loss + alpha_loss.loss,
             extra=SacLossInfo(
-                actor=actor_loss.extra.view(-1).mean(),
-                critic=critic_loss.extra.view(-1).mean(),
-                alpha=alpha_loss.extra.view(-1).mean()))
+                actor=actor_loss.extra,
+                critic=critic_loss.extra,
+                alpha=alpha_loss.extra))
 
     def _calc_critic_loss(self, training_info):
         critic_info = training_info.info.critic
