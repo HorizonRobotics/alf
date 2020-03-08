@@ -291,12 +291,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic_input, state=state.target_critic2)
 
         if not self._is_continuous:
-            exp_action = exp.action.to(torch.int32)
-            critic1 = critic1.gather(-1, exp_action.long())
-            critic2 = critic2.gather(-1, exp_action.long())
-            sampled_action = action.to(torch.int32)
-            target_critic1 = target_critic1.gather(-1, sampled_action.long())
-            target_critic2 = target_critic2.gather(-1, sampled_action.long())
+            exp_action = exp.action.view(critic1.shape[0], -1).long()
+            critic1 = critic1.gather(-1, exp_action)
+            critic2 = critic2.gather(-1, exp_action)
+            sampled_action = action.view(critic1.shape[0], -1).long()
+            target_critic1 = target_critic1.gather(-1, sampled_action)
+            target_critic2 = target_critic2.gather(-1, sampled_action)
 
         target_critic = torch.min(target_critic1, target_critic2).view(log_pi.shape) - \
                          (torch.exp(self._log_alpha) * log_pi).detach()
