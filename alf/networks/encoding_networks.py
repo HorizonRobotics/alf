@@ -406,12 +406,12 @@ class LSTMEncodingNetwork(nn.Module):
         """
         Args:
             inputs (torch.Tensor):
-            state (list[tuple]): a list of tuples, where each tuple is a pair
+            state (tuple[tuple]): a tuple of tuples, where each tuple is a pair
                 of `h_state` and `c_state`.
 
         Returns:
             output (torch.Tensor): output of the network
-            new_state (list[tuple]): the updated states
+            new_state (tuple[tuple]): the updated states
         """
         assert isinstance(state, list)
         for s in state:

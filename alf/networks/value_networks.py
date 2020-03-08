@@ -39,7 +39,7 @@ class ValueNetwork(nn.Module):
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (tuple[int]): a list of integers representing hidden
+            fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
@@ -90,7 +90,7 @@ class ValueRNNNetwork(nn.Module):
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (tuple[int]): a list of integers representing hidden
+            fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layers for encoding the observation.
             lstm_hidden_size (int or tuple[int]): the hidden size(s)
                 of the LSTM cell(s). Each size corresponds to a cell. If there
