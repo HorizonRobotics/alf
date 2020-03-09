@@ -157,4 +157,4 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

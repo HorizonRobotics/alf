@@ -95,11 +95,11 @@ class EmbeddingPreprocessor(InputPreprocessor):
         Args:
             input_tensor_spec (TensorSpec): the input spec
             embedding_dim (int): output embedding size
-            conv_layer_params (list[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (tuple[int] or list[int]): a list of integers
-                representing FC layer sizes.
+            fc_layer_params (tuple[int]): a tuple of integers representing FC
+                layer sizes.
             activation (torch.nn.functional): activation applied to the embedding
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the SAME with `activation`.

@@ -51,7 +51,7 @@ class ICMAlgorithm(Algorithm):
         """Create an ICMAlgorithm.
 
         Args:
-            hidden_size (int|tuple): size of hidden layer(s)
+            hidden_size (int or tuple[int]): size of hidden layer(s)
             reward_adapt_speed (float): how fast to adapt the reward normalizer.
                 rouphly speaking, the statistics for the normalization is
                 calculated mostly based on the most recent T/speed samples,

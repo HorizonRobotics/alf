@@ -59,7 +59,7 @@ class ActorDistributionNetwork(DistributionNetwork):
                 tensor spec. For example, see `alf.nest.utils.NestConcat`. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
-            conv_layer_params (tuple[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing hidden
@@ -151,7 +151,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
                 tensor spec. For example, see `alf.nest.utils.NestConcat`. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
-            conv_layer_params (tuple[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing hidden

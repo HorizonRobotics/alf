@@ -36,7 +36,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         ]
         self._image = zero_tensor_from_nested_spec(
             self._input_spec, batch_size=1)
-        self._conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
+        self._conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
         self._fc_layer_params = (100, )
         self._input_preprocessors = [torch.tanh, None]
         self._preprocessing_combiner = NestConcat(dim=1)

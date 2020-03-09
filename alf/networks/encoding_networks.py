@@ -247,7 +247,7 @@ class EncodingNetwork(Network):
                 tensor spec. For example, see `alf.nest.utils.NestConcat`. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
-            conv_layer_params (tuple[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
             fc_layer_params (tuple[int]): a tuple of integers
@@ -264,9 +264,6 @@ class EncodingNetwork(Network):
             input_preprocessors,
             preprocessing_combiner,
             name=name)
-
-        if fc_layer_params is not None:
-            fc_layer_params = list(fc_layer_params)
 
         self._img_encoding_net = None
         if conv_layer_params:
@@ -293,8 +290,8 @@ class EncodingNetwork(Network):
             fc_layer_params = []
         else:
             assert isinstance(fc_layer_params, tuple)
+            fc_layer_params = list(fc_layer_params)
 
-        fc_layer_params = list(fc_layer_params)
         if last_layer_size is not None:
             fc_layer_params.append(last_layer_size)
         for i, size in enumerate(fc_layer_params):
@@ -399,9 +396,6 @@ class LSTMEncodingNetwork(Network):
             hidden_size = [hidden_size]
         else:
             assert isinstance(hidden_size, tuple)
-
-        if fc_layer_params:
-            assert isinstance(fc_layer_params, tuple)
 
         self._cells = nn.ModuleList()
         self._state_spec = []

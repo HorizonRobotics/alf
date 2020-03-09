@@ -127,7 +127,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
             preprocessing_combiner=NestSum(average=True),
-            conv_layer_params=[(1, 2, 2, 0)])
+            conv_layer_params=((1, 2, 2, 0), ))
 
         self.assertEqual(network._processed_input_tensor_spec,
                          TensorSpec((3, 80, 80)))
@@ -156,7 +156,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         input_preprocessors = [
             EmbeddingPreprocessor(
                 input_spec["a"],
-                conv_layer_params=[(1, 2, 2, 0)],
+                conv_layer_params=((1, 2, 2, 0), ),
                 embedding_dim=100),
             EmbeddingPreprocessor(input_spec["b"][0], embedding_dim=50),
             EmbeddingPreprocessor(input_spec["b"][1], embedding_dim=50), None,
@@ -184,20 +184,6 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(output.size()[-1], 500)
 
 
-class MyEncodingNetwork(Network):
-    def __init__(self,
-                 input_tensor_spec: TensorSpec,
-                 fc_layer_params=None,
-                 last_layer_size=None,
-                 activation=torch.relu):
-        super().__init__(input_tensor_spec, (), "")
-        self._encoding_net = EncodingNetwork(
-            input_tensor_spec=input_tensor_spec,
-            fc_layer_params=fc_layer_params,
-            activation=activation,
-            last_layer_size=last_layer_size)
-
-
 class EncodingNetworkSideEffectsTest(alf.test.TestCase):
     def test_encoding_network_side_effects(self):
         input_spec = TensorSpec((100, ), torch.float32)
@@ -205,13 +191,13 @@ class EncodingNetworkSideEffectsTest(alf.test.TestCase):
         fc_layer_params_list = [20, 10]
         self.assertRaises(
             AssertionError,
-            MyEncodingNetwork,
+            EncodingNetwork,
             input_tensor_spec=input_spec,
             fc_layer_params=fc_layer_params_list,
         )
 
         fc_layer_params = (20, 10)
-        enc_net = MyEncodingNetwork(
+        enc_net = EncodingNetwork(
             input_tensor_spec=input_spec,
             fc_layer_params=fc_layer_params,
             last_layer_size=3)
