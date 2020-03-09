@@ -176,6 +176,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._critic_loss = critic_loss
 
         flat_action_spec = nest.flatten(self._action_spec)
+        self._flat_action_spec = flat_action_spec
+
         self._is_continuous = flat_action_spec[0].is_continuous
         if target_entropy is None:
             target_entropy = np.sum(
@@ -225,11 +227,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic_input, state=state.critic2)
 
             target_q_value = torch.min(critic1, critic2)
+            grad_outputs = [torch.ones(target_q_value.size())] * \
+                    len(self._flat_action_spec)
+            dqda = nest.pack_sequence_as(
+                action,
+                list(
+                    torch.autograd.grad(target_q_value, nest.flatten(action),
+                                        grad_outputs)))
 
-            def actor_loss_fn(action):
-                dqda = torch.autograd.grad(target_q_value, action,
-                                           torch.ones(
-                                               target_q_value.size()))[0]
+            def actor_loss_fn(action, dqda):
                 if self._dqda_clipping:
                     dqda = torch.clamp(dqda, -self._dqda_clipping,
                                        self._dqda_clipping)
@@ -238,7 +244,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 loss = loss.view(loss.size(0), -1).mean(1)
                 return loss
 
-            actor_loss = nest.map_structure(actor_loss_fn, action)
+            actor_loss = nest.map_structure(actor_loss_fn, action, dqda)
             alpha = torch.exp(self._log_alpha).detach()
             actor_loss += alpha * log_pi
         else:
