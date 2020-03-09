@@ -98,7 +98,8 @@ def make_action_time_step(time_step: TimeStep, prev_action, first_env_id=0):
 # to unroll (unroll_length) for on policy algorithms like actor critic or
 # off policy algorithms like PPO or V-Trace.
 #
-# The fields are populated in sync_off_policy_driver around line 143.
+# The fields are populated in OnPolicyDriver:_train_loop_body()
+# and SyncOffPolicyDriver:_rollout_loop_body().
 
 TrainingInfo = namedtuple(
     "TrainingInfo",
