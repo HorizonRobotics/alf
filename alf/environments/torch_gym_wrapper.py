@@ -106,7 +106,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
 
         Args:
             gym_env (gym.Env): An instance of OpenAI gym environment.
-            env_id (int or torch.int32): (optional) ID of the environment.
+            env_id (int): (optional) ID of the environment.
             discount (float): Discount to use for the environment.
             auto_reset (bool): whether or not to reset the environment when done.
             simplify_box_bounds (bool): whether or not to simplify redundant
@@ -118,9 +118,9 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         self._gym_env = gym_env
         self._discount = discount
         if env_id is None:
-            self._env_id = torch.tensor(0, dtype=torch.int32)
+            self._env_id = torch.as_tensor(0, dtype=torch.int32)
         else:
-            self._env_id = env_id
+            self._env_id = torch.as_tensor(env_id, dtype=torch.int32)
         self._action_is_discrete = isinstance(self._gym_env.action_space,
                                               gym.spaces.Discrete)
         # TODO: Add test for auto_reset param.
@@ -137,6 +137,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
 
     @property
     def gym(self):
+        """Return the gym environment. """
         return self._gym_env
 
     def __getattr__(self, name):

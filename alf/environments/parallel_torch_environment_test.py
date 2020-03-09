@@ -21,7 +21,6 @@ import multiprocessing.dummy as dummy_multiprocessing
 import numpy as np
 import time
 import torch
-import unittest
 
 import alf
 import alf.data_structures as ds
@@ -37,7 +36,7 @@ class SlowStartingEnvironment(RandomTorchEnvironment):
         super(SlowStartingEnvironment, self).__init__(*args, **kwargs)
 
 
-class ParallelTorchEnvironmentTest(unittest.TestCase):
+class ParallelTorchEnvironmentTest(alf.test.TestCase):
     def setUp(self):
         parallel_torch_environment.multiprocessing = dummy_multiprocessing
 
@@ -193,4 +192,4 @@ class ParallelTorchEnvironmentTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

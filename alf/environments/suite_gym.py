@@ -35,7 +35,7 @@ def load(environment_name,
   
     Args:
         environment_name (str): Name for the environment to load.
-        env_id (int or torch.int32): (optional) ID of the environment. 
+        env_id (int): (optional) ID of the environment. 
         discount (float): Discount to use for the environment.
         max_episode_steps (int): If None the max_episode_steps will be set to the 
             default step limit defined in the environment's spec. No limit is applied
@@ -92,7 +92,7 @@ def wrap_env(gym_env,
   
     Args:
         gym_env (gym.Env): An instance of OpenAI gym environment.
-        env_id (int or torch.int32): (optional) ID of the environment.
+        env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
         max_episode_steps (int): Used to create a TimeLimitWrapper. No limit is applied
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.

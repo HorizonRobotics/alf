@@ -60,7 +60,6 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
         self._envs = []
         self._env_ids = []
         for env_id, ctor in enumerate(env_constructors):
-            env_id = torch.as_tensor(env_id, dtype=torch.int32)
             env = ProcessEnvironment(ctor, env_id=env_id, flatten=flatten)
             self._envs.append(env)
             self._env_ids.append(env_id)

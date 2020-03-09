@@ -49,7 +49,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         Args:
             observation_spec (nested TensorSpec): tensor spec for observations 
             action_spec (nested TensorSpec): tensor spec for actions.
-            env_id (torch.int32): (optional) ID of the environment.
+            env_id (int): (optional) ID of the environment.
             episode_end_probability (float): Probability an episode will end when the
                 environment is stepped.
             discount (float): Discount to set in time_steps.
@@ -79,9 +79,9 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)
         if env_id is None:
-            self._env_id = torch.tensor(0, dtype=torch.int32)
+            self._env_id = torch.as_tensor(0, dtype=torch.int32)
         else:
-            self._env_id = env_id
+            self._env_id = torch.as_tensor(env_id, dtype=torch.int32)
 
         if self._batch_size:
             if not discount.shape:

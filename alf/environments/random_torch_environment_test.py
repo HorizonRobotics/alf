@@ -143,7 +143,6 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         env = RandomTorchEnvironment(
             obs_spec, action_spec, batch_size=batch_size)
         time_step = env.step(torch.tensor(0, dtype=torch.int64))
-        # import pdb; pdb.set_trace()
         self.assertEqual(time_step.observation.shape, (3, 2, 3))
         self.assertEqual(time_step.reward.shape[0], batch_size)
         self.assertEqual(time_step.discount.shape[0], batch_size)

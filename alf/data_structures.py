@@ -21,7 +21,7 @@ import torch
 import alf
 import alf.nest as nest
 import alf.tensor_specs as ts
-from alf.utils.tensor_utils import _to_tensor
+from alf.utils.tensor_utils import to_tensor
 
 
 def namedtuple(typename, field_names, default_value=None, default_values=()):
@@ -114,18 +114,18 @@ class TimeStep(
 
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
-    discount = _to_tensor(discount)
+    discount = to_tensor(discount)
 
     def make_tensors(struct):
-        return nest.map_structure(_to_tensor, struct)
+        return nest.map_structure(to_tensor, struct)
 
     return TimeStep(
         step_type=step_type.view(discount.shape),
-        reward=_to_tensor(reward, dtype=torch.float32),
+        reward=to_tensor(reward, dtype=torch.float32),
         discount=discount,
         observation=make_tensors(observation),
         prev_action=make_tensors(prev_action),
-        env_id=_to_tensor(env_id, dtype=torch.int32))
+        env_id=to_tensor(env_id, dtype=torch.int32))
 
 
 def timestep_first(observation, prev_action, reward, discount, env_id):
@@ -222,7 +222,7 @@ def transition(observation, prev_action, reward, discount=1.0, env_id=None):
     # TODO: If reward.shape.rank == 2, and static
     # batch sizes are available for both flat_observation and reward,
     # check that these match.
-    reward = _to_tensor(reward, dtype=torch.float32)
+    reward = to_tensor(reward, dtype=torch.float32)
     assert reward.dim() <= 1, "Expected reward to be a scalar or vector."
     if reward.dim() == 0:
         shape = []
@@ -235,7 +235,7 @@ def transition(observation, prev_action, reward, discount=1.0, env_id=None):
         shape = reward.shape
         env_id = torch.arange(shape[0], dtype=torch.int32)
     step_type = torch.full(shape, StepType.MID, dtype=torch.int32)
-    discount = _to_tensor(discount, dtype=torch.float32)
+    discount = to_tensor(discount, dtype=torch.float32)
 
     if discount.dim() == 0:
         discount = torch.full(shape, discount, dtype=torch.float32)
@@ -270,7 +270,7 @@ def termination(observation, prev_action, reward, env_id=None):
         map(torch.is_tensor,
             flat_observation)), ("Elements in observation must be Tensor")
 
-    reward = _to_tensor(reward, dtype=torch.float32)
+    reward = to_tensor(reward, dtype=torch.float32)
     assert reward.dim() <= 1, "Expected reward to be a scalar or vector."
     if reward.dim() == 0:
         shape = []

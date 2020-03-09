@@ -118,9 +118,6 @@ class Trainer(object):
                             register=True):
         """Create and register an env."""
         env = create_environment(nonparallel=nonparallel, seed=random_seed)
-        # if parallel env is used, avoid using cuda before lauching all processes.
-        if torch.cuda.is_available():
-            alf.set_default_device("cuda")
         if register:
             self._register_env(env)
         return env

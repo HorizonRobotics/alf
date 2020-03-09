@@ -17,7 +17,6 @@ Adapted from TF-Agents' parallel_py_environment_test.py
 
 import functools
 import torch
-import unittest
 
 import alf
 from alf.environments.process_environment import ProcessEnvironment
@@ -25,7 +24,7 @@ from alf.environments.random_torch_environment import RandomTorchEnvironment
 import alf.tensor_specs as ts
 
 
-class ProcessEnvironmentTest(unittest.TestCase):
+class ProcessEnvironmentTest(alf.test.TestCase):
     def test_close_no_hang_after_init(self):
         constructor = functools.partial(
             RandomTorchEnvironment,
@@ -138,4 +137,4 @@ class MockEnvironmentCrashInStep(RandomTorchEnvironment):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

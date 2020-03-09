@@ -57,7 +57,7 @@ TrainerConfig.num_env_steps=5000000
 TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
-TrainerConfig.summary_interval=200
+TrainerConfig.summary_interval=10
 
 RLAlgorithm.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0

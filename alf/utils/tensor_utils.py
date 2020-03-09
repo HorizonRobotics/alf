@@ -65,7 +65,7 @@ def explained_variance(ypred, y):
     return 1 - torch.var(y - ypred, dim=0, unbiased=False) / (vary + 1e-30)
 
 
-def _to_tensor(data, dtype=None):
+def to_tensor(data, dtype=None):
     """Convert the data to a torch tensor.
 
     Args: 
