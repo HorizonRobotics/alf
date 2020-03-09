@@ -136,10 +136,10 @@ def _spec_channel_transpose(spec):
     assert isinstance(spec, ts.TensorSpec)
     if len(spec.shape) == 3:
         if spec.is_bounded():
-            return ts.BoundedTensorSpec(spec.shape[::-1], spec.dtype,
-                                        spec.minimum, spec.maximum)
+            return ts.BoundedTensorSpec(spec.shape[-1:] + spec.shape[:-1],
+                                        spec.dtype, spec.minimum, spec.maximum)
         else:
-            return ts.TensorSpec(spec.shape[::-1])
+            return ts.TensorSpec(spec.shape[-1:] + spec.shape[:-1])
     return spec
 
 
