@@ -32,7 +32,7 @@ def create_algorithm(env):
     action_spec = alf.BoundedTensorSpec(
         shape=(), dtype='int32', minimum=0, maximum=2)
 
-    fc_layer_params = [10, 8, 6]
+    fc_layer_params = (10, 8, 6)
 
     actor_network = ActorDistributionNetwork(
         obs_spec,
@@ -40,7 +40,7 @@ def create_algorithm(env):
         fc_layer_params=fc_layer_params,
         discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
 
-    value_network = ValueNetwork(obs_spec, fc_layer_params=[10, 8, 1])
+    value_network = ValueNetwork(obs_spec, fc_layer_params=(10, 8, 1))
 
     alg = ActorCriticAlgorithm(
         observation_spec=obs_spec,

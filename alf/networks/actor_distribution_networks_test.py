@@ -14,24 +14,24 @@
 """Tests for alf.networks.actor_distribution_networks."""
 
 from absl.testing import parameterized
-import unittest
 import functools
 
 import torch
 
+import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks import ActorDistributionNetwork
 from alf.networks import ActorDistributionRNNNetwork
 from alf.networks import NormalProjectionNetwork
 
 
-class TestActorDistributionNetworks(parameterized.TestCase, unittest.TestCase):
+class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             network_ctor = functools.partial(
                 ActorDistributionRNNNetwork,
                 lstm_hidden_size=lstm_hidden_size,
-                actor_fc_layer_params=[64, 32])
+                actor_fc_layer_params=(64, 32))
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
             state = []
@@ -45,11 +45,11 @@ class TestActorDistributionNetworks(parameterized.TestCase, unittest.TestCase):
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
+    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_discrete_actor_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((), torch.int32)
-        conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
+        conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
 
         image = input_spec.zeros(outer_dims=(1, ))
 
@@ -77,11 +77,11 @@ class TestActorDistributionNetworks(parameterized.TestCase, unittest.TestCase):
         self.assertTrue(
             torch.all(actions <= torch.as_tensor(action_spec.maximum)))
 
-    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
+    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_continuous_actor_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = BoundedTensorSpec((3, ), torch.float32)
-        conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
+        conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
 
         image = input_spec.zeros(outer_dims=(1, ))
 

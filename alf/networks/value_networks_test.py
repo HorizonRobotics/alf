@@ -14,17 +14,17 @@
 """Tests for alf.networks.value_networks."""
 
 from absl.testing import parameterized
-import unittest
 import functools
 
 import torch
 
+import alf
 from alf.tensor_specs import TensorSpec
 from alf.networks import ValueNetwork
 from alf.networks import ValueRNNNetwork
 
 
-class TestValueNetworks(parameterized.TestCase, unittest.TestCase):
+class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             network_ctor = functools.partial(
@@ -42,10 +42,10 @@ class TestValueNetworks(parameterized.TestCase, unittest.TestCase):
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
+    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_value_distribution(self, lstm_hidden_size):
         input_spec = TensorSpec((3, 20, 20), torch.float32)
-        conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
+        conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
 
         image = input_spec.zeros(outer_dims=(1, ))
 
