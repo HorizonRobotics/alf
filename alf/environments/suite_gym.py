@@ -80,6 +80,15 @@ def wrap_env(gym_env,
 
     Note that by default a TimeLimit wrapper is used to limit episode lengths
     to the default benchmarks defined by the registered environments.
+
+    Also note that all gym wrappers assume images are 'channel_last' by default,
+    while PyTorch only supports 'channel_first' image inputs. To enable this 
+    transpose, 'image_channel_first' is set as True by default. There are two options 
+    provided in ALF to handle this transpose: 
+        1. Applying the gym_wrappers.ImageChannelFirst after all gym_env_wrappers 
+            and before the TorchGymWrapper.
+        2. Applying the torch_wrappers.ImageChannelFirst after all torch_gym_wrappers. 
+    The first option is used in current function.
   
     Args:
         gym_env (gym.Env): An instance of OpenAI gym environment.
@@ -88,7 +97,6 @@ def wrap_env(gym_env,
         max_episode_steps (int): Used to create a TimeLimitWrapper. No limit is applied
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
-            all gym_wrappers assumes images are channel_last.
             classes to use directly on the gym environment.
         time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts 
             (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this 
@@ -123,9 +131,5 @@ def wrap_env(gym_env,
 
     for wrapper in torch_env_wrappers:
         env = wrapper(env)
-
-    # # To apply channel_first transpose on torch env
-    # if image_channel_first:
-    #     env = torch_wrappers.ImageChannelFirst(env)
 
     return env

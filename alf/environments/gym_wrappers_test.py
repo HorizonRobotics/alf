@@ -89,7 +89,6 @@ class FrameStackTest(alf.test.TestCase):
     def test_framestack_partial_fields(self):
         env = self._create_env(['image', 'dict.inner_states'])
         obs = env.reset()
-        pdb.set_trace()
         all_shapes = (
             obs['image'].shape,
             obs['states'].shape,

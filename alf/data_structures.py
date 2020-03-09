@@ -248,13 +248,13 @@ def transition(observation, prev_action, reward, discount=1.0, env_id=None):
 def termination(observation, prev_action, reward, env_id=None):
     """Returns a `TimeStep` with `step_type` set to `StepType.LAST`.
 
-    Called by env.step() if 'Done'.
+    Called by env.step() if 'Done'. 'discount' should not be sent in and 
+    will be set as 0.
 
     Args:
         observation (nested tensors): current observations of the env.
         prev_action (nested tensors): previous actions to the the env.
         reward (float): A scalar, or 1D NumPy array, or tensor.
-        discount (float): (optional) A scalar, or 1D NumPy array, or tensor.
         env_id (torch.int32): (optional) A scalar or 1D tensor of 
             the environment ID(s).
 

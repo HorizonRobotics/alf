@@ -137,9 +137,9 @@ class ImageChannelFirst(BaseObservationWrapper):
                         shape=shape,
                         dtype=observation_space.dtype)
                 else:
-                    low = self._channel_first(
+                    low = self._make_channel_first(
                         observation_space.low, transpose=True)
-                    high = self._channel_first(
+                    high = self._make_channel_first(
                         observation_space.high, transpose=True)
                     return gym.spaces.Box(
                         low=low, high=high, dtype=observation_space.dtype)
@@ -147,14 +147,14 @@ class ImageChannelFirst(BaseObservationWrapper):
 
     def transform_observation(self, observation, field=None):
         transpose = self._need_channel_transpose(observation.shape)
-        return self._channel_first(observation, transpose)
+        return self._make_channel_first(observation, transpose)
 
     def _need_channel_transpose(self, shape):
         if len(shape) == 3:
             return True
         return False
 
-    def _channel_first(self, np_array, transpose=False):
+    def _make_channel_first(self, np_array, transpose=False):
         if transpose:
             rank = np_array.ndim
             np_array = np.transpose(np_array,
