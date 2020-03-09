@@ -12,15 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tensorflow as tf
-import gin.tf
+import gin
+import torch
+import torch.nn as nn
 
+import alf
 from alf.data_structures import TrainingInfo, LossInfo
 from alf.utils import common, losses, value_ops
+from alf.utils import tensor_utils
 
 
 @gin.configurable
-class OneStepTDLoss(tf.Module):
+class OneStepTDLoss(nn.Module):
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=losses.element_wise_squared_loss,
@@ -34,21 +37,22 @@ class OneStepTDLoss(tf.Module):
                 Q values and returns the loss for each element of the batch.
             debug_summaries (bool): True if debug summaries should be created
         """
-        super().__init__(name=name)
+        super().__init__()
         self._gamma = gamma
         self._td_error_loss_fn = td_error_loss_fn
         self._debug_summaries = debug_summaries
+        self._name = name
 
-    def __call__(self, training_info: TrainingInfo, value, target_value):
+    def forward(self, training_info: TrainingInfo, value, target_value):
         returns = value_ops.one_step_discounted_return(
             rewards=training_info.reward,
             values=target_value,
             step_types=training_info.step_type,
             discounts=training_info.discount * self._gamma)
-        returns = common.tensor_extend(returns, value[-1])
-        if self._debug_summaries:
-            with self.name_scope:
-                tf.summary.scalar("values", tf.reduce_mean(value))
-                tf.summary.scalar("returns", tf.reduce_mean(returns))
-        loss = self._td_error_loss_fn(tf.stop_gradient(returns), value)
+        returns = tensor_utils.tensor_extend(returns, value[-1])
+        if self._debug_summaries and alf.summary.should_record_summaries():
+            with alf.summary.scope(self._name):
+                alf.summary.scalar('values', value.mean())
+                alf.summary.scalar('returns', returns.mean())
+        loss = self._td_error_loss_fn(returns.detach(), value)
         return LossInfo(loss=loss, extra=loss)
