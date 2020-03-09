@@ -308,6 +308,27 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
         return nest.map_structure(greedy_fn, nested_distributions)
 
 
+def get_base_dist(dist):
+    """Get the base distribution.
+
+    Args:
+        dist (td.Distribution)
+    Returns:
+        the base distribution if dist is td.Independent or
+            td.TransformedDistribution, and dist if dist is td.Normal
+    Raises:
+        NotImplementedError if dist or its based distribution is not
+            td.Normal, td.Independent or td.TransformedDistribution
+    """
+    if isinstance(dist, td.Normal) or isinstance(dist, td.Categorical):
+        return dist
+    elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
+        return get_base_dist(dist.base_dist)
+    else:
+        raise NotImplementedError(
+            "Distribution type %s is not supported" % type(dist))
+
+
 @gin.configurable
 def estimated_entropy(dist,
                       seed=None,

@@ -108,9 +108,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network): The network will be called with
-                call(observation, step_type).
+                call(observation).
             critic_network (Network): The network will be called with
-                call(observation, action, step_type).
+                call(observation, action).
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -226,10 +226,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
             target_q_value = torch.min(critic1, critic2)
 
-            dqda = torch.autograd.grad(target_q_value, action,
-                                       torch.ones(target_q_value.size()))[0]
-
-            def actor_loss_fn(dqda, action):
+            def actor_loss_fn(action):
+                dqda = torch.autograd.grad(target_q_value, action,
+                                           torch.ones(
+                                               target_q_value.size()))[0]
                 if self._dqda_clipping:
                     dqda = torch.clamp(dqda, -self._dqda_clipping,
                                        self._dqda_clipping)
@@ -238,7 +238,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 loss = loss.view(loss.size(0), -1).mean(1)
                 return loss
 
-            actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+            actor_loss = nest.map_structure(actor_loss_fn, action)
             alpha = torch.exp(self._log_alpha).detach()
             actor_loss += alpha * log_pi
         else:
@@ -248,21 +248,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic2, critic2_state = self._critic_network2(
                 exp.observation, state=state.critic2)
 
-            assert isinstance(
-                action_distribution, td.categorical.Categorical) or \
-                isinstance(action_distribution, td.independent.Independent) and \
-                isinstance(action_distribution.base_dist,
-                                td.categorical.Categorical),  \
+            base_action_dist = dist_utils.get_base_dist(action_distribution)
+            assert isinstance(base_action_dist, td.categorical.Categorical),  \
                  ("Only `Categorical` " + "was supported, received:" + str(
-                        type(action_distribution)))
+                        type(base_action_dist)))
 
-            log_action_probs = action_distribution.base_dist.logits.squeeze(1)
+            log_action_probs = base_action_dist.logits.squeeze(1)
 
             target_q_value = torch.min(critic1, critic2).detach()
             alpha = torch.exp(self._log_alpha)
             actor_loss = torch.exp(log_action_probs) * (
                 alpha.detach() * log_action_probs - target_q_value)
-            actor_loss = actor_loss.view(actor_loss.size(0), -1).mean(1)
+            actor_loss = actor_loss.mean(list(range(1, actor_loss.ndim)))
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
@@ -298,7 +295,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic1 = target_critic1.gather(-1, sampled_action)
             target_critic2 = target_critic2.gather(-1, sampled_action)
 
-        target_critic = torch.min(target_critic1, target_critic2).view(log_pi.shape) - \
+        target_critic = torch.min(target_critic1, \
+                                  target_critic2).reshape(log_pi.shape) - \
                          (torch.exp(self._log_alpha) * log_pi).detach()
 
         critic1 = critic1.squeeze(-1)
