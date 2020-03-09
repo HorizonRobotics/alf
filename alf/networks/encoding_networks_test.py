@@ -15,18 +15,19 @@
 
 from absl.testing import parameterized
 import numpy as np
-import unittest
 
 import torch
 import torch.nn as nn
 
+import alf
 from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
+from .network import Network
 
 
-class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
+class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
     def test_empty_layers(self):
         input_spec = TensorSpec((3, ), torch.float32)
         network = EncodingNetwork(input_spec)
@@ -41,7 +42,7 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         network = ImageEncodingNetwork(
             input_channels=input_spec.shape[0],
             input_size=input_spec.shape[1:],
-            conv_layer_params=[(16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1)],
+            conv_layer_params=((16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1)),
             activation=torch.tanh,
             flatten_output=flatten_output)
 
@@ -57,8 +58,8 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         embedding = input_spec.zeros(outer_dims=(1, ))
         network = ImageDecodingNetwork(
             input_size=input_spec.shape[0],
-            transconv_layer_params=[(16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
-                                                              0)],
+            transconv_layer_params=((16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
+                                                              0)),
             start_decoding_size=(20, 31),
             start_decoding_channels=8,
             preprocess_fc_layer_params=preprocessing_fc_layers)
@@ -76,7 +77,7 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         embedding = input_spec.zeros(outer_dims=(1, ))
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            fc_layer_params=[30, 40, 50],
+            fc_layer_params=(30, 40, 50),
             activation=torch.tanh,
             last_layer_size=last_layer_size,
             last_activation=last_activation)
@@ -101,13 +102,53 @@ class EncodingNetworkTest(parameterized.TestCase, unittest.TestCase):
         img = input_spec.zeros(outer_dims=(1, ))
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            conv_layer_params=[(16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)])
+            conv_layer_params=((16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)))
 
         self.assertLen(list(network.parameters()), 4)
 
         output = network(img)
         output_shape = network._img_encoding_net.output_shape()
         self.assertEqual(output.shape[-1], np.prod(output_shape))
+
+
+class MyEncodingNetwork(Network):
+    def __init__(self,
+                 input_tensor_spec: TensorSpec,
+                 fc_layer_params=None,
+                 last_layer_size=None,
+                 activation=torch.relu):
+        super().__init__(input_tensor_spec, (), "")
+        self._encoding_net = EncodingNetwork(
+            input_tensor_spec=input_tensor_spec,
+            fc_layer_params=fc_layer_params,
+            activation=activation,
+            last_layer_size=last_layer_size)
+
+
+class EncodingNetworkSideEffectsTest(alf.test.TestCase):
+    def test_encoding_network_side_effects(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+
+        fc_layer_params_list = [20, 10]
+        self.assertRaises(
+            AssertionError,
+            MyEncodingNetwork,
+            input_tensor_spec=input_spec,
+            fc_layer_params=fc_layer_params_list,
+        )
+
+        fc_layer_params = (20, 10)
+        enc_net = MyEncodingNetwork(
+            input_tensor_spec=input_spec,
+            fc_layer_params=fc_layer_params,
+            last_layer_size=3)
+
+        self.assertTrue((fc_layer_params == (20, 10)))
+
+        target_net = enc_net.copy()
+        self.assertTrue(
+            len(list(target_net.parameters())) == \
+                len(list(enc_net.parameters())))
 
 
 if __name__ == '__main__':

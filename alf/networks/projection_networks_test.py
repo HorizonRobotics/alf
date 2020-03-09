@@ -14,10 +14,10 @@
 """Tests for alf.networks.projection_networks."""
 
 from absl.testing import parameterized
-import unittest
 
 import torch
 
+import alf
 from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
@@ -27,7 +27,7 @@ import alf.layers as layers
 
 
 class TestCategoricalProjectionNetwork(parameterized.TestCase,
-                                       unittest.TestCase):
+                                       alf.test.TestCase):
     def test_uniform_projection_net(self):
         """A zero-weight net generates uniform actions."""
         input_spec = TensorSpec((10, ), torch.float32)
@@ -59,7 +59,7 @@ class TestCategoricalProjectionNetwork(parameterized.TestCase,
             torch.isclose(dists.base_dist.probs.mean(), torch.as_tensor(0.2)))
 
 
-class TestNormalProjectionNetwork(parameterized.TestCase, unittest.TestCase):
+class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((True, ), (False, ))
     def test_zero_normal_projection_net(self, state_dependent_std):
         """A zero-weight net generates zero actions."""

@@ -14,20 +14,20 @@
 """Tests for alf.networks.value_networks."""
 
 from absl.testing import parameterized
-import unittest
 import functools
 
 import torch
 
+import alf
 from alf.tensor_specs import TensorSpec
 from alf.networks import CriticNetwork
 from alf.networks import CriticRNNNetwork
 
 
-class TestCriticNetworks(parameterized.TestCase, unittest.TestCase):
+class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
-            post_rnn_fc_layer_params = [6, 4]
+            post_rnn_fc_layer_params = (6, 4)
             network_ctor = functools.partial(
                 CriticRNNNetwork,
                 lstm_hidden_size=lstm_hidden_size,
@@ -45,15 +45,15 @@ class TestCriticNetworks(parameterized.TestCase, unittest.TestCase):
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ([200, 100], ))
+    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_critic(self, lstm_hidden_size):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((5, ), torch.float32)
         input_spec = (obs_spec, action_spec)
 
-        observation_conv_layer_params = [(8, 3, 1), (16, 3, 2, 1)]
-        action_fc_layer_params = [10, 8]
-        joint_fc_layer_params = [6, 4]
+        observation_conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
+        action_fc_layer_params = (10, 8)
+        joint_fc_layer_params = (6, 4)
 
         image = obs_spec.zeros(outer_dims=(1, ))
         action = action_spec.randn(outer_dims=(1, ))

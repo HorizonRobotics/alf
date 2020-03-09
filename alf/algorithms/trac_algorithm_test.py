@@ -24,7 +24,7 @@ from alf.utils import common
 
 
 def create_ac_algorithm(observation_spec, action_spec, debug_summaries):
-    fc_layer_params = [10, 8, 6]
+    fc_layer_params = (10, 8, 6)
 
     actor_network = ActorDistributionNetwork(
         observation_spec,
@@ -32,7 +32,7 @@ def create_ac_algorithm(observation_spec, action_spec, debug_summaries):
         fc_layer_params=fc_layer_params,
         discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
 
-    value_network = ValueNetwork(observation_spec, fc_layer_params=[10, 8, 1])
+    value_network = ValueNetwork(observation_spec, fc_layer_params=(10, 8, 1))
 
     return ActorCriticAlgorithm(
         observation_spec=observation_spec,

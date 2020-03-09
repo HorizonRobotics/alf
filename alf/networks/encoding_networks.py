@@ -48,7 +48,7 @@ class ImageEncodingNetwork(nn.Module):
         Args:
             input_channels (int): number of channels in the input image
             input_size (int or tuple): the input image size (height, width)
-            conv_layer_params (list[tuple] or tuppe[tuple]): a non-empty list of
+            conv_layer_params (tuppe[tuple]): a non-empty tuple of
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
             activation (torch.nn.functional): activation for all the layers
@@ -58,7 +58,7 @@ class ImageEncodingNetwork(nn.Module):
         """
         super(ImageEncodingNetwork, self).__init__()
 
-        assert isinstance(conv_layer_params, (tuple, list))
+        assert isinstance(conv_layer_params, tuple)
         assert len(conv_layer_params) > 0
 
         self._input_size = _tuplify2d(input_size)
@@ -142,8 +142,8 @@ class ImageDecodingNetwork(nn.Module):
 
         Args:
             input_size (int): the size of the input latent vector
-            transconv_layer_params (list[tuple] or tuple[tuple]): a non-empty
-                list of tuple (num_filters, kernel_size, strides, padding),
+            transconv_layer_params (tuple[tuple]): a non-empty
+                tuple of tuple (num_filters, kernel_size, strides, padding),
                 where `padding` is optional.
             start_decoding_size (int or tuple): the initial height and width
                 we'd like to have for the feature map
@@ -152,7 +152,7 @@ class ImageDecodingNetwork(nn.Module):
                 project an input latent vector into a vector of an appropriate
                 length so that it can be reshaped into (`start_decoding_channels`,
                 `start_decoding_height`, `start_decoding_width`).
-            preprocess_fc_layer_params (list[int] or tuple[int]): a list of fc
+            preprocess_fc_layer_params (tuple[int]): a tuple of fc
                 layer units. These fc layers are used for preprocessing the
                 latent vector before transposed convolutions.
             activation (nn.functional): activation for hidden layers
@@ -163,7 +163,7 @@ class ImageDecodingNetwork(nn.Module):
         """
         super(ImageDecodingNetwork, self).__init__()
 
-        assert isinstance(transconv_layer_params, (tuple, list))
+        assert isinstance(transconv_layer_params, tuple)
         assert len(transconv_layer_params) > 0
 
         self._preprocess_fc_layers = nn.ModuleList()
@@ -265,10 +265,10 @@ class EncodingNetwork(nn.Module):
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
-            conv_layer_params (list[tuple]): a list of tuples where each
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format `(filters, kernel_size, strides, padding)`,
                 where `padding` is optional.
-            fc_layer_params (tuple[int] or list[int]): a list of integers
+            fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
             activation (nn.functional): activation used for hidden layers
             last_layer_size (int): an optional size of the last layer
@@ -281,6 +281,8 @@ class EncodingNetwork(nn.Module):
 
         self._img_encoding_net = None
         if conv_layer_params:
+            assert isinstance(conv_layer_params, tuple), \
+                "The input params {} should be tuple".format(conv_layer_params)
             assert len(input_tensor_spec.shape) == 3, \
                 "The input shape {} should be (C,H,W)!".format(
                     input_tensor_spec.shape)
@@ -301,9 +303,9 @@ class EncodingNetwork(nn.Module):
         if fc_layer_params is None:
             fc_layer_params = []
         else:
-            assert isinstance(fc_layer_params, (tuple, list))
-        if isinstance(fc_layer_params, tuple):
-            fc_layer_params = list(fc_layer_params)
+            assert isinstance(fc_layer_params, tuple)
+
+        fc_layer_params = list(fc_layer_params)
         if last_layer_size is not None:
             fc_layer_params.append(last_layer_size)
         for i, size in enumerate(fc_layer_params):
@@ -347,10 +349,10 @@ class LSTMEncodingNetwork(nn.Module):
 
         Args:
             input_size (int): the input vector size
-            hidden_size (int or list[int] or tuple[int]): the hidden size(s) of
+            hidden_size (int or tuple[int]): the hidden size(s) of
                 the lstm cell(s). Each size corresponds to a cell. If there are
                 multiple sizes, then lstm cells are stacked.
-            fc_layer_params (tuple[int] or list[int]): an optional list of
+            fc_layer_params (tuple[int]): an optional tuple of
                 integers representing hidden FC layers that are applied after
                 the cells' output.
             activation (nn.functional): activation for the optional FC layers
@@ -362,7 +364,10 @@ class LSTMEncodingNetwork(nn.Module):
         if isinstance(hidden_size, int):
             hidden_size = [hidden_size]
         else:
-            assert isinstance(hidden_size, (list, tuple))
+            assert isinstance(hidden_size, tuple)
+
+        if fc_layer_params:
+            assert isinstance(fc_layer_params, tuple)
 
         self._cells = nn.ModuleList()
         self._state_spec = []
