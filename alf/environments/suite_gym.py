@@ -87,14 +87,16 @@ def wrap_env(gym_env,
         discount (float): Discount to use for the environment.
         max_episode_steps (int): Used to create a TimeLimitWrapper. No limit is applied
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
-        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+            all gym_wrappers assumes images are channel_last.
             classes to use directly on the gym environment.
         time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts 
             (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this 
             should be left as the default, torch_wrappers.TimeLimit.
         torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
             classes to use on the torch environment.
-        image_channel_first (bool): whether transpose image channels to first dimension. 
+        image_channel_first (bool): whether transpose image channels to first dimension.
+            PyTorch only supports channgel_first image inputs.
         auto_reset (bool): If True (default), reset the environment automatically after a
             terminal state is reached.
   

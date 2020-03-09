@@ -79,6 +79,4 @@ def _to_tensor(data, dtype=None):
     if not torch.is_tensor(data):
         # as_tensor reuses the underlying data store of numpy array if possible.
         data = torch.as_tensor(data, dtype=dtype).detach()
-        if alf.get_default_device() == "cuda":
-            data = data.cuda()
     return data

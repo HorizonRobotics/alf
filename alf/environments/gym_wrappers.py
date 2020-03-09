@@ -53,14 +53,6 @@ def transform_space(observation_space, field, func):
         space=observation_space, levels=field.split('.') if field else [])
 
 
-def need_channel_transpose(shape):
-
-    if len(shape) == 3:
-        # if shape[2] < shape[0] and shape[2] < shape[1]:
-        return True
-    return False
-
-
 @gin.configurable
 class BaseObservationWrapper(gym.ObservationWrapper):
     """Base observation Wrapper
@@ -134,7 +126,7 @@ class ImageChannelFirst(BaseObservationWrapper):
 
     def transform_space(self, observation_space, field=None):
         if isinstance(observation_space, gym.spaces.Box):
-            if need_channel_transpose(observation_space.shape):
+            if self._need_channel_transpose(observation_space.shape):
                 low = observation_space.low
                 high = observation_space.high
                 if np.isscalar(low) and np.isscalar(high):
@@ -154,8 +146,13 @@ class ImageChannelFirst(BaseObservationWrapper):
         return observation_space
 
     def transform_observation(self, observation, field=None):
-        transpose = need_channel_transpose(observation.shape)
+        transpose = self._need_channel_transpose(observation.shape)
         return self._channel_first(observation, transpose)
+
+    def _need_channel_transpose(self, shape):
+        if len(shape) == 3:
+            return True
+        return False
 
     def _channel_first(self, np_array, transpose=False):
         if transpose:
