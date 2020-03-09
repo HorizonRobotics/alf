@@ -63,7 +63,7 @@ class DIAYNAlgorithm(Algorithm):
                 by a observation normalizer to normalize incoming observations.
                 In some cases, the normalized observation can be easier for
                 training the discriminator.
-            hidden_size (tuple[int]): a tupple of hidden layer sizes used by the
+            hidden_size (tuple[int]): a tuple of hidden layer sizes used by the
                 discriminator.
             hidden_activation (torch.nn.functional): activation for the hidden
                 layers.
