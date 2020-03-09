@@ -143,7 +143,7 @@ class CriticRNNNetwork(nn.Module):
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes FC layers after merging observations and
                 actions.
-            lstm_hidden_size (int or tuple[int] or tuple[int]): the hidden size(s)
+            lstm_hidden_size (int or tuple[int]): the hidden size(s)
                 of the LSTM cell(s). Each size corresponds to a cell. If there
                 are multiple sizes, then lstm cells are stacked.
             post_rnn_fc_layer_params (tuple[int]): a tuple of integers representing
