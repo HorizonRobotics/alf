@@ -191,10 +191,27 @@ class ReplayBuffer(tf.Module):
             "Not all environment have the same size. min_size:", size,
             "max_size:", max_size
         ])
+        pos = tf.reduce_min(self._current_pos)
+        max_pos = tf.reduce_max(self._current_pos)
+        tf.Assert(pos == max_pos, [
+            "Not all environment have the same current_pos. min_pos:", pos,
+            "max_pos:", max_pos
+        ])
 
-        if size == self._max_length:
+        if pos == 0 and size == self._max_length:
+            # pull everything from the buffer in order
             return tf.nest.map_structure(lambda buf: buf.value(), self._buffer)
+        elif pos + size - 1 > self._max_length - 1:
+            # pull from _current_pos to the end of the buffer and then from
+            # the beginning
+            return tf.nest.map_structure(
+                lambda buf: tf.concat([
+                    buf[:, pos:, ...], buf[:, :pos + size - self._max_length,
+                                           ...]
+                ],
+                                      axis=1), self._buffer)
         else:
+            # pull directly, not going over the end of the buffer
             return tf.nest.map_structure(lambda buf: buf[:, :size, ...],
                                          self._buffer)
 

@@ -143,9 +143,10 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     Example algorithms: DDPG, SAC
     """
 
-    def __init__(self, experience_spec, batch_size):
+    def __init__(self, experience_spec, batch_size, max_length=1024):
         self._experience_spec = experience_spec
-        self._buffer = ReplayBuffer(experience_spec, batch_size)
+        self._buffer = ReplayBuffer(
+            experience_spec, batch_size, max_length=max_length)
         self._data_iter = None
 
     @tf.function
@@ -187,3 +188,34 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     @property
     def batch_size(self):
         return self._buffer.num_environments
+
+
+@gin.configurable
+class CyclicOneTimeExperienceReplayer(SyncUniformExperienceReplayer):
+    """
+    A one-time experience replayer that stores a total of T + 1 timesteps
+    so that every T timesteps of rollout, the last step of the previous rollout
+    plus the new T timesteps are stored and used in training.
+    This is to ensure every timestep is used in computing loss.
+
+    Example algorithms: IMPALA, PPO2
+    """
+
+    def __init__(self, experience_spec, batch_size, rollout_length):
+        super().__init__(experience_spec, batch_size, rollout_length + 1)
+        self._rollout_length = rollout_length
+
+    def clear(self):
+        # No need to clear, as new batch of timesteps overwrites the oldest
+        # timesteps in the buffer.
+        pass
+
+    def replay(self, unused_sample_batch_size, unused_mini_batch_length):
+        """Get a random batch.
+
+        Args:
+            unused_sample_batch_size (int): number of sequences
+            unused_mini_batch_length (int): the length of each sequence
+        Not to be used
+        """
+        raise Exception('Should not be called, use replay_all instead.')
