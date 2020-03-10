@@ -92,12 +92,25 @@ def make_action_time_step(time_step: TimeStep, prev_action, first_env_id=0):
         env_id=first_env_id + tf.range(time_step.step_type.shape[0]))
 
 
+# TrainingInfo contains data used for calculating losses during training.
+# It is a set of nested tensors of shape [B, T, ...], where B is batch size
+# and T is mini batch length, which equals the number of environment steps
+# to unroll (unroll_length) for on policy algorithms like actor critic or
+# off policy algorithms like PPO or V-Trace.
+#
+# The fields are populated in OnPolicyDriver:_train_loop_body()
+# and SyncOffPolicyDriver:_rollout_loop_body().
+
 TrainingInfo = namedtuple(
     "TrainingInfo",
     [
+        # The action sampled based on the current environment and policy states
         "action",
+        # StepType of the current environment TimeStep
         "step_type",
+        # Reward of executing the * previous action *
         "reward",
+        # Discount for the value of the current TimeStep
         "discount",
 
         # For on-policy training, it's the PolicyStep.info from rollout
@@ -105,6 +118,7 @@ TrainingInfo = namedtuple(
         "info",
 
         # Only used for off-policy training. It's the PolicyStep.info from rollout
+        # which includes the action distribution corresponding to the action
         "rollout_info",
         "env_id"
     ],

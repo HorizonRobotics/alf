@@ -48,6 +48,7 @@ TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=1
+TrainerConfig.checkpoint_interval=500
 
 Agent.observation_transformer=@image_scale_transformer
 

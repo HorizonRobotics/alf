@@ -48,6 +48,7 @@ class ActorCriticLoss(tf.Module):
                  entropy_regularization=None,
                  td_loss_weight=1.0,
                  debug_summaries=False,
+                 use_vtrace=False,
                  name="ActorCriticLoss"):
         """Create a ActorCriticLoss object
 
@@ -76,6 +77,7 @@ class ActorCriticLoss(tf.Module):
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
+            use_vtrace (bool): use vtrace in off policy training.
         """
         super().__init__(name=name)
 
@@ -92,6 +94,7 @@ class ActorCriticLoss(tf.Module):
         self._advantage_clip = advantage_clip
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
+        self._use_vtrace = use_vtrace
 
     def __call__(self, training_info: TrainingInfo, value):
         """Cacluate actor critic loss
@@ -157,6 +160,11 @@ class ActorCriticLoss(tf.Module):
         return -advantages * action_log_prob
 
     def _calc_returns_and_advantages(self, training_info, value):
+        if self._use_vtrace:
+            return value_ops.calc_vtrace_returns_and_advantages(
+                training_info, value, self._gamma, self._action_spec,
+                self._lambda, self._debug_summaries)
+
         returns = value_ops.discounted_return(
             rewards=training_info.reward,
             values=value,
