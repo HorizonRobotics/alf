@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf.layers import BatchSquash
 
 
 def _convert_device(nests):
@@ -91,8 +92,9 @@ class ReplayBuffer(nn.Module):
                 "_current_pos", torch.zeros(
                     num_environments, dtype=torch.int64))
             self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
+            bs = BatchSquash(batch_dims=2)
             self._flattened_buffer = alf.nest.map_structure(
-                lambda x: x.view(-1, *x.shape[2:]), self._buffer)
+                lambda x: bs.flatten(x), self._buffer)
 
     def add_batch(self, batch, env_ids=None):
         """Add a batch of items to the buffer.

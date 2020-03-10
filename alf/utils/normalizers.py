@@ -14,16 +14,18 @@
 
 from abc import abstractmethod
 
-import tensorflow as tf
+import torch
+import torch.nn as nn
 
-from tf_agents.specs.tensor_spec import TensorSpec
-from tf_agents.utils.nest_utils import get_outer_rank
-from tf_agents.networks.utils import BatchSquash
-
+import alf
+from alf.layers import BatchSquash
+from alf.nest.utils import get_outer_rank
+from alf.tensor_specs import TensorSpec
+from alf.utils import math_ops
 from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 
-class Normalizer(tf.Module):
+class Normalizer(nn.Module):
     def __init__(self,
                  tensor_spec,
                  auto_update=True,
@@ -59,6 +61,8 @@ class Normalizer(tf.Module):
             variance_epsilon (float): a small value added to std for normalizing
             name (str):
         """
+        super().__init__()
+        self._name = name
         self._auto_update = auto_update
         self._variance_epsilon = variance_epsilon
         self._tensor_spec = tensor_spec
@@ -76,7 +80,7 @@ class Normalizer(tf.Module):
         """Update the statistics given a new tensor.
         """
         self._mean_averager.update(tensor)
-        sqr_tensor = tf.nest.map_structure(tf.square, tensor)
+        sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
 
     def normalize(self, tensor, clip_value=-1.0):
@@ -84,7 +88,7 @@ class Normalizer(tf.Module):
         Normalize a tensor with mean and variance
 
         Args:
-            tensor (nested tf.Tensor): each leaf can have arbitrary outer dims
+            tensor (nested Tensor): each leaf can have arbitrary outer dims
                 with shape [B1, B2,...] + tensor_spec.shape.
             clip_value (float): if positive, normalized values will be clipped to
                 [-clip_value, clip_value].
@@ -95,28 +99,18 @@ class Normalizer(tf.Module):
         if self._auto_update:
             self.update(tensor)
 
-        def _normalize(m, m2, spec, t):
+        def _normalize(m, m2, t):
             # in some extreme cases, due to floating errors, var might be a very
             # large negative value (close to 0)
-            var = tf.nn.relu(m2 - tf.square(m))
-            outer_dims = get_outer_rank(t, spec)
-            batch_squash = BatchSquash(outer_dims)
-            t = batch_squash.flatten(t)
-            t = tf.nn.batch_normalization(
-                t,
-                m,
-                var,
-                offset=None,
-                scale=None,
-                variance_epsilon=self._variance_epsilon)
+            var = torch.relu(m2 - math_ops.square(m))
+            t = alf.layers.normalize_along_batch_dims(
+                t, m, var, variance_epsilon=self._variance_epsilon)
             if clip_value > 0:
-                t = tf.clip_by_value(t, -clip_value, clip_value)
-            t = batch_squash.unflatten(t)
+                t = torch.clamp(t, -clip_value, clip_value)
             return t
 
-        return tf.nest.map_structure(_normalize, self._mean_averager.get(),
-                                     self._m2_averager.get(),
-                                     self._tensor_spec, tensor)
+        return alf.nest.map_structure(_normalize, self._mean_averager.get(),
+                                      self._m2_averager.get(), tensor)
 
 
 class WindowNormalizer(Normalizer):
@@ -160,7 +154,7 @@ class ScalarWindowNormalizer(WindowNormalizer):
                  variance_epsilon=1e-10,
                  name="ScalarWindowNormalizer"):
         super(ScalarWindowNormalizer, self).__init__(
-            tensor_spec=tf.TensorSpec((), dtype=tf.float32),
+            tensor_spec=TensorSpec((), dtype='float32'),
             window_size=window_size,
             auto_update=auto_update,
             variance_epsilon=variance_epsilon,
@@ -208,7 +202,7 @@ class ScalarEMNormalizer(EMNormalizer):
                  variance_epsilon=1e-10,
                  name="ScalarEMNormalizer"):
         super(ScalarEMNormalizer, self).__init__(
-            tensor_spec=tf.TensorSpec((), dtype=tf.float32),
+            tensor_spec=TensorSpec((), dtype='float32'),
             update_rate=update_rate,
             auto_update=auto_update,
             variance_epsilon=variance_epsilon,
@@ -258,7 +252,7 @@ class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
                  variance_epsilon=1e-10,
                  name="ScalarAdaptiveNormalizer"):
         super(ScalarAdaptiveNormalizer, self).__init__(
-            tensor_spec=TensorSpec((), dtype=tf.float32),
+            tensor_spec=TensorSpec((), dtype='float32'),
             speed=speed,
             auto_update=auto_update,
             variance_epsilon=variance_epsilon,

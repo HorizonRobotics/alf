@@ -14,33 +14,33 @@
 
 import math
 
-import tensorflow as tf
+import torch
 
+import alf
+from alf.utils import math_ops
 from alf.utils.normalizers import ScalarWindowNormalizer
 from alf.utils.normalizers import ScalarEMNormalizer
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 
-class NormalizersTest(tf.test.TestCase):
+class NormalizersTest(alf.test.TestCase):
     def setUp(self):
         super().setUp()
         self._batch_size = 5
         self._window_size = 100
-        self._tensors = tf.random.uniform(
-            shape=(self._window_size, self._batch_size), maxval=1.0)
+        self._tensors = torch.rand(self._window_size, self._batch_size)
 
         def _verify_normalization(weights, normalized_tensor, eps):
-            tensors_mean = tf.reduce_sum(weights * self._tensors)
-            tensors_var = tf.reduce_sum(
-                weights * tf.square(self._tensors - tensors_mean))
-            target_normalized_tensor = tf.nn.batch_normalization(
+            tensors_mean = torch.sum(weights * self._tensors)
+            tensors_var = torch.sum(
+                weights * math_ops.square(self._tensors - tensors_mean))
+            target_normalized_tensor = alf.layers.normalize_along_batch_dims(
                 self._tensors[-1],
                 tensors_mean,
                 tensors_var,
-                offset=None,
-                scale=None,
                 variance_epsilon=eps)
-            self.assertAllClose(normalized_tensor, target_normalized_tensor)
+            self.assertTensorClose(
+                normalized_tensor, target_normalized_tensor, epsilon=1e-4)
 
         self._verify_normalization = _verify_normalization
 
@@ -48,9 +48,9 @@ class NormalizersTest(tf.test.TestCase):
         normalizer = ScalarWindowNormalizer(window_size=self._window_size)
         for i in range(self._window_size):
             normalized_tensor = normalizer.normalize(self._tensors[i])
-        weights = tf.ones([self._window_size, self._batch_size],
-                          dtype=tf.float32)
-        weights /= tf.reduce_sum(weights)
+        weights = torch.ones((self._window_size, self._batch_size),
+                             dtype=torch.float32)
+        weights /= torch.sum(weights)
 
         self._verify_normalization(weights, normalized_tensor,
                                    normalizer._variance_epsilon)
@@ -61,13 +61,13 @@ class NormalizersTest(tf.test.TestCase):
         for i in range(self._window_size):
             normalized_tensor = normalizer.normalize(self._tensors[i])
 
-        weights = tf.convert_to_tensor([(
+        weights = torch.as_tensor([(
             math.pow(1 - update_rate, self._window_size - 1 - i) * update_rate)
-                                        for i in range(self._window_size)],
-                                       dtype=tf.float32)
-        ones = tf.ones([self._batch_size], dtype=tf.float32)
-        weights = tf.tensordot(weights, ones, axes=0)
-        weights /= tf.reduce_sum(weights)  # reduce em bias
+                                   for i in range(self._window_size)],
+                                  dtype=torch.float32)
+        ones = torch.ones((self._batch_size, ), dtype=torch.float32)
+        weights = torch.ger(weights, ones)
+        weights /= torch.sum(weights)  # reduce em bias
 
         self._verify_normalization(weights, normalized_tensor,
                                    normalizer._variance_epsilon)
@@ -84,16 +84,14 @@ class NormalizersTest(tf.test.TestCase):
             r = speed / (speed + self._window_size - 1 - i)
             weights.append(r * acc_r)
             acc_r *= 1 - r
-        weights = tf.convert_to_tensor(weights[::-1], dtype=tf.float32)
-        ones = tf.ones([self._batch_size], dtype=tf.float32)
-        weights = tf.tensordot(weights, ones, axes=0)
-        weights /= tf.reduce_sum(weights)  # reduce adaptive bias
+        weights = torch.as_tensor(weights[::-1], dtype=torch.float32)
+        ones = torch.ones((self._batch_size, ), dtype=torch.float32)
+        weights = torch.ger(weights, ones)
+        weights /= torch.sum(weights)  # reduce adaptive bias
 
         self._verify_normalization(weights, normalized_tensor,
                                    normalizer._variance_epsilon)
 
 
 if __name__ == '__main__':
-    from alf.utils.common import set_per_process_memory_growth
-    set_per_process_memory_growth()
-    tf.test.main()
+    alf.test.main()

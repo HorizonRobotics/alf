@@ -90,25 +90,6 @@ def zeros_from_spec(nested_spec, batch_size):
 zero_tensor_from_nested_spec = zeros_from_spec
 
 
-def set_per_process_memory_growth(flag=True):
-    """Set if memory growth should be enabled for a PhysicalDevice.
-
-    With memory growth set to True, tf will not allocate all memory on the
-    device upfront.
-
-    Args:
-        flag (bool): True if do not allocate memory upfront.
-    """
-    gpus = tf.config.experimental.list_physical_devices('GPU')
-    if gpus:
-        for gpu in gpus:
-            try:
-                tf.config.experimental.set_memory_growth(gpu, flag)
-            except RuntimeError as e:
-                # Memory growth must be set at program startup
-                print(e)
-
-
 def as_list(x):
     """Convert x to a list.
 

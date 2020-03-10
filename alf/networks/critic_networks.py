@@ -20,8 +20,8 @@ import torch.nn as nn
 import alf.layers as layers
 import alf.nest as nest
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
+from alf.networks import Network
 from alf.tensor_specs import TensorSpec
-from .network import Network
 
 
 @gin.configurable
@@ -34,12 +34,16 @@ class CriticNetwork(Network):
                  observation_fc_layer_params=None,
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
-                 activation=torch.relu):
+                 activation=torch.relu,
+                 name="CriticNetwork"):
         """Creates an instance of `CriticNetwork` for estimating action-value of
         continuous actions. The action-value is defined as the expected return
         starting from the given input observation and taking the given action.
         This module takes observation as input and action as input and outputs
         an action-value tensor with the shape of [batch_size].
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
@@ -56,9 +60,10 @@ class CriticNetwork(Network):
                 actions.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
-
+            name (str):
         """
-        super(CriticNetwork, self).__init__(input_tensor_spec, (), "")
+        super(CriticNetwork, self).__init__(
+            input_tensor_spec, skip_input_preprocessing=True, name=name)
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -80,12 +85,14 @@ class CriticNetwork(Network):
             activation=activation)
 
         self._joint_encoder = EncodingNetwork(
-            TensorSpec((self._obs_encoder.output_size +
-                        self._action_encoder.output_size, )),
+            TensorSpec((self._obs_encoder.output_spec.shape[0] +
+                        self._action_encoder.output_spec.shape[0], )),
             fc_layer_params=joint_fc_layer_params,
             activation=activation,
             last_layer_size=1,
             last_activation=layers.identity)
+
+        self._output_spec = TensorSpec(())
 
     def forward(self, inputs, state=()):
         """Computes action-value given an observation.
@@ -98,18 +105,17 @@ class CriticNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size]
             state: empty
         """
+        # this line is just a placeholder doing nothing
+        inputs, state = Network.forward(self, inputs, state)
+
         observations, actions = inputs
         actions = actions.to(torch.float32)
 
-        encoded_obs = self._obs_encoder(observations)
-        encoded_action = self._action_encoder(actions)
+        encoded_obs, _ = self._obs_encoder(observations)
+        encoded_action, _ = self._action_encoder(actions)
         joint = torch.cat([encoded_obs, encoded_action], -1)
-        action_value = self._joint_encoder(joint)
+        action_value, _ = self._joint_encoder(joint)
         return torch.squeeze(action_value, -1), state
-
-    @property
-    def state_spec(self):
-        return ()
 
 
 @gin.configurable
@@ -123,13 +129,17 @@ class CriticRNNNetwork(Network):
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  lstm_hidden_size=100,
-                 post_rnn_fc_layer_params=None,
-                 activation=torch.relu):
+                 critic_fc_layer_params=None,
+                 activation=torch.relu,
+                 name="CriticRNNNetwork"):
         """Creates an instance of `CriticRNNNetwork` for estimating action-value
         of continuous actions. The action-value is defined as the expected return
         starting from the given inputs (observation and state) and taking the
         given action. It takes observation and state as input and outputs an
         action-value tensor with the shape of [batch_size].
+
+        Currently there seems no need for this class to handle nested inputs;
+        If necessary, extend the argument list to support it in the future.
 
         Args:
             input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
@@ -147,14 +157,14 @@ class CriticRNNNetwork(Network):
             lstm_hidden_size (int or tuple[int]): the hidden size(s)
                 of the LSTM cell(s). Each size corresponds to a cell. If there
                 are multiple sizes, then lstm cells are stacked.
-            post_rnn_fc_layer_params (tuple[int]): a tuple of integers representing
+            critic_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
-
-
+            name (str):
         """
-        super(CriticRNNNetwork, self).__init__(input_tensor_spec, (), "")
+        super(CriticRNNNetwork, self).__init__(
+            input_tensor_spec, skip_input_preprocessing=True, name=name)
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -176,20 +186,22 @@ class CriticRNNNetwork(Network):
             activation=activation)
 
         self._joint_encoder = EncodingNetwork(
-            TensorSpec((self._obs_encoder.output_size +
-                        self._action_encoder.output_size, )),
+            TensorSpec((self._obs_encoder.output_spec.shape[0] +
+                        self._action_encoder.output_spec.shape[0], )),
             fc_layer_params=joint_fc_layer_params,
             activation=activation)
 
         self._lstm_encoding_net = LSTMEncodingNetwork(
-            self._joint_encoder.output_size,
-            lstm_hidden_size,
-            post_rnn_fc_layer_params,
-            activation,
+            input_tensor_spec=self._joint_encoder.output_spec,
+            hidden_size=lstm_hidden_size,
+            post_fc_layer_params=critic_fc_layer_params,
+            activation=activation,
             last_layer_size=1,
             last_activation=layers.identity)
 
-    def forward(self, inputs, state=()):
+        self._output_spec = TensorSpec(())
+
+    def forward(self, inputs, state):
         """Computes action-value given an observation.
 
         Args:
@@ -200,13 +212,16 @@ class CriticRNNNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size]
             new_state (nest[tuple]): the updated states
         """
+        # this line is just a placeholder doing nothing
+        inputs, state = Network.forward(self, inputs, state)
+
         observations, actions = inputs
         actions = actions.to(torch.float32)
 
-        encoded_obs = self._obs_encoder(observations)
-        encoded_action = self._action_encoder(actions)
+        encoded_obs, _ = self._obs_encoder(observations)
+        encoded_action, _ = self._action_encoder(actions)
         joint = torch.cat([encoded_obs, encoded_action], -1)
-        encoded_joint = self._joint_encoder(joint)
+        encoded_joint, _ = self._joint_encoder(joint)
         action_value, state = self._lstm_encoding_net(encoded_joint, state)
         return torch.squeeze(action_value, -1), state
 

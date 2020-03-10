@@ -13,10 +13,15 @@
 # limitations under the License.
 """Unittests for nest.py"""
 
+import torch
+
 from collections import namedtuple
 import unittest
 
+import alf
 import alf.nest as nest
+from alf.tensor_specs import TensorSpec
+from alf.nest.utils import NestConcat, NestSum
 
 NTuple = namedtuple('NTuple', ['a', 'b'])
 
@@ -161,5 +166,37 @@ class TestFindField(unittest.TestCase):
         self.assertEqual(ret[1], ntuple.b[0].a)
 
 
+class TestNestConcat(alf.test.TestCase):
+    def test_nest_concat_tensors(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
+            b=torch.zeros((2, 10)))
+        ret = NestConcat()(ntuple)
+        self.assertTensorEqual(ret, torch.zeros((2, 17)))
+
+    def test_nest_concat_specs(self):
+        ntuple = NTuple(
+            a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
+            b=TensorSpec((2, 10)))
+        ret = NestConcat()(ntuple)
+        self.assertEqual(ret, TensorSpec((2, 17)))
+
+
+class TestNestSum(alf.test.TestCase):
+    def test_nest_sum_tensors(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=torch.zeros((4, )))
+        ret = NestSum()(ntuple)  # broadcasting
+        self.assertTensorEqual(ret, torch.zeros((2, 4)))
+
+    def test_nest_sum_specs(self):
+        ntuple = NTuple(
+            a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
+            b=TensorSpec((4, )))
+        ret = NestSum()(ntuple)  # broadcasting
+        self.assertEqual(ret, TensorSpec((2, 4)))
+
+
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

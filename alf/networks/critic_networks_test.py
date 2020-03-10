@@ -31,7 +31,7 @@ class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
             network_ctor = functools.partial(
                 CriticRNNNetwork,
                 lstm_hidden_size=lstm_hidden_size,
-                post_rnn_fc_layer_params=post_rnn_fc_layer_params)
+                critic_fc_layer_params=post_rnn_fc_layer_params)
             if isinstance(lstm_hidden_size, int):
                 lstm_hidden_size = [lstm_hidden_size]
             state = []
@@ -68,11 +68,17 @@ class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
             action_fc_layer_params=action_fc_layer_params,
             joint_fc_layer_params=joint_fc_layer_params)
 
+        value, state = critic_net._test_forward()
+        self.assertEqual(value.shape, (1, ))
+        if lstm_hidden_size is None:
+            self.assertEqual(state, ())
+
         value, state = critic_net(network_input, state)
 
+        self.assertEqual(critic_net.output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))
 
 
 if __name__ == "__main__":
-    unittest.main()
+    alf.test.main()

@@ -50,16 +50,16 @@ class MyAlg(OnPolicyAlgorithm):
         return self._on_policy
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        dist = self._proj_net(time_step.observation)
+        dist, _ = self._proj_net(time_step.observation)
         return AlgStep(output=dist.sample(), state=(), info=())
 
     def rollout_step(self, time_step: TimeStep, state):
-        dist = self._proj_net(time_step.observation)
+        dist, _ = self._proj_net(time_step.observation)
         return AlgStep(
             output=dist.sample(), state=time_step.observation, info=dist)
 
     def train_step(self, exp: Experience, state):
-        dist = self._proj_net(exp.observation)
+        dist, _ = self._proj_net(exp.observation)
         return AlgStep(output=dist.sample(), state=exp.observation, info=dist)
 
     def calc_loss(self, training_info: TrainingInfo):

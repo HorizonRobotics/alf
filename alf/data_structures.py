@@ -118,7 +118,7 @@ def _create_timestep(observation, prev_action, reward, discount, env_id,
     create_tensor = lambda t: torch.as_tensor(t).detach()
     make_tensors = lambda struct: map_structure(create_tensor, struct)
     return TimeStep(
-        step_type=step_type.view(discount.shape),
+        step_type=torch.reshape(step_type, discount.shape),
         reward=make_tensors(reward),
         discount=discount,
         observation=make_tensors(observation),

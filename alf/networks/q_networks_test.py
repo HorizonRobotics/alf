@@ -22,6 +22,8 @@ import torch
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks import QNetwork
 from alf.networks import QRNNNetwork
+from alf.utils import common
+from alf.nest.utils import NestSum
 
 
 class TestQNetworks(parameterized.TestCase, unittest.TestCase):
@@ -44,18 +46,22 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
 
     @parameterized.parameters((100, ), (None, ), ((200, 100), ))
     def test_q_value_distribution(self, lstm_hidden_size):
-        input_spec = TensorSpec((3, 20, 20), torch.float32)
+        input_spec = [TensorSpec((3, 20, 20), torch.float32)]
         action_spec = BoundedTensorSpec((1, ), torch.int64, 0, 2)
         num_actions = action_spec.maximum - action_spec.minimum + 1
 
         conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
 
-        image = input_spec.zeros(outer_dims=(1, ))
+        image = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
 
         network_ctor, state = self._init(lstm_hidden_size)
 
         q_net = network_ctor(
-            input_spec, action_spec, conv_layer_params=conv_layer_params)
+            input_spec,
+            action_spec,
+            input_preprocessors=[torch.relu],
+            preprocessing_combiner=NestSum(),
+            conv_layer_params=conv_layer_params)
         q_value, state = q_net(image, state)
 
         # (batch_size, num_actions)
