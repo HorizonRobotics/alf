@@ -31,7 +31,7 @@ def spec_means_and_magnitudes(spec: BoundedTensorSpec):
         spec_magnitudes (Tensor): the magnitude of the spec bound.
     """
 
-    spec_means = spec.maximum + spec.minimum / 2.0
+    spec_means = (spec.maximum + spec.minimum) / 2.0
     spec_magnitudes = (spec.maximum - spec.minimum) / 2.0
     return torch.tensor(spec_means).to(
         torch.float32), torch.tensor(spec_magnitudes).to(torch.float32)

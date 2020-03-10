@@ -56,7 +56,7 @@ class OUProcess(nn.Module):
         noise = torch.zeros_like(self._x)
         noise.normal_(0, self._stddev)
         self._x.data.copy_((1 - self._damping) * self._x + noise)
-        return noise
+        return self._x
 
 
 def DiagMultivariateNormal(loc, scale_diag):

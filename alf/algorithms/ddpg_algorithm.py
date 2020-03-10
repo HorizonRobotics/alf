@@ -28,7 +28,7 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep, TrainingInfo
 from alf.nest import nest
-from alf.networks import ActorDistributionNetwork, CriticNetwork
+from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils
 
@@ -55,7 +55,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 actor_network: ActorDistributionNetwork,
+                 actor_network: ActorNetwork,
                  critic_network: CriticNetwork,
                  env=None,
                  config: TrainerConfig = None,
@@ -246,11 +246,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         actor_loss = training_info.info.actor_loss
 
         return LossInfo(
-            loss=critic_loss.loss + actor_loss.loss,
+            loss=0 * critic_loss.loss + 1 * actor_loss.loss,
             extra=DdpgLossInfo(
                 critic=critic_loss.extra, actor=actor_loss.extra))
 
-    def after_train(self, training_info):
+    def after_update(self, training_info):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):
