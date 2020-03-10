@@ -13,70 +13,123 @@
 # limitations under the License.
 
 import collections
+import gin
 import gym
 import gym.spaces
-import numpy as np
-from tf_agents import specs
-from tf_agents.environments import gym_wrapper
+
+from alf.environments import gym_wrappers, torch_wrappers, torch_gym_wrapper
 
 
-def _spec_from_gym_space(space, dtype_map, simplify_box_bounds=True):
+@gin.configurable
+def load(environment_name,
+         env_id=None,
+         discount=1.0,
+         max_episode_steps=None,
+         gym_env_wrappers=(),
+         torch_env_wrappers=(),
+         image_channel_first=True):
+    """Loads the selected environment and wraps it with the specified wrappers.
+
+    Note that by default a TimeLimit wrapper is used to limit episode lengths
+    to the default benchmarks defined by the registered environments.
+  
+    Args:
+        environment_name (str): Name for the environment to load.
+        env_id (int): (optional) ID of the environment. 
+        discount (float): Discount to use for the environment.
+        max_episode_steps (int): If None the max_episode_steps will be set to the 
+            default step limit defined in the environment's spec. No limit is applied
+            if set to 0 or if there is no max_episode_steps set in the environment's
+            spec.
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
+            classes to use directly on the gym environment.
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+            classes to use on the torch environment.
+        image_channel_first (bool): whether transpose image channels to first dimension. 
+  
+    Returns:
+        A TorchEnvironment instance.
     """
-    Mostly the same with `_spec_from_gym_space` in
-    `tf_agents.environments.gym_wrapper`. This function no longer use `dtype_map`
-    to set data types; instead it always uses dtypes of gym spaces as gym is now
-    updated to support this.
+    gym_spec = gym.spec(environment_name)
+    gym_env = gym_spec.make()
+
+    if max_episode_steps is None and gym_spec.max_episode_steps is not None:
+        max_episode_steps = gym_spec.max_episode_steps
+
+    return wrap_env(
+        gym_env,
+        env_id=env_id,
+        discount=discount,
+        max_episode_steps=max_episode_steps,
+        gym_env_wrappers=gym_env_wrappers,
+        torch_env_wrappers=torch_env_wrappers,
+        image_channel_first=image_channel_first)
+
+
+@gin.configurable
+def wrap_env(gym_env,
+             env_id=None,
+             discount=1.0,
+             max_episode_steps=0,
+             gym_env_wrappers=(),
+             time_limit_wrapper=torch_wrappers.TimeLimit,
+             torch_env_wrappers=(),
+             image_channel_first=True,
+             auto_reset=True):
+    """Wraps given gym environment with TorchGymWrapper.
+
+    Note that by default a TimeLimit wrapper is used to limit episode lengths
+    to the default benchmarks defined by the registered environments.
+
+    Also note that all gym wrappers assume images are 'channel_last' by default,
+    while PyTorch only supports 'channel_first' image inputs. To enable this 
+    transpose, 'image_channel_first' is set as True by default. There are two options 
+    provided in ALF to handle this transpose: 
+        1. Applying the gym_wrappers.ImageChannelFirst after all gym_env_wrappers 
+            and before the TorchGymWrapper.
+        2. Applying the torch_wrappers.ImageChannelFirst after all torch_gym_wrappers. 
+    The first option is used in current function.
+  
+    Args:
+        gym_env (gym.Env): An instance of OpenAI gym environment.
+        env_id (int): (optional) ID of the environment.
+        discount (float): Discount to use for the environment.
+        max_episode_steps (int): Used to create a TimeLimitWrapper. No limit is applied
+            if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+            classes to use directly on the gym environment.
+        time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts 
+            (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this 
+            should be left as the default, torch_wrappers.TimeLimit.
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+            classes to use on the torch environment.
+        image_channel_first (bool): whether transpose image channels to first dimension.
+            PyTorch only supports channgel_first image inputs.
+        auto_reset (bool): If True (default), reset the environment automatically after a
+            terminal state is reached.
+  
+    Returns:
+        A TorchEnvironment instance.
     """
 
-    # We try to simplify redundant arrays to make logging and debugging less
-    # verbose and easier to read since the printed spec bounds may be large.
-    def try_simplify_array_to_value(np_array):
-        """If given numpy array has all the same values, returns that value."""
-        first_value = np_array.item(0)
-        if np.all(np_array == first_value):
-            return np.array(first_value, dtype=np_array.dtype)
-        else:
-            return np_array
+    for wrapper in gym_env_wrappers:
+        gym_env = wrapper(gym_env)
 
-    if isinstance(space, gym.spaces.Discrete):
-        # Discrete spaces span the set {0, 1, ... , n-1} while Bounded Array specs
-        # are inclusive on their bounds.
-        maximum = space.n - 1
-        return specs.BoundedArraySpec(
-            shape=(), dtype=space.dtype, minimum=0, maximum=maximum)
-    elif isinstance(space, gym.spaces.MultiDiscrete):
-        maximum = try_simplify_array_to_value(
-            np.asarray(space.nvec - 1, dtype=space.dtype))
-        return specs.BoundedArraySpec(
-            shape=space.shape, dtype=space.dtype, minimum=0, maximum=maximum)
-    elif isinstance(space, gym.spaces.MultiBinary):
-        shape = (space.n, )
-        return specs.BoundedArraySpec(
-            shape=shape, dtype=space.dtype, minimum=0, maximum=1)
-    elif isinstance(space, gym.spaces.Box):
-        dtype = space.dtype
-        minimum = np.asarray(space.low, dtype=dtype)
-        maximum = np.asarray(space.high, dtype=dtype)
-        if simplify_box_bounds:
-            minimum = try_simplify_array_to_value(minimum)
-            maximum = try_simplify_array_to_value(maximum)
-        return specs.BoundedArraySpec(
-            shape=space.shape, dtype=dtype, minimum=minimum, maximum=maximum)
-    elif isinstance(space, gym.spaces.Tuple):
-        return tuple(
-            [_spec_from_gym_space(s, dtype_map) for s in space.spaces])
-    elif isinstance(space, gym.spaces.Dict):
-        return collections.OrderedDict([(key, _spec_from_gym_space(
-            s, dtype_map)) for key, s in space.spaces.items()])
-    else:
-        raise ValueError(
-            'The gym space {} is currently not supported.'.format(space))
+    # To apply channel_first transpose on gym (py) env
+    if image_channel_first:
+        gym_env = gym_wrappers.ImageChannelFirst(gym_env)
 
+    env = torch_gym_wrapper.TorchGymWrapper(
+        gym_env=gym_env,
+        env_id=env_id,
+        discount=discount,
+        auto_reset=auto_reset,
+    )
 
-gym_wrapper._spec_from_gym_space = _spec_from_gym_space
+    if max_episode_steps > 0:
+        env = time_limit_wrapper(env, max_episode_steps)
 
-from tf_agents.environments import suite_gym
+    for wrapper in torch_env_wrappers:
+        env = wrapper(env)
 
-# forward tf_agents suite_gym's functions
-load = suite_gym.load
-wrap_env = suite_gym.wrap_env
+    return env

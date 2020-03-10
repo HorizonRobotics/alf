@@ -11,18 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections import namedtuple
 
-import gin.tf
-import tensorflow as tf
+import gin
 
-from tf_agents.networks.network import Network
+import torch
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.data_structures import ActionTimeStep
+import alf
+from alf.algorithms.icm_algorithm import ICMInfo
+from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import TimeStep, AlgStep, LossInfo
+from alf.networks import EncodingNetwork
+from alf.tensor_specs import TensorSpec
+from alf.utils import math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
 from alf.utils.normalizers import AdaptiveNormalizer
-from alf.algorithms.icm_algorithm import ICMInfo
 
 
 @gin.configurable
@@ -41,46 +43,45 @@ class RNDAlgorithm(Algorithm):
     """
 
     def __init__(self,
-                 target_net: Network,
-                 predictor_net: Network,
-                 encoder_net: Network = None,
+                 target_net: EncodingNetwork,
+                 predictor_net: EncodingNetwork,
+                 encoder_net: EncodingNetwork = None,
                  reward_adapt_speed=None,
                  observation_adapt_speed=None,
                  observation_spec=None,
-                 learning_rate=None,
+                 optimizer=None,
                  clip_value=-1.0,
-                 stacked_frames=True,
+                 keep_stacked_frames=1,
                  name="RNDAlgorithm"):
         """
         Args:
-            encoder_net (Network): a shared network that encodes observation to
-                embeddings before being input to `target_net` or `predictor_net`;
-                its parameters are not trainable
-            target_net (Network): the random fixed network that generates target
-                state embeddings to be fitted
-            predictor_net (Network): the trainable network that predicts target
-                embeddings. If fully trained given enough data, predictor_net
-                will become target_net eventually.
+            encoder_net (EncodingNetwork): a shared network that encodes
+                observation to embeddings before being input to `target_net` or
+                `predictor_net`; its parameters are not trainable.
+            target_net (EncodingNetwork): the random fixed network that generates
+                target state embeddings to be fitted.
+            predictor_net (EncodingNetwork): the trainable network that predicts
+                target embeddings. If fully trained given enough data,
+                `predictor_net` will become target_net eventually.
             reward_adapt_speed (float): speed for adaptively normalizing intrinsic
-                rewards; if None, no normalizer is used
+                rewards; if None, no normalizer is used.
             observation_adapt_speed (float): speed for adaptively normalizing
                 observations. Only useful if `observation_spec` is not None.
             observation_spec (TensorSpec): the observation tensor spec; used
-                for creating an adaptive observation normalizer
-            learning_rate (float): the learning rate for prediction cost; if None,
-                a global learning rate will be used
+                for creating an adaptive observation normalizer.
+            optimizer (torch.optim.Optimizer): The optimizer for training
             clip_value (float): if positive, the rewards will be clipped to
-                [-clip_value, clip_value]; only used for reward normalization
-            stacked_frames (bool): a boolean flag indicating whether the input
-                observation has stacked frames. If True, then we only keep the
-                last frame for RND to make predictions on, as suggested by the
-                original paper Burda et al. 2019. For Atari games, this flag is
-                usually True (`frame_stacking==4`).
+                [-clip_value, clip_value]; only used for reward normalization.
+            keep_stacked_frames (int): a non-negative integer indicating how many
+                stacked frames we want to keep as the observation. If >0, we only
+                keep the last so many frames for RND to make predictions on,
+                as suggested by the original paper Burda et al. 2019. For Atari
+                games, this argument is usually 1 (with `frame_stacking==4`). If
+                it's 0, the observation is unchanged. For other games, the user
+                is responsible for setting this value correctly depending on
+                how many channels an observation has at each time step.
             name (str):
         """
-        optimizer = None
-        if learning_rate is not None:
-            optimizer = tf.optimizers.Adam(learning_rate=learning_rate)
         super(RNDAlgorithm, self).__init__(
             train_state_spec=(), optimizer=optimizer, name=name)
         self._encoder_net = encoder_net
@@ -93,12 +94,13 @@ class RNDAlgorithm(Algorithm):
         else:
             self._reward_normalizer = None
 
-        self._stacked_frames = stacked_frames
-        if stacked_frames and (observation_spec is not None):
-            # Assuming stacking in the last dim, we only keep the last frame.
+        self._keep_stacked_frames = keep_stacked_frames
+        if keep_stacked_frames > 0 and (observation_spec is not None):
+            # Assuming stacking in the first dim, we only keep the last frames.
             shape = observation_spec.shape
-            new_shape = shape[:-1] + (1, )
-            observation_spec = tf.TensorSpec(
+            assert keep_stacked_frames <= shape[0]
+            new_shape = (keep_stacked_frames, ) + tuple(shape[1:])
+            observation_spec = TensorSpec(
                 shape=new_shape, dtype=observation_spec.dtype)
 
         # The paper suggests to also normalize observations, because the
@@ -112,7 +114,7 @@ class RNDAlgorithm(Algorithm):
                 tensor_spec=observation_spec, speed=observation_adapt_speed)
 
     def train_step(self,
-                   time_step: ActionTimeStep,
+                   time_step: TimeStep,
                    state,
                    calc_intrinsic_reward=True):
         """
@@ -128,34 +130,35 @@ class RNDAlgorithm(Algorithm):
         """
         observation = time_step.observation
 
-        if self._stacked_frames:
-            # Assuming stacking in the last dim, we only keep the last frame.
-            observation = observation[..., -1:]
+        if self._keep_stacked_frames > 0:
+            # Assuming stacking in the first dim, we only keep the last frames.
+            observation = observation[-self._keep_stacked_frames:, ...]
 
         if self._observation_normalizer is not None:
             observation = self._observation_normalizer.normalize(observation)
 
         if self._encoder_net is not None:
-            observation = tf.stop_gradient(self._encoder_net(observation)[0])
+            with torch.no_grad():
+                observation, _ = self._encoder_net(observation)
 
         pred_embedding, _ = self._predictor_net(observation)
-        target_embedding, _ = self._target_net(observation)
+        with torch.no_grad():
+            target_embedding, _ = self._target_net(observation)
 
-        loss = tf.reduce_sum(
-            tf.square(pred_embedding - tf.stop_gradient(target_embedding)),
-            axis=-1)
+        loss = torch.sum(
+            math_ops.square(pred_embedding - target_embedding), dim=-1)
 
         intrinsic_reward = ()
         if calc_intrinsic_reward:
-            intrinsic_reward = tf.stop_gradient(loss)
+            intrinsic_reward = loss.detach()
             if self._reward_normalizer:
                 intrinsic_reward = self._reward_normalizer.normalize(
                     intrinsic_reward, clip_value=self._reward_clip_value)
 
-        return AlgorithmStep(
-            outputs=(),
+        return AlgStep(
+            output=(),
             state=(),
             info=ICMInfo(reward=intrinsic_reward, loss=LossInfo(loss=loss)))
 
     def calc_loss(self, info: ICMInfo):
-        return LossInfo(scalar_loss=tf.reduce_mean(info.loss.loss))
+        return LossInfo(scalar_loss=torch.mean(info.loss.loss))

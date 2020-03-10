@@ -15,6 +15,8 @@
 
 import torch
 
+import alf
+
 
 def tensor_extend(x, y):
     """Extending tensor with new_slice.
@@ -61,3 +63,20 @@ def explained_variance(ypred, y):
     y = y.view(-1)
     vary = torch.var(y, dim=0, unbiased=False)
     return 1 - torch.var(y - ypred, dim=0, unbiased=False) / (vary + 1e-30)
+
+
+def to_tensor(data, dtype=None):
+    """Convert the data to a torch tensor.
+
+    Args: 
+        data (array like): data for the tensor. Can be a list, tuple, 
+            numpy ndarray, scalar, and other types.
+        dtype (torch.dtype): dtype of the converted tensors.
+
+    Returns:
+        A tensor of dtype
+    """
+    if not torch.is_tensor(data):
+        # as_tensor reuses the underlying data store of numpy array if possible.
+        data = torch.as_tensor(data, dtype=dtype).detach()
+    return data

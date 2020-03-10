@@ -108,9 +108,16 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network): The network will be called with
-                call(observation, step_type).
+                call(observation).
             critic_network (Network): The network will be called with
-                call(observation, action, step_type).
+                call(observation, action).
+            env (Environment): The environment to interact with. env is a batched
+                environment, which means that it runs multiple simulations
+                simultateously. env only needs to be provided to the root
+                Algorithm.
+            config (TrainerConfig): config for training. config only needs to be
+                provided to the algorithm which performs `train_iter()` by
+                itself.
             critic_loss (None|OneStepTDLoss): an object for calculating critic loss.
                 If None, a default OneStepTDLoss will be used.
             initial_log_alpha (float): initial value for variable log_alpha
@@ -119,6 +126,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
+            dqda_clipping (float): when computing the actor loss, clips the
+                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
+                Does not perform clipping if dqda_clipping == 0.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
@@ -129,7 +139,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critic_network1 = critic_network.copy()
         critic_network2 = critic_network.copy()
 
-        log_alpha = nn.Parameter(torch.Tensor([initial_log_alpha]))
+        log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
 
         super().__init__(
             observation_spec,
@@ -219,11 +229,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic_input, state=state.critic2)
 
             target_q_value = torch.min(critic1, critic2)
+            grad_outputs = [torch.ones(target_q_value.size())] * \
+                    len(self._flat_action_spec)
+            dqda = nest.pack_sequence_as(
+                action,
+                list(
+                    torch.autograd.grad(target_q_value, nest.flatten(action),
+                                        grad_outputs)))
 
-            dqda = torch.autograd.grad(target_q_value, action,
-                                       torch.ones(target_q_value.size()))[0]
-
-            def actor_loss_fn(dqda, action):
+            def actor_loss_fn(action, dqda):
                 if self._dqda_clipping:
                     dqda = torch.clamp(dqda, -self._dqda_clipping,
                                        self._dqda_clipping)
@@ -232,7 +246,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 loss = loss.view(loss.size(0), -1).mean(1)
                 return loss
 
-            actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+            actor_loss = nest.map_structure(actor_loss_fn, action, dqda)
             alpha = torch.exp(self._log_alpha).detach()
             actor_loss += alpha * log_pi
         else:
@@ -242,21 +256,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic2, critic2_state = self._critic_network2(
                 exp.observation, state=state.critic2)
 
-            assert isinstance(
-                action_distribution, td.categorical.Categorical) or \
-                isinstance(action_distribution, td.independent.Independent) and \
-                isinstance(action_distribution.base_dist,
-                                td.categorical.Categorical),  \
+            base_action_dist = dist_utils.get_base_dist(action_distribution)
+            assert isinstance(base_action_dist, td.categorical.Categorical),  \
                  ("Only `Categorical` " + "was supported, received:" + str(
-                        type(action_distribution)))
+                        type(base_action_dist)))
 
-            log_action_probs = action_distribution.base_dist.logits.squeeze(1)
+            log_action_probs = base_action_dist.logits.squeeze(1)
 
             target_q_value = torch.min(critic1, critic2).detach()
             alpha = torch.exp(self._log_alpha)
             actor_loss = torch.exp(log_action_probs) * (
                 alpha.detach() * log_action_probs - target_q_value)
-            actor_loss = actor_loss.view(actor_loss.size(0), -1).mean(1)
+            actor_loss = actor_loss.mean(list(range(1, actor_loss.ndim)))
 
         state = SacActorState(critic1=critic1_state, critic2=critic2_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
@@ -285,14 +296,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_critic_input, state=state.target_critic2)
 
         if not self._is_continuous:
-            exp_action = exp.action.to(torch.int32)
-            critic1 = critic1.gather(-1, exp_action.long())
-            critic2 = critic2.gather(-1, exp_action.long())
-            sampled_action = action.to(torch.int32)
-            target_critic1 = target_critic1.gather(-1, sampled_action.long())
-            target_critic2 = target_critic2.gather(-1, sampled_action.long())
+            exp_action = exp.action.view(critic1.shape[0], -1).long()
+            critic1 = critic1.gather(-1, exp_action)
+            critic2 = critic2.gather(-1, exp_action)
+            sampled_action = action.view(critic1.shape[0], -1).long()
+            target_critic1 = target_critic1.gather(-1, sampled_action)
+            target_critic2 = target_critic2.gather(-1, sampled_action)
 
-        target_critic = torch.min(target_critic1, target_critic2).view(log_pi.shape) - \
+        target_critic = torch.min(target_critic1, \
+                                  target_critic2).reshape(log_pi.shape) - \
                          (torch.exp(self._log_alpha) * log_pi).detach()
 
         critic1 = critic1.squeeze(-1)

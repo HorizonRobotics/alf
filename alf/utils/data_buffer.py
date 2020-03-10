@@ -13,20 +13,26 @@
 # limitations under the License.
 """Classes for storing data for sampling."""
 
-import tensorflow as tf
+import torch
+import torch.nn as nn
 
-from tf_agents.utils import common as tfa_common
-from alf.utils.nest_utils import get_nest_batch_size
+import alf
+from alf.utils import common
+from alf.nest import get_nest_batch_size
+from alf.tensor_specs import TensorSpec
+from alf.experience_replayers.replay_buffer import _convert_device
 
 
-class DataBuffer(tf.Module):
-    """A simple circular buffer supporting random sampling.
+class DataBuffer(nn.Module):
+    """A simple circular buffer supporting random sampling. This buffer doesn't
+    preserve temporality as data from multiple environments will be arbitrarily
+    stored.
     """
 
     def __init__(self,
-                 data_spec: tf.TensorSpec,
+                 data_spec: TensorSpec,
                  capacity,
-                 device='cpu:*',
+                 device='cpu',
                  name="DataBuffer"):
         """Create a DataBuffer.
 
@@ -37,43 +43,29 @@ class DataBuffer(tf.Module):
             device (str): which device to store the data
             name (str): name of the buffer
         """
-        super().__init__(name=name)
-        self._capacity = capacity
+        super().__init__()
+        self._name = name
         self._device = device
 
-        def _create_buffer(tensor_spec):
-            shape = [capacity] + tensor_spec.shape.as_list()
-            return tfa_common.create_variable(
-                name=name + "/buffer",
-                initializer=tf.zeros(shape, dtype=tensor_spec.dtype),
-                dtype=tensor_spec.dtype,
-                shape=shape,
-                trainable=False)
+        buffer_id = [0]
 
-        with tf.device(self._device):
-            self._current_size = tfa_common.create_variable(
-                name=name + "/size",
-                initializer=0,
-                dtype=tf.int32,
-                shape=(),
-                trainable=False)
-            self._current_pos = tfa_common.create_variable(
-                name=name + "/pos",
-                initializer=0,
-                dtype=tf.int32,
-                shape=(),
-                trainable=False)
-            self._buffer = tf.nest.map_structure(_create_buffer, data_spec)
-            # TF 2.0 checkpoint does not handle tuple. We have to convert
-            # _buffer to a flattened list in order to make the checkpointer save the
-            # content in self._buffer. This seems to be fixed in
-            # tf-nightly-gpu 2.1.0.dev20191119
-            # TODO: remove this after upgrading tensorflow
-            self._flattened_buffer = tf.nest.flatten(self._buffer)
+        def _create_buffer(tensor_spec):
+            buf = tensor_spec.zeros((capacity, ))
+            self.register_buffer("_buffer%s" % buffer_id[0], buf)
+            buffer_id[0] += 1
+            return buf
+
+        with alf.device(self._device):
+            self._capacity = torch.as_tensor(capacity, dtype=torch.int64)
+            self.register_buffer("_current_size",
+                                 torch.zeros((), dtype=torch.int64))
+            self.register_buffer("_current_pos",
+                                 torch.zeros((), dtype=torch.int64))
+            self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
 
     @property
     def current_size(self):
-        return self._current_size
+        return _convert_device(self._current_size)
 
     def add_batch(self, batch):
         """Add a batch of items to the buffer.
@@ -81,21 +73,19 @@ class DataBuffer(tf.Module):
         Args:
             batch (Tensor): shape should be [batch_size] + tensor_space.shape
         """
+        batch_size = alf.nest.get_nest_batch_size(batch)
+        with alf.device(self._device):
+            batch = _convert_device(batch)
+            n = torch.min(self._capacity, torch.as_tensor(batch_size))
+            indices = torch.arange(self._current_pos,
+                                   self._current_pos + n) % self._capacity
+            alf.nest.map_structure(
+                lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
+                self._buffer, batch)
 
-        with tf.device(self._device):
-            batch_size = get_nest_batch_size(batch, tf.int32)
-            n = tf.minimum(batch_size, self._capacity)
-            indices = tf.range(self._current_pos,
-                               self._current_pos + n) % self._capacity
-            indices = tf.expand_dims(indices, axis=-1)
-
-            tf.nest.map_structure(
-                lambda buf, bat: buf.scatter_nd_update(
-                    indices, tf.stop_gradient(bat[-n:])), self._buffer, batch)
-
-            self._current_pos.assign((self._current_pos + n) % self._capacity)
-            self._current_size.assign(
-                tf.minimum(self._current_size + n, self._capacity))
+            self._current_pos.copy_((self._current_pos + n) % self._capacity)
+            self._current_size.copy_(
+                torch.min(self._current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
         """Get batsh_size random samples in the buffer.
@@ -105,13 +95,14 @@ class DataBuffer(tf.Module):
         Returns:
             Tensor of shape [batch_size] + tensor_spec.shape
         """
-        with tf.device(self._device):
-            indices = tf.random.uniform(
-                shape=(batch_size, ),
-                dtype=tf.int32,
-                minval=0,
-                maxval=self._current_size)
-            return self.get_batch_by_indices(indices)
+        with alf.device(self._device):
+            indices = torch.randint(
+                low=0,
+                high=self._current_size,
+                size=(batch_size, ),
+                dtype=torch.int64)
+            result = self.get_batch_by_indices(indices)
+        return _convert_device(result)
 
     def get_batch_by_indices(self, indices):
         """Get the samples by indices
@@ -123,15 +114,17 @@ class DataBuffer(tf.Module):
             Tensor of shape [batch_size] + tensor_spec.shape, where batch_size
                 is indices.shape[0]
         """
-        with tf.device(self._device):
-            indices = (indices + (self._current_pos - self._current_size)
-                       ) % self._capacity
-            return tf.nest.map_structure(
-                lambda buffer: tf.gather(buffer, indices, axis=0),
-                self._buffer)
+        with alf.device(self._device):
+            indices = _convert_device(indices)
+            indices.copy_(
+                (indices +
+                 (self._current_pos - self._current_size)) % self._capacity)
+            result = alf.nest.map_structure(lambda buf: buf[indices],
+                                            self._buffer)
+        return _convert_device(result)
 
     def get_all(self):
-        return self._buffer
+        return _convert_device(self._buffer)
 
     def clear(self):
         """Clear the buffer.
@@ -139,10 +132,10 @@ class DataBuffer(tf.Module):
         Returns:
             None
         """
-        self._current_pos.assign(0)
-        self._current_size.assign(0)
+        self._current_pos.fill_(0)
+        self._current_size.fill_(0)
 
     def pop(self, n):
-        n = tf.minimum(self._current_size, n)
-        self._current_size.assign_sub(n)
-        self._current_pos.assign((self._current_pos - n) % self._capacity)
+        n = torch.min(torch.as_tensor(n), self._current_size)
+        self._current_size.cppy_(self._current_size - n)
+        self._current_pos.copy_((self._current_pos - n) % self._capacity)

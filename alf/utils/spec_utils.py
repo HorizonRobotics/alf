@@ -33,8 +33,8 @@ def spec_means_and_magnitudes(spec: BoundedTensorSpec):
 
     spec_means = spec.maximum + spec.minimum / 2.0
     spec_magnitudes = (spec.maximum - spec.minimum) / 2.0
-    return torch.from_numpy(spec_means).to(
-        torch.float32), torch.from_numpy(spec_magnitudes).to(torch.float32)
+    return torch.tensor(spec_means).to(
+        torch.float32), torch.tensor(spec_magnitudes).to(torch.float32)
 
 
 def scale_to_spec(tensor, spec: BoundedTensorSpec):

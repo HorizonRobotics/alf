@@ -13,10 +13,15 @@
 # limitations under the License.
 """Unittests for nest.py"""
 
+import torch
+
 from collections import namedtuple
 import unittest
 
+import alf
 import alf.nest as nest
+from alf.tensor_specs import TensorSpec
+from alf.nest.utils import NestConcat, NestSum
 
 NTuple = namedtuple('NTuple', ['a', 'b'])
 
@@ -82,6 +87,21 @@ class TestMapStructure(unittest.TestCase):
         self.assertEqual(
             nest.map_structure(lambda a, b: a + b, [1, 3], [4, 5]), [5, 8])
         self.assertEqual(nest.map_structure(lambda a, b: a * b, 1, 3), 3)
+
+
+class TestFastMapStructure(unittest.TestCase):
+    def test_fast_map_structure(self):
+        nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
+        nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
+        nest3 = NTuple(a=dict(x=1, y=-2), b=[50.0, (6, )])
+        expected_result = NTuple(a=dict(x=5, y=-2), b=[250.0, (21, )])
+        self.assertEqual(
+            nest.fast_map_structure(lambda a, b, c: a + b + c, nest1, nest2,
+                                    nest3), expected_result)
+        self.assertEqual(
+            nest.fast_map_structure(lambda a, b: a + b, [1, 3], [4, 5]),
+            [5, 8])
+        self.assertEqual(nest.fast_map_structure(lambda a, b: a * b, 1, 3), 3)
 
 
 class TestMapStructureUpTo(unittest.TestCase):
@@ -161,5 +181,37 @@ class TestFindField(unittest.TestCase):
         self.assertEqual(ret[1], ntuple.b[0].a)
 
 
+class TestNestConcat(alf.test.TestCase):
+    def test_nest_concat_tensors(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
+            b=torch.zeros((2, 10)))
+        ret = NestConcat()(ntuple)
+        self.assertTensorEqual(ret, torch.zeros((2, 17)))
+
+    def test_nest_concat_specs(self):
+        ntuple = NTuple(
+            a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
+            b=TensorSpec((2, 10)))
+        ret = NestConcat()(ntuple)
+        self.assertEqual(ret, TensorSpec((2, 17)))
+
+
+class TestNestSum(alf.test.TestCase):
+    def test_nest_sum_tensors(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=torch.zeros((4, )))
+        ret = NestSum()(ntuple)  # broadcasting
+        self.assertTensorEqual(ret, torch.zeros((2, 4)))
+
+    def test_nest_sum_specs(self):
+        ntuple = NTuple(
+            a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
+            b=TensorSpec((4, )))
+        ret = NestSum()(ntuple)  # broadcasting
+        self.assertEqual(ret, TensorSpec((2, 4)))
+
+
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

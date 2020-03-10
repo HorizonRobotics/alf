@@ -54,10 +54,8 @@ ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
 Agent.reward_shaping_fn=@reward_clipping
-common.reward_clipping.minmax=(-1, 1)
 
-# driver config
-N = 2
+common.reward_clipping.minmax=(-1, 1)
 
 AsyncOffPolicyDriver.num_actor_queues = %N
 AsyncOffPolicyDriver.actor_queue_cap = 1
@@ -66,13 +64,12 @@ AsyncOffPolicyDriver.learn_queue_cap = 1
 # training config
 TrainerConfig.trainer=@async_off_policy_trainer
 TrainerConfig.num_iterations=1000000
+TrainerConfig.num_env_steps=10000000
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=10
 TrainerConfig.unroll_length=8
 TrainerConfig.mini_batch_length=None
 TrainerConfig.mini_batch_size=None
-TrainerConfig.use_tf_functions=True
-TrainerConfig.num_envs = %N
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.debug_summaries = 1
 TrainerConfig.evaluate = False

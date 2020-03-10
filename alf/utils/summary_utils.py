@@ -23,6 +23,7 @@ import torch.distributions as td
 import alf
 from alf.data_structures import LossInfo
 from alf.nest import is_namedtuple
+from alf.utils import dist_utils
 from alf.summary import should_record_summaries
 
 DEFAULT_BUCKET_COUNT = 30
@@ -272,7 +273,7 @@ def summarize_action_dist(action_distributions,
     """Generate summary for action distributions.
 
     Args:
-        action_distributions (nested tfp.distribuations.Distribution):
+        action_distributions (nested td.distribuation.Distribution):
             distributions to be summarized
         action_specs (nested BoundedTensorSpec): specs for the actions
         name (str): name of the summary
@@ -280,17 +281,8 @@ def summarize_action_dist(action_distributions,
     action_specs = alf.nest.flatten(action_specs)
     actions = alf.nest.flatten(action_distributions)
 
-    def _get_base_dist(dist):
-        if isinstance(dist, td.Normal):
-            return dist
-        elif isinstance(dist, (td.Independent, td.TransformedDistribution)):
-            return _get_base_dist(dist.base_dist)
-        else:
-            raise NotImplementedError(
-                "Distribution type %s is not supported" % type(dist))
-
     for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
-        dist = _get_base_dist(dist)
+        dist = dist_utils.get_base_dist(dist)
         action_dim = action_spec.shape[-1]
         log_scale = alf.math.log(dist.scale)
         for a in range(action_dim):

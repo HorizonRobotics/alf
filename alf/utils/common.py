@@ -35,7 +35,7 @@ from typing import Callable
 import alf
 from alf.data_structures import LossInfo
 import alf.nest as nest
-from alf.tensor_specs import BoundedTensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.dist_utils import DistributionSpec
 from . import dist_utils, gin_utils
 
@@ -100,7 +100,8 @@ def clip_to_spec(value, spec: BoundedTensorSpec):
     Returns:
         clipped_value: (tensor) `value` clipped to be compatible with `spec`.
     """
-    return torch.clamp(value, spec.minimum[0], spec.maximum[0])
+    return torch.clamp(value, torch.tensor(spec.minimum), \
+                              torch.tensor(spec.maximum))
 
 
 def set_per_process_memory_growth(flag=True):
@@ -146,19 +147,16 @@ def as_list(x):
 
 class Periodically(nn.Module):
     def __init__(self, body, period, name='periodically'):
-        """Periodically performs the ops defined in body.
+        """Periodically performs the operation defined in body.
 
         Args:
-        body: callable to be performed every time
-            an internal counter is divisible by the period.
-        period (int): inverse frequency with which to perform the operation.
-        name: name of the object.
+            body (Callable): callable to be performed every time
+                an internal counter is divisible by the period.
+            period (int): inverse frequency with which to perform the operation.
+            name (str): name of the object.
 
         Raises:
-        TypeError: if body is not a callable.
-
-        Returns:
-        An op that periodically performs the specified body operation.
+            TypeError: if body is not a callable.
         """
         super().__init__()
         if not callable(body):
@@ -604,14 +602,13 @@ def get_observation_spec(field=None):
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
-    # print(specs)
-    # specs = nest.map_structure(
-    #     lambda spec: (TensorSpec(spec.shape, torch.float32)
-    #                   if spec.dtype == torch.uint8 else spec), specs)
+    specs = nest.map_structure(
+        lambda spec: (TensorSpec(spec.shape, torch.float32)
+                      if spec.dtype == torch.uint8 else spec), specs)
 
-    # if field:
-    #     for f in field.split('.'):
-    #         specs = specs[f]
+    if field:
+        for f in field.split('.'):
+            specs = specs[f]
     return specs
 
 
@@ -898,9 +895,7 @@ def set_random_seed(seed):
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None. Note that you may not reproduce
-        a previous experiment even if use use its seed because when seed is None,
-        cudnn.deterministic is not set to True
+        The seed being used if `seed` is None.
     """
     if seed is None:
         seed = os.getpid() + int(time.time())

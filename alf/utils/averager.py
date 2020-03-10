@@ -14,33 +14,33 @@
 """Classes for doing moving average."""
 
 import gin
-import tensorflow as tf
 
+import torch
+import torch.nn as nn
+
+import alf
+from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import DataBuffer
-
-from tf_agents.utils.nest_utils import get_outer_rank
-from tf_agents.networks.utils import BatchSquash
+from alf.nest.utils import get_outer_rank
 
 
 def average_outer_dims(tensor, spec):
     """
     Args:
-        tensor (tf.Tensor): a single Tensor
-        spec (tf.TensorSpec):
+        tensor (Tensor): a single Tensor
+        spec (TensorSpec):
 
     Returns:
         the average tensor across outer dims
     """
     outer_dims = get_outer_rank(tensor, spec)
-    batch_squash = BatchSquash(outer_dims)
-    tensor = batch_squash.flatten(tensor)
-    return tf.reduce_mean(tensor, axis=0)
+    return tensor.mean(dim=list(range(outer_dims)))
 
 
 @gin.configurable
-class WindowAverager(tf.Module):
+class WindowAverager(nn.Module):
     def __init__(self,
-                 tensor_spec: tf.TensorSpec,
+                 tensor_spec: TensorSpec,
                  window_size,
                  name="WindowAverager"):
         """Create a WindowAverager.
@@ -52,8 +52,9 @@ class WindowAverager(tf.Module):
             window_size (int): the size of the window
             name (str): name of this averager
         """
-        super().__init__(name=name)
-        self._buf = tf.nest.map_structure(
+        super().__init__()
+        self._name = name
+        self._buf = alf.nest.map_structure(
             lambda spec: DataBuffer(spec, window_size), tensor_spec)
         self._tensor_spec = tensor_spec
 
@@ -66,10 +67,10 @@ class WindowAverager(tf.Module):
         Returns:
             None
         """
-        tf.nest.map_structure(
+        alf.nest.map_structure(
             lambda buf, t, spec: buf.add_batch(
-                tf.expand_dims(average_outer_dims(t, spec), axis=0)),
-            self._buf, tensor, self._tensor_spec)
+                average_outer_dims(t, spec).unsqueeze(0)), self._buf, tensor,
+            self._tensor_spec)
 
     def get(self):
         """Get the current average.
@@ -79,10 +80,11 @@ class WindowAverager(tf.Module):
         """
 
         def _get(buf):
-            n = tf.cast(tf.maximum(buf.current_size, 1), tf.float32)
-            return tf.reduce_sum(buf.get_all(), axis=0) * (1. / n)
+            n = torch.max(buf.current_size,
+                          torch.as_tensor(1)).to(torch.float32)
+            return torch.sum(buf.get_all(), dim=0) * (1. / n)
 
-        return tf.nest.map_structure(_get, self._buf)
+        return alf.nest.map_structure(_get, self._buf)
 
     def average(self, tensor):
         """Combines self.update and self.get in one step. Can be handy in practice.
@@ -103,23 +105,23 @@ class ScalarWindowAverager(WindowAverager):
 
     def __init__(self,
                  window_size,
-                 dtype=tf.float32,
+                 dtype=torch.float32,
                  name="ScalarWindowAverager"):
         """Create a ScalarWindowAverager.
 
         Args:
             window_size (int): the size of the window
-            dtype (tf.dtype): dtype of the scalar
+            dtype (torch.dtype): dtype of the scalar
             name (str): name of this averager
         """
         super().__init__(
-            tensor_spec=tf.TensorSpec(shape=(), dtype=dtype),
+            tensor_spec=TensorSpec(shape=(), dtype=dtype),
             window_size=window_size,
             name=name)
 
 
 @gin.configurable
-class EMAverager(tf.Module):
+class EMAverager(nn.Module):
     """Class for exponential moving average.
 
     x_t = (1-update_rate)* x_{t-1} + update_Rate * x
@@ -131,9 +133,7 @@ class EMAverager(tf.Module):
     a Variable, the update_rate can be changed by the user.
     """
 
-    def __init__(self,
-                 tensor_spec: tf.TensorSpec,
-                 update_rate,
+    def __init__(self, tensor_spec: TensorSpec, update_rate,
                  name="EMAverager"):
         """Create an EMAverager.
 
@@ -143,18 +143,22 @@ class EMAverager(tf.Module):
             update_rate (float|Variable): the update rate
             name (str): name of this averager
         """
-        super().__init__(name=name)
+        super().__init__()
+        self._name = name
         self._tensor_spec = tensor_spec
         self._update_rate = update_rate
 
-        self._average = tf.nest.map_structure(
-            lambda spec: tf.Variable(
-                initial_value=tf.zeros(spec.shape, spec.dtype),
-                trainable=False,
-                dtype=spec.dtype), tensor_spec)
+        var_id = [0]
+
+        def _create_variable(tensor_spec):
+            var = tensor_spec.zeros()
+            self.register_buffer("_var%s" % var_id[0], var)
+            var_id[0] += 1
+            return var
+
+        self._average = alf.nest.map_structure(_create_variable, tensor_spec)
         # mass can be shared by different structure elements
-        self._mass = tf.Variable(
-            initial_value=0, trainable=False, dtype=tf.float64)
+        self.register_buffer("_mass", torch.zeros((), dtype=torch.float64))
 
     def update(self, tensor):
         """Update the average.
@@ -165,13 +169,14 @@ class EMAverager(tf.Module):
         Returns:
             None
         """
-        tf.nest.map_structure(
-            lambda average, t, spec: average.assign_add(
-                tf.cast(self._update_rate, t.dtype) * (average_outer_dims(
-                    t, spec) - average)), self._average, tensor,
-            self._tensor_spec)
-        self._mass.assign_add(
-            tf.cast(self._update_rate, tf.float64) * (1 - self._mass))
+        alf.nest.map_structure(
+            lambda average, t, spec: average.add_(
+                torch.as_tensor(self._update_rate, dtype=t.dtype) * (
+                    average_outer_dims(t, spec) - average)), self._average,
+            tensor, self._tensor_spec)
+        self._mass.add_(
+            torch.as_tensor(self._update_rate, dtype=torch.float64) *
+            (1 - self._mass))
 
     def get(self):
         """Get the current average.
@@ -179,10 +184,10 @@ class EMAverager(tf.Module):
         Returns:
             Tensor: the current average
         """
-        return tf.nest.map_structure(
-            lambda average: (average / tf.maximum(
-                tf.cast(self._mass, dtype=average.dtype),
-                tf.cast(self._update_rate, dtype=average.dtype))),
+        return alf.nest.map_structure(
+            lambda average: average / torch.max(
+                self._mass.to(average.dtype),
+                torch.as_tensor(self._update_rate, dtype=average.dtype)),
             self._average)
 
     def average(self, tensor):
@@ -202,16 +207,19 @@ class EMAverager(tf.Module):
 class ScalarEMAverager(EMAverager):
     """EMAverager for scalar value"""
 
-    def __init__(self, update_rate, dtype=tf.float32, name="ScalarEMAverager"):
+    def __init__(self,
+                 update_rate,
+                 dtype=torch.float32,
+                 name="ScalarEMAverager"):
         """Create a ScalarEMAverager.
 
         Args:
             udpate_rate (float|Variable): update rate
-            dtype (tf.dtype): dtype of the scalar
+            dtype (torch.dtype): dtype of the scalar
             name (str): name of this averager
         """
         super().__init__(
-            tensor_spec=tf.TensorSpec(shape=(), dtype=dtype),
+            tensor_spec=TensorSpec(shape=(), dtype=dtype),
             update_rate=update_rate,
             name=name)
 
@@ -227,7 +235,7 @@ class AdaptiveAverager(EMAverager):
     """
 
     def __init__(self,
-                 tensor_spec: tf.TensorSpec,
+                 tensor_spec: TensorSpec,
                  speed=10.,
                  name="AdaptiveAverager"):
         """Create an AdpativeAverager.
@@ -238,12 +246,11 @@ class AdaptiveAverager(EMAverager):
             speed (float): speed of updating mean and variance.
             name (str): name of this averager
         """
-        update_rate = tf.Variable(
-            1.0, dtype=tf.float64, trainable=False, name=name)
+        update_rate = torch.ones((), dtype=torch.float64)
         super().__init__(tensor_spec, update_rate)
-        self._update_ema_rate = update_rate
-        self._total_steps = tf.Variable(
-            int(speed), dtype=tf.int64, trainable=False)
+        self.register_buffer("_update_ema_rate", update_rate)
+        self.register_buffer("_total_steps",
+                             torch.as_tensor(speed, dtype=torch.int64))
         self._speed = speed
 
     def update(self, tensor):
@@ -255,9 +262,9 @@ class AdaptiveAverager(EMAverager):
         Returns:
             None
         """
-        self._update_ema_rate.assign(
-            self._speed / tf.cast(self._total_steps, tf.float64))
-        self._total_steps.assign_add(1)
+        self._update_ema_rate.fill_(
+            self._speed / self._total_steps.to(torch.float64))
+        self._total_steps.add_(1)
         super().update(tensor)
 
 
@@ -267,7 +274,7 @@ class ScalarAdaptiveAverager(AdaptiveAverager):
 
     def __init__(self,
                  speed=10,
-                 dtype=tf.float32,
+                 dtype=torch.float32,
                  name="ScalarAdaptiveAverager"):
         """Create a ScalarAdpativeAverager.
 
@@ -277,6 +284,6 @@ class ScalarAdaptiveAverager(AdaptiveAverager):
             name (str): name of this averager
         """
         super().__init__(
-            tensor_spec=tf.TensorSpec(shape=(), dtype=dtype),
+            tensor_spec=TensorSpec(shape=(), dtype=dtype),
             speed=speed,
             name=name)

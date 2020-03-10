@@ -11,18 +11,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from collections import namedtuple
 
-import gin.tf
-import tensorflow as tf
+import gin
 
-from tf_agents.networks.network import Network
-import tf_agents.specs.tensor_spec as tensor_spec
+import torch
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
+import alf
+from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import TimeStep, namedtuple, AlgStep, LossInfo
+from alf.networks import EncodingNetwork
+from alf.nest.utils import NestConcat
+from alf.tensor_specs import TensorSpec
+from alf.utils import math_ops
 from alf.utils.normalizers import ScalarAdaptiveNormalizer
-from alf.utils.encoding_network import EncodingNetwork
-from alf.data_structures import ActionTimeStep
 
 ICMInfo = namedtuple("ICMInfo", ["reward", "loss"])
 
@@ -42,14 +43,15 @@ class ICMAlgorithm(Algorithm):
                  feature_spec,
                  hidden_size=256,
                  reward_adapt_speed=8.0,
-                 encoding_net: Network = None,
-                 forward_net: Network = None,
-                 inverse_net: Network = None,
+                 encoding_net: EncodingNetwork = None,
+                 forward_net: EncodingNetwork = None,
+                 inverse_net: EncodingNetwork = None,
+                 optimizer=None,
                  name="ICMAlgorithm"):
         """Create an ICMAlgorithm.
 
         Args:
-            hidden_size (int|tuple): size of hidden layer(s)
+            hidden_size (int or tuple[int]): size of hidden layer(s)
             reward_adapt_speed (float): how fast to adapt the reward normalizer.
                 rouphly speaking, the statistics for the normalization is
                 calculated mostly based on the most recent T/speed samples,
@@ -67,22 +69,25 @@ class ICMAlgorithm(Algorithm):
                 the previous feature and current feature. It should accept input
                 with spec [feature_spec, feature_spec] and output tensor of
                 shape (num_actions,).
+            optimizer (torch.optim.Optimizer): The optimizer for training
+            name (str):
         """
         super(ICMAlgorithm, self).__init__(
-            train_state_spec=feature_spec, name=name)
+            train_state_spec=feature_spec, optimizer=optimizer, name=name)
 
-        flat_action_spec = tf.nest.flatten(action_spec)
+        flat_action_spec = alf.nest.flatten(action_spec)
         assert len(
             flat_action_spec) == 1, "ICM doesn't suport nested action_spec"
 
-        flat_feature_spec = tf.nest.flatten(feature_spec)
+        flat_feature_spec = alf.nest.flatten(feature_spec)
         assert len(
             flat_feature_spec) == 1, "ICM doesn't support nested feature_spec"
 
         action_spec = flat_action_spec[0]
 
-        if tensor_spec.is_discrete(action_spec):
-            self._num_actions = action_spec.maximum - action_spec.minimum + 1
+        if action_spec.is_discrete:
+            self._num_actions = int(action_spec.maximum - action_spec.minimum +
+                                    1)
         else:
             self._num_actions = action_spec.shape[-1]
 
@@ -96,11 +101,12 @@ class ICMAlgorithm(Algorithm):
             hidden_size = (hidden_size, )
 
         if forward_net is None:
-            encoded_action_spec = tensor_spec.TensorSpec((self._num_actions, ),
-                                                         dtype=tf.float32)
+            encoded_action_spec = TensorSpec((self._num_actions, ),
+                                             dtype=torch.float32)
             forward_net = EncodingNetwork(
                 name="forward_net",
                 input_tensor_spec=[feature_spec, encoded_action_spec],
+                preprocessing_combiner=NestConcat(),
                 fc_layer_params=hidden_size,
                 last_layer_size=feature_dim)
 
@@ -110,9 +116,9 @@ class ICMAlgorithm(Algorithm):
             inverse_net = EncodingNetwork(
                 name="inverse_net",
                 input_tensor_spec=[feature_spec, feature_spec],
+                preprocessing_combiner=NestConcat(),
                 fc_layer_params=hidden_size,
-                last_layer_size=self._num_actions,
-                last_kernel_initializer=tf.initializers.Zeros())
+                last_layer_size=self._num_actions)
 
         self._inverse_net = inverse_net
 
@@ -120,18 +126,19 @@ class ICMAlgorithm(Algorithm):
             speed=reward_adapt_speed)
 
     def _encode_action(self, action):
-        if tensor_spec.is_discrete(self._action_spec):
-            return tf.one_hot(indices=action, depth=self._num_actions)
+        if self._action_spec.is_discrete:
+            return torch.nn.functional.one_hot(action, self._num_actions).to(
+                torch.float32)
         else:
             return action
 
     def train_step(self,
-                   time_step: ActionTimeStep,
+                   time_step: TimeStep,
                    state,
                    calc_intrinsic_reward=True):
         """
         Args:
-            time_step (ActionTimeStep): input time_step data for ICM
+            time_step (TimeStep): input time_step data for ICM
             state (Tensor): state for ICM (previous observation)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
@@ -141,35 +148,37 @@ class ICMAlgorithm(Algorithm):
                 info (ICMInfo):
         """
         feature = time_step.observation
-        prev_action = time_step.prev_action
+        prev_action = time_step.prev_action.detach()
 
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(feature)
         prev_feature = state
-        prev_action = self._encode_action(prev_action)
 
         forward_pred, _ = self._forward_net(
-            inputs=[tf.stop_gradient(prev_feature), prev_action])
-        forward_loss = 0.5 * tf.reduce_mean(
-            tf.square(tf.stop_gradient(feature) - forward_pred), axis=-1)
+            inputs=[prev_feature.detach(),
+                    self._encode_action(prev_action)])
+        # nn.MSELoss doesn't support reducing along a dim
+        forward_loss = 0.5 * torch.mean(
+            math_ops.square(forward_pred - feature.detach()), dim=-1)
 
-        action_pred, _ = self._inverse_net(inputs=[prev_feature, feature])
+        action_pred, _ = self._inverse_net([prev_feature, feature])
 
-        if tensor_spec.is_discrete(self._action_spec):
-            inverse_loss = tf.nn.softmax_cross_entropy_with_logits(
-                labels=prev_action, logits=action_pred)
+        if self._action_spec.is_discrete:
+            inverse_loss = torch.nn.CrossEntropyLoss(reduction='none')(
+                input=action_pred, target=prev_action.to(torch.int64))
         else:
-            inverse_loss = 0.5 * tf.reduce_mean(
-                tf.square(prev_action - action_pred), axis=-1)
+            # nn.MSELoss doesn't support reducing along a dim
+            inverse_loss = 0.5 * torch.mean(
+                math_ops.square(action_pred - prev_action), dim=-1)
 
         intrinsic_reward = ()
         if calc_intrinsic_reward:
-            intrinsic_reward = tf.stop_gradient(forward_loss)
+            intrinsic_reward = forward_loss.detach()
             intrinsic_reward = self._reward_normalizer.normalize(
                 intrinsic_reward)
 
-        return AlgorithmStep(
-            outputs=(),
+        return AlgStep(
+            output=(),
             state=feature,
             info=ICMInfo(
                 reward=intrinsic_reward,
@@ -180,5 +189,5 @@ class ICMAlgorithm(Algorithm):
                         inverse_loss=inverse_loss))))
 
     def calc_loss(self, info: ICMInfo):
-        loss = tf.nest.map_structure(tf.reduce_mean, info.loss)
+        loss = alf.nest.map_structure(torch.mean, info.loss)
         return LossInfo(scalar_loss=loss.loss, extra=loss.extra)

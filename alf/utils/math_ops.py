@@ -82,3 +82,8 @@ def max_n(inputs):
     for x in inputs:
         ret = torch.max(ret, x)
     return ret
+
+
+def square(x):
+    """torch doesn't have square."""
+    return torch.pow(x, 2)

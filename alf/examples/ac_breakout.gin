@@ -2,7 +2,7 @@
 # pip3 install atari-py opencv-python
 
 import alf.algorithms.actor_critic_algorithm
-import alf.trainers.on_policy_trainer
+import alf.trainers.policy_trainer
 
 include 'atari.gin'
 # From OpenAI gym wiki:
@@ -29,41 +29,37 @@ action_spec=@get_action_spec()
 CONV_LAYER_PARAMS=((32, 8, 4), (64, 4, 2), (64, 3, 1))
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(512,)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.relu
 actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
-actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(512,)
-value/ValueNetwork.activation_fn=@tf.nn.relu
 value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 
-ac/Adam.learning_rate=1e-3
+ac/Adam.lr=1e-3
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/Adam()
-Agent.gradient_clipping=None
+ActorCriticAlgorithm.optimizer=@ac/Adam()
+# ActorCriticAlgorithm.gradient_clipping=None
 
-Agent.reward_shaping_fn=@reward_clipping
+RLAlgorithm.reward_shaping_fn=@reward_clipping
 
 common.reward_clipping.minmax=(-1, 1)
 
 # training config
-TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=8
-TrainerConfig.algorithm_ctor=@Agent
-TrainerConfig.use_tf_functions=True
-TrainerConfig.num_iterations=1000000
+TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
+TrainerConfig.num_iterations=0
+TrainerConfig.num_env_steps=5000000
 TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=10
 
-Agent.observation_transformer=@image_scale_transformer
+RLAlgorithm.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
 
 
