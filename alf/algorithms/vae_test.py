@@ -41,7 +41,7 @@ class VaeTest(alf.test.TestCase):
         """Test for one dimensional Gaussion."""
         encoder = vae.VariationalAutoEncoder(self._latent_dim,
                                              self._input_spec)
-        decoding_layers = FC(latent_dim, 1)
+        decoding_layers = FC(self._latent_dim, 1)
 
         optimizer = torch.optim.Adam(
             list(encoder.parameters()) + list(decoding_layers.parameters()),
@@ -100,7 +100,8 @@ class VaeTest(alf.test.TestCase):
             lr=0.1)
 
         x_train = self._input_spec.randn(outer_dims=(10000, ))
-        x_train[:5000] = x_train[:5000] + 1.0
+        y_train = x_train.clone()
+        y_train[:5000] = y_train[:5000] + 1.0
         pr_train = torch.cat([
             prior_input_spec.zeros(outer_dims=(5000, )),
             prior_input_spec.ones(outer_dims=(5000, ))
@@ -108,7 +109,8 @@ class VaeTest(alf.test.TestCase):
                              dim=0)
 
         x_test = self._input_spec.randn(outer_dims=(100, ))
-        x_test[:50] = x_test[:50] + 1.0
+        y_test = x_test.clone()
+        y_test[:50] = y_test[:50] + 1.0
         pr_test = torch.cat([
             prior_input_spec.zeros(outer_dims=(50, )),
             prior_input_spec.ones(outer_dims=(50, ))
@@ -121,25 +123,27 @@ class VaeTest(alf.test.TestCase):
         for _ in range(self._epochs):
             idx = torch.randperm(x_train.shape[0])
             x_train = x_train[idx]
+            y_train = y_train[idx]
             pr_train = pr_train[idx]
             for i in range(0, x_train.shape[0], self._batch_size):
                 optimizer.zero_grad()
                 batch = x_train[i:i + self._batch_size]
+                y_batch = y_train[i:i + self._batch_size]
                 pr_batch = torch.nn.functional.one_hot(
                     pr_train[i:i + self._batch_size],
                     int(z_mean_prior_network.input_tensor_spec.shape[0])).to(
                         torch.float32)
                 z, kl_loss = encoder._sampling_forward([pr_batch, batch])
                 outputs = decoding_layers(z)
-                loss = torch.mean(100 * self._loss_f(batch - outputs) +
+                loss = torch.mean(100 * self._loss_f(y_batch - outputs) +
                                   kl_loss)
                 loss.backward()
                 optimizer.step()
-                logging.info(torch.mean(self._loss_f(batch - outputs)))
 
-        y_test = decoding_layers(
+        y_hat_test = decoding_layers(
             encoder._sampling_forward([pr_test, x_test])[0])
-        reconstruction_loss = float(torch.mean(self._loss_f(x_test - y_test)))
+        reconstruction_loss = float(
+            torch.mean(self._loss_f(y_test - y_hat_test)))
         print("reconstruction_loss:", reconstruction_loss)
         self.assertLess(reconstruction_loss, 0.05)
 
