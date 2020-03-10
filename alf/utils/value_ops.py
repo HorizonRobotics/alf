@@ -396,8 +396,11 @@ def calc_vtrace_returns_and_advantages(training_info,
     """
     scope = tf.name_scope('vtrace_loss')
     # for on-policy training, rollout_info may be empty tuple ().
-    collect_action_distribution = training_info.rollout_info.action_distribution
-    if not collect_action_distribution:
+    if (training_info.rollout_info
+            and training_info.rollout_info.action_distribution):
+        collect_action_distribution = (
+            training_info.rollout_info.action_distribution)
+    else:
         collect_action_distribution = training_info.info.action_distribution
     unused_imp_ratio, importance_ratio_clipped = action_importance_ratio(
         action_distribution=training_info.info.action_distribution,
