@@ -45,6 +45,7 @@ function test() {
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
@@ -58,6 +59,7 @@ function test() {
         alf.nest.nest_test \
         alf.networks.network_test \
         alf.networks.actor_distribution_networks_test \
+        alf.networks.actor_networks_test \
         alf.networks.critic_networks_test \
         alf.networks.value_networks_test \
         alf.networks.encoding_networks_test \
