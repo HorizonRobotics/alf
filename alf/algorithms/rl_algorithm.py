@@ -276,6 +276,7 @@ class RLAlgorithm(Algorithm):
                 for cycle_one_time replayer.
             unroll_length (int): number of env steps to unroll.  Used in
                 cycle_one_time replayer.
+            learn_queue_cap (int): number of actors to use for each mini-batch.
         """
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()

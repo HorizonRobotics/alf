@@ -178,7 +178,15 @@ class ReplayBufferTest(tf.test.TestCase):
         self.assertArrayEqual(batch.t, tf.constant([[2, 3, 4, 5]] * 8))
 
         # slice that starts from the middle and includes everything
-        for t in range(4, 10):
+        for t in range(6, 8):
+            batch = _get_batch([0, 1, 2, 3, 4, 5, 6, 7], t=t, x=0.4)
+            replay_buffer.add_batch(batch, batch.env_id)
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 4])
+        self.assertArrayEqual(batch.t, tf.constant([[4, 5, 6, 7]] * 8))
+
+        # slice that starts from the first and includes everything
+        for t in range(8, 10):
             batch = _get_batch([0, 1, 2, 3, 4, 5, 6, 7], t=t, x=0.4)
             replay_buffer.add_batch(batch, batch.env_id)
         batch = replay_buffer.gather_all()
