@@ -22,8 +22,7 @@ from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, StepTyp
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.utils import math_ops
-from alf.utils.normalizers import ScalarAdaptiveNormalizer
-from alf.utils.normalizers import AdaptiveNormalizer
+from alf.utils.normalizers import AdaptiveNormalizer, ScalarAdaptiveNormalizer
 
 DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
 
