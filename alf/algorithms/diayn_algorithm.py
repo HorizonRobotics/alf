@@ -108,8 +108,8 @@ class DIAYNAlgorithm(Algorithm):
             state (Tensor): state for DIAYN (previous skill).
             calc_intrinsic_reward (bool): if False, only return the losses.
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
+            AlgStep:
+                output: empty tuple ()
                 state: skill
                 info (DIAYNInfo):
         """
