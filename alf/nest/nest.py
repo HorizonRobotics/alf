@@ -13,6 +13,8 @@
 # limitations under the License.
 """Functions for handling nest."""
 
+import torch
+
 
 def assert_same_type(value1, value2):
     assert type(value1) == type(value2), \
@@ -190,9 +192,24 @@ def map_structure_up_to(shallow_nest, func, *nests):
     return _map(shallow_nest, *nests)
 
 
+def fast_map_structure_flatten(func, structure, *flat_structure):
+    """Applies func to each entry in structure and returns a flattened structure."""
+    entries = zip(*flat_structure)
+    return pack_sequence_as(structure, [func(*x) for x in entries])
+
+
+def fast_map_structure(func, *structure):
+    """map_structure using pack_sequence_as()."""
+    flat_structure = [flatten(s) for s in structure]
+    entries = zip(*flat_structure)
+
+    return pack_sequence_as(structure[0], [func(*x) for x in entries])
+
+
 def pack_sequence_as(nest, flat_seq):
     """Returns a given flattened sequence packed into a given structure."""
     assert_same_length(flatten(nest), flat_seq)
+    flat_seq = list(flat_seq)
 
     def _pack(nest, flat_seq):
         if not is_nested(nest):
@@ -207,6 +224,16 @@ def pack_sequence_as(nest, flat_seq):
         return ret
 
     return _pack(nest, flat_seq)
+
+
+def batch_nested_tensor(nested_tensor):
+    """Unsqueeze a zero (batch) dimention for each entry in nested_tensor."""
+    return map_structure(lambda x: torch.unsqueeze(x, dim=0), nested_tensor)
+
+
+def unbatch_nested_tensor(nested_tensor):
+    """Squeeze the first (batch) dimension of each entry in nested_tensor."""
+    return map_structure(lambda x: torch.squeeze(x, dim=0), nested_tensor)
 
 
 def get_nest_batch_size(nest):

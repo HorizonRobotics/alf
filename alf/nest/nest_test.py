@@ -89,6 +89,21 @@ class TestMapStructure(unittest.TestCase):
         self.assertEqual(nest.map_structure(lambda a, b: a * b, 1, 3), 3)
 
 
+class TestFastMapStructure(unittest.TestCase):
+    def test_fast_map_structure(self):
+        nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
+        nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
+        nest3 = NTuple(a=dict(x=1, y=-2), b=[50.0, (6, )])
+        expected_result = NTuple(a=dict(x=5, y=-2), b=[250.0, (21, )])
+        self.assertEqual(
+            nest.fast_map_structure(lambda a, b, c: a + b + c, nest1, nest2,
+                                    nest3), expected_result)
+        self.assertEqual(
+            nest.fast_map_structure(lambda a, b: a + b, [1, 3], [4, 5]),
+            [5, 8])
+        self.assertEqual(nest.fast_map_structure(lambda a, b: a * b, 1, 3), 3)
+
+
 class TestMapStructureUpTo(unittest.TestCase):
     def test_different_keys(self):
         self.assertRaises(AssertionError, nest.map_structure_up_to,

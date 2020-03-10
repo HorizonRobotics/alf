@@ -15,9 +15,9 @@
 import gym
 from gym import spaces
 import numpy as np
-import tensorflow as tf
 
-from alf.environments.wrappers import FrameStack
+import alf
+from alf.environments.gym_wrappers import FrameStack
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
@@ -62,7 +62,7 @@ class FakeDictObservationEnvironment(FakeEnvironment):
         super().__init__(*args, **kwargs)
 
 
-class FrameStackTest(tf.test.TestCase):
+class FrameStackTest(alf.test.TestCase):
     def _create_env(self, stack_fields):
         return FrameStack(
             env=FakeDictObservationEnvironment(), fields=stack_fields)
@@ -106,7 +106,4 @@ class FrameStackTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-    from alf.utils.common import set_per_process_memory_growth
-
-    set_per_process_memory_growth()
-    tf.test.main()
+    alf.test.main()

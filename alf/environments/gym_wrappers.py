@@ -11,17 +11,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Wrappers for gym (numpy) environments. """
 
-import copy
 from collections import deque
-import random
-
-import gym
-import numpy as np
+import copy
 import cv2
 import gin
-from tf_agents.environments import wrappers
-from tf_agents.trajectories.time_step import StepType
+import gym
+import numpy as np
+import random
+
 from alf.utils import common
 
 
@@ -119,6 +118,51 @@ class BaseObservationWrapper(gym.ObservationWrapper):
 
 
 @gin.configurable
+class ImageChannelFirst(BaseObservationWrapper):
+    """Make images in observations channel_first. """
+
+    def __init__(self, env, fields=None):
+        super().__init__(env, fields=fields)
+
+    def transform_space(self, observation_space, field=None):
+        if isinstance(observation_space, gym.spaces.Box):
+            if self._need_channel_transpose(observation_space.shape):
+                low = observation_space.low
+                high = observation_space.high
+                if np.isscalar(low) and np.isscalar(high):
+                    shape = observation_space.shape[::-1]
+                    return gym.spaces.Box(
+                        low=low,
+                        high=high,
+                        shape=shape,
+                        dtype=observation_space.dtype)
+                else:
+                    low = self._make_channel_first(
+                        observation_space.low, transpose=True)
+                    high = self._make_channel_first(
+                        observation_space.high, transpose=True)
+                    return gym.spaces.Box(
+                        low=low, high=high, dtype=observation_space.dtype)
+        return observation_space
+
+    def transform_observation(self, observation, field=None):
+        transpose = self._need_channel_transpose(observation.shape)
+        return self._make_channel_first(observation, transpose)
+
+    def _need_channel_transpose(self, shape):
+        if len(shape) == 3:
+            return True
+        return False
+
+    def _make_channel_first(self, np_array, transpose=False):
+        if transpose:
+            rank = np_array.ndim
+            np_array = np.transpose(np_array,
+                                    (rank - 1, ) + tuple(range(rank - 1)))
+        return np_array
+
+
+@gin.configurable
 class FrameStack(BaseObservationWrapper):
     """Stack previous `stack_size` frames, applied to Gym env."""
 
@@ -132,8 +176,8 @@ class FrameStack(BaseObservationWrapper):
         Args:
             env (gym.Space): gym environment.
             stack_size (int): stack so many frames
-            channel_order (str): The ordering of the dimensions in the images.
-                should be one of `channels_last` or `channels_first`.
+            channel_order (str): The ordering of the dimensions in the input images 
+                from the env, should be one of `channels_last` or `channels_first`.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
@@ -207,7 +251,8 @@ class FrameSkip(gym.Wrapper):
         for _ in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             accumulated_reward += reward
-            if done: break
+            if done:
+                break
         return obs, accumulated_reward, done, info
 
     def reset(self, **kwargs):
@@ -464,100 +509,3 @@ class DMAtariPreprocessing(gym.Wrapper):
             interpolation=cv2.INTER_AREA)
         int_image = np.asarray(transformed_image, dtype=np.uint8)
         return np.expand_dims(int_image, axis=2)
-
-
-@gin.configurable
-class NonEpisodicAgent(wrappers.PyEnvironmentBaseWrapper):
-    """
-    Make the agent non-episodic by replacing all termination time steps with
-    a non-zero discount (essentially the same type as returned by the TimeLimit
-    wrapper).
-
-    This wrapper could be useful for pure intrinsic-motivated agent, as
-    suggested in the following paper:
-
-        EXPLORATION BY RANDOM NETWORK DISTILLATION, Burda et al. 2019,
-
-    "... We argue that this is a natural way to do exploration in simulated
-    environments, since the agent’s intrinsic return should be related to all
-    the novel states that it could find in the future, regardless of whether
-    they all occur in one episode or are spread over several.
-
-    ... If Alice is modelled as an episodic reinforcement learning agent, then
-    her future return will be exactly zero if she gets a game over, which might
-    make her overly risk averse. The real cost of a game over to Alice is the
-    opportunity cost incurred by having to play through the game from the
-    beginning."
-
-    NOTE: For PURE intrinsic-motivated agents only. If you use both extrinsic
-    and intrinsic rewards, then DO NOT use this wrapper! Because without
-    episodic setting, the agent could exploit extrinsic rewards by intentionally
-    die to get easy early rewards in the game.
-
-    Example usage:
-        suite_mario.load.env_wrappers=(@NonEpisodicAgent, )
-        suite_gym.load.env_wrappers=(@NonEpisodicAgent, )
-    """
-
-    def __init__(self, env, discount=1.0):
-        super().__init__(env)
-        self._discount = discount
-
-    def _step(self, action):
-        time_step = self._env.step(action)
-        if time_step.step_type == StepType.LAST:
-            # We set a non-zero discount so that the target value would not be
-            # zero (non-episodic).
-            time_step = time_step._replace(
-                discount=np.asarray(self._discount, np.float32))
-        return time_step
-
-
-@gin.configurable
-class RandomFirstEpisodeLength(wrappers.PyEnvironmentBaseWrapper):
-    """Randomize the length of the first episode.
-
-    The motivation is to make the observations less correlated for the
-    environments that have fixed episode length.
-
-    Example usage:
-        RandomFirstEpisodeLength.random_length_range=200
-        suite_gym.load.env_wrappers=(@RandomFirstEpisodeLength, )
-    """
-
-    def __init__(self, env, random_length_range, num_episodes=1):
-        """Create a RandomFirstEpisodeLength wrapper.
-
-        Args:
-            random_length_range (int): [1, random_length_range]
-            num_episodes (int): randomize the episode length for the first so
-                many episodes.
-        """
-        super().__init__(env)
-        self._random_length_range = random_length_range
-        self._num_episodes = num_episodes
-        self._episode = 0
-        self._num_steps = 0
-        self._max_length = random.randint(1, self._random_length_range)
-
-    def _reset(self):
-        self._num_steps = 0
-        return self._env.reset()
-
-    def _step(self, action):
-        if self._num_steps is None:
-            return self.reset()
-
-        time_step = self._env.step(action)
-
-        self._num_steps += 1
-        if (self._episode < self._num_episodes
-                and self._num_steps >= self._max_length):
-            time_step = time_step._replace(step_type=StepType.LAST)
-            self._max_length = random.randint(1, self._random_length_range)
-            self._episode += 1
-
-        if time_step.is_last():
-            self._num_steps = None
-
-        return time_step

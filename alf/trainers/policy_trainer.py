@@ -21,11 +21,12 @@ import math
 import os
 import sys
 import time
+import torch
 import torch.nn as nn
 
 import alf
 from alf.algorithms.config import TrainerConfig
-# from alf.environments.utils import create_environment
+from alf.environments.utils import create_environment
 from alf.utils import common
 from alf.utils import git_utils
 from alf.utils.checkpoint_utils import Checkpointer
