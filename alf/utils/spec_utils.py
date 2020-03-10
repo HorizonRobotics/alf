@@ -14,6 +14,7 @@
 """Collection of spec utility functions."""
 
 import numpy as np
+import torch
 
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -26,13 +27,14 @@ def spec_means_and_magnitudes(spec: BoundedTensorSpec):
         spec (BoundedTensorSpec): the spec used to compute mean and magnitudes.
 
     Returns:
-        spec_means: the mean value of the spec bound.
-        spec_magnitudes: the magnitude of the spec bound.
+        spec_means (Tensor): the mean value of the spec bound.
+        spec_magnitudes (Tensor): the magnitude of the spec bound.
     """
 
     spec_means = spec.maximum + spec.minimum / 2.0
     spec_magnitudes = (spec.maximum - spec.minimum) / 2.0
-    return spec_means.astype(np.float32), spec_magnitudes.astype(np.float32)
+    return torch.from_numpy(spec_means).to(
+        torch.float32), torch.from_numpy(spec_magnitudes).to(torch.float32)
 
 
 def scale_to_spec(tensor, spec: BoundedTensorSpec):

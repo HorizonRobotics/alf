@@ -25,8 +25,7 @@ from alf.algorithms.ddpg_algorithm import DdpgAlgorithm
 from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.data_structures import StepType, TimeStep
 from alf.environments.suite_unittest import PolicyUnittestEnv, ActionType
-from alf.networks import (ActorDistributionNetwork, CriticNetwork,
-                          ValueNetwork, QNetwork)
+from alf.networks import ActorNetwork, CriticNetwork
 from alf.algorithms.ppo_algorithm_test import unroll
 from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
@@ -58,7 +57,7 @@ class DDPGAlgorithmTest(alf.test.TestCase):
 
         fc_layer_params = (100, 100)
 
-        actor_network = ActorDistributionNetwork(
+        actor_network = ActorNetwork(
             obs_spec, action_spec, fc_layer_params=fc_layer_params)
 
         critic_network = CriticNetwork((obs_spec, action_spec), \

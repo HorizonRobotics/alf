@@ -169,7 +169,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         state = empty_state._replace(
             actor=DdpgActorState(actor=state, critic=()))
         return AlgStep(
-            action=noisy_action,
+            output=noisy_action,
             state=state,
             info=DdpgInfo(action_distribution=action))
 
@@ -218,7 +218,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         actor_loss = nest.map_structure(actor_loss_fn, action)
         state = DdpgActorState(actor=actor_state, critic=critic_state)
         info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
-        return AlgStep(action=action, state=state, info=info)
+        return AlgStep(output=action, state=state, info=info)
 
     def train_step(self, exp: Experience, state: DdpgState):
         critic_state, critic_info = self._critic_train_step(
@@ -227,7 +227,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return policy_step._replace(
             state=DdpgState(actor=policy_step.state, critic=critic_state),
             info=DdpgInfo(
-                action_distribution=policy_step.action,
+                action_distribution=policy_step.output,
                 critic=critic_info,
                 actor_loss=policy_step.info))
 
