@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import numpy as np
+import functools
+import gin
 import gym
-import gin.tf
+import numpy as np
+
 from alf.environments import suite_gym, torch_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
@@ -198,21 +200,21 @@ def load(scene,
             https://github.com/deepmind/lab/tree/master/game_scripts/levels
         discount (float): Discount to use for the environment.
         frame_skip (int): the frequency at which the agent experiences the game
-        gym_env_wrappers (list): Iterable with references to wrapper classes to use
-            directly on the gym environment.
-        torch_env_wrappers (list): Iterable with references to wrapper classes to use
-            directly on the torch environment.
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+            classes to use directly on the gym environment.
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+            classes to use on the torch environment.
         wrap_with_process (bool): Whether wrap env in a process
         max_episode_steps (int): max episode step limit
     Returns:
-        A PyEnvironmentBase instance.
+        A TorchEnvironment instance.
     """
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     if max_episode_steps is None:
         max_episode_steps = 0
 
-    def env_ctor():
+    def env_ctor(env_id=None):
         return suite_gym.wrap_env(
             DeepmindLabEnv(scene=scene, action_repeat=frame_skip),
             discount=discount,
@@ -221,10 +223,10 @@ def load(scene,
             torch_env_wrappers=torch_env_wrappers)
 
     if wrap_with_process:
-        process_env = process_environment.ProcessEnvironment(lambda: env_ctor(
-        ))
+        process_env = process_environment.ProcessEnvironment(
+            functools.partial(env_ctor))
         process_env.start()
-        py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
+        torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
-        py_env = env_ctor()
-    return py_env
+        torch_env = env_ctor()
+    return torch_env

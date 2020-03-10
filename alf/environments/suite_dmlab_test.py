@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,27 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-# import gin.tf
-# import tensorflow as tf
-import gin
-import unittest
 from absl.testing import parameterized
+import functools
+import gin
 
+import alf
 from alf.environments import parallel_torch_environment
 from alf.environments import gym_wrappers
 from alf.environments import suite_dmlab
 
-# from tf_agents.policies import random_tf_policy
-# from tf_agents.environments import parallel_py_environment
-# from tf_agents.environments import tf_py_environment
-# from tf_agents.drivers import dynamic_step_driver
 
-
-class SuiteDMLabTest(parameterized.TestCase, unittest.TestCase):
+class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
     def setUp(self):
         super().setUp()
         if not suite_dmlab.is_available():
@@ -65,44 +55,44 @@ class SuiteDMLabTest(parameterized.TestCase, unittest.TestCase):
         self.assertEqual(self._env.action_space.n, action_length)
 
     def test_dmlab_env(self):
-        def ctor():
+        scene = 'lt_chasm'
+
+        def ctor(scene, env_id=None):
             return suite_dmlab.load(
-                scene='lt_chasm',
+                scene=scene,
                 gym_env_wrappers=[
                     gym_wrappers.FrameGrayScale, gym_wrappers.FrameResize,
                     gym_wrappers.FrameStack
                 ],
                 wrap_with_process=False)
 
+        constructor = functools.partial(ctor, scene)
+
         self._env = parallel_torch_environment.ParallelTorchEnvironment(
-            [ctor] * 2)
-        # env = tf_py_environment.TFPyEnvironment(self._env)
-        self.assertEqual((84, 84, 4), self._env.observation_spec().shape)
+            [constructor] * 2)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
     @parameterized.parameters([
         'nav_maze_random_goal_03', 'contributed/dmlab30/rooms_watermaze',
         'contributed/psychlab/arbitrary_visuomotor_mapping'
     ])
     def test_dmlab_env_run(self, scene):
-        def ctor():
+        def ctor(scene, env_id=None):
             return suite_dmlab.load(
                 scene=scene,
                 gym_env_wrappers=[gym_wrappers.FrameResize],
                 wrap_with_process=False)
 
+        constructor = functools.partial(ctor, scene)
+
         self._env = parallel_torch_environment.ParallelTorchEnvironment(
-            [ctor] * 4)
-        # env = tf_py_environment.TFPyEnvironment(self._env)
-        self.assertEqual((84, 84, 3), self._env.observation_spec().shape)
+            [constructor] * 4)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
-        # random_policy = random_tf_policy.RandomTFPolicy(
-        #     env.time_step_spec(), env.action_spec())
-
-        # driver = dynamic_step_driver.DynamicStepDriver(
-        #     env=env, policy=random_policy, observers=None, num_steps=10)
-
-        # driver.run(maximum_iterations=10)
+        actions = self._env.action_spec().sample(outer_dims=(4, ))
+        for _ in range(10):
+            time_step = self._env(actions)
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()
