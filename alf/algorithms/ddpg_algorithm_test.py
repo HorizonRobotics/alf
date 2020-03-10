@@ -55,7 +55,7 @@ class DDPGAlgorithmTest(alf.test.TestCase):
         obs_spec = env._observation_spec
         action_spec = env._action_spec
 
-        fc_layer_params = (100, 100)
+        fc_layer_params = (10, 10)
 
         actor_network = ActorNetwork(
             obs_spec, action_spec, fc_layer_params=fc_layer_params)
@@ -70,8 +70,8 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-2),
-            critic_optimizer=torch.optim.Adam(lr=1e-2),
+            actor_optimizer=torch.optim.Adam(lr=1e-1),
+            critic_optimizer=torch.optim.Adam(lr=1e-1),
             debug_summaries=False,
             name="MyDDPG")
 
