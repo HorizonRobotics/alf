@@ -92,19 +92,6 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
                 num_steps += 1
             self.assertLessEqual(num_steps, max_duration)
 
-    # def testEnvChecksActions(self):
-    #     obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
-    #     action_spec = BoundedTensorSpec((2, 2), torch.int32, -10, 10)
-    #     env = RandomTorchEnvironment(
-    #         obs_spec, action_spec=action_spec)
-
-    #     action = torch.tensor([[0, 0], [0, 0]], dtype=torch.int32)
-    #     env.step(action)
-
-    #     # TODO: nest_assert_same_structure does not check valueerror
-    #     with self.assertRaises(ValueError):
-    #         env.step(torch.tensor(0, dtype=torch.int32))
-
     def testRewardFnCalled(self):
         def reward_fn(unused_step_type, action, unused_observation):
             return action
