@@ -175,8 +175,14 @@ class ReplayBuffer(tf.Module):
             self._current_size.assign(tf.zeros_like(self._current_size))
             self._current_pos.assign(tf.zeros_like(self._current_pos))
 
-    def gather_all(self):
+    def gather_all(self, env_id=None):
         """Returns all the items in buffer.
+
+        Args:
+            env_id (Tensor): Only return experiences from these environments
+                corresponding to one single actor. If None, batch_size must
+                be num_environments. If not None, its shape should be
+                [batch_size]. We assume there is no duplicate ids in `env_id`.
 
         Returns:
             Returns all the items currently in the buffer. The shapes of the
@@ -185,22 +191,37 @@ class ReplayBuffer(tf.Module):
             tf.errors.InvalidArgumentError: if the current_size is not same for
                 all the environments
         """
-        size = tf.reduce_min(self._current_size)
-        max_size = tf.reduce_max(self._current_size)
-        tf.Assert(size == max_size, [
-            "Not all environment have the same size. min_size:", size,
-            "max_size:", max_size
-        ])
-        pos = tf.reduce_min(self._current_pos)
-        max_pos = tf.reduce_max(self._current_pos)
+        if env_id is None:
+            buffer = tf.nest.map_structure(lambda buf: buf.value(),
+                                           self._buffer)
+            current_size = self._current_size.value()
+            current_pos = self._current_pos.value()
+        else:
+            buffer = tf.nest.map_structure(
+                lambda buf: tf.gather_nd(buf.value(), env_id), self._buffer)
+            current_size = tf.nest.map_structure(
+                lambda buf: tf.gather_nd(buf.value(), env_id),
+                self._current_size)
+            current_pos = tf.nest.map_structure(
+                lambda buf: tf.gather_nd(buf.value(), env_id),
+                self._current_pos)
+
+        size = tf.reduce_min(current_size)
+        max_size = tf.reduce_max(current_size)
+        tf.Assert(
+            size == max_size,
+            ["Not all environment have the same size: ",
+             str(current_size)])
+        pos = tf.reduce_min(current_pos)
+        max_pos = tf.reduce_max(current_pos)
         tf.Assert(pos == max_pos, [
-            "Not all environment have the same current_pos. min_pos:", pos,
-            "max_pos:", max_pos
+            "Not all environment have the same current_pos. min_pos: ",
+            str(current_pos)
         ])
 
         if pos == 0 and size == self._max_length:
             # pull everything from the buffer in order
-            return tf.nest.map_structure(lambda buf: buf.value(), self._buffer)
+            return buffer
         elif pos + size - 1 > self._max_length - 1:
             # pull from _current_pos to the end of the buffer and then from
             # the beginning
@@ -209,11 +230,11 @@ class ReplayBuffer(tf.Module):
                     buf[:, pos:, ...], buf[:, :pos + size - self._max_length,
                                            ...]
                 ],
-                                      axis=1), self._buffer)
+                                      axis=1), buffer)
         else:
             # pull directly, not going over the end of the buffer
             return tf.nest.map_structure(lambda buf: buf[:, :size, ...],
-                                         self._buffer)
+                                         buffer)
 
     @property
     def num_environments(self):

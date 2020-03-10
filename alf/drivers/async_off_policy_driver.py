@@ -83,7 +83,9 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
-            metrics=metrics)
+            metrics=metrics,
+            unroll_length=unroll_length,
+            learn_queue_cap=learn_queue_cap)
 
         # create threads
         self._coord = tf.train.Coordinator()
@@ -131,11 +133,11 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         algorithm.set_metrics(self.get_metrics())
 
     def get_step_metrics(self):
-        """See PolicyDriver.get_step_metrics()"""
+        """See PolicyDriver.get_step_metrics()."""
         return self._log_thread.metrics[:2]
 
     def get_metrics(self):
-        """See PolicyDriver.get_metrics()"""
+        """See PolicyDriver.get_metrics()."""
         return self._log_thread.metrics
 
     def start(self):
@@ -174,7 +176,7 @@ class AsyncOffPolicyDriver(OffPolicyDriver):
         OnetimeExperienceReplayer is incompatible with Graph mode because it
         replays by a temporary variable.
 
-        Output:
+        Returns:
             steps (int): the total number of unrolled steps
         """
         exp, steps = self.get_training_exps()

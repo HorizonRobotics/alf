@@ -151,7 +151,11 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
 
     @tf.function
     def observe(self, exp):
-        """
+        """Store one batch of experience into replay buffer.
+
+        Args:
+            exp (Experience): input experience to be stored.
+
         For the sync driver, `exp` has the shape (`env_batch_size`, ...)
         with `num_envs`==1 and `unroll_length`==1.
         """
@@ -190,7 +194,6 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
         return self._buffer.num_environments
 
 
-@gin.configurable
 class CyclicOneTimeExperienceReplayer(SyncUniformExperienceReplayer):
     """
     A one-time experience replayer that stores a total of T + 1 timesteps
@@ -198,12 +201,54 @@ class CyclicOneTimeExperienceReplayer(SyncUniformExperienceReplayer):
     plus the new T timesteps are stored and used in training.
     This is to ensure every timestep is used in computing loss.
 
+    Every replay_all() is assumed to follow an observe() sequentially.
+    Not thread-safe.
+
     Example algorithms: IMPALA, PPO2
     """
 
-    def __init__(self, experience_spec, batch_size, rollout_length):
+    def __init__(self, experience_spec, batch_size, num_actors, rollout_length,
+                 learn_queue_cap):
+        # assign max_length of buffer as rollout_length + 1 to ensure
+        # all timesteps are used in training.
         super().__init__(experience_spec, batch_size, rollout_length + 1)
-        self._rollout_length = rollout_length
+        assert num_actors > 0
+        assert batch_size % num_actors == 0
+        assert learn_queue_cap > 0
+        assert num_actors % learn_queue_cap == 0
+        # replay_buffer can contain exp from all actors, but only stores or
+        # retrieves from a fixed number of actors as many as learn_queue_cap
+        # every observe or replay_all.
+        #
+        # We store the env_ids corresponding to the observe, and later
+        # retrieve the corresponding experience from buffer using these ids.
+        shape = (batch_size // num_actors * learn_queue_cap, 1)
+        self._env_id_shape = shape
+        self._env_id = tf.Variable(
+            tf.zeros(shape, dtype=tf.int32), shape=shape, dtype=tf.int32)
+        # number of exp's buffered, to check every observe is replayed once.
+        self._buffered = tf.Variable(tf.zeros((), dtype=tf.int32))
+
+    @tf.function
+    def observe(self, exp):
+        """Store one batch of experience into replay buffer.
+
+        Args:
+            exp (Experience): input experience to be stored.
+        """
+        super().observe(exp)
+        tf.debugging.assert_equal(self._buffered, 0)
+        # get batch env_ids from only the first TimeStep
+        self._env_id.assign(tf.reshape(exp.env_id[:, 0], self._env_id_shape))
+        self._buffered.assign_add(1)
+
+    @tf.function
+    def replay_all(self):
+        # Only replays the last gathered batch of environments,
+        # which corresponds to one actor in the case of IMPALA.
+        tf.debugging.assert_equal(self._buffered, 1)
+        self._buffered.assign_add(-1)
+        return self._buffer.gather_all(self._env_id)
 
     def clear(self):
         # No need to clear, as new batch of timesteps overwrites the oldest
