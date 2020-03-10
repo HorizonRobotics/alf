@@ -100,8 +100,11 @@ def clip_to_spec(value, spec: BoundedTensorSpec):
     Returns:
         clipped_value: (tensor) `value` clipped to be compatible with `spec`.
     """
-    return torch.clamp(value, torch.tensor(spec.minimum), \
-                              torch.tensor(spec.maximum))
+    return torch.max(
+        torch.min(value, torch.tensor(spec.maximum)),
+        torch.tensor(spec.minimum))
+    # return torch.clamp(value, torch.tensor(spec.minimum), \
+    #                           torch.tensor(spec.maximum))
 
 
 def set_per_process_memory_growth(flag=True):

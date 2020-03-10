@@ -204,9 +204,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         q_value, critic_state = self._critic_network((exp.observation, action),
                                                      state=state.critic)
 
-        def actor_loss_fn(action):
-            dqda = torch.autograd.grad(q_value, action,
-                                       torch.ones(q_value.size()))[0]
+        # grad_outputs = [torch.ones(q_value.size())] * \
+        #         len(self._flat_action_spec)
+        dqda = nest.pack_sequence_as(
+            action,
+            list(
+                torch.autograd.grad(q_value, nest.flatten(action),
+                                    torch.ones(q_value.size()))))
+
+        def actor_loss_fn(action, dqda):
             if self._dqda_clipping:
                 dqda = torch.clamp(dqda, -self._dqda_clipping,
                                    self._dqda_clipping)
@@ -215,7 +221,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             loss = loss.view(loss.size(0), -1).mean(1)
             return loss
 
-        actor_loss = nest.map_structure(actor_loss_fn, action)
+        actor_loss = nest.map_structure(actor_loss_fn, action, dqda)
         state = DdpgActorState(actor=actor_state, critic=critic_state)
         info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
         return AlgStep(output=action, state=state, info=info)

@@ -39,7 +39,7 @@ TrainerConfig.algorithm_ctor=@DdpgAlgorithm
 TrainerConfig.num_iterations=20000
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=False
-TrainerConfig.debug_summaries=0
+TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=0
 TrainerConfig.summary_interval=100
 
