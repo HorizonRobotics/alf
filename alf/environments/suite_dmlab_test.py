@@ -17,9 +17,8 @@ import functools
 import gin
 
 import alf
-from alf.environments import parallel_torch_environment
-from alf.environments import gym_wrappers
-from alf.environments import suite_dmlab
+from alf.environments import gym_wrappers, suite_dmlab, torch_environment
+from alf.environments import parallel_torch_environment, thread_torch_environment
 
 
 class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
