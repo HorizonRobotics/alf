@@ -217,6 +217,7 @@ def load(scene,
     def env_ctor(env_id=None):
         return suite_gym.wrap_env(
             DeepmindLabEnv(scene=scene, action_repeat=frame_skip),
+            env_id=env_id,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
