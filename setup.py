@@ -18,19 +18,10 @@ setup(
     name='alf',
     version='0.0.1',
     install_requires=[
-        'atari_py == 0.1.7',
-        'fasteners',
-        'gym == 0.12.5',
-        'matplotlib',
-        'numpy',
-        'opencv-python >= 3.4.1.15',
-        'pathos == 0.2.4',
-        'pillow',
-        'psutil',
-        'pybullet == 2.5.0',
-        'tensorboard == 2.1.0',
-        'torch == 1.4.0',
-        'torchvision == 0.5.0',
+        'atari_py == 0.1.7', 'fasteners', 'gym == 0.12.5', 'matplotlib',
+        'numpy', 'opencv-python >= 3.4.1.15', 'pathos == 0.2.4', 'pillow',
+        'psutil', 'pybullet == 2.5.0', 'tensorboard == 2.1.0',
+        'torch == 1.4.0', 'torchvision == 0.5.0', 'gin-config>=0.1.3,<=0.3.3'
     ],  # And any other dependencies foo needs
     package_data={'': ['*.gin']},
     packages=find_packages(),

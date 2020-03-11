@@ -18,6 +18,7 @@ import gym
 import torch
 
 import alf
+from alf.utils.gin_utils import gin_eval
 
 torch.optim.Adam = gin.external_configurable(torch.optim.Adam,
                                              'torch.optim.Adam')

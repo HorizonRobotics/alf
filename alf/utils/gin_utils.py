@@ -13,6 +13,9 @@
 # limitations under the License.
 
 import gin.config
+import six
+import sys
+import copy
 
 
 def inoperative_config_str(max_line_length=80, continuation_indent=4):
@@ -53,3 +56,86 @@ def inoperative_config_str(max_line_length=80, continuation_indent=4):
     gin.config._OPERATIVE_CONFIG = operative_config
     gin.config._IMPORTED_MODULES = imported_module
     return inoperative_str
+
+
+def _config_gin_eval(func):
+    name = func.__name__
+    module = getattr(func, '__module__', None)
+    selector = module + '.' + name if module else name
+    fn = gin.config._ensure_wrappability(func)
+
+    @six.wraps(fn)
+    def gin_wrapper(**kwargs):
+        scope_components = gin.config.current_scope()
+        new_kwargs = {}
+        for i in range(len(scope_components) + 1):
+            partial_scope_str = '/'.join(scope_components[:i])
+            new_kwargs.update(
+                gin.config._CONFIG.get((partial_scope_str, selector), {}))
+        scope_str = partial_scope_str
+        operative_parameter_values = {}
+        operative_parameter_values.update(new_kwargs)
+        gin.config._OPERATIVE_CONFIG.setdefault(
+            (scope_str, selector), {}).update(operative_parameter_values)
+        new_kwargs = copy.deepcopy(new_kwargs)
+        # hack here ,injection was actually called at frame_trace[-7]
+        # (gin-config>=0.1.3,<=0.3.3)
+        frame = sys._getframe(7)
+        context = lambda c: (c, frame.f_globals, frame.f_locals)
+        new_kwargs = {k: context(v) for k, v, in new_kwargs.items()}
+        new_kwargs.update(kwargs)
+        return fn(**new_kwargs)
+
+    gin.config._REGISTRY[selector] = gin.config.Configurable(
+        gin_wrapper,
+        name=name,
+        module=module,
+        whitelist=None,
+        blacklist=None,
+        selector=selector)
+    return gin_wrapper
+
+
+@_config_gin_eval
+def gin_eval(source):
+    """Evaluate the given source in the context of globals and locals.
+
+    A helper function that makes passing expression or unregistered functions
+    and classes as parameter value possible by gin config
+
+    Usage:
+    arg_scope/gin_eval.source='...'
+    func_scope/func.arg=@arg_scope/gin_eval()
+
+    Examples
+    --------
+    Passing expression as parameter value
+    >>> import numpy as np
+    >>> @gin.configurable
+        def calc_arc_len(radius, radian):
+            return radius * radian
+    >>> r = 2
+    >>> calc_arc_len()
+
+    # Inside "config.gin"
+    radius/gin_eval.source="r"
+    radian/gin_eval.source="0.3*np.pi"
+    test/calc_arc.radius=@radius/gin_eval()
+    test/calc_arc.radian=@radian/gin_eval()
+
+    --------
+    Passing other unregistered functions or classes as parameter value
+    >>> @gin.configurable
+        def activate(value, activation_fn=torch.relu)
+            pass
+
+    # Inside "config.gin"
+    torch_exp/gin_eval.source='torch.exp'
+    activate.activation_fn=@torch_exp/gin_eval()
+    --------
+
+    Args:
+        source (tuple): source and its context to be evaluated
+    """
+    source_str, f_globals, f_locals = source
+    return eval(source_str, f_globals, f_locals)
