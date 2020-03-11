@@ -13,24 +13,16 @@
 # limitations under the License.
 """Test for alf.environments.suite_socialbot."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import functools
+import gin
+import torch
 
-import numpy as np
-import tensorflow as tf
-
-from tf_agents.drivers import dynamic_step_driver
-from tf_agents.policies import random_tf_policy
-from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.environments import parallel_py_environment, py_environment, tf_py_environment
-from tf_agents.utils import common
-from alf.environments import suite_socialbot
-
-import gin.tf
+import alf
+from alf.environments import suite_socialbot, torch_environment
+from alf.environments import thread_torch_environment, parallel_torch_environment
 
 
-class SuiteSocialbotTest(tf.test.TestCase):
+class SuiteSocialbotTest(alf.test.TestCase):
     def setUp(self):
         super().setUp()
         if not suite_socialbot.is_available():
@@ -45,58 +37,54 @@ class SuiteSocialbotTest(tf.test.TestCase):
     def test_socialbot_env_registered(self):
         self._env = suite_socialbot.load(
             'SocialBot-CartPole-v0', wrap_with_process=True)
-        self.assertIsInstance(self._env, py_environment.PyEnvironment)
+        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
 
     def test_observation_spec(self):
         self._env = suite_socialbot.load(
             'SocialBot-CartPole-v0', wrap_with_process=True)
-        self.assertEqual(np.float32, self._env.observation_spec().dtype)
+        self.assertEqual(torch.float32, self._env.observation_spec().dtype)
         self.assertEqual((4, ), self._env.observation_spec().shape)
 
     def test_action_spec(self):
         self._env = suite_socialbot.load(
             'SocialBot-CartPole-v0', wrap_with_process=True)
-        self.assertEqual(np.float32, self._env.action_spec().dtype)
+        self.assertEqual(torch.float32, self._env.action_spec().dtype)
         self.assertEqual((1, ), self._env.action_spec().shape)
+
+    def test_thread_env(self):
+        env_name = 'SocialBot-CartPole-v0'
+        self._env = thread_torch_environment.ThreadTorchEnvironment(
+            lambda: suite_socialbot.load(
+                environment_name=env_name, wrap_with_process=False))
+        self.assertEqual(torch.float32, self._env.observation_spec().dtype)
+        self.assertEqual((4, ), self._env.observation_spec().shape)
+        self.assertEqual(torch.float32, self._env.action_spec().dtype)
+        self.assertEqual((1, ), self._env.action_spec().shape)
+
+        actions = self._env.action_spec().sample()
+        for _ in range(10):
+            time_step = self._env.step(actions)
 
     def test_parallel_envs(self):
         env_num = 5
+        env_name = 'SocialBot-CartPole-v0'
 
-        ctors = [
-            lambda: suite_socialbot.load(
-                'SocialBot-CartPole-v0', wrap_with_process=False)
-        ] * env_num
+        def ctor(env_name, env_id=None):
+            return suite_socialbot.load(
+                environment_name=env_name, wrap_with_process=False)
 
-        self._env = parallel_py_environment.ParallelPyEnvironment(
-            env_constructors=ctors, start_serially=False)
-        tf_env = tf_py_environment.TFPyEnvironment(self._env)
+        constructor = functools.partial(ctor, env_name)
 
-        self.assertTrue(tf_env.batched)
-        self.assertEqual(tf_env.batch_size, env_num)
+        self._env = parallel_torch_environment.ParallelTorchEnvironment(
+            [constructor] * env_num, start_serially=False)
 
-        random_policy = random_tf_policy.RandomTFPolicy(
-            tf_env.time_step_spec(), tf_env.action_spec())
+        self.assertTrue(self._env.batched)
+        self.assertEqual(self._env.batch_size, env_num)
 
-        replay_buffer_capacity = 100
-        replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
-            random_policy.trajectory_spec,
-            batch_size=tf_env.batch_size,
-            max_length=replay_buffer_capacity)
-
-        steps = 100
-        step_driver = dynamic_step_driver.DynamicStepDriver(
-            tf_env,
-            random_policy,
-            observers=[replay_buffer.add_batch],
-            num_steps=steps)
-        step_driver.run = common.function(step_driver.run)
-        step_driver.run()
-
-        self.assertIsNotNone(replay_buffer.get_next())
+        actions = self._env.action_spec().sample(outer_dims=(env_num, ))
+        for _ in range(10):
+            time_step = self._env.step(actions)
 
 
 if __name__ == '__main__':
-    from alf.utils.common import set_per_process_memory_growth
-
-    set_per_process_memory_growth()
-    tf.test.main()
+    alf.test.main()

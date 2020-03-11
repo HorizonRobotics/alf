@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gym
-import numpy as np
+import functools
 import gin
+import gym
 
 from alf.environments import suite_gym, torch_wrappers, process_environment
 from alf.environments.gym_wrappers import FrameSkip, FrameStack
-from alf.environments.utils import UnwrappedEnvChecker
 from alf.environments.mario_wrappers import MarioXReward, \
     LimitedDiscreteActions, ProcessFrame84, FrameFormat
+from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
 
@@ -42,6 +42,7 @@ def is_available():
 
 @gin.configurable
 def load(game,
+         env_id=None,
          state=None,
          discount=1.0,
          wrap_with_process=False,
@@ -55,31 +56,34 @@ def load(game,
          max_episode_steps=4500):
     """Loads the selected mario game and wraps it .
     Args:
-        game: Name for the environment to load.
-        state: game state (level)
-        wrap_with_process: Whether wrap env in a process
-        discount: Discount to use for the environment.
-        frame_skip: the frequency at which the agent experiences the game
-        frame_stack: Stack k last frames
-        data_format：one of `channels_last` (default) or `channels_first`.
+        game (str): Name for the environment to load.
+        env_id (int): (optional) ID of the environment.
+        state (str): game state (level)
+        wrap_with_process (bool): Whether wrap env in a process
+        discount (float): Discount to use for the environment.
+        frame_skip (int): the frequency at which the agent experiences the game
+        frame_stack (int): Stack k last frames
+        data_format (str): one of `channels_last` (default) or `channels_first`.
                     The ordering of the dimensions in the inputs.
-        record: Record the gameplay , see retro.retro_env.RetroEnv.record
+        record (bool): Record the gameplay , see retro.retro_env.RetroEnv.record
                `False` for not record otherwise record to current working directory or
                specified director
-        crop: whether to crop frame to fixed size
-        gym_env_wrappers: list of gym env wrappers
-        env_wrappers: list of tf_agents env wrappers
-        max_episode_steps: max episode step limit
+        crop (bool): whether to crop frame to fixed size
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+            classes to use directly on the gym environment.
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+            classes to use on the torch environment.
+        max_episode_steps (int): max episode step limit
 
     Returns:
-        A PyEnvironmentBase instance.
+        A TorchEnvironment instance.
     """
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     if max_episode_steps is None:
         max_episode_steps = 0
 
-    def env_ctor():
+    def env_ctor(env_id=None):
         env_args = [game, state] if state else [game]
         env = retro.make(*env_args, record=record)
         buttons = env.buttons
@@ -93,6 +97,7 @@ def load(game,
         env = LimitedDiscreteActions(env, buttons)
         return suite_gym.wrap_env(
             env,
+            env_id=env_id,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
@@ -102,10 +107,10 @@ def load(game,
     # wrap each env in a new process when parallel envs are used
     # since it cannot create multiple emulator instances per process
     if wrap_with_process:
-        process_env = process_environment.ProcessEnvironment(lambda: env_ctor(
-        ))
+        process_env = process_environment.ProcessEnvironment(
+            functools.partial(env_ctor))
         process_env.start()
-        py_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
+        torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
-        py_env = env_ctor()
-    return py_env
+        torch_env = env_ctor(env_id=env_id)
+    return torch_env

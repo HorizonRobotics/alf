@@ -12,24 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+import functools
+import gin
+import torch
 
-import numpy as np
-import gin.tf
-import tensorflow as tf
-from tf_agents.policies import random_tf_policy
-from tf_agents.environments import parallel_py_environment
-from tf_agents.environments import tf_py_environment
-from tf_agents.drivers import dynamic_step_driver
-from tf_agents.metrics.tf_metrics import \
-    AverageEpisodeLengthMetric, AverageReturnMetric, \
-    EnvironmentSteps, NumberOfEpisodes
-from alf.environments import suite_mario
+import alf
+from alf.environments import suite_mario, torch_environment
+from alf.environments import thread_torch_environment, parallel_torch_environment
+import alf.nest as nest
 
 
-class SuiteMarioTest(tf.test.TestCase):
+class SuiteMarioTest(alf.test.TestCase):
     def setUp(self):
         super().setUp()
         if not suite_mario.is_available():
@@ -41,28 +34,53 @@ class SuiteMarioTest(tf.test.TestCase):
         super().tearDown()
         self._env.close()
 
-    def test_mario_env(self):
-        ctor = lambda: suite_mario.load(
-            'SuperMarioBros-Nes', 'Level1-1', wrap_with_process=False)
+    def test_process_env(self):
+        game = 'SuperMarioBros-Nes'
 
-        self._env = parallel_py_environment.ParallelPyEnvironment([ctor] * 4)
-        env = tf_py_environment.TFPyEnvironment(self._env)
-        self.assertEqual(np.uint8, env.observation_spec().dtype)
-        self.assertEqual((84, 84, 4), env.observation_spec().shape)
+        self._env = suite_mario.load(
+            game=game, state='Level1-1', wrap_with_process=True)
+        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
+        self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
-        random_policy = random_tf_policy.RandomTFPolicy(
-            env.time_step_spec(), env.action_spec())
+        actions = self._env.action_spec().sample()
+        for _ in range(10):
+            time_step = self._env.step(actions)
 
-        metrics = [
-            AverageReturnMetric(batch_size=4),
-            AverageEpisodeLengthMetric(batch_size=4),
-            EnvironmentSteps(),
-            NumberOfEpisodes()
-        ]
-        driver = dynamic_step_driver.DynamicStepDriver(
-            env, random_policy, observers=metrics, num_steps=100)
-        driver.run(maximum_iterations=10000)
+    def test_thread_env(self):
+        game = 'SuperMarioBros-Nes'
+        self._env = thread_torch_environment.ThreadTorchEnvironment(
+            lambda: suite_mario.load(
+                game=game, state='Level1-1', wrap_with_process=False))
+        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
+        self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+
+        actions = self._env.action_spec().sample()
+        for _ in range(10):
+            time_step = self._env.step(actions)
+
+    def test_parallel_env(self):
+        game = 'SuperMarioBros-Nes'
+        env_num = 8
+
+        def ctor(game, env_id=None):
+            return suite_mario.load(
+                game=game, state='Level1-1', wrap_with_process=False)
+
+        constructor = functools.partial(ctor, game)
+
+        self._env = parallel_torch_environment.ParallelTorchEnvironment(
+            [constructor] * env_num)
+        self.assertTrue(self._env.batched)
+        self.assertEqual(self._env.batch_size, env_num)
+        self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+
+        actions = self._env.action_spec().sample(outer_dims=(env_num, ))
+        for _ in range(10):
+            time_step = self._env.step(actions)
 
 
 if __name__ == '__main__':
-    tf.test.main()
+    alf.test.main()
