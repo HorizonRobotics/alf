@@ -16,6 +16,7 @@
 import torch
 
 import alf
+from alf.utils import math_ops
 
 
 def tensor_extend(x, y):
@@ -68,8 +69,8 @@ def explained_variance(ypred, y):
 def to_tensor(data, dtype=None):
     """Convert the data to a torch tensor.
 
-    Args: 
-        data (array like): data for the tensor. Can be a list, tuple, 
+    Args:
+        data (array like): data for the tensor. Can be a list, tuple,
             numpy ndarray, scalar, and other types.
         dtype (torch.dtype): dtype of the converted tensors.
 
@@ -80,3 +81,105 @@ def to_tensor(data, dtype=None):
         # as_tensor reuses the underlying data store of numpy array if possible.
         data = torch.as_tensor(data, dtype=dtype).detach()
     return data
+
+
+def global_norm(tensors):
+    """Adapted from TF's version.
+    Computes the global norm of a nest of tensors. Given a nest of tensors
+    `tensors`, this function returns the global norm of all tensors in `tensors`.
+    The global norm is computed as:
+
+        `global_norm = sqrt(sum([l2norm(t)**2 for t in t_list]))`
+
+    Any entries in `tensors` that are of type None are ignored.
+
+    Args:
+        tensors (nested Tensor): a nest of tensors
+
+    Returns:
+        norm (Tensor): a scalar tensor
+    """
+    assert alf.nest.is_nested(tensors), "tensors must be a nest!"
+    tensors = alf.nest.flatten(tensors)
+    return torch.sqrt(
+        sum([
+            math_ops.square(torch.norm(torch.reshape(t, [-1])))
+            for t in tensors if t is not None
+        ]))
+
+
+def clip_by_global_norm(tensors, clip_norm, use_norm=None):
+    """Adapted from TF's version.
+    Clips values of multiple tensors by the ratio of `clip_norm` to the global
+    norm.
+
+    Given a nest of tensors `tensors`, and a clipping norm threshold `clip_norm`,
+    this function clips the tensors *in place* and returns the global norm
+    (`global_norm`) of all tensors in `tensors`. Optionally, if you've already
+    computed the global norm for `tensors`, you can specify the global norm with
+    `use_norm`.
+
+    To perform the clipping, each `tensor` are set to:
+        tensor * clip_norm / max(global_norm, clip_norm)
+    where:
+        global_norm = sqrt(sum([l2norm(t)**2 for t in tensors]))
+
+    If `clip_norm > global_norm` then the entries in `tensors` remain as they are,
+    otherwise they're all shrunk by the global ratio.
+
+    Any of the entries of `tensors` that are of type `None` are ignored.
+
+    Args:
+        tensors (nested Tensor): a nest of tensors to be clipped
+        clip_norm (float or Tensor): a positive floating scalar
+        use_norm (float or Tensor): the global norm to use. If None,
+            `global_norm()` will be used to compute the norm.
+    Returns:
+        global_norm (Tensor): a scalar tensor representing the global norm. If
+            `use_norm` is provided, it will be returned instead.
+    """
+    assert alf.nest.is_nested(tensors), "tensors must be a nest!"
+    if use_norm is None:
+        use_norm = global_norm(tensors)
+
+    clip_norm = torch.as_tensor(clip_norm)
+    assert len(clip_norm.shape) == 0, "clip_norm must be a scalar!"
+    assert clip_norm > 0, "clip_norm must be positive!"
+
+    scale = clip_norm / torch.max(clip_norm, use_norm)
+
+    def _clip(tensor):
+        if tensor is not None:
+            tensor.mul_(scale)
+
+    alf.nest.map_structure(_clip, tensors)
+    return use_norm
+
+
+def clip_by_norm(tensor, clip_norm):
+    """Clips tensor values *in place* to a maximum L2-norm.
+
+    Given a tensor, and a maximum clip value `clip_norm`, this function
+    normalizes the tensor so that its L2-norm is less than or equal to
+    `clip_norm`.
+
+    To perform the clipping:
+        tensor * clip_norm / max(l2norm(tensor), clip_norm)
+
+    Args:
+        tensor (Tensor):
+        clip_norm (float or Tensor): a positive scalar
+    """
+    clip_by_global_norm([tensor], clip_norm)
+
+
+def clip_by_norms(tensors, clip_norm):
+    """Clipping a nest of tensors *in place* by calling `clip_by_norm` on each
+    entry.
+
+    Args:
+        tensors (nested Tensor): a nest of tensors
+        clip_norm (float or Tensor): a positive scalar
+    """
+    assert alf.nest.is_nested(tensors), "tensors must be a nest!"
+    alf.nest.map_structure(lambda t: clip_by_norm(t, clip_norm), tensors)

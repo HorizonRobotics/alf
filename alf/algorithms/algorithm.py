@@ -28,6 +28,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo
 from alf.utils import common
+from alf.utils import tensor_utils
 
 
 def _get_optimizer_params(optimizer: torch.optim.Optimizer):
@@ -707,15 +708,13 @@ class Algorithm(nn.Module):
             all_params.extend(params)
             if self._gradient_clipping is not None:
                 if self._clip_by_global_norm:
-                    # TODO: implement alf.clip_by_global_norm
-                    global_norm = alf.clip_by_global_norm(
+                    global_norm = tensor_utils.clip_by_global_norm(
                         params, self._gradient_clipping)
                     if alf.summary.should_record_summaries():
                         alf.summary.scalar("global_grad_norm/%s" % i,
                                            global_norm)
                 else:
-                    # TODO: implement alf.clip_gradient_norms
-                    alf.clip_gradient_norms(params, self._gradient_clipping)
+                    tensor_utils.clip_by_norms(params, self._gradient_clipping)
             optimizer.step()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]
