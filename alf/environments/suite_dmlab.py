@@ -188,6 +188,7 @@ class DeepmindLabEnv(gym.Env):
 
 @gin.configurable
 def load(scene,
+         env_id=None,
          discount=1.0,
          frame_skip=4,
          gym_env_wrappers=(),
@@ -198,6 +199,7 @@ def load(scene,
     Args:
         scene (str): script for the deepmind_lab env. See available script:
             https://github.com/deepmind/lab/tree/master/game_scripts/levels
+        env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
         frame_skip (int): the frequency at which the agent experiences the game
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
@@ -229,5 +231,5 @@ def load(scene,
         process_env.start()
         torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
-        torch_env = env_ctor()
+        torch_env = env_ctor(env_id=env_id)
     return torch_env

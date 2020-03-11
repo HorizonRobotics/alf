@@ -42,6 +42,7 @@ def is_available():
 
 @gin.configurable
 def load(game,
+         env_id=None,
          state=None,
          discount=1.0,
          wrap_with_process=False,
@@ -56,6 +57,7 @@ def load(game,
     """Loads the selected mario game and wraps it .
     Args:
         game (str): Name for the environment to load.
+        env_id (int): (optional) ID of the environment.
         state (str): game state (level)
         wrap_with_process (bool): Whether wrap env in a process
         discount (float): Discount to use for the environment.
@@ -110,5 +112,5 @@ def load(game,
         process_env.start()
         torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
     else:
-        torch_env = env_ctor()
+        torch_env = env_ctor(env_id=env_id)
     return torch_env

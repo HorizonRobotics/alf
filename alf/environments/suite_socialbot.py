@@ -40,6 +40,7 @@ def is_available():
 
 @gin.configurable
 def load(environment_name,
+         env_id=None,
          port=None,
          wrap_with_process=False,
          discount=1.0,
@@ -53,6 +54,7 @@ def load(environment_name,
 
     Args:
         environment_name (str): Name for the environment to load.
+        env_id (int): (optional) ID of the environment.
         port (int): Port used for the environment
         wrap_with_process (bool): Whether wrap environment in a new process
         discount (float): Discount to use for the environment.
@@ -98,7 +100,7 @@ def load(environment_name,
             process_env.start()
             torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
         else:
-            torch_env = env_ctor(port)
+            torch_env = env_ctor(port=port, env_id=env_id)
     return torch_env
 
 

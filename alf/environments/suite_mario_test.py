@@ -17,7 +17,8 @@ import gin
 import torch
 
 import alf
-from alf.environments import suite_mario, parallel_torch_environment
+from alf.environments import suite_mario, torch_environment
+from alf.environments import thread_torch_environment, parallel_torch_environment
 import alf.nest as nest
 
 
@@ -33,8 +34,35 @@ class SuiteMarioTest(alf.test.TestCase):
         super().tearDown()
         self._env.close()
 
-    def test_mario_env(self):
+    def test_process_env(self):
         game = 'SuperMarioBros-Nes'
+
+        self._env = suite_mario.load(
+            game=game, state='Level1-1', wrap_with_process=True)
+        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
+        self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+
+        actions = self._env.action_spec().sample()
+        for _ in range(10):
+            time_step = self._env.step(actions)
+
+    def test_thread_env(self):
+        game = 'SuperMarioBros-Nes'
+        self._env = thread_torch_environment.ThreadTorchEnvironment(
+            lambda: suite_mario.load(
+                game=game, state='Level1-1', wrap_with_process=False))
+        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
+        self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
+        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+
+        actions = self._env.action_spec().sample()
+        for _ in range(10):
+            time_step = self._env.step(actions)
+
+    def test_parallel_env(self):
+        game = 'SuperMarioBros-Nes'
+        env_num = 8
 
         def ctor(game, env_id=None):
             return suite_mario.load(
@@ -43,11 +71,13 @@ class SuiteMarioTest(alf.test.TestCase):
         constructor = functools.partial(ctor, game)
 
         self._env = parallel_torch_environment.ParallelTorchEnvironment(
-            [constructor] * 4)
+            [constructor] * env_num)
+        self.assertTrue(self._env.batched)
+        self.assertEqual(self._env.batch_size, env_num)
         self.assertEqual(torch.uint8, self._env.observation_spec().dtype)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
-        actions = self._env.action_spec().sample(outer_dims=(4, ))
+        actions = self._env.action_spec().sample(outer_dims=(env_num, ))
         for _ in range(10):
             time_step = self._env.step(actions)
 

@@ -18,7 +18,8 @@ import gin
 import torch
 
 import alf
-from alf.environments import suite_socialbot, torch_environment, parallel_torch_environment
+from alf.environments import suite_socialbot, torch_environment
+from alf.environments import thread_torch_environment, parallel_torch_environment
 
 
 class SuiteSocialbotTest(alf.test.TestCase):
@@ -49,6 +50,20 @@ class SuiteSocialbotTest(alf.test.TestCase):
             'SocialBot-CartPole-v0', wrap_with_process=True)
         self.assertEqual(torch.float32, self._env.action_spec().dtype)
         self.assertEqual((1, ), self._env.action_spec().shape)
+
+    def test_thread_env(self):
+        env_name = 'SocialBot-CartPole-v0'
+        self._env = thread_torch_environment.ThreadTorchEnvironment(
+            lambda: suite_socialbot.load(
+                environment_name=env_name, wrap_with_process=False))
+        self.assertEqual(torch.float32, self._env.observation_spec().dtype)
+        self.assertEqual((4, ), self._env.observation_spec().shape)
+        self.assertEqual(torch.float32, self._env.action_spec().dtype)
+        self.assertEqual((1, ), self._env.action_spec().shape)
+
+        actions = self._env.action_spec().sample()
+        for _ in range(10):
+            time_step = self._env.step(actions)
 
     def test_parallel_envs(self):
         env_num = 5
