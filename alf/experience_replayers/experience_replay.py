@@ -143,10 +143,9 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     Example algorithms: DDPG, SAC
     """
 
-    def __init__(self, experience_spec, batch_size, max_length=1024):
+    def __init__(self, experience_spec, batch_size):
         self._experience_spec = experience_spec
-        self._buffer = ReplayBuffer(
-            experience_spec, batch_size, max_length=max_length)
+        self._buffer = ReplayBuffer(experience_spec, batch_size)
         self._data_iter = None
 
     @tf.function
@@ -211,7 +210,10 @@ class CyclicOneTimeExperienceReplayer(SyncUniformExperienceReplayer):
                  learn_queue_cap):
         # assign max_length of buffer as rollout_length + 1 to ensure
         # all timesteps are used in training.
-        super().__init__(experience_spec, batch_size, rollout_length + 1)
+        self._experience_spec = experience_spec
+        self._buffer = ReplayBuffer(
+            experience_spec, batch_size, max_length=rollout_length + 1)
+        self._data_iter = None
         assert num_actors > 0
         assert batch_size % num_actors == 0
         assert learn_queue_cap > 0
