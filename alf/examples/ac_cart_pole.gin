@@ -1,5 +1,4 @@
 import alf.algorithms.actor_critic_algorithm
-import alf.trainers.on_policy_trainer
 
 
 # environment config
@@ -7,7 +6,8 @@ create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
 
 # reward scaling
-Agent.reward_shaping_fn = @reward_scaling
+RLAlgorithm.reward_shaping_fn = @reward_scaling
+RLAlgorithm.gradient_clipping=10.0
 common.reward_scaling.scale = 0.01
 
 # algorithm config
@@ -15,21 +15,19 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(100,)
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(100,)
 
-ac/Adam.learning_rate=1e-3
+ac/Adam.lr=1e-3
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/Adam()
+ActorCriticAlgorithm.optimizer=@ac/Adam()
 
 import alf.algorithms.trac_algorithm
-Agent.gradient_clipping=10.0
-Agent.rl_algorithm_cls=@TracAlgorithm
 ActorCriticLoss.entropy_regularization=1e-4
 ActorCriticLoss.gamma=0.98
 ActorCriticLoss.td_error_loss_fn=@element_wise_huber_loss
@@ -37,13 +35,16 @@ ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
 # training config
-TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=10
-TrainerConfig.algorithm_ctor=@Agent
-TrainerConfig.num_iterations=20
-TrainerConfig.checkpoint_interval=20
+TrainerConfig.algorithm_ctor=@TracAlgorithm
+TrainerConfig.num_iterations=2500
+TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=True
-TrainerConfig.eval_interval=5
+TrainerConfig.eval_interval=500
 TrainerConfig.debug_summaries=False
 TrainerConfig.summarize_grads_and_vars=False
 TrainerConfig.summary_interval=5
+
+# TODO: Fix alf.utils.dist_utils.epsilon_greedy_sample() to handle
+# epsilon_greedy < 1.0 and change the default to 0.1
+TrainerConfig.epsilon_greedy=1.0
