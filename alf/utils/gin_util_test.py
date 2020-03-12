@@ -42,7 +42,7 @@ class GinUtilsTest(unittest.TestCase):
             ])
 
         gin.parse_config(
-            ["list/gin_eval.source='list'", "_test.func=@list/gin_eval()"])
+            ["list/gin_eval.str='list'", "_test.func=@list/gin_eval()"])
         _test()
 
     def test_refer_to_local_values(self):
@@ -59,8 +59,8 @@ class GinUtilsTest(unittest.TestCase):
             return _add()
 
         gin.parse_config([
-            "a/gin_eval.source='a'", "_add.a=@a/gin_eval()",
-            "b/gin_eval.source='b'", "_add.b=@b/gin_eval()"
+            "a/gin_eval.str='a'", "_add.a=@a/gin_eval()", "b/gin_eval.str='b'",
+            "_add.b=@b/gin_eval()"
         ])
 
         self.assertEqual(1 + 2, _test_add(1, 2))
@@ -71,7 +71,7 @@ class GinUtilsTest(unittest.TestCase):
             return value
 
         gin.parse_config([
-            "_value/gin_eval.source='np.prod([a,b])'",
+            "_value/gin_eval.str='np.prod([a,b])'",
             "_value.value=@_value/gin_eval()"
         ])
         a, b = 1, 2

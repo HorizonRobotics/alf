@@ -102,14 +102,14 @@ def _config_gin_eval(func):
 
 
 @_config_gin_eval
-def gin_eval(source):
+def gin_eval(str):
     """Evaluate the given source in the context of globals and locals.
 
     A helper function that makes passing expression or unregistered functions
     and classes as parameter value possible by gin config
 
     Usage:
-    arg_scope/gin_eval.source='...'
+    arg_scope/gin_eval.str='...'
     func_scope/func.arg=@arg_scope/gin_eval()
 
     Examples
@@ -123,8 +123,8 @@ def gin_eval(source):
     >>> calc_arc_len()
 
     # Inside "config.gin"
-    radius/gin_eval.source="r"
-    radian/gin_eval.source="0.3*np.pi"
+    radius/gin_eval.str="r"
+    radian/gin_eval.str="0.3*np.pi"
     test/calc_arc_len.radius=@radius/gin_eval()
     test/calc_arc_len.radian=@radian/gin_eval()
 
@@ -135,12 +135,14 @@ def gin_eval(source):
             pass
 
     # Inside "config.gin"
-    torch_exp/gin_eval.source='torch.exp'
+    torch_exp/gin_eval.str='torch.exp'
     activate.activation_fn=@torch_exp/gin_eval()
     --------
 
     Args:
-        source (tuple): source and its context to be evaluated
+        str (str): source to be evaluated in the context of globals and locals.
+            str can only be configured by gin params or gin file, the globals and
+            locals are obtained and passed in by caller in `gin_wrapper`
     """
-    source_str, f_globals, f_locals = source
+    source_str, f_globals, f_locals = str
     return eval(source_str, f_globals, f_locals)
