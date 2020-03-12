@@ -20,10 +20,11 @@ from alf.layers import BatchSquash
 import alf.nest as nest
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.utils import tensor_utils
 
 
 def spec_means_and_magnitudes(spec: BoundedTensorSpec):
-    """Get the center and magnitude of the ranges for the input spec.
+    """Get the center and magnitudes of the ranges for the input spec.
 
     Args:
         spec (BoundedTensorSpec): the spec used to compute mean and magnitudes.
@@ -52,7 +53,8 @@ def scale_to_spec(tensor, spec: BoundedTensorSpec):
     bs = BatchSquash(get_outer_rank(tensor, spec))
     tensor = bs.flatten(tensor)
     means, magnitudes = spec_means_and_magnitudes(spec)
-    tensor = means + magnitudes * tensor
+    tensor = tensor_utils.scale_and_shift(
+        tensor, means=means, magnitudes=magnitudes)
     tensor = bs.unflatten(tensor)
     return tensor
 
