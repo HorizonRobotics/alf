@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,12 +19,11 @@ from alf.utils import tensor_utils
 
 
 class NormClippingTest(alf.test.TestCase):
-    def test_clip_by_norm(self):
+    def test_clip_by_norms(self):
         tensor = torch.ones([5])
-        tensor_utils.clip_by_norm(tensor, clip_norm=1.0)
+        tensor_utils.clip_by_norms(tensor, clip_norm=1.0)
         self.assertTensorClose(torch.norm(tensor), torch.as_tensor(1.0))
 
-    def test_clip_by_norms(self):
         tensors = [torch.randn([3, 4, 5]) for _ in range(10)]
         tensor_utils.clip_by_norms(tensors, clip_norm=1.0)
         for t in tensors:

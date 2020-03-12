@@ -156,8 +156,8 @@ def clip_by_global_norm(tensors, clip_norm, use_norm=None):
     return use_norm
 
 
-def clip_by_norm(tensor, clip_norm):
-    """Clips tensor values *in place* to a maximum L2-norm.
+def clip_by_norms(tensors, clip_norm):
+    """Clipping a nest of tensors *in place* to a maximum L2-norm.
 
     Given a tensor, and a maximum clip value `clip_norm`, this function
     normalizes the tensor so that its L2-norm is less than or equal to
@@ -167,19 +167,8 @@ def clip_by_norm(tensor, clip_norm):
         tensor * clip_norm / max(l2norm(tensor), clip_norm)
 
     Args:
-        tensor (Tensor):
-        clip_norm (float or Tensor): a positive scalar
-    """
-    clip_by_global_norm([tensor], clip_norm)
-
-
-def clip_by_norms(tensors, clip_norm):
-    """Clipping a nest of tensors *in place* by calling `clip_by_norm` on each
-    entry.
-
-    Args:
         tensors (nested Tensor): a nest of tensors
         clip_norm (float or Tensor): a positive scalar
     """
-    assert alf.nest.is_nested(tensors), "tensors must be a nest!"
-    alf.nest.map_structure(lambda t: clip_by_norm(t, clip_norm), tensors)
+    alf.nest.map_structure(lambda t: clip_by_global_norm([t], clip_norm),
+                           tensors)
