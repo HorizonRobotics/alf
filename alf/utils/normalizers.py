@@ -18,7 +18,6 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.layers import BatchSquash
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops

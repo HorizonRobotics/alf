@@ -230,8 +230,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             dqda = nest.pack_sequence_as(
                 action,
                 list(
-                    torch.autograd.grad(target_q_value, nest.flatten(action),
-                                        torch.ones(target_q_value.size()))))
+                    torch.autograd.grad(
+                        target_q_value.sum(),
+                        nest.flatten(action),
+                    )))
 
             def actor_loss_fn(dqda, action):
                 if self._dqda_clipping:

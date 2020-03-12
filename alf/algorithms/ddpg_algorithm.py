@@ -206,9 +206,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         dqda = nest.pack_sequence_as(
             action,
-            list(
-                torch.autograd.grad(q_value, nest.flatten(action),
-                                    torch.ones(q_value.size()))))
+            list(torch.autograd.grad(q_value.sum(), nest.flatten(action))))
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:

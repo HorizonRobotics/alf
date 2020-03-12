@@ -193,14 +193,10 @@ class ActorRNNNetwork(Network):
 
         assert all(is_continuous), "only continuous action is supported"
 
-        self._encoding_net = EncodingNetwork(
+        self._lstm_encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            activation=activation)
-
-        self._lstm_encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=self._encoding_net.output_spec,
+            pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=actor_fc_layer_params,
             activation=activation)
@@ -225,8 +221,7 @@ class ActorRNNNetwork(Network):
             new_state (nest[tuple]): the updated states
         """
         observation, state = Network.forward(self, observation, state)
-        encoded_obs, _ = self._encoding_net(observation)
-        encoded_obs, state = self._lstm_encoding_net(encoded_obs, state)
+        encoded_obs, state = self._lstm_encoding_net(observation, state)
 
         actions = []
         for layer, spec in zip(self._action_layers, self._flat_action_spec):

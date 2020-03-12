@@ -34,12 +34,13 @@ from alf.utils.math_ops import clipped_exp
 class DDPGAlgorithmTest(alf.test.TestCase):
     def test_ddpg_algorithm(self):
         num_env = 1
+        num_eval_env = 100
         config = TrainerConfig(
             root_dir="dummy",
             unroll_length=1,
             mini_batch_length=2,
-            mini_batch_size=64,
-            initial_collect_steps=500,
+            mini_batch_size=512,
+            initial_collect_steps=1000,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
             num_envs=num_env,
@@ -50,7 +51,7 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             num_env, steps_per_episode, action_type=ActionType.Continuous)
 
         eval_env = env_class(
-            num_env, steps_per_episode, action_type=ActionType.Continuous)
+            num_eval_env, steps_per_episode, action_type=ActionType.Continuous)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -70,13 +71,13 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-1),
-            critic_optimizer=torch.optim.Adam(lr=1e-1),
+            actor_optimizer=torch.optim.Adam(lr=1e-2),
+            critic_optimizer=torch.optim.Adam(lr=1e-2),
             debug_summaries=False,
             name="MyDDPG")
 
         eval_env.reset()
-        for _ in range(100):
+        for _ in range(200):
             alg.train_iter()
 
         eval_env.reset()
@@ -84,7 +85,7 @@ class DDPGAlgorithmTest(alf.test.TestCase):
         print(eval_time_step.reward.mean())
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=5e-1)
+            1.0, float(eval_time_step.reward.mean()), delta=3e-1)
 
 
 if __name__ == '__main__':

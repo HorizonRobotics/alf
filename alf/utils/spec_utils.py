@@ -16,7 +16,9 @@
 import numpy as np
 import torch
 
+from alf.layers import BatchSquash
 import alf.nest as nest
+from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
@@ -33,22 +35,25 @@ def spec_means_and_magnitudes(spec: BoundedTensorSpec):
 
     spec_means = (spec.maximum + spec.minimum) / 2.0
     spec_magnitudes = (spec.maximum - spec.minimum) / 2.0
-    return torch.tensor(spec_means).to(
-        torch.float32), torch.tensor(spec_magnitudes).to(torch.float32)
+    return torch.as_tensor(spec_means).to(
+        spec.dtype), torch.as_tensor(spec_magnitudes).to(spec.dtype)
 
 
 def scale_to_spec(tensor, spec: BoundedTensorSpec):
     """Shapes and scales a batch into the given spec bounds.
 
     Args:
-        tensor: A [batch x n] tensor with values in the range of [-1, 1].
+        tensor: A tensor with values in the range of [-1, 1].
         spec: (BoundedTensorSpec) to use for scaling the input tensor.
 
     Returns:
         A batch scaled the given spec bounds.
     """
+    bs = BatchSquash(get_outer_rank(tensor, spec))
+    tensor = bs.flatten(tensor)
     means, magnitudes = spec_means_and_magnitudes(spec)
     tensor = means + magnitudes * tensor
+    tensor = bs.unflatten(tensor)
     return tensor
 
 
@@ -61,5 +66,5 @@ def clip_to_spec(value, spec: BoundedTensorSpec):
         clipped_value: (tensor) `value` clipped to be compatible with `spec`.
     """
     return torch.max(
-        torch.min(value, torch.tensor(spec.maximum)),
-        torch.tensor(spec.minimum))
+        torch.min(value, torch.as_tensor(spec.maximum)),
+        torch.as_tensor(spec.minimum))
