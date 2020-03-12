@@ -59,6 +59,11 @@ def inoperative_config_str(max_line_length=80, continuation_indent=4):
 
 
 def _config_gin_eval(func):
+    """Decorator to make function `gin_eval` configurable.
+    And it get and pass expected frame context variables `globals` and `locals`
+    to `func` when is actually called. See `gin_eval` for more details.
+    """
+
     name = func.__name__
     module = getattr(func, '__module__', None)
     selector = module + '.' + name if module else name
@@ -120,8 +125,8 @@ def gin_eval(source):
     # Inside "config.gin"
     radius/gin_eval.source="r"
     radian/gin_eval.source="0.3*np.pi"
-    test/calc_arc.radius=@radius/gin_eval()
-    test/calc_arc.radian=@radian/gin_eval()
+    test/calc_arc_len.radius=@radius/gin_eval()
+    test/calc_arc_len.radian=@radian/gin_eval()
 
     --------
     Passing other unregistered functions or classes as parameter value

@@ -38,7 +38,7 @@ class GinUtilsTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             gin.parse_config([
-                "_test/func=@list",
+                "_test.func=@list",
             ])
 
         gin.parse_config(
