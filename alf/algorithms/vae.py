@@ -19,13 +19,13 @@ import torch
 import torch.nn as nn
 
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep
+from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.layers import FC
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
 
-VAEInfo = namedtuple("VAEInfo", ["cost"], default_value=())
+VAEInfo = namedtuple("VAEInfo", ["loss"], default_value=())
 
 
 @gin.configurable
@@ -142,11 +142,11 @@ class VariationalAutoEncoder(Algorithm):
         z = z_mean + torch.exp(z_log_var * 0.5) * eps
         return z, self._beta * kl_div_loss
 
-    def train_step(self, time_step: TimeStep, state):
+    def train_step(self, inputs, state=()):
         """
         Args:
-            time_step (TimeStep): input time step data, where its `observation`
-                is augmented with a prior input if there is a prior network.
+            inputs (nested Tensor): data to be encoded. If there is a prior
+                network, then `inputs` is a tuple of `(prior_input, new_obs)`.
             state (Tensor): empty tuple ()
 
         Returns:
@@ -155,7 +155,7 @@ class VariationalAutoEncoder(Algorithm):
                 state: empty tuple ()
                 info (VAEInfo): kld_loss
         """
-        z, kld_loss = self._sampling_forward(time_step.observation)
+        z, kld_loss = self._sampling_forward(inputs)
         return AlgStep(output=z, state=state, info=VAEInfo(loss=kld_loss))
 
     def calc_loss(self, info: VAEInfo):

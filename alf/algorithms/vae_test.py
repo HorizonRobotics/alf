@@ -18,7 +18,6 @@ import numpy as np
 import tempfile
 
 import torch
-import torchvision.datasets as datasets
 
 import alf
 import alf.algorithms.vae as vae
@@ -31,10 +30,11 @@ from alf.utils import math_ops
 
 class VaeTest(alf.test.TestCase):
     def setUp(self):
+        super().setUp()
         self._input_spec = TensorSpec((1, ))
         self._epochs = 10
         self._batch_size = 100
-        self._latent_dim = 1
+        self._latent_dim = 2
         self._loss_f = math_ops.square
 
     def test_vae(self):
@@ -55,14 +55,14 @@ class VaeTest(alf.test.TestCase):
             for i in range(0, x_train.shape[0], self._batch_size):
                 optimizer.zero_grad()
                 batch = x_train[i:i + self._batch_size]
-                z, kl_loss = encoder._sampling_forward(batch)
-                outputs = decoding_layers(z)
+                alg_step = encoder.train_step(batch)
+                outputs = decoding_layers(alg_step.output)
                 loss = torch.mean(100 * self._loss_f(batch - outputs) +
-                                  kl_loss)
+                                  alg_step.info.loss)
                 loss.backward()
                 optimizer.step()
 
-        y_test = decoding_layers(encoder._sampling_forward(x_test)[0])
+        y_test = decoding_layers(encoder.train_step(x_test).output)
         reconstruction_loss = float(torch.mean(self._loss_f(x_test - y_test)))
         print("reconstruction_loss:", reconstruction_loss)
         self.assertLess(reconstruction_loss, 0.05)
@@ -133,15 +133,15 @@ class VaeTest(alf.test.TestCase):
                     pr_train[i:i + self._batch_size],
                     int(z_mean_prior_network.input_tensor_spec.shape[0])).to(
                         torch.float32)
-                z, kl_loss = encoder._sampling_forward([pr_batch, batch])
-                outputs = decoding_layers(z)
+                alg_step = encoder.train_step([pr_batch, batch])
+                outputs = decoding_layers(alg_step.output)
                 loss = torch.mean(100 * self._loss_f(y_batch - outputs) +
-                                  kl_loss)
+                                  alg_step.info.loss)
                 loss.backward()
                 optimizer.step()
 
         y_hat_test = decoding_layers(
-            encoder._sampling_forward([pr_test, x_test])[0])
+            encoder.train_step([pr_test, x_test]).output)
         reconstruction_loss = float(
             torch.mean(self._loss_f(y_test - y_hat_test)))
         print("reconstruction_loss:", reconstruction_loss)
