@@ -108,7 +108,7 @@ def global_norm(tensors):
         ]))
 
 
-def clip_by_global_norm(tensors, clip_norm, use_norm=None):
+def clip_by_global_norm(tensors, clip_norm, use_norm=None, in_place=False):
     """Adapted from TF's version.
     Clips values of multiple tensors by the ratio of `clip_norm` to the global
     norm.
@@ -134,7 +134,12 @@ def clip_by_global_norm(tensors, clip_norm, use_norm=None):
         clip_norm (float or Tensor): a positive floating scalar
         use_norm (float or Tensor): the global norm to use. If None,
             `global_norm()` will be used to compute the norm.
+        in_place (bool): If True, then the input `tensors` will be changed. For
+            tensors that require grads, we cannot modify them in place; on the
+            other hand, if you are clipping the gradients hold by an optimizer,
+            then probably doing this in place will be easier.
     Returns:
+        tensors (nested Tensor): the clipped tensors
         global_norm (Tensor): a scalar tensor representing the global norm. If
             `use_norm` is provided, it will be returned instead.
     """
@@ -143,20 +148,25 @@ def clip_by_global_norm(tensors, clip_norm, use_norm=None):
         use_norm = global_norm(tensors)
 
     clip_norm = torch.as_tensor(clip_norm)
-    assert len(clip_norm.shape) == 0, "clip_norm must be a scalar!"
+    assert clip_norm.ndim == 0, "clip_norm must be a scalar!"
     assert clip_norm > 0, "clip_norm must be positive!"
 
     scale = clip_norm / torch.max(clip_norm, use_norm)
 
     def _clip(tensor):
         if tensor is not None:
-            tensor.mul_(scale)
+            if in_place:
+                tensor.mul_(scale)
+                return tensor
+            else:
+                return tensor * scale
 
-    alf.nest.map_structure(_clip, tensors)
-    return use_norm
+    if scale < 1:
+        tensors = alf.nest.map_structure(_clip, tensors)
+    return tensors, use_norm
 
 
-def clip_by_norms(tensors, clip_norm):
+def clip_by_norms(tensors, clip_norm, in_place=False):
     """Clipping a nest of tensors *in place* to a maximum L2-norm.
 
     Given a tensor, and a maximum clip value `clip_norm`, this function
@@ -169,6 +179,14 @@ def clip_by_norms(tensors, clip_norm):
     Args:
         tensors (nested Tensor): a nest of tensors
         clip_norm (float or Tensor): a positive scalar
+        in_place (bool): If True, then the input `tensors` will be changed. For
+            tensors that require grads, we cannot modify them in place; on the
+            other hand, if you are clipping the gradients hold by an optimizer,
+            then probably doing this in place will be easier.
+
+    Returns:
+        the clipped tensors
     """
-    alf.nest.map_structure(lambda t: clip_by_global_norm([t], clip_norm),
-                           tensors)
+    return alf.nest.map_structure(
+        lambda t: clip_by_global_norm([t], clip_norm, in_place=in_place)[0],
+        tensors)

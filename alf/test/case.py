@@ -44,3 +44,12 @@ class TestCase(unittest.TestCase):
         if not (torch.max(torch.abs(t1 - t2)) < epsilon):
             standardMsg = '%s is not close to %s' % (t1, t2)
             self.fail(self._formatMessage(msg, standardMsg))
+
+    def assertTensorNotClose(self, t1, t2, epsilon=1e-6, msg=None):
+        self.assertIsInstance(t1, torch.Tensor,
+                              'First argument is not a Tensor')
+        self.assertIsInstance(t2, torch.Tensor,
+                              'Second argument is not a Tensor')
+        if not (torch.min(torch.abs(t1 - t2)) > epsilon):
+            standardMsg = '%s is actually close to %s' % (t1, t2)
+            self.fail(self._formatMessage(msg, standardMsg))
