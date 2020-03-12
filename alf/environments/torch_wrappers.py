@@ -35,7 +35,7 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
     """TorchEnvironment wrapper forwards calls to the given environment."""
 
     def __init__(self, env):
-        """Create a torch environment base wrapper. 
+        """Create a torch environment base wrapper.
 
         Args:
             env (TorchEnvironment): A TorchEnvironment instance to wrap.
@@ -144,7 +144,7 @@ def _spec_channel_transpose(spec):
 
 
 def _observation_channel_transpose(time_step):
-    """Transpose the third (channel) dimension of observation to the first. 
+    """Transpose the third (channel) dimension of observation to the first.
     """
 
     def _channel_transpose(tensor):
@@ -384,7 +384,7 @@ class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
         """Create a RandomFirstEpisodeLength wrapper.
 
         Args:
-            env (TorchEnvironment): A TorchEnvironment isinstance to wrap.  
+            env (TorchEnvironment): A TorchEnvironment isinstance to wrap.
             random_length_range (int): [1, random_length_range]
             num_episodes (int): randomize the episode length for the first so
                 many episodes.
