@@ -45,6 +45,7 @@ function test() {
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
