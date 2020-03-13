@@ -100,8 +100,8 @@ class CriticNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer)
 
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.003, b=0.003)
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_, a=-0.003, b=0.003)
 
         self._joint_encoder = EncodingNetwork(
             TensorSpec((self._obs_encoder.output_spec.shape[0] +
@@ -226,8 +226,8 @@ class CriticRNNNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer)
 
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.003, b=0.003)
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_, a=-0.003, b=0.003)
 
         self._lstm_encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=self._joint_encoder.output_spec,
