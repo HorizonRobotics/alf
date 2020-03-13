@@ -200,7 +200,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 the loss to encourage diverse action.
             target_entropy (float|None): The target average policy entropy, for
                 updating alpha. Only used if `initial_alpha` is not None
-            use_entropy_reward (bool):
+            use_entropy_reward (bool): If True, will use alpha*entropy as
+                additional reward.
             ou_stddev (float): Only used for DDPG. Standard deviation for the
                 Ornstein-Uhlenbeck (OU) noise added in the default collect policy.
             ou_damping (float): Only used for DDPG. Damping factor for the OU
@@ -217,10 +218,9 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 Does not perform clipping if dqda_clipping == 0.
             actor_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
             critic_optimizer (tf.optimizers.Optimizer): The optimizer for critic
-                networks. If None, will use actor_optimizer.
+                networks.
             alpha_optimizer (tf.optimizers.Optimizer): The optimizer for alpha.
-                Only used if `initial_alpha` is not None. If None, will use
-                actor_optimizer.
+                Only used if `initial_alpha` is not None.
             gradient_clipping (float): Norm length to clip gradients.
             on_policy (bool): whether it is used as an on-policy algorithm.
             debug_summaries (bool): True if debug summaries should be created.
@@ -270,18 +270,30 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         self.add_optimizer(actor_optimizer, [actor_network])
         self.add_optimizer(critic_optimizer, critic_networks)
 
+        self._log_alpha = None
+        self._use_entropy_reward = False
         if initial_alpha is not None:
-            if target_entropy is None:
-                target_entropy = np.sum(
-                    list(
-                        map(dist_utils.calc_default_target_entropy,
-                            flat_action_spec)))
-            self._target_entropy = target_entropy
-            logging.info("Sarsa target_entropy=%s" % target_entropy)
-            self._log_alpha = nn.Parameter(
-                torch.tensor(np.log(initial_alpha), dtype=torch.float32))
-            self.add_optimizer(alpha_optimizer, [self._log_alpha])
-        self._use_entropy_reward = use_entropy_reward
+            if isinstance(actor_network, DistributionNetwork):
+                if target_entropy is None:
+                    target_entropy = np.sum(
+                        list(
+                            map(dist_utils.calc_default_target_entropy,
+                                flat_action_spec)))
+                self._target_entropy = target_entropy
+                logging.info("Sarsa target_entropy=%s" % target_entropy)
+                log_alpha = torch.tensor(
+                    np.log(initial_alpha), dtype=torch.float32)
+                if alpha_optimizer is None:
+                    self._log_alpha = log_alpha
+                else:
+                    self._log_alpha = nn.Parameter(log_alpha)
+                    self.add_optimizer(alpha_optimizer, [self._log_alpha])
+                self._use_entropy_reward = use_entropy_reward
+            else:
+                logging.info(
+                    "initial_alpha and alpha_optimizer is ignored. "
+                    "The `actor_network` needs to a DistributionNetwork in "
+                    "order to use entropy as regularization or reward")
 
         models = copy.copy(critic_networks)
         target_models = copy.copy(self._target_critic_networks)

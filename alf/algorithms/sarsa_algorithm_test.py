@@ -25,16 +25,17 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.ppo_algorithm_test import unroll
 from alf.algorithms.sarsa_algorithm import SarsaAlgorithm
 from alf.environments.suite_unittest import ActionType, PolicyUnittestEnv
-from alf.networks import (
-    ActorDistributionNetwork, ActorDistributionRNNNetwork,
-    StableNormalProjectionNetwork, CriticNetwork, CriticRNNNetwork)
+from alf.networks import (ActorDistributionNetwork,
+                          ActorDistributionRNNNetwork, ActorNetwork,
+                          ActorRNNNetwork, StableNormalProjectionNetwork,
+                          CriticNetwork, CriticRNNNetwork)
 from alf.utils import common
 from alf.utils.math_ops import clipped_exp
 
 DEBUGGING = False
 
 
-def _create_algorithm(env, use_rnn, on_policy, fast_critic_bias_speed,
+def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed,
                       learning_rate):
     observation_spec = env.observation_spec()
     action_spec = env.action_spec()
@@ -45,22 +46,34 @@ def _create_algorithm(env, use_rnn, on_policy, fast_critic_bias_speed,
         scale_distribution=True,
         std_transform=clipped_exp)
 
-    # TODO: test ddpg after ActorNetwork is ready
     if use_rnn:
-        actor_net = ActorDistributionRNNNetwork(
-            observation_spec,
-            action_spec,
-            fc_layer_params=fc_layer_params,
-            lstm_hidden_size=(4, ))
+        if sac:
+            actor_net = ActorDistributionRNNNetwork(
+                observation_spec,
+                action_spec,
+                fc_layer_params=fc_layer_params,
+                lstm_hidden_size=(4, ),
+                continuous_projection_net_ctor=continuous_projection_net_ctor)
+        else:
+            actor_net = ActorRNNNetwork(
+                observation_spec,
+                action_spec,
+                fc_layer_params=fc_layer_params,
+                lstm_hidden_size=(4, ))
         critic_net = CriticRNNNetwork((observation_spec, action_spec),
                                       joint_fc_layer_params=fc_layer_params,
                                       lstm_hidden_size=(4, ))
     else:
-        actor_net = ActorDistributionNetwork(
-            observation_spec,
-            action_spec,
-            fc_layer_params=fc_layer_params,
-            continuous_projection_net_ctor=continuous_projection_net_ctor)
+        if sac:
+            actor_net = ActorDistributionNetwork(
+                observation_spec,
+                action_spec,
+                fc_layer_params=fc_layer_params,
+                continuous_projection_net_ctor=continuous_projection_net_ctor)
+        else:
+            actor_net = ActorNetwork(
+                observation_spec, action_spec, fc_layer_params=fc_layer_params)
+
         critic_net = CriticNetwork((observation_spec, action_spec),
                                    joint_fc_layer_params=fc_layer_params)
 
@@ -84,6 +97,7 @@ def _create_algorithm(env, use_rnn, on_policy, fast_critic_bias_speed,
         env=env,
         config=config,
         on_policy=on_policy,
+        ou_stddev=0.1,
         fast_critic_bias_speed=fast_critic_bias_speed,
         actor_network=actor_net,
         critic_network=critic_net,
@@ -97,16 +111,18 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
     # TODO: on_policy=True is very unstable, try to figure out the possible
     # reason.
     @parameterized.parameters(
+        dict(on_policy=False, sac=False),
         dict(on_policy=False, use_rnn=False),
         dict(on_policy=False, use_rnn=True),
         dict(on_policy=False, fast_critic_bias_speed=10.),
     )
     def test_sarsa(self,
                    on_policy=False,
+                   sac=True,
                    use_rnn=False,
                    fast_critic_bias_speed=0.):
-        logging.info("on_policy=%s use_rnn=%s fast_critic_bias_speed=%s" %
-                     (on_policy, use_rnn, fast_critic_bias_speed))
+        logging.info("sac=%d on_policy=%s use_rnn=%s fast_critic_bias_speed=%s"
+                     % (sac, on_policy, use_rnn, fast_critic_bias_speed))
         env_class = PolicyUnittestEnv
         learning_rate = 2e-2
         iterations = 500
@@ -122,6 +138,7 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
         algorithm = _create_algorithm(
             env,
             on_policy=on_policy,
+            sac=sac,
             use_rnn=use_rnn,
             fast_critic_bias_speed=fast_critic_bias_speed,
             learning_rate=learning_rate)
@@ -143,4 +160,5 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
 
 
 if __name__ == '__main__':
+    #    SarsaTest().test_sarsa()
     alf.test.main()

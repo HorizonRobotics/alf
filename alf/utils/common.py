@@ -894,44 +894,6 @@ def log_metrics(metrics, prefix=''):
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
 
 
-class OUProcess(nn.Module):
-    """A zero-mean Ornstein-Uhlenbeck process."""
-
-    def __init__(self,
-                 initial_value,
-                 damping=0.15,
-                 stddev=0.2,
-                 seed=None,
-                 scope='ornstein_uhlenbeck_noise'):
-        """A Class for generating noise from a zero-mean Ornstein-Uhlenbeck process.
-
-        The Ornstein-Uhlenbeck process is a process that generates temporally
-        correlated noise via a random walk with damping. This process describes
-        the velocity of a particle undergoing brownian motion in the presence of
-        friction. This can be useful for exploration in continuous action
-        environments with momentum.
-
-        The temporal update equation is:
-        `x_next = (1 - damping) * x + N(0, std_dev)`
-
-        Args:
-            initial_value (Tensor): Initial value of the process.
-            damping (float): The rate at which the noise trajectory is damped towards the
-                mean. We must have 0 <= damping <= 1, where a value of 0 gives an
-                undamped random walk and a value of 1 gives uncorrelated Gaussian noise.
-                Hence in most applications a small non-zero value is appropriate.
-            stddev (float): Standard deviation of the Gaussian component.
-        """
-        super(OUProcess, self).__init__()
-        self._damping = damping
-        self._stddev = stddev
-        self.register_buffer("_x", initial_value.clone())
-
-    def __call__(self):
-        noise = torch.randn(self._x.shape) * self._stddev
-        return self._x.copy_((1. - self._damping) * self._x + noise)
-
-
 def create_ou_process(action_spec, ou_stddev, ou_damping):
     """Create nested zero-mean Ornstein-Uhlenbeck processes.
 
@@ -951,7 +913,7 @@ def create_ou_process(action_spec, ou_stddev, ou_damping):
     """
 
     def _create_ou_process(action_spec):
-        return OUProcess(action_spec.zeros(), ou_damping, ou_stddev)
+        return dist_utils.OUProcess(action_spec.zeros(), ou_damping, ou_stddev)
 
     ou_process = alf.nest.map_structure(_create_ou_process, action_spec)
     return ou_process

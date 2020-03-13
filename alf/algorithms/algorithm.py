@@ -129,6 +129,9 @@ class Algorithm(nn.Module):
             modules_and_params (list of Module or Parameter): The modules and
                 parameters to be optimized by `optimizer`
         """
+        if optimizer is None:
+            # handled by default optimizer
+            return
         for module in modules_and_params:
             for m in _flatten_module(module):
                 self._module_to_optimizer[m] = optimizer
