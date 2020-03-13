@@ -105,9 +105,8 @@ class FastCriticBias(nn.Module):
                 critics = [critics]
             critics, reward, discount = math_ops.weighted_reduce_mean(
                 [critics, reward, discount], mask)
-            self._averager.average([critics, reward, discount])
-
-            critics, reward, discount = self._averager.get()
+            critics, reward, discount = self._averager.average(
+                [critics, reward, discount])
             b = reward / (1 - discount)
             nest_map(lambda v, c: v.copy_((b - c).detach()), self._biases,
                      critics)
