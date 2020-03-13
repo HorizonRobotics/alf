@@ -46,7 +46,7 @@ def _get_builder(obj):
         new_builder = functools.partial(_builder_independent, builder,
                                         obj.reinterpreted_batch_ndims)
         return new_builder, params
-    elif type(obj) == td.TransformedDistribution:
+    elif isinstance(obj, td.TransformedDistribution):
         builder, params = _get_builder(obj.base_dist)
         new_builder = functools.partial(_builder_transformed, builder,
                                         obj.transforms)
