@@ -62,7 +62,7 @@ class BatchSquash(object):
     """Facilitates flattening and unflattening batch dims of a tensor. Copied
     from tf_agents.
 
-    Exposes a pair of matched faltten and unflatten methods. After flattening
+    Exposes a pair of matched flatten and unflatten methods. After flattening
     only 1 batch dimension will be left. This facilitates evaluating networks
     that expect inputs to have only 1 batch dimension.
     """
