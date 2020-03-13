@@ -110,6 +110,7 @@ class FC(nn.Module):
                  output_size,
                  activation=identity,
                  use_bias=True,
+                 kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """A fully connected layer that's also responsible for activation and
@@ -117,12 +118,14 @@ class FC(nn.Module):
         on the activation following the linear layer. Suggest using this wrapper
         module instead of nn.Linear if you really care about weight std after
         init.
-
         Args:
             input_size (int): input size
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
+            kernel_initializer (Callable): initializer for the FC layer. If none
+                is provided a variance_scaling_initializer with gain as
+                `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution
             bias_init_value (float): a constant
@@ -130,10 +133,15 @@ class FC(nn.Module):
         super(FC, self).__init__()
         self._activation = activation
         self._linear = nn.Linear(input_size, output_size, bias=use_bias)
-        variance_scaling_init(
-            self._linear.weight.data,
-            gain=kernel_init_gain,
-            nonlinearity=self._activation.__name__)
+
+        if kernel_initializer is None:
+            variance_scaling_init(
+                self._linear.weight.data,
+                gain=kernel_init_gain,
+                nonlinearity=self._activation.__name__)
+        else:
+            kernel_initializer(self._linear.weight)
+
         if use_bias:
             nn.init.constant_(self._linear.bias.data, bias_init_value)
 
@@ -159,6 +167,7 @@ class Conv2D(nn.Module):
                  strides=1,
                  padding=0,
                  use_bias=True,
+                 kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """A 2D Conv layer that's also responsible for activation and customized
@@ -174,6 +183,9 @@ class Conv2D(nn.Module):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
+            kernel_initializer (Callable): initializer for the conv layer. If none
+                is provided a variance_scaling_initializer with gain as
+                `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution
             bias_init_value (float): a constant
@@ -187,10 +199,15 @@ class Conv2D(nn.Module):
             stride=strides,
             padding=padding,
             bias=use_bias)
-        variance_scaling_init(
-            self._conv2d.weight.data,
-            gain=kernel_init_gain,
-            nonlinearity=self._activation.__name__)
+
+        if kernel_initializer is None:
+            variance_scaling_init(
+                self._conv2d.weight.data,
+                gain=kernel_init_gain,
+                nonlinearity=self._activation.__name__)
+        else:
+            kernel_initializer(self._conv2d.weight)
+
         if use_bias:
             nn.init.constant_(self._conv2d.bias.data, bias_init_value)
 
@@ -216,6 +233,7 @@ class ConvTranspose2D(nn.Module):
                  strides=1,
                  padding=0,
                  use_bias=True,
+                 kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """A 2D ConvTranspose layer that's also responsible for activation and
@@ -232,6 +250,9 @@ class ConvTranspose2D(nn.Module):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
+            kernel_initializer (Callable): initializer for the conv_trans layer.
+                If none is provided a variance_scaling_initializer with gain as
+                `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution
             bias_init_value (float): a constant
@@ -245,11 +266,15 @@ class ConvTranspose2D(nn.Module):
             stride=strides,
             padding=padding,
             bias=use_bias)
-        variance_scaling_init(
-            self._conv_trans2d.weight.data,
-            gain=kernel_init_gain,
-            nonlinearity=self._activation.__name__,
-            transposed=True)
+        if kernel_initializer is None:
+            variance_scaling_init(
+                self._conv_trans2d.weight.data,
+                gain=kernel_init_gain,
+                nonlinearity=self._activation.__name__,
+                transposed=True)
+        else:
+            kernel_initializer(self._conv_trans2d.weight)
+
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
 

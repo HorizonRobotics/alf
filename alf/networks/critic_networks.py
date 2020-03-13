@@ -11,16 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""CriticNetworks"""
 
 import gin
+import functools
 
 import torch
 import torch.nn as nn
 
 import alf.layers as layers
 import alf.nest as nest
-from alf.networks import EncodingNetwork, LSTMEncodingNetwork
-from alf.networks import Network
+from alf.networks import Network, EncodingNetwork, LSTMEncodingNetwork
+from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
 
 
@@ -35,6 +37,7 @@ class CriticNetwork(Network):
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="CriticNetwork"):
         """Creates an instance of `CriticNetwork` for estimating action-value of
         continuous actions. The action-value is defined as the expected return
@@ -60,10 +63,21 @@ class CriticNetwork(Network):
                 actions.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a
+                variance_scaling_initializer with uniform distribution.
             name (str):
         """
         super(CriticNetwork, self).__init__(
             input_tensor_spec, skip_input_preprocessing=True, name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=1. / 3,
+                mode='fan_in',
+                distribution='uniform',
+                calc_gain_after_activation=False)
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -77,20 +91,27 @@ class CriticNetwork(Network):
             observation_spec,
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
 
         self._action_encoder = EncodingNetwork(
             action_spec,
             fc_layer_params=action_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
 
         self._joint_encoder = EncodingNetwork(
             TensorSpec((self._obs_encoder.output_spec.shape[0] +
                         self._action_encoder.output_spec.shape[0], )),
             fc_layer_params=joint_fc_layer_params,
             activation=activation,
+            kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity)
+            last_activation=layers.identity,
+            last_kernel_initializer=last_kernel_initializer)
 
         self._output_spec = TensorSpec(())
 
@@ -131,6 +152,7 @@ class CriticRNNNetwork(Network):
                  lstm_hidden_size=100,
                  critic_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="CriticRNNNetwork"):
         """Creates an instance of `CriticRNNNetwork` for estimating action-value
         of continuous actions. The action-value is defined as the expected return
@@ -161,10 +183,21 @@ class CriticRNNNetwork(Network):
                 hidden FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a
+                variance_scaling_initializer with uniform distribution.
             name (str):
         """
         super(CriticRNNNetwork, self).__init__(
             input_tensor_spec, skip_input_preprocessing=True, name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=1. / 3,
+                mode='fan_in',
+                distribution='uniform',
+                calc_gain_after_activation=False)
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -178,26 +211,34 @@ class CriticRNNNetwork(Network):
             observation_spec,
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
 
         self._action_encoder = EncodingNetwork(
             action_spec,
             fc_layer_params=action_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
 
         self._joint_encoder = EncodingNetwork(
             TensorSpec((self._obs_encoder.output_spec.shape[0] +
                         self._action_encoder.output_spec.shape[0], )),
             fc_layer_params=joint_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
 
         self._lstm_encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=self._joint_encoder.output_spec,
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=critic_fc_layer_params,
             activation=activation,
+            kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity)
+            last_activation=layers.identity,
+            last_kernel_initializer=last_kernel_initializer)
 
         self._output_spec = TensorSpec(())
 

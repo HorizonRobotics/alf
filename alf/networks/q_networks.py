@@ -14,6 +14,7 @@
 """QNetworks"""
 
 import gin
+import functools
 
 import torch
 import torch.nn as nn
@@ -36,6 +37,7 @@ class QNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="QNetwork"):
         """Creates an instance of `QNetwork` for estimating action-value of
         discrete actions. The action-value is defined as the expected return
@@ -68,6 +70,9 @@ class QNetwork(Network):
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a default
+                variance_scaling_initializer.
         """
         super(QNetwork, self).__init__(
             input_tensor_spec,
@@ -82,9 +87,17 @@ class QNetwork(Network):
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            activation=activation,
-            last_layer_size=num_actions,
-            last_activation=layers.identity)
+            activation=activation)
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
+
+        self._final_layer = layers.FC(
+            self._encoding_net.output_spec.shape[0],
+            num_actions,
+            activation=layers.identity,
+            kernel_initializer=last_kernel_initializer,
+            bias_init_value=-0.2)
 
     def forward(self, observation, state=()):
         """Computes action values given an observation.
@@ -98,7 +111,8 @@ class QNetwork(Network):
             state: empty
         """
         observation, state = Network.forward(self, observation, state)
-        action_value, _ = self._encoding_net(observation)
+        encoded_obs, _ = self._encoding_net(observation)
+        action_value = self._final_layer(encoded_obs)
         return action_value, state
 
 
@@ -116,6 +130,7 @@ class QRNNNetwork(Network):
                  lstm_hidden_size=100,
                  value_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="QRNNNetwork"):
         """Creates an instance of `QRNNNetwork` for estimating action-value of
         discrete actions. The action-value is defined as the expected return
@@ -152,6 +167,9 @@ class QRNNNetwork(Network):
                 hidden FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a default
+                variance_scaling_initializer.
         """
         super(QRNNNetwork, self).__init__(
             input_tensor_spec,
@@ -169,8 +187,17 @@ class QRNNNetwork(Network):
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=value_fc_layer_params,
             activation=activation,
-            last_layer_size=num_actions,
-            last_activation=layers.identity)
+            kernel_initializer=kernel_initializer)
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
+
+        self._final_layer = layers.FC(
+            self._encoding_net.output_spec.shape[0],
+            num_actions,
+            activation=layers.identity,
+            kernel_initializer=last_kernel_initializer,
+            bias_init_value=-0.2)
 
     def forward(self, observation, state):
         """Computes action values given an observation.
@@ -184,7 +211,8 @@ class QRNNNetwork(Network):
             new_state (nest[tuple]): the updated states
         """
         observation, state = Network.forward(self, observation, state)
-        action_value, state = self._encoding_net(observation, state)
+        encoded_obs, state = self._encoding_net(observation, state)
+        action_value = self._final_layer(encoded_obs)
         return action_value, state
 
     @property
