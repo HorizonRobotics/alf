@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
 import gin
 import math
 import numpy as np
@@ -25,7 +24,6 @@ import torch.distributions as td
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import DistributionNetwork, Network
-from alf.utils import spec_utils, tensor_utils
 
 
 def DiagMultivariateNormal(loc, scale_diag):
@@ -138,15 +136,15 @@ class NormalProjectionNetwork(DistributionNetwork):
                 ("When squashing the mean or scaling the distribution, bounds "
                  + "are required for the action spec!")
 
-            self._action_means, self._action_magnitudes = \
-                spec_utils.spec_means_and_magnitudes(action_spec)
+            action_high = torch.as_tensor(action_spec.maximum)
+            action_low = torch.as_tensor(action_spec.minimum)
+            self._action_means = (action_high + action_low) / 2
+            self._action_magnitudes = (action_high - action_low) / 2
             # Do not transform mean if scaling distribution
             if not scale_distribution:
-                self._mean_transform = functools.partial(
-                    tensor_utils.scale_and_shift,
-                    means=self._action_means,
-                    magnitudes=self._action_magnitudes,
-                    squash_func=torch.tanh)
+                self._mean_transform = (
+                    lambda inputs: self._action_means + self._action_magnitudes
+                    * inputs.tanh())
 
         self._std_transform = layers.identity
         if std_transform is not None:

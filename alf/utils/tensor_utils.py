@@ -18,29 +18,6 @@ import torch
 import alf
 
 
-def scale_and_shift(tensor, means=None, magnitudes=None, squash_func=None):
-    """Scale and shift the tensor according to mean and magnitude:
-        result = means + magnitudes * squash_func(tensor)
-
-    Args:
-        tensor (Tensor): a tensor to be scaled and shifted
-        means (Tensor): for shifting the tensor if not None.
-        magnitudes (Tensor): for scaling the tensor if not None.
-        squash_func (Callable): optional squashing function to be applied to the
-            input tensor; if None, the input tensor will be used directly
-            without any squashing.
-    Returns:
-        A scale and shifted tensor.
-    """
-    if squash_func is not None:
-        tensor = squash_func(tensor)
-    if magnitudes is not None:
-        tensor = magnitudes * tensor
-    if means is not None:
-        tensor = means + tensor
-    return tensor
-
-
 def tensor_extend(x, y):
     """Extending tensor with new_slice.
 
@@ -91,8 +68,8 @@ def explained_variance(ypred, y):
 def to_tensor(data, dtype=None):
     """Convert the data to a torch tensor.
 
-    Args:
-        data (array like): data for the tensor. Can be a list, tuple,
+    Args: 
+        data (array like): data for the tensor. Can be a list, tuple, 
             numpy ndarray, scalar, and other types.
         dtype (torch.dtype): dtype of the converted tensors.
 

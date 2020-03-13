@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+import functools
 import torch
 import torch.distributions as td
 import unittest
