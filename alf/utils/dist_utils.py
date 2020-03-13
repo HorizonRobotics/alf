@@ -376,6 +376,27 @@ def estimated_entropy(dist,
     return entropy, entropy_for_gradient
 
 
+class SquashSpecNormal(td.TransformedDistribution):
+    """A dummy wrapper class.
+    
+    This is to ensure only the SquashSpecNormal uses estimated_entropy.
+    """
+
+    def __init__(self, base_distribution, transforms):
+        super().__init__(
+            base_distribution=base_distribution, transforms=transforms)
+
+
+# NOTE(hnyu): It might be possible to get a closed-form of entropy given a
+# Normal as the base dist? It's better (lower variance) than this estimated
+# one. Also, it seems that after transformations, the entropy actually
+# changes, and we are computing the entropy of the base dist instead of the
+# input dist.
+#
+# Something like what TFP does:
+# https://github.com/tensorflow/probability/blob/356cfddef026b3339b8f2a81e600acd2ff8e22b4/tensorflow_probability/python/distributions/transformed_distribution.py#L636
+# (Probably it's complicated, but we need to spend time figuring out if the
+# current estimation is the best way to do this).
 def entropy_with_fallback(distributions, action_spec):
     """Computes total entropy of nested distribution.
     If entropy() of a distribution is not implemented, this function will
@@ -404,7 +425,7 @@ def entropy_with_fallback(distributions, action_spec):
     """
 
     def _calc_outer_rank(dist: td.Distribution, action_spec):
-        if isinstance(dist, td.TransformedDistribution):
+        if isinstance(dist, SquashSpecNormal):
             # TransformedDistribution does not implement the two necessary
             # interface functions of Distribution. So we have to use the
             # original distribution it transforms.
@@ -415,7 +436,7 @@ def entropy_with_fallback(distributions, action_spec):
             action_spec.shape))
 
     def _compute_entropy(dist: td.Distribution, action_spec):
-        if isinstance(dist, td.TransformedDistribution):
+        if isinstance(dist, SquashSpecNormal):
             entropy, entropy_for_gradient = estimated_entropy(dist)
         else:
             entropy = dist.entropy()
@@ -431,8 +452,7 @@ def entropy_with_fallback(distributions, action_spec):
     entropies = list(
         map(_compute_entropy, nest.flatten(distributions),
             nest.flatten(action_spec)))
-    entropies_for_gradient = [eg for e, eg in entropies]
-    entropies = [e for e, eg in entropies]
+    entropies, entropies_for_gradient = zip(*entropies)
 
     return sum(entropies), sum(entropies_for_gradient)
 
@@ -445,7 +465,7 @@ def calc_default_target_entropy(spec):
     """
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
-    cont = spec.dtype.is_floating_point
+    cont = spec.is_continuous
     min_prob = 0.01
     log_mp = np.log(min_prob)
     # continuous: suppose the prob concentrates on a delta of 0.01*(M-m)
@@ -468,7 +488,7 @@ def calc_default_max_entropy(spec, fraction=0.8):
     assert fraction <= 1.0 and fraction > 0
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
-    cont = spec.dtype.is_floating_point
+    cont = spec.is_continuous
     # use uniform distributions to compute upper bounds
     e = np.sum([(np.log(M - m) * (fraction if M - m > 1 else 1.0 / fraction)
                  if cont else np.log(M - m + 1) * fraction)

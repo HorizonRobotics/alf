@@ -24,6 +24,7 @@ import torch.distributions as td
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import DistributionNetwork, Network
+from alf.utils import dist_utils
 
 
 def DiagMultivariateNormal(loc, scale_diag):
@@ -182,7 +183,7 @@ class NormalProjectionNetwork(DistributionNetwork):
             # kl_divergence(TransformedDistribution(Independent, transforms),
             #               TransformedDistribution(Independent, transforms))
             # ````
-            squashed_dist = td.TransformedDistribution(
+            squashed_dist = dist_utils.SquashSpecNormal(
                 base_distribution=normal_dist,
                 transforms=[
                     td.SigmoidTransform(),

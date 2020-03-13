@@ -111,6 +111,7 @@ class EntropyTargetAlgorithm(Algorithm):
         self._min_log_alpha = -100.
         if min_alpha >= 0.:
             self._min_log_alpha = np.log(min_alpha)
+        self._min_log_alpha = torch.tensor(self._min_log_alpha)
 
         flat_action_spec = alf.nest.flatten(self._action_spec)
         if target_entropy is None:
@@ -138,8 +139,8 @@ class EntropyTargetAlgorithm(Algorithm):
             self._fast_stage_thresh = 2.0 * target_entropy
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
-        self._slow_update_rate = slow_update_rate
-        self._fast_update_rate = fast_update_rate
+        self._slow_update_rate = torch.tensor(slow_update_rate)
+        self._fast_update_rate = torch.tensor(fast_update_rate)
 
     def train_step(self, distribution, step_type):
         """Train step.
@@ -182,13 +183,12 @@ class EntropyTargetAlgorithm(Algorithm):
         num = max(num, 1)
         entropy2 = torch.sum(entropy**2) / num
         entropy = torch.sum(entropy) / num
-        entropy_std = math.sqrt(max(0.0, entropy2 - entropy * entropy))
+        entropy_std = torch.sqrt(
+            torch.max(torch.tensor(0.0), entropy2 - entropy * entropy))
 
         if not_empty:
             self.adjust_alpha(entropy)
-
-        if self._debug_summaries:
-            if not_empty & should_record_summaries():
+            if self._debug_summaries and should_record_summaries():
                 alf.summary.scalar("entropy_std", entropy_std)
 
         alpha = torch.exp(self._log_alpha)
@@ -206,7 +206,8 @@ class EntropyTargetAlgorithm(Algorithm):
         avg_entropy = self._avg_entropy.average(entropy)
 
         def _init_entropy():
-            self._max_entropy.fill_(min(0.8 * avg_entropy, avg_entropy / 0.8))
+            self._max_entropy.fill_(
+                torch.min(0.8 * avg_entropy, avg_entropy / 0.8))
             self._stage.add_(1)
 
         def _init():
@@ -217,8 +218,7 @@ class EntropyTargetAlgorithm(Algorithm):
                 0.5 - 1.5 * increasing) * self._very_slow_update_rate
             self._stage.add_(below.type(torch.int32))
             self._log_alpha.fill_(
-                max(self._log_alpha + update_rate,
-                    np.float32(self._min_log_alpha)))
+                torch.max(self._log_alpha + update_rate, self._min_log_alpha))
 
         def _free():
             crossing = avg_entropy < self._target_entropy
@@ -231,11 +231,9 @@ class EntropyTargetAlgorithm(Algorithm):
             crossing = above != previous_above
             update_rate = self._update_rate
             update_rate = torch.where(crossing, 0.9 * update_rate, update_rate)
-            update_rate = torch.max(update_rate,
-                                    torch.tensor(self._slow_update_rate))
+            update_rate = torch.max(update_rate, self._slow_update_rate)
             update_rate = torch.where(entropy < self._fast_stage_thresh,
-                                      torch.tensor(self._fast_update_rate),
-                                      update_rate)
+                                      self._fast_update_rate, update_rate)
             self._update_rate.fill_(update_rate)
             above = above.type(torch.float32)
             below = 1 - above
@@ -244,7 +242,7 @@ class EntropyTargetAlgorithm(Algorithm):
             log_alpha = self._log_alpha + (
                 (below + 0.5 * above) * decreasing -
                 (above + 0.5 * below) * increasing) * update_rate
-            log_alpha = torch.max(log_alpha, torch.tensor(self._min_log_alpha))
+            log_alpha = torch.max(log_alpha, self._min_log_alpha)
             self._log_alpha.fill_(log_alpha)
 
         if self._stage < -2:
