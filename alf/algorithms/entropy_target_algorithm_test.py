@@ -58,7 +58,9 @@ class EntropyTargetAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         info = EntropyTargetInfo(
             step_type=self._time_step.step_type, loss=alg_step.info.loss)
-        alg.calc_loss(info)
+        for i in range(-3, 1):
+            alg._stage = torch.tensor(i, dtype=torch.int32)
+            alg.calc_loss(info)
 
 
 if __name__ == "__main__":

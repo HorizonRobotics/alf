@@ -17,7 +17,6 @@ import gin
 import math
 import numpy as np
 import torch
-import torch.nn as nn
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -95,23 +94,19 @@ class EntropyTargetAlgorithm(Algorithm):
             min_alpha (float): the minimal value of alpha. If <=0, exp(-100) is
                 used.
             average_window (int): window size for averaging past entropies.
-            optimizer (Optimizer): The optimizer for training. If
-                not provided, will use the same optimizer of the parent
-                algorithm.
             debug_summaries (bool): True if debug summaries should be created.
         """
         super().__init__(
             debug_summaries=debug_summaries, name="EntropyTargetAlgorithm")
 
-        self._log_alpha = nn.Parameter(
-            torch.tensor(np.log(initial_alpha), dtype=torch.float32),
-            requires_grad=False)
-        self._stage = nn.Parameter(
-            torch.tensor(-2, dtype=torch.int32), requires_grad=False)
+        self.register_buffer(
+            '_log_alpha',
+            torch.tensor(np.log(initial_alpha), dtype=torch.float32))
+        self.register_buffer('_stage', torch.tensor(-2, dtype=torch.int32))
         self._avg_entropy = ScalarWindowAverager(average_window)
-        self._update_rate = nn.Parameter(
-            torch.tensor(fast_update_rate, dtype=torch.float32),
-            requires_grad=False)
+        self.register_buffer(
+            "_update_rate", torch.tensor(
+                fast_update_rate, dtype=torch.float32))
         self._action_spec = action_spec
         self._min_log_alpha = -100.
         if min_alpha >= 0.:
@@ -131,9 +126,8 @@ class EntropyTargetAlgorithm(Algorithm):
             assert target_entropy <= max_entropy, (
                 "Target entropy %s should be less or equal than max entropy %s!"
                 % (target_entropy, max_entropy))
-        self._max_entropy = nn.Parameter(
-            torch.tensor(max_entropy, dtype=torch.float32),
-            requires_grad=False)
+        self.register_buffer("_max_entropy",
+                             torch.tensor(max_entropy, dtype=torch.float32))
 
         if skip_free_stage:
             self._stage.fill_(1)
@@ -169,6 +163,15 @@ class EntropyTargetAlgorithm(Algorithm):
                     extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
 
     def calc_loss(self, training_info: EntropyTargetInfo, valid_mask=None):
+        """Calculate loss.
+
+        Args:
+            training_info (EntropyTargetInfo): for computing loss.
+            valid_mask (tensor): valid mask to be applied on time steps.
+        
+        Returns:
+            LossInfo.
+        """
         loss_info = training_info.loss
         mask = (training_info.step_type != StepType.LAST).type(torch.float32)
         if valid_mask:
@@ -195,7 +198,7 @@ class EntropyTargetAlgorithm(Algorithm):
         """Adjust alpha according to the current entropy.
 
         Args:
-            entropy (scalar Tensor). the current entropy.
+            entropy (scalar Tensor): the current entropy.
         Returns:
             adjusted entropy regularization
         """
@@ -228,9 +231,10 @@ class EntropyTargetAlgorithm(Algorithm):
             crossing = above != previous_above
             update_rate = self._update_rate
             update_rate = torch.where(crossing, 0.9 * update_rate, update_rate)
-            update_rate = torch.max(update_rate, self._slow_update_rate)
+            update_rate = torch.max(update_rate,
+                                    torch.tensor(self._slow_update_rate))
             update_rate = torch.where(entropy < self._fast_stage_thresh,
-                                      np.float32(self._fast_update_rate),
+                                      torch.tensor(self._fast_update_rate),
                                       update_rate)
             self._update_rate.fill_(update_rate)
             above = above.type(torch.float32)
@@ -240,7 +244,7 @@ class EntropyTargetAlgorithm(Algorithm):
             log_alpha = self._log_alpha + (
                 (below + 0.5 * above) * decreasing -
                 (above + 0.5 * below) * increasing) * update_rate
-            log_alpha = torch.max(log_alpha, np.float32(self._min_log_alpha))
+            log_alpha = torch.max(log_alpha, torch.tensor(self._min_log_alpha))
             self._log_alpha.fill_(log_alpha)
 
         if self._stage < -2:
@@ -253,12 +257,11 @@ class EntropyTargetAlgorithm(Algorithm):
             _adjust()
         alpha = torch.exp(self._log_alpha)
 
-        if self._debug_summaries:
-            if should_record_summaries():
-                with self.name_scope:
-                    alf.summary.scalar("alpha", alpha)
-                    alf.summary.scalar("avg_entropy", avg_entropy)
-                    alf.summary.scalar("stage", self._stage)
-                    alf.summary.scalar("update_rate", self._update_rate)
+        if self._debug_summaries and should_record_summaries():
+            with alf.summary.scope(self.__class__.__name__):
+                alf.summary.scalar("alpha", alpha)
+                alf.summary.scalar("avg_entropy", avg_entropy)
+                alf.summary.scalar("stage", self._stage)
+                alf.summary.scalar("update_rate", self._update_rate)
 
         return alpha
