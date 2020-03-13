@@ -256,7 +256,7 @@ class EntropyTargetAlgorithm(Algorithm):
         alpha = torch.exp(self._log_alpha)
 
         if self._debug_summaries and should_record_summaries():
-            with alf.summary.scope(self.__class__.__name__):
+            with alf.summary.scope(self.name):
                 alf.summary.scalar("alpha", alpha)
                 alf.summary.scalar("avg_entropy", avg_entropy)
                 alf.summary.scalar("stage", self._stage)
