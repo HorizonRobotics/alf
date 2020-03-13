@@ -280,7 +280,7 @@ def play(root_dir,
     ```
     Args:
         root_dir (str): same as the root_dir used for `train()`
-        env (TFEnvironment): the environment
+        env (TorchEnvironment): the environment
         algorithm (OnPolicyAlgorithm): the training algorithm
         checkpoint_step (int|str): the number of training steps which is used to
             specify the checkpoint to be loaded. If checkpoint_step is 'latest',
@@ -293,7 +293,6 @@ def play(root_dir,
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
-        use_tf_functions (bool): whether to use tf.function
     """
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
@@ -304,10 +303,10 @@ def play(root_dir,
 
     recorder = None
     if record_file is not None:
-        recorder = VideoRecorder(env.pyenv.envs[0], path=record_file)
+        recorder = VideoRecorder(env.gym, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
-        env.pyenv.envs[0].render(mode='human')
+        env.gym.render(mode='human')
     env.reset()
     if recorder:
         recorder.capture_frame()
@@ -327,7 +326,7 @@ def play(root_dir,
         if recorder:
             recorder.capture_frame()
         else:
-            env.pyenv.envs[0].render(mode='human')
+            env.gym.render(mode='human')
             time.sleep(sleep_time_per_step)
 
         episode_reward += float(time_step.reward)

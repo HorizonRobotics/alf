@@ -51,6 +51,7 @@ function test() {
         alf.algorithms.sarsa_algorithm_test \
         alf.algorithms.sac_algorithm_test \
         alf.algorithms.trac_algorithm_test \
+        alf.algorithms.vae_test \
         alf.data_structures_test \
         alf.device_ctx_test \
         alf.environments.suite_unittest_test \
@@ -73,6 +74,7 @@ function test() {
         alf.utils.data_buffer_test \
         alf.utils.dist_utils_test \
         alf.utils.normalizers_test \
+        alf.utils.tensor_utils_test \
         alf.utils.value_ops_test \
 
     cd ..

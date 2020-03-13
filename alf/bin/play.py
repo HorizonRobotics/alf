@@ -25,12 +25,11 @@ python -m alf.bin.play \
 """
 
 import os
-
+import gin
 from absl import app
 from absl import flags
 from absl import logging
 
-import gin.tf.external_configurables
 from alf.environments.utils import create_environment
 from alf.utils import common
 import alf.utils.external_configurables
@@ -53,7 +52,6 @@ flags.DEFINE_string(
     "to a file instead of shown on the screen.")
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
-flags.DEFINE_bool('use_tf_functions', True, "use graph mode instead of eager.")
 
 FLAGS = flags.FLAGS
 
@@ -78,13 +76,10 @@ def main(_):
         num_episodes=FLAGS.num_episodes,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
         record_file=FLAGS.record_file)
-    env.pyenv.close()
+    env.close()
 
 
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
-    from alf.utils.common import set_per_process_memory_growth
-
-    set_per_process_memory_growth()
     flags.mark_flag_as_required('root_dir')
     app.run(main)
