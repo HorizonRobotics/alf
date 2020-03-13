@@ -127,7 +127,8 @@ class FC(nn.Module):
                 If none is provided a variance_scaling_initializer with gain as
                 `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
-                the std of kernel init distribution
+                the std of kernel init distribution. It will be ignored if
+                `kernel_initializer` is not None.
             bias_init_value (float): a constant
         """
         super(FC, self).__init__()
