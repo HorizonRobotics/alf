@@ -123,8 +123,8 @@ class RNDAlgorithm(Algorithm):
             state (tuple):  empty tuple ()
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
+            AlgStep:
+                output: empty tuple ()
                 state: empty tuple ()
                 info: ICMInfo
         """

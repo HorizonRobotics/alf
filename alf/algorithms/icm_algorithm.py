@@ -142,8 +142,8 @@ class ICMAlgorithm(Algorithm):
             state (Tensor): state for ICM (previous observation)
             calc_intrinsic_reward (bool): if False, only return the losses
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
+            AlgStep:
+                output: empty tuple ()
                 state: observation
                 info (ICMInfo):
         """
