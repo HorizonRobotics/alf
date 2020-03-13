@@ -51,6 +51,7 @@ function test() {
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.trac_algorithm_test \
         alf.algorithms.vae_test \
+        alf.bin.train_play_test \
         alf.data_structures_test \
         alf.device_ctx_test \
         alf.environments.suite_unittest_test \

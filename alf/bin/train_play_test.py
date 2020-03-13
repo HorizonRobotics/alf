@@ -11,21 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import tempfile
-import os
-import subprocess
-from pathlib import Path
-from unittest import SkipTest
-
-import numpy as np
-import sys
+"""Test the training and playing of the gin files under alf/examples."""
 
 from absl import logging
-import tensorflow as tf
-
+import os
+import numpy as np
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 from tensorboard.backend.event_processing import event_file_loader
-from tensorboard.util import tensor_util
+import unittest
+from unittest import SkipTest
+
+import alf
+
+SKIP_TODO_MESSAGE = "TODO: convert and test this gin file to pytorch version"
 
 
 def run_cmd(cmd, cwd=None):
@@ -38,7 +39,6 @@ def run_cmd(cmd, cwd=None):
     logging.info("Running %s", " ".join(cmd))
 
     new_env = os.environ.copy()
-    new_env["CUDA_VISIBLE_DEVICES"] = ''  # force to use CPU for testing
 
     process = subprocess.Popen(
         cmd, stdout=sys.stderr, stderr=sys.stderr, cwd=cwd, env=new_env)
@@ -74,11 +74,9 @@ def get_metrics_from_eval_tfevents(eval_dir):
         if event_str.summary.value:
             for item in event_str.summary.value:
                 if item.tag == 'Metrics/AverageReturn':
-                    tensor = tensor_util.make_ndarray(item.tensor)
-                    episode_returns.append(float(tensor))
+                    episode_returns.append(item.simple_value)
                 elif item.tag == 'Metrics/AverageEpisodeLength':
-                    tensor = tensor_util.make_ndarray(item.tensor)
-                    episode_lengths.append(int(tensor))
+                    episode_lengths.append(item.simple_value)
 
     assert len(episode_returns) > 0
     logging.info("Episode returns, %s, episode lengths: %s", episode_returns,
@@ -110,7 +108,7 @@ COMMON_TRAIN_CONF = [
     # minimal env steps
     'TrainerConfig.num_steps_per_iter=1',
     # only save checkpoint after train iteration finished
-    'TrainerConfig.checkpoint_interval=%d' % int(0x7fffffff),
+    'TrainerConfig.num_checkpoints=1',
     # disable evaluate
     'TrainerConfig.evaluate=False',
 ]
@@ -149,7 +147,7 @@ PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
 
-class TrainPlayTest(tf.test.TestCase):
+class TrainPlayTest(alf.test.TestCase):
     """Train and play test for examples located in directory
     `$PROJECT_ROOT/alf/examples`
 
@@ -272,11 +270,12 @@ class TrainPlayTest(tf.test.TestCase):
         """
         examples_dir = get_examples_dir()
         cmd = [
-            'python3', '-m', 'alf.bin.train',
+            'python3',
+            '-m',
+            'alf.bin.train',
             '--root_dir=%s' % root_dir,
             '--gin_file=%s' % gin_file,
             '--gin_param=TrainerConfig.random_seed=1',
-            '--gin_param=TrainerConfig.use_tf_functions=False'
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
@@ -327,148 +326,174 @@ class TrainPlayTest(tf.test.TestCase):
 
         self._test(gin_file='ac_cart_pole.gin', test_perf_func=_test_func)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ac_simple_navigation(self):
         self._test(
             gin_file='ac_simple_navigation.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ddpg_pendulum(self):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], -200)
 
         self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_diayn_pendulum(self):
         self._test(
             gin_file='diayn_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_mountain_car(self):
         self._test(
             gin_file='icm_mountain_car.gin',
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_playground(self):
         self._test(
             gin_file='icm_playground.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_super_mario(self):
         self._test(
             gin_file='icm_super_mario.gin',
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_super_mario_intrinsic_only(self):
         self._test(
             gin_file="icm_super_mario_intrinsic_only.gin",
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_merlin_dmlab_collect_good_objects(self):
         self._test(
             gin_file='icm_super_mario_intrinsic_only.gin',
             skip_checker=self._skip_if_dmlab_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_off_policy_ac_breakout(self):
         self._test(
             gin_file='off_policy_ac_breakout.gin',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_off_policy_ac_cart_pole(self):
         self._test(
             gin_file='off_policy_ac_cart_pole.gin',
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_bullet_humanoid(self):
         self._test(
             gin_file='ppo_bullet_humanoid.gin',
             skip_checker=self._skip_if_bullet_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_cart_pole(self):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], 195)
 
         self._test(gin_file='ppo_cart_pole.gin', test_perf_func=_test_func)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_icm_super_mario_intrinsic_only(self):
         self._test(
             gin_file='ppo_icm_super_mario_intrinsic_only.gin',
             skip_checker=self._skip_if_mario_unavailable(),
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_icubwalk(self):
         self._test(
             gin_file='ppo_icubwalk.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_pr2(self):
         self._test(
             gin_file='ppo_pr2.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_rnd_super_mario(self):
         self._test(
             gin_file='rnd_super_mario.gin',
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_rnd_mrevenge(self):
         self._test(
             gin_file='ppo_rnd_mrevenge.gin',
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_bipedal_walker(self):
         self._test(
             gin_file='sac_bipedal_walker.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_cart_pole(self):
         self._test(
             gin_file='sac_cart_pole.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_humanoid(self):
         self._test(
             gin_file='sac_humanoid.gin',
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_pendulum(self):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], -200)
 
         self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sarsa_pendulum(self):
         self._test(
             gin_file='sarsa_pendulum.gin',
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_breakout(self):
         self._test(
             gin_file='trac_breakout.gin',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_ddpg_pendulum(self):
         self._test(
             gin_file='trac_ddpg_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_ppo_pr2(self):
         self._test(
             gin_file='trac_ppo_pr2.gin',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_sac_pendulum(self):
         self._test(
             gin_file='trac_sac_pendulum.gin',
@@ -490,8 +515,4 @@ class TrainPlayTest(tf.test.TestCase):
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
-    from alf.utils.common import set_per_process_memory_growth
-
-    set_per_process_memory_growth()
-    tf.test.main()
+    alf.test.main()

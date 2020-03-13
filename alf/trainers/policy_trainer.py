@@ -148,6 +148,9 @@ class Trainer(object):
     def _train(self):
         for env in self._envs:
             env.reset()
+        if self._eval_env:
+            self._eval_env.reset()
+
         iter_num = 0
 
         checkpoint_interval = math.ceil(
@@ -237,7 +240,7 @@ class Trainer(object):
         step_metrics = self._algorithm.get_step_metrics()
         with alf.summary.push_summary_writer(self._eval_summary_writer):
             for metric in self._eval_metrics:
-                metric.gen_summary(
+                metric.gen_summaries(
                     train_step=alf.summary.get_global_counter(),
                     step_metrics=step_metrics)
 
