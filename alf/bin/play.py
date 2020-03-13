@@ -24,16 +24,16 @@ python -m alf.bin.play \
 
 """
 
-import os
-import gin
 from absl import app
 from absl import flags
 from absl import logging
+import gin
+import os
 
 from alf.environments.utils import create_environment
+from alf.trainers import policy_trainer
 from alf.utils import common
 import alf.utils.external_configurables
-from alf.trainers import policy_trainer
 
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
@@ -41,7 +41,9 @@ flags.DEFINE_integer(
     'checkpoint_step', None, "the number of training steps which is used to "
     "specify the checkpoint to be loaded. If None, the latest checkpoint under "
     "train_dir will be used.")
-flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
+# TODO: Fix alf.utils.dist_utils.epsilon_greedy_sample() to handle
+# epsilon_greedy < 1.0 and change the default to 0.1
+flags.DEFINE_float('epsilon_greedy', 1.0, "probability of sampling action.")
 flags.DEFINE_integer('random_seed', None, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
 flags.DEFINE_float('sleep_time_per_step', 0.01,

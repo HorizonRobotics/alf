@@ -40,28 +40,33 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEmpty(network._fc_layers)
         self.assertTrue(network._img_encoding_net is None)
 
-    @parameterized.parameters((True, ), (False, ))
-    def test_image_encoding_network(self, flatten_output):
+    @parameterized.parameters((True, False), (False, True))
+    def test_image_encoding_network(self, flatten_output, same_padding):
         input_spec = TensorSpec((3, 32, 32), torch.float32)
         img = input_spec.zeros(outer_dims=(1, ))
         network = ImageEncodingNetwork(
             input_channels=input_spec.shape[0],
             input_size=input_spec.shape[1:],
             conv_layer_params=((16, (2, 2), 1, (1, 0)), (15, 2, (1, 2), 1)),
+            same_padding=same_padding,
             activation=torch.tanh,
             flatten_output=flatten_output)
 
         self.assertLen(list(network.parameters()), 4)  # two conv2d layers
 
         output, _ = network(img)
-        output_shape = (15, 34, 16)
+        if same_padding:
+            output_shape = (15, 30, 15)
+        else:
+            output_shape = (15, 34, 16)
         if flatten_output:
             output_shape = (np.prod(output_shape), )
         self.assertEqual(output_shape, network.output_spec.shape)
         self.assertEqual(output_shape, tuple(output.size()[1:]))
 
-    @parameterized.parameters((None, ), ((100, 100), ))
-    def test_image_decoding_network(self, preprocessing_fc_layers):
+    @parameterized.parameters((None, True), ((100, 100), False))
+    def test_image_decoding_network(self, preprocessing_fc_layers,
+                                    same_padding):
         input_spec = TensorSpec((100, ), torch.float32)
         embedding = input_spec.zeros(outer_dims=(1, ))
         network = ImageDecodingNetwork(
@@ -70,14 +75,19 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                                               0)),
             start_decoding_size=(20, 31),
             start_decoding_channels=8,
+            same_padding=same_padding,
             preprocess_fc_layer_params=preprocessing_fc_layers)
 
         num_layers = 3 if preprocessing_fc_layers is None else 5
         self.assertLen(list(network.parameters()), num_layers * 2)
 
         output, _ = network(embedding)
-        self.assertEqual((64, 21, 65), network.output_spec.shape)
-        self.assertEqual((64, 21, 65), tuple(output.size()[1:]))
+        if same_padding:
+            output_shape = (64, 21, 63)
+        else:
+            output_shape = (64, 21, 65)
+        self.assertEqual(output_shape, network.output_spec.shape)
+        self.assertEqual(output_shape, tuple(output.size()[1:]))
 
     @parameterized.parameters((None, None), (200, None), (50, torch.relu))
     def test_encoding_network_nonimg(self, last_layer_size, last_activation):

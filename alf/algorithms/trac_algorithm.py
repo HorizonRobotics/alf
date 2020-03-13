@@ -201,7 +201,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             else:
                 dist = td.kl.kl_divergence(d1, d2) + td.kl.kl_divergence(
                     d2, d1)
-            return dist
+            return dist.sum(list(range(1, dist.ndim)))
 
         def _update_total_dists(new_action, exp, total_dists):
             old_action = dist_utils.params_to_distributions(
