@@ -52,7 +52,9 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
 
     def _init_driver(self):
         return SyncOffPolicyDriver(
-            env=self._envs[0], algorithm=self._algorithm)
+            env=self._envs[0],
+            algorithm=self._algorithm,
+            unroll_length=self._unroll_length)
 
     def _train_iter(self, iter_num, policy_state, time_step):
         if not self._config.update_counter_every_mini_batch:
