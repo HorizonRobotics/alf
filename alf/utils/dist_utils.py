@@ -412,9 +412,7 @@ def entropy_with_fallback(distributions, action_spec):
     def _compute_entropy(dist: td.Distribution, action_spec):
         if isinstance(dist, td.TransformedDistribution):
             # TransformedDistribution is used by NormalProjectionNetwork with
-            # scale_distribution=True
-            # In general, entropy can only be calculated for affine
-            # transformation (assuming entropy() is implemented for base_dist).
+            # scale_distribution=True, in which case we estimate with sampling.
             entropy, entropy_for_gradient = estimated_entropy(dist)
         else:
             entropy = dist.entropy()
