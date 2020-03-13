@@ -183,7 +183,7 @@ class NormalProjectionNetwork(DistributionNetwork):
             # kl_divergence(TransformedDistribution(Independent, transforms),
             #               TransformedDistribution(Independent, transforms))
             # ````
-            squashed_dist = dist_utils.SquashSpecNormal(
+            squashed_dist = td.TransformedDistribution(
                 base_distribution=normal_dist,
                 transforms=[
                     td.SigmoidTransform(),

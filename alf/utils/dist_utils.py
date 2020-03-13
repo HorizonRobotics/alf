@@ -371,17 +371,6 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
     return entropy, entropy_for_gradient
 
 
-class SquashSpecNormal(td.TransformedDistribution):
-    """A dummy wrapper class.
-    
-    This is to ensure only the SquashSpecNormal uses estimated_entropy.
-    """
-
-    def __init__(self, base_distribution, transforms):
-        super().__init__(
-            base_distribution=base_distribution, transforms=transforms)
-
-
 # NOTE(hnyu): It might be possible to get a closed-form of entropy given a
 # Normal as the base dist? It's better (lower variance) than this estimated
 # one. Also, it seems that after transformations, the entropy actually
@@ -420,12 +409,11 @@ def entropy_with_fallback(distributions, action_spec):
     """
 
     def _compute_entropy(dist: td.Distribution, action_spec):
-        if isinstance(dist, SquashSpecNormal):
-            # TransformedDistribution does not implement the two necessary
-            # interface functions of Distribution. So we have to use the
-            # original distribution it transforms.
+        if isinstance(dist, td.TransformedDistribution):
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True
+            # In general, entropy can only be calculated for affine
+            # transformation (assuming entropy() is implemented for base_dist).
             entropy, entropy_for_gradient = estimated_entropy(dist)
         else:
             entropy = dist.entropy()
