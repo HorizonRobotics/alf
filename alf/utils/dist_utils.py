@@ -372,15 +372,16 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
 
 
 # NOTE(hnyu): It might be possible to get a closed-form of entropy given a
-# Normal as the base dist? It's better (lower variance) than this estimated
-# one. Also, it seems that after transformations, the entropy actually
-# changes, and we are computing the entropy of the base dist instead of the
-# input dist.
+# Normal as the base dist with only affine transformation?
+# It's better (lower variance) than this estimated one.
 #
 # Something like what TFP does:
 # https://github.com/tensorflow/probability/blob/356cfddef026b3339b8f2a81e600acd2ff8e22b4/tensorflow_probability/python/distributions/transformed_distribution.py#L636
 # (Probably it's complicated, but we need to spend time figuring out if the
 # current estimation is the best way to do this).
+
+
+# Here, we compute entropy of transformed distributions using sampling.
 def entropy_with_fallback(distributions, action_spec):
     """Computes total entropy of nested distribution.
     If entropy() of a distribution is not implemented, this function will
