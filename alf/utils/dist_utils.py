@@ -419,19 +419,13 @@ def entropy_with_fallback(distributions, action_spec):
         you need to calculate the gradient of entropy.
     """
 
-    def _calc_outer_rank(dist: td.Distribution, action_spec):
+    def _compute_entropy(dist: td.Distribution, action_spec):
         if isinstance(dist, SquashSpecNormal):
             # TransformedDistribution does not implement the two necessary
             # interface functions of Distribution. So we have to use the
             # original distribution it transforms.
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True
-            dist = dist.base_dist
-        return (len(dist.batch_shape) + len(dist.event_shape) - len(
-            action_spec.shape))
-
-    def _compute_entropy(dist: td.Distribution, action_spec):
-        if isinstance(dist, SquashSpecNormal):
             entropy, entropy_for_gradient = estimated_entropy(dist)
         else:
             entropy = dist.entropy()

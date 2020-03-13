@@ -69,7 +69,8 @@ class EntropyTargetAlgorithm(Algorithm):
                  fast_update_rate=np.log(2),
                  min_alpha=1e-4,
                  average_window=2,
-                 debug_summaries=False):
+                 debug_summaries=False,
+                 name="EntropyTargetAlgorithm"):
         """Create an EntropyTargetAlgorithm
 
         Args:
@@ -96,8 +97,7 @@ class EntropyTargetAlgorithm(Algorithm):
             average_window (int): window size for averaging past entropies.
             debug_summaries (bool): True if debug summaries should be created.
         """
-        super().__init__(
-            debug_summaries=debug_summaries, name="EntropyTargetAlgorithm")
+        super().__init__(debug_summaries=debug_summaries, name=name)
 
         self.register_buffer(
             '_log_alpha',
