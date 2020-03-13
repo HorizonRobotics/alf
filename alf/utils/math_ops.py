@@ -88,18 +88,13 @@ def max_n(inputs):
     return ret
 
 
-def square(x):
-    """torch doesn't have square."""
-    return torch.pow(x, 2)
-
-
 def min_n(inputs):
-    """Calculate the maximum of n Tensors
+    """Calculate the minimum of n Tensors
 
     Args:
         inputs (list[Tensor]): list of Tensors, should have the same shape
     Returns:
-        the elementwise maximum of all the tensors in `inputs`
+        the elementwise minimum of all the tensors in `inputs`
     """
     ret = inputs[0]
     inputs = inputs[1:]
@@ -121,6 +116,11 @@ def add_n(inputs):
     for x in inputs:
         ret = torch.add(ret, x)
     return ret
+
+
+def square(x):
+    """torch doesn't have square."""
+    return torch.pow(x, 2)
 
 
 def weighted_reduce_mean(x, weight, dim=()):
