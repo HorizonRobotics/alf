@@ -15,6 +15,7 @@
 
 import gin
 import functools
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -71,8 +72,8 @@ class ActorNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a
-                variance_scaling_initializer with uniform distribution.
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
             name (str): name of the network
         """
         super(ActorNetwork, self).__init__(
@@ -84,7 +85,7 @@ class ActorNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=1.0 / 3,
+                gain=np.sqrt(1.0 / 3),
                 mode='fan_in',
                 distribution='uniform')
 
@@ -193,8 +194,8 @@ class ActorRNNNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a
-                variance_scaling_initializer with uniform distribution.
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
             name (str): name of the network
         """
         super(ActorRNNNetwork, self).__init__(
@@ -206,7 +207,7 @@ class ActorRNNNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=1.0 / 3,
+                gain=np.sqrt(1.0 / 3),
                 mode='fan_in',
                 distribution='uniform')
 

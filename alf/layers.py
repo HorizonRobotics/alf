@@ -123,8 +123,8 @@ class FC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
-            kernel_initializer (Callable): initializer for the FC layer. If none
-                is provided a variance_scaling_initializer with gain as
+            kernel_initializer (Callable): initializer for the FC layer kernel.
+                If none is provided a variance_scaling_initializer with gain as
                 `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution
@@ -140,7 +140,7 @@ class FC(nn.Module):
                 gain=kernel_init_gain,
                 nonlinearity=self._activation.__name__)
         else:
-            kernel_initializer(self._linear.weight)
+            kernel_initializer(self._linear.weight.data)
 
         if use_bias:
             nn.init.constant_(self._linear.bias.data, bias_init_value)
@@ -183,8 +183,8 @@ class Conv2D(nn.Module):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
-            kernel_initializer (Callable): initializer for the conv layer. If none
-                is provided a variance_scaling_initializer with gain as
+            kernel_initializer (Callable): initializer for the conv layer kernel.
+                If none is provided a variance_scaling_initializer with gain as
                 `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution
@@ -206,7 +206,7 @@ class Conv2D(nn.Module):
                 gain=kernel_init_gain,
                 nonlinearity=self._activation.__name__)
         else:
-            kernel_initializer(self._conv2d.weight)
+            kernel_initializer(self._conv2d.weight.data)
 
         if use_bias:
             nn.init.constant_(self._conv2d.bias.data, bias_init_value)

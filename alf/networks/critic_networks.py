@@ -15,6 +15,7 @@
 
 import gin
 import functools
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -64,8 +65,8 @@ class CriticNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a
-                variance_scaling_initializer with uniform distribution.
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
             name (str):
         """
         super(CriticNetwork, self).__init__(
@@ -74,10 +75,9 @@ class CriticNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=1. / 3,
+                gain=np.sqrt(1.0 / 3),
                 mode='fan_in',
-                distribution='uniform',
-                calc_gain_after_activation=False)
+                distribution='uniform')
 
         observation_spec, action_spec = input_tensor_spec
 
@@ -184,8 +184,8 @@ class CriticRNNNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a
-                variance_scaling_initializer with uniform distribution.
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
             name (str):
         """
         super(CriticRNNNetwork, self).__init__(
@@ -194,10 +194,9 @@ class CriticRNNNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=1. / 3,
+                gain=np.sqrt(1.0 / 3),
                 mode='fan_in',
-                distribution='uniform',
-                calc_gain_after_activation=False)
+                distribution='uniform')
 
         observation_spec, action_spec = input_tensor_spec
 

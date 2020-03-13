@@ -72,7 +72,7 @@ class QNetwork(Network):
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a default
-                variance_scaling_initializer.
+                variance_scaling_initializer will be used.
         """
         super(QNetwork, self).__init__(
             input_tensor_spec,
@@ -169,7 +169,7 @@ class QRNNNetwork(Network):
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a default
-                variance_scaling_initializer.
+                variance_scaling_initializer will be used.
         """
         super(QRNNNetwork, self).__init__(
             input_tensor_spec,

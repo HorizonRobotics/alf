@@ -34,6 +34,7 @@ def variance_scaling_init(tensor,
 
     A potential benefit of this intializer is that we can sample from a truncated
     normal distribution: `scipy.stats.truncnorm(a=-2, b=2, loc=0., scale=1.)`
+
     Also incorporates PyTorch's calculation of the recommended gains that taking
     nonlinear activations into account, so that after N layers, the final output
     std (in linear space) will be a constant regardless of N's value (when N is
@@ -55,9 +56,9 @@ def variance_scaling_init(tensor,
             Note that if `calc_gain_after_activation=True`, this number will be
             an additional gain factor on top of that.
         mode (str): one of "fan_in", "fan_out", and "fan_avg"
-        distribution (str): one of "normal" and "truncated_normal". If the latter,
-            the weights will be sampled from a normal distribution truncated at
-            (-2, 2).
+        distribution (str): one of "uniform", "untruncated_normal" and
+            "truncated_normal". If the latter, the weights will be sampled
+            from a normal distribution truncated at (-2, 2).
         calc_gain_after_activation (bool): whether automatically calculate the
             std gain of applying nonlinearity after this layer. A nonlinear
             activation (e.g., relu) might change std after the transformation,
@@ -77,7 +78,7 @@ def variance_scaling_init(tensor,
     """
     distribution = distribution.lower()
     if distribution not in {
-            "truncated_normal", "uniform", "untruncated_normal"
+            "uniform", "untruncated_normal", "truncated_normal"
     }:
         raise ValueError("Invalid `distribution` argument:", distribution)
 
@@ -94,14 +95,12 @@ def variance_scaling_init(tensor,
     else:
         size = max(1.0, (fan_in + fan_out) / 2.0)
 
-    gain /= size
-
     if (calc_gain_after_activation and mode == "fan_in"
             and nonlinearity != "identity"):
         gain *= nn.init.calculate_gain(nonlinearity, nonlinearity_param)
 
+    std = gain / math.sqrt(size)
     if distribution == "truncated_normal":
-        std = math.sqrt(gain)
         threshold = 2.0  # truncate within 2 std
         std /= truncnorm.std(-threshold, threshold)
         with torch.no_grad():
@@ -115,6 +114,5 @@ def variance_scaling_init(tensor,
         with torch.no_grad():
             return tensor.uniform_(-limit, limit)
     elif distribution == "untruncated_normal":
-        std = math.sqrt(gain)
         with torch.no_grad():
             return tensor.normal_(0, std)

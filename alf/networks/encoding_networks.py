@@ -67,7 +67,7 @@ class ImageEncodingNetwork(Network):
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
             activation (torch.nn.functional): activation for all the layers
-            kernel_initializer (Callable): initializer for all the layers
+            kernel_initializer (Callable): initializer for all the layers.
             flatten_output (bool): If False, the output will be an image
                 structure of shape `BxCxHxW`; otherwise the output will be
                 flattened into a feature of shape `BxN`
@@ -152,7 +152,7 @@ class ImageDecodingNetwork(Network):
                 layer units. These fc layers are used for preprocessing the
                 latent vector before transposed convolutions.
             activation (nn.functional): activation for hidden layers
-            kernel_initializer (Callable): initializer for all the layers
+            kernel_initializer (Callable): initializer for all the layers.
             output_activation (nn.functional): activation for the output layer.
                 Usually our image inputs are normalized to [0, 1] or [-1, 1],
                 so this function should be `torch.sigmoid` or
@@ -285,9 +285,9 @@ class EncodingNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=2.0,
                 mode='fan_in',
-                distribution='truncated_normal')
+                distribution='truncated_normal',
+                nonlinearity=activation.__name__)
 
         self._img_encoding_net = None
         if conv_layer_params:
@@ -410,7 +410,8 @@ class LSTMEncodingNetwork(Network):
                 the LSTM cells.
             activation (nn.functional): activation for all the layers but the
                 last layer.
-            kernel_initializer (Callable): initializer for all the layers
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer.
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the same with `activation`.
@@ -443,12 +444,6 @@ class LSTMEncodingNetwork(Network):
                 torch.nn.LSTMCell(input_size=input_size, hidden_size=hs))
             self._state_spec.append(self._create_lstm_cell_state_spec(hs))
             input_size = hs
-
-        last_activation = (activation
-                           if last_activation is None else last_activation)
-        last_kernel_initializer = (kernel_initializer
-                                   if last_kernel_initializer is None else
-                                   last_kernel_initializer)
 
         self._post_encoding_net = EncodingNetwork(
             input_tensor_spec=TensorSpec((input_size, )),

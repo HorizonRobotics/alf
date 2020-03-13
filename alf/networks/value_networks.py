@@ -65,7 +65,8 @@ class ValueNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
-            the last layer. If none is provided a default xavier_uniform.
+            the last layer. If none is provided a default xavier_uniform
+            initializer will be used.
             name (str):
         """
         super(ValueNetwork, self).__init__(
@@ -154,8 +155,9 @@ class ValueRNNNetwork(Network):
                 FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
-            kernel_initializer (Callable): initializer for all layers but the
-            last layer. If none is provided a default xavier_uniform.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a default xavier_uniform
+                initializer will be used.
             name (str):
         """
         super(ValueRNNNetwork, self).__init__(
