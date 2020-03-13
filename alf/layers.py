@@ -184,10 +184,11 @@ class Conv2D(nn.Module):
             padding (int or tuple):
             use_bias (bool):
             kernel_initializer (Callable): initializer for the conv layer kernel.
-                If none is provided a variance_scaling_initializer with gain as
+                If None is provided a variance_scaling_initializer with gain as
                 `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
-                std of kernel init distribution
+                std of kernel init distribution. It will be ignored if
+                `kernel_initializer` is not None.
             bias_init_value (float): a constant
         """
         super(Conv2D, self).__init__()
@@ -251,10 +252,11 @@ class ConvTranspose2D(nn.Module):
             padding (int or tuple):
             use_bias (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
-                If none is provided a variance_scaling_initializer with gain as
+                If None is provided a variance_scaling_initializer with gain as
                 `kernel_init_gain` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
-                std of kernel init distribution
+                std of kernel init distribution. It will be ignored if
+                `kernel_initializer` is not None.
             bias_init_value (float): a constant
         """
         super(ConvTranspose2D, self).__init__()

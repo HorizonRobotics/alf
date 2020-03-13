@@ -110,7 +110,7 @@ def variance_scaling_init(tensor,
                     truncnorm.rvs(-threshold, threshold, size=tensor.size()) *
                     std))
     elif distribution == "uniform":
-        limit = math.sqrt(3.0 * gain)
+        limit = math.sqrt(3.0) * gain
         with torch.no_grad():
             return tensor.uniform_(-limit, limit)
     elif distribution == "untruncated_normal":

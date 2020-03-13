@@ -15,7 +15,7 @@
 
 import gin
 import functools
-import numpy as np
+import math
 
 import torch
 import torch.nn as nn
@@ -85,7 +85,7 @@ class ActorNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=np.sqrt(1.0 / 3),
+                gain=math.sqrt(1.0 / 3),
                 mode='fan_in',
                 distribution='uniform')
 
@@ -207,7 +207,7 @@ class ActorRNNNetwork(Network):
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
-                gain=np.sqrt(1.0 / 3),
+                gain=math.sqrt(1.0 / 3),
                 mode='fan_in',
                 distribution='uniform')
 
