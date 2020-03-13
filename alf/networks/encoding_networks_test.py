@@ -56,7 +56,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         output, _ = network(img)
         if same_padding:
-            output_shape = (15, 34, 17)
+            output_shape = (15, 30, 15)
         else:
             output_shape = (15, 34, 16)
         if flatten_output:
@@ -83,7 +83,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         output, _ = network(embedding)
         if same_padding:
-            output_shape = (64, 19, 59)
+            output_shape = (64, 21, 63)
         else:
             output_shape = (64, 21, 65)
         self.assertEqual(output_shape, network.output_spec.shape)

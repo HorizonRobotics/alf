@@ -60,13 +60,11 @@ class ImageEncodingNetwork(Network):
 
         Regarding padding: in the previous TF version, we have two padding modes:
         "valid" and "same". For the former, we always have no padding (P=0); for
-        the latter, it's also called "half padding" (leftP=HF//2 and
-        rightP=HF - HF//2; when strides=1 the output has the same size with the
-        input. Currently, we don't support different left and right paddings and
-        P is always HF//2.)
-        See
-        https://stackoverflow.com/questions/37674306/what-is-the-difference-between-same-and-valid-padding-in-tf-nn-max-pool-of-t
-        for more details.
+        the latter, it's also called "half padding" (P=(HF-1)//2 when strides=1
+        and HF is an odd number the output has the same size with the input.
+        Currently, PyTorch don't support different left and right paddings and
+        P is always (HF-1)//2. So if HF is an even number, the output size will
+        decrease by 1 when strides=1).
 
         Args:
             input_channels (int): number of channels in the input image
@@ -100,7 +98,8 @@ class ImageEncodingNetwork(Network):
             padding = paras[3] if len(paras) > 3 else 0
             if same_padding:  # overwrite paddings
                 kernel_size = _tuplify2d(kernel_size)
-                padding = (kernel_size[0] // 2, kernel_size[1] // 2)
+                padding = ((kernel_size[0] - 1) // 2,
+                           (kernel_size[1] - 1) // 2)
             self._conv_layers.append(
                 layers.Conv2D(
                     input_channels,
@@ -153,13 +152,11 @@ class ImageDecodingNetwork(Network):
 
         Regarding padding: in the previous TF version, we have two padding modes:
         "valid" and "same". For the former, we always have no padding (P=0); for
-        the latter, it's also called "half padding" (leftP=HF//2 and
-        rightP=HF - HF//2; when strides=1 the output has the same size with the
-        input. Currently, we don't support different left and right paddings and
-        P is always HF//2.)
-        See
-        https://datascience.stackexchange.com/a/56200
-        for more details.
+        the latter, it's also called "half padding" (P=(HF-1)//2 when strides=1
+        and HF is an odd number the output has the same size with the input.
+        Currently, PyTorch don't support different left and right paddings and
+        P is always (HF-1)//2. So if HF is an even number, the output size will
+        increaseby 1 when strides=1).
 
         Args:
             input_size (int): the size of the input latent vector
@@ -221,7 +218,8 @@ class ImageDecodingNetwork(Network):
             padding = paras[3] if len(paras) > 3 else 0
             if same_padding:  # overwrite paddings
                 kernel_size = _tuplify2d(kernel_size)
-                padding = (kernel_size[0] // 2, kernel_size[1] // 2)
+                padding = ((kernel_size[0] - 1) // 2,
+                           (kernel_size[1] - 1) // 2)
             act = activation
             if i == len(transconv_layer_params) - 1:
                 act = output_activation
