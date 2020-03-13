@@ -1,0 +1,44 @@
+# default ddpg config
+
+import alf.algorithms.ddpg_algorithm
+
+# algorithm config
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+actor/ActorNetwork.input_tensor_spec=%observation_spec
+actor/ActorNetwork.action_spec=%action_spec
+actor/ActorNetwork.fc_layer_params=(100,100)
+actor/Adam.lr=1e-4
+
+critic/CriticNetwork.input_tensor_spec=(%observation_spec, %action_spec)
+critic/CriticNetwork.joint_fc_layer_params=(100,100)
+critic/Adam.lr=1e-3
+
+DdpgAlgorithm.actor_network=@actor/ActorNetwork()
+DdpgAlgorithm.critic_network=@critic/CriticNetwork()
+DdpgAlgorithm.actor_optimizer=@actor/Adam()
+DdpgAlgorithm.critic_optimizer=@critic/Adam()
+
+DdpgAlgorithm.target_update_period=5
+OneStepTDLoss.td_error_loss_fn=@losses.element_wise_huber_loss
+
+
+# training config
+TrainerConfig.initial_collect_steps=1000
+TrainerConfig.mini_batch_length=2
+TrainerConfig.unroll_length=1
+TrainerConfig.mini_batch_size=64
+TrainerConfig.num_updates_per_train_step=1
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.algorithm_ctor=@DdpgAlgorithm
+TrainerConfig.num_iterations=10000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=True
+TrainerConfig.debug_summaries=False
+TrainerConfig.summarize_grads_and_vars=False
+TrainerConfig.summary_interval=100
+
+
+ReplayBuffer.max_length=100000
