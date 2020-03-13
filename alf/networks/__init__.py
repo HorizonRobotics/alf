@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from .actor_distribution_networks import *
+from .actor_networks import *
 from .critic_networks import *
 from .encoding_networks import *
 from .network import Network, DistributionNetwork

@@ -869,7 +869,7 @@ def set_random_seed(seed):
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None. 
+        The seed being used if `seed` is None.
     """
     if seed is None:
         seed = os.getpid() + int(time.time())
