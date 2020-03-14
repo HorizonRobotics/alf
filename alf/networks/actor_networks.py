@@ -14,6 +14,8 @@
 """ActorNetworks"""
 
 import gin
+import functools
+import math
 
 import torch
 import torch.nn as nn
@@ -21,6 +23,7 @@ import torch.nn as nn
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 import alf.layers as layers
 import alf.nest as nest
+from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import spec_utils
 from .network import Network
@@ -38,6 +41,7 @@ class ActorNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="ActorNetwork"):
         """Creates an instance of `ActorNetwork`, which maps the inputs to
         actions (single or nested) through a sequence of deterministic layers.
@@ -67,6 +71,9 @@ class ActorNetwork(Network):
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
             name (str): name of the network
         """
         super(ActorNetwork, self).__init__(
@@ -74,6 +81,13 @@ class ActorNetwork(Network):
             input_preprocessors,
             preprocessing_combiner,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=math.sqrt(1.0 / 3),
+                mode='fan_in',
+                distribution='uniform')
 
         self._action_spec = action_spec
         flat_action_spec = nest.flatten(action_spec)
@@ -90,15 +104,19 @@ class ActorNetwork(Network):
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
 
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
         self._action_layers = nn.ModuleList()
         for single_action_spec in flat_action_spec:
             self._action_layers.append(
                 layers.FC(
                     self._encoding_net.output_spec.shape[0],
                     single_action_spec.shape[0],
-                    activation=torch.tanh))
+                    activation=torch.tanh,
+                    kernel_initializer=last_kernel_initializer))
 
     def forward(self, observation, state=()):
         """Computes action given an observation.
@@ -139,6 +157,7 @@ class ActorRNNNetwork(Network):
                  lstm_hidden_size=100,
                  actor_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="ActorRNNNetwork"):
         """Creates an instance of `ActorRNNNetwork`, which maps the inputs
         (observation and states) to actions (single or nested) through a
@@ -174,6 +193,9 @@ class ActorRNNNetwork(Network):
                 hidden FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a variance_scaling_initializer
+                with uniform distribution will be used.
             name (str): name of the network
         """
         super(ActorRNNNetwork, self).__init__(
@@ -181,6 +203,13 @@ class ActorRNNNetwork(Network):
             input_preprocessors,
             preprocessing_combiner,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                gain=math.sqrt(1.0 / 3),
+                mode='fan_in',
+                distribution='uniform')
 
         self._action_spec = action_spec
         flat_action_spec = nest.flatten(action_spec)
@@ -199,7 +228,11 @@ class ActorRNNNetwork(Network):
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=actor_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.003, b=0.003)
 
         self._action_layers = nn.ModuleList()
         for single_action_spec in flat_action_spec:
@@ -207,7 +240,8 @@ class ActorRNNNetwork(Network):
                 layers.FC(
                     self._lstm_encoding_net.output_spec.shape[0],
                     single_action_spec.shape[0],
-                    activation=torch.tanh))
+                    activation=torch.tanh,
+                    kernel_initializer=last_kernel_initializer))
 
     def forward(self, observation, state):
         """Computes action given an observation.

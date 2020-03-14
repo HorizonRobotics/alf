@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,18 +14,16 @@
 """An algorithm for adjusting entropy regularization strength."""
 from absl import logging
 import gin
+import math
 import numpy as np
-import tensorflow as tf
+import torch
 
-from tf_agents.trajectories.time_step import StepType
-
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
-from alf.data_structures import namedtuple, LossInfo
-from alf.utils import dist_utils
+import alf
+from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import namedtuple, AlgStep, LossInfo, StepType
+from alf.summary import should_record_summaries
 from alf.utils.averager import ScalarWindowAverager
-from alf.utils.common import run_if, should_record_summaries
-from alf.utils.dist_utils import calc_default_target_entropy
-from alf.utils.dist_utils import calc_default_max_entropy
+from alf.utils.dist_utils import calc_default_target_entropy, entropy_with_fallback
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
 EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
@@ -71,7 +69,8 @@ class EntropyTargetAlgorithm(Algorithm):
                  fast_update_rate=np.log(2),
                  min_alpha=1e-4,
                  average_window=2,
-                 debug_summaries=False):
+                 debug_summaries=False,
+                 name="EntropyTargetAlgorithm"):
         """Create an EntropyTargetAlgorithm
 
         Args:
@@ -96,33 +95,25 @@ class EntropyTargetAlgorithm(Algorithm):
             min_alpha (float): the minimal value of alpha. If <=0, exp(-100) is
                 used.
             average_window (int): window size for averaging past entropies.
-            optimizer (tf.optimizers.Optimizer): The optimizer for training. If
-                not provided, will use the same optimizer of the parent
-                algorithm.
             debug_summaries (bool): True if debug summaries should be created.
         """
-        super().__init__(
-            debug_summaries=debug_summaries, name="EntropyTargetAlgorithm")
+        super().__init__(debug_summaries=debug_summaries, name=name)
 
-        self._log_alpha = tf.Variable(
-            name='log_alpha',
-            initial_value=np.log(initial_alpha),
-            dtype=tf.float32,
-            trainable=False)
-        self._stage = tf.Variable(
-            name='stage', initial_value=-2, dtype=tf.int32, trainable=False)
+        self.register_buffer(
+            '_log_alpha',
+            torch.tensor(np.log(initial_alpha), dtype=torch.float32))
+        self.register_buffer('_stage', torch.tensor(-2, dtype=torch.int32))
         self._avg_entropy = ScalarWindowAverager(average_window)
-        self._update_rate = tf.Variable(
-            name='update_rate',
-            initial_value=fast_update_rate,
-            dtype=tf.float32,
-            trainable=False)
+        self.register_buffer(
+            "_update_rate", torch.tensor(
+                fast_update_rate, dtype=torch.float32))
         self._action_spec = action_spec
         self._min_log_alpha = -100.
         if min_alpha >= 0.:
             self._min_log_alpha = np.log(min_alpha)
+        self._min_log_alpha = torch.tensor(self._min_log_alpha)
 
-        flat_action_spec = tf.nest.flatten(self._action_spec)
+        flat_action_spec = alf.nest.flatten(self._action_spec)
         if target_entropy is None:
             target_entropy = np.sum(
                 list(map(calc_default_target_entropy, flat_action_spec)))
@@ -131,19 +122,16 @@ class EntropyTargetAlgorithm(Algorithm):
         if max_entropy is None:
             # max_entropy will be estimated in the first `average_window` steps.
             max_entropy = 0.
-            self._stage.assign(-2 - average_window)
+            self._stage.fill_(-2 - average_window)
         else:
             assert target_entropy <= max_entropy, (
                 "Target entropy %s should be less or equal than max entropy %s!"
                 % (target_entropy, max_entropy))
-        self._max_entropy = tf.Variable(
-            name='max_entropy',
-            initial_value=max_entropy,
-            dtype=tf.float32,
-            trainable=False)
+        self.register_buffer("_max_entropy",
+                             torch.tensor(max_entropy, dtype=torch.float32))
 
         if skip_free_stage:
-            self._stage.assign(1)
+            self._stage.fill_(1)
 
         if target_entropy > 0:
             self._fast_stage_thresh = 0.5 * target_entropy
@@ -151,8 +139,8 @@ class EntropyTargetAlgorithm(Algorithm):
             self._fast_stage_thresh = 2.0 * target_entropy
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
-        self._slow_update_rate = slow_update_rate
-        self._fast_update_rate = fast_update_rate
+        self._slow_update_rate = torch.tensor(slow_update_rate)
+        self._fast_update_rate = torch.tensor(fast_update_rate)
 
     def train_step(self, distribution, step_type):
         """Train step.
@@ -162,12 +150,12 @@ class EntropyTargetAlgorithm(Algorithm):
                 policy.
             step_type (StepType): the step type for the distributions.
         Returns:
-            AlgorithmStep. `info` field is LossInfo, other fields are empty.
+            AlgStep. `info` field is LossInfo, other fields are empty.
         """
-        entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
+        entropy, entropy_for_gradient = entropy_with_fallback(
             distribution, self._action_spec)
-        return AlgorithmStep(
-            outputs=(),
+        return AlgStep(
+            output=(),
             state=(),
             info=EntropyTargetInfo(
                 step_type=step_type,
@@ -176,37 +164,41 @@ class EntropyTargetAlgorithm(Algorithm):
                     extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
 
     def calc_loss(self, training_info: EntropyTargetInfo, valid_mask=None):
+        """Calculate loss.
+
+        Args:
+            training_info (EntropyTargetInfo): for computing loss.
+            valid_mask (tensor): valid mask to be applied on time steps.
+        
+        Returns:
+            LossInfo.
+        """
         loss_info = training_info.loss
-        mask = tf.cast(training_info.step_type != StepType.LAST, tf.float32)
+        mask = (training_info.step_type != StepType.LAST).type(torch.float32)
         if valid_mask:
-            mask = mask * tf.cast(valid_mask, tf.float32)
+            mask = mask * (valid_mask).type(torch.float32)
         entropy = -loss_info.extra.neg_entropy * mask
-        num = tf.reduce_sum(mask)
+        num = torch.sum(mask)
         not_empty = num > 0
-        num = tf.maximum(num, 1)
-        entropy2 = tf.reduce_sum(tf.square(entropy)) / num
-        entropy = tf.reduce_sum(entropy) / num
-        entropy_std = tf.sqrt(tf.maximum(0.0, entropy2 - entropy * entropy))
+        num = max(num, 1)
+        entropy2 = torch.sum(entropy**2) / num
+        entropy = torch.sum(entropy) / num
+        entropy_std = torch.sqrt(
+            torch.max(torch.tensor(0.0), entropy2 - entropy * entropy))
 
-        run_if(not_empty, lambda: self.adjust_alpha(entropy))
+        if not_empty:
+            self.adjust_alpha(entropy)
+            if self._debug_summaries and should_record_summaries():
+                alf.summary.scalar("entropy_std", entropy_std)
 
-        def _summarize():
-            with self.name_scope:
-                tf.summary.scalar("entropy_std", entropy_std)
-
-        if self._debug_summaries:
-            run_if(
-                tf.logical_and(not_empty, should_record_summaries()),
-                _summarize)
-
-        alpha = tf.exp(self._log_alpha)
+        alpha = torch.exp(self._log_alpha)
         return loss_info._replace(loss=loss_info.loss * alpha)
 
     def adjust_alpha(self, entropy):
         """Adjust alpha according to the current entropy.
 
         Args:
-            entropy (scalar Tensor). the current entropy.
+            entropy (scalar Tensor): the current entropy.
         Returns:
             adjusted entropy regularization
         """
@@ -214,61 +206,60 @@ class EntropyTargetAlgorithm(Algorithm):
         avg_entropy = self._avg_entropy.average(entropy)
 
         def _init_entropy():
-            self._max_entropy.assign(
-                tf.minimum(0.8 * avg_entropy, avg_entropy / 0.8))
-            self._stage.assign_add(1)
+            self._max_entropy.fill_(
+                torch.min(0.8 * avg_entropy, avg_entropy / 0.8))
+            self._stage.add_(1)
 
         def _init():
             below = avg_entropy < self._max_entropy
-            increasing = tf.cast(avg_entropy > prev_avg_entropy, tf.float32)
+            increasing = (avg_entropy > prev_avg_entropy).type(torch.float32)
             # -1 * increasing + 0.5 * (1 - increasing)
             update_rate = (
                 0.5 - 1.5 * increasing) * self._very_slow_update_rate
-            self._stage.assign_add(tf.cast(below, tf.int32))
-            self._log_alpha.assign(
-                tf.maximum(self._log_alpha + update_rate,
-                           np.float32(self._min_log_alpha)))
+            self._stage.add_(below.type(torch.int32))
+            self._log_alpha.fill_(
+                torch.max(self._log_alpha + update_rate, self._min_log_alpha))
 
         def _free():
             crossing = avg_entropy < self._target_entropy
-            self._stage.assign_add(tf.cast(crossing, tf.int32))
+            self._stage.add_(crossing.type(torch.int32))
 
         def _adjust():
-            previous_above = tf.cast(self._stage, tf.bool)
+            previous_above = self._stage.type(torch.bool)
             above = avg_entropy > self._target_entropy
-            self._stage.assign(tf.cast(above, tf.int32))
+            self._stage.fill_(above.type(torch.int32))
             crossing = above != previous_above
             update_rate = self._update_rate
-            update_rate = tf.where(crossing, 0.9 * update_rate, update_rate)
-            update_rate = tf.maximum(update_rate, self._slow_update_rate)
-            update_rate = tf.where(entropy < self._fast_stage_thresh,
-                                   np.float32(self._fast_update_rate),
-                                   update_rate)
-            self._update_rate.assign(update_rate)
-            above = tf.cast(above, tf.float32)
+            update_rate = torch.where(crossing, 0.9 * update_rate, update_rate)
+            update_rate = torch.max(update_rate, self._slow_update_rate)
+            update_rate = torch.where(entropy < self._fast_stage_thresh,
+                                      self._fast_update_rate, update_rate)
+            self._update_rate.fill_(update_rate)
+            above = above.type(torch.float32)
             below = 1 - above
-            increasing = tf.cast(avg_entropy > prev_avg_entropy, tf.float32)
+            increasing = (avg_entropy > prev_avg_entropy).type(torch.float32)
             decreasing = 1 - increasing
             log_alpha = self._log_alpha + (
                 (below + 0.5 * above) * decreasing -
                 (above + 0.5 * below) * increasing) * update_rate
-            log_alpha = tf.maximum(log_alpha, np.float32(self._min_log_alpha))
-            self._log_alpha.assign(log_alpha)
+            log_alpha = torch.max(log_alpha, self._min_log_alpha)
+            self._log_alpha.fill_(log_alpha)
 
-        run_if(self._stage < -2, _init_entropy)
-        run_if(self._stage == -2, _init)
-        run_if(self._stage == -1, _free)
-        run_if(self._stage >= 0, _adjust)
-        alpha = tf.exp(self._log_alpha)
+        if self._stage < -2:
+            _init_entropy()
+        if self._stage == -2:
+            _init()
+        if self._stage == -1:
+            _free()
+        if self._stage >= 0:
+            _adjust()
+        alpha = torch.exp(self._log_alpha)
 
-        def _summarize():
-            with self.name_scope:
-                tf.summary.scalar("alpha", alpha)
-                tf.summary.scalar("avg_entropy", avg_entropy)
-                tf.summary.scalar("stage", self._stage)
-                tf.summary.scalar("update_rate", self._update_rate)
-
-        if self._debug_summaries:
-            run_if(should_record_summaries(), _summarize)
+        if self._debug_summaries and should_record_summaries():
+            with alf.summary.scope(self.name):
+                alf.summary.scalar("alpha", alpha)
+                alf.summary.scalar("avg_entropy", avg_entropy)
+                alf.summary.scalar("stage", self._stage)
+                alf.summary.scalar("update_rate", self._update_rate)
 
         return alpha

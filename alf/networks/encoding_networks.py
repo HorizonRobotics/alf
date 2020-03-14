@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import abc
+import functools
 import gin
 import numpy as np
 
@@ -21,6 +22,7 @@ import torch.nn as nn
 
 import alf
 import alf.layers as layers
+from alf.networks.initializers import variance_scaling_init
 from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 
@@ -42,7 +44,9 @@ class ImageEncodingNetwork(Network):
                  input_channels,
                  input_size,
                  conv_layer_params,
+                 same_padding=False,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  flatten_output=False,
                  name="ImageEncodingNetwork"):
         """
@@ -57,13 +61,27 @@ class ImageEncodingNetwork(Network):
 
         where H = output size, H1 = input size, HF = size of kernel, P = padding
 
+        Regarding padding: in the previous TF version, we have two padding modes:
+        "valid" and "same". For the former, we always have no padding (P=0); for
+        the latter, it's also called "half padding" (P=(HF-1)//2 when strides=1
+        and HF is an odd number the output has the same size with the input.
+        Currently, PyTorch don't support different left and right paddings and
+        P is always (HF-1)//2. So if HF is an even number, the output size will
+        decrease by 1 when strides=1).
+
         Args:
             input_channels (int): number of channels in the input image
             input_size (int or tuple): the input image size (height, width)
             conv_layer_params (tuppe[tuple]): a non-empty tuple of
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
+            same_padding (bool): similar to TF' conv2d 'same' padding mode. If
+                True, the user provided paddings in `conv_layer_params` will be
+                replaced by automatically calculated ones; if False, it
+                corresponds to TF's 'valid' padding mode (the user can still
+                provide custom paddings though)
             activation (torch.nn.functional): activation for all the layers
+            kernel_initializer (Callable): initializer for all the layers.
             flatten_output (bool): If False, the output will be an image
                 structure of shape `BxCxHxW`; otherwise the output will be
                 flattened into a feature of shape `BxN`
@@ -82,12 +100,17 @@ class ImageEncodingNetwork(Network):
         for paras in conv_layer_params:
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
+            if same_padding:  # overwrite paddings
+                kernel_size = _tuplify2d(kernel_size)
+                padding = ((kernel_size[0] - 1) // 2,
+                           (kernel_size[1] - 1) // 2)
             self._conv_layers.append(
                 layers.Conv2D(
                     input_channels,
                     filters,
                     kernel_size,
                     activation=activation,
+                    kernel_initializer=kernel_initializer,
                     strides=strides,
                     padding=padding))
             input_channels = filters
@@ -114,8 +137,10 @@ class ImageDecodingNetwork(Network):
                  transconv_layer_params,
                  start_decoding_size,
                  start_decoding_channels,
+                 same_padding=False,
                  preprocess_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  output_activation=torch.tanh,
                  name="ImageDecodingNetwork"):
         """
@@ -126,9 +151,18 @@ class ImageDecodingNetwork(Network):
         How to calculate the output size:
         https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
 
-            H = (H1-1) * strides + HF - 2P
+            H = (H1-1) * strides + HF - 2P + OP
 
-        where H = output size, H1 = input size, HF = size of kernel, P = padding
+        where H = output size, H1 = input size, HF = size of kernel, P = padding,
+        OP = output_padding (currently hardcoded to be 0 for this class).
+
+        Regarding padding: in the previous TF version, we have two padding modes:
+        "valid" and "same". For the former, we always have no padding (P=0); for
+        the latter, it's also called "half padding" (P=(HF-1)//2 when strides=1
+        and HF is an odd number the output has the same size with the input.
+        Currently, PyTorch don't support different left and right paddings and
+        P is always (HF-1)//2. So if HF is an even number, the output size will
+        increaseby 1 when strides=1).
 
         Args:
             input_size (int): the size of the input latent vector
@@ -142,10 +176,16 @@ class ImageDecodingNetwork(Network):
                 project an input latent vector into a vector of an appropriate
                 length so that it can be reshaped into (`start_decoding_channels`,
                 `start_decoding_height`, `start_decoding_width`).
+            same_padding (bool): similar to TF' conv2d 'same' padding mode. If
+                True, the user provided paddings in `transconv_layer_params` will
+                be replaced by automatically calculated ones; if False, it
+                corresponds to TF's 'valid' padding mode (the user can still
+                provide custom paddings though).
             preprocess_fc_layer_params (tuple[int]): a tuple of fc
                 layer units. These fc layers are used for preprocessing the
                 latent vector before transposed convolutions.
             activation (nn.functional): activation for hidden layers
+            kernel_initializer (Callable): initializer for all the layers.
             output_activation (nn.functional): activation for the output layer.
                 Usually our image inputs are normalized to [0, 1] or [-1, 1],
                 so this function should be `torch.sigmoid` or
@@ -162,7 +202,11 @@ class ImageDecodingNetwork(Network):
         if preprocess_fc_layer_params is not None:
             for size in preprocess_fc_layer_params:
                 self._preprocess_fc_layers.append(
-                    layers.FC(input_size, size, activation=activation))
+                    layers.FC(
+                        input_size,
+                        size,
+                        activation=activation,
+                        kernel_initializer=kernel_initializer))
                 input_size = size
 
         start_decoding_size = _tuplify2d(start_decoding_size)
@@ -175,7 +219,8 @@ class ImageDecodingNetwork(Network):
             layers.FC(
                 input_size,
                 np.prod(self._start_decoding_shape),
-                activation=activation))
+                activation=activation,
+                kernel_initializer=kernel_initializer))
 
         self._transconv_layer_params = transconv_layer_params
         self._transconv_layers = nn.ModuleList()
@@ -183,6 +228,10 @@ class ImageDecodingNetwork(Network):
         for i, paras in enumerate(transconv_layer_params):
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
+            if same_padding:  # overwrite paddings
+                kernel_size = _tuplify2d(kernel_size)
+                padding = ((kernel_size[0] - 1) // 2,
+                           (kernel_size[1] - 1) // 2)
             act = activation
             if i == len(transconv_layer_params) - 1:
                 act = output_activation
@@ -192,6 +241,7 @@ class ImageDecodingNetwork(Network):
                     filters,
                     kernel_size,
                     activation=act,
+                    kernel_initializer=kernel_initializer,
                     strides=strides,
                     padding=padding))
             in_channels = filters
@@ -221,14 +271,14 @@ class EncodingNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  last_layer_size=None,
                  last_activation=None,
+                 last_kernel_initializer=None,
                  name="EncodingNetwork"):
         """Create an EncodingNetwork
-
         This EncodingNetwork allows the last layer to have different settings
         from the other layers.
-
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then `preprocessing_combiner` must not be
@@ -254,9 +304,14 @@ class EncodingNetwork(Network):
                 representing FC layer sizes.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If None, a variance_scaling_initializer will be
+                used.
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the SAME with `activation`.
+            last_kernel_initializer (Callable): initializer for the last layer.
+                If None, it will be the same with `kernel_initializer`.
             name (str):
         """
         super(EncodingNetwork, self).__init__(
@@ -264,6 +319,13 @@ class EncodingNetwork(Network):
             input_preprocessors,
             preprocessing_combiner,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                mode='fan_in',
+                distribution='truncated_normal',
+                nonlinearity=activation.__name__)
 
         self._img_encoding_net = None
         if conv_layer_params:
@@ -277,6 +339,7 @@ class EncodingNetwork(Network):
                 input_channels, (height, width),
                 conv_layer_params,
                 activation,
+                kernel_initializer=kernel_initializer,
                 flatten_output=True)
             input_size = self._img_encoding_net.output_spec.shape[0]
         else:
@@ -299,7 +362,15 @@ class EncodingNetwork(Network):
             if i == len(fc_layer_params) - 1:
                 act = (activation
                        if last_activation is None else last_activation)
-            self._fc_layers.append(layers.FC(input_size, size, activation=act))
+                kernel_initializer = (kernel_initializer
+                                      if last_kernel_initializer is None else
+                                      last_kernel_initializer)
+            self._fc_layers.append(
+                layers.FC(
+                    input_size,
+                    size,
+                    activation=act,
+                    kernel_initializer=kernel_initializer))
             input_size = size
 
         self._output_size = input_size
@@ -339,8 +410,10 @@ class LSTMEncodingNetwork(Network):
                  hidden_size=(100, ),
                  post_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  last_layer_size=None,
                  last_activation=None,
+                 last_kernel_initializer=None,
                  name="LSTMEncodingNetwork"):
         """Creates an instance of `LSTMEncodingNetwork`.
 
@@ -375,9 +448,13 @@ class LSTMEncodingNetwork(Network):
                 the LSTM cells.
             activation (nn.functional): activation for all the layers but the
                 last layer.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer.
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the same with `activation`.
+            last_kernel_initializer (Callable): initializer for the last layer.
+                If None, it will be the same with `kernel_initializer`.
         """
         super(LSTMEncodingNetwork, self).__init__(
             input_tensor_spec,
@@ -389,7 +466,8 @@ class LSTMEncodingNetwork(Network):
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=pre_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
         input_size = self._pre_encoding_net.output_spec.shape[0]
 
         if isinstance(hidden_size, int):
@@ -409,8 +487,10 @@ class LSTMEncodingNetwork(Network):
             input_tensor_spec=TensorSpec((input_size, )),
             fc_layer_params=post_fc_layer_params,
             activation=activation,
+            kernel_initializer=kernel_initializer,
             last_layer_size=last_layer_size,
-            last_activation=last_activation)
+            last_activation=last_activation,
+            last_kernel_initializer=last_kernel_initializer)
 
     def _create_lstm_cell_state_spec(self, hidden_size, dtype=torch.float32):
         """Create LSTMCell state specs given the hidden size and dtype. According to

@@ -24,6 +24,7 @@ import torch.distributions as td
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import DistributionNetwork, Network
+from alf.utils import dist_utils
 
 
 def DiagMultivariateNormal(loc, scale_diag):

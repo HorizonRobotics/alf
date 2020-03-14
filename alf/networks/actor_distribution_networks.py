@@ -36,6 +36,7 @@ class ActorDistributionNetwork(DistributionNetwork):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=NormalProjectionNetwork,
                  name="ActorDistributionNetwork"):
@@ -65,6 +66,9 @@ class ActorDistributionNetwork(DistributionNetwork):
             fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers.
+            kernel_initializer (Callable): initializer for all the layers
+                excluding the projection net. If none is provided a default
+                xavier_uniform will be used.
             discrete_projection_net_ctor (ProjectionNetwork): constructor that
                 generates a discrete projection network that outputs discrete
                 actions.
@@ -78,12 +82,17 @@ class ActorDistributionNetwork(DistributionNetwork):
             input_preprocessors,
             preprocessing_combiner,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = torch.nn.init.xavier_uniform_
+
         self._action_spec = action_spec
         self._encoding_net = EncodingNetwork(
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
         self._create_projection_net(discrete_projection_net_ctor,
                                     continuous_projection_net_ctor)
 
@@ -128,6 +137,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
                  lstm_hidden_size=100,
                  actor_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  discrete_projection_net_ctor=CategoricalProjectionNetwork,
                  continuous_projection_net_ctor=NormalProjectionNetwork,
                  name="ActorRNNDistributionNetwork"):
@@ -162,6 +172,9 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             actor_fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers.
+            kernel_initializer (Callable): initializer for all the layers
+                excluding the projection net. If none is provided a default
+                xavier_uniform will be used.
             discrete_projection_net_ctor (ProjectionNetwork): constructor that
                 generates a discrete projection network that outputs discrete
                 actions.
@@ -178,13 +191,18 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             conv_layer_params,
             fc_layer_params,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = torch.nn.init.xavier_uniform_
+
         self._encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=actor_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
         self._create_projection_net(discrete_projection_net_ctor,
                                     continuous_projection_net_ctor)
 

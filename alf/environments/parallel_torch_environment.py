@@ -80,6 +80,11 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
                 'All environments must have the same time_step_spec.')
         self._flatten = flatten
 
+    @property
+    def envs(self):
+        """The list of individual environment."""
+        return self._envs
+
     def start(self):
         logging.info('Spawning all processes.')
         for env in self._envs:
