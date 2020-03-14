@@ -33,20 +33,26 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
                  exp_replayer: str,
                  num_envs=1,
                  observers=[],
-                 metrics=[]):
+                 metrics=[],
+                 unroll_length=8,
+                 learn_queue_cap=1):
         """Create an OffPolicyDriver.
 
         Args:
             env (TFEnvironment): A TFEnvironment
             algorithm (OffPolicyAlgorithm): The algorithm for training
             exp_replayer (str): a string that indicates which ExperienceReplayer
-                to use. Either "one_time" or "uniform".
+                to use. One of "one_time", "uniform" or "cycle_one_time".
             num_envs (int): the number of batched environments. The total number
                 of single environment is `num_envs * env.batch_size`
             observers (list[Callable]): An optional list of observers that are
                 updated after every step in the environment. Each observer is a
                 callable(time_step.Trajectory).
             metrics (list[TFStepMetric]): An optional list of metrics.
+            unroll_length (int): cycle_one_time replayer's max_length ==
+                unroll_length + 1, so that all timesteps are used in training.
+            learn_queue_cap (int): number of actors to use in one mini-batch
+                of training.  Need to pass along to the experience replayer.
         """
         super(OffPolicyDriver, self).__init__(
             env=env,
@@ -55,7 +61,8 @@ class OffPolicyDriver(policy_driver.PolicyDriver):
             metrics=metrics,
             mode=self.OFF_POLICY_TRAINING)
 
-        algorithm.set_exp_replayer(exp_replayer, num_envs * env.batch_size)
+        algorithm.set_exp_replayer(exp_replayer, num_envs * env.batch_size,
+                                   num_envs, unroll_length, learn_queue_cap)
 
     def start(self):
         """

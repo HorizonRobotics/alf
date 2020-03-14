@@ -22,6 +22,7 @@ import tensorflow_probability as tfp
 
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import ActionTimeStep, Experience, StepType, TrainingInfo
+from alf.experience_replayers.experience_replay import CyclicOneTimeExperienceReplayer
 from alf.utils import common, nest_utils
 from alf.utils.scope_utils import get_current_scope
 
@@ -135,6 +136,13 @@ class OffPolicyAlgorithm(RLAlgorithm):
         experience = nest_utils.distributions_to_params(experience)
 
         length = experience.step_type.shape[1]
+        if isinstance(self.exp_replayer, CyclicOneTimeExperienceReplayer):
+            # cycle_one_time replayer first mini_batch length == unroll_length
+            # and later ones == unroll_length + 1, so that all timesteps are
+            # used in training.
+            assert (mini_batch_length == length
+                    or mini_batch_length + 1 == length)
+            mini_batch_length = length
         mini_batch_length = (mini_batch_length or length)
         assert length % mini_batch_length == 0, (
             "length=%s not a multiple of mini_batch_length=%s" %

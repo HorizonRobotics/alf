@@ -158,6 +158,41 @@ class ReplayBufferTest(tf.test.TestCase):
         batch = replay_buffer.gather_all()
         self.assertEqual(batch.t.shape, [8, 4])
 
+        # Test cyclic gather_all():
+        replay_buffer.clear()
+
+        # regular slice
+        for t in range(2, 4):
+            batch = _get_batch([0, 1, 2, 3, 4, 5, 6, 7], t=t, x=0.4)
+            replay_buffer.add_batch(batch, batch.env_id)
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 2])
+        self.assertArrayEqual(batch.t, tf.constant([[2, 3]] * 8))
+
+        # slice that includes everything in the buffer
+        for t in range(4, 6):
+            batch = _get_batch([0, 1, 2, 3, 4, 5, 6, 7], t=t, x=0.4)
+            replay_buffer.add_batch(batch, batch.env_id)
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 4])
+        self.assertArrayEqual(batch.t, tf.constant([[2, 3, 4, 5]] * 8))
+
+        # slice that starts from the middle and includes everything
+        for t in range(6, 8):
+            batch = _get_batch([0, 1, 2, 3, 4, 5, 6, 7], t=t, x=0.4)
+            replay_buffer.add_batch(batch, batch.env_id)
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 4])
+        self.assertArrayEqual(batch.t, tf.constant([[4, 5, 6, 7]] * 8))
+
+        # slice that starts from the first and includes everything
+        for t in range(8, 10):
+            batch = _get_batch([0, 1, 2, 3, 4, 5, 6, 7], t=t, x=0.4)
+            replay_buffer.add_batch(batch, batch.env_id)
+        batch = replay_buffer.gather_all()
+        self.assertEqual(batch.t.shape, [8, 4])
+        self.assertArrayEqual(batch.t, tf.constant([[6, 7, 8, 9]] * 8))
+
 
 if __name__ == '__main__':
     from alf.utils.common import set_per_process_memory_growth

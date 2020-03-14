@@ -54,6 +54,7 @@ class SyncOffPolicyDriver(OffPolicyDriver):
     def __init__(self,
                  env: TFEnvironment,
                  algorithm: OffPolicyAlgorithm,
+                 unroll_length=8,
                  exp_replayer="uniform",
                  observers=[],
                  metrics=[]):
@@ -62,6 +63,8 @@ class SyncOffPolicyDriver(OffPolicyDriver):
         Args:
             env (TFEnvironment): A TFEnvironmnet
             algorithm (OffPolicyAlgorithm): The algorithm for training
+            unroll_length (int): number of time steps each environment proceeds
+                before sending the steps to the learner queue
             exp_replayer (str): a string that indicates which ExperienceReplayer
                 to use.
             observers (list[Callable]): An optional list of observers that are
@@ -78,7 +81,9 @@ class SyncOffPolicyDriver(OffPolicyDriver):
             algorithm=algorithm,
             exp_replayer=exp_replayer,
             observers=observers,
-            metrics=metrics)
+            metrics=metrics,
+            unroll_length=unroll_length,
+            learn_queue_cap=1)
         algorithm.set_metrics(self.get_metrics())
         self._prepare_specs(algorithm)
 

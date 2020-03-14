@@ -89,7 +89,7 @@ def get_metrics_from_eval_tfevents(eval_dir):
 def get_examples_dir():
     """Get examples directory"""
     bin_dir = Path(os.path.abspath(__file__)).parent
-    examples_dir = os.path.join(Path(bin_dir).parent, 'examples')
+    examples_dir = os.path.join(str(Path(bin_dir).parent), 'examples')
     return examples_dir
 
 

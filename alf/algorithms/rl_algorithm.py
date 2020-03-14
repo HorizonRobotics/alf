@@ -25,8 +25,7 @@ import tensorflow as tf
 
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import ActionTimeStep, Experience, make_experience, PolicyStep, StepType, TrainingInfo
-from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer
-from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
+from alf.experience_replayers.experience_replay import OnetimeExperienceReplayer, SyncUniformExperienceReplayer, CyclicOneTimeExperienceReplayer
 from alf.utils import common, nest_utils, summary_utils
 
 
@@ -260,24 +259,41 @@ class RLAlgorithm(Algorithm):
         """
         self._exp_observers.append(observer)
 
-    def set_exp_replayer(self, exp_replayer: str, num_envs):
+    def set_exp_replayer(self,
+                         exp_replayer: str,
+                         num_envs,
+                         num_actors=0,
+                         unroll_length=0,
+                         learn_queue_cap=0):
         """Set experience replayer.
 
         Args:
             exp_replayer (str): type of experience replayer. One of ("one_time",
-                "uniform")
+                "uniform", "cycle_one_time")
             num_envs (int): the total number of environments from all batched
-                environments.
+                environments/actors, which is num_actors * batch_size.
+            num_actors (int): number of async actors, required to be positive
+                for cycle_one_time replayer.
+            unroll_length (int): number of env steps to unroll.  Used in
+                cycle_one_time replayer.
+            learn_queue_cap (int): number of actors to use for each mini-batch.
         """
         if exp_replayer == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
-        elif exp_replayer == "uniform":
+        else:
             exp_spec = nest_utils.to_distribution_param_spec(
                 self.experience_spec)
-            self._exp_replayer = SyncUniformExperienceReplayer(
-                exp_spec, num_envs)
-        else:
-            raise ValueError("invalid experience replayer name")
+            if exp_replayer == "uniform":
+                self._exp_replayer = SyncUniformExperienceReplayer(
+                    exp_spec, num_envs)
+            elif exp_replayer == "cycle_one_time":
+                assert num_actors > 0
+                assert unroll_length > 0
+                self._exp_replayer = CyclicOneTimeExperienceReplayer(
+                    exp_spec, num_envs, num_actors, unroll_length,
+                    learn_queue_cap)
+            else:
+                raise ValueError("invalid experience replayer name")
         self.add_experience_observer(self._exp_replayer.observe)
 
     def observe(self, exp: Experience):
