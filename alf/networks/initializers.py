@@ -76,11 +76,6 @@ def variance_scaling_init(tensor,
     Returns:
         tensor (torch.Tensor): a randomly initialized weight tensor
     """
-    distribution = distribution.lower()
-    if distribution not in {
-            "uniform", "untruncated_normal", "truncated_normal"
-    }:
-        raise ValueError("Invalid `distribution` argument:", distribution)
 
     fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(tensor)
     if transposed:
@@ -110,9 +105,11 @@ def variance_scaling_init(tensor,
                     truncnorm.rvs(-threshold, threshold, size=tensor.size()) *
                     std))
     elif distribution == "uniform":
-        limit = math.sqrt(3.0) * gain
+        limit = math.sqrt(3.0) * std
         with torch.no_grad():
             return tensor.uniform_(-limit, limit)
     elif distribution == "untruncated_normal":
         with torch.no_grad():
             return tensor.normal_(0, std)
+    else:
+        raise ValueError("Invalid `distribution` argument:", distribution)

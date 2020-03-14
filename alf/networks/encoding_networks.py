@@ -305,7 +305,8 @@ class EncodingNetwork(Network):
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer.
+                the last layer. If None, a variance_scaling_initializer will be
+                used.
             last_layer_size (int): an optional size of the last layer
             last_activation (nn.functional): activation function of the last
                 layer. If None, it will be the SAME with `activation`.

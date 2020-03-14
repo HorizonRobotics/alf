@@ -201,7 +201,8 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=actor_fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
         self._create_projection_net(discrete_projection_net_ctor,
                                     continuous_projection_net_ctor)
 

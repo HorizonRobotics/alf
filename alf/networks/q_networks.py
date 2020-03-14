@@ -87,7 +87,8 @@ class QNetwork(Network):
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
-            activation=activation)
+            activation=activation,
+            kernel_initializer=kernel_initializer)
 
         last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
                                     a=-0.003, b=0.003)

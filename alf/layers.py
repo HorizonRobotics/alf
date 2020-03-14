@@ -276,7 +276,7 @@ class ConvTranspose2D(nn.Module):
                 nonlinearity=self._activation.__name__,
                 transposed=True)
         else:
-            kernel_initializer(self._conv_trans2d.weight)
+            kernel_initializer(self._conv_trans2d.weight.data)
 
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
