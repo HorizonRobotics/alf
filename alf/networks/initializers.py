@@ -56,9 +56,9 @@ def variance_scaling_init(tensor,
             Note that if `calc_gain_after_activation=True`, this number will be
             an additional gain factor on top of that.
         mode (str): one of "fan_in", "fan_out", and "fan_avg"
-        distribution (str): one of "normal" and "truncated_normal". If the latter,
-            the weights will be sampled from a normal distribution truncated at
-            (-2, 2).
+        distribution (str): one of "uniform", "untruncated_normal" and
+            "truncated_normal". If the latter, the weights will be sampled
+            from a normal distribution truncated at (-2, 2).
         calc_gain_after_activation (bool): whether automatically calculate the
             std gain of applying nonlinearity after this layer. A nonlinear
             activation (e.g., relu) might change std after the transformation,
@@ -76,6 +76,7 @@ def variance_scaling_init(tensor,
     Returns:
         tensor (torch.Tensor): a randomly initialized weight tensor
     """
+
     fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(tensor)
     if transposed:
         fan_in, fan_out = fan_out, fan_in
@@ -103,6 +104,12 @@ def variance_scaling_init(tensor,
                 torch.as_tensor(
                     truncnorm.rvs(-threshold, threshold, size=tensor.size()) *
                     std))
-    else:
+    elif distribution == "uniform":
+        limit = math.sqrt(3.0) * std
+        with torch.no_grad():
+            return tensor.uniform_(-limit, limit)
+    elif distribution == "untruncated_normal":
         with torch.no_grad():
             return tensor.normal_(0, std)
+    else:
+        raise ValueError("Invalid `distribution` argument:", distribution)

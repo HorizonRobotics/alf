@@ -14,6 +14,7 @@
 """ValueNetwork and ValueRNNNetwork."""
 
 import gin
+import functools
 
 import torch
 import torch.nn as nn
@@ -35,6 +36,7 @@ class ValueNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="ValueNetwork"):
         """Creates a value network that estimates the expected return.
 
@@ -62,6 +64,9 @@ class ValueNetwork(Network):
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+            the last layer. If none is provided a default xavier_uniform
+            initializer will be used.
             name (str):
         """
         super(ValueNetwork, self).__init__(
@@ -69,13 +74,23 @@ class ValueNetwork(Network):
             input_preprocessors,
             preprocessing_combiner,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = torch.nn.init.xavier_uniform_
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.03, b=0.03)
+
         self._encoding_net = EncodingNetwork(
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
+            kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity)
+            last_activation=layers.identity,
+            last_kernel_initializer=last_kernel_initializer)
+
         self._output_spec = TensorSpec(())
 
     def forward(self, observation, state=()):
@@ -107,6 +122,7 @@ class ValueRNNNetwork(Network):
                  lstm_hidden_size=100,
                  value_fc_layer_params=None,
                  activation=torch.relu,
+                 kernel_initializer=None,
                  name="ValueRNNNetwork"):
         """Creates an instance of `ValueRNNNetwork`.
 
@@ -139,12 +155,23 @@ class ValueRNNNetwork(Network):
                 FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a default xavier_uniform
+                initializer will be used.
+            name (str):
         """
         super(ValueRNNNetwork, self).__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
             name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = torch.nn.init.xavier_uniform_
+
+        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
+                                    a=-0.03, b=0.03)
+
         self._encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=self._processed_input_tensor_spec,
             conv_layer_params=conv_layer_params,
@@ -152,8 +179,11 @@ class ValueRNNNetwork(Network):
             hidden_size=lstm_hidden_size,
             post_fc_layer_params=value_fc_layer_params,
             activation=activation,
+            kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity)
+            last_activation=layers.identity,
+            last_kernel_initializer=last_kernel_initializer)
+
         self._output_spec = TensorSpec(())
 
     def forward(self, observation, state):
