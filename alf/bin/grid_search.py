@@ -12,22 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import itertools
-import json
-import os
-import time
-import random
-from collections import Iterable
-
 from absl import app
 from absl import flags
 from absl import logging
+from collections import Iterable
 import gin
-
+import itertools
+import json
+from multiprocessing import Queue, Manager
+import os
 # `pathos.multiprocessing` provides a consistent interface with std lib `multiprocessing`
 # and it's more flexible
 from pathos import multiprocessing
-from multiprocessing import Queue, Manager
+import random
+import time
+import torch
+
+import alf
 from alf.bin.train import train_eval
 from alf.utils import common
 
@@ -275,9 +276,8 @@ class GridSearch(object):
             else:
                 os.environ["CUDA_VISIBLE_DEVICES"] = ""  # run on cpu
 
-            from alf.utils.common import set_per_process_memory_growth
-            set_per_process_memory_growth()
-
+            if torch.cuda.is_available():
+                alf.set_default_device("cuda")
             logging.set_verbosity(logging.INFO)
 
             logging.info("parameters %s" % parameters)
