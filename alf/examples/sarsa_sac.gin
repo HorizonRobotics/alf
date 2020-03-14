@@ -45,13 +45,16 @@ SarsaAlgorithm.target_update_period=1
 SarsaAlgorithm.fast_critic_bias_speed=10.
 SarsaAlgorithm.use_smoothed_actor=False
 
+import alf.algorithms.trac_algorithm
+TracAlgorithm.ac_algorithm_cls=@SarsaAlgorithm
+TracAlgorithm.action_dist_clip_per_dim=0.25
 
 # training config
-TrainerConfig.algorithm_ctor=@SarsaAlgorithm
+TrainerConfig.algorithm_ctor=@TracAlgorithm
 TrainerConfig.whole_replay_buffer_training=False
 TrainerConfig.debug_summaries=1
 TrainerConfig.evaluate=1
-# Right now, epsilon_greedy_sample does not work for TransformedDistribution 
+# Right now, epsilon_greedy_sample does not work for TransformedDistribution
 TrainerConfig.epsilon_greedy=1.0
 TrainerConfig.eval_interval=10000
 TrainerConfig.summaries_flush_secs=10
