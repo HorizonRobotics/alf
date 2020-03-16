@@ -284,7 +284,7 @@ def summarize_action_dist(action_distributions,
     for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
         dist = dist_utils.get_base_dist(dist)
         action_dim = action_spec.shape[-1]
-        log_scale = alf.math.log(dist.scale)
+        log_scale = torch.log(dist.scale)
         for a in range(action_dim):
             alf.summary.histogram(
                 name="%s_log_scale/%s/%s" % (name, i, a),
