@@ -52,18 +52,19 @@ class StableTanh(td.Transform):
     def _inverse(self, y):
         # Based on https://github.com/tensorflow/agents/commit/dfb8c85a01d65832b05315928c010336df13f7b9#diff-a572e559b953f965c5c2cd1b9ded2c7b
 
-        # 0.99999997 is the maximum value such that atanh(x) is valid for both float32 and float64
-        def atanh(x):
+        # 0.99999997 is the maximum value such that atanh(x) is valid for both
+        # float32 and float64
+        def _atanh(x):
             return 0.5 * torch.log((1 + x) / (1 - x))
 
         y = torch.where(
             torch.abs(y) <= 1.0, torch.clamp(y, -0.99999997, 0.99999997), y)
-        return atanh(y)
+        return _atanh(y)
 
     def log_abs_det_jacobian(self, x, y):
-        return 2.0 * (torch.log(
-            torch.tensor(2.0, dtype=x.dtype, requires_grad=False).detach()) - x
-                      - nn.functional.softplus(-2.0 * x))
+        return 2.0 * (
+            torch.log(torch.tensor(2.0, dtype=x.dtype, requires_grad=False)) -
+            x - nn.functional.softplus(-2.0 * x))
 
 
 class OUProcess(nn.Module):
