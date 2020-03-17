@@ -86,7 +86,7 @@ class NormalProjectionNetwork(DistributionNetwork):
                  input_size,
                  action_spec,
                  activation=layers.identity,
-                 projection_output_init_gain=0.1,
+                 projection_output_init_gain=0.3,
                  std_bias_initializer_value=0.0,
                  squash_mean=True,
                  state_dependent_std=False,
@@ -186,6 +186,7 @@ class NormalProjectionNetwork(DistributionNetwork):
             squashed_dist = td.TransformedDistribution(
                 base_distribution=normal_dist,
                 transforms=[
+                    td.AffineTransform(loc=0, scale=2),
                     td.SigmoidTransform(),
                     td.AffineTransform(
                         loc=self._action_means - self._action_magnitudes,
@@ -220,7 +221,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                  input_size,
                  action_spec,
                  activation=layers.identity,
-                 projection_output_init_gain=0.1,
+                 projection_output_init_gain=1e-5,
                  squash_mean=True,
                  state_dependent_std=False,
                  inverse_std_transform='softplus',

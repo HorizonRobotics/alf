@@ -216,10 +216,10 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
                 Does not perform clipping if dqda_clipping == 0.
-            actor_optimizer (tf.optimizers.Optimizer): The optimizer for actor.
-            critic_optimizer (tf.optimizers.Optimizer): The optimizer for critic
+            actor_optimizer (torch.optim.Optimizer): The optimizer for actor.
+            critic_optimizer (torch.optim.Optimizer): The optimizer for critic
                 networks.
-            alpha_optimizer (tf.optimizers.Optimizer): The optimizer for alpha.
+            alpha_optimizer (torch.optim.Optimizer): The optimizer for alpha.
                 Only used if `initial_alpha` is not None.
             gradient_clipping (float): Norm length to clip gradients.
             on_policy (bool): whether it is used as an on-policy algorithm.

@@ -160,5 +160,4 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    #    SarsaTest().test_sarsa()
     alf.test.main()
