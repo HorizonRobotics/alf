@@ -24,6 +24,49 @@ import alf.nest as nest
 from alf.tensor_specs import TensorSpec
 
 
+class StableTanh(td.Transform):
+    """Invertable transformation (bijector) that computes `Y = tanh(X)`,
+    therefore `Y in (-1, 1)`.
+
+    This can be achieved by an affine transform of the Sigmoid transformation,
+    i.e., it is equivalent to applying a list of transformations sequentially:
+        ```
+        transforms = [td.AffineTransform(loc=0, scale=2)
+                        td.SigmoidTransform(),
+                        td.AffineTransform(
+                            loc=-1,
+                            scale=2]
+        ```
+    However, using the `StableTanh` transformation directly is more numerically
+    stable.
+    """
+    bijective = True
+    sign = +1
+
+    def __eq__(self, other):
+        return isinstance(other, StableTanh)
+
+    def _call(self, x):
+        return torch.tanh(x)
+
+    def _inverse(self, y):
+        # Based on https://github.com/tensorflow/agents/commit/dfb8c85a01d65832b05315928c010336df13f7b9#diff-a572e559b953f965c5c2cd1b9ded2c7b
+
+        # 0.99999997 is the maximum value such that atanh(x) is valid for both
+        # float32 and float64
+        def _atanh(x):
+            return 0.5 * torch.log((1 + x) / (1 - x))
+
+        y = torch.where(
+            torch.abs(y) <= 1.0, torch.clamp(y, -0.99999997, 0.99999997), y)
+        return _atanh(y)
+
+    def log_abs_det_jacobian(self, x, y):
+        return 2.0 * (
+            torch.log(torch.tensor(2.0, dtype=x.dtype, requires_grad=False)) -
+            x - nn.functional.softplus(-2.0 * x))
+
+
 class OUProcess(nn.Module):
     """A zero-mean Ornstein-Uhlenbeck process."""
 
