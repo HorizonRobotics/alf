@@ -163,20 +163,21 @@ class AverageReturnMetric(metric.StepMetric):
             The arguments, for easy chaining.
         """
         # Zero out batch indices where a new episode is starting.
+        is_first = exp.is_first().to('cuda')
         self._return_accumulator[:] = torch.where(
-            exp.is_first(), torch.zeros_like(self._return_accumulator),
+            is_first, torch.zeros_like(self._return_accumulator),
             self._return_accumulator)
 
         # Update accumulator with received rewards.
         # Ignores first step whose reward comes from the boundary transition
         # of the last step from the previous episode.
         self._return_accumulator.add_(
-            torch.where(exp.is_first(),
-                        torch.zeros_like(self._return_accumulator),
-                        exp.reward))
+            torch.where(is_first, torch.zeros_like(self._return_accumulator),
+                        exp.reward.to('cuda')))
 
         # Add final returns to buffer.
-        last_episode_indices = torch.where(exp.is_last())[0].type(torch.int64)
+        last_episode_indices = torch.where(exp.is_last().to('cuda'))[0].type(
+            torch.int64)
         for indx in last_episode_indices:
             self._buffer.append(self._return_accumulator[indx])
 
@@ -217,13 +218,13 @@ class AverageEpisodeLengthMetric(metric.StepMetric):
             The arguments, for easy chaining.
         """
         # Each non-boundary exp (mid or last) represents a step.
-        is_first = exp.is_first()
+        is_first = exp.is_first().to('cuda')
         non_boundary_indices = torch.where(~is_first)[0].type(torch.int64)
         self._length_accumulator[non_boundary_indices] += \
             torch.ones_like(non_boundary_indices)
 
         # Add lengths to buffer when we hit end of episode
-        is_last = exp.is_last()
+        is_last = exp.is_last().to('cuda')
         last_indices = torch.where(is_last)[0].type(torch.int64)
         for indx in last_indices:
             self._buffer.append(self._length_accumulator[indx])
