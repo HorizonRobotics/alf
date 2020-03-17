@@ -87,3 +87,17 @@ def max_n(inputs):
 def square(x):
     """torch doesn't have square."""
     return torch.pow(x, 2)
+
+
+def sum_to_leftmost(value, dim):
+    """Sum out `value.ndim-dim` many rightmost dimensions of a given tensor.
+
+    Args:
+        value (Tensor): A tensor of `.ndim` at least `dim`.
+        dim (int): The number of leftmost dims to remain.
+    Returns:
+        The result tensor whose ndim is `min(dim, value.dim)`.
+    """
+    if value.ndim <= dim:
+        return value
+    return value.sum(list(range(dim, value.ndim)))

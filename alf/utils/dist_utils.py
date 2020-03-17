@@ -67,6 +67,18 @@ class StableTanh(td.Transform):
             x - nn.functional.softplus(-2.0 * x))
 
 
+# The pytorch kl_divergence has a bug
+# (https://github.com/pytorch/pytorch/issues/34859)
+# So we use our own:
+@td.kl.register_kl(td.TransformedDistribution, td.TransformedDistribution)
+def _kl_transformed_transformed(p, q):
+    if p.transforms != q.transforms:
+        raise NotImplementedError
+    if p.event_shape != q.event_shape:
+        raise NotImplementedError
+    return td.kl.kl_divergence(p.base_dist, q.base_dist)
+
+
 class OUProcess(nn.Module):
     """A zero-mean Ornstein-Uhlenbeck process."""
 
