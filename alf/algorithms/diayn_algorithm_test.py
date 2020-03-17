@@ -42,7 +42,9 @@ class DIAYNAlgorithmTest(alf.test.TestCase):
                                        maximum=3)
         alg = DIAYNAlgorithm(
             skill_spec=skill_spec, encoding_net=self._encoding_net)
-        skill = state = skill_spec.zeros(outer_dims=(1, ))
+        skill = state = torch.nn.functional.one_hot(
+            skill_spec.zeros(outer_dims=(1, )),
+            int(skill_spec.maximum - skill_spec.minimum + 1)).to(torch.float32)
 
         alg_step = alg.train_step(
             self._time_step._replace(
