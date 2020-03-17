@@ -18,10 +18,13 @@ import gym
 import torch
 
 import alf
+from alf.optimizers import AdamTF
 
 torch.optim.Adam = gin.external_configurable(torch.optim.Adam,
                                              'torch.optim.Adam')
 gin.bind_parameter('torch.optim.Adam.params', [{'params': []}])
+
+gin.bind_parameter('AdamTF.params', [{'params': []}])
 
 torch.optim.AdamW = gin.external_configurable(torch.optim.AdamW,
                                               'torch.optim.AdamW')
