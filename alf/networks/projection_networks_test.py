@@ -149,8 +149,8 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
 
         out = dist.sample((1, ))
         self.assertTrue(out.std() > 0)
-        self.assertTrue(torch.all(out > torch.as_tensor(action_spec.minimum)))
-        self.assertTrue(torch.all(out < torch.as_tensor(action_spec.maximum)))
+        self.assertTrue(torch.all(out >= torch.as_tensor(action_spec.minimum)))
+        self.assertTrue(torch.all(out <= torch.as_tensor(action_spec.maximum)))
 
     def test_stable_normal_projection_net_minmax_std(self):
         """Test max and min stds for StableNormalProjectionNetwork."""
