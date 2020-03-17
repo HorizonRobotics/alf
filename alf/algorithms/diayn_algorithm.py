@@ -113,8 +113,10 @@ class DIAYNAlgorithm(Algorithm):
         """
         Args:
             time_step (TimeStep): input time step data, where the
-                observation is skill-augmened observation.
-            state (Tensor): state for DIAYN (previous skill).
+                observation is skill-augmened observation. The skill should be
+                a one-hot vector.
+            state (Tensor): state for DIAYN (previous skill) which should be
+                a one-hot vector.
             calc_intrinsic_reward (bool): if False, only return the losses.
         Returns:
             AlgStep:
