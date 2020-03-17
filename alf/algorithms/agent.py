@@ -177,7 +177,6 @@ class Agent(OnPolicyAlgorithm):
                 time_step, state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
             observation = [observation, goal_step.output]
-            print(goal_step.output)
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl,
@@ -294,7 +293,9 @@ class Agent(OnPolicyAlgorithm):
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
         # (algorithm, name)
-        algorithms = [(self._rl_algorithm, 'rl'), (self._irm, 'irm')]
+        algorithms = [(self._rl_algorithm, 'rl')]
+        if self._irm:
+            algorithms.append((self._irm, 'irm'))
         if self._goal_generator:
             algorithms.append((self._goal_generator, 'goal_generator'))
         if self._entropy_target_algorithm:

@@ -84,7 +84,10 @@ class ICMAlgorithm(Algorithm):
             feature_spec = observation_spec
 
         super(ICMAlgorithm, self).__init__(
-            train_state_spec=feature_spec, optimizer=optimizer, name=name)
+            train_state_spec=feature_spec,
+            predict_state_spec=(),
+            optimizer=optimizer,
+            name=name)
 
         flat_action_spec = alf.nest.flatten(action_spec)
         assert len(

@@ -135,11 +135,14 @@ def after_update(algorithms, names, training_info):
 
     Args:
         algorithms (list[Algorithm]): the list of algorithms whose `after_update`
-            is to be accumulated.
+            is to be called.
         names (list[str]): the algorithm names that should appear as fields in
             `training_info`.
         training_info (nested Tensor): information collected for training
             algorithms. It is batched from each `info` returned by `train_step()`.
     """
     for alg, name in zip(algorithms, names):
-        alg.after_update(_make_rl_training_info(training_info, name))
+        if isinstance(alg, RLAlgorithm):
+            alg.after_update(_make_rl_training_info(training_info, name))
+        else:
+            alg.after_update(getattr(training_info.info, name))
