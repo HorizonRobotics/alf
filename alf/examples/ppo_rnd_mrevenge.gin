@@ -48,7 +48,7 @@ RNDAlgorithm.keep_stacked_frames=%keep_stacked_frames
 # config AC
 rl/Adam.lr = 1e-4
 Agent.optimizer=@rl/Adam()
-Agent.intrinsic_curiosity_module=@RNDAlgorithm()
+Agent.intrinsic_reward_module=@RNDAlgorithm()
 Agent.observation_transformer=@image_scale_transformer
 
 Agent.reward_shaping_fn = @reward_clipping

@@ -25,7 +25,6 @@ icm/encoding_net_fc_layer_params=(%feature_size, %feature_size)
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
 icm/EncodingNetwork.activation=@torch.relu
-#icm/EncodingNetwork.last_activation=@alf.layers.identity
 
 ICMAlgorithm.action_spec=%action_spec
 ICMAlgorithm.activation=@torch.relu
@@ -35,7 +34,7 @@ ICMAlgorithm.hidden_size=(%feature_size, %feature_size)
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
-Agent.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.intrinsic_reward_module=@ICMAlgorithm()
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 

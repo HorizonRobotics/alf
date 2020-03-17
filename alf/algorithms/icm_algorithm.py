@@ -137,8 +137,8 @@ class ICMAlgorithm(Algorithm):
                 fc_layer_params=hidden_size,
                 activation=activation,
                 last_layer_size=self._num_actions,
-                last_activation=alf.layers.identity)
-            inverse_net._fc_layers[-1].weight.data.fill_(0)
+                last_activation=alf.layers.identity,
+                last_kernel_initializer=torch.nn.init.zeros_)
 
         self._inverse_net = inverse_net
 

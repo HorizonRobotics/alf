@@ -23,9 +23,9 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.agent_helpers import AgentStateSpecs
 from alf.algorithms.agent_helpers import accumulate_algortihm_rewards
-from alf.algorithms.agent_helpers import accumulate_loss_info
+from alf.algorithms.agent_helpers import accumulate_loss_info, after_update
 from alf.algorithms.config import TrainerConfig
-#from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
+from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import RLAlgorithm
@@ -34,10 +34,10 @@ from alf.data_structures import TimeStep, TrainingInfo, namedtuple
 from alf.utils.common import cast_transformer
 
 AgentState = namedtuple(
-    "AgentState", ["rl", "icm", "goal_generator"], default_value=())
+    "AgentState", ["rl", "irm", "goal_generator"], default_value=())
 
 AgentInfo = namedtuple(
-    "AgentInfo", ["rl", "icm", "goal_generator", "entropy_target"],
+    "AgentInfo", ["rl", "irm", "goal_generator", "entropy_target"],
     default_value=())
 
 
@@ -55,7 +55,7 @@ class Agent(OnPolicyAlgorithm):
                  config: TrainerConfig = None,
                  goal_generator=None,
                  rl_algorithm_cls=ActorCriticAlgorithm,
-                 intrinsic_curiosity_module=None,
+                 intrinsic_reward_module=None,
                  intrinsic_reward_coef=1.0,
                  extrinsic_reward_coef=1.0,
                  enforce_entropy_target=False,
@@ -82,7 +82,7 @@ class Agent(OnPolicyAlgorithm):
                 provided to the algorithm which performs `train_iter()` by
                 itself.
             rl_algorithm_cls (type): The algorithm class for learning the policy.
-            intrinsic_curiosity_module (Algorithm): an algorithm whose outputs
+            intrinsic_reward_module (Algorithm): an algorithm whose outputs
                 is a scalar intrinsic reward.
             goal_generator (Algorithm): an algorithm with output a goal vector
             intrinsic_reward_coef (float): Coefficient for intrinsic reward
@@ -110,7 +110,7 @@ class Agent(OnPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
-        state_specs = AgentStateSpecs()
+        state_specs = AgentStateSpecs(AgentState)
 
         ## 1. goal generator
         rl_observation_spec = observation_spec
@@ -131,9 +131,9 @@ class Agent(OnPolicyAlgorithm):
         self._is_on_policy = rl_algorithm.is_on_policy()
 
         ## 3. intrinsic motivation module
-        if intrinsic_curiosity_module is not None:
-            state_specs.collect_algorithm_state_specs(
-                intrinsic_curiosity_module, "icm")
+        if intrinsic_reward_module is not None:
+            state_specs.collect_algorithm_state_specs(intrinsic_reward_module,
+                                                      "irm")
 
         ## 4. entropy target
         entropy_target_algorithm = None
@@ -161,7 +161,7 @@ class Agent(OnPolicyAlgorithm):
         self._entropy_target_algorithm = entropy_target_algorithm
         self._intrinsic_reward_coef = intrinsic_reward_coef
         self._extrinsic_reward_coef = extrinsic_reward_coef
-        self._icm = intrinsic_curiosity_module
+        self._irm = intrinsic_reward_module
         self._goal_generator = goal_generator
 
     def is_on_policy(self):
@@ -176,7 +176,8 @@ class Agent(OnPolicyAlgorithm):
             goal_step = self._goal_generator.predict_step(
                 time_step, state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
-            observation = [time_step.observation, goal_step.output]
+            observation = [observation, goal_step.output]
+            print(goal_step.output)
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl,
@@ -203,17 +204,17 @@ class Agent(OnPolicyAlgorithm):
         new_state = new_state._replace(rl=rl_step.state)
         info = info._replace(rl=rl_step.info)
 
-        if self._icm is not None:
-            icm_step = self._icm.train_step(
-                time_step._replace(observation=observation), state=state.icm)
-            info = info._replace(icm=icm_step.info)
-            new_state = new_state._replace(icm=icm_step.state)
+        if self._irm is not None:
+            irm_step = self._irm.train_step(
+                time_step._replace(observation=observation), state=state.irm)
+            info = info._replace(irm=irm_step.info)
+            new_state = new_state._replace(irm=irm_step.state)
 
         if self._entropy_target_algorithm and self.is_on_policy():
             # For off-policy training, skip the entropy target algorithm
             # during `unroll()`.
             assert 'action_distribution' in rl_step.info._fields, (
-                "PolicyStep from rl_algorithm.rollout() does not contain "
+                "AlgStep from rl_algorithm.rollout() does not contain "
                 "`action_distribution`, which is required by "
                 "`enforce_entropy_target`")
             et_step = self._entropy_target_algorithm.train_step(
@@ -236,13 +237,13 @@ class Agent(OnPolicyAlgorithm):
             new_state = new_state._replace(goal_generator=goal_step.state)
             observation = [observation, goal_step.output]
 
-        if self._icm is not None:
-            icm_step = self._icm.train_step(
+        if self._irm is not None:
+            irm_step = self._irm.train_step(
                 exp._replace(observation=observation),
-                state=state.icm,
+                state=state.irm,
                 calc_intrinsic_reward=False)
-            info = info._replace(icm=icm_step.info)
-            new_state = new_state._replace(icm=icm_step.state)
+            info = info._replace(irm=irm_step.info)
+            new_state = new_state._replace(irm=irm_step.state)
 
         rl_step = self._rl_algorithm.train_step(
             exp._replace(
@@ -274,21 +275,15 @@ class Agent(OnPolicyAlgorithm):
         Returns:
             reward used for training.
         """
-        rewards = [
-            external_reward, info.icm.reward if self._icm else None,
-            info.goal_generator.reward if
-            (self._goal_generator and
-             ('reward' in info.goal_generator._fields)) else None
-        ]
-        weights = [
-            self._extrinsic_reward_coef, self._intrinsic_reward_coef, 1.0
-        ]
-        names = ["extrinsic", "icm", "goal_generator"]
+        rewards = [(external_reward, self._extrinsic_reward_coef, "extrinsic")]
+        if self._irm:
+            rewards.append((info.irm.reward, self._intrinsic_reward_coef,
+                            "irm"))
+        if self._goal_generator and 'reward' in info.goal_generator._fields:
+            rewards.append((info.goal_generator.reward, 1., "goal_generator"))
 
         return accumulate_algortihm_rewards(
-            rewards,
-            weights,
-            names,
+            *zip(*rewards),
             summary_prefix="reward",
             summarize_fn=self.summarize_reward)
 
@@ -299,20 +294,19 @@ class Agent(OnPolicyAlgorithm):
                 reward=self.calc_training_reward(training_info.reward,
                                                  training_info.info))
         # (algorithm, name)
-        algorithms = [(self._rl_algorithm, 'rl'), (self._icm, 'icm'),
-                      (self._goal_generator, 'goal_generator'),
-                      (self._entropy_target_algorithm, 'entropy_target')]
-        return accumulate_loss_info(training_info, *zip(*algorithms))
+        algorithms = [(self._rl_algorithm, 'rl'), (self._irm, 'irm')]
+        if self._goal_generator:
+            algorithms.append((self._goal_generator, 'goal_generator'))
+        if self._entropy_target_algorithm:
+            algorithms.append((self._entropy_target_algorithm,
+                               'entropy_target'))
+        return accumulate_loss_info(*zip(*algorithms), training_info)
 
     def after_update(self, training_info):
-        self._rl_algorithm.after_update(
-            training_info._replace(info=training_info.info.rl))
+        algorithms = [(self._rl_algorithm, "rl")]
         if self._goal_generator:
-            self._goal_generator.after_update(
-                training_info._replace(info=training_info.info.goal_generator))
-        if self._icm:
-            self._icm.after_update(
-                training_info._replace(info=training_info.info.icm))
+            algorithms.append((self._goal_generator, "goal_generator"))
+        after_update(*zip(*algorithms), training_info)
 
     def preprocess_experience(self, exp: Experience):
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)

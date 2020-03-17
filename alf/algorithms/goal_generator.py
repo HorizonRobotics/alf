@@ -74,7 +74,8 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         batch_size = alf.nest.get_nest_batch_size(observation)
         goals = torch.randint(
             high=self._num_of_goals, size=(batch_size, ), dtype=torch.int64)
-        goals_onehot = torch.nn.functional.one_hot(goals, self._num_of_goals)
+        goals_onehot = torch.nn.functional.one_hot(
+            goals, self._num_of_goals).to(torch.float32)
         return goals_onehot
 
     def _update_goal(self, observation, state, step_type):
@@ -90,11 +91,9 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
             new_goal (Tensor): a batch of one-hot tensors representing the
                 updated goals.
         """
-        new_goal_mask = torch.unsqueeze(
-            (step_type == StepType.FIRST).to(torch.float32), dim=-1)
+        new_goal_mask = torch.unsqueeze((step_type == StepType.FIRST), dim=-1)
         generated_goal = self._generate_goal(observation, state)
-        new_goal = (
-            new_goal_mask * generated_goal + (1 - new_goal_mask) * state.goal)
+        new_goal = torch.where(new_goal_mask, generated_goal, state.goal)
         return new_goal
 
     def _step(self, time_step: TimeStep, state):
@@ -121,10 +120,10 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
             state=GoalState(goal=new_goal),
             info=GoalInfo(goal=new_goal))
 
-    def _rollout_step(self, time_step: TimeStep, state):
+    def rollout_step(self, time_step: TimeStep, state):
         return self._step(time_step, state)
 
-    def _predict_step(self, time_step: TimeStep, state):
+    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._step(time_step, state)
 
     def train_step(self, exp: Experience, state):

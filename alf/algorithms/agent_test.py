@@ -48,8 +48,8 @@ class AgentTest(alf.test.TestCase):
                 ActorCriticAlgorithm,
                 actor_network=actor_net,
                 value_network=value_net),
-            intrinsic_curiosity_module=ICMAlgorithm(
-                action_spec=action_spec, feature_spec=observation_spec))
+            intrinsic_reward_module=ICMAlgorithm(
+                action_spec=action_spec, observation_spec=observation_spec))
 
         predict_state = agent.get_initial_predict_state(batch_size)
         rollout_state = agent.get_initial_rollout_state(batch_size)
@@ -58,17 +58,17 @@ class AgentTest(alf.test.TestCase):
         # TODO: implement mode sampling when `epsilon_greedy` < 1.0
         pred_step = agent.predict_step(
             time_step, predict_state, epsilon_greedy=1.0)
-        self.assertEqual(pred_step.state.icm, ())
+        self.assertEqual(pred_step.state.irm, ())
 
         rollout_step = agent.rollout_step(time_step, rollout_state)
-        self.assertNotEqual(rollout_step.state.icm, ())
+        self.assertNotEqual(rollout_step.state.irm, ())
 
         exp = make_experience(time_step, rollout_step, rollout_state)
 
         train_step = agent.train_step(exp, train_state)
-        self.assertNotEqual(train_step.state.icm, ())
+        self.assertNotEqual(train_step.state.irm, ())
 
-        self.assertTensorEqual(rollout_step.state.icm, train_step.state.icm)
+        self.assertTensorEqual(rollout_step.state.irm, train_step.state.irm)
 
 
 if __name__ == "__main__":

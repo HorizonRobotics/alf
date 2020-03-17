@@ -159,10 +159,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
             gradient_clipping=gradient_clipping,
             debug_summaries=debug_summaries,
             name=name)
-        self.add_optimizer(actor_optimizer, [actor_network])
-        self.add_optimizer(critic_optimizer,
-                           [critic_network1, critic_network2])
-        self.add_optimizer(alpha_optimizer, [log_alpha])
+
+        if actor_optimizer is not None:
+            self.add_optimizer(actor_optimizer, [actor_network])
+        if critic_optimizer is not None:
+            self.add_optimizer(critic_optimizer,
+                               [critic_network1, critic_network2])
+        if alpha_optimizer is not None:
+            self.add_optimizer(alpha_optimizer, [log_alpha])
 
         self._log_alpha = log_alpha
         self._actor_network = actor_network

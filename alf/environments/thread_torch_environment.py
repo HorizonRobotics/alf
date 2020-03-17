@@ -33,6 +33,10 @@ class ThreadTorchEnvironment(torch_environment.TorchEnvironment):
         self._pool = mp_threads.Pool(1)
         self._env = self._pool.apply(env_constructor)
 
+    @property
+    def batch_size(self):
+        return 1
+
     def observation_spec(self):
         return self._apply('observation_spec')
 

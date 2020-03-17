@@ -38,7 +38,7 @@ ICMAlgorithm.action_spec=%action_spec
 ICMAlgorithm.feature_spec=@icm/TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=128
-Agent.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.intrinsic_reward_module=@ICMAlgorithm()
 Agent.extrinsic_reward_coef=0.0
 Agent.intrinsic_reward_coef=1.0
 # #
