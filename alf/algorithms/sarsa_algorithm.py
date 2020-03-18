@@ -168,7 +168,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  critic_optimizer=None,
                  alpha_optimizer=None,
                  target_update_tau=0.05,
-                 target_update_period=1,
+                 target_update_period=10,
                  use_smoothed_actor=False,
                  dqda_clipping=0.,
                  gradient_clipping=None,
@@ -354,7 +354,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                     return a + ou()
                 else:
                     return torch.where(
-                        torch.rand(*a.shape[:1]) < epsilon_greedy, a + ou(), a)
+                        torch.rand(a.shape[:1]) < epsilon_greedy, a + ou(), a)
 
             action = nest_map(_sample, action_distribution, self._ou_process)
         return action_distribution, action, state

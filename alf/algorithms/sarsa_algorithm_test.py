@@ -32,11 +32,10 @@ from alf.networks import (ActorDistributionNetwork,
 from alf.utils import common
 from alf.utils.math_ops import clipped_exp
 
-DEBUGGING = False
+DEBUGGING = True
 
 
-def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed,
-                      learning_rate):
+def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed):
     observation_spec = env.observation_spec()
     action_spec = env.action_spec()
     fc_layer_params = (16, 16)
@@ -79,7 +78,7 @@ def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed,
 
     config = TrainerConfig(
         root_dir="dummy",
-        unroll_length=1,
+        unroll_length=12,
         initial_collect_steps=500,
         use_rollout_state=True,
         mini_batch_length=1,
@@ -101,35 +100,42 @@ def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed,
         fast_critic_bias_speed=fast_critic_bias_speed,
         actor_network=actor_net,
         critic_network=critic_net,
-        actor_optimizer=torch.optim.Adam(lr=learning_rate),
-        critic_optimizer=torch.optim.Adam(lr=learning_rate),
-        alpha_optimizer=torch.optim.Adam(lr=learning_rate),
+        actor_optimizer=torch.optim.Adam(lr=5e-3, eps=1e-6),
+        critic_optimizer=torch.optim.Adam(lr=1e-1, eps=1e-6),
+        alpha_optimizer=torch.optim.Adam(lr=5e-3, eps=1e-6),
         debug_summaries=DEBUGGING)
 
 
 class SarsaTest(parameterized.TestCase, alf.test.TestCase):
     # TODO: on_policy=True is very unstable, try to figure out the possible
     # reason.
-    @parameterized.parameters(
-        dict(on_policy=False, sac=False),
-        dict(on_policy=False, use_rnn=False),
-        dict(on_policy=False, use_rnn=True),
-        dict(on_policy=False, fast_critic_bias_speed=10.),
-    )
-    def test_sarsa(self,
-                   on_policy=False,
-                   sac=True,
-                   use_rnn=False,
-                   fast_critic_bias_speed=0.):
+    # @parameterized.parameters(
+    #     dict(on_policy=False, sac=False),
+    #     dict(on_policy=False, use_rnn=False),
+    #     dict(on_policy=False, use_rnn=True),
+    #     dict(on_policy=False, fast_critic_bias_speed=10.),
+    # )
+    def test_sarsa(self):
+        alf.summary.enable_summary()
+        common.run_under_record_context(
+            self._test_sarsa,
+            summary_dir='/home/weixu/tmp/debug/sarsa_ddpg/7',
+            summary_interval=1,
+            flush_secs=1)
+
+    def _test_sarsa(self,
+                    on_policy=False,
+                    sac=False,
+                    use_rnn=False,
+                    fast_critic_bias_speed=0.):
         logging.info("sac=%d on_policy=%s use_rnn=%s fast_critic_bias_speed=%s"
                      % (sac, on_policy, use_rnn, fast_critic_bias_speed))
         env_class = PolicyUnittestEnv
-        learning_rate = 2e-2
         iterations = 500
         num_env = 1
         if on_policy:
             num_env = 128
-        steps_per_episode = 13
+        steps_per_episode = 12
         env = env_class(
             num_env, steps_per_episode, action_type=ActionType.Continuous)
         eval_env = env_class(
@@ -140,8 +146,7 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
             on_policy=on_policy,
             sac=sac,
             use_rnn=use_rnn,
-            fast_critic_bias_speed=fast_critic_bias_speed,
-            learning_rate=learning_rate)
+            fast_critic_bias_speed=fast_critic_bias_speed)
 
         env.reset()
         eval_env.reset()
@@ -160,4 +165,10 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
 
 
 if __name__ == '__main__':
+    # logging.use_absl_handler()
+    # logging.set_verbosity(logging.INFO)
+
+    # if torch.cuda.is_available():
+    #     torch.set_default_tensor_type(torch.cuda.FloatTensor)
+    # SarsaTest().test_sarsa()
     alf.test.main()
