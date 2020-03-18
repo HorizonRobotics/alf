@@ -22,7 +22,7 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.data_structures import Experience, namedtuple, StepType, TimeStep
 from alf.optimizers.trusted_updater import TrustedUpdater
-from alf.utils import common, dist_utils
+from alf.utils import common, dist_utils, math_ops
 
 nest_map = alf.nest.map_structure
 
@@ -77,6 +77,8 @@ class TracAlgorithm(OnPolicyAlgorithm):
             action_spec=action_spec,
             debug_summaries=debug_summaries)
 
+        self._is_on_policy = ac_algorithm.is_on_policy()
+
         assert hasattr(ac_algorithm, '_actor_network')
 
         super().__init__(
@@ -100,6 +102,9 @@ class TracAlgorithm(OnPolicyAlgorithm):
             return np.sqrt(action_dist_clip_per_dim * dims)
 
         self._action_dist_clips = nest_map(_get_clip, self.action_spec)
+
+    def is_on_policy(self):
+        return self._is_on_policy
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._ac_algorithm.predict_step(time_step, state,
@@ -201,7 +206,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             else:
                 dist = td.kl.kl_divergence(d1, d2) + td.kl.kl_divergence(
                     d2, d1)
-            return dist.sum(list(range(1, dist.ndim)))
+            return math_ops.sum_to_leftmost(dist, 1)
 
         def _update_total_dists(new_action, exp, total_dists):
             old_action = dist_utils.params_to_distributions(

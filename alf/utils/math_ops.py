@@ -139,3 +139,17 @@ def weighted_reduce_mean(x, weight, dim=()):
     sum_weight = weight.sum(dim=dim)
     sum_weight = torch.max(sum_weight, torch.tensor(1e-10))
     return nest_map(lambda y: (y * weight).sum(dim=dim) / sum_weight, x)
+
+
+def sum_to_leftmost(value, dim):
+    """Sum out `value.ndim-dim` many rightmost dimensions of a given tensor.
+
+    Args:
+        value (Tensor): A tensor of `.ndim` at least `dim`.
+        dim (int): The number of leftmost dims to remain.
+    Returns:
+        The result tensor whose ndim is `min(dim, value.dim)`.
+    """
+    if value.ndim <= dim:
+        return value
+    return value.sum(list(range(dim, value.ndim)))
