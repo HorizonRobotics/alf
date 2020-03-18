@@ -165,8 +165,8 @@ class Trainer(object):
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
-                '%s time=%.3f throughput=%0.2f' % (iter_num, t,
-                                                   int(train_steps) / t),
+                '%s: %s time=%.3f throughput=%0.2f' %
+                (common.get_gin_file(), iter_num, t, int(train_steps) / t),
                 n_seconds=1)
 
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
