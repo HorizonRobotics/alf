@@ -78,8 +78,8 @@ def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed):
 
     config = TrainerConfig(
         root_dir="dummy",
-        unroll_length=12,
-        initial_collect_steps=500,
+        unroll_length=2,
+        initial_collect_steps=12 * 128 * 5,
         use_rollout_state=True,
         mini_batch_length=1,
         mini_batch_size=256,
@@ -96,13 +96,12 @@ def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed):
         env=env,
         config=config,
         on_policy=on_policy,
-        ou_stddev=0.1,
         fast_critic_bias_speed=fast_critic_bias_speed,
         actor_network=actor_net,
         critic_network=critic_net,
-        actor_optimizer=torch.optim.Adam(lr=5e-3, eps=1e-6),
-        critic_optimizer=torch.optim.Adam(lr=1e-1, eps=1e-6),
-        alpha_optimizer=torch.optim.Adam(lr=5e-3, eps=1e-6),
+        actor_optimizer=alf.optimizers.AdamTF(lr=5e-3),
+        critic_optimizer=alf.optimizers.AdamTF(lr=1e-1),
+        alpha_optimizer=alf.optimizers.AdamTF(lr=5e-3),
         debug_summaries=DEBUGGING)
 
 
@@ -132,7 +131,7 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
                      % (sac, on_policy, use_rnn, fast_critic_bias_speed))
         env_class = PolicyUnittestEnv
         iterations = 500
-        num_env = 1
+        num_env = 128
         if on_policy:
             num_env = 128
         steps_per_episode = 12

@@ -77,16 +77,24 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             name="MyDDPG")
 
         eval_env.reset()
-        for _ in range(200):
+        for i in range(200):
             alg.train_iter()
-
-        eval_env.reset()
-        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
-        print(eval_time_step.reward.mean())
+            eval_env.reset()
+            eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
+            logging.log_every_n_seconds(
+                logging.INFO,
+                "%d reward=%f" % (i, float(eval_time_step.reward.mean())),
+                n_seconds=1)
 
         self.assertAlmostEqual(
             1.0, float(eval_time_step.reward.mean()), delta=3e-1)
 
 
 if __name__ == '__main__':
-    alf.test.main()
+    logging.use_absl_handler()
+    logging.set_verbosity(logging.INFO)
+
+    if torch.cuda.is_available():
+        torch.set_default_tensor_type(torch.cuda.FloatTensor)
+    DDPGAlgorithmTest().test_ddpg_algorithm()
+    #alf.test.main()
