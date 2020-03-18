@@ -44,12 +44,7 @@ def _summary_wrapper(summary_func):
 
 
 @_summary_wrapper
-def histogram_discrete(name,
-                       data,
-                       bucket_min,
-                       bucket_max,
-                       step=None,
-                       description=None):
+def histogram_discrete(name, data, bucket_min, bucket_max, step=None):
     """histogram for discrete data.
 
     Args:
@@ -59,35 +54,11 @@ def histogram_discrete(name,
         bucket_max (int): represent bucket max value
             bucket count is calculate as `bucket_max - bucket_min + 1`
             and output will have this many buckets.
-        step (None|tf.Variable):  step value for this summary. this defaults to
-            `tf.summary.experimental.get_step()`
-        description (str): Optional long-form description for this summary
+        step (None|Tensor): step value for this summary. this defaults to
+            `alf.summary.get_global_counter()`
     """
-    # TODO: implement pytorch version
-    return
-    summary_metadata = metadata.create_summary_metadata(
-        display_name=None, description=description)
-    summary_scope = (getattr(tf.summary.experimental, 'summary_scope', None)
-                     or tf.summary.summary_scope)
-    with summary_scope(
-            name, 'histogram_summary',
-            values=[data, bucket_min, bucket_max, step]) as (tag, _):
-        with tf.name_scope('buckets'):
-            bucket_count = bucket_max - bucket_min + 1
-            data = data - bucket_min
-            one_hots = tf.one_hot(
-                tf.reshape(data, shape=[-1]), depth=bucket_count)
-            bucket_counts = tf.cast(
-                tf.reduce_sum(input_tensor=one_hots, axis=0), tf.float64)
-            edge = tf.cast(tf.range(bucket_count), tf.float64)
-            # histogram can not draw when left_edge == right_edge
-            left_edge = edge - 1e-12
-            right_edge = edge + 1e-12
-            tensor = tf.transpose(
-                a=tf.stack([left_edge, right_edge, bucket_counts]))
-
-        return tf.summary.write(
-            tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
+    alf.summary.histogram(
+        name, data, step=step, bins=torch.arange(bucket_min, bucket_max + 1))
 
 
 @_summary_wrapper
@@ -96,8 +67,7 @@ def histogram_continuous(name,
                          bucket_min=None,
                          bucket_max=None,
                          bucket_count=DEFAULT_BUCKET_COUNT,
-                         step=None,
-                         description=None):
+                         step=None):
     """histogram for continuous data .
 
     Args:
@@ -108,47 +78,20 @@ def histogram_continuous(name,
         bucket_max (float|None): represent bucket max value,
             if None value tf.reduce_max(data) will be used
         bucket_count (int):  positive `int`. The output will have this many buckets.
-        step (None|tf.Variable):  step value for this summary. this defaults to
-            `tf.summary.experimental.get_step()`
-        description (str): Optional long-form description for this summary
+        step (None|Tensor): step value for this summary. this defaults to
+            `alf.summary.get_global_counter()`
     """
-    # TODO: implement pytorch version
-    return
-    summary_metadata = metadata.create_summary_metadata(
-        display_name=None, description=description)
-    summary_scope = (getattr(tf.summary.experimental, 'summary_scope', None)
-                     or tf.summary.summary_scope)
-    with summary_scope(
-            name,
-            'histogram_summary',
-            values=[data, bucket_min, bucket_max, bucket_count, step]) as (tag,
-                                                                           _):
-        with tf.name_scope('buckets'):
-            data = tf.cast(tf.reshape(data, shape=[-1]), tf.float64)
-            if bucket_min is None:
-                bucket_min = tf.reduce_min(data)
-            if bucket_max is None:
-                bucket_max = tf.reduce_min(data)
-            range_ = bucket_max - bucket_min
-            bucket_width = range_ / tf.cast(bucket_count, tf.float64)
-            offsets = data - bucket_min
-            bucket_indices = tf.cast(
-                tf.floor(offsets / bucket_width), dtype=tf.int32)
-            clamped_indices = tf.clip_by_value(bucket_indices, 0,
-                                               bucket_count - 1)
-            one_hots = tf.one_hot(clamped_indices, depth=bucket_count)
-            bucket_counts = tf.cast(
-                tf.reduce_sum(input_tensor=one_hots, axis=0), dtype=tf.float64)
-            edges = tf.linspace(bucket_min, bucket_max, bucket_count + 1)
-            edges = tf.concat([edges[:-1], [tf.cast(bucket_max, tf.float64)]],
-                              0)
-            edges = tf.cast(edges, tf.float64)
-            left_edges = edges[:-1]
-            right_edges = edges[1:]
-            tensor = tf.transpose(
-                a=tf.stack([left_edges, right_edges, bucket_counts]))
-        return tf.summary.write(
-            tag=tag, tensor=tensor, step=step, metadata=summary_metadata)
+    data = data.to(torch.float64)
+    if bucket_min is None:
+        bucket_min = data.min()
+    if bucket_max is None:
+        bucket_max = data.max()
+    bins = (
+        bucket_min +
+        (torch.arange(bucket_count + 1, dtype=torch.float64) / bucket_count) *
+        (bucket_max - bucket_min))
+    data = data.clamp(bucket_min, bucket_max)
+    alf.summary.histogram(name, data, step=step, bins=bins.cpu())
 
 
 @_summary_wrapper
@@ -159,6 +102,7 @@ def summarize_variables(name_and_params, with_histogram=True):
     Args:
         name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
             tuples.
+        with_histogram (bool): If True, generate histogram.
     """
     for var_name, var in name_and_params:
         var_values = var
@@ -172,12 +116,13 @@ def summarize_variables(name_and_params, with_histogram=True):
 
 @_summary_wrapper
 @gin.configurable
-def summarize_gradients(name_and_params, step=None, with_histogram=True):
+def summarize_gradients(name_and_params, with_histogram=True):
     """Add summaries for gradients.
 
     Args:
         name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
             tuples.
+        with_histogram (bool): If True, generate histogram.
     """
     for var_name, var in name_and_params:
         if var.grad is None:
@@ -282,6 +227,9 @@ def summarize_action_dist(action_distributions,
     actions = alf.nest.flatten(action_distributions)
 
     for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
+        if not isinstance(dist, td.Distribution):
+            # dist might be a Tensor
+            continue
         dist = dist_utils.get_base_dist(dist)
         action_dim = action_spec.shape[-1]
         log_scale = alf.math.log(dist.scale)
