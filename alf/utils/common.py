@@ -480,16 +480,19 @@ def get_gin_file():
     """Get the gin configuration file.
 
     If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
-    returns them.
+    returns them. If there is no 'gin_file' flag defined, return ''.
     Returns:
         the gin file(s)
     """
-    gin_file = flags.FLAGS.gin_file
-    if gin_file is None:
-        root_dir = os.path.expanduser(flags.FLAGS.root_dir)
-        gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
-        assert gin_file, "No gin files are found! Please provide"
-    return gin_file
+    if hasattr(flags.FLAGS, "gin_file"):
+        gin_file = flags.FLAGS.gin_file
+        if gin_file is None:
+            root_dir = os.path.expanduser(flags.FLAGS.root_dir)
+            gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
+            assert gin_file, "No gin files are found! Please provide"
+        return gin_file
+    else:
+        return ''
 
 
 def get_initial_policy_state(batch_size, policy_state_spec):
