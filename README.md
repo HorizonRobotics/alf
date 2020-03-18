@@ -93,8 +93,9 @@ python -m alf.bin.play --root_dir=LOG_DIR
 <img src="alf/examples/rnd_mrevenge.png" width="300" height="200" alt="mrevenge-training-curve"><img src="alf/examples/rnd_mrevenge.gif" width="150" height="200" alt="mrevenge-video">
 
 ### DIAYN
-* [Pendulum](alf/examples/diayn_pendulum.gin). Learning diverse skills without external reward.
+* [Pendulum](alf/examples/diayn_pendulum.gin). Learning diverse skills without external rewards.
 
+  <img src="alf/examples/diayn_pendulum.png" width="300" alt="Discriminator loss">
   <img src="alf/examples/diayn_pendulum.gif" width = "600" alt="Skills learned with DIAYN"/>
 
 

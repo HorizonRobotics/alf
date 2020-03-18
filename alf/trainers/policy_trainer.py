@@ -177,18 +177,21 @@ class Trainer(object):
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
 
-                def _markdownify(paragraph):
-                    return "    ".join(
-                        (os.linesep + paragraph).splitlines(keepends=True))
+                with alf.summary.record_if(lambda: True):
 
-                common.summarize_gin_config()
-                alf.summary.text('commandline', ' '.join(sys.argv))
-                alf.summary.text(
-                    'optimizers',
-                    _markdownify(self._algorithm.get_optimizer_info()))
-                alf.summary.text('revision', git_utils.get_revision())
-                alf.summary.text('diff', _markdownify(git_utils.get_diff()))
-                alf.summary.text('seed', str(self._random_seed))
+                    def _markdownify(paragraph):
+                        return "    ".join(
+                            (os.linesep + paragraph).splitlines(keepends=True))
+
+                    common.summarize_gin_config()
+                    alf.summary.text('commandline', ' '.join(sys.argv))
+                    alf.summary.text(
+                        'optimizers',
+                        _markdownify(self._algorithm.get_optimizer_info()))
+                    alf.summary.text('revision', git_utils.get_revision())
+                    alf.summary.text('diff',
+                                     _markdownify(git_utils.get_diff()))
+                    alf.summary.text('seed', str(self._random_seed))
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]

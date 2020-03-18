@@ -5,6 +5,7 @@ include "ppo.gin"
 include "image_game_model.gin"
 
 import alf.algorithms.rnd_algorithm
+import alf.tensor_specs
 
 suite_gym.load.max_episode_steps = 4500
 DMAtariPreprocessing.noop_max = 0
@@ -20,35 +21,34 @@ create_environment.env_name = 'MontezumaRevengeNoFrameskip-v0'
 create_environment.num_parallel_environments = 128
 
 # RND config
-encoder/tf.TensorSpec.shape=(84, 84, 1)  # only take the last stacked frame
-encoder/EncodingNetwork.activation_fn=@tf.nn.tanh
-encoder/EncodingNetwork.input_tensor_spec=@encoder/tf.TensorSpec()
-encoder/EncodingNetwork.conv_layer_params = [(64, 5, 5), (64, 2, 2), (64, 2, 2)]
+keep_stacked_frames=1
+encoder/alf.TensorSpec.shape=(%keep_stacked_frames, 84, 84)
+encoder/EncodingNetwork.activation=@torch.tanh
+encoder/EncodingNetwork.input_tensor_spec=@encoder/alf.TensorSpec()
+encoder/EncodingNetwork.conv_layer_params = ((64, 5, 5), (64, 2, 2), (64, 2, 2))
 
-target/tf.TensorSpec.shape=(1024,)
+target/alf.TensorSpec.shape=(1024,)
 embedding_dim=1000
 
-pred/EncodingNetwork.activation_fn=@tf.nn.tanh
-pred/EncodingNetwork.input_tensor_spec=@target/tf.TensorSpec()
+pred/EncodingNetwork.activation=@torch.tanh
+pred/EncodingNetwork.input_tensor_spec=@target/alf.TensorSpec()
 pred/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
 
-target/EncodingNetwork.activation_fn=@tf.nn.tanh
-target/EncodingNetwork.input_tensor_spec=@target/tf.TensorSpec()
+target/EncodingNetwork.activation=@torch.tanh
+target/EncodingNetwork.input_tensor_spec=@target/alf.TensorSpec()
 target/EncodingNetwork.fc_layer_params = (300, 400, 500, %embedding_dim)
-
 
 RNDAlgorithm.encoder_net=@encoder/EncodingNetwork()
 RNDAlgorithm.target_net=@target/EncodingNetwork()
 RNDAlgorithm.predictor_net=@pred/EncodingNetwork()
-RNDAlgorithm.learning_rate=4e-5
-#RNDAlgorithm.clip_value=1.0
-#RNDAlgorithm.reward_adapt_speed=8.0
-RNDAlgorithm.stacked_frames=True
+rnd/Adam.lr=4e-5
+RNDAlgorithm.optimizer=@rnd/Adam()
+RNDAlgorithm.keep_stacked_frames=%keep_stacked_frames
 
 # config AC
-rl/Adam.learning_rate = 1e-4
+rl/Adam.lr = 1e-4
 Agent.optimizer=@rl/Adam()
-Agent.intrinsic_curiosity_module=@RNDAlgorithm()
+Agent.intrinsic_reward_module=@RNDAlgorithm()
 Agent.observation_transformer=@image_scale_transformer
 
 Agent.reward_shaping_fn = @reward_clipping
@@ -66,12 +66,10 @@ TrainerConfig.mini_batch_length=1
 TrainerConfig.mini_batch_size=1024
 TrainerConfig.num_iterations=0
 TrainerConfig.num_env_steps=50000000 # = 200M frames / 4 (frame_skip)
-TrainerConfig.use_tf_functions=True
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=False
 TrainerConfig.summary_interval=100
-TrainerConfig.checkpoint_interval=500
-TrainerConfig.checkpoint_max_to_keep=1
+TrainerConfig.num_checkpoints=10
 TrainerConfig.use_rollout_state=True
 TrainerConfig.update_counter_every_mini_batch=True
 

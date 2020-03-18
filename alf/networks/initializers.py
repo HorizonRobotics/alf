@@ -20,6 +20,19 @@ import torch
 import torch.nn as nn
 
 
+def _calculate_gain(nonlinearity, nonlinearity_param):
+    """Handle extra activations.
+    TODO: might compute numerical gain instead.
+    """
+    if nonlinearity == "elu":
+        # ELU paper: "The weights have been initialized according to (He et al.,
+        # 2015)". Also there is another suggestion for math.sqrt(1.55) in:
+        # https://stats.stackexchange.com/questions/229885/whats-the-recommended-weight-initialization-strategy-when-using-the-elu-activat
+        return math.sqrt(2.0)
+    else:
+        return nn.init.calculate_gain(nonlinearity, nonlinearity_param)
+
+
 @gin.configurable
 def variance_scaling_init(tensor,
                           gain=1.0,
@@ -92,7 +105,7 @@ def variance_scaling_init(tensor,
 
     if (calc_gain_after_activation and mode == "fan_in"
             and nonlinearity != "identity"):
-        gain *= nn.init.calculate_gain(nonlinearity, nonlinearity_param)
+        gain *= _calculate_gain(nonlinearity, nonlinearity_param)
 
     std = gain / math.sqrt(size)
     if distribution == "truncated_normal":

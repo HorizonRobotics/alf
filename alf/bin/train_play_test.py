@@ -340,13 +340,11 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_diayn_pendulum(self):
         self._test(
             gin_file='diayn_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_mountain_car(self):
         self._test(
             gin_file='icm_mountain_car.gin',
@@ -359,14 +357,12 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_super_mario(self):
         self._test(
             gin_file='icm_super_mario.gin',
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_super_mario_intrinsic_only(self):
         self._test(
             gin_file="icm_super_mario_intrinsic_only.gin",
@@ -435,7 +431,6 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_rnd_mrevenge(self):
         self._test(
             gin_file='ppo_rnd_mrevenge.gin',

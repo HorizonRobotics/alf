@@ -52,7 +52,7 @@ MISCAlgorithm.soc_spec=@misc/soc/TensorSpec()
 MISCAlgorithm.hidden_size=128 # 256
 import alf.examples.misc_playground
 MISCAlgorithm.split_observation_fn=@misc_playground.split_observation_fn
-Agent.intrinsic_curiosity_module=@MISCAlgorithm()
+Agent.intrinsic_reward_module=@MISCAlgorithm()
 Agent.extrinsic_reward_coef=0.0
 Agent.intrinsic_reward_coef=1.0
 # #
