@@ -164,10 +164,10 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    # logging.use_absl_handler()
-    # logging.set_verbosity(logging.INFO)
+    logging.use_absl_handler()
+    logging.set_verbosity(logging.INFO)
 
-    # if torch.cuda.is_available():
-    #     torch.set_default_tensor_type(torch.cuda.FloatTensor)
-    # SarsaTest().test_sarsa()
-    alf.test.main()
+    if torch.cuda.is_available():
+        torch.set_default_tensor_type(torch.cuda.FloatTensor)
+    SarsaTest().test_sarsa()
+    # alf.test.main()
