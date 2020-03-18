@@ -90,6 +90,27 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
         return self._env
 
 
+class ContinuousActionClip(TorchEnvironmentBaseWrapper):
+    """Clip continuous actions according to the action spec."""
+
+    def __init__(self, env):
+        """Create an ActionClip torch wrapper.
+
+        Args:
+            env (TorchEnvironment): An TorchEnvironment instance to wrap.
+        """
+        super(ContinuousActionClip, self).__init__(env)
+
+    def _step(self, action):
+        action_spec = self.action_spec()
+        if (action_spec.is_continuous
+                and isinstance(action_spec, ts.BoundedTensorSpec)):
+            action = torch.max(
+                torch.min(action, torch.as_tensor(action_spec.maximum)),
+                torch.as_tensor(action_spec.minimum))
+        return super()._step(action)
+
+
 # Used in ALF
 @gin.configurable
 class TimeLimit(TorchEnvironmentBaseWrapper):
