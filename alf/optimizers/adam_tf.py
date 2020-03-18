@@ -47,7 +47,7 @@ class AdamTF(Optimizer):
                  params,
                  lr=1e-3,
                  betas=(0.9, 0.999),
-                 eps=1e-8,
+                 eps=1e-7,
                  weight_decay=0,
                  amsgrad=False):
         if not 0.0 <= lr:
@@ -69,10 +69,10 @@ class AdamTF(Optimizer):
             eps=eps,
             weight_decay=weight_decay,
             amsgrad=amsgrad)
-        super(Adam, self).__init__(params, defaults)
+        super(AdamTF, self).__init__(params, defaults)
 
     def __setstate__(self, state):
-        super(Adam, self).__setstate__(state)
+        super(AdamTF, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 
@@ -135,14 +135,12 @@ class AdamTF(Optimizer):
                     # Maintains the maximum of all 2nd moment running avg. till now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                     # Use the max. for normalizing running avg. of gradient
-                    denom = (max_exp_avg_sq.sqrt() /
-                             math.sqrt(bias_correction2)).add_(group['eps'])
+                    denom = max_exp_avg_sq.sqrt().add_(group['eps'])
                 else:
-                    denom = (
-                        exp_avg_sq.sqrt() / math.sqrt(bias_correction2)).add_(
-                            group['eps'])
+                    denom = exp_avg_sq.sqrt().add_(group['eps'])
 
-                step_size = group['lr'] / bias_correction1
+                step_size = group['lr'] * (
+                    math.sqrt(bias_correction2) / bias_correction1)
 
                 p.addcdiv_(exp_avg, denom, value=-step_size)
 
