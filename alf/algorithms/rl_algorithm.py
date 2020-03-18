@@ -552,11 +552,6 @@ class RLAlgorithm(Algorithm):
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
 
-            # Check if the action is corrupted or not.
-            if torch.any(torch.isnan(policy_step.output)):
-                raise ValueError("NAN action detected! action: {}".format(
-                    policy_step.output))
-
             if self._rollout_info_spec is None:
                 self._rollout_info_spec = dist_utils.extract_spec(
                     policy_step.info)

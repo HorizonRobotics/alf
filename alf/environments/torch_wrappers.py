@@ -103,11 +103,15 @@ class ContinuousActionClip(TorchEnvironmentBaseWrapper):
 
     def _step(self, action):
         action_spec = self.action_spec()
-        if (action_spec.is_continuous
-                and isinstance(action_spec, ts.BoundedTensorSpec)):
-            action = torch.max(
-                torch.min(action, torch.as_tensor(action_spec.maximum)),
-                torch.as_tensor(action_spec.minimum))
+        if action_spec.is_continuous:
+            # Check if the action is corrupted or not.
+            if torch.any(torch.isnan(action)):
+                raise ValueError(
+                    "NAN action detected! action: {}".format(action))
+            if isinstance(action_spec, ts.BoundedTensorSpec):
+                action = torch.max(
+                    torch.min(action, torch.as_tensor(action_spec.maximum)),
+                    torch.as_tensor(action_spec.minimum))
         return super()._step(action)
 
 
