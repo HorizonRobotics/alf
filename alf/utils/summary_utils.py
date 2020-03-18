@@ -84,8 +84,12 @@ def histogram_continuous(name,
     data = data.to(torch.float64)
     if bucket_min is None:
         bucket_min = data.min()
+    else:
+        bucket_min = torch.as_tensor(bucket_min)
     if bucket_max is None:
         bucket_max = data.max()
+    else:
+        bucket_max = torch.as_tensor(bucket_max)
     bins = (
         bucket_min +
         (torch.arange(bucket_count + 1, dtype=torch.float64) / bucket_count) *
