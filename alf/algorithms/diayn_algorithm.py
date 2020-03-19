@@ -21,6 +21,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, StepType
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.utils.tensor_utils import to_tensor
 from alf.utils import math_ops
 from alf.utils.normalizers import AdaptiveNormalizer, ScalarAdaptiveNormalizer
 
@@ -145,7 +146,8 @@ class DIAYNAlgorithm(Algorithm):
             # nn.MSELoss doesn't support reducing along a dim
             loss = torch.sum(math_ops.square(skill_pred - prev_skill), dim=-1)
 
-        valid_masks = (step_type != StepType.FIRST).to(torch.float32)
+        valid_masks = (step_type != to_tensor(StepType.FIRST)).to(
+            torch.float32)
         loss *= valid_masks
 
         intrinsic_reward = ()
