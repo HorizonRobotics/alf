@@ -20,7 +20,7 @@ import math
 import torch
 import torch.nn as nn
 
-import alf.layers as layers
+import alf.utils.math_ops as math_ops
 import alf.nest as nest
 from alf.networks import Network, EncodingNetwork, LSTMEncodingNetwork
 from alf.networks.initializers import variance_scaling_init
@@ -119,7 +119,7 @@ class CriticNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity,
+            last_activation=math_ops.identity,
             last_kernel_initializer=last_kernel_initializer)
 
         self._output_spec = TensorSpec(())
@@ -254,7 +254,7 @@ class CriticRNNNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity,
+            last_activation=math_ops.identity,
             last_kernel_initializer=last_kernel_initializer)
 
         self._output_spec = TensorSpec(())

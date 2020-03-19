@@ -20,14 +20,8 @@ import torch.nn as nn
 
 from alf.nest.utils import get_outer_rank
 from alf.networks.initializers import variance_scaling_init
+from alf.utils.math_ops import identity
 from alf.tensor_specs import TensorSpec
-
-
-def identity(x):
-    """PyTorch doesn't have an identity activation. This can be used as a
-    placeholder.
-    """
-    return x
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -139,7 +133,7 @@ class FC(nn.Module):
             variance_scaling_init(
                 self._linear.weight.data,
                 gain=kernel_init_gain,
-                nonlinearity=self._activation.__name__)
+                nonlinearity=self._activation)
         else:
             kernel_initializer(self._linear.weight.data)
 
@@ -206,7 +200,7 @@ class Conv2D(nn.Module):
             variance_scaling_init(
                 self._conv2d.weight.data,
                 gain=kernel_init_gain,
-                nonlinearity=self._activation.__name__)
+                nonlinearity=self._activation)
         else:
             kernel_initializer(self._conv2d.weight.data)
 
@@ -273,7 +267,7 @@ class ConvTranspose2D(nn.Module):
             variance_scaling_init(
                 self._conv_trans2d.weight.data,
                 gain=kernel_init_gain,
-                nonlinearity=self._activation.__name__,
+                nonlinearity=self._activation,
                 transposed=True)
         else:
             kernel_initializer(self._conv_trans2d.weight.data)

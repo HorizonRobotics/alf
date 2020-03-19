@@ -22,6 +22,7 @@ import torch.nn as nn
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.nest.utils import get_outer_rank
+import alf.utils.math_ops as math_ops
 
 
 class InputPreprocessor(nn.Module):
@@ -89,7 +90,7 @@ class EmbeddingPreprocessor(InputPreprocessor):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
-                 last_activation=alf.layers.identity,
+                 last_activation=math_ops.identity,
                  name="EmbeddingPreproc"):
         """
         Args:

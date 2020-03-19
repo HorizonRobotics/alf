@@ -22,8 +22,8 @@ from alf.networks import CategoricalProjectionNetwork
 from alf.networks import NormalProjectionNetwork
 from alf.networks import StableNormalProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-import alf.layers as layers
 from alf.utils.dist_utils import DistributionSpec
+import alf.utils.math_ops as math_ops
 
 
 class TestCategoricalProjectionNetwork(parameterized.TestCase,
@@ -75,7 +75,7 @@ class TestNormalProjectionNetwork(parameterized.TestCase, alf.test.TestCase):
             std_bias_initializer_value=0,
             squash_mean=False,
             state_dependent_std=state_dependent_std,
-            std_transform=layers.identity)
+            std_transform=math_ops.identity)
 
         out = net(embedding)[0].sample((10, ))
         self.assertTrue(isinstance(net.output_spec, DistributionSpec))

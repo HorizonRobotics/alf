@@ -17,6 +17,13 @@ import gin
 import torch
 
 
+def identity(x):
+    """PyTorch doesn't have an identity activation. This can be used as a
+    placeholder.
+    """
+    return x
+
+
 @gin.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
     """ Clip value to the range [`clip_value_min`, `clip_value_max`]

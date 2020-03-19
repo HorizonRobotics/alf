@@ -49,7 +49,7 @@ class ActorDistributionNetwork(DistributionNetwork):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
@@ -150,7 +150,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating

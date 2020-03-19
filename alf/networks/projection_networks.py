@@ -25,6 +25,7 @@ import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import DistributionNetwork, Network
 from alf.utils import dist_utils
+import alf.utils.math_ops as math_ops
 
 
 def DiagMultivariateNormal(loc, scale_diag):
@@ -85,7 +86,7 @@ class NormalProjectionNetwork(DistributionNetwork):
     def __init__(self,
                  input_size,
                  action_spec,
-                 activation=layers.identity,
+                 activation=math_ops.identity,
                  projection_output_init_gain=0.1,
                  std_bias_initializer_value=0.0,
                  squash_mean=True,
@@ -129,7 +130,7 @@ class NormalProjectionNetwork(DistributionNetwork):
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
 
         self._action_spec = action_spec
-        self._mean_transform = layers.identity
+        self._mean_transform = math_ops.identity
         self._scale_distribution = scale_distribution
 
         if squash_mean or scale_distribution:
@@ -147,7 +148,7 @@ class NormalProjectionNetwork(DistributionNetwork):
                     lambda inputs: self._action_means + self._action_magnitudes
                     * inputs.tanh())
 
-        self._std_transform = layers.identity
+        self._std_transform = math_ops.identity
         if std_transform is not None:
             self._std_transform = std_transform
 
@@ -218,7 +219,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
     def __init__(self,
                  input_size,
                  action_spec,
-                 activation=layers.identity,
+                 activation=math_ops.identity,
                  projection_output_init_gain=0.1,
                  squash_mean=True,
                  state_dependent_std=False,

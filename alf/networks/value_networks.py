@@ -21,8 +21,8 @@ import torch.nn as nn
 
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks import Network
-import alf.layers as layers
 from alf.tensor_specs import TensorSpec
+import alf.utils.math_ops as math_ops
 
 
 @gin.configurable
@@ -46,7 +46,7 @@ class ValueNetwork(Network):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
@@ -88,7 +88,7 @@ class ValueNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity,
+            last_activation=math_ops.identity,
             last_kernel_initializer=last_kernel_initializer)
 
         self._output_spec = TensorSpec(())
@@ -132,7 +132,7 @@ class ValueRNNNetwork(Network):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
@@ -181,7 +181,7 @@ class ValueRNNNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer,
             last_layer_size=1,
-            last_activation=layers.identity,
+            last_activation=math_ops.identity,
             last_kernel_initializer=last_kernel_initializer)
 
         self._output_spec = TensorSpec(())
