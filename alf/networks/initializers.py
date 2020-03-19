@@ -23,25 +23,27 @@ import alf.utils.math_ops as math_ops
 
 
 @gin.configurable
-def _numerical_calculate_gain(nonlinearity, num_samples=1000):
-    """Compute the gain in a numerical way by sampling variables. For the sampled
-    variables, we compute the sqrt inverse of their average second moment, and
-    use it as the suggested gain.
-
-    Assume y is the output, w is the weight (mean=0), and x is the input, then
+def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
+    """Compute the gain in a numerical way by integration. Assume y is the output,
+    w is the weight (mean=0, std=1), and x is the input, then
 
     Var(y) = Var(w) * E(x^2)
 
+    So we need to approximate E(x^2) numerically.
+
     Args:
         nonlinearity (Callable): any callable activation function
-        num_samples (int): number of samples for approximating the gain
+        dz (float): `dz` in the integration
+        r (float): `z` range will be `[-r, r]`
 
     Returns:
         gain (float): a gain factor that will be applied to the init weights
     """
-    tensor = torch.randn(num_samples)
-    tensor = nonlinearity(tensor)
-    return torch.sqrt(1.0 / torch.mean(tensor**2)).cpu().numpy()
+    dist = torch.distributions.normal.Normal(0, 1)
+    z = torch.arange(-r, r, dz)
+    x = nonlinearity(z)
+    Ex2 = (torch.exp(dist.log_prob(z)) * x**2).sum() * dz
+    return torch.sqrt(1.0 / Ex2).cpu().numpy()
 
 
 def _calculate_gain(nonlinearity, nonlinearity_param=0.01):
