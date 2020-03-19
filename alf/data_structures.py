@@ -18,7 +18,6 @@ import collections
 import numpy as np
 import torch
 
-import alf
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils.tensor_utils import to_tensor
