@@ -48,6 +48,7 @@ def _calculate_gain(nonlinearity, nonlinearity_param=0.01):
     """Deprecated: now use _numerical_calculate_gain instead.
 
     Args:
+        nonlinearity (str): the name of the activation function
         nonlinearity_param (float): additional parameter of the nonlinearity;
             currently only used by 'leaky_relu' as the negative slope (pytorch
             default 0.01)
@@ -89,8 +90,7 @@ def variance_scaling_init(tensor,
         from alf.networks.initializers import variance_scaling_init
         layer = nn.Linear(2, 2)
         variance_scaling_init(layer.weight.data,
-                              nonlinearity=nn.functional.leaky_relu,
-                              nonlinearity_param=0.01)
+                              nonlinearity=nn.functional.leaky_relu)
         nn.init.zeros_(layer.bias.data)
 
     Args:

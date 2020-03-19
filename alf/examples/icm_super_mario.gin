@@ -37,7 +37,8 @@ value/ValueNetwork.fc_layer_params=(256,256)
 value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 value/ValueNetwork.activation=@torch.nn.functional.elu
 
-ac/AdamTF.lr=3e-5
+ac/Adam.lr=3e-5
+ac/Adam.eps=1e-7
 
 icm/encoding_net_fc_layer_params=(256,)
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
@@ -52,7 +53,7 @@ ICMAlgorithm.activation=@torch.nn.functional.elu
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/AdamTF()
+Agent.optimizer=@ac/Adam()
 Agent.intrinsic_reward_module=@ICMAlgorithm()
 Agent.observation_transformer=@image_scale_transformer
 ActorCriticLoss.entropy_regularization=0.01
