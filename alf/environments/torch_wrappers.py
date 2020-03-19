@@ -118,7 +118,10 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
 
         self._num_steps += 1
         if self._num_steps >= self._duration:
-            time_step = time_step._replace(step_type=StepType.LAST)
+            LAST = StepType.LAST
+            if time_step.step_type.is_cuda:
+                LAST = LAST.cuda()
+            time_step = time_step._replace(step_type=LAST)
 
         if time_step.is_last():
             self._num_steps = None
