@@ -41,7 +41,7 @@ def _numerical_calculate_gain(nonlinearity, num_samples=1000):
     """
     tensor = torch.randn(num_samples)
     tensor = nonlinearity(tensor)
-    return torch.sqrt(1.0 / torch.mean(tensor**2))
+    return torch.sqrt(1.0 / torch.mean(tensor**2)).cpu().numpy()
 
 
 def _calculate_gain(nonlinearity, nonlinearity_param=0.01):

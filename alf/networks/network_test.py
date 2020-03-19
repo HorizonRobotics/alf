@@ -88,8 +88,7 @@ class InitializerTest(parameterized.TestCase, alf.test.TestCase):
         else:
             gain = _calculate_gain(activation.__name__)
         print(activation.__name__, numerical_gain, gain)
-        self.assertTensorClose(
-            numerical_gain, torch.as_tensor(gain), epsilon=0.1)
+        self.assertLess(abs(numerical_gain - gain), 0.1)
 
 
 if __name__ == '__main__':
