@@ -25,6 +25,7 @@ import random
 import six
 import torch
 
+import alf
 from alf.data_structures import StepType, TimeStep
 from alf.environments import torch_environment
 import alf.nest as nest
@@ -119,7 +120,7 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
         self._num_steps += 1
         if self._num_steps >= self._duration:
             LAST = StepType.LAST
-            if time_step.step_type.is_cuda:
+            if alf.get_default_device() == "cuda":
                 LAST = LAST.cuda()
             time_step = time_step._replace(step_type=LAST)
 
