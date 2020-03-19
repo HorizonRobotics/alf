@@ -23,11 +23,11 @@ import six
 import torch.nn as nn
 
 import alf
-import alf.layers as layers
 from alf.tensor_specs import TensorSpec
 from alf.networks.preprocessors import InputPreprocessor
 from alf.nest.utils import get_outer_rank
 from alf.utils.dist_utils import DistributionSpec, extract_spec
+import alf.utils.math_ops as math_ops
 from alf.utils import common
 
 
@@ -113,7 +113,7 @@ class Network(nn.Module):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
@@ -150,7 +150,7 @@ class Network(nn.Module):
                 return preproc(spec)
 
             self._input_preprocessors = alf.nest.map_structure(
-                lambda _: layers.identity, input_tensor_spec)
+                lambda _: math_ops.identity, input_tensor_spec)
             if input_preprocessors is not None:
                 input_preprocessors = alf.nest.pack_sequence_as(
                     input_tensor_spec, alf.nest.flatten(input_preprocessors))
@@ -159,7 +159,7 @@ class Network(nn.Module):
                     input_tensor_spec)
                 # allow None as a placeholder in the nest
                 self._input_preprocessors = alf.nest.map_structure(
-                    lambda preproc: layers.identity
+                    lambda preproc: math_ops.identity
                     if preproc is None else preproc, input_preprocessors)
 
             self._preprocessing_combiner = preprocessing_combiner
@@ -171,7 +171,7 @@ class Network(nn.Module):
             else:
                 assert isinstance(input_tensor_spec, TensorSpec), \
                     "The spec must be an instance of TensorSpec!"
-                self._preprocessing_combiner = layers.identity
+                self._preprocessing_combiner = math_ops.identity
 
         # This input spec is the final resulting spec after input preprocessors
         # and the nest combiner.

@@ -97,7 +97,7 @@ class DIAYNAlgorithm(Algorithm):
             fc_layer_params=hidden_size,
             activation=hidden_activation,
             last_layer_size=skill_dim,
-            last_activation=alf.layers.identity)
+            last_activation=math_ops.identity)
 
         self._reward_normalizer = ScalarAdaptiveNormalizer(
             speed=reward_adapt_speed)

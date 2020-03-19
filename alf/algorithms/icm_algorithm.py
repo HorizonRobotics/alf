@@ -128,7 +128,7 @@ class ICMAlgorithm(Algorithm):
                 fc_layer_params=hidden_size,
                 activation=activation,
                 last_layer_size=feature_dim,
-                last_activation=alf.layers.identity)
+                last_activation=math_ops.identity)
 
         self._forward_net = forward_net
 
@@ -140,7 +140,7 @@ class ICMAlgorithm(Algorithm):
                 fc_layer_params=hidden_size,
                 activation=activation,
                 last_layer_size=self._num_actions,
-                last_activation=alf.layers.identity,
+                last_activation=math_ops.identity,
                 last_kernel_initializer=torch.nn.init.zeros_)
 
         self._inverse_net = inverse_net
