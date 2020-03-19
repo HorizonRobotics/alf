@@ -29,6 +29,7 @@ from alf.data_structures import StepType, TimeStep
 from alf.environments import torch_environment
 import alf.nest as nest
 import alf.tensor_specs as ts
+from alf.utils import spec_utils
 from alf.utils.tensor_utils import to_tensor
 
 
@@ -111,9 +112,7 @@ class ContinuousActionClip(TorchEnvironmentBaseWrapper):
                     "NAN action detected! action: {}".format(action))
             if spec.is_continuous:
                 if isinstance(spec, ts.BoundedTensorSpec):
-                    action = torch.max(
-                        torch.min(action, torch.as_tensor(spec.maximum)),
-                        torch.as_tensor(spec.minimum))
+                    action = spec_utils.clip_to_spec(action, spec)
             return action
 
         action = nest.map_structure(_clip_action, action_spec, action)
