@@ -204,21 +204,20 @@ class Agent(OnPolicyAlgorithm):
         info = info._replace(rl=rl_step.info)
 
         if self._irm is not None:
-            irm_step = self._irm.train_step(
+            irm_step = self._irm.rollout_step(
                 time_step._replace(observation=observation), state=state.irm)
             info = info._replace(irm=irm_step.info)
             new_state = new_state._replace(irm=irm_step.state)
 
-        if self._entropy_target_algorithm and self.is_on_policy():
-            # For off-policy training, skip the entropy target algorithm
-            # during `unroll()`.
+        if self._entropy_target_algorithm:
             assert 'action_distribution' in rl_step.info._fields, (
                 "AlgStep from rl_algorithm.rollout() does not contain "
                 "`action_distribution`, which is required by "
                 "`enforce_entropy_target`")
-            et_step = self._entropy_target_algorithm.train_step(
+            et_step = self._entropy_target_algorithm.rollout_step(
                 rl_step.info.action_distribution,
-                step_type=time_step.step_type)
+                step_type=time_step.step_type,
+                on_policy_training=self.is_on_policy())
             info = info._replace(entropy_target=et_step.info)
 
         return AlgStep(output=rl_step.output, state=new_state, info=info)
@@ -238,9 +237,7 @@ class Agent(OnPolicyAlgorithm):
 
         if self._irm is not None:
             irm_step = self._irm.train_step(
-                exp._replace(observation=observation),
-                state=state.irm,
-                calc_intrinsic_reward=False)
+                exp._replace(observation=observation), state=state.irm)
             info = info._replace(irm=irm_step.info)
             new_state = new_state._replace(irm=irm_step.state)
 
