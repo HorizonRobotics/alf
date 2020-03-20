@@ -69,7 +69,7 @@ def tensor_prepend_zero(x):
     return torch.cat((torch.zeros(1, *x.shape[1:], dtype=x.dtype), x))
 
 
-def explained_variance(ypred, y, valid_mask):
+def explained_variance(ypred, y, valid_mask=None):
     """Computes fraction of variance that ypred explains about y.
 
     Adapted from baselines.ppo2 explained_variance()

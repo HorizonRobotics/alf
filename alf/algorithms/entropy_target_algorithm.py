@@ -152,7 +152,8 @@ class EntropyTargetAlgorithm(Algorithm):
             on_policy_training (bool): If False, this step does nothing.
 
         Returns:
-            AlgStep. `info` field is LossInfo, other fields are empty.
+            AlgStep. `info` field is LossInfo, other fields are empty. All fields
+                are empty If `on_policy_training` is False.
         """
         if on_policy_training:
             return self.train_step(distribution, step_type)
