@@ -97,36 +97,30 @@ def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed):
         config=config,
         on_policy=on_policy,
         fast_critic_bias_speed=fast_critic_bias_speed,
+        ou_stddev=0.2,
+        ou_damping=0.5,
         actor_network=actor_net,
         critic_network=critic_net,
         actor_optimizer=alf.optimizers.AdamTF(lr=5e-3),
-        critic_optimizer=alf.optimizers.AdamTF(lr=1e-1),
-        alpha_optimizer=alf.optimizers.AdamTF(lr=5e-3),
+        critic_optimizer=alf.optimizers.AdamTF(lr=2e-2),
+        alpha_optimizer=alf.optimizers.AdamTF(lr=2e-2),
         debug_summaries=DEBUGGING)
 
 
 class SarsaTest(parameterized.TestCase, alf.test.TestCase):
     # TODO: on_policy=True is very unstable, try to figure out the possible
     # reason.
-    # @parameterized.parameters(
-    #     dict(on_policy=False, sac=False),
-    #     dict(on_policy=False, use_rnn=False),
-    #     dict(on_policy=False, use_rnn=True),
-    #     dict(on_policy=False, fast_critic_bias_speed=10.),
-    # )
-    def test_sarsa(self):
-        alf.summary.enable_summary()
-        common.run_under_record_context(
-            self._test_sarsa,
-            summary_dir='/home/weixu/tmp/debug/sarsa_ddpg/7',
-            summary_interval=1,
-            flush_secs=1)
-
-    def _test_sarsa(self,
-                    on_policy=False,
-                    sac=False,
-                    use_rnn=False,
-                    fast_critic_bias_speed=0.):
+    @parameterized.parameters(
+        dict(on_policy=False, sac=False),
+        dict(on_policy=False, use_rnn=False),
+        dict(on_policy=False, use_rnn=True),
+        dict(on_policy=False, fast_critic_bias_speed=10.),
+    )
+    def test_sarsa(self,
+                   on_policy=False,
+                   sac=True,
+                   use_rnn=False,
+                   fast_critic_bias_speed=0.):
         logging.info("sac=%d on_policy=%s use_rnn=%s fast_critic_bias_speed=%s"
                      % (sac, on_policy, use_rnn, fast_critic_bias_speed))
         env_class = PolicyUnittestEnv
@@ -164,10 +158,4 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    logging.use_absl_handler()
-    logging.set_verbosity(logging.INFO)
-
-    if torch.cuda.is_available():
-        torch.set_default_tensor_type(torch.cuda.FloatTensor)
-    SarsaTest().test_sarsa()
-    # alf.test.main()
+    alf.test.main()

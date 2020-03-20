@@ -48,11 +48,11 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
 class StepType(object):
     """Defines the status of a `TimeStep` within a sequence."""
     # Denotes the first `TimeStep` in a sequence.
-    FIRST = np.int32(0)  #torch.tensor(0, dtype=torch.int32)
+    FIRST = np.int32(0)
     # Denotes any `TimeStep` in a sequence that is not FIRST or LAST.
-    MID = np.int32(1)  # torch.tensor(1, dtype=torch.int32)
+    MID = np.int32(1)
     # Denotes the last `TimeStep` in a sequence.
-    LAST = np.int32(2)  #torch.tensor(2, dtype=torch.int32)
+    LAST = np.int32(2)
 
     def __new__(cls, value):
         """Add ability to create StepType constants from a value."""

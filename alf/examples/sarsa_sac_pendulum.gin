@@ -6,9 +6,9 @@ suite_gym.load.torch_env_wrappers=(@RandomFirstEpisodeLength, )
 create_environment.env_name="Pendulum-v0"
 create_environment.num_parallel_environments=1
 
-actor/Adam.lr=1e-4
-critic/Adam.lr=1e-3
-alpha/Adam.lr=1e-4
+actor/AdamTF.lr=1e-4
+critic/AdamTF.lr=1e-3
+alpha/AdamTF.lr=1e-4
 
 SarsaAlgorithm.target_update_tau=0.05
 SarsaAlgorithm.target_update_period=1

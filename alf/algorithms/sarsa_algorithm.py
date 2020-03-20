@@ -36,7 +36,7 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 SarsaState = namedtuple(
     'SarsaState', [
         'prev_observation', 'prev_step_type', 'actor', 'critics',
-        'target_critics'
+        'target_critics', 'noise'
     ],
     default_value=())
 SarsaInfo = namedtuple(
@@ -241,16 +241,26 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         self._on_policy = on_policy
 
+        if not isinstance(actor_network, DistributionNetwork):
+            noise_process = alf.networks.OUProcess(
+                state_spec=action_spec, damping=ou_damping, stddev=ou_stddev)
+            noise_state = noise_process.state_spec
+        else:
+            noise_process = None
+            noise_state = ()
+
         super().__init__(
             observation_spec,
             action_spec,
             env=env,
             config=config,
             predict_state_spec=SarsaState(
+                noise=noise_state,
                 prev_observation=observation_spec,
                 prev_step_type=alf.TensorSpec((), torch.int32),
                 actor=actor_network.state_spec),
             train_state_spec=SarsaState(
+                noise=noise_state,
                 prev_observation=observation_spec,
                 prev_step_type=alf.TensorSpec((), torch.int32),
                 actor=actor_network.state_spec,
@@ -315,10 +325,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         self._dqda_clipping = dqda_clipping
 
-        # TODO: make a batched OUProcess. The current one is not batched.
-        # Different environments use the same OU process, which is not good.
-        self._ou_process = common.create_ou_process(action_spec, ou_stddev,
-                                                    ou_damping)
+        self._noise_process = noise_process
         self._critic_losses = []
         for i in range(num_replicas):
             self._critic_losses.append(
@@ -337,9 +344,13 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return ["_target_critic_networks", "_rollout_actor_network"]
 
-    def _get_action(self, actor_network, time_step, state, epsilon_greedy=1.0):
-        action_distribution, state = actor_network(
-            time_step.observation, state=state)
+    def _get_action(self,
+                    actor_network,
+                    time_step: TimeStep,
+                    state: SarsaState,
+                    epsilon_greedy=1.0):
+        action_distribution, actor_state = actor_network(
+            time_step.observation, state=state.actor)
         if isinstance(actor_network, DistributionNetwork):
             if epsilon_greedy == 1.0:
                 action = dist_utils.rsample_action_distribution(
@@ -347,25 +358,30 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             else:
                 action = dist_utils.epsilon_greedy_sample(
                     action_distribution, epsilon_greedy)
+            noise_state = ()
         else:
 
-            def _sample(a, ou):
+            def _sample(a, noise):
                 if epsilon_greedy >= 1.0:
-                    return a + ou()
+                    return a + noise
                 else:
+                    choose_random_action = (torch.rand(a.shape[:1]) <
+                                            epsilon_greedy)
                     return torch.where(
-                        torch.rand(a.shape[:1]) < epsilon_greedy, a + ou(), a)
+                        common.expand_dims_as(choose_random_action, a),
+                        a + noise, a)
 
-            action = nest_map(_sample, action_distribution, self._ou_process)
-        return action_distribution, action, state
+            noise, noise_state = self._noise_process(state.noise)
+            action = nest_map(_sample, action_distribution, noise)
+        return action_distribution, action, actor_state, noise_state
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        action_distribution, action, actor_state = self._get_action(
-            self._rollout_actor_network, time_step, state.actor,
-            epsilon_greedy)
+        action_distribution, action, actor_state, noise_state = self._get_action(
+            self._rollout_actor_network, time_step, state, epsilon_greedy)
         return AlgStep(
             output=action,
             state=SarsaState(
+                noise=noise_state,
                 actor=actor_state,
                 prev_observation=time_step.observation,
                 prev_step_type=time_step.step_type),
@@ -404,8 +420,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             critic_states = common.reset_state_if_necessary(
                 state.critics, critic_states, not_first_step)
 
-        action_distribution, action, actor_state = self._get_action(
-            self._rollout_actor_network, time_step, state.actor)
+        action_distribution, action, actor_state, noise_state = self._get_action(
+            self._rollout_actor_network, time_step, state)
 
         if not self._is_rnn:
             target_critic_states = state.target_critics
@@ -418,6 +434,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         info = SarsaInfo(action_distribution=action_distribution)
 
         rl_state = SarsaState(
+            noise=noise_state,
             prev_observation=time_step.observation,
             prev_step_type=time_step.step_type,
             actor=actor_state,
@@ -449,8 +466,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         critic_states = common.reset_state_if_necessary(
             state.critics, critic_states, not_first_step)
 
-        action_distribution, action, actor_state = self._get_action(
-            self._actor_network, time_step, state.actor)
+        action_distribution, action, actor_state, noise_state = self._get_action(
+            self._actor_network, time_step, state)
 
         critics, _ = self._calc_critics(
             self._critic_networks,
@@ -499,6 +516,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             target_critics=target_critics)
 
         rl_state = SarsaState(
+            noise=noise_state,
             prev_observation=time_step.observation,
             prev_step_type=time_step.step_type,
             actor=actor_state,
