@@ -33,20 +33,21 @@ from alf.utils.math_ops import clipped_exp
 
 class DDPGAlgorithmTest(alf.test.TestCase):
     def test_ddpg_algorithm(self):
-        num_env = 1
+        num_env = 128
         num_eval_env = 100
+        steps_per_episode = 13
         config = TrainerConfig(
             root_dir="dummy",
-            unroll_length=1,
+            unroll_length=steps_per_episode,
             mini_batch_length=2,
-            mini_batch_size=512,
-            initial_collect_steps=1000,
+            mini_batch_size=128,
+            initial_collect_steps=steps_per_episode,
             whole_replay_buffer_training=False,
             clear_replay_buffer=False,
             num_envs=num_env,
         )
         env_class = PolicyUnittestEnv
-        steps_per_episode = 13
+
         env = env_class(
             num_env, steps_per_episode, action_type=ActionType.Continuous)
 
@@ -56,7 +57,7 @@ class DDPGAlgorithmTest(alf.test.TestCase):
         obs_spec = env._observation_spec
         action_spec = env._action_spec
 
-        fc_layer_params = (10, 10)
+        fc_layer_params = (16, 16)
 
         actor_network = ActorNetwork(
             obs_spec, action_spec, fc_layer_params=fc_layer_params)
@@ -76,16 +77,17 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             debug_summaries=False,
             name="MyDDPG")
 
-        eval_env.reset()
-        for _ in range(200):
+        for _ in range(500):
             alg.train_iter()
 
         eval_env.reset()
-        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
+        epsilon_greedy = 0.0
+        eval_time_step = unroll(eval_env, alg, steps_per_episode - 1,
+                                epsilon_greedy)
         print(eval_time_step.reward.mean())
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=3e-1)
+            1.0, float(eval_time_step.reward.mean()), delta=2e-1)
 
 
 if __name__ == '__main__':

@@ -103,7 +103,7 @@ class PpoTest(alf.test.TestCase):
             1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
 
-def unroll(env, algorithm, steps):
+def unroll(env, algorithm, steps, epsilon_greedy=1.0):
     """Run `steps` environment steps using algoirthm.predict_step()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
@@ -113,7 +113,7 @@ def unroll(env, algorithm, steps):
             time_step.is_first())
         transformed_time_step = algorithm.transform_timestep(time_step)
         policy_step = algorithm.predict_step(
-            transformed_time_step, policy_state, epsilon_greedy=1.0)
+            transformed_time_step, policy_state, epsilon_greedy=epsilon_greedy)
         time_step = env.step(policy_step.output)
         policy_state = policy_step.state
     return time_step
