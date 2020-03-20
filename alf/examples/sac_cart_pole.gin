@@ -1,4 +1,5 @@
-include 'sac.gin'
+
+import alf.algorithms.sac_algorithm
 
 # environment config
 NUM_PARALLEL_ENVIRONMENTS=8
@@ -6,6 +7,9 @@ create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 
 # algorithm config
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(100,)
@@ -35,6 +39,7 @@ TrainerConfig.mini_batch_size=64
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.whole_replay_buffer_training=False
 TrainerConfig.clear_replay_buffer=False
+TrainerConfig.algorithm_ctor=@SacAlgorithm
 TrainerConfig.num_iterations=10000
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=False
