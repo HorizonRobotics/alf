@@ -85,7 +85,7 @@ class DDPGAlgorithmTest(alf.test.TestCase):
         print(eval_time_step.reward.mean())
 
         self.assertAlmostEqual(
-            1.0, float(eval_time_step.reward.mean()), delta=3e-1)
+            1.0, float(eval_time_step.reward.mean()), delta=6e-1)
 
 
 if __name__ == '__main__':
