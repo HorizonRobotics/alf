@@ -171,10 +171,9 @@ def summarize_loss(loss_info: LossInfo):
     alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
-    if not is_namedtuple(loss_info.extra):
-        # not a namedtuple
-        return
-    add_nested_summaries('loss', loss_info.extra)
+    # Support extra as namedtuple or dict (more flexible)
+    if is_namedtuple(loss_info.extra) or isinstance(loss_info.extra, dict):
+        add_nested_summaries('loss', loss_info.extra)
 
 
 def summarize_action(actions, action_specs, name="action"):

@@ -47,7 +47,7 @@ ICMAlgorithm.hidden_size=256
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
-Agent.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.intrinsic_reward_module=@ICMAlgorithm()
 Agent.gradient_clipping=10.0
 
 # use only intrinsic reward for training policy

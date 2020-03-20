@@ -44,6 +44,7 @@ function test() {
     python3 -m unittest -v \
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
+        alf.algorithms.agent_test \
         alf.algorithms.algorithm_test \
         alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \

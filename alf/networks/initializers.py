@@ -19,6 +19,54 @@ from scipy.stats import truncnorm
 import torch
 import torch.nn as nn
 
+import alf.utils.math_ops as math_ops
+
+
+@gin.configurable
+def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
+    """Compute the gain in a numerical way by integration. Assume y is the output,
+    w is the weight (mean=0, std=1), and x is the input, then
+
+    Var(y) = Var(w) * E(x^2)
+
+    So we need to approximate E(x^2) numerically.
+
+    Args:
+        nonlinearity (Callable): any callable activation function
+        dz (float): `dz` in the integration
+        r (float): `z` range will be `[-r, r]`
+
+    Returns:
+        gain (float): a gain factor that will be applied to the init weights
+    """
+    dist = torch.distributions.normal.Normal(0, 1)
+    z = torch.arange(-r, r, dz)
+    x = nonlinearity(z)
+    Ex2 = (torch.exp(dist.log_prob(z)) * x**2).sum() * dz
+    return torch.sqrt(1.0 / Ex2).cpu().numpy()
+
+
+def _calculate_gain(nonlinearity, nonlinearity_param=0.01):
+    """Deprecated: now use _numerical_calculate_gain instead.
+
+    Args:
+        nonlinearity (str): the name of the activation function
+        nonlinearity_param (float): additional parameter of the nonlinearity;
+            currently only used by 'leaky_relu' as the negative slope (pytorch
+            default 0.01)
+    """
+    if nonlinearity == "elu":
+        # ELU paper: "The weights have been initialized according to (He et al.,
+        # 2015)". Also there is another suggestion for math.sqrt(1.55) in:
+        # https://stats.stackexchange.com/questions/229885/whats-the-recommended-weight-initialization-strategy-when-using-the-elu-activat
+        return math.sqrt(1.55)
+    elif nonlinearity == "sigmoid":
+        # pytorch's init.calculate_gain has 1.0 for sigmoid, which is obviously
+        # wrong!
+        return math.sqrt(3.41)
+    else:
+        return nn.init.calculate_gain(nonlinearity, nonlinearity_param)
+
 
 @gin.configurable
 def variance_scaling_init(tensor,
@@ -26,8 +74,7 @@ def variance_scaling_init(tensor,
                           mode="fan_in",
                           distribution="truncated_normal",
                           calc_gain_after_activation=True,
-                          nonlinearity="identity",
-                          nonlinearity_param=0.01,
+                          nonlinearity=math_ops.identity,
                           transposed=False):
     """Implements TensorFlow's `VarianceScaling` initializer.
     https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/ops/init_ops.py#L437
@@ -45,8 +92,7 @@ def variance_scaling_init(tensor,
         from alf.networks.initializers import variance_scaling_init
         layer = nn.Linear(2, 2)
         variance_scaling_init(layer.weight.data,
-                              nonlinearity="leaky_relu",
-                              nonlinearity_param=0.01)
+                              nonlinearity=nn.functional.leaky_relu)
         nn.init.zeros_(layer.bias.data)
 
     Args:
@@ -63,12 +109,7 @@ def variance_scaling_init(tensor,
             std gain of applying nonlinearity after this layer. A nonlinear
             activation (e.g., relu) might change std after the transformation,
             so we need to compensate for that. Only used when mode=="fan_in".
-        nonlinearity (str): one of ['linear', 'conv1d', 'conv2d', 'conv3d',
-            'conv_transpose1d', 'conv_transpose2d', 'conv_transpose3d',
-            'sigmoid', 'tanh', 'relu', 'leaky_relu', 'identity']
-        nonlinearity_param (float): additional parameter of the nonlinearity;
-            currently only used by 'leaky_relu' as the negative slope (pytorch
-            default 0.01)
+        nonlinearity (Callable): any callable activation function
         transposed (bool): a flag indicating if the weight tensor has been
             tranposed (e.g., nn.ConvTranspose2d). In that case, `fan_in` and
             `fan_out` should be swapped.
@@ -90,9 +131,8 @@ def variance_scaling_init(tensor,
     else:
         size = max(1.0, (fan_in + fan_out) / 2.0)
 
-    if (calc_gain_after_activation and mode == "fan_in"
-            and nonlinearity != "identity"):
-        gain *= nn.init.calculate_gain(nonlinearity, nonlinearity_param)
+    if (calc_gain_after_activation and mode == "fan_in"):
+        gain *= _numerical_calculate_gain(nonlinearity)
 
     std = gain / math.sqrt(size)
     if distribution == "truncated_normal":

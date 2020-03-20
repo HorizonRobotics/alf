@@ -542,6 +542,7 @@ class RLAlgorithm(Algorithm):
             transformed_time_step = self.transform_timestep(time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
+
             if self._rollout_info_spec is None:
                 self._rollout_info_spec = dist_utils.extract_spec(
                     policy_step.info)

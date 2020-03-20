@@ -18,7 +18,6 @@ import collections
 import numpy as np
 import torch
 
-import alf
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils.tensor_utils import to_tensor
@@ -88,7 +87,7 @@ class TimeStep(
     will equal `StepType.MID.
 
     Attributes:
-        step_type: a `Tensor` of `StepType` enum values.
+        step_type: a `Tensor` or numpy int of `StepType` enum values.
         reward: a `Tensor` of reward values from executing 'prev_action'.
         discount: A discount value in the range `[0, 1]`.
         observation: A (nested) 'Tensor' for observation
@@ -109,6 +108,7 @@ class TimeStep(
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
     discount = to_tensor(discount)
+    step_type = to_tensor(step_type)
 
     def make_tensors(struct):
         return nest.map_structure(to_tensor, struct)
@@ -339,17 +339,17 @@ class Experience(
     def is_first(self):
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.FIRST)
-        raise ValueError('step_type is not a Torch Tensor')
+        return np.equal(self.step_type, StepType.FIRST)
 
     def is_mid(self):
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.MID)
-        raise ValueError('step_type is not a Torch Tensor')
+        return np.equal(self.step_type, StepType.MID)
 
     def is_last(self):
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.LAST)
-        raise ValueError('step_type is not a Torch Tensor')
+        return np.equal(self.step_type, StepType.LAST)
 
 
 def make_experience(time_step: TimeStep, alg_step: AlgStep, state):

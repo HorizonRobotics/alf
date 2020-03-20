@@ -1,8 +1,11 @@
 # icm on SuperMario
 
+import alf.algorithms.agent
 import alf.algorithms.actor_critic_algorithm
-import alf.trainers.on_policy_trainer
+import alf.algorithms.icm_algorithm
+import alf.trainers.policy_trainer
 import alf.environments.suite_mario
+
 
 # environment config
 # gym-retro>=0.7.0 is required for this experiment and also
@@ -17,56 +20,51 @@ suite_mario.load.state="Level1-1"
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
-CONV_LAYER_PARAMS=[(32,8,4),(64,4,2),(64,3,1)]
+ImageEncodingNetwork.same_padding=True
+
+CONV_LAYER_PARAMS=((32,8,4),(64,4,2),(64,3,1))
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256,)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.activation=@torch.nn.functional.elu
 actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
-actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
 
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256,256)
 value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
-value/ValueNetwork.activation_fn=@tf.nn.elu
+value/ValueNetwork.activation=@torch.nn.functional.elu
 
-ac/Adam.learning_rate=3e-5
+ac/AdamTF.lr=3e-5
 
 icm/encoding_net_fc_layer_params=(256,)
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+icm/EncodingNetwork.activation=@torch.nn.functional.elu
 icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
-icm/EncodingNetwork.activation_fn=@tf.nn.elu
-icm/TensorSpec.shape=%icm/encoding_net_fc_layer_params
 
 ICMAlgorithm.action_spec=%action_spec
-ICMAlgorithm.feature_spec=@icm/TensorSpec()
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=256
+ICMAlgorithm.activation=@torch.nn.functional.elu
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/Adam()
-Agent.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.optimizer=@ac/AdamTF()
+Agent.intrinsic_reward_module=@ICMAlgorithm()
+Agent.observation_transformer=@image_scale_transformer
 ActorCriticLoss.entropy_regularization=0.01
 Agent.gradient_clipping=10.0
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
-tf.keras.layers.Conv2D.padding="same"
-
 # training config
 TrainerConfig.unroll_length=32
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=10000000
-TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
-
-Agent.observation_transformer=@image_scale_transformer
-
-TrainerConfig.trainer=@on_policy_trainer
+TrainerConfig.use_rollout_state=True

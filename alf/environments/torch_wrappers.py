@@ -29,6 +29,8 @@ from alf.data_structures import StepType, TimeStep
 from alf.environments import torch_environment
 import alf.nest as nest
 import alf.tensor_specs as ts
+from alf.utils import spec_utils
+from alf.utils.tensor_utils import to_tensor
 
 
 class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
@@ -89,6 +91,34 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
         return self._env
 
 
+class ContinuousActionClip(TorchEnvironmentBaseWrapper):
+    """Clip continuous actions according to the action spec."""
+
+    def __init__(self, env):
+        """Create an ActionClip torch wrapper.
+
+        Args:
+            env (TorchEnvironment): An TorchEnvironment instance to wrap.
+        """
+        super(ContinuousActionClip, self).__init__(env)
+
+    def _step(self, action):
+        action_spec = self.action_spec()
+
+        def _clip_action(spec, action):
+            # Check if the action is corrupted or not.
+            if torch.any(torch.isnan(action)):
+                raise ValueError(
+                    "NAN action detected! action: {}".format(action))
+            if spec.is_continuous:
+                if isinstance(spec, ts.BoundedTensorSpec):
+                    action = spec_utils.clip_to_spec(action, spec)
+            return action
+
+        action = nest.map_structure(_clip_action, action_spec, action)
+        return super()._step(action)
+
+
 # Used in ALF
 @gin.configurable
 class TimeLimit(TorchEnvironmentBaseWrapper):
@@ -118,8 +148,7 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
 
         self._num_steps += 1
         if self._num_steps >= self._duration:
-            time_step = time_step._replace(
-                step_type=torch.tensor(StepType.LAST, dtype=torch.int32))
+            time_step = time_step._replace(step_type=to_tensor(StepType.LAST))
 
         if time_step.is_last():
             self._num_steps = None
@@ -360,11 +389,11 @@ class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
 
     def _step(self, action):
         time_step = self._env.step(action)
-        if time_step.step_type == StepType.LAST:
+        if time_step.is_last():
             # We set a non-zero discount so that the target value would not be
             # zero (non-episodic).
             time_step = time_step._replace(
-                discount=torch.tensor(self._discount, torch.float32))
+                discount=torch.as_tensor(self._discount, torch.float32))
         return time_step
 
 
@@ -410,8 +439,7 @@ class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
         self._num_steps += 1
         if (self._episode < self._num_episodes
                 and self._num_steps >= self._max_length):
-            time_step = time_step._replace(
-                step_type=torch.tensor(StepType.LAST, dtype=torch.int32))
+            time_step = time_step._replace(step_type=to_tensor(StepType.LAST))
             self._max_length = random.randint(1, self._random_length_range)
             self._episode += 1
 

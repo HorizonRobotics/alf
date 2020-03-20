@@ -12,11 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for alf.networks.network."""
+
+from absl.testing import parameterized
+
 import torch
 import torch.nn as nn
 
 import alf
 from alf.tensor_specs import TensorSpec
+from alf.networks.initializers import _numerical_calculate_gain
+from alf.networks.initializers import _calculate_gain
 
 
 class BaseNetwork(alf.networks.Network):
@@ -69,6 +74,21 @@ class NetworkTest(alf.test.TestCase):
 
     def test_too_many_args_raises_appropriate_error(self):
         self.assertRaises(TypeError, MockNetwork, 0, 1, 2, 3, 4, 5, 6)
+
+
+class InitializerTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((torch.relu), (alf.utils.math_ops.identity, ),
+                              (torch.tanh, ), (torch.sigmoid, ),
+                              (torch.nn.functional.elu, ),
+                              (torch.nn.functional.leaky_relu, ))
+    def test_numerical_calculate_gain(self, activation):
+        numerical_gain = _numerical_calculate_gain(activation)
+        if activation.__name__ == "identity":
+            gain = _calculate_gain("linear")
+        else:
+            gain = _calculate_gain(activation.__name__)
+        print(activation.__name__, numerical_gain, gain)
+        self.assertLess(abs(numerical_gain - gain), 0.1)
 
 
 if __name__ == '__main__':

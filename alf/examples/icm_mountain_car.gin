@@ -1,5 +1,8 @@
-import alf.algorithms.actor_critic_algorithm
-import alf.trainers.on_policy_trainer
+import alf.algorithms.agent
+import alf.algorithms.actor_critic_loss
+import alf.algorithms.icm_algorithm
+import alf.algorithms.entropy_target_algorithm
+
 
 # environment config
 create_environment.num_parallel_environments=30
@@ -10,44 +13,38 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.relu
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256, 256)
-value/ValueNetwork.activation_fn=@tf.nn.relu
 
-ac/Adam.learning_rate=1e-3
+ac/Adam.lr=1e-3
 feature_size=200
-icm/encoding_net_fc_layer_params=(200, %feature_size)
+icm/encoding_net_fc_layer_params=(%feature_size, %feature_size)
 icm/EncodingNetwork.input_tensor_spec=%observation_spec
 icm/EncodingNetwork.fc_layer_params=%icm/encoding_net_fc_layer_params
-icm/EncodingNetwork.activation_fn=@tf.nn.relu
-icm/TensorSpec.shape=(%feature_size,)
+icm/EncodingNetwork.activation=@torch.relu
 
 ICMAlgorithm.action_spec=%action_spec
-ICMAlgorithm.feature_spec=@icm/TensorSpec()
+ICMAlgorithm.activation=@torch.relu
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
-ICMAlgorithm.hidden_size=(200, 200)
+ICMAlgorithm.hidden_size=(%feature_size, %feature_size)
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 Agent.optimizer=@ac/Adam()
-Agent.intrinsic_curiosity_module=@ICMAlgorithm()
+Agent.intrinsic_reward_module=@ICMAlgorithm()
 ActorCriticLoss.use_gae=True
 ActorCriticLoss.use_td_lambda_return=True
 
 Agent.enforce_entropy_target=True
 EntropyTargetAlgorithm.min_alpha=0.1
 
-EncodingNetwork.activation_fn=@tf.nn.relu
-
 # training config
-TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=1000000
-TrainerConfig.use_tf_functions=1
 TrainerConfig.debug_summaries=1
-TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.summary_interval=20

@@ -325,7 +325,7 @@ class EncodingNetwork(Network):
                 variance_scaling_init,
                 mode='fan_in',
                 distribution='truncated_normal',
-                nonlinearity=activation.__name__)
+                nonlinearity=activation)
 
         self._img_encoding_net = None
         if conv_layer_params:
@@ -338,7 +338,7 @@ class EncodingNetwork(Network):
             self._img_encoding_net = ImageEncodingNetwork(
                 input_channels, (height, width),
                 conv_layer_params,
-                activation,
+                activation=activation,
                 kernel_initializer=kernel_initializer,
                 flatten_output=True)
             input_size = self._img_encoding_net.output_spec.shape[0]

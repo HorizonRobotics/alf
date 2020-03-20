@@ -30,6 +30,8 @@ from absl import logging
 import gin
 import os
 
+import torch
+
 from alf.environments.utils import create_environment
 from alf.trainers import policy_trainer
 from alf.utils import common
@@ -84,4 +86,6 @@ def main(_):
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
     flags.mark_flag_as_required('root_dir')
+    if torch.cuda.is_available():
+        alf.set_default_device("cuda")
     app.run(main)

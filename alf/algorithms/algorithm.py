@@ -96,8 +96,14 @@ class Algorithm(nn.Module):
 
         self._name = name
         self._train_state_spec = train_state_spec
-        self._rollout_state_spec = rollout_state_spec or self._train_state_spec
-        self._predict_state_spec = predict_state_spec or self._rollout_state_spec
+        if rollout_state_spec is not None:
+            self._rollout_state_spec = rollout_state_spec
+        else:
+            self._rollout_state_spec = self._train_state_spec
+        if predict_state_spec is not None:
+            self._predict_state_spec = predict_state_spec
+        else:
+            self._predict_state_spec = self._rollout_state_spec
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
@@ -129,9 +135,7 @@ class Algorithm(nn.Module):
             modules_and_params (list of Module or Parameter): The modules and
                 parameters to be optimized by `optimizer`
         """
-        if optimizer is None:
-            # handled by default optimizer
-            return
+        assert optimizer is not None, "You shouldn't add a None optimizer!"
         for module in modules_and_params:
             for m in _flatten_module(module):
                 self._module_to_optimizer[m] = optimizer
@@ -220,16 +224,19 @@ class Algorithm(nn.Module):
         """
         default_optimizer = self.default_optimizer
         new_params = []
-        self_handled = set()
         handled = set()
         duplicate_error = "Parameter %s is handled by muliple optimizers."
+
+        def _add_params_to_optimizer(params, opt):
+            existing_params = _get_optimizer_params(opt)
+            params = list(filter(lambda p: p not in existing_params, params))
+            if params:
+                opt.add_param_group({'params': params})
 
         for child in self._get_children():
             if child in handled:
                 continue
             assert id(child) != id(self), "Child should not be self"
-            self_handled.add(child)
-            assert child not in handled, duplicate_error % child
             handled.add(child)
             if isinstance(child, Algorithm):
                 params, child_handled = child._setup_optimizers_()
@@ -246,18 +253,10 @@ class Algorithm(nn.Module):
                 if default_optimizer is not None:
                     self._module_to_optimizer[child] = default_optimizer
             else:
-                existing_params = _get_optimizer_params(optimizer)
-                params = list(
-                    filter(lambda p: p not in existing_params, params))
-                if params:
-                    optimizer.add_param_group({'params': params})
+                _add_params_to_optimizer(params, optimizer)
 
         if default_optimizer is not None:
-            existing_params = _get_optimizer_params(default_optimizer)
-            new_params = list(
-                filter(lambda p: p not in existing_params, new_params))
-            if new_params:
-                default_optimizer.add_param_group({'params': new_params})
+            _add_params_to_optimizer(new_params, default_optimizer)
             return [], handled
         else:
             return new_params, handled

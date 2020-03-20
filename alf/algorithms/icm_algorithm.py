@@ -23,7 +23,7 @@ from alf.networks import EncodingNetwork
 from alf.nest.utils import NestConcat
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
-from alf.utils.normalizers import ScalarAdaptiveNormalizer
+from alf.utils.normalizers import ScalarAdaptiveNormalizer, AdaptiveNormalizer
 
 ICMInfo = namedtuple("ICMInfo", ["reward", "loss"])
 
@@ -40,25 +40,29 @@ class ICMAlgorithm(Algorithm):
 
     def __init__(self,
                  action_spec,
-                 feature_spec,
+                 observation_spec=None,
                  hidden_size=256,
                  reward_adapt_speed=8.0,
                  encoding_net: EncodingNetwork = None,
                  forward_net: EncodingNetwork = None,
                  inverse_net: EncodingNetwork = None,
+                 activation=torch.relu,
                  optimizer=None,
                  name="ICMAlgorithm"):
         """Create an ICMAlgorithm.
 
-        Args:
+        Args
+            action_spec (nested TensorSpec): agent's action spec
+            observation_spec (nested TensorSpec): agent's observation spec. If
+                not None, then a normalizer will be used to normalize the
+                observation.
             hidden_size (int or tuple[int]): size of hidden layer(s)
             reward_adapt_speed (float): how fast to adapt the reward normalizer.
                 rouphly speaking, the statistics for the normalization is
                 calculated mostly based on the most recent T/speed samples,
                 where T is the total number of samples.
             encoding_net (Network): network for encoding observation into a
-                latent feature specified by feature_spec. Its input is same as
-                the input of this algorithm.
+                latent feature. Its input is same as the input of this algorithm.
             forward_net (Network): network for predicting next feature based on
                 previous feature and action. It should accept input with spec
                 [feature_spec, encoded_action_spec] and output a tensor of shape
@@ -69,11 +73,21 @@ class ICMAlgorithm(Algorithm):
                 the previous feature and current feature. It should accept input
                 with spec [feature_spec, feature_spec] and output tensor of
                 shape (num_actions,).
+            activation (torch.nn.functional): activation used for constructing
+                any of the forward net and inverse net, if not provided.
             optimizer (torch.optim.Optimizer): The optimizer for training
             name (str):
         """
+        if encoding_net is not None:
+            feature_spec = encoding_net.output_spec
+        else:
+            feature_spec = observation_spec
+
         super(ICMAlgorithm, self).__init__(
-            train_state_spec=feature_spec, optimizer=optimizer, name=name)
+            train_state_spec=feature_spec,
+            predict_state_spec=(),
+            optimizer=optimizer,
+            name=name)
 
         flat_action_spec = alf.nest.flatten(action_spec)
         assert len(
@@ -92,6 +106,10 @@ class ICMAlgorithm(Algorithm):
             self._num_actions = action_spec.shape[-1]
 
         self._action_spec = action_spec
+        self._observation_normalizer = None
+        if observation_spec is not None:
+            self._observation_normalizer = AdaptiveNormalizer(
+                tensor_spec=observation_spec)
 
         feature_dim = flat_feature_spec[0].shape[-1]
 
@@ -108,7 +126,9 @@ class ICMAlgorithm(Algorithm):
                 input_tensor_spec=[feature_spec, encoded_action_spec],
                 preprocessing_combiner=NestConcat(),
                 fc_layer_params=hidden_size,
-                last_layer_size=feature_dim)
+                activation=activation,
+                last_layer_size=feature_dim,
+                last_activation=math_ops.identity)
 
         self._forward_net = forward_net
 
@@ -118,7 +138,10 @@ class ICMAlgorithm(Algorithm):
                 input_tensor_spec=[feature_spec, feature_spec],
                 preprocessing_combiner=NestConcat(),
                 fc_layer_params=hidden_size,
-                last_layer_size=self._num_actions)
+                activation=activation,
+                last_layer_size=self._num_actions,
+                last_activation=math_ops.identity,
+                last_kernel_initializer=torch.nn.init.zeros_)
 
         self._inverse_net = inverse_net
 
@@ -149,6 +172,10 @@ class ICMAlgorithm(Algorithm):
         """
         feature = time_step.observation
         prev_action = time_step.prev_action.detach()
+
+        # normalize observation for easier prediction
+        if self._observation_normalizer is not None:
+            feature = self._observation_normalizer.normalize(feature)
 
         if self._encoding_net is not None:
             feature, _ = self._encoding_net(feature)

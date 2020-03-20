@@ -21,10 +21,16 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, StepType
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.utils.tensor_utils import to_tensor
 from alf.utils import math_ops
 from alf.utils.normalizers import AdaptiveNormalizer, ScalarAdaptiveNormalizer
 
 DIAYNInfo = namedtuple("DIAYNInfo", ["reward", "loss"])
+
+
+@gin.configurable
+def create_discrete_skill_spec(num_of_skills):
+    return BoundedTensorSpec((), dtype="int64", maximum=num_of_skills - 1)
 
 
 @gin.configurable
@@ -69,7 +75,6 @@ class DIAYNAlgorithm(Algorithm):
             name (str): module's name
         """
         assert isinstance(skill_spec, TensorSpec)
-        super().__init__(train_state_spec=skill_spec, name=name)
 
         self._skill_spec = skill_spec
         if skill_spec.is_discrete:
@@ -80,6 +85,11 @@ class DIAYNAlgorithm(Algorithm):
                 skill_spec.shape) == 1, "Only 1D skill vector is supported"
             skill_dim = skill_spec.shape[0]
 
+        super().__init__(
+            train_state_spec=TensorSpec((skill_dim, )),
+            predict_state_spec=(),  # won't be needed for predict_step
+            name=name)
+
         self._encoding_net = encoding_net
 
         self._discriminator_net = EncodingNetwork(
@@ -87,7 +97,7 @@ class DIAYNAlgorithm(Algorithm):
             fc_layer_params=hidden_size,
             activation=hidden_activation,
             last_layer_size=skill_dim,
-            last_activation=alf.layers.identity)
+            last_activation=math_ops.identity)
 
         self._reward_normalizer = ScalarAdaptiveNormalizer(
             speed=reward_adapt_speed)
@@ -104,8 +114,10 @@ class DIAYNAlgorithm(Algorithm):
         """
         Args:
             time_step (TimeStep): input time step data, where the
-                observation is skill-augmened observation.
-            state (Tensor): state for DIAYN (previous skill).
+                observation is skill-augmened observation. The skill should be
+                a one-hot vector.
+            state (Tensor): state for DIAYN (previous skill) which should be
+                a one-hot vector.
             calc_intrinsic_reward (bool): if False, only return the losses.
         Returns:
             AlgStep:
@@ -129,12 +141,13 @@ class DIAYNAlgorithm(Algorithm):
 
         if self._skill_spec.is_discrete:
             loss = torch.nn.CrossEntropyLoss(reduction='none')(
-                input=skill_pred, target=prev_skill.to(torch.int64))
+                input=skill_pred, target=torch.argmax(prev_skill, dim=-1))
         else:
             # nn.MSELoss doesn't support reducing along a dim
             loss = torch.sum(math_ops.square(skill_pred - prev_skill), dim=-1)
 
-        valid_masks = (step_type != StepType.FIRST).to(torch.float32)
+        valid_masks = (step_type != to_tensor(StepType.FIRST)).to(
+            torch.float32)
         loss *= valid_masks
 
         intrinsic_reward = ()
