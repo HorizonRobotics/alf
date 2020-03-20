@@ -96,11 +96,6 @@ class Trainer(object):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
-        self._algorithm.set_summary_settings(
-            summarize_grads_and_vars=self._summarize_grads_and_vars,
-            summarize_action_distributions=self._config.
-            summarize_action_distributions)
-        self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.

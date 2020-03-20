@@ -15,6 +15,7 @@
 from absl import logging
 import functools
 import gin
+import numpy as np
 from tensorboard.plugins.histogram import metadata
 import time
 import torch
@@ -235,7 +236,7 @@ def summarize_action_dist(action_distributions,
             continue
         dist = dist_utils.get_base_dist(dist)
         action_dim = action_spec.shape[-1]
-        log_scale = alf.math.log(dist.scale)
+        log_scale = dist.scale.log()
         for a in range(action_dim):
             alf.summary.histogram(
                 name="%s_log_scale/%s/%s" % (name, i, a),
@@ -253,11 +254,11 @@ def add_mean_hist_summary(name, value):
     Returns:
         None
     """
-    tf.summary.histogram(name + "/value", value)
+    alf.summary.histogram(name + "/value", value)
     add_mean_summary(name + "/mean", value)
 
 
-def safe_mean_hist_summary(name, value):
+def safe_mean_hist_summary(name, value, mask):
     """Generate mean and histogram summary of `value`.
 
     It skips the summary if `value` is empty.
@@ -265,12 +266,15 @@ def safe_mean_hist_summary(name, value):
     Args:
         name (str): name of the summary
         value (Tensor): tensor to be summarized
+        mask (bool Tensor): optional mask to indicate which element of value
+            to use. Its shape needs to be same as that of `value`
     Returns:
         None
     """
-    run_if(
-        tf.reduce_prod(tf.shape(value)) >
-        0, lambda: add_mean_hist_summary(name, value))
+    if mask is not None:
+        value = value[mask]
+    if np.prod(value.shape) > 0:
+        add_mean_hist_summary(name, value)
 
 
 def add_mean_summary(name, value):
@@ -282,9 +286,9 @@ def add_mean_summary(name, value):
     Returns:
         None
     """
-    if not value.dtype.is_floating:
-        value = tf.cast(value, tf.float32)
-    tf.summary.scalar(name, tf.reduce_mean(value))
+    if not value.dtype.is_floating_point:
+        value = value.to(torch.float32)
+    alf.summary.scalar(name, value.mean())
 
 
 def safe_mean_summary(name, value):
@@ -298,9 +302,8 @@ def safe_mean_summary(name, value):
     Returns:
         None
     """
-    run_if(
-        tf.reduce_prod(tf.shape(value)) >
-        0, lambda: add_mean_summary(name, value))
+    if np.prod(value.shape) > 0:
+        add_mean_summary(name, value)
 
 
 _contexts = {}

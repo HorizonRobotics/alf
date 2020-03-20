@@ -1,0 +1,22 @@
+include 'sarsa_sac.gin'
+
+# environment config
+RandomFirstEpisodeLength.random_length_range=200
+suite_gym.load.torch_env_wrappers=(@RandomFirstEpisodeLength, )
+create_environment.env_name="Pendulum-v0"
+create_environment.num_parallel_environments=1
+
+actor/AdamTF.lr=1e-4
+critic/AdamTF.lr=1e-3
+alpha/AdamTF.lr=1e-4
+
+SarsaAlgorithm.target_update_tau=0.05
+SarsaAlgorithm.target_update_period=1
+
+TrainerConfig.evaluate=1
+TrainerConfig.eval_interval=1000
+TrainerConfig.initial_collect_steps=1000
+TrainerConfig.mini_batch_size=128
+TrainerConfig.num_iterations=20000
+TrainerConfig.summary_interval=100
+

@@ -87,7 +87,7 @@ class NormalProjectionNetwork(DistributionNetwork):
                  input_size,
                  action_spec,
                  activation=math_ops.identity,
-                 projection_output_init_gain=0.1,
+                 projection_output_init_gain=0.3,
                  std_bias_initializer_value=0.0,
                  squash_mean=True,
                  state_dependent_std=False,
@@ -220,7 +220,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                  input_size,
                  action_spec,
                  activation=math_ops.identity,
-                 projection_output_init_gain=0.1,
+                 projection_output_init_gain=1e-5,
                  squash_mean=True,
                  state_dependent_std=False,
                  inverse_std_transform='softplus',
@@ -297,10 +297,10 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
         inputs, state = Network.forward(self, inputs, state)
         inv_stds = self._std_transform(self._std_projection_layer(inputs))
         if self._max_std is not None:
-            inv_stds += 1 / (self._max_std - self._min_std)
+            inv_stds = inv_stds + 1 / (self._max_std - self._min_std)
         stds = 1. / inv_stds
         if self._min_std > 0:
-            stds += self._min_std
+            stds = stds + self._min_std
 
         means = self._mean_transform(
             self._means_projection_layer(inputs) * stds)

@@ -268,4 +268,4 @@ class ActorRNNNetwork(Network):
 
     @property
     def state_spec(self):
-        return self._encoding_net.state_spec
+        return self._lstm_encoding_net.state_spec

@@ -15,6 +15,7 @@
 from . import metrics
 from . import networks
 from . import nest
+from . import optimizers
 from . import summary
 from . import test
 

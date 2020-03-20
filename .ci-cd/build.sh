@@ -50,6 +50,8 @@ function test() {
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
+        alf.algorithms.sarsa_algorithm_test \
+        alf.algorithms.sac_algorithm_test \
         alf.algorithms.trac_algorithm_test \
         alf.algorithms.vae_test \
         alf.bin.train_play_test \

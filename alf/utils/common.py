@@ -882,6 +882,8 @@ def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.random.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     return seed
 
 
@@ -893,3 +895,39 @@ def log_metrics(metrics, prefix=''):
     """
     log = ['{0} = {1}'.format(m.name, m.result()) for m in metrics]
     logging.info('%s \n\t\t %s', prefix, '\n\t\t '.join(log))
+
+
+def create_ou_process(action_spec, ou_stddev, ou_damping):
+    """Create nested zero-mean Ornstein-Uhlenbeck processes.
+
+    The temporal update equation is:
+    `x_next = (1 - damping) * x + N(0, std_dev)`
+
+    Note: if action_spec is nested, the returned nested OUProcess will not bec
+    checkpointed.
+
+    Args:
+        action_spec (nested BountedTensorSpec): action spec
+        ou_damping (float): Damping rate in the above equation. We must have
+            0 <= damping <= 1.
+        ou_stddev (float): Standard deviation of the Gaussian component.
+    Returns:
+        nested OUProcess with the same structure as action_spec.
+    """
+
+    def _create_ou_process(action_spec):
+        return dist_utils.OUProcess(action_spec.zeros(), ou_damping, ou_stddev)
+
+    ou_process = alf.nest.map_structure(_create_ou_process, action_spec)
+    return ou_process
+
+
+def detach(nests):
+    """Detach nested Tensors.
+
+    Args:
+        nests (nested Tensor): tensors to be detached
+    Returns:
+        detached Tensors with same structure as nests
+    """
+    return nest.map_structure(lambda t: t.detach(), nests)
