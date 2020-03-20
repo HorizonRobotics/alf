@@ -32,12 +32,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from multiprocessing import current_process, Event, Process
+import ctypes
+from multiprocessing import current_process, Event, Process, Value
 import sys
 import time
 
-from alf.drivers import process_coordinator as coordinator
+import torch
+
 from alf import test
+from alf.drivers import process_coordinator as coordinator
 
 
 def StopOnEvent(coord, wait_for_stop, set_when_stopped):
@@ -329,11 +332,89 @@ class CoordinatorTest(test.TestCase):
             coord.join([])
 
 
-def _StopAt0(coord, n):
-    if n[0] == 0:
+def _StopAt0(coord, n, m=None):
+    if n.value == 0:
         coord.request_stop()
     else:
-        n[0] -= 1
+        if m:
+            m.decrement()
+        n.value -= 1
+
+
+class ProcessTest(test.TestCase):
+    def testTargetArgs(self):
+        n = Value(ctypes.c_int, 3)
+        coord = coordinator.Coordinator()
+        p = coordinator.Process.process(
+            coord, target=_StopAt0, args=(coord, n))
+        coord.join([p])
+        self.assertEqual(0, n.value)
+
+    def testTargetKwargs(self):
+        n = Value(ctypes.c_int, 3)
+        coord = coordinator.Coordinator()
+        p = coordinator.Process.process(
+            coord, target=_StopAt0, kwargs={
+                "coord": coord,
+                "n": n
+            })
+        coord.join([p])
+        self.assertEqual(0, n.value)
+
+    def testTargetMixedArgs(self):
+        n = Value(ctypes.c_int, 3)
+        coord = coordinator.Coordinator()
+        p = coordinator.Process.process(
+            coord, target=_StopAt0, args=(coord, ), kwargs={"n": n})
+        coord.join([p])
+        self.assertEqual(0, n.value)
+
+    def testInheritedTarget(self):
+        class MyProcess(coordinator.Process):
+            def __init__(self, coord, args=(), kwargs={}):
+                super().__init__(coord, args=args, kwargs=kwargs)
+
+            def body(self, n=None):
+                _StopAt0(self._coord, n)
+
+        n = Value(ctypes.c_int, 3)
+        coord = coordinator.Coordinator()
+        p = MyProcess(coord, kwargs={"n": n})
+        p.start()
+        coord.join([p])
+        self.assertEqual(0, n.value)
+
+    def testModelSharing(self):
+        class MyProcess(coordinator.Process):
+            def __init__(self, coord, args=(), kwargs={}):
+                super().__init__(coord, args=args, kwargs=kwargs)
+                self.n = Value(ctypes.c_int, 3)
+
+            def body(self, m=None):
+                _StopAt0(self._coord, self.n, m)
+
+        from alf.algorithms.algorithm import Algorithm
+
+        class MyAlgorithm(Algorithm):
+            def __init__(self):
+                super().__init__()
+                self.register_buffer('_m', torch.tensor(0, dtype=torch.int32))
+                self.x = torch.tensor(0, dtype=torch.int32)
+
+            def decrement(self):
+                self._m -= 1
+                self.x -= 1
+
+        m = MyAlgorithm()
+        m.share_memory()
+        coord = coordinator.Coordinator()
+        p = MyProcess(coord, kwargs={"m": m})
+        p.start()
+        coord.join([p])
+        # Registered Buffers are shared acrosses processes:
+        self.assertEqual(-3, m._m)
+        # Simple tensors are not shared:
+        self.assertEqual(0, m.x)
 
 
 if __name__ == "__main__":

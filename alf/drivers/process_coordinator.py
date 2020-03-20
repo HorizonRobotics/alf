@@ -19,6 +19,7 @@ from __future__ import print_function
 from absl import logging
 import contextlib
 import ctypes
+import multiprocessing as mp
 from multiprocessing import Event, Lock, Value
 import six
 import sys
@@ -282,3 +283,49 @@ class Coordinator(object):
         with self._lock:
             if self._exc_info_to_raise:
                 six.reraise(*self._exc_info_to_raise)
+
+
+class Process(mp.Process):
+    """A coordinated process class to execute acting loops.
+    """
+
+    def __init__(self, coord, target=None, args=(), kwargs={}):
+        if not isinstance(coord, Coordinator):
+            raise ValueError(
+                "'coord' argument must be a Coordinator: %s" % coord)
+        super().__init__()
+        self._coord = coord
+        # allow pass in target or overriding body
+        self._target = target or self.body
+        self._args = args
+        self._kwargs = kwargs
+        self._coord.register_process(self)
+
+    @staticmethod
+    def process(coord, target, args=(), kwargs={}):
+        p = Process(coord, target=target, args=args, kwargs=kwargs)
+        p.start()
+        return p
+
+    def body(self, args=(), kwargs={}):
+        raise NotImplementedError
+
+    def run(self):
+        with self._coord.stop_on_exception():
+            self.start_loop()
+            while not self._coord.should_stop():
+                self.run_loop()
+            self.stop_loop()
+
+    def start_loop(self):
+        """Called when the process starts."""
+        pass
+
+    def stop_loop(self):
+        """Called when the process stops."""
+        pass
+
+    def run_loop(self):
+        """Called at 'timer_interval_secs' boundaries."""
+        if self._target:
+            self._target(*self._args, **self._kwargs)
