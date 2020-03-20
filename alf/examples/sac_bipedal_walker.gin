@@ -1,16 +1,10 @@
-
-import alf.algorithms.sac_algorithm
-import alf.trainers.off_policy_trainer
-
+include 'sac.gin'
 
 # environment config
 create_environment.env_name="BipedalWalker-v2"
 create_environment.num_parallel_environments=32
 
 # algorithm config
-observation_spec=@get_observation_spec()
-action_spec=@get_action_spec()
-
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
@@ -36,18 +30,13 @@ SacAlgorithm.alpha_optimizer=@alpha/Adam()
 SacAlgorithm.target_update_tau=0.005
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 
-Agent.action_spec = %action_spec
-Agent.rl_algorithm_cls=@SacAlgorithm
-
 # training config
-TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=32000
 TrainerConfig.mini_batch_length=4
 TrainerConfig.unroll_length=1
 TrainerConfig.mini_batch_size=4096
 TrainerConfig.clear_replay_buffer=False
 TrainerConfig.num_updates_per_train_step=1
-TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=200000
 TrainerConfig.checkpoint_interval=100000
 TrainerConfig.evaluate=1
