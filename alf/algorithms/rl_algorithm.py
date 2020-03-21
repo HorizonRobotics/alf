@@ -153,7 +153,7 @@ class RLAlgorithm(Algorithm):
         self._exp_replayer = None
         self._exp_replayer_type = None
         if self._env is not None and not self.is_on_policy():
-            self.set_exp_replayer("uniform", self._env.batch_size,
+            self.set_exp_replayer(config.exp_replayer, self._env.batch_size,
                                   config.replay_buffer_length)
 
         self._metrics = []

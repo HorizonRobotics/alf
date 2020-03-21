@@ -94,17 +94,21 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     """
 
     def __init__(self):
-        self._experience = None
-        self._batch_size = None
+        self.clear()
 
     def observe(self, exp):
-        # The shape is [learn_queue_cap, unroll_length, env_batch_size, ...]
-        exp = alf.nest.map_structure(lambda e: e.transpose(1, 2), exp)
-        # flatten the shape (num_envs, env_batch_size)
-        self._experience = alf.nest.map_structure(
-            lambda e: e.reshape(-1, *e.shape[2:]), exp)
+        # exp shape is [num_envs, ...]
+        if self._experience is None:
+            self._experience = alf.nest.map_structure(lambda e: [e.detach()],
+                                                      exp)
+            self._exp_sample = exp
+        else:
+            alf.nest.map_structure_up_to(
+                self._exp_sample, lambda b, e: b.append(e.detach()),
+                self._experience, exp)
+
         if self._batch_size is None:
-            self._batch_size = self._experience.step_type.shape[0]
+            self._batch_size = alf.nest.get_nest_batch_size(exp)
 
     def replay(self, sample_batch_size, mini_batch_length):
         """Get a random batch.
@@ -119,10 +123,19 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         raise NotImplementedError()  # Only supports replaying all!
 
     def replay_all(self):
-        return self._experience
+        assert self._experience, "No experience is observed yet!"
+        # batch major (B, T, ...)
+        exps = alf.nest.map_structure_up_to(
+            self._exp_sample, lambda e: torch.transpose(
+                torch.stack(e, dim=0), 0, 1), self._experience)
+        self.clear(
+        )  # really "one-time"; no reuse; in case people forget calling
+        return exps
 
     def clear(self):
         self._experience = None
+        self._exp_sample = None
+        self._batch_size = None
 
     @property
     def batch_size(self):
