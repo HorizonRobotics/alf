@@ -405,12 +405,25 @@ class ProcessTest(test.TestCase):
         m.share_memory()
         coord = coordinator.Coordinator()
         p = MyProcess(coord, kwargs={"m": m})
+        # A change in parent process is reflected in child process
+        # via share_memory
+        m._m.fill_(-1)
         p.start()
         coord.join([p])
         # Registered Buffers are shared acrosses processes:
-        self.assertEqual(-3, m._m)
+        self.assertEqual(-4, m._m)
         # Simple tensors are not shared:
         self.assertEqual(0, m.x)
+
+        m2 = MyAlgorithm()
+        coord2 = coordinator.Coordinator()
+        p2 = MyProcess(coord2, kwargs={"m": m2})
+        p2.start()
+        coord2.join([p2])
+        # Without share_memory(), m2 in parent process is not touched:
+        self.assertEqual(0, m2._m)
+        # Simple tensors are not shared:
+        self.assertEqual(0, m2.x)
 
 
 if __name__ == "__main__":
