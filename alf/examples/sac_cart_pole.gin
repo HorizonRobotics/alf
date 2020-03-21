@@ -46,5 +46,4 @@ TrainerConfig.evaluate=False
 TrainerConfig.eval_interval=100
 TrainerConfig.debug_summaries=True
 TrainerConfig.summary_interval=100
-
-ReplayBuffer.max_length=100000
+TrainerConfig.replay_buffer_length=100000

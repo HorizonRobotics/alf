@@ -75,6 +75,7 @@ TrainerConfig.debug_summaries=1
 TrainerConfig.summary_interval = 10
 TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
+TrainerConfig.replay_buffer_length=32
 
 Agent.observation_transformer=@image_scale_transformer
-ReplayBuffer.max_length=32
+

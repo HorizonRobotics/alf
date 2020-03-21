@@ -84,7 +84,6 @@ class ExperienceReplayer(object):
         """
 
 
-@gin.configurable
 class OnetimeExperienceReplayer(ExperienceReplayer):
     """
     A simple one-time experience replayer. For each incoming `exp`,
@@ -131,7 +130,6 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         return self._batch_size
 
 
-@gin.configurable
 class SyncUniformExperienceReplayer(ExperienceReplayer):
     """
     For synchronous off-policy training.
