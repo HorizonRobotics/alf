@@ -41,11 +41,12 @@ SarsaState = namedtuple(
     default_value=())
 SarsaInfo = namedtuple(
     'SarsaInfo', [
-        'action_distribution', 'actor_loss', 'alpha_loss', 'critics',
-        'target_critics', 'entropy_reward'
+        'action_distribution', 'actor_loss', 'critics', 'target_critics',
+        'neg_entropy'
     ],
     default_value=())
-SarsaLossInfo = namedtuple('SarsaLossInfo', ['actor', 'critic', 'alpha'])
+SarsaLossInfo = namedtuple('SarsaLossInfo',
+                           ['actor', 'critic', 'alpha', 'neg_entropy'])
 
 nest_map = alf.nest.map_structure
 
@@ -489,18 +490,10 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         actor_loss = nest_map(actor_loss_fn, dqda, action)
         actor_loss = math_ops.add_n(alf.nest.flatten(actor_loss))
 
-        entropy_reward = ()
+        neg_entropy = ()
         if self._log_alpha is not None:
-            log_pi = dist_utils.compute_log_probability(
+            neg_entropy = dist_utils.compute_log_probability(
                 action_distribution, action)
-            alpha = self._log_alpha.exp().detach()
-            actor_loss += alpha * log_pi
-            alpha_loss = self._log_alpha * (
-                -log_pi - self._target_entropy).detach()
-            if self._use_entropy_reward:
-                entropy_reward = -log_pi.detach()
-        else:
-            alpha_loss = ()
 
         target_critics, target_critic_states = self._calc_critics(
             self._target_critic_networks,
@@ -510,9 +503,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         info = SarsaInfo(
             action_distribution=action_distribution,
             actor_loss=actor_loss,
-            alpha_loss=alpha_loss,
             critics=prev_critics,
-            entropy_reward=entropy_reward,
+            neg_entropy=neg_entropy,
             target_critics=target_critics)
 
         rl_state = SarsaState(
@@ -528,6 +520,15 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def calc_loss(self, training_info: TrainingInfo):
         info: SarsaInfo = training_info.info
 
+        loss = info.actor_loss
+        if self._log_alpha is not None:
+            alpha = self._log_alpha.exp().detach()
+            alpha_loss = self._log_alpha * (
+                -info.neg_entropy - self._target_entropy).detach()
+            loss = loss + alpha * info.neg_entropy + alpha_loss
+        else:
+            alpha_loss = ()
+
         # For sarsa, info.critics is actually the critics for the previous step.
         # And info.target_critics is the critics for the current step. So we
         # need to rearrange training_info to match the requirement for `OneStepTDLoss`.
@@ -539,7 +540,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         reward = training_info.reward
         if self._use_entropy_reward:
-            reward += self._log_alpha.exp().detach() * info.entropy_reward
+            reward -= (self._log_alpha.exp() * info.neg_entropy).detach()
         shifted_training_info = training_info._replace(
             discount=tensor_utils.tensor_prepend_zero(training_info.discount),
             reward=tensor_utils.tensor_prepend_zero(reward),
@@ -568,14 +569,17 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             with alf.summary.scope(self._name):
                 if self._critic_bias is not None:
                     self._critic_bias.summarize()
+                if self._log_alpha is not None:
+                    alf.summary.scalar("alpha", alpha)
 
         return LossInfo(
-            loss=math_ops.add_ignore_empty(info.actor_loss, info.alpha_loss),
+            loss=loss,
             scalar_loss=scalar_loss,
             extra=SarsaLossInfo(
                 actor=info.actor_loss,
                 critic=critic_loss,
-                alpha=info.alpha_loss))
+                alpha=alpha_loss,
+                neg_entropy=info.neg_entropy))
 
     def after_update(self, training_info):
         self._update_target()
