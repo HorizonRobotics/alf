@@ -26,17 +26,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Process Coordinator."""
+"""Tests for Coordinator."""
 
-import ctypes
-from multiprocessing import current_process, Event, Process, Value
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import sys
+import threading
 import time
 
-import torch
-
-from alf import test
-from alf.drivers import process_coordinator as coordinator
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.platform import test
+from tensorflow.python.training import coordinator
 
 
 def StopOnEvent(coord, wait_for_stop, set_when_stopped):
@@ -68,14 +70,16 @@ def RaiseOnEventUsingContextHandler(coord, wait_for_stop, set_when_stopped,
         set_when_stopped.set()
 
 
-def SleepABit(n_secs):
+def SleepABit(n_secs, coord=None):
+    if coord:
+        coord.register_thread(threading.current_thread())
     time.sleep(n_secs)
 
 
-def WaitForProcessesToRegister(coord, num_processes):
+def WaitForThreadsToRegister(coord, num_threads):
     while True:
         with coord._lock:
-            if len(coord._registered_processes) == num_processes:
+            if len(coord._registered_threads) == num_threads:
                 break
         time.sleep(0.001)
 
@@ -93,9 +97,9 @@ class CoordinatorTest(test.TestCase):
         coord = coordinator.Coordinator()
         self.assertFalse(coord.should_stop())
         self.assertFalse(coord.wait_for_stop(0.1))
-        wait_for_stop_ev = Event()
-        has_stopped_ev = Event()
-        t = Process(
+        wait_for_stop_ev = threading.Event()
+        has_stopped_ev = threading.Event()
+        t = threading.Thread(
             target=StopOnEvent, args=(coord, wait_for_stop_ev, has_stopped_ev))
         t.start()
         self.assertFalse(coord.should_stop())
@@ -107,69 +111,65 @@ class CoordinatorTest(test.TestCase):
 
     def testJoin(self):
         coord = coordinator.Coordinator()
-        processes = [
-            Process(target=SleepABit, args=(0.01, )),
-            Process(target=SleepABit, args=(0.02, )),
-            Process(target=SleepABit, args=(0.01, ))
+        threads = [
+            threading.Thread(target=SleepABit, args=(0.01, )),
+            threading.Thread(target=SleepABit, args=(0.02, )),
+            threading.Thread(target=SleepABit, args=(0.01, ))
         ]
-        for t in processes:
+        for t in threads:
             t.start()
-        coord.join(processes)
-        for t in processes:
+        coord.join(threads)
+        for t in threads:
             self.assertFalse(t.is_alive())
 
     def testJoinAllRegistered(self):
         coord = coordinator.Coordinator()
-        processes = [
-            Process(target=SleepABit, args=(0.01, )),
-            Process(target=SleepABit, args=(0.02, )),
-            Process(target=SleepABit, args=(0.01, ))
+        threads = [
+            threading.Thread(target=SleepABit, args=(0.01, coord)),
+            threading.Thread(target=SleepABit, args=(0.02, coord)),
+            threading.Thread(target=SleepABit, args=(0.01, coord))
         ]
-        for t in processes:
+        for t in threads:
             t.start()
-        for p in processes:
-            coord.register_process(p)
-        WaitForProcessesToRegister(coord, len(processes))
+        WaitForThreadsToRegister(coord, 3)
         coord.join()
-        for t in processes:
+        for t in threads:
             self.assertFalse(t.is_alive())
 
     def testJoinSomeRegistered(self):
         coord = coordinator.Coordinator()
-        processes = [
-            Process(target=SleepABit, args=(0.01, )),
-            Process(target=SleepABit, args=(0.02, )),
-            Process(target=SleepABit, args=(0.01, ))
+        threads = [
+            threading.Thread(target=SleepABit, args=(0.01, coord)),
+            threading.Thread(target=SleepABit, args=(0.02, )),
+            threading.Thread(target=SleepABit, args=(0.01, coord))
         ]
-        for t in processes:
+        for t in threads:
             t.start()
-        coord.register_process(processes[0])
-        coord.register_process(processes[2])
-        WaitForProcessesToRegister(coord, 2)
-        # processes[1] is not registered we must pass it in.
-        coord.join([processes[1]])
-        for t in processes:
+        WaitForThreadsToRegister(coord, 2)
+        # threads[1] is not registered we must pass it in.
+        coord.join([threads[1]])
+        for t in threads:
             self.assertFalse(t.is_alive())
 
     def testJoinGraceExpires(self):
         def TestWithGracePeriod(stop_grace_period):
             coord = coordinator.Coordinator()
-            wait_for_stop_ev = Event()
-            has_stopped_ev = Event()
-            processes = [
-                Process(
+            wait_for_stop_ev = threading.Event()
+            has_stopped_ev = threading.Event()
+            threads = [
+                threading.Thread(
                     target=StopOnEvent,
                     args=(coord, wait_for_stop_ev, has_stopped_ev)),
-                Process(target=SleepABit, args=(10.0, ))
+                threading.Thread(target=SleepABit, args=(10.0, ))
             ]
-            for t in processes:
+            for t in threads:
                 t.daemon = True
                 t.start()
             wait_for_stop_ev.set()
             has_stopped_ev.wait()
-            with self.assertRaisesRegex(RuntimeError,
-                                        "processes still running"):
-                coord.join(processes, stop_grace_period_secs=stop_grace_period)
+            with self.assertRaisesRegexp(RuntimeError,
+                                         "threads still running"):
+                coord.join(threads, stop_grace_period_secs=stop_grace_period)
 
         TestWithGracePeriod(1e-10)
         TestWithGracePeriod(0.002)
@@ -177,119 +177,142 @@ class CoordinatorTest(test.TestCase):
 
     def testJoinWithoutGraceExpires(self):
         coord = coordinator.Coordinator()
-        wait_for_stop_ev = Event()
-        has_stopped_ev = Event()
-        processes = [
-            Process(
+        wait_for_stop_ev = threading.Event()
+        has_stopped_ev = threading.Event()
+        threads = [
+            threading.Thread(
                 target=StopOnEvent,
                 args=(coord, wait_for_stop_ev, has_stopped_ev)),
-            Process(target=SleepABit, args=(10.0, ))
+            threading.Thread(target=SleepABit, args=(10.0, ))
         ]
-        for t in processes:
+        for t in threads:
             t.daemon = True
             t.start()
         wait_for_stop_ev.set()
         has_stopped_ev.wait()
         coord.join(
-            processes, stop_grace_period_secs=1., ignore_live_processes=True)
+            threads, stop_grace_period_secs=1., ignore_live_threads=True)
 
     def testJoinRaiseReportExcInfo(self):
         coord = coordinator.Coordinator()
-        ev_1 = Event()
-        ev_2 = Event()
-        processes = [
-            Process(
+        ev_1 = threading.Event()
+        ev_2 = threading.Event()
+        threads = [
+            threading.Thread(
                 target=RaiseOnEvent,
                 args=(coord, ev_1, ev_2, RuntimeError("First"), False)),
-            Process(
+            threading.Thread(
                 target=RaiseOnEvent,
                 args=(coord, ev_2, None, RuntimeError("Too late"), False))
         ]
-        for t in processes:
+        for t in threads:
             t.start()
 
         ev_1.set()
 
-        # Being converted from threads, we don't raise exceptions from
-        # sub processes, but we do stop all processing via the stop event.
-        #
-        # If we need to print sub process traceback in the future, we can use
-        # something like this: https://stackoverflow.com/questions/19924104/python-multiprocessing-handling-child-errors-in-parent
-
-        # not raising: with self.assertRaisesRegex(RuntimeError, "First"):
-        coord.join(processes)
+        with self.assertRaisesRegexp(RuntimeError, "First"):
+            coord.join(threads)
 
     def testJoinRaiseReportException(self):
         coord = coordinator.Coordinator()
-        ev_1 = Event()
-        ev_2 = Event()
-        processes = [
-            Process(
+        ev_1 = threading.Event()
+        ev_2 = threading.Event()
+        threads = [
+            threading.Thread(
                 target=RaiseOnEvent,
                 args=(coord, ev_1, ev_2, RuntimeError("First"), True)),
-            Process(
+            threading.Thread(
                 target=RaiseOnEvent,
                 args=(coord, ev_2, None, RuntimeError("Too late"), True))
         ]
-        for t in processes:
+        for t in threads:
             t.start()
 
         ev_1.set()
-        # not raising with self.assertRaisesRegex(RuntimeError, "First"):
-        coord.join(processes)
+        with self.assertRaisesRegexp(RuntimeError, "First"):
+            coord.join(threads)
+
+    def testJoinIgnoresOutOfRange(self):
+        coord = coordinator.Coordinator()
+        ev_1 = threading.Event()
+        threads = [
+            threading.Thread(
+                target=RaiseOnEvent,
+                args=(coord, ev_1, None,
+                      errors_impl.OutOfRangeError(None, None, "First"), True))
+        ]
+        for t in threads:
+            t.start()
+
+        ev_1.set()
+        coord.join(threads)
+
+    def testJoinIgnoresMyExceptionType(self):
+        coord = coordinator.Coordinator(
+            clean_stop_exception_types=(ValueError, ))
+        ev_1 = threading.Event()
+        threads = [
+            threading.Thread(
+                target=RaiseOnEvent,
+                args=(coord, ev_1, None, ValueError("Clean stop"), True))
+        ]
+        for t in threads:
+            t.start()
+
+        ev_1.set()
+        coord.join(threads)
 
     def testJoinRaiseReportExceptionUsingHandler(self):
         coord = coordinator.Coordinator()
-        ev_1 = Event()
-        ev_2 = Event()
-        processes = [
-            Process(
+        ev_1 = threading.Event()
+        ev_2 = threading.Event()
+        threads = [
+            threading.Thread(
                 target=RaiseOnEventUsingContextHandler,
                 args=(coord, ev_1, ev_2, RuntimeError("First"))),
-            Process(
+            threading.Thread(
                 target=RaiseOnEventUsingContextHandler,
                 args=(coord, ev_2, None, RuntimeError("Too late")))
         ]
-        for t in processes:
+        for t in threads:
             t.start()
 
         ev_1.set()
-        # not raising with self.assertRaisesRegex(RuntimeError, "First"):
-        coord.join(processes)
+        with self.assertRaisesRegexp(RuntimeError, "First"):
+            coord.join(threads)
 
     def testClearStopClearsExceptionToo(self):
         coord = coordinator.Coordinator()
-        ev_1 = Event()
-        processes = [
-            Process(
+        ev_1 = threading.Event()
+        threads = [
+            threading.Thread(
                 target=RaiseOnEvent,
                 args=(coord, ev_1, None, RuntimeError("First"), True)),
         ]
-        for t in processes:
+        for t in threads:
             t.start()
 
-        # not raising with self.assertRaisesRegex(RuntimeError, "First"):
-        ev_1.set()
-        coord.join(processes)
-
+        with self.assertRaisesRegexp(RuntimeError, "First"):
+            ev_1.set()
+            coord.join(threads)
         coord.clear_stop()
-        processes = [
-            Process(
+        threads = [
+            threading.Thread(
                 target=RaiseOnEvent,
                 args=(coord, ev_1, None, RuntimeError("Second"), True)),
         ]
-        for t in processes:
+        for t in threads:
             t.start()
-        # not raising with self.assertRaisesRegex(RuntimeError, "Second"):
-        ev_1.set()
-        coord.join(processes)
+        with self.assertRaisesRegexp(RuntimeError, "Second"):
+            ev_1.set()
+            coord.join(threads)
 
     def testRequestStopRaisesIfJoined(self):
         coord = coordinator.Coordinator()
         # Join the coordinator right away.
         coord.join([])
         reported = False
-        with self.assertRaisesRegex(RuntimeError, "Too late"):
+        with self.assertRaisesRegexp(RuntimeError, "Too late"):
             try:
                 raise RuntimeError("Too late")
             except RuntimeError as e:
@@ -302,7 +325,7 @@ class CoordinatorTest(test.TestCase):
             raise RuntimeError("After clear")
         except RuntimeError as e:
             coord.request_stop(e)
-        with self.assertRaisesRegex(RuntimeError, "After clear"):
+        with self.assertRaisesRegexp(RuntimeError, "After clear"):
             coord.join([])
 
     def testRequestStopRaisesIfJoined_ExcInfo(self):
@@ -311,7 +334,7 @@ class CoordinatorTest(test.TestCase):
         # Join the coordinator right away.
         coord.join([])
         reported = False
-        with self.assertRaisesRegex(RuntimeError, "Too late"):
+        with self.assertRaisesRegexp(RuntimeError, "Too late"):
             try:
                 raise RuntimeError("Too late")
             except RuntimeError:
@@ -324,93 +347,44 @@ class CoordinatorTest(test.TestCase):
             raise RuntimeError("After clear")
         except RuntimeError:
             coord.request_stop(sys.exc_info())
-        with self.assertRaisesRegex(RuntimeError, "After clear"):
+        with self.assertRaisesRegexp(RuntimeError, "After clear"):
             coord.join([])
 
 
-def _StopAt0(coord, n, m=None):
-    if n.value == 0:
+def _StopAt0(coord, n):
+    if n[0] == 0:
         coord.request_stop()
     else:
-        if m:
-            m.decrement()
-        n.value -= 1
+        n[0] -= 1
 
 
-class ProcessTest(test.TestCase):
+class LooperTest(test.TestCase):
     def testTargetArgs(self):
-        n = Value(ctypes.c_int, 3)
+        n = [3]
         coord = coordinator.Coordinator()
-        p = coordinator.Process.process(
-            coord, target=_StopAt0, args=(coord, n))
-        coord.join([p])
-        self.assertEqual(0, n.value)
+        thread = coordinator.LooperThread.loop(
+            coord, 0, target=_StopAt0, args=(coord, n))
+        coord.join([thread])
+        self.assertEqual(0, n[0])
 
     def testTargetKwargs(self):
-        n = Value(ctypes.c_int, 3)
+        n = [3]
         coord = coordinator.Coordinator()
-        p = coordinator.Process.process(
-            coord, target=_StopAt0, kwargs={
+        thread = coordinator.LooperThread.loop(
+            coord, 0, target=_StopAt0, kwargs={
                 "coord": coord,
                 "n": n
             })
-        coord.join([p])
-        self.assertEqual(0, n.value)
+        coord.join([thread])
+        self.assertEqual(0, n[0])
 
     def testTargetMixedArgs(self):
-        n = Value(ctypes.c_int, 3)
+        n = [3]
         coord = coordinator.Coordinator()
-        p = coordinator.Process.process(
-            coord, target=_StopAt0, args=(coord, ), kwargs={"n": n})
-        coord.join([p])
-        self.assertEqual(0, n.value)
-
-    def testInheritedTarget(self):
-        class MyProcess(coordinator.Process):
-            def __init__(self, coord, args=(), kwargs={}):
-                super().__init__(coord, args=args, kwargs=kwargs)
-
-            def body(self, n=None):
-                _StopAt0(self._coord, n)
-
-        n = Value(ctypes.c_int, 3)
-        coord = coordinator.Coordinator()
-        p = MyProcess(coord, kwargs={"n": n})
-        p.start()
-        coord.join([p])
-        self.assertEqual(0, n.value)
-
-    def testModelSharing(self):
-        class MyProcess(coordinator.Process):
-            def __init__(self, coord, args=(), kwargs={}):
-                super().__init__(coord, args=args, kwargs=kwargs)
-                self.n = Value(ctypes.c_int, 3)
-
-            def body(self, m=None):
-                _StopAt0(self._coord, self.n, m)
-
-        from alf.algorithms.algorithm import Algorithm
-
-        class MyAlgorithm(Algorithm):
-            def __init__(self):
-                super().__init__()
-                self.register_buffer('_m', torch.tensor(0, dtype=torch.int32))
-                self.x = torch.tensor(0, dtype=torch.int32)
-
-            def decrement(self):
-                self._m -= 1
-                self.x -= 1
-
-        m = MyAlgorithm()
-        m.share_memory()
-        coord = coordinator.Coordinator()
-        p = MyProcess(coord, kwargs={"m": m})
-        p.start()
-        coord.join([p])
-        # Registered Buffers are shared acrosses processes:
-        self.assertEqual(-3, m._m)
-        # Simple tensors are not shared:
-        self.assertEqual(0, m.x)
+        thread = coordinator.LooperThread.loop(
+            coord, 0, target=_StopAt0, args=(coord, ), kwargs={"n": n})
+        coord.join([thread])
+        self.assertEqual(0, n[0])
 
 
 if __name__ == "__main__":
