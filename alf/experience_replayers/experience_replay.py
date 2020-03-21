@@ -150,7 +150,8 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
                 for a single environment.
         """
         self._experience_spec = experience_spec
-        self._buffer = ReplayBuffer(experience_spec, batch_size)
+        self._buffer = ReplayBuffer(
+            experience_spec, batch_size, max_length=max_length)
         self._data_iter = None
 
     def observe(self, exp):
