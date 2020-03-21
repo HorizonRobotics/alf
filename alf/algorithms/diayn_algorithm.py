@@ -107,10 +107,7 @@ class DIAYNAlgorithm(Algorithm):
             self._observation_normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec)
 
-    def train_step(self,
-                   time_step: TimeStep,
-                   state,
-                   calc_intrinsic_reward=True):
+    def _step(self, time_step: TimeStep, state, calc_rewards=True):
         """
         Args:
             time_step (TimeStep): input time step data, where the
@@ -118,7 +115,8 @@ class DIAYNAlgorithm(Algorithm):
                 a one-hot vector.
             state (Tensor): state for DIAYN (previous skill) which should be
                 a one-hot vector.
-            calc_intrinsic_reward (bool): if False, only return the losses.
+            calc_rewards (bool): if False, only return the losses.
+
         Returns:
             AlgStep:
                 output: empty tuple ()
@@ -151,8 +149,7 @@ class DIAYNAlgorithm(Algorithm):
         loss *= valid_masks
 
         intrinsic_reward = ()
-
-        if calc_intrinsic_reward:
+        if calc_rewards:
             intrinsic_reward = -loss.detach()
             intrinsic_reward = self._reward_normalizer.normalize(
                 intrinsic_reward)
@@ -161,6 +158,12 @@ class DIAYNAlgorithm(Algorithm):
             output=(),
             state=skill,
             info=DIAYNInfo(reward=intrinsic_reward, loss=loss))
+
+    def rollout_step(self, time_step, state):
+        return self._step(time_step, state)
+
+    def train_step(self, time_step, state):
+        return self._step(time_step, state, calc_rewards=False)
 
     def calc_loss(self, info: DIAYNInfo):
         loss = torch.mean(info.loss)

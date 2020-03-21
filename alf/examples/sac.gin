@@ -1,0 +1,8 @@
+import alf.algorithms.agent
+import alf.algorithms.sac_algorithm
+
+TrainerConfig.algorithm_ctor=@Agent
+Agent.rl_algorithm_cls=@SacAlgorithm
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()

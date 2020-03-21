@@ -155,15 +155,14 @@ class ICMAlgorithm(Algorithm):
         else:
             return action
 
-    def train_step(self,
-                   time_step: TimeStep,
-                   state,
-                   calc_intrinsic_reward=True):
-        """
+    def _step(self, time_step: TimeStep, state, calc_rewards=True):
+        """This step is for both `rollout_step` and `train_step`.
+
         Args:
             time_step (TimeStep): input time_step data for ICM
             state (Tensor): state for ICM (previous observation)
-            calc_intrinsic_reward (bool): if False, only return the losses
+            calc_rewards (bool): whether calculate rewards
+
         Returns:
             AlgStep:
                 output: empty tuple ()
@@ -199,7 +198,7 @@ class ICMAlgorithm(Algorithm):
                 math_ops.square(action_pred - prev_action), dim=-1)
 
         intrinsic_reward = ()
-        if calc_intrinsic_reward:
+        if calc_rewards:
             intrinsic_reward = forward_loss.detach()
             intrinsic_reward = self._reward_normalizer.normalize(
                 intrinsic_reward)
@@ -214,6 +213,12 @@ class ICMAlgorithm(Algorithm):
                     extra=dict(
                         forward_loss=forward_loss,
                         inverse_loss=inverse_loss))))
+
+    def rollout_step(self, time_step: TimeStep, state):
+        return self._step(time_step, state)
+
+    def train_step(self, time_step: TimeStep, state):
+        return self._step(time_step, state, calc_rewards=False)
 
     def calc_loss(self, info: ICMInfo):
         loss = alf.nest.map_structure(torch.mean, info.loss)

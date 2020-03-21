@@ -142,6 +142,24 @@ class EntropyTargetAlgorithm(Algorithm):
         self._slow_update_rate = torch.tensor(slow_update_rate)
         self._fast_update_rate = torch.tensor(fast_update_rate)
 
+    def rollout_step(self, distribution, step_type, on_policy_training):
+        """Rollout step.
+
+        Args:
+            distribution (nested Distribution): action distribution from the
+                policy.
+            step_type (StepType): the step type for the distributions.
+            on_policy_training (bool): If False, this step does nothing.
+
+        Returns:
+            AlgStep. `info` field is LossInfo, other fields are empty. All fields
+                are empty If `on_policy_training` is False.
+        """
+        if on_policy_training:
+            return self.train_step(distribution, step_type)
+        else:
+            return AlgStep()
+
     def train_step(self, distribution, step_type):
         """Train step.
 
@@ -169,7 +187,7 @@ class EntropyTargetAlgorithm(Algorithm):
         Args:
             training_info (EntropyTargetInfo): for computing loss.
             valid_mask (tensor): valid mask to be applied on time steps.
-        
+
         Returns:
             LossInfo.
         """
@@ -212,10 +230,9 @@ class EntropyTargetAlgorithm(Algorithm):
 
         def _init():
             below = avg_entropy < self._max_entropy
-            increasing = (avg_entropy > prev_avg_entropy).type(torch.float32)
-            # -1 * increasing + 0.5 * (1 - increasing)
-            update_rate = (
-                0.5 - 1.5 * increasing) * self._very_slow_update_rate
+            decreasing = (avg_entropy < prev_avg_entropy).type(torch.float32)
+            # -1 * (1 - decreasing) + 0.5 * decreasing
+            update_rate = (-1 + 1.5 * decreasing) * self._very_slow_update_rate
             self._stage.add_(below.type(torch.int32))
             self._log_alpha.fill_(
                 torch.max(self._log_alpha + update_rate, self._min_log_alpha))
@@ -237,8 +254,8 @@ class EntropyTargetAlgorithm(Algorithm):
             self._update_rate.fill_(update_rate)
             above = above.type(torch.float32)
             below = 1 - above
-            increasing = (avg_entropy > prev_avg_entropy).type(torch.float32)
-            decreasing = 1 - increasing
+            decreasing = (avg_entropy < prev_avg_entropy).type(torch.float32)
+            increasing = 1 - decreasing
             log_alpha = self._log_alpha + (
                 (below + 0.5 * above) * decreasing -
                 (above + 0.5 * below) * increasing) * update_rate
