@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Coordinate asynchronous training process termination on request."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from absl import logging
 import contextlib
@@ -326,6 +323,6 @@ class Process(mp.Process):
         pass
 
     def run_loop(self):
-        """Called at 'timer_interval_secs' boundaries."""
+        """Called in a back to back loop."""
         if self._target:
             self._target(*self._args, **self._kwargs)
