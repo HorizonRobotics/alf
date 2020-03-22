@@ -139,8 +139,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_loss = OneStepTDLoss(debug_summaries=debug_summaries)
         self._critic_loss = critic_loss
 
-        self._ou_process = create_ou_process(action_spec, ou_stddev,
-                                             ou_damping)
+        self._ou_process = common.create_ou_process(action_spec, ou_stddev,
+                                                    ou_damping)
 
         self._update_target = common.get_target_updater(
             models=[self._actor_network, self._critic_network],
@@ -251,27 +251,3 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_actor_network', '_target_critic_network']
-
-
-def create_ou_process(action_spec, ou_stddev, ou_damping):
-    """Create nested zero-mean Ornstein-Uhlenbeck processes.
-
-    The temporal update equation is:
-    `x_next = (1 - damping) * x + N(0, std_dev)`
-
-    Args:
-        action_spec (nested BountedTensorSpec): action spec
-        ou_damping (float): Damping rate in the above equation. We must have
-            0 <= damping <= 1.
-        ou_stddev (float): Standard deviation of the Gaussian component.
-    Returns:
-        nested OUProcess with the same structure as action_spec.
-    """
-
-    def _create_ou_process(action_spec):
-        return dist_utils.OUProcess(
-            torch.zeros(action_spec.shape, dtype=action_spec.dtype),
-            ou_damping, ou_stddev)
-
-    ou_process = nest.map_structure(_create_ou_process, action_spec)
-    return ou_process

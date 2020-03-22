@@ -25,6 +25,7 @@ import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import DistributionNetwork, Network
 from alf.utils import dist_utils
+import alf.utils.math_ops as math_ops
 
 
 def DiagMultivariateNormal(loc, scale_diag):
@@ -85,8 +86,8 @@ class NormalProjectionNetwork(DistributionNetwork):
     def __init__(self,
                  input_size,
                  action_spec,
-                 activation=layers.identity,
-                 projection_output_init_gain=0.1,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=0.3,
                  std_bias_initializer_value=0.0,
                  squash_mean=True,
                  state_dependent_std=False,
@@ -129,7 +130,7 @@ class NormalProjectionNetwork(DistributionNetwork):
         assert len(action_spec.shape) == 1, "Only support 1D action spec!"
 
         self._action_spec = action_spec
-        self._mean_transform = layers.identity
+        self._mean_transform = math_ops.identity
         self._scale_distribution = scale_distribution
 
         if squash_mean or scale_distribution:
@@ -147,7 +148,7 @@ class NormalProjectionNetwork(DistributionNetwork):
                     lambda inputs: self._action_means + self._action_magnitudes
                     * inputs.tanh())
 
-        self._std_transform = layers.identity
+        self._std_transform = math_ops.identity
         if std_transform is not None:
             self._std_transform = std_transform
 
@@ -218,8 +219,8 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
     def __init__(self,
                  input_size,
                  action_spec,
-                 activation=layers.identity,
-                 projection_output_init_gain=0.1,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=1e-5,
                  squash_mean=True,
                  state_dependent_std=False,
                  inverse_std_transform='softplus',
@@ -296,10 +297,10 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
         inputs, state = Network.forward(self, inputs, state)
         inv_stds = self._std_transform(self._std_projection_layer(inputs))
         if self._max_std is not None:
-            inv_stds += 1 / (self._max_std - self._min_std)
+            inv_stds = inv_stds + 1 / (self._max_std - self._min_std)
         stds = 1. / inv_stds
         if self._min_std > 0:
-            stds += self._min_std
+            stds = stds + self._min_std
 
         means = self._mean_transform(
             self._means_projection_layer(inputs) * stds)

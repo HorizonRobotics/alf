@@ -16,6 +16,17 @@
 import gin
 import torch
 
+import alf
+
+nest_map = alf.nest.map_structure
+
+
+def identity(x):
+    """PyTorch doesn't have an identity activation. This can be used as a
+    placeholder.
+    """
+    return x
+
 
 @gin.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
@@ -84,9 +95,57 @@ def max_n(inputs):
     return ret
 
 
+def min_n(inputs):
+    """Calculate the minimum of n Tensors
+
+    Args:
+        inputs (list[Tensor]): list of Tensors, should have the same shape
+    Returns:
+        the elementwise minimum of all the tensors in `inputs`
+    """
+    ret = inputs[0]
+    inputs = inputs[1:]
+    for x in inputs:
+        ret = torch.min(ret, x)
+    return ret
+
+
+def add_n(inputs):
+    """Calculate the sum of n Tensors
+
+    Args:
+        inputs (list[Tensor]): list of Tensors, should have the same shape
+    Returns:
+        the elementwise sum of all the tensors in `inputs`
+    """
+    ret = inputs[0]
+    inputs = inputs[1:]
+    for x in inputs:
+        ret = torch.add(ret, x)
+    return ret
+
+
 def square(x):
     """torch doesn't have square."""
     return torch.pow(x, 2)
+
+
+def weighted_reduce_mean(x, weight, dim=()):
+    """Weighted mean.
+
+    Args:
+        x (Tensor): values for calculating the mean
+        weight (Tensor): weight for x. should have same shape as `x`
+        dim (int | tuple[int]): The dimensions to reduce. If None (the
+            default), reduces all dimensions. Must be in the range
+            [-rank(x), rank(x)). Empty tuple means to sum all elements.
+    Returns:
+        the weighted mean across `axis`
+    """
+    weight = weight.to(torch.float32)
+    sum_weight = weight.sum(dim=dim)
+    sum_weight = torch.max(sum_weight, torch.tensor(1e-10))
+    return nest_map(lambda y: (y * weight).sum(dim=dim) / sum_weight, x)
 
 
 def sum_to_leftmost(value, dim):

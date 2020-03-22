@@ -23,6 +23,7 @@ import alf.layers as layers
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks import Network
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+import alf.utils.math_ops as math_ops
 
 
 @gin.configurable
@@ -52,7 +53,7 @@ class QNetwork(Network):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
@@ -96,7 +97,7 @@ class QNetwork(Network):
         self._final_layer = layers.FC(
             self._encoding_net.output_spec.shape[0],
             num_actions,
-            activation=layers.identity,
+            activation=math_ops.identity,
             kernel_initializer=last_kernel_initializer,
             bias_init_value=-0.2)
 
@@ -145,7 +146,7 @@ class QRNNNetwork(Network):
                 `InputPreprocessor`, each of which will be applied to the
                 corresponding input. If not None, then it must
                 have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as alf.layers.identity.
+                If any element is None, then it will be treated as math_ops.identity.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
@@ -196,7 +197,7 @@ class QRNNNetwork(Network):
         self._final_layer = layers.FC(
             self._encoding_net.output_spec.shape[0],
             num_actions,
-            activation=layers.identity,
+            activation=math_ops.identity,
             kernel_initializer=last_kernel_initializer,
             bias_init_value=-0.2)
 

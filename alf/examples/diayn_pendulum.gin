@@ -25,11 +25,11 @@ actor/ActorDistributionNetwork.input_tensor_spec=[%observation_spec, @goal/alf.T
 actor/ActorDistributionNetwork.preprocessing_combiner=@NestConcat()
 actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(%hidden_size, %hidden_size)
-actor/ActorDistributionNetwork.continuous_projection_net_ctor=@NormalProjectionNetwork
-NormalProjectionNetwork.squash_mean=True
-NormalProjectionNetwork.state_dependent_std=True
-NormalProjectionNetwork.scale_distribution=False
-NormalProjectionNetwork.std_transform=@clipped_exp
+actor/ActorDistributionNetwork.continuous_projection_net_ctor=@actor/NormalProjectionNetwork
+actor/NormalProjectionNetwork.squash_mean=True
+actor/NormalProjectionNetwork.state_dependent_std=True
+actor/NormalProjectionNetwork.scale_distribution=False
+actor/NormalProjectionNetwork.std_transform=@clipped_exp
 
 critic/CriticNetwork.input_tensor_spec=([%observation_spec, @goal/alf.TensorSpec()], %action_spec)
 critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
@@ -57,8 +57,6 @@ OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 Agent/Adam.lr=5e-4
 Agent.intrinsic_reward_coef=1
 Agent.extrinsic_reward_coef=0
-Agent.observation_spec=%observation_spec
-Agent.action_spec=%action_spec
 Agent.rl_algorithm_cls=@SacAlgorithm
 Agent.intrinsic_reward_module=@DIAYNAlgorithm()
 Agent.goal_generator=@RandomCategoricalGoalGenerator()
@@ -80,6 +78,5 @@ TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=100
 TrainerConfig.use_rollout_state=True
-
-ReplayBuffer.max_length=10000
+TrainerConfig.replay_buffer_length=10000
 

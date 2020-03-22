@@ -21,6 +21,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep, StepType
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.utils.tensor_utils import to_tensor
 from alf.utils import math_ops
 from alf.utils.normalizers import AdaptiveNormalizer, ScalarAdaptiveNormalizer
 
@@ -96,7 +97,7 @@ class DIAYNAlgorithm(Algorithm):
             fc_layer_params=hidden_size,
             activation=hidden_activation,
             last_layer_size=skill_dim,
-            last_activation=alf.layers.identity)
+            last_activation=math_ops.identity)
 
         self._reward_normalizer = ScalarAdaptiveNormalizer(
             speed=reward_adapt_speed)
@@ -106,10 +107,7 @@ class DIAYNAlgorithm(Algorithm):
             self._observation_normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec)
 
-    def train_step(self,
-                   time_step: TimeStep,
-                   state,
-                   calc_intrinsic_reward=True):
+    def _step(self, time_step: TimeStep, state, calc_rewards=True):
         """
         Args:
             time_step (TimeStep): input time step data, where the
@@ -117,7 +115,8 @@ class DIAYNAlgorithm(Algorithm):
                 a one-hot vector.
             state (Tensor): state for DIAYN (previous skill) which should be
                 a one-hot vector.
-            calc_intrinsic_reward (bool): if False, only return the losses.
+            calc_rewards (bool): if False, only return the losses.
+
         Returns:
             AlgStep:
                 output: empty tuple ()
@@ -145,12 +144,12 @@ class DIAYNAlgorithm(Algorithm):
             # nn.MSELoss doesn't support reducing along a dim
             loss = torch.sum(math_ops.square(skill_pred - prev_skill), dim=-1)
 
-        valid_masks = (step_type != StepType.FIRST).to(torch.float32)
+        valid_masks = (step_type != to_tensor(StepType.FIRST)).to(
+            torch.float32)
         loss *= valid_masks
 
         intrinsic_reward = ()
-
-        if calc_intrinsic_reward:
+        if calc_rewards:
             intrinsic_reward = -loss.detach()
             intrinsic_reward = self._reward_normalizer.normalize(
                 intrinsic_reward)
@@ -159,6 +158,12 @@ class DIAYNAlgorithm(Algorithm):
             output=(),
             state=skill,
             info=DIAYNInfo(reward=intrinsic_reward, loss=loss))
+
+    def rollout_step(self, time_step, state):
+        return self._step(time_step, state)
+
+    def train_step(self, time_step, state):
+        return self._step(time_step, state, calc_rewards=False)
 
     def calc_loss(self, info: DIAYNInfo):
         loss = torch.mean(info.loss)

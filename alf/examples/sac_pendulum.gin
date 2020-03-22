@@ -1,5 +1,6 @@
 
-import alf.algorithms.sac_algorithm
+include 'sac.gin'
+
 import alf.utils.math_ops
 
 # environment config
@@ -8,9 +9,6 @@ create_environment.env_name="Pendulum-v0"
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 
 # algorithm config
-observation_spec=@get_observation_spec()
-action_spec=@get_action_spec()
-
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(100, 100)
@@ -36,8 +34,6 @@ SacAlgorithm.alpha_optimizer=@alpha/Adam()
 SacAlgorithm.target_update_tau=0.005
 OneStepTDLoss.td_error_loss_fn=@losses.element_wise_squared_loss
 
-
-
 # training config
 TrainerConfig.initial_collect_steps=1000
 TrainerConfig.mini_batch_length=2
@@ -46,11 +42,9 @@ TrainerConfig.mini_batch_size=64
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.whole_replay_buffer_training=False
 TrainerConfig.clear_replay_buffer=False
-TrainerConfig.algorithm_ctor=@SacAlgorithm
 TrainerConfig.num_iterations=10000
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=True
 TrainerConfig.summary_interval=100
-
-ReplayBuffer.max_length=100000
+TrainerConfig.replay_buffer_length=100000

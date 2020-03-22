@@ -61,7 +61,8 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         root_dir="dummy",
         unroll_length=13,
         num_updates_per_train_step=4,
-        mini_batch_size=25)
+        mini_batch_size=25,
+        summarize_grads_and_vars=DEBUGGING)
 
     return PPOAlgorithm(
         observation_spec=observation_spec,
@@ -87,7 +88,6 @@ class PpoTest(alf.test.TestCase):
         eval_env = env_class(batch_size, steps_per_episode)
 
         algorithm = create_algorithm(env, learning_rate=learning_rate)
-        algorithm.set_summary_settings(summarize_grads_and_vars=DEBUGGING)
 
         env.reset()
         eval_env.reset()
@@ -103,7 +103,7 @@ class PpoTest(alf.test.TestCase):
             1.0, float(eval_time_step.reward.mean()), delta=1e-1)
 
 
-def unroll(env, algorithm, steps):
+def unroll(env, algorithm, steps, epsilon_greedy=1.0):
     """Run `steps` environment steps using algoirthm.predict_step()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
@@ -113,7 +113,7 @@ def unroll(env, algorithm, steps):
             time_step.is_first())
         transformed_time_step = algorithm.transform_timestep(time_step)
         policy_step = algorithm.predict_step(
-            transformed_time_step, policy_state, epsilon_greedy=1.0)
+            transformed_time_step, policy_state, epsilon_greedy=epsilon_greedy)
         time_step = env.step(policy_step.output)
         policy_state = policy_step.state
     return time_step

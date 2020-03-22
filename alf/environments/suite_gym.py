@@ -32,21 +32,21 @@ def load(environment_name,
 
     Note that by default a TimeLimit wrapper is used to limit episode lengths
     to the default benchmarks defined by the registered environments.
-  
+
     Args:
         environment_name (str): Name for the environment to load.
-        env_id (int): (optional) ID of the environment. 
+        env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
-        max_episode_steps (int): If None the max_episode_steps will be set to the 
+        max_episode_steps (int): If None the max_episode_steps will be set to the
             default step limit defined in the environment's spec. No limit is applied
             if set to 0 or if there is no max_episode_steps set in the environment's
             spec.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
             classes to use on the torch environment.
-        image_channel_first (bool): whether transpose image channels to first dimension. 
-  
+        image_channel_first (bool): whether transpose image channels to first dimension.
+
     Returns:
         A TorchEnvironment instance.
     """
@@ -82,32 +82,32 @@ def wrap_env(gym_env,
     to the default benchmarks defined by the registered environments.
 
     Also note that all gym wrappers assume images are 'channel_last' by default,
-    while PyTorch only supports 'channel_first' image inputs. To enable this 
-    transpose, 'image_channel_first' is set as True by default. There are two options 
-    provided in ALF to handle this transpose: 
-        1. Applying the gym_wrappers.ImageChannelFirst after all gym_env_wrappers 
+    while PyTorch only supports 'channel_first' image inputs. To enable this
+    transpose, 'image_channel_first' is set as True by default. There are two options
+    provided in ALF to handle this transpose:
+        1. Applying the gym_wrappers.ImageChannelFirst after all gym_env_wrappers
             and before the TorchGymWrapper.
-        2. Applying the torch_wrappers.ImageChannelFirst after all torch_gym_wrappers. 
+        2. Applying the torch_wrappers.ImageChannelFirst after all torch_gym_wrappers.
     The first option is used in current function.
-  
+
     Args:
         gym_env (gym.Env): An instance of OpenAI gym environment.
         env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
         max_episode_steps (int): Used to create a TimeLimitWrapper. No limit is applied
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
-        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
-        time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts 
-            (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this 
+        time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts
+            (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this
             should be left as the default, torch_wrappers.TimeLimit.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
             classes to use on the torch environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
             PyTorch only supports channgel_first image inputs.
         auto_reset (bool): If True (default), reset the environment automatically after a
             terminal state is reached.
-  
+
     Returns:
         A TorchEnvironment instance.
     """
@@ -125,6 +125,9 @@ def wrap_env(gym_env,
         discount=discount,
         auto_reset=auto_reset,
     )
+
+    # clip continuous actions according to action_spec
+    env = torch_wrappers.ContinuousActionClip(env)
 
     if max_episode_steps > 0:
         env = time_limit_wrapper(env, max_episode_steps)

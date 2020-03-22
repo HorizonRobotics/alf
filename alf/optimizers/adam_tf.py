@@ -44,7 +44,9 @@ class AdamTF(Optimizer):
     """
 
     def __init__(self,
-                 params,
+                 params=[{
+                     'params': []
+                 }],
                  lr=1e-3,
                  betas=(0.9, 0.999),
                  eps=1e-7,

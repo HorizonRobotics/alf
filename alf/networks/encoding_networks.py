@@ -325,7 +325,7 @@ class EncodingNetwork(Network):
                 variance_scaling_init,
                 mode='fan_in',
                 distribution='truncated_normal',
-                nonlinearity=activation.__name__)
+                nonlinearity=activation)
 
         self._img_encoding_net = None
         if conv_layer_params:

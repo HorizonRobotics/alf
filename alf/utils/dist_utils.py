@@ -84,31 +84,32 @@ class OUProcess(nn.Module):
 
     def __init__(self, initial_value, damping=0.15, stddev=0.2):
         """A Class for generating noise from a zero-mean Ornstein-Uhlenbeck process.
+
         The Ornstein-Uhlenbeck process is a process that generates temporally
         correlated noise via a random walk with damping. This process describes
         the velocity of a particle undergoing brownian motion in the presence of
         friction. This can be useful for exploration in continuous action
         environments with momentum.
+
         The temporal update equation is:
         `x_next = (1 - damping) * x + N(0, std_dev)`
+
         Args:
-        initial_value: Initial value of the process.
-        damping: The rate at which the noise trajectory is damped towards the
-            mean. We must have 0 <= damping <= 1, where a value of 0 gives an
-            undamped random walk and a value of 1 gives uncorrelated Gaussian noise.
-            Hence in most applications a small non-zero value is appropriate.
-        stddev: Standard deviation of the Gaussian component.
+            initial_value (Tensor): Initial value of the process.
+            damping (float): The rate at which the noise trajectory is damped towards the
+                mean. We must have 0 <= damping <= 1, where a value of 0 gives an
+                undamped random walk and a value of 1 gives uncorrelated Gaussian noise.
+                Hence in most applications a small non-zero value is appropriate.
+            stddev (float): Standard deviation of the Gaussian component.
         """
         super(OUProcess, self).__init__()
         self._damping = damping
         self._stddev = stddev
-        self._x = initial_value
-        self._x.requires_grad = False
+        self._x = initial_value.clone().detach()
 
     def forward(self):
         noise = torch.randn_like(self._x) * self._stddev
-        self._x.data.copy_((1 - self._damping) * self._x + noise)
-        return self._x
+        return self._x.data.copy_((1 - self._damping) * self._x + noise)
 
 
 def DiagMultivariateNormal(loc, scale_diag):

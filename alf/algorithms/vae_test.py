@@ -21,7 +21,7 @@ import torch
 
 import alf
 import alf.algorithms.vae as vae
-from alf.layers import FC, identity
+from alf.layers import FC
 from alf.nest.utils import NestConcat
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -77,7 +77,7 @@ class VaeTest(alf.test.TestCase):
                 (prior_input_spec.maximum - prior_input_spec.minimum + 1, )),
             fc_layer_params=(10, ) * 2,
             last_layer_size=self._latent_dim,
-            last_activation=identity)
+            last_activation=math_ops.identity)
         z_log_var_prior_network = z_mean_prior_network.copy()
         preprocess_network = EncodingNetwork(
             input_tensor_spec=[
@@ -88,7 +88,7 @@ class VaeTest(alf.test.TestCase):
             preprocessing_combiner=NestConcat(),
             fc_layer_params=(10, ) * 2,
             last_layer_size=self._latent_dim,
-            last_activation=identity)
+            last_activation=math_ops.identity)
 
         encoder = vae.VariationalAutoEncoder(
             self._latent_dim, None, preprocess_network, z_mean_prior_network,

@@ -72,5 +72,4 @@ TrainerConfig.summary_interval=100
 TrainerConfig.num_checkpoints=10
 TrainerConfig.use_rollout_state=True
 TrainerConfig.update_counter_every_mini_batch=True
-
-ReplayBuffer.max_length = 35
+TrainerConfig.replay_buffer_length=35

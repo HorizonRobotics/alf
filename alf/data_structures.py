@@ -18,7 +18,6 @@ import collections
 import numpy as np
 import torch
 
-import alf
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils.tensor_utils import to_tensor
@@ -48,11 +47,11 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
 class StepType(object):
     """Defines the status of a `TimeStep` within a sequence."""
     # Denotes the first `TimeStep` in a sequence.
-    FIRST = torch.tensor(0, dtype=torch.int32)
+    FIRST = np.int32(0)
     # Denotes any `TimeStep` in a sequence that is not FIRST or LAST.
-    MID = torch.tensor(1, dtype=torch.int32)
+    MID = np.int32(1)
     # Denotes the last `TimeStep` in a sequence.
-    LAST = torch.tensor(2, dtype=torch.int32)
+    LAST = np.int32(2)
 
     def __new__(cls, value):
         """Add ability to create StepType constants from a value."""
@@ -88,7 +87,7 @@ class TimeStep(
     will equal `StepType.MID.
 
     Attributes:
-        step_type: a `Tensor` of `StepType` enum values.
+        step_type: a `Tensor` or numpy int of `StepType` enum values.
         reward: a `Tensor` of reward values from executing 'prev_action'.
         discount: A discount value in the range `[0, 1]`.
         observation: A (nested) 'Tensor' for observation
@@ -97,24 +96,19 @@ class TimeStep(
     """
 
     def is_first(self):
-        if torch.is_tensor(self.step_type):
-            return torch.eq(self.step_type, StepType.FIRST)
-        raise ValueError('step_type is not a Torch Tensor')
+        return self.step_type == StepType.FIRST
 
     def is_mid(self):
-        if torch.is_tensor(self.step_type):
-            return torch.eq(self.step_type, StepType.MID)
-        raise ValueError('step_type is not a Torch Tensor')
+        return self.step_type == StepType.MID
 
     def is_last(self):
-        if torch.is_tensor(self.step_type):
-            return torch.eq(self.step_type, StepType.LAST)
-        raise ValueError('step_type is not a Torch Tensor')
+        return self.step_type == StepType.LAST
 
 
 def _create_timestep(observation, prev_action, reward, discount, env_id,
                      step_type):
     discount = to_tensor(discount)
+    step_type = to_tensor(step_type)
 
     def make_tensors(struct):
         return nest.map_structure(to_tensor, struct)
@@ -130,17 +124,17 @@ def _create_timestep(observation, prev_action, reward, discount, env_id,
 
 def timestep_first(observation, prev_action, reward, discount, env_id):
     return _create_timestep(observation, prev_action, reward, discount, env_id,
-                            StepType.FIRST)
+                            torch.tensor(StepType.FIRST, dtype=torch.int32))
 
 
 def timestep_mid(observation, prev_action, reward, discount, env_id):
     return _create_timestep(observation, prev_action, reward, discount, env_id,
-                            StepType.MID)
+                            torch.tensor(StepType.MID, dtype=torch.int32))
 
 
 def timestep_last(observation, prev_action, reward, discount, env_id):
     return _create_timestep(observation, prev_action, reward, discount, env_id,
-                            StepType.LAST)
+                            torch.tensor(StepType.LAST, dtype=torch.int32))
 
 
 AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
@@ -155,7 +149,7 @@ def restart(observation, action_spec, env_id=None, batched=False):
         observation (nested tensors): observations of the env
         action_spec (nested TensorSpec): tensor spec of actions
         env_id (batched or scalar torch.int32): (optional) ID of the env
-        batched (bool): (optional) whether batched envs or not 
+        batched (bool): (optional) whether batched envs or not
 
     Returns:
         A `TimeStep`.
@@ -204,7 +198,7 @@ def transition(observation, prev_action, reward, discount=1.0, env_id=None):
         prev_action (nested tensors): previous actions to the the env.
         reward (float): A scalar, or 1D NumPy array, or tensor.
         discount (float): (optional) A scalar, or 1D NumPy array, or tensor.
-        env_id (torch.int32): (optional) A scalar or 1D tensor of 
+        env_id (torch.int32): (optional) A scalar or 1D tensor of
             the environment ID(s).
 
     Returns:
@@ -248,14 +242,14 @@ def transition(observation, prev_action, reward, discount=1.0, env_id=None):
 def termination(observation, prev_action, reward, env_id=None):
     """Returns a `TimeStep` with `step_type` set to `StepType.LAST`.
 
-    Called by env.step() if 'Done'. 'discount' should not be sent in and 
+    Called by env.step() if 'Done'. 'discount' should not be sent in and
     will be set as 0.
 
     Args:
         observation (nested tensors): current observations of the env.
         prev_action (nested tensors): previous actions to the the env.
         reward (float): A scalar, or 1D NumPy array, or tensor.
-        env_id (torch.int32): (optional) A scalar or 1D tensor of 
+        env_id (torch.int32): (optional) A scalar or 1D tensor of
             the environment ID(s).
 
     Returns:
@@ -345,17 +339,17 @@ class Experience(
     def is_first(self):
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.FIRST)
-        raise ValueError('step_type is not a Torch Tensor')
+        return np.equal(self.step_type, StepType.FIRST)
 
     def is_mid(self):
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.MID)
-        raise ValueError('step_type is not a Torch Tensor')
+        return np.equal(self.step_type, StepType.MID)
 
     def is_last(self):
         if torch.is_tensor(self.step_type):
             return torch.eq(self.step_type, StepType.LAST)
-        raise ValueError('step_type is not a Torch Tensor')
+        return np.equal(self.step_type, StepType.LAST)
 
 
 def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
@@ -379,6 +373,17 @@ def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
         action=alg_step.output,
         rollout_info=alg_step.info,
         state=state)
+
+
+def experience_to_time_step(exp: Experience):
+    """Make TimeStep from Experience."""
+    return TimeStep(
+        step_type=exp.step_type,
+        reward=exp.reward,
+        discount=exp.discount,
+        observation=exp.observation,
+        prev_action=exp.prev_action,
+        env_id=exp.env_id)
 
 
 LossInfo = namedtuple(

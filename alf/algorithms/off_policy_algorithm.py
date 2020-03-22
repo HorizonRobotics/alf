@@ -123,7 +123,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     self.summarize_rollout(training_info)
                     self.summarize_metrics()
 
-        with record_time("time/train"):
+        with record_time("time/replay"):
             mini_batch_size = config.mini_batch_size
             if mini_batch_size is None:
                 mini_batch_size = self._exp_replayer.batch_size
@@ -136,6 +136,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
                     sample_batch_size=mini_batch_size,
                     mini_batch_length=config.mini_batch_length)
 
+        with record_time("time/train"):
             return self._train_experience(
                 experience, config.num_updates_per_train_step, mini_batch_size,
                 config.mini_batch_length,

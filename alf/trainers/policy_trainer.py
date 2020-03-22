@@ -96,11 +96,6 @@ class Trainer(object):
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)
-        self._algorithm.set_summary_settings(
-            summarize_grads_and_vars=self._summarize_grads_and_vars,
-            summarize_action_distributions=self._config.
-            summarize_action_distributions)
-        self._algorithm.use_rollout_state = self._config.use_rollout_state
 
         # Create an unwrapped env to expose subprocess gin confs which otherwise
         # will be marked as "inoperative". This env should be created last.
@@ -165,8 +160,8 @@ class Trainer(object):
             t = time.time() - t0
             logging.log_every_n_seconds(
                 logging.INFO,
-                '%s time=%.3f throughput=%0.2f' % (iter_num, t,
-                                                   int(train_steps) / t),
+                '%s: %s time=%.3f throughput=%0.2f' %
+                (common.get_gin_file(), iter_num, t, int(train_steps) / t),
                 n_seconds=1)
 
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:

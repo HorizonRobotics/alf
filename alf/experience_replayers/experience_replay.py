@@ -84,7 +84,6 @@ class ExperienceReplayer(object):
         """
 
 
-@gin.configurable
 class OnetimeExperienceReplayer(ExperienceReplayer):
     """
     A simple one-time experience replayer. For each incoming `exp`,
@@ -131,7 +130,6 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         return self._batch_size
 
 
-@gin.configurable
 class SyncUniformExperienceReplayer(ExperienceReplayer):
     """
     For synchronous off-policy training.
@@ -150,7 +148,8 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
                 for a single environment.
         """
         self._experience_spec = experience_spec
-        self._buffer = ReplayBuffer(experience_spec, batch_size)
+        self._buffer = ReplayBuffer(
+            experience_spec, batch_size, max_length=max_length)
         self._data_iter = None
 
     def observe(self, exp):
