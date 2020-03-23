@@ -434,7 +434,6 @@ class RLAlgorithm(Algorithm):
         policy_step = self.rollout_step(time_step, state)
         return policy_step._replace(info=())
 
-    @abstractmethod
     def rollout_step(self, time_step: TimeStep, state):
         """Perform one step of rollout.
 
@@ -455,6 +454,15 @@ class RLAlgorithm(Algorithm):
                 collected in `unroll()`. So the user only need to put other
                 stuff (e.g. value estimation) into `policy_step.info`
         """
+        policy_step = self._rollout_step(time_step, state)
+        if self._rollout_info_spec is None:
+            self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
+        return policy_step
+
+    @abstractmethod
+    def _rollout_step(self, time_step: TimeStep, state):
+        """Implementation of rollout_step. RLAlgorithm needs to implement this
+        function, while Algorithm still needs to implement rollout_step()."""
         pass
 
     def transform_timestep(self, time_step):
@@ -546,10 +554,6 @@ class RLAlgorithm(Algorithm):
             transformed_time_step = self.transform_timestep(time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
-
-            if self._rollout_info_spec is None:
-                self._rollout_info_spec = dist_utils.extract_spec(
-                    policy_step.info)
 
             action = common.detach(policy_step.output)
 

@@ -404,7 +404,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             new_states.append(state)
         return critics, new_states
 
-    def rollout_step(self, time_step: TimeStep, state: SarsaState):
+    def _rollout_step(self, time_step: TimeStep, state: SarsaState):
         if self._on_policy:
             return self._train_step(time_step, state)
 

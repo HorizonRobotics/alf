@@ -213,7 +213,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._predict(time_step, state, epsilon_greedy)
 
-    def rollout_step(self, time_step: TimeStep, state):
+    def _rollout_step(self, time_step: TimeStep, state):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by SacAlgorithm")

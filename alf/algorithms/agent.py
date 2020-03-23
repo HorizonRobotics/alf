@@ -185,7 +185,7 @@ class Agent(OnPolicyAlgorithm):
 
         return AlgStep(output=rl_step.output, state=new_state, info=())
 
-    def rollout_step(self, time_step: TimeStep, state: AgentState):
+    def _rollout_step(self, time_step: TimeStep, state: AgentState):
         """Rollout for one step."""
         new_state = AgentState()
         info = AgentInfo()

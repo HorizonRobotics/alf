@@ -173,7 +173,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             state=state,
             info=DdpgInfo(action_distribution=action))
 
-    def rollout_step(self, time_step: TimeStep, state=None):
+    def _rollout_step(self, time_step: TimeStep, state=None):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by DdpgAlgorithm")

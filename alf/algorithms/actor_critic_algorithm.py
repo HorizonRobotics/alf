@@ -106,7 +106,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             state=ActorCriticState(actor=actor_state),
             info=ActorCriticInfo(action_distribution=action_dist))
 
-    def rollout_step(self, time_step: TimeStep, state: ActorCriticState):
+    def _rollout_step(self, time_step: TimeStep, state: ActorCriticState):
         """Rollout for one step."""
         value, value_state = self._value_network(
             time_step.observation, state=state.value)
