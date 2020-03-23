@@ -54,7 +54,6 @@ class TrainerConfig(object):
                  num_updates_per_train_step=4,
                  mini_batch_length=None,
                  mini_batch_size=None,
-                 exp_replayer="uniform",
                  whole_replay_buffer_training=True,
                  replay_buffer_length=1024,
                  clear_replay_buffer=True,
@@ -107,7 +106,6 @@ class TrainerConfig(object):
                 it's set to the replayer's `batch_size`.
             mini_batch_length (int): the length of the sequence for each
                 sample in the minibatch. If None, it's set to `unroll_length`.
-            exp_replayer (str): "uniform" or "one_time"
             whole_replay_buffer_training (bool): whether use all data in replay
                 buffer to perform one update
             clear_replay_buffer (bool): whether use all data in replay buffer to
@@ -141,7 +139,6 @@ class TrainerConfig(object):
             num_updates_per_train_step=num_updates_per_train_step,
             mini_batch_length=mini_batch_length,
             mini_batch_size=mini_batch_size,
-            exp_replayer=exp_replayer,
             whole_replay_buffer_training=whole_replay_buffer_training,
             clear_replay_buffer=clear_replay_buffer,
             replay_buffer_length=replay_buffer_length,

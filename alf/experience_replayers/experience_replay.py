@@ -84,6 +84,7 @@ class ExperienceReplayer(object):
         """
 
 
+@gin.configurable
 class OnetimeExperienceReplayer(ExperienceReplayer):
     """
     A simple one-time experience replayer. For each incoming `exp`,
@@ -93,22 +94,32 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     Example algorithms: IMPALA, PPO2
     """
 
-    def __init__(self):
-        self.clear()
+    def __init__(self, save_last_exp=True):
+        """
+        Args:
+            save_last_exp (bool): If True, then every time after replaying the
+                entire buffer, we will keep the last exp for the next replay. So
+                except for the first replay, the remaining replays will have
+                a buffer length of `unroll_length+1`. The reason for having this
+                option is that for an unrolled trajectory, the last exp won't
+                be trained because its target value cannot be computed. So it
+                can be saved for the next training.
+        """
+        self._save_last_exp = save_last_exp
+        self._experience = None
+        self._exp_sample = None
+        self._batch_size = None
 
     def observe(self, exp):
         # exp shape is [num_envs, ...]
         if self._experience is None:
-            self._experience = alf.nest.map_structure(lambda e: [e.detach()],
-                                                      exp)
+            self._experience = alf.nest.map_structure(lambda _: [], exp)
             self._exp_sample = exp
-        else:
-            alf.nest.map_structure_up_to(
-                self._exp_sample, lambda b, e: b.append(e.detach()),
-                self._experience, exp)
-
-        if self._batch_size is None:
             self._batch_size = alf.nest.get_nest_batch_size(exp)
+
+        alf.nest.map_structure_up_to(
+            self._exp_sample, lambda b, e: b.append(e.detach()),
+            self._experience, exp)
 
     def replay(self, sample_batch_size, mini_batch_length):
         """Get a random batch.
@@ -123,23 +134,22 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         raise NotImplementedError()  # Only supports replaying all!
 
     def replay_all(self):
-        assert self._experience, "No experience is observed yet!"
+        assert self._experience is not None, "No experience is observed yet!"
         # batch major (B, T, ...)
         exps = alf.nest.map_structure_up_to(
             self._exp_sample, lambda e: torch.transpose(
                 torch.stack(e, dim=0), 0, 1), self._experience)
-        self.clear(
-        )  # really "one-time"; no reuse; in case people forget calling
         return exps
 
     def clear(self):
-        self._experience = None
-        self._exp_sample = None
-        self._batch_size = None
+        if self._experience is not None:
+            self._experience = alf.nest.map_structure_up_to(
+                self._exp_sample, lambda e: (e[-1:] if self._save_last_exp else
+                                             []), self._experience)
 
     @property
     def batch_size(self):
-        assert self._batch_size, "No experience is observed yet!"
+        assert self._batch_size is not None, "No experience is observed yet!"
         return self._batch_size
 
 
