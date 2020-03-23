@@ -94,7 +94,7 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
     Example algorithms: IMPALA, PPO2
     """
 
-    def __init__(self, save_last_exp=True):
+    def __init__(self, save_last_exp=False):
         """
         Args:
             save_last_exp (bool): If True, then every time after replaying the
