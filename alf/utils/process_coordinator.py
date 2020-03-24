@@ -307,12 +307,6 @@ class Process(mp.Process):
         self._kwargs = kwargs
         self._coord.register_process(self)
 
-    @staticmethod
-    def process(coord, target, args=(), kwargs={}):
-        p = Process(coord, target=target, args=args, kwargs=kwargs)
-        p.start()
-        return p
-
     def body(self, args=(), kwargs={}):
         raise NotImplementedError
 

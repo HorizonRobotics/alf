@@ -73,14 +73,6 @@ def sleep_a_bit(n_secs):
     time.sleep(n_secs)
 
 
-def wait_for_processes_to_register(coord, num_processes):
-    while True:
-        with coord._lock:
-            if len(coord._registered_processes) == num_processes:
-                break
-        time.sleep(0.001)
-
-
 class CoordinatorTest(test.TestCase):
     def testStopAPI(self):
         coord = coordinator.Coordinator()
@@ -110,9 +102,9 @@ class CoordinatorTest(test.TestCase):
     def testJoin(self):
         coord = coordinator.Coordinator()
         processes = [
-            Process(target=sleep_a_bit, args=(0.01, )),
             Process(target=sleep_a_bit, args=(0.02, )),
-            Process(target=sleep_a_bit, args=(0.01, ))
+            Process(target=sleep_a_bit, args=(0.03, )),
+            Process(target=sleep_a_bit, args=(0.02, ))
         ]
         for t in processes:
             t.start()
@@ -123,15 +115,14 @@ class CoordinatorTest(test.TestCase):
     def testJoinAllRegistered(self):
         coord = coordinator.Coordinator()
         processes = [
-            Process(target=sleep_a_bit, args=(0.01, )),
             Process(target=sleep_a_bit, args=(0.02, )),
-            Process(target=sleep_a_bit, args=(0.01, ))
+            Process(target=sleep_a_bit, args=(0.03, )),
+            Process(target=sleep_a_bit, args=(0.02, ))
         ]
         for t in processes:
             t.start()
         for p in processes:
             coord.register_process(p)
-        wait_for_processes_to_register(coord, len(processes))
         coord.join()
         for t in processes:
             self.assertFalse(t.is_alive())
@@ -139,15 +130,14 @@ class CoordinatorTest(test.TestCase):
     def testJoinSomeRegistered(self):
         coord = coordinator.Coordinator()
         processes = [
-            Process(target=sleep_a_bit, args=(0.01, )),
             Process(target=sleep_a_bit, args=(0.02, )),
-            Process(target=sleep_a_bit, args=(0.01, ))
+            Process(target=sleep_a_bit, args=(0.03, )),
+            Process(target=sleep_a_bit, args=(0.02, ))
         ]
         for t in processes:
             t.start()
         coord.register_process(processes[0])
         coord.register_process(processes[2])
-        wait_for_processes_to_register(coord, 2)
         # processes[1] is not registered we must pass it in.
         coord.join([processes[1]])
         for t in processes:
@@ -343,26 +333,29 @@ class ProcessTest(test.TestCase):
     def testTargetArgs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        coordinator.Process.process(coord, target=_stop_at_0, args=(coord, n))
+        p = coordinator.Process(coord, target=_stop_at_0, args=(coord, n))
+        p.start()
         coord.join()
         self.assertEqual(0, n.value)
 
     def testTargetKwargs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        coordinator.Process.process(
+        p = coordinator.Process(
             coord, target=_stop_at_0, kwargs={
                 "coord": coord,
                 "n": n
             })
+        p.start()
         coord.join()
         self.assertEqual(0, n.value)
 
     def testTargetMixedArgs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        coordinator.Process.process(
+        p = coordinator.Process(
             coord, target=_stop_at_0, args=(coord, ), kwargs={"n": n})
+        p.start()
         coord.join()
         self.assertEqual(0, n.value)
 
@@ -388,6 +381,7 @@ class ProcessTest(test.TestCase):
                 self.n = Value(ctypes.c_int, 3)
 
             def body(self, m=None):
+                time.sleep(0.02)
                 _stop_at_0(self._coord, self.n, m)
 
         from alf.algorithms.algorithm import Algorithm
@@ -406,10 +400,11 @@ class ProcessTest(test.TestCase):
         m.share_memory()
         coord = coordinator.Coordinator()
         p = MyProcess(coord, kwargs={"m": m})
+        p.start()
+        time.sleep(0.01)  # sleep just enough for init to execute
         # A change in parent process is reflected in child process
         # via share_memory
         m._m.fill_(-1)
-        p.start()
         coord.join([p])
         # Registered Buffers are shared acrosses processes:
         self.assertEqual(-4, m._m)
