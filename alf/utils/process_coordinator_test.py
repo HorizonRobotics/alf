@@ -343,28 +343,27 @@ class ProcessTest(test.TestCase):
     def testTargetArgs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        p = coordinator.Process.process(
-            coord, target=_stop_at_0, args=(coord, n))
-        coord.join([p])
+        coordinator.Process.process(coord, target=_stop_at_0, args=(coord, n))
+        coord.join()
         self.assertEqual(0, n.value)
 
     def testTargetKwargs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        p = coordinator.Process.process(
+        coordinator.Process.process(
             coord, target=_stop_at_0, kwargs={
                 "coord": coord,
                 "n": n
             })
-        coord.join([p])
+        coord.join()
         self.assertEqual(0, n.value)
 
     def testTargetMixedArgs(self):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
-        p = coordinator.Process.process(
+        coordinator.Process.process(
             coord, target=_stop_at_0, args=(coord, ), kwargs={"n": n})
-        coord.join([p])
+        coord.join()
         self.assertEqual(0, n.value)
 
     def testInheritedTarget(self):
