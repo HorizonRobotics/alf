@@ -36,7 +36,7 @@ import time
 import torch
 
 from alf import test
-from alf.drivers import process_coordinator as coordinator
+from alf.utils import process_coordinator as coordinator
 
 
 def StopOnEvent(coord, wait_for_stop, set_when_stopped):
