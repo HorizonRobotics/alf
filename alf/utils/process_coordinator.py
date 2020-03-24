@@ -287,6 +287,15 @@ class Process(mp.Process):
     """
 
     def __init__(self, coord, target=None, args=(), kwargs={}):
+        """Creates a process, running target in a loop, managed by coordinator.
+
+        Args:
+            coord (Coordinator): coordinator used to manage this new process.
+            target (callable): to be invoked by run() in a loop, until
+                coordinator tells the process to stop.
+            args (list): optional arguments for target callable.
+            kwargs (dict): optional keyword arguments for target callable.
+        """
         if not isinstance(coord, Coordinator):
             raise ValueError(
                 "'coord' argument must be a Coordinator: %s" % coord)

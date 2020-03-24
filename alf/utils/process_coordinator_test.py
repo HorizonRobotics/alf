@@ -39,13 +39,14 @@ from alf import test
 from alf.utils import process_coordinator as coordinator
 
 
-def StopOnEvent(coord, wait_for_stop, set_when_stopped):
+def stop_on_event(coord, wait_for_stop, set_when_stopped):
     wait_for_stop.wait()
     coord.request_stop()
     set_when_stopped.set()
 
 
-def RaiseOnEvent(coord, wait_for_stop, set_when_stopped, ex, report_exception):
+def raise_on_event(coord, wait_for_stop, set_when_stopped, ex,
+                   report_exception):
     try:
         wait_for_stop.wait()
         raise ex
@@ -59,8 +60,8 @@ def RaiseOnEvent(coord, wait_for_stop, set_when_stopped, ex, report_exception):
             set_when_stopped.set()
 
 
-def RaiseOnEventUsingContextHandler(coord, wait_for_stop, set_when_stopped,
-                                    ex):
+def raise_on_event_using_context_handler(coord, wait_for_stop,
+                                         set_when_stopped, ex):
     with coord.stop_on_exception():
         wait_for_stop.wait()
         raise ex
@@ -68,11 +69,11 @@ def RaiseOnEventUsingContextHandler(coord, wait_for_stop, set_when_stopped,
         set_when_stopped.set()
 
 
-def SleepABit(n_secs):
+def sleep_a_bit(n_secs):
     time.sleep(n_secs)
 
 
-def WaitForProcessesToRegister(coord, num_processes):
+def wait_for_processes_to_register(coord, num_processes):
     while True:
         with coord._lock:
             if len(coord._registered_processes) == num_processes:
@@ -96,7 +97,8 @@ class CoordinatorTest(test.TestCase):
         wait_for_stop_ev = Event()
         has_stopped_ev = Event()
         t = Process(
-            target=StopOnEvent, args=(coord, wait_for_stop_ev, has_stopped_ev))
+            target=stop_on_event,
+            args=(coord, wait_for_stop_ev, has_stopped_ev))
         t.start()
         self.assertFalse(coord.should_stop())
         self.assertFalse(coord.wait_for_stop(0.01))
@@ -108,9 +110,9 @@ class CoordinatorTest(test.TestCase):
     def testJoin(self):
         coord = coordinator.Coordinator()
         processes = [
-            Process(target=SleepABit, args=(0.01, )),
-            Process(target=SleepABit, args=(0.02, )),
-            Process(target=SleepABit, args=(0.01, ))
+            Process(target=sleep_a_bit, args=(0.01, )),
+            Process(target=sleep_a_bit, args=(0.02, )),
+            Process(target=sleep_a_bit, args=(0.01, ))
         ]
         for t in processes:
             t.start()
@@ -121,15 +123,15 @@ class CoordinatorTest(test.TestCase):
     def testJoinAllRegistered(self):
         coord = coordinator.Coordinator()
         processes = [
-            Process(target=SleepABit, args=(0.01, )),
-            Process(target=SleepABit, args=(0.02, )),
-            Process(target=SleepABit, args=(0.01, ))
+            Process(target=sleep_a_bit, args=(0.01, )),
+            Process(target=sleep_a_bit, args=(0.02, )),
+            Process(target=sleep_a_bit, args=(0.01, ))
         ]
         for t in processes:
             t.start()
         for p in processes:
             coord.register_process(p)
-        WaitForProcessesToRegister(coord, len(processes))
+        wait_for_processes_to_register(coord, len(processes))
         coord.join()
         for t in processes:
             self.assertFalse(t.is_alive())
@@ -137,15 +139,15 @@ class CoordinatorTest(test.TestCase):
     def testJoinSomeRegistered(self):
         coord = coordinator.Coordinator()
         processes = [
-            Process(target=SleepABit, args=(0.01, )),
-            Process(target=SleepABit, args=(0.02, )),
-            Process(target=SleepABit, args=(0.01, ))
+            Process(target=sleep_a_bit, args=(0.01, )),
+            Process(target=sleep_a_bit, args=(0.02, )),
+            Process(target=sleep_a_bit, args=(0.01, ))
         ]
         for t in processes:
             t.start()
         coord.register_process(processes[0])
         coord.register_process(processes[2])
-        WaitForProcessesToRegister(coord, 2)
+        wait_for_processes_to_register(coord, 2)
         # processes[1] is not registered we must pass it in.
         coord.join([processes[1]])
         for t in processes:
@@ -158,9 +160,9 @@ class CoordinatorTest(test.TestCase):
             has_stopped_ev = Event()
             processes = [
                 Process(
-                    target=StopOnEvent,
+                    target=stop_on_event,
                     args=(coord, wait_for_stop_ev, has_stopped_ev)),
-                Process(target=SleepABit, args=(10.0, ))
+                Process(target=sleep_a_bit, args=(10.0, ))
             ]
             for t in processes:
                 t.daemon = True
@@ -181,9 +183,9 @@ class CoordinatorTest(test.TestCase):
         has_stopped_ev = Event()
         processes = [
             Process(
-                target=StopOnEvent,
+                target=stop_on_event,
                 args=(coord, wait_for_stop_ev, has_stopped_ev)),
-            Process(target=SleepABit, args=(10.0, ))
+            Process(target=sleep_a_bit, args=(10.0, ))
         ]
         for t in processes:
             t.daemon = True
@@ -199,10 +201,10 @@ class CoordinatorTest(test.TestCase):
         ev_2 = Event()
         processes = [
             Process(
-                target=RaiseOnEvent,
+                target=raise_on_event,
                 args=(coord, ev_1, ev_2, RuntimeError("First"), False)),
             Process(
-                target=RaiseOnEvent,
+                target=raise_on_event,
                 args=(coord, ev_2, None, RuntimeError("Too late"), False))
         ]
         for t in processes:
@@ -225,10 +227,10 @@ class CoordinatorTest(test.TestCase):
         ev_2 = Event()
         processes = [
             Process(
-                target=RaiseOnEvent,
+                target=raise_on_event,
                 args=(coord, ev_1, ev_2, RuntimeError("First"), True)),
             Process(
-                target=RaiseOnEvent,
+                target=raise_on_event,
                 args=(coord, ev_2, None, RuntimeError("Too late"), True))
         ]
         for t in processes:
@@ -244,10 +246,10 @@ class CoordinatorTest(test.TestCase):
         ev_2 = Event()
         processes = [
             Process(
-                target=RaiseOnEventUsingContextHandler,
+                target=raise_on_event_using_context_handler,
                 args=(coord, ev_1, ev_2, RuntimeError("First"))),
             Process(
-                target=RaiseOnEventUsingContextHandler,
+                target=raise_on_event_using_context_handler,
                 args=(coord, ev_2, None, RuntimeError("Too late")))
         ]
         for t in processes:
@@ -262,7 +264,7 @@ class CoordinatorTest(test.TestCase):
         ev_1 = Event()
         processes = [
             Process(
-                target=RaiseOnEvent,
+                target=raise_on_event,
                 args=(coord, ev_1, None, RuntimeError("First"), True)),
         ]
         for t in processes:
@@ -275,7 +277,7 @@ class CoordinatorTest(test.TestCase):
         coord.clear_stop()
         processes = [
             Process(
-                target=RaiseOnEvent,
+                target=raise_on_event,
                 args=(coord, ev_1, None, RuntimeError("Second"), True)),
         ]
         for t in processes:
@@ -328,7 +330,7 @@ class CoordinatorTest(test.TestCase):
             coord.join([])
 
 
-def _StopAt0(coord, n, m=None):
+def _stop_at_0(coord, n, m=None):
     if n.value == 0:
         coord.request_stop()
     else:
@@ -342,7 +344,7 @@ class ProcessTest(test.TestCase):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
         p = coordinator.Process.process(
-            coord, target=_StopAt0, args=(coord, n))
+            coord, target=_stop_at_0, args=(coord, n))
         coord.join([p])
         self.assertEqual(0, n.value)
 
@@ -350,7 +352,7 @@ class ProcessTest(test.TestCase):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
         p = coordinator.Process.process(
-            coord, target=_StopAt0, kwargs={
+            coord, target=_stop_at_0, kwargs={
                 "coord": coord,
                 "n": n
             })
@@ -361,7 +363,7 @@ class ProcessTest(test.TestCase):
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
         p = coordinator.Process.process(
-            coord, target=_StopAt0, args=(coord, ), kwargs={"n": n})
+            coord, target=_stop_at_0, args=(coord, ), kwargs={"n": n})
         coord.join([p])
         self.assertEqual(0, n.value)
 
@@ -371,7 +373,7 @@ class ProcessTest(test.TestCase):
                 super().__init__(coord, args=args, kwargs=kwargs)
 
             def body(self, n=None):
-                _StopAt0(self._coord, n)
+                _stop_at_0(self._coord, n)
 
         n = Value(ctypes.c_int, 3)
         coord = coordinator.Coordinator()
@@ -387,7 +389,7 @@ class ProcessTest(test.TestCase):
                 self.n = Value(ctypes.c_int, 3)
 
             def body(self, m=None):
-                _StopAt0(self._coord, self.n, m)
+                _stop_at_0(self._coord, self.n, m)
 
         from alf.algorithms.algorithm import Algorithm
 
