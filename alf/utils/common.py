@@ -36,7 +36,7 @@ import alf
 from alf.data_structures import LossInfo
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils.dist_utils import DistributionSpec
+from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
 from . import dist_utils, gin_utils
 
 
@@ -62,32 +62,6 @@ def add_method(cls):
         return func
 
     return decorator
-
-
-def zeros_from_spec(nested_spec, batch_size):
-    """Create nested zero Tensors or Distributions.
-
-    A zero tensor with shape[0]=`batch_size is created for each TensorSpec and
-    A distribution with all the parameters as zero Tensors is created for each
-    DistributionSpec.
-
-    Args:
-        nested_spec (nested TensorSpec or DistributionSpec):
-        batch_size (int): batch size added as the first dimension to the shapes
-             in TensorSpec
-    Returns:
-        nested Tensor or Distribution
-    """
-
-    def _zero_tensor(spec):
-        return spec.zeros([batch_size])
-
-    param_spec = dist_utils.to_distribution_param_spec(nested_spec)
-    params = alf.nest.map_structure(_zero_tensor, param_spec)
-    return dist_utils.params_to_distributions(params, nested_spec)
-
-
-zero_tensor_from_nested_spec = zeros_from_spec
 
 
 def as_list(x):

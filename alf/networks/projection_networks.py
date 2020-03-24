@@ -188,9 +188,10 @@ class NormalProjectionNetwork(DistributionNetwork):
                 base_distribution=normal_dist,
                 transforms=[
                     dist_utils.StableTanh(),
-                    td.AffineTransform(
+                    dist_utils.AffineTransform(
                         loc=self._action_means, scale=self._action_magnitudes)
                 ])
+
             return squashed_dist
         else:
             return normal_dist

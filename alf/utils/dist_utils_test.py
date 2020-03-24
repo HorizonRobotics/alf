@@ -91,7 +91,7 @@ class DistributionSpecTest(alf.test.TestCase):
         normal_dist = dist_utils.DiagMultivariateNormal(
             torch.tensor([[1., 2.], [2., 2.]]),
             torch.tensor([[2., 3.], [1., 1.]]))
-        transforms = [td.SigmoidTransform()]
+        transforms = [dist_utils.SigmoidTransform()]
         dist = td.TransformedDistribution(
             base_distribution=normal_dist, transforms=transforms)
         spec = dist_utils.DistributionSpec.from_distribution(dist)
@@ -108,6 +108,28 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
         self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
         self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
+
+    def test_inversion(self):
+        x = torch.tensor([-10.0, -8.6, -2.0, 0, 2, 8.6, 10.0])
+        loc = torch.tensor([0.5])
+        scale = torch.tensor([1.5])
+        transforms = [
+            dist_utils.StableTanh(),
+            dist_utils.AffineTransform(loc=loc, scale=scale)
+        ]
+
+        y = x
+        # forward
+        for transform in transforms:
+            y = transform(y)
+
+        # inverse
+        x_recovered = y
+        for transform in reversed(transforms):
+            x_recovered = transform.inv(x_recovered)
+
+        self.assertTensorEqual(x, x_recovered)
+        self.assertTrue(x is x_recovered)
 
 
 class TestConversions(alf.test.TestCase):

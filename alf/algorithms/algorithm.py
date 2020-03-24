@@ -28,6 +28,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo
 from alf.utils import common
+from alf.utils import spec_utils
 from alf.utils import tensor_utils
 
 
@@ -320,13 +321,13 @@ class Algorithm(nn.Module):
         return state
 
     def get_initial_predict_state(self, batch_size):
-        return common.zeros_from_spec(self._predict_state_spec, batch_size)
+        return spec_utils.zeros_from_spec(self._predict_state_spec, batch_size)
 
     def get_initial_rollout_state(self, batch_size):
-        return common.zeros_from_spec(self._rollout_state_spec, batch_size)
+        return spec_utils.zeros_from_spec(self._rollout_state_spec, batch_size)
 
     def get_initial_train_state(self, batch_size):
-        return common.zeros_from_spec(self._train_state_spec, batch_size)
+        return spec_utils.zeros_from_spec(self._train_state_spec, batch_size)
 
     @common.add_method(nn.Module)
     def state_dict(self, destination=None, prefix='', visited=None):

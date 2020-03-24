@@ -20,6 +20,7 @@ from alf.layers import BatchSquash
 import alf.nest as nest
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from . import dist_utils
 
 
 def spec_means_and_magnitudes(spec: BoundedTensorSpec):
@@ -68,3 +69,26 @@ def clip_to_spec(value, spec: BoundedTensorSpec):
     return torch.max(
         torch.min(value, torch.as_tensor(spec.maximum)),
         torch.as_tensor(spec.minimum))
+
+
+def zeros_from_spec(nested_spec, batch_size):
+    """Create nested zero Tensors or Distributions.
+
+    A zero tensor with shape[0]=`batch_size is created for each TensorSpec and
+    A distribution with all the parameters as zero Tensors is created for each
+    DistributionSpec.
+
+    Args:
+        nested_spec (nested TensorSpec or DistributionSpec):
+        batch_size (int): batch size added as the first dimension to the shapes
+             in TensorSpec
+    Returns:
+        nested Tensor or Distribution
+    """
+
+    def _zero_tensor(spec):
+        return spec.zeros([batch_size])
+
+    param_spec = dist_utils.to_distribution_param_spec(nested_spec)
+    params = nest.map_structure(_zero_tensor, param_spec)
+    return dist_utils.params_to_distributions(params, nested_spec)
