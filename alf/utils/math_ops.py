@@ -160,3 +160,25 @@ def sum_to_leftmost(value, dim):
     if value.ndim <= dim:
         return value
     return value.sum(list(range(dim, value.ndim)))
+
+
+def argmin(x):
+    """Deterministic argmin.
+
+    Different from torch.argmin, which may have undetermined result if the are
+    multiple elements equal to the min, this argmin is guaranteed to return the
+    index of the first element equal to the min in each row.
+
+    Args:
+        x (Tensor): only support rank-2 tensor
+    Returns:
+        rank-1 int64 Tensor represeting the column of the first element in each
+        row equal to the minimum of the row.
+    """
+    assert x.ndim == 2
+    m, _ = x.min(dim=1, keepdims=True)
+    r, c = torch.nonzero(x == m, as_tuple=True)
+    r, num_mins = torch.unique(r, return_counts=True)
+    i = torch.cumsum(num_mins, 0)
+    i = torch.cat([torch.tensor([0]), i[:-1]])
+    return c[i]

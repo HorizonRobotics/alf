@@ -48,6 +48,7 @@ function test() {
         alf.algorithms.algorithm_test \
         alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
+        alf.algorithms.memory_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.sarsa_algorithm_test \
@@ -77,6 +78,7 @@ function test() {
         alf.utils.checkpoint_utils_test \
         alf.utils.data_buffer_test \
         alf.utils.dist_utils_test \
+        alf.utils.math_ops_test \
         alf.utils.normalizers_test \
         alf.utils.tensor_utils_test \
         alf.utils.value_ops_test \
