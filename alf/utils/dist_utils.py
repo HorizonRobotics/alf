@@ -30,9 +30,9 @@ def get_invertable(cls):
     """A helper function to turn on the cache mechanism for transformation.
     This is useful as some transformations (say g) may not be able to provide
     an accurate inversion therefore the difference between x and g_inv(g(x)) is
-    large. This is could lead to unstable training in practice.
+    large. This could lead to unstable training in practice.
     For a torch transformation y=g(x), when cache_size is set to one, the latest
-    value for (x, y) is cached and will be used later for future compuations.
+    value for (x, y) is cached and will be used later for future computations.
     E.g. for inversion, a call to g_inv(y) will return x, solving the inversion
     error issue mentioned above.
     Note that in the case of having a chain of transformations (G), all the element
