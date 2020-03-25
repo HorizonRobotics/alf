@@ -70,9 +70,12 @@ def conditional_update(target, cond, func, *args, **kwargs):
         updates = func(*selected_args, **selected_kwargs)
 
         def _update(tgt, updt):
-            tgt = tgt.clone()
-            tgt.__setitem__(gather_indices, updt)
-            return tgt
+            scatter_indices = torch.reshape(
+                gather_indices,
+                list(gather_indices.shape) +
+                [-1] * (updt.ndim - gather_indices.ndim))
+            scatter_indices = scatter_indices.expand_as(updt)
+            return tgt.scatter(0, scatter_indices, updt)
 
         return alf.nest.map_structure(_update, target, updates)
 
