@@ -401,7 +401,8 @@ class ProcessTest(test.TestCase):
         coord = coordinator.Coordinator()
         p = MyProcess(coord, kwargs={"m": m})
         p.start()
-        time.sleep(0.01)  # sleep just enough for init to execute
+        # sleep just enough for subprocess to start and before it really runs.
+        time.sleep(0.01)
         # A change in parent process is reflected in child process
         # via share_memory
         m._m.fill_(-1)
