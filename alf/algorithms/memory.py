@@ -217,7 +217,7 @@ class MemoryWithUsage(Memory):
         if not multikey:
             keys = keys.unsqueeze(1)
 
-        # B: batch size, K: number of keys, N: memory size
+        # B: batch size, K: number of keys, N: memory size, D: dimension of the memory
         sim = torch.bmm(keys, self._memory.transpose(1, 2))  # [B, K, N]
         if self._normalize:
             key_norm = 1 / (1e-30 + keys.norm(dim=2))  # [B, K]
