@@ -61,6 +61,21 @@ class ConditionalOpsTest(alf.test.TestCase):
         self.assertEqual(vx, torch.sum(select_from_mask(x, cond)))
         self.assertEqual(vy, torch.sum(select_from_mask(y, cond)))
 
+    def test_conditional_update_high_dims(self):
+        def _func(x):
+            return x**2
+
+        batch_size = 100
+        x = torch.rand([batch_size, 3, 4, 5])
+        y = torch.rand([batch_size, 3, 4, 5])
+        cond = torch.randint(high=2, size=[batch_size]).to(torch.bool)
+
+        updated_y = conditional_update(y, cond, _func, x)
+        self.assertTensorEqual(
+            select_from_mask(updated_y, cond), select_from_mask(x**2, cond))
+        self.assertTensorEqual(
+            select_from_mask(updated_y, ~cond), select_from_mask(y, ~cond))
+
     def test_select_from_mask(self):
         data = torch.as_tensor([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10],
                                 [10, 11]])
