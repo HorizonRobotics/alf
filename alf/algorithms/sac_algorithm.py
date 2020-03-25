@@ -341,7 +341,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
-
         actor_state, actor_info = self._actor_train_step(
             exp, state.actor, action_distribution, action, log_pi)
         critic_state, critic_info = self._critic_train_step(

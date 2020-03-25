@@ -18,10 +18,40 @@ import hashlib
 import numpy as np
 import torch
 import torch.distributions as td
+from torch.distributions import constraints
 import torch.nn as nn
 
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec
+from alf.utils import common
+
+
+def get_invertable(cls):
+    """A helper function to turn on the cache mechanism for transformation.
+    This is useful as some transformations (say g) may not be able to provide
+    an accurate inversion therefore the difference between x and g_inv(g(x)) is
+    large. This could lead to unstable training in practice.
+    For a torch transformation y=g(x), when cache_size is set to one, the latest
+    value for (x, y) is cached and will be used later for future computations.
+    E.g. for inversion, a call to g_inv(y) will return x, solving the inversion
+    error issue mentioned above.
+    Note that in the case of having a chain of transformations (G), all the element
+    transformations need to turn on the cache to ensure the composite transformation
+    G satisfy: x=G_inv(G(x)).
+    """
+
+    class NewCls(cls):
+        __init__ = functools.partialmethod(cls.__init__, cache_size=1)
+
+    return NewCls
+
+
+AbsTransform = get_invertable(td.AbsTransform)
+AffineTransform = get_invertable(td.AffineTransform)
+ExpTransform = get_invertable(td.ExpTransform)
+PowerTransform = get_invertable(td.PowerTransform)
+SigmoidTransform = get_invertable(td.SigmoidTransform)
+SoftmaxTransform = get_invertable(td.SoftmaxTransform)
 
 
 class StableTanh(td.Transform):
@@ -31,17 +61,23 @@ class StableTanh(td.Transform):
     This can be achieved by an affine transform of the Sigmoid transformation,
     i.e., it is equivalent to applying a list of transformations sequentially:
         ```
-        transforms = [td.AffineTransform(loc=0, scale=2)
-                        td.SigmoidTransform(),
-                        td.AffineTransform(
+        transforms = [AffineTransform(loc=0, scale=2)
+                        SigmoidTransform(),
+                        AffineTransform(
                             loc=-1,
                             scale=2]
         ```
     However, using the `StableTanh` transformation directly is more numerically
     stable.
     """
+    domain = constraints.real
+    codomain = constraints.interval(-1.0, 1.0)
     bijective = True
     sign = +1
+
+    def __init__(self, cache_size=1):
+        # We use cache by default as it is numerically unstable for inversion
+        super().__init__(cache_size=cache_size)
 
     def __eq__(self, other):
         return isinstance(other, StableTanh)
