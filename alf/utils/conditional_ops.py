@@ -16,6 +16,7 @@
 import torch
 
 import alf
+import alf.utils.common as common
 
 
 def _gather_nest(nest, indices):
@@ -61,7 +62,7 @@ def conditional_update(target, cond, func, *args, **kwargs):
     Returns:
         nest with the same structure and shape as target.
     """
-    # shape of indices from where() is a tuple (indices, )
+    # shape of torch.where() is a tuple (indices, )
     gather_indices = torch.where(cond)[0]
 
     def _update_subset():
@@ -70,10 +71,7 @@ def conditional_update(target, cond, func, *args, **kwargs):
         updates = func(*selected_args, **selected_kwargs)
 
         def _update(tgt, updt):
-            scatter_indices = torch.reshape(
-                gather_indices,
-                list(gather_indices.shape) +
-                [1] * (updt.ndim - gather_indices.ndim))
+            scatter_indices = common.expand_dims_as(gather_indices, updt)
             scatter_indices = scatter_indices.expand_as(updt)
             return tgt.scatter(0, scatter_indices, updt)
 
