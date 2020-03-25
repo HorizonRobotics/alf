@@ -132,7 +132,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
                     state),
                 ac=ac_info))
 
-    def _rollout_step(self, time_step: TimeStep, state):
+    def rollout_step(self, time_step: TimeStep, state):
         """Rollout for one step."""
         policy_step = self._ac_algorithm.rollout_step(time_step, state)
         return self._make_policy_step(time_step, state, policy_step)

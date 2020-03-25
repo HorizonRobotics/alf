@@ -53,7 +53,7 @@ class MyAlg(OnPolicyAlgorithm):
         dist, _ = self._proj_net(time_step.observation)
         return AlgStep(output=dist.sample(), state=(), info=())
 
-    def _rollout_step(self, time_step: TimeStep, state):
+    def rollout_step(self, time_step: TimeStep, state):
         dist, _ = self._proj_net(time_step.observation)
         return AlgStep(
             output=dist.sample(), state=time_step.observation, info=dist)

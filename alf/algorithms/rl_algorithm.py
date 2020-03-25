@@ -178,6 +178,9 @@ class RLAlgorithm(Algorithm):
         if config:
             self.use_rollout_state = config.use_rollout_state
 
+        self._original_rollout_step = self.rollout_step
+        self.rollout_step = self._rollout_step
+
     def _set_children_property(self, property_name, value):
         """Set the property named `property_name` in child RLAlgorithm to `value`."""
         for child in self._get_children():
@@ -434,6 +437,16 @@ class RLAlgorithm(Algorithm):
         policy_step = self.rollout_step(time_step, state)
         return policy_step._replace(info=())
 
+    def _rollout_step(self, time_step: TimeStep, state):
+        """A wrapper around user-defined `rollout_step`. For every rl algorithm,
+        this wrapper ensures that the rollout info spec will be computed.
+        """
+        policy_step = self._original_rollout_step(time_step, state)
+        if self._rollout_info_spec is None:
+            self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
+        return policy_step
+
+    @abstractmethod
     def rollout_step(self, time_step: TimeStep, state):
         """Perform one step of rollout.
 
@@ -454,15 +467,6 @@ class RLAlgorithm(Algorithm):
                 collected in `unroll()`. So the user only need to put other
                 stuff (e.g. value estimation) into `policy_step.info`
         """
-        policy_step = self._rollout_step(time_step, state)
-        if self._rollout_info_spec is None:
-            self._rollout_info_spec = dist_utils.extract_spec(policy_step.info)
-        return policy_step
-
-    @abstractmethod
-    def _rollout_step(self, time_step: TimeStep, state):
-        """Implementation of rollout_step. RLAlgorithm needs to implement this
-        function, while Algorithm still needs to implement rollout_step()."""
         pass
 
     def transform_timestep(self, time_step):

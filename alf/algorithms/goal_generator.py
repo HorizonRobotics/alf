@@ -120,7 +120,7 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
             state=GoalState(goal=new_goal),
             info=GoalInfo(goal=new_goal))
 
-    def _rollout_step(self, time_step: TimeStep, state):
+    def rollout_step(self, time_step: TimeStep, state):
         return self._step(time_step, state)
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
