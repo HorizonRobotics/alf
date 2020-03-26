@@ -363,8 +363,6 @@ class Algorithm(nn.Module):
             version=self._version)
 
         if visited is None:
-            if isinstance(self, Algorithm):
-                self._setup_optimizers()
             visited = {self}
 
         self._save_to_state_dict(destination, prefix, visited)
@@ -375,6 +373,7 @@ class Algorithm(nn.Module):
                 child.state_dict(
                     destination, prefix + name + '.', visited=visited)
         if isinstance(self, Algorithm):
+            self._setup_optimizers()
             for i, opt in enumerate(self._optimizers):
                 new_key = prefix + '_optimizers.%d' % i
                 if new_key not in self._opt_keys:
@@ -403,8 +402,6 @@ class Algorithm(nn.Module):
                 * **missing_keys** is a list of str containing the missing keys
                 * **unexpected_keys** is a list of str containing the unexpected keys
         """
-        self._setup_optimizers()
-
         missing_keys = []
         unexpected_keys = []
         error_msgs = []
@@ -419,6 +416,7 @@ class Algorithm(nn.Module):
             if visited is None:
                 visited = {self}
             if isinstance(module, Algorithm):
+                module._setup_optimizers()
                 for i, opt in enumerate(module._optimizers):
                     opt_key = prefix + '_optimizers.%d' % i
                     if opt_key in state_dict:
