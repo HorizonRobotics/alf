@@ -15,18 +15,19 @@
 
 import abc
 import math
+import six
 from typing import Callable
+import torch
+import torch.nn.functional as F
+import torch.nn as nn
 
-import tensorflow as tf
-import tensorflow.keras.layers as layers
-import tensorflow.keras.activations as activations
-
-from tf_agents.networks import network
-
-from alf.utils.common import expand_dims_as, concat_shape
+import alf
+from alf.utils.common import expand_dims_as
+from alf.utils.math_ops import argmin
 
 
-class Memory(object):
+@six.add_metaclass(abc.ABCMeta)
+class Memory(nn.Module):
     """Abstract base class for Memory."""
 
     def __init__(self, dim, size, state_spec, name="Memory"):
@@ -38,6 +39,7 @@ class Memory(object):
             state_spec (nested TensorSpec): the spec for the states
             name (str): name of this memory
         """
+        super(Memory, self).__init__()
         self._dim = dim
         self._size = size
         self._state_spec = state_spec
@@ -133,8 +135,8 @@ class MemoryWithUsage(Memory):
         if usage_decay is None:
             usage_decay = 1. - 1. / size
         self._usage_decay = usage_decay
-        state_spec = (tf.TensorSpec([size, dim], dtype=tf.float32),
-                      tf.TensorSpec([size], dtype=tf.float32))
+        state_spec = (alf.TensorSpec([size, dim], dtype=torch.float32),
+                      alf.TensorSpec([size], dtype=torch.float32))
         super(MemoryWithUsage, self).__init__(
             dim, size, state_spec=state_spec, name=name)
 
@@ -149,14 +151,8 @@ class MemoryWithUsage(Memory):
             batch_size (int): batch size of the model.
         """
         self._batch_size = batch_size
-        self._initial_memory = tf.zeros((batch_size, self.size, self.dim))
-        self._initial_usage = tf.zeros((batch_size, self.size))
-        if self._snapshot_only:
-            self._memory = tf.Variable(self._initial_memory, trainable=False)
-            self._usage = tf.Variable(self._initial_usage, trainable=False)
-        else:
-            self._memory = self._initial_memory
-            self._usage = self._initial_usage
+        self._memory = torch.zeros(batch_size, self.size, self.dim)
+        self._usage = torch.zeros(batch_size, self.size)
         self._built = True
 
     def genkey_and_read(self, keynet: Callable, query, flatten_result=True):
@@ -175,21 +171,18 @@ class MemoryWithUsage(Memory):
               (batch_size, num_keys, dim)
 
         """
-        batch_size = tf.shape(query)[0]
+        batch_size = query.shape[0]
         keys_and_scales = keynet(query)
         num_keys = keys_and_scales.shape[-1] // (self.dim + 1)
         assert num_keys * (self.dim + 1) == keys_and_scales.shape[-1]
-        keys, scales = tf.split(
-            keys_and_scales,
-            num_or_size_splits=[num_keys * self.dim, num_keys],
-            axis=-1)
-        keys = tf.reshape(
-            keys, concat_shape(tf.shape(keys)[:-1], [num_keys, self.dim]))
-        scales = tf.math.softplus(tf.reshape(scales, tf.shape(keys)[:-1]))
+        keys = keys_and_scales[:, :num_keys * self.dim]
+        scales = keys_and_scales[:, num_keys * self.dim:]
+        keys = keys.reshape(batch_size, num_keys, self.dim)
+        scales = F.softplus(scales)
 
         r = self.read(keys, scales)
         if flatten_result:
-            r = tf.reshape(r, (batch_size, num_keys * self.dim))
+            r = r.reshape(batch_size, num_keys * self.dim)
         return r
 
     def read(self, keys, scale=None):
@@ -216,9 +209,22 @@ class MemoryWithUsage(Memory):
         """
         if not self._built:
             self.build(keys.shape[0])
-        assert 2 <= len(keys.shape) <= 3
+        assert 2 <= keys.ndim <= 3
         assert keys.shape[0] == self._batch_size
         assert keys.shape[-1] == self.dim
+
+        multikey = keys.ndim == 3
+        if not multikey:
+            keys = keys.unsqueeze(1)
+
+        # B: batch size, K: number of keys, N: memory size, D: dimension of the memory
+        sim = torch.bmm(keys, self._memory.transpose(1, 2))  # [B, K, N]
+        if self._normalize:
+            key_norm = 1 / (1e-30 + keys.norm(dim=2))  # [B, K]
+            mem_norm = 1 / (1e-30 + self._memory.norm(dim=2))  # [B, N]
+            key_norm = key_norm.unsqueeze(-1)  # [B, K, 1]
+            mem_norm = mem_norm.unsqueeze(1)  # [B, 1, N]
+            sim = sim * key_norm * mem_norm
 
         if scale is None:
             scale = self._scale
@@ -226,27 +232,25 @@ class MemoryWithUsage(Memory):
             if isinstance(scale, (int, float)):
                 pass
             else:  # assuming it's Tensor
-                scale = expand_dims_as(scale, keys)
-        sim = layers.dot([keys, self._memory],
-                         axes=-1,
-                         normalize=self._normalize)
-        sim = sim * scale
+                scale = expand_dims_as(scale, sim)
 
-        attention = activations.softmax(sim)
-        result = layers.dot([attention, self._memory], axes=(-1, 1))
+        sim = sim * scale  # [B, K, N]
 
-        if len(sim.shape) > 2:  # multiple read keys
-            usage = tf.reduce_sum(
-                attention, axis=tf.range(1,
-                                         len(sim.shape) - 1))
+        attention = F.softmax(sim, dim=2)
+        result = torch.bmm(attention, self._memory)  # [B, K, D]
+
+        if multikey:
+            usage = attention.sum(1)  # [B, N]
         else:
-            usage = attention
+            usage = attention.squeeze(1)
 
         if self._snapshot_only:
-            self._usage.assign_add(usage)
+            self._usage.add_(usage.detach())
         else:
             self._usage = self._usage + usage
 
+        if not multikey:
+            result = result.squeeze(1)
         return result
 
     def write(self, content):
@@ -265,19 +269,19 @@ class MemoryWithUsage(Memory):
         assert content.shape[0] == self._batch_size
         assert content.shape[1] == self.dim
 
-        location = tf.argmin(self._usage, -1)
-        loc_weight = tf.one_hot(location, depth=self._size)
+        location = argmin(self._usage)  # [B]
+        loc_weight = F.one_hot(location, num_classes=self._size)  # [B, N]
 
         # reset usage for at the new location
-        usage = self._usage * (1 - loc_weight) + loc_weight
+        usage = self._usage * (1 - loc_weight) + loc_weight  # [B, N]
 
         # update content at the new location
-        loc_weight = tf.expand_dims(loc_weight, 2)
-        memory = self._usage_decay * (1 - loc_weight) * self._memory \
-            + loc_weight * tf.expand_dims(content, 1)
+        loc_weight = loc_weight.unsqueeze(2)  # [B, N, 1]
+        memory = (self._usage_decay * (1 - loc_weight) * self._memory +
+                  loc_weight * content.unsqueeze(1))
         if self._snapshot_only:
-            self._usage.assign(usage)
-            self._memory.assign(memory)
+            self._usage = usage.detach()
+            self._memory = memory.detach()
         else:
             self._usage = usage
             self._memory = memory
@@ -287,12 +291,9 @@ class MemoryWithUsage(Memory):
 
         Both memory and uage are set to zeros.
         """
-        if self._snapshot_only:
-            self._usage.assign(self._initial_usage)
-            self._memory.assign(self._initial_memory)
-        else:
-            self._usage = self._initial_usage
-            self._memory = self._initial_memory
+        batch_size = self._batch_size
+        self._memory = torch.zeros(batch_size, self.size, self.dim)
+        self._usage = torch.zeros(batch_size, self.size)
 
     @property
     def usage(self):
@@ -303,12 +304,6 @@ class MemoryWithUsage(Memory):
 
         """
         return self._usage
-
-    def __str__(self):
-        s = "MemoryWithUsage: size=%s dim=%s" % (self.size, self.dim) + "\n" \
-            + " memory: " + str(self._memory) + "\n" \
-            + " usage: " + str(self._usage)
-        return s
 
     @property
     def states(self):
@@ -335,7 +330,7 @@ class MemoryWithUsage(Memory):
             self._usage = None
             self._built = False
         else:
-            tf.nest.assert_same_structure(states, self.state_spec)
+            alf.nest.assert_same_structure(states, self.state_spec)
             self._memory, self._usage = states
             self._batch_size = self._memory.shape[0]
             self._built = True
