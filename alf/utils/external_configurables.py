@@ -41,10 +41,6 @@ gin.external_configurable(torch.tanh, 'torch.tanh')
 gin.external_configurable(torch.relu, 'torch.relu')
 gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
 
-gin.external_configurable(alf.TensorSpec, 'alf.TensorSpec')
-
-gin.external_configurable(alf.BoundedTensorSpec, 'alf.BoundedTensorSpec')
-
 gin.external_configurable(torch.nn.functional.softsign,
                           'torch.nn.funtional.softsign')
 
