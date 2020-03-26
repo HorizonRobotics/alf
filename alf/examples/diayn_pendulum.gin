@@ -18,10 +18,10 @@ create_environment.env_name='Pendulum-v0'
 # algorithm config
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
-goal/alf.TensorSpec.shape=(%skill_feature_size,)
+goal/TensorSpec.shape=(%skill_feature_size,)
 
 hidden_size=64
-actor/ActorDistributionNetwork.input_tensor_spec=[%observation_spec, @goal/alf.TensorSpec()]
+actor/ActorDistributionNetwork.input_tensor_spec=[%observation_spec, @goal/TensorSpec()]
 actor/ActorDistributionNetwork.preprocessing_combiner=@NestConcat()
 actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(%hidden_size, %hidden_size)
@@ -31,7 +31,7 @@ actor/NormalProjectionNetwork.state_dependent_std=True
 actor/NormalProjectionNetwork.scale_distribution=False
 actor/NormalProjectionNetwork.std_transform=@clipped_exp
 
-critic/CriticNetwork.input_tensor_spec=([%observation_spec, @goal/alf.TensorSpec()], %action_spec)
+critic/CriticNetwork.input_tensor_spec=([%observation_spec, @goal/TensorSpec()], %action_spec)
 critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.joint_fc_layer_params=(%hidden_size, %hidden_size)
 
