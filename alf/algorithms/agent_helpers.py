@@ -112,7 +112,7 @@ def accumulate_loss_info(algorithms, names, training_info):
             new_loss_info = algorithm.calc_loss(
                 getattr(training_info.info, name))
         if loss_info is None:
-            return new_loss_info._replace(extra=dict(name=new_loss_info.extra))
+            return new_loss_info._replace(extra={name: new_loss_info.extra})
         else:
             loss_info.extra[name] = new_loss_info.extra
             return LossInfo(

@@ -262,19 +262,26 @@ class Algorithm(nn.Module):
         else:
             return new_params, handled
 
-    def optimizers(self, recurse=True):
+    def optimizers(self, recurse=True, include_ignored_attributes=False):
         """Get all the optimizers used by this algorithm.
 
         Args:
             recurse (bool): If True, including all the sub-algorithms
+            include_ignored_attributes (bool): If True, still include all child
+                attributes without ignoring any.
         Returns:
             list of Optimizer
         """
         opts = copy.copy(self._optimizers)
         if recurse:
-            for module in self.children():
+            if include_ignored_attributes:
+                children = self.children()
+            else:
+                children = self._get_children()
+            for module in children:
                 if isinstance(module, Algorithm):
-                    opts.extend(module.optimizers())
+                    opts.extend(
+                        module.optimizers(recurse, include_ignored_attributes))
         return opts
 
     def get_optimizer_info(self):
@@ -288,7 +295,7 @@ class Algorithm(nn.Module):
                     optimizer="None",
                     parameters=[self._param_to_name[p] for p in unhandled]))
 
-        for optimizer in self.optimizers():
+        for optimizer in self.optimizers(include_ignored_attributes=True):
             parameters = _get_optimizer_params(optimizer)
             optimizer_info.append(
                 dict(

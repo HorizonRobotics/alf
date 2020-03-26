@@ -15,6 +15,7 @@
 
 import numpy as np
 import gin
+import functools
 
 import torch
 import torch.nn as nn
@@ -90,7 +91,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  critic_network: CriticNetwork,
                  env=None,
                  config: TrainerConfig = None,
-                 critic_loss=None,
+                 critic_loss_ctor=None,
                  target_entropy=None,
                  initial_log_alpha=0.0,
                  target_update_tau=0.05,
@@ -118,7 +119,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs `train_iter()` by
                 itself.
-            critic_loss (None|OneStepTDLoss): an object for calculating critic loss.
+            critic_loss_ctor (None|OneStepTDLoss): a critic loss constructor.
                 If None, a default OneStepTDLoss will be used.
             initial_log_alpha (float): initial value for variable log_alpha
             target_entropy (float|None): The target average policy entropy, for updating alpha.
@@ -175,9 +176,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._target_critic_network1 = self._critic_network1.copy()
         self._target_critic_network2 = self._critic_network2.copy()
 
-        if critic_loss is None:
-            critic_loss = OneStepTDLoss(debug_summaries=debug_summaries)
-        self._critic_loss = critic_loss
+        if critic_loss_ctor is None:
+            critic_loss_ctor = functools.partial(
+                OneStepTDLoss, debug_summaries=debug_summaries)
+        # Have different names to separate their summary curves
+        self._critic_loss1 = critic_loss_ctor(name="critic_loss1")
+        self._critic_loss2 = critic_loss_ctor(name="critic_loss2")
 
         flat_action_spec = nest.flatten(self._action_spec)
         self._flat_action_spec = flat_action_spec
@@ -377,12 +381,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         target_critic = critic_info.target_critic
 
-        critic_loss1 = self._critic_loss(
+        critic_loss1 = self._critic_loss1(
             training_info=training_info,
             value=critic_info.critic1,
             target_value=target_critic)
 
-        critic_loss2 = self._critic_loss(
+        critic_loss2 = self._critic_loss2(
             training_info=training_info,
             value=critic_info.critic2,
             target_value=target_critic)
