@@ -371,7 +371,15 @@ class TestWithCycle(alf.test.TestCase):
                          'weight_decay': 0,
                          'amsgrad': False,
                          'params': []
-                     }]
+                     },
+                                      {
+                                          'lr': 0.2,
+                                          'betas': (0.9, 0.999),
+                                          'eps': 1e-08,
+                                          'weight_decay': 0,
+                                          'amsgrad': False,
+                                          'params': [id(param_2)]
+                                      }]
                  }), ('_param_list.0', torch.tensor([0.])),
                  ('_optimizers.0', {
                      'state': {},
@@ -399,7 +407,8 @@ class TestWithCycle(alf.test.TestCase):
             # cycles are not allowed with explicit ignoring
             self.assertRaises(AssertionError, alg_root.state_dict)
 
-            # case 2: cycle with ignore
+            # case 2: cycle with ignore, which also resembles the case where a
+            # self-training module (alg_2) is involved
             alg_root2 = ComposedAlgWithIgnore(
                 params=[param_root],
                 optimizer=optimizer_root,
