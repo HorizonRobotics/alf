@@ -62,7 +62,7 @@ def conditional_update(target, cond, func, *args, **kwargs):
     Returns:
         nest with the same structure and shape as target.
     """
-    # shape of torch.where() is a tuple (indices, )
+    # the return of torch.where() is a tuple (indices, )
     gather_indices = torch.where(cond)[0]
 
     def _update_subset():
