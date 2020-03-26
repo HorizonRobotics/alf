@@ -59,7 +59,10 @@ def histogram_discrete(name, data, bucket_min, bucket_max, step=None):
             `alf.summary.get_global_counter()`
     """
     alf.summary.histogram(
-        name, data, step=step, bins=torch.arange(bucket_min, bucket_max + 1))
+        name,
+        data,
+        step=step,
+        bins=torch.arange(bucket_min, bucket_max + 1).cpu())
 
 
 @_summary_wrapper
@@ -196,8 +199,8 @@ def summarize_action(actions, action_specs, name="action"):
             histogram_discrete(
                 name="%s/%s" % (name, i),
                 data=action,
-                bucket_min=action_spec.minimum,
-                bucket_max=action_spec.maximum)
+                bucket_min=int(action_spec.minimum),
+                bucket_max=int(action_spec.maximum))
         else:
             if len(action_spec.shape) == 0:
                 action_dim = 1
