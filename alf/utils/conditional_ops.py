@@ -13,13 +13,14 @@
 # limitations under the License.
 """Conditional operations."""
 
-import tensorflow as tf
+import torch
 
-from alf.utils.scope_utils import get_current_scope
+import alf
+import alf.utils.common as common
 
 
 def _gather_nest(nest, indices):
-    return tf.nest.map_structure(lambda t: tf.gather(t, indices, axis=0), nest)
+    return alf.nest.map_structure(lambda t: t[indices], nest)
 
 
 def select_from_mask(data, mask):
@@ -34,8 +35,7 @@ def select_from_mask(data, mask):
     Returns:
         nested Tensor with the same structure as data
     """
-    scatter_indices = tf.where(mask)
-    gather_indices = tf.squeeze(scatter_indices, 1)
+    gather_indices = torch.where(mask)[0]
     return _gather_nest(data, gather_indices)
 
 
@@ -62,58 +62,26 @@ def conditional_update(target, cond, func, *args, **kwargs):
     Returns:
         nest with the same structure and shape as target.
     """
-    # shape of indices from where() is [batch_size,1], which is what scatter_nd
-    # needs
-    scatter_indices = tf.where(cond)
-    scope = get_current_scope()
+    # the return of torch.where() is a tuple (indices, )
+    gather_indices = torch.where(cond)[0]
 
     def _update_subset():
-        gather_indices = tf.squeeze(scatter_indices, 1)
         selected_args = _gather_nest(args, gather_indices)
         selected_kwargs = _gather_nest(kwargs, gather_indices)
-        with tf.name_scope(scope):
-            # tf.case loses the original name scope. Need to restore it.
-            updates = func(*selected_args, **selected_kwargs)
-        return tf.nest.map_structure(
-            lambda tgt, updt: tf.tensor_scatter_nd_update(
-                tgt, scatter_indices, updt), target, updates)
+        updates = func(*selected_args, **selected_kwargs)
 
-    total = tf.shape(cond)[0]
-    n = tf.shape(scatter_indices)[0]
-    return tf.case(((n == 0, lambda: target),
-                    (n == total, lambda: func(*args, **kwargs))),
-                   default=_update_subset)
+        def _update(tgt, updt):
+            scatter_indices = common.expand_dims_as(gather_indices, updt)
+            scatter_indices = scatter_indices.expand_as(updt)
+            return tgt.scatter(0, scatter_indices, updt)
 
+        return alf.nest.map_structure(_update, target, updates)
 
-def run_if(cond, func):
-    """Run a function if `cond` Tensor is True.
-
-    This function is useful for conditionally executing a function only when
-    a condition given by a tf Tensor is True. It is equivalent to the following
-    code if `cond` is a python bool value:
-    ```python
-    if cond:
-        func()
-    ```
-    However, when `cond` is tf bool scalar tensor, the above code does not
-    always do what we want because tensorflow does not allow bool scalar tensor
-    to be used in the same way as python bool. So we have to use tf.cond to do
-    the job.
-
-    Args:
-        cond (tf.Tensor): scalar bool Tensor
-        func (Callable): function to be run
-    Returns:
-        None
-    """
-    scope = get_current_scope()
-
-    def _if_true():
-        # The reason of this line is that inside tf.cond, somehow
-        # get_current_scope() is '', which makes operations and summaries inside
-        # func unscoped. We need this line to restore the original name scope.
-        with tf.name_scope(scope):
-            func()
-            return tf.constant(True)
-
-    tf.cond(cond, _if_true, lambda: tf.constant(False))
+    total = cond.shape[0]
+    n = gather_indices.shape[0]
+    if n == 0:
+        return target
+    elif n == total:
+        return func(*args, **kwargs)
+    else:
+        return _update_subset()
