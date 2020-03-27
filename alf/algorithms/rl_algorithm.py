@@ -106,6 +106,10 @@ class RLAlgorithm(Algorithm):
                 be provided to the algorithm which performs `train_iter()` by
                 itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
+            gradient_clipping (float): If not None, serve as a positive threshold
+            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
+                to clip gradient. If False, use `tensor_utils.clip_by_norms` for
+                each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards.
             observation_transformer (Callable | list[Callable]): transformation(s)

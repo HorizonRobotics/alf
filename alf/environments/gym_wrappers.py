@@ -21,6 +21,7 @@ import gym
 import numpy as np
 import random
 
+import alf
 from alf.utils import common
 
 
@@ -176,7 +177,7 @@ class FrameStack(BaseObservationWrapper):
         Args:
             env (gym.Space): gym environment.
             stack_size (int): stack so many frames
-            channel_order (str): The ordering of the dimensions in the input images 
+            channel_order (str): The ordering of the dimensions in the input images
                 from the env, should be one of `channels_last` or `channels_first`.
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
@@ -509,3 +510,29 @@ class DMAtariPreprocessing(gym.Wrapper):
             interpolation=cv2.INTER_AREA)
         int_image = np.asarray(transformed_image, dtype=np.uint8)
         return np.expand_dims(int_image, axis=2)
+
+
+class ContinuousActionClip(gym.ActionWrapper):
+    """Clip continuous actions according to the action space."""
+
+    def __init__(self, env):
+        """Create an ContinuousActionClip gym wrapper.
+
+        Args:
+            env (gym.Env): A Gym env instance to wrap
+        """
+        super(ContinuousActionClip, self).__init__(env)
+
+    def action(self, action):
+        def _clip_action(space, action):
+            # Check if the action is corrupted or not.
+            if np.any(np.isnan(action)):
+                raise ValueError(
+                    "NAN action detected! action: {}".format(action))
+            if isinstance(space, gym.spaces.Box):
+                action = np.maximum(np.minimum(action, space.high), space.low)
+            return action
+
+        action = alf.nest.map_structure(_clip_action, self.action_space,
+                                        action)
+        return action
