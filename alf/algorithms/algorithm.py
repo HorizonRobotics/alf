@@ -88,8 +88,9 @@ class Algorithm(nn.Module):
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use tf.clip_by_global_norm to
-                clip gradient. If False, use tf.clip_by_norm for each grad.
+            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
+                to clip gradient. If False, use `tensor_utils.clip_by_norms` for
+                each grad.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
         """

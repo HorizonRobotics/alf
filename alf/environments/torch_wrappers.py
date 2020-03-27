@@ -91,34 +91,6 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
         return self._env
 
 
-class ContinuousActionClip(TorchEnvironmentBaseWrapper):
-    """Clip continuous actions according to the action spec."""
-
-    def __init__(self, env):
-        """Create an ActionClip torch wrapper.
-
-        Args:
-            env (TorchEnvironment): An TorchEnvironment instance to wrap.
-        """
-        super(ContinuousActionClip, self).__init__(env)
-
-    def _step(self, action):
-        action_spec = self.action_spec()
-
-        def _clip_action(spec, action):
-            # Check if the action is corrupted or not.
-            if torch.any(torch.isnan(action)):
-                raise ValueError(
-                    "NAN action detected! action: {}".format(action))
-            if spec.is_continuous:
-                if isinstance(spec, ts.BoundedTensorSpec):
-                    action = spec_utils.clip_to_spec(action, spec)
-            return action
-
-        action = nest.map_structure(_clip_action, action_spec, action)
-        return super()._step(action)
-
-
 # Used in ALF
 @gin.configurable
 class TimeLimit(TorchEnvironmentBaseWrapper):

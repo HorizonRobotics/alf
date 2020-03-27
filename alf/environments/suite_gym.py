@@ -119,15 +119,15 @@ def wrap_env(gym_env,
     if image_channel_first:
         gym_env = gym_wrappers.ImageChannelFirst(gym_env)
 
+    # clip continuous actions according to gym_env.action_space
+    gym_env = gym_wrappers.ContinuousActionClip(gym_env)
+
     env = torch_gym_wrapper.TorchGymWrapper(
         gym_env=gym_env,
         env_id=env_id,
         discount=discount,
         auto_reset=auto_reset,
     )
-
-    # clip continuous actions according to action_spec
-    env = torch_wrappers.ContinuousActionClip(env)
 
     if max_episode_steps > 0:
         env = time_limit_wrapper(env, max_episode_steps)
