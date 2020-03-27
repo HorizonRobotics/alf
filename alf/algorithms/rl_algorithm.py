@@ -328,13 +328,18 @@ class RLAlgorithm(Algorithm):
                 T is the sequence length, and B is the batch size of the batched
                 environment.
         """
-        if not self._use_rollout_state:
-            exp = exp._replace(state=())
-        exp = dist_utils.distributions_to_params(exp)
-
         if self._exp_replayer is None and self._exp_replayer_type:
             self._set_exp_replayer(self._exp_replayer_type,
                                    self._config.num_envs)
+
+        if not self._use_rollout_state:
+            exp = exp._replace(state=())
+        else:
+            # Prune exp's state (rollout_state) according to the train state spec
+            exp = exp._replace(
+                state=alf.nest.prune_nest_like(
+                    exp.state, self.train_state_spec, value_to_match=()))
+        exp = dist_utils.distributions_to_params(exp)
 
         for observer in self._observers:
             observer(exp)
