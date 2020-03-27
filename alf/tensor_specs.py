@@ -99,6 +99,8 @@ class TensorSpec(object):
                                                        repr(self.dtype))
 
     def __eq__(self, other):
+        if type(self) != type(other):
+            return False
         return self.shape == other.shape and self.dtype == other.dtype
 
     def __ne__(self, other):

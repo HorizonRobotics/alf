@@ -15,15 +15,15 @@
 
 import torch
 
-from collections import namedtuple
 import unittest
 
 import alf
 import alf.nest as nest
+from alf.data_structures import namedtuple
 from alf.tensor_specs import TensorSpec
 from alf.nest.utils import NestConcat, NestSum
 
-NTuple = namedtuple('NTuple', ['a', 'b'])
+NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 
 
 class TestIsNested(unittest.TestCase):
@@ -211,6 +211,33 @@ class TestNestSum(alf.test.TestCase):
             b=TensorSpec((4, )))
         ret = NestSum()(ntuple)  # broadcasting
         self.assertEqual(ret, TensorSpec((2, 4)))
+
+
+class TestPruneNestLike(alf.test.TestCase):
+    def test_prune_nest_like(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=NTuple(a=torch.zeros((4, )), b=[1]))
+        spec = NTuple(a=dict(y=TensorSpec(())), b=NTuple(b=[TensorSpec(())]))
+        pruned_ntuple = nest.prune_nest_like(ntuple, spec)
+
+        nest.map_structure(
+            self.assertEqual, pruned_ntuple,
+            NTuple(a=dict(y=torch.zeros((2, 4))), b=NTuple(b=[1])))
+
+        lst1 = [1, 3]
+        lst2 = [None, 1]
+        pruned_lst = nest.prune_nest_like(lst1, lst2)
+        self.assertEqual(pruned_lst, [None, 3])
+
+        tuple1 = NTuple(a=1, b=2)
+        tuple2 = NTuple(b=1, a=())
+        pruned_lst = nest.prune_nest_like(tuple1, tuple2, value_to_match=())
+        self.assertEqual(pruned_lst, NTuple(a=(), b=2))
+
+        d1 = dict(x=1, y=2)
+        d2 = dict(x=1, z=2)
+        self.assertRaises(ValueError, nest.prune_nest_like, d1, d2)
 
 
 if __name__ == '__main__':
