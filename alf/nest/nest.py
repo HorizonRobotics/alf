@@ -291,11 +291,16 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
     `value_to_match`, then the corresponding field of `nest` will also be updated
     to this value.
 
-    Note: If a node is a list or unnamedtuple, then we will truncate that
-    sequence by the first several elements. In this case, make sure you know what
-    you're doing.
+    Note: If a node is a list or unnamedtuple, then we require their lengths are
+    equal.
 
-    For examples, check out `nest_test.py`.
+    For example:
+        x = dict(a=1, b=2)
+        y = dict(a=[])
+        z = prune_nest_like(x, y) # z is dict(a=1)
+
+        y2 = dict(a=[], b=())
+        z2 = prune_nest_like(x, y2, value_to_match=()) # z2 is dict(a=1, b=())
 
     Args:
         nest (nest): a nested structure
@@ -314,27 +319,21 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
         if is_nested(nest) or is_nested(slim_nest):
             assert_same_type(nest, slim_nest)
             if isinstance(nest, list) or is_unnamedtuple(nest):
-                assert len(nest) >= len(slim_nest), \
-                    "{} should be no shorter than {}".format(nest, slim_nest)
-                # zip will automatically truncate the longer one
+                assert len(nest) == len(slim_nest), \
+                    "{} should have the same length with {}".format(
+                        nest, slim_nest)
                 ret = type(nest)([
                     sn if sn == value_to_match else _prune(n, sn)
                     for n, sn in zip(nest, slim_nest)
                 ])
             else:
                 ret = {}
-
                 nest_fields_values = dict(extract_fields_from_nest(nest))
-                slim_nest_fields_and_values = dict(
-                    extract_fields_from_nest(slim_nest))
-
-                assert (set(nest_fields_values.keys())
-                        >= set(slim_nest_fields_and_values.keys())), \
-                            "The fields of nest must be a subset of slim_nest!"
-
-                for field in slim_nest_fields_and_values.keys():
+                for field, slim_nest_value in extract_fields_from_nest(
+                        slim_nest):
+                    if field not in nest_fields_values:
+                        raise ValueError("Field '%s' not in nest!" % field)
                     nest_value = nest_fields_values[field]
-                    slim_nest_value = slim_nest_fields_and_values[field]
                     if slim_nest_value != value_to_match:
                         ret[field] = _prune(nest_value, slim_nest_value)
                     else:
