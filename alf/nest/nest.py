@@ -296,10 +296,10 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
 
     For example:
         x = dict(a=1, b=2)
-        y = dict(a=[])
+        y = dict(a=TensorSpec(()))
         z = prune_nest_like(x, y) # z is dict(a=1)
 
-        y2 = dict(a=[], b=())
+        y2 = dict(a=TensorSpec(()), b=())
         z2 = prune_nest_like(x, y2, value_to_match=()) # z2 is dict(a=1, b=())
 
     Args:
