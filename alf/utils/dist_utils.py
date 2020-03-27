@@ -431,12 +431,15 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
 
 
 def get_mode(dist):
-    """Get the mode of the distribution.
+    """Get the mode of the distribution. Note that if dist is a transformed
+        distribution, the result may not be the actual mode of dist.
 
     Args:
         dist (td.Distribution)
     Returns:
-        The mode of the distribution.
+        The mode of the distribution. If dist is a transformed distribution,
+        the result is calculated by transforming the mode of its base
+        distribution and may not be the actual mode for dist.
     Raises:
         NotImplementedError if dist or its base distribution is not
             td.Categorical, td.Normal, td.Independent or
