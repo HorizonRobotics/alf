@@ -191,7 +191,7 @@ class TestActionSamplingTransformedNormal(alf.test.TestCase):
             normal_dist = td.Independent(td.Normal(loc=means, scale=stds), 1)
             transforms = [
                 dist_utils.StableTanh(),
-                td.AffineTransform(
+                dist_utils.AffineTransform(
                     loc=torch.tensor(0.), scale=torch.tensor(5.0))
             ]
             squashed_dist = td.TransformedDistribution(
@@ -213,6 +213,24 @@ class TestActionSamplingTransformedNormal(alf.test.TestCase):
         epsilon = 0.0
         action_obtained = dist_utils.epsilon_greedy_sample(dist, epsilon)
         self.assertTrue((transformed_mode == action_obtained).all())
+
+
+class TestActionSamplingTransformedCategorical(alf.test.TestCase):
+    def test_action_sampling_transformed_categorical(self):
+        def _get_transformed_categorical(probs):
+            categorical_dist = td.Independent(td.Categorical(probs=probs), 1)
+            return categorical_dist
+
+        probs = torch.Tensor([[0.3, 0.5, 0.2], [0.6, 0.4, 0.0]])
+        dist = _get_transformed_categorical(probs=probs)
+        mode = dist_utils.get_mode(dist)
+        expected_mode = torch.argmax(probs, dim=1)
+
+        self.assertTensorEqual(expected_mode, mode)
+
+        epsilon = 0.0
+        action_obtained = dist_utils.epsilon_greedy_sample(dist, epsilon)
+        self.assertTensorEqual(expected_mode, action_obtained)
 
 
 class TestRSampleActionDistribution(alf.test.TestCase):
