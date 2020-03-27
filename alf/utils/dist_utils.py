@@ -416,15 +416,11 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
 
     def greedy_fn(dist):
         # pytorch distribution has no 'mode' operation
+        greedy_action = get_mode(dist)
+        if eps == 0.0:
+            return greedy_action
         sample_action = dist.sample()
         greedy_mask = torch.rand(sample_action.shape[0]) > eps
-        if isinstance(dist, td.categorical.Categorical):
-            greedy_action = torch.argmax(dist.logits, -1)
-        elif isinstance(dist, td.normal.Normal):
-            greedy_action = dist.mean
-        else:
-            raise NotImplementedError("Mode sampling not implemented for "
-                                      "{cls}".format(cls=type(dist)))
         sample_action[greedy_mask] = greedy_action[greedy_mask]
         return sample_action
 
@@ -432,6 +428,40 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
         return sample_action_distribution(nested_distributions)
     else:
         return nest.map_structure(greedy_fn, nested_distributions)
+
+
+def get_mode(dist):
+    """Get the mode of the distribution. Note that if dist is a transformed
+        distribution, the result may not be the actual mode of dist.
+
+    Args:
+        dist (td.Distribution)
+    Returns:
+        The mode of the distribution. If dist is a transformed distribution,
+        the result is calculated by transforming the mode of its base
+        distribution and may not be the actual mode for dist.
+    Raises:
+        NotImplementedError if dist or its base distribution is not
+            td.Categorical, td.Normal, td.Independent or
+            td.TransformedDistribution.
+    """
+    if isinstance(dist, td.categorical.Categorical):
+        mode = torch.argmax(dist.logits, -1)
+    elif isinstance(dist, td.normal.Normal):
+        mode = dist.mean
+    elif isinstance(dist, td.Independent):
+        mode = get_mode(dist.base_dist)
+    elif isinstance(dist, td.TransformedDistribution):
+        base_mode = get_mode(dist.base_dist)
+        with torch.no_grad():
+            mode = base_mode
+            for transform in dist.transforms:
+                mode = transform(mode)
+    else:
+        raise NotImplementedError(
+            "Distribution type %s is not supported" % type(dist))
+
+    return mode
 
 
 def get_base_dist(dist):

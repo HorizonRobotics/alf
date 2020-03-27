@@ -44,7 +44,4 @@ TrainerConfig.eval_interval=500
 TrainerConfig.debug_summaries=False
 TrainerConfig.summarize_grads_and_vars=False
 TrainerConfig.summary_interval=5
-
-# TODO: Fix alf.utils.dist_utils.epsilon_greedy_sample() to handle
-# epsilon_greedy < 1.0 and change the default to 0.1
-TrainerConfig.epsilon_greedy=1.0
+TrainerConfig.epsilon_greedy=0.1

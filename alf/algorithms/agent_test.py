@@ -55,9 +55,8 @@ class AgentTest(alf.test.TestCase):
         rollout_state = agent.get_initial_rollout_state(batch_size)
         train_state = agent.get_initial_train_state(batch_size)
 
-        # TODO: implement mode sampling when `epsilon_greedy` < 1.0
         pred_step = agent.predict_step(
-            time_step, predict_state, epsilon_greedy=1.0)
+            time_step, predict_state, epsilon_greedy=0.1)
         self.assertEqual(pred_step.state.irm, ())
 
         rollout_step = agent.rollout_step(time_step, rollout_state)

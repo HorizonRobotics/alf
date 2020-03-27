@@ -185,6 +185,54 @@ class TestActionSamplingNormal(alf.test.TestCase):
         self.assertTrue((action_expected == action_obtained).all())
 
 
+class TestActionSamplingTransformedNormal(alf.test.TestCase):
+    def test_action_sampling_transformed_normal(self):
+        def _get_transformed_normal(means, stds):
+            normal_dist = td.Independent(td.Normal(loc=means, scale=stds), 1)
+            transforms = [
+                dist_utils.StableTanh(),
+                dist_utils.AffineTransform(
+                    loc=torch.tensor(0.), scale=torch.tensor(5.0))
+            ]
+            squashed_dist = td.TransformedDistribution(
+                base_distribution=normal_dist, transforms=transforms)
+            return squashed_dist, transforms
+
+        means = torch.Tensor([0.3, 0.7])
+        dist, transforms = _get_transformed_normal(
+            means=means, stds=torch.Tensor([1.0, 1.0]))
+
+        mode = dist_utils.get_mode(dist)
+
+        transformed_mode = means
+        for transform in transforms:
+            transformed_mode = transform(transformed_mode)
+
+        self.assertTrue((transformed_mode == mode).all())
+
+        epsilon = 0.0
+        action_obtained = dist_utils.epsilon_greedy_sample(dist, epsilon)
+        self.assertTrue((transformed_mode == action_obtained).all())
+
+
+class TestActionSamplingTransformedCategorical(alf.test.TestCase):
+    def test_action_sampling_transformed_categorical(self):
+        def _get_transformed_categorical(probs):
+            categorical_dist = td.Independent(td.Categorical(probs=probs), 1)
+            return categorical_dist
+
+        probs = torch.Tensor([[0.3, 0.5, 0.2], [0.6, 0.4, 0.0]])
+        dist = _get_transformed_categorical(probs=probs)
+        mode = dist_utils.get_mode(dist)
+        expected_mode = torch.argmax(probs, dim=1)
+
+        self.assertTensorEqual(expected_mode, mode)
+
+        epsilon = 0.0
+        action_obtained = dist_utils.epsilon_greedy_sample(dist, epsilon)
+        self.assertTensorEqual(expected_mode, action_obtained)
+
+
 class TestRSampleActionDistribution(alf.test.TestCase):
     def test_rsample_action_distribution(self):
         c = torch.distributions.categorical.Categorical(
