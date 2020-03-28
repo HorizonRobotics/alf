@@ -92,8 +92,8 @@ class EntropyTargetAlgorithm(Algorithm):
                 stage 2
             fast_update_rate (float): maximum update rate for log_alpha; used in
                 state 2
-            min_alpha (float): the minimal value of alpha. If <=0, exp(-100) is
-                used.
+            min_alpha (float): the minimal value of alpha. If <=0, :math:`e^{-100}`
+                is used.
             average_window (int): window size for averaging past entropies.
             debug_summaries (bool): True if debug summaries should be created.
         """

@@ -40,10 +40,10 @@ class MIEstimator(Algorithm):
 
     Currently 3 types of estimator are implemented, which are based on the
     following variational lower bounds:
-    * 'DV':  sup_T E_P(T) - log E_Q(exp(T))
-    * 'KLD': sup_T E_P(T) - E_Q(exp(T)) + 1
-    * 'JSD': sup_T -E_P(softplus(-T))) - E_Q(solftplus(T)) + log(4)
-    * 'ML': sup_q E_P(log(q(y|x)) - log(P(y)))
+    * 'DV':  :math:`\sup_T E_P(T) - \log E_Q(\exp(T))`
+    * 'KLD': :math:`\sup_T E_P(T) - E_Q(\exp(T)) + 1`
+    * 'JSD': :math:`\sup_T -E_P(softplus(-T))) - E_Q(solftplus(T)) + \log(4)`
+    * 'ML': :math:\sup_q E_P(\log(q(y|x)) - \log(P(y)))`
 
     where P is the joint distribution of X and Y, and Q is the product marginal
     distribution of P. Both DV and KLD are lower bounds for KLD(P||Q)=MI(X, Y).
@@ -59,7 +59,7 @@ class MIEstimator(Algorithm):
 
     Assumming the function class of T is rich enough to represent any function,
     for KLD and JSD, T will converge to log(P/Q) and hence E_P(T) can also be
-    used as an estimator of KLD(P||Q)=MI(X,Y). For DV, T will converge to
+    used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`. For DV, T will converge to
     log(P/Q) + c, where c=log E_Q(exp(T)).
 
     Among 'DV', 'KLD' and 'JSD',  'DV' and 'KLD' seem to give a better estimation
