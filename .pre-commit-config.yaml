@@ -51,3 +51,9 @@ repos:
         language: system
         files: \.(c|cc|cxx|cpp|cu|h|hpp|hxx|proto|py)$
         exclude: (?!.*third_party)^.*$ | (?!.*book)^.*$
+-   repo: local
+    hooks:
+    -   id: sphinx-apidoc
+        name: sphinx-apidoc
+        entry: bash ./tools/documentation/sphinx.hook
+        language: system

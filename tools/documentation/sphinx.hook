@@ -1,0 +1,7 @@
+#!/bin/bash
+
+git_root=`git rev-parse --show-toplevel`
+
+cd ${git_root}/docs
+sphinx-apidoc -f -o api ../alf ../alf/tests --templatedir _templates
+exit $?
