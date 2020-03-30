@@ -18,26 +18,10 @@ alf.drivers.off\_policy\_driver
    :undoc-members:
    :show-inheritance:
 
-alf.drivers.off\_policy\_driver\_test
--------------------------------------
-
-.. automodule:: alf.drivers.off_policy_driver_test
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 alf.drivers.on\_policy\_driver
 ------------------------------
 
 .. automodule:: alf.drivers.on_policy_driver
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-alf.drivers.on\_policy\_driver\_test
-------------------------------------
-
-.. automodule:: alf.drivers.on_policy_driver_test
    :members:
    :undoc-members:
    :show-inheritance:

@@ -28,7 +28,7 @@ setup(
         'pathos == 0.2.4',
         'pillow',
         'psutil',
-        #'pybullet == 2.5.0',
+        'pybullet == 2.5.0',
         'sphinx==2.4.4',
         'sphinxcontrib-napoleon==0.7',
         'sphinx-rtd-theme==0.4.3',  # used to build html docs locally

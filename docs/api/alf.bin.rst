@@ -26,14 +26,6 @@ alf.bin.train
    :undoc-members:
    :show-inheritance:
 
-alf.bin.train\_play\_test
--------------------------
-
-.. automodule:: alf.bin.train_play_test
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 
 .. automodule:: alf.bin
    :members:

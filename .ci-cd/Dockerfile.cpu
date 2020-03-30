@@ -25,10 +25,6 @@ RUN pip3 install  pre-commit==1.17.0 \
     pylint==2.3.1 \
     yapf==0.28.0
 
-# install sphinx for documentation
-RUN pip3 install sphinx==2.4.4 \
-    sphinxcontrib-napoleon==0.7
-
 RUN pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu \
     -f https://download.pytorch.org/whl/torch_stable.html
 

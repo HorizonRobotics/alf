@@ -7,7 +7,6 @@ alf
    alf.bin
    alf.drivers
    alf.environments
-   alf.examples
    alf.experience_replayers
    alf.metrics
    alf.nest

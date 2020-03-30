@@ -72,7 +72,10 @@ autoclass_content = 'both'
 # unit titles, e.g., alf.algorithms.algorithm.Algorithm
 add_module_names = False
 
+# use index.rst as the entry doc
+master_doc = "index"
+
 # API generation command:
 # This command has been added to precommit hooks so that if any new code structure
 # under 'alf/alf' is introduced, it will get called to update the rst files.
-# sphinx-apidoc -f -o api ../alf ../alf/tests --templatedir _templates
+# sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples --templatedir _templates

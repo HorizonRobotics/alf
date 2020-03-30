@@ -1,0 +1,6 @@
+atari_py==0.1.7
+gin-config
+gym==0.12.5
+opencv-python>=3.4.1.15
+torch==1.4.0
+torchvision==0.5.0
