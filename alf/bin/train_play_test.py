@@ -468,6 +468,16 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='sarsa_pendulum.gin',
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    def test_sarsa_ddpg_pendulum(self):
+        self._test(
+            gin_file='sarsa_ddpg_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_sarsa_sac_pendulum(self):
+        self._test(
+            gin_file='sarsa_sac_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_breakout(self):
         self._test(

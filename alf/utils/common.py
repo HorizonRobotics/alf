@@ -221,8 +221,11 @@ def run_under_record_context(func,
     global_step = alf.summary.get_global_counter()
 
     def _cond():
+        # We always write summary in the initial `summary_interval` steps
+        # because there might be important changes at the beginning.
         return (alf.summary.is_summary_enabled()
-                and global_step % summary_interval == 0)
+                and (global_step < summary_interval
+                     or global_step % summary_interval == 0))
 
     with alf.summary.push_summary_writer(summary_writer):
         with alf.summary.record_if(_cond):

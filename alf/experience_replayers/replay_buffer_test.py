@@ -144,7 +144,7 @@ class ReplayBufferTest(alf.test.TestCase):
 
         # Test clear()
         replay_buffer.clear()
-        self.assertEqual(replay_buffer.total_size(), 0)
+        self.assertEqual(replay_buffer.total_size, 0)
 
 
 if __name__ == '__main__':

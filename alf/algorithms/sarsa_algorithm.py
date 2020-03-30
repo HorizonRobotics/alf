@@ -29,8 +29,7 @@ from alf.data_structures import (AlgStep, Experience, experience_to_time_step,
                                  LossInfo, namedtuple, StepType, TimeStep,
                                  TrainingInfo)
 from alf.networks import Network, DistributionNetwork
-from alf.utils import common, dist_utils, losses, math_ops, tensor_utils
-from alf.utils.averager import AdaptiveAverager
+from alf.utils import common, dist_utils, losses, math_ops, spec_utils, tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
 
 SarsaState = namedtuple(
@@ -49,92 +48,6 @@ SarsaLossInfo = namedtuple('SarsaLossInfo',
                            ['actor', 'critic', 'alpha', 'neg_entropy'])
 
 nest_map = alf.nest.map_structure
-
-
-class FastCriticBias(nn.Module):
-    """
-    The motivation of this is to prevent the critic value becomes greater and
-    greater as training goes on because of the max operation.
-
-    FastCriticBias estimates expected return `b` by minimizing the following
-    expectation:
-        min_b E(b - r - discount * b)^2
-    where r is reward. `b` can be analytically solved as:
-        b = E(r) / (1 - E(discount))
-
-    We explicitly enforce that E(critic - b) = 0 by estimating E(critic) and
-    use b - E(critic) as bias to offset critic.
-
-    Pseudocode of using it:
-        critic = critic_network(...)
-        fast_bias.update(critic, reward, discount, mask)
-        new_critic = critic + fast_bias.get()
-        # use new_critic for training
-    """
-
-    def __init__(self, num_critics=1, speed=10):
-        """Create an instance of FastCriticBias.
-
-        Args:
-            num_critics (int): number of critic functions to process
-            speeed (float): how fast to update the averages
-            name (str): name of this object
-        """
-        super().__init__()
-        spec = alf.TensorSpec((), torch.float32)
-        self._averager = AdaptiveAverager(
-            tensor_spec=[[spec] * num_critics, spec, spec], speed=speed)
-
-        self._biases = []
-        for i in range(num_critics):
-            buf = torch.tensor(0.)
-            self._biases.append(buf)
-            self.register_buffer("_bias%d" % i, buf)
-
-    def update(self, critics, reward, discount, mask=None):
-        """Update internal statistics.
-
-        Args:
-            critics (Tensor|list[Tensor]): critics to process.
-            reward (Tensor): reward received for the current step
-            discount (Tensor): discount for the future steps
-            mask (bool Tensor): If provided, only use the entries whose
-                corresponding element in `mask` is True.
-        """
-        if torch.any(mask):
-            if isinstance(critics, torch.Tensor):
-                critics = [critics]
-            critics, reward, discount = math_ops.weighted_reduce_mean(
-                [critics, reward, discount], mask)
-            critics, reward, discount = self._averager.average(
-                [critics, reward, discount])
-            b = reward / (1 - discount)
-            nest_map(lambda v, c: v.copy_((b - c).detach()), self._biases,
-                     critics)
-
-    def get(self, i=None):
-        """Get the critic bias.
-
-        Args:
-            i (None|int): If None, return the list of biases for all the
-                critics. If not None, return the bias for the i-th critic.
-        Returns:
-            Tensor if `i` is not None or `num_critics` is 1.
-            list[Tensor] otherwise.
-        """
-        if i is not None:
-            return self._biases[i]
-        elif len(self._biases) == 1:
-            return self._biases[0]
-        else:
-            return copy.copy(self._biases)
-
-    def summarize(self):
-        critics, reward, discount = self._averager.get()
-        alf.summary.scalar("critic_bias", self.get(0))
-        alf.summary.scalar("critic_avg", critics[0])
-        alf.summary.scalar("reward_avg", reward)
-        alf.summary.scalar("discount_avg", discount)
 
 
 @gin.configurable
@@ -195,8 +108,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             config (TrainerConfig): config for training. `config` only needs to
                 be provided to the algorithm which performs `train_iter()` by
                 itself.
-            fast_critic_bias_speed (float): If >=1, use FastCriticBias to learn
-                critic bias.
             initial_alpha (float|None): If provided, will add -alpha*entropy to
                 the loss to encourage diverse action.
             target_entropy (float|None): The target average policy entropy, for
@@ -303,7 +214,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             else:
                 logging.info(
                     "initial_alpha and alpha_optimizer is ignored. "
-                    "The `actor_network` needs to a DistributionNetwork in "
+                    "The `actor_network` needs to be a DistributionNetwork in "
                     "order to use entropy as regularization or reward")
 
         models = copy.copy(critic_networks)
@@ -331,11 +242,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         for i in range(num_replicas):
             self._critic_losses.append(
                 critic_loss_cls(debug_summaries=debug_summaries and i == 0))
-
-        self._critic_bias = None
-        if fast_critic_bias_speed >= 1:
-            self._critic_bias = FastCriticBias(
-                num_critics=num_replicas, speed=fast_critic_bias_speed)
 
         self._is_rnn = len(alf.nest.flatten(critic_network.state_spec)) > 0
 
@@ -394,12 +300,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def _calc_critics(self, critic_networks, inputs, states):
         critics = []
         new_states = []
-        if self._critic_bias is not None:
-            biases = self._critic_bias.get()
         for i in range(self._num_replicas):
             critic, state = critic_networks[i](inputs=inputs, state=states[i])
-            if self._critic_bias is not None:
-                critic += biases[i]
             critics.append(critic)
             new_states.append(state)
         return critics, new_states
@@ -453,16 +355,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             self._critic_networks,
             inputs=(state.prev_observation, time_step.prev_action),
             states=state.critics)
-
-        if self._critic_bias is not None:
-            self._critic_bias.update(
-                critics=[
-                    c - b
-                    for c, b in zip(prev_critics, self._critic_bias.get())
-                ],
-                reward=time_step.reward,
-                discount=time_step.discount * self._critic_losses[0].discount,
-                mask=not_first_step)
 
         critic_states = common.reset_state_if_necessary(
             state.critics, critic_states, not_first_step)
@@ -567,8 +459,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
-                if self._critic_bias is not None:
-                    self._critic_bias.summarize()
                 if self._log_alpha is not None:
                     alf.summary.scalar("alpha", alpha)
 

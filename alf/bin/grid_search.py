@@ -27,6 +27,7 @@ from pathos import multiprocessing
 import random
 import time
 import torch
+import traceback
 
 import alf
 from alf.bin.train import train_eval
@@ -288,7 +289,7 @@ class GridSearch(object):
 
             device_queue.put(device)
         except Exception as e:
-            logging.info(e)
+            logging.info(traceback.format_exc())
             raise e
 
 

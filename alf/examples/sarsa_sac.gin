@@ -42,7 +42,6 @@ SarsaAlgorithm.alpha_optimizer=@alpha/AdamTF()
 
 SarsaAlgorithm.target_update_tau=0.005
 SarsaAlgorithm.target_update_period=1
-SarsaAlgorithm.fast_critic_bias_speed=10.
 SarsaAlgorithm.use_smoothed_actor=False
 
 import alf.algorithms.trac_algorithm
@@ -64,7 +63,7 @@ TrainerConfig.num_iterations=200000
 TrainerConfig.num_updates_per_train_step=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summarize_action_distributions=1
-TrainerConfig.summary_interval=1
+TrainerConfig.summary_interval=100
 TrainerConfig.unroll_length=1
 TrainerConfig.use_rollout_state=True
 TrainerConfig.replay_buffer_length=100000

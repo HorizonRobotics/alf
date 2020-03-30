@@ -213,6 +213,7 @@ class ReplayBuffer(nn.Module):
     def num_environments(self):
         return self._num_envs
 
+    @property
     def total_size(self):
         """Total size from all environments."""
         return _convert_device(self._current_size.sum())
