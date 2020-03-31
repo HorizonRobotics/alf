@@ -6,7 +6,7 @@ This website is automatically generated using `Sphinx
 <https://pythonhosted.org/an_example_pypi_project/sphinx.html>`_ on
 `<readthedocs.org>`_. It will get updated by RTD once a commit is pushed to ALF.
 So normally an ALF user/developer doesn't have to worry about keeping this
-website up-to-update every time some code change is made. For a complete setup
+website up-to-date every time some code change is made. For a complete setup
 process of using RTD, please refer to this `PR
 <https://github.com/HorizonRobotics/alf/pull/502>`_.
 
