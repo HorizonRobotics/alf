@@ -18,7 +18,7 @@ are generally two ways of doing this.
 .. code-block:: bash
 
     cd $ALF_ROOT/docs
-    sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples --templatedir _templates
+    sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples ../alf/bin --templatedir _templates
     make html
     cd _build/html
 

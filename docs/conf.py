@@ -76,7 +76,7 @@ add_module_names = False
 master_doc = "index"
 
 # API generation command:
-# sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples --templatedir _templates
+# sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples ../alf/bin --templatedir _templates
 
 # -- Automatically generate API documentation --------------------------------
 
@@ -87,8 +87,9 @@ def run_apidoc(_):
 
     # ignore all files with "_test.py" suffix
     ignore_paths = glob.glob("../alf/**/*_test.py", recursive=True)
-    # ignore files in the examples directory
+    # ignore files in the examples and bin directories
     ignore_paths.append("../alf/examples")
+    ignore_paths.append("../alf/bin")
 
     argv = [
         "--force",  # Overwrite output files
