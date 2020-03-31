@@ -78,8 +78,6 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
         num_envs = 2
         env = self._make_parallel_torch_environment(num_envs=num_envs)
 
-        alf.set_default_device('cuda')
-
         action_spec = env.action_spec()
         observation_spec = env.observation_spec()
         action = torch.stack([action_spec.sample() for _ in range(num_envs)])

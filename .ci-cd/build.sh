@@ -59,6 +59,8 @@ function test() {
         alf.data_structures_test \
         alf.device_ctx_test \
         alf.environments.gym_wrappers_test \
+        alf.environments.parallel_torch_environment_test \
+        alf.environments.process_environment_test \
         alf.environments.random_torch_environment_test \
         alf.environments.simple.noisy_array_test \
         alf.environments.suite_gym_test \
@@ -90,8 +92,6 @@ function test() {
         alf.utils.normalizers_test \
         alf.utils.tensor_utils_test \
         alf.utils.value_ops_test \
-        alf.environments.parallel_torch_environment_test \
-        alf.environments.process_environment_test \
 
     cd ..
 }
