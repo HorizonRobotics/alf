@@ -62,7 +62,7 @@ class Softsign(td.Transform):
     sign = +1
 
     def __eq__(self, other):
-        return isinstance(other, StableTanh)
+        return isinstance(other, Softsign)
 
     def _call(self, x):
         return nn.functional.softsign(x)
