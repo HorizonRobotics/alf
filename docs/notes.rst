@@ -6,3 +6,4 @@ Notes
 
     notes/knowledge_base
     notes/async_training
+    notes/sphinx_doc
