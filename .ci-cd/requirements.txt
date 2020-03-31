@@ -12,6 +12,4 @@ pybullet==2.5.0
 pathos==0.2.4
 Pillow
 psutil
-sphinx==2.4.4
-sphinxcontrib-napoleon==0.7
 tensorboard==2.1.0

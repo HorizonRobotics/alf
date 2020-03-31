@@ -76,6 +76,34 @@ add_module_names = False
 master_doc = "index"
 
 # API generation command:
-# This command has been added to precommit hooks so that if any new code structure
-# under 'alf/alf' is introduced, it will get called to update the rst files.
 # sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples --templatedir _templates
+
+# -- Automatically generate API documentation --------------------------------
+
+
+def run_apidoc(_):
+    import glob
+    from sphinx.ext import apidoc
+
+    # ignore all files with "_test.py" suffix
+    ignore_paths = glob.glob("../alf/**/*_test.py", recursive=True)
+    # ignore files in the examples directory
+    ignore_paths.append("../alf/examples")
+
+    argv = [
+        "--force",  # Overwrite output files
+        "--follow-links",  # Follow symbolic links
+        #"--separate",  # Put each module file in its own page
+        "--module-first",  # Put module documentation before submodule
+        "--templatedir",
+        "_templates",  # use our customized templates
+        "-o",
+        "api",  # Output path
+        "../alf"  # include path
+    ] + ignore_paths
+
+    apidoc.main(argv)
+
+
+def setup(app):
+    app.connect('builder-inited', run_apidoc)

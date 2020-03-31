@@ -1,7 +1,0 @@
-#!/bin/bash
-
-git_root=`git rev-parse --show-toplevel`
-
-cd ${git_root}/docs
-sphinx-apidoc -f -o api ../alf `find .. -name '*_test.py'` ../alf/examples --templatedir _templates
-exit $?

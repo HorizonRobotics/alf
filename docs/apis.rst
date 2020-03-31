@@ -1,5 +1,5 @@
-ALF APIs
-========
+API Reference
+=============
 
 .. toctree::
    :maxdepth: 4
