@@ -1,4 +1,3 @@
-atari_py==0.1.7
 gin-config
 gym==0.12.5
 opencv-python>=3.4.1.15
