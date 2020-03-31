@@ -27,8 +27,6 @@ class SuiteMarioTest(alf.test.TestCase):
         super().setUp()
         if not suite_mario.is_available():
             self.skipTest('suite_mario is not available.')
-        else:
-            gin.clear_config()
 
     def tearDown(self):
         super().tearDown()

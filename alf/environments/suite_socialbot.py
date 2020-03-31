@@ -77,7 +77,7 @@ def load(environment_name,
 
     gym_spec = gym.spec(environment_name)
     if max_episode_steps is None:
-        if gym_spec.timestep_limit is not None:
+        if gym_spec.max_episode_steps is not None:
             max_episode_steps = gym_spec.max_episode_steps
         else:
             max_episode_steps = 0

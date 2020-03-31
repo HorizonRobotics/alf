@@ -55,7 +55,7 @@ class TorchEnvironmentBaseWrapperTest(parameterized.TestCase):
         cartpole_env = gym.spec('CartPole-v1').make()
         env = torch_gym_wrapper.TorchGymWrapper(cartpole_env)
         self.assertFalse(env.batched)
-        self.assertEqual(env.batch_size, None)
+        self.assertEqual(env.batch_size, 1)
         wrap_env = torch_wrappers.TorchEnvironmentBaseWrapper(env)
         self.assertEqual(wrap_env.batched, env.batched)
         self.assertEqual(wrap_env.batch_size, env.batch_size)
