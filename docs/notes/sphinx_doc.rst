@@ -5,9 +5,9 @@ How to preview this website locally
 This website is automatically generated using `Sphinx
 <https://pythonhosted.org/an_example_pypi_project/sphinx.html>`_ on
 `<readthedocs.org>`_. It will get updated by RTD once a commit is pushed to ALF.
-So normally a ALF user/developer doesn't have to worry about keeping this
-website update-to-update every time some code change is made. For a complete
-setup process of using RTD, please refer to this `PR
+So normally an ALF user/developer doesn't have to worry about keeping this
+website up-to-update every time some code change is made. For a complete setup
+process of using RTD, please refer to this `PR
 <https://github.com/HorizonRobotics/alf/pull/502>`_.
 
 However, if you would like to preview the changes on this website locally, there
