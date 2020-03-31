@@ -234,18 +234,22 @@ def summarize_action_dist(action_distributions,
     actions = alf.nest.flatten(action_distributions)
 
     for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
-        if not isinstance(dist, td.Distribution):
+        if isinstance(dist, torch.Tensor):
             # dist might be a Tensor
-            continue
-        dist = dist_utils.get_base_dist(dist)
-        action_dim = action_spec.shape[-1]
-        log_scale = dist.scale.log()
-        for a in range(action_dim):
-            alf.summary.histogram(
-                name="%s_log_scale/%s/%s" % (name, i, a),
-                data=log_scale[..., a])
-            alf.summary.histogram(
-                name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
+            action_dim = action_spec.shape[-1]
+            for a in range(action_dim):
+                alf.summary.histogram(
+                    name="%s_loc/%s/%s" % (name, i, a), data=dist[..., a])
+        else:
+            dist = dist_utils.get_base_dist(dist)
+            action_dim = action_spec.shape[-1]
+            log_scale = dist.scale.log()
+            for a in range(action_dim):
+                alf.summary.histogram(
+                    name="%s_log_scale/%s/%s" % (name, i, a),
+                    data=log_scale[..., a])
+                alf.summary.histogram(
+                    name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
 
 
 def add_mean_hist_summary(name, value):

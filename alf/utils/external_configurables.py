@@ -40,9 +40,8 @@ gin.external_configurable(torch.exp, 'torch.exp')
 gin.external_configurable(torch.tanh, 'torch.tanh')
 gin.external_configurable(torch.relu, 'torch.relu')
 gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
-
 gin.external_configurable(torch.nn.functional.softsign,
-                          'torch.nn.funtional.softsign')
+                          'torch.nn.functional.softsign')
 
 # gin.external_configurable(tf.keras.initializers.GlorotUniform,
 #                           'tf.keras.initializers.GlorotUniform')

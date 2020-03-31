@@ -80,8 +80,6 @@ class RLAlgorithm(Algorithm):
                  reward_shaping_fn: Callable = None,
                  observation_transformer=common.cast_transformer,
                  debug_summaries=False,
-                 summarize_grads_and_vars=False,
-                 summarize_action_distributions=False,
                  name="RLAlgorithm"):
         """Create a RLAlgorithm.
 
@@ -116,10 +114,6 @@ class RLAlgorithm(Algorithm):
                 applied to `time_step.observation`.
             debug_summaries (bool): If True, debug summaries will be created.
             name (str): Name of this algorithm.
-            summarize_grads_and_vars (bool): If True, gradient and network
-                variable summaries will be written during training.
-            summarize_action_distributions (bool): If True, generate summaries
-                for the action distributions.
         """
         super(RLAlgorithm, self).__init__(
             train_state_spec=train_state_spec,

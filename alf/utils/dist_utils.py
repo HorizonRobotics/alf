@@ -54,6 +54,39 @@ SigmoidTransform = get_invertable(td.SigmoidTransform)
 SoftmaxTransform = get_invertable(td.SoftmaxTransform)
 
 
+@gin.configurable
+class Softsign(td.Transform):
+    domain = constraints.real
+    codomain = constraints.interval(-1.0, 1.0)
+    bijective = True
+    sign = +1
+
+    def __eq__(self, other):
+        return isinstance(other, Softsign)
+
+    def _call(self, x):
+        return nn.functional.softsign(x)
+
+    def _inverse(self, y):
+        """
+        y > 0:
+            y = x / (1+x) => x = y / (1 - y)
+        y < 0:
+            y = x / (1-x) => x = y / (1 + y)
+        """
+        return torch.where(y > 0, y / (1 - y), y / (1 + y))
+
+    def log_abs_det_jacobian(self, x, y):
+        """
+        x > 0:
+            y = x / (1+x) => dy/dx = -1/(1+x)^2
+        x < 0:
+            y = x / (1-x) => dy/dx = 1/(1-x)^2
+        """
+        return -2. * torch.log(1 + x.abs())
+
+
+@gin.configurable
 class StableTanh(td.Transform):
     """Invertable transformation (bijector) that computes `Y = tanh(X)`,
     therefore `Y in (-1, 1)`.

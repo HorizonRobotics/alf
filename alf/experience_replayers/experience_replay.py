@@ -105,6 +105,7 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
                 be trained because its target value cannot be computed. So it
                 can be saved for the next training.
         """
+        super().__init__()
         self._save_last_exp = save_last_exp
         self._experience = None
         self._exp_sample = None
@@ -152,6 +153,13 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         assert self._batch_size is not None, "No experience is observed yet!"
         return self._batch_size
 
+    @property
+    def total_size(self):
+        if not self._batch_size:
+            return torch.tensor(0, torch.int64)
+        else:
+            return alf.nest.get_nest_batch_size(self._experience)
+
 
 class SyncUniformExperienceReplayer(ExperienceReplayer):
     """
@@ -170,6 +178,7 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
         """
+        super().__init__()
         self._experience_spec = experience_spec
         self._buffer = ReplayBuffer(
             experience_spec, batch_size, max_length=max_length)
@@ -213,3 +222,7 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     @property
     def batch_size(self):
         return self._buffer.num_environments
+
+    @property
+    def total_size(self):
+        return self._buffer.total_size

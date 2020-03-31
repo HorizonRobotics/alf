@@ -35,7 +35,7 @@ from alf.utils.math_ops import clipped_exp
 DEBUGGING = True
 
 
-def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed):
+def _create_algorithm(env, sac, use_rnn, on_policy):
     observation_spec = env.observation_spec()
     action_spec = env.action_spec()
     fc_layer_params = (16, 16)
@@ -96,7 +96,6 @@ def _create_algorithm(env, sac, use_rnn, on_policy, fast_critic_bias_speed):
         env=env,
         config=config,
         on_policy=on_policy,
-        fast_critic_bias_speed=fast_critic_bias_speed,
         ou_stddev=0.2,
         ou_damping=0.5,
         actor_network=actor_net,
@@ -114,15 +113,10 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
         dict(on_policy=False, sac=False),
         dict(on_policy=False, use_rnn=False),
         dict(on_policy=False, use_rnn=True),
-        dict(on_policy=False, fast_critic_bias_speed=10.),
     )
-    def test_sarsa(self,
-                   on_policy=False,
-                   sac=True,
-                   use_rnn=False,
-                   fast_critic_bias_speed=0.):
-        logging.info("sac=%d on_policy=%s use_rnn=%s fast_critic_bias_speed=%s"
-                     % (sac, on_policy, use_rnn, fast_critic_bias_speed))
+    def test_sarsa(self, on_policy=False, sac=True, use_rnn=False):
+        logging.info(
+            "sac=%d on_policy=%s use_rnn=%s" % (sac, on_policy, use_rnn))
         env_class = PolicyUnittestEnv
         iterations = 500
         num_env = 128
@@ -135,11 +129,7 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
             100, steps_per_episode, action_type=ActionType.Continuous)
 
         algorithm = _create_algorithm(
-            env,
-            on_policy=on_policy,
-            sac=sac,
-            use_rnn=use_rnn,
-            fast_critic_bias_speed=fast_critic_bias_speed)
+            env, on_policy=on_policy, sac=sac, use_rnn=use_rnn)
 
         env.reset()
         eval_env.reset()

@@ -25,7 +25,7 @@ import alf.layers as layers
 import alf.nest as nest
 from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import spec_utils
+from alf.utils import math_ops, spec_utils
 from .network import Network
 
 
@@ -41,6 +41,7 @@ class ActorNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu,
+                 squashing_func=torch.tanh,
                  kernel_initializer=None,
                  name="ActorNetwork"):
         """Creates an instance of `ActorNetwork`, which maps the inputs to
@@ -71,6 +72,8 @@ class ActorNetwork(Network):
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            squashing_func (Callable): the activation function used to squashing
+                the output to the range (-1, 1). Default to `tanh`.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a variance_scaling_initializer
                 with uniform distribution will be used.
@@ -115,7 +118,7 @@ class ActorNetwork(Network):
                 layers.FC(
                     self._encoding_net.output_spec.shape[0],
                     single_action_spec.shape[0],
-                    activation=torch.tanh,
+                    activation=squashing_func,
                     kernel_initializer=last_kernel_initializer))
 
     def forward(self, observation, state=()):
@@ -157,6 +160,7 @@ class ActorRNNNetwork(Network):
                  lstm_hidden_size=100,
                  actor_fc_layer_params=None,
                  activation=torch.relu,
+                 squashing_func=torch.tanh,
                  kernel_initializer=None,
                  name="ActorRNNNetwork"):
         """Creates an instance of `ActorRNNNetwork`, which maps the inputs
@@ -193,6 +197,8 @@ class ActorRNNNetwork(Network):
                 hidden FC layers that are applied after the lstm cell's output.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
+            squashing_func (Callable): the activation function used to squashing
+                the output to the range (-1, 1). Default to `tanh`.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a variance_scaling_initializer
                 with uniform distribution will be used.
@@ -240,7 +246,7 @@ class ActorRNNNetwork(Network):
                 layers.FC(
                     self._lstm_encoding_net.output_spec.shape[0],
                     single_action_spec.shape[0],
-                    activation=torch.tanh,
+                    activation=squashing_func,
                     kernel_initializer=last_kernel_initializer))
 
     def forward(self, observation, state):

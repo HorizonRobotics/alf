@@ -93,6 +93,7 @@ class NormalProjectionNetwork(DistributionNetwork):
                  state_dependent_std=False,
                  std_transform=nn.functional.softplus,
                  scale_distribution=False,
+                 dist_squashing_transform=dist_utils.StableTanh(),
                  name="NormalProjectionNetwork"):
         """Creates an instance of NormalProjectionNetwork.
 
@@ -121,7 +122,9 @@ class NormalProjectionNetwork(DistributionNetwork):
                 distribution to ensure that the output aciton fits within the
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
-            name (str):
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+            name (str): name of this network.
         """
         super(NormalProjectionNetwork, self).__init__(
             input_tensor_spec=TensorSpec((input_size, )), name=name)
@@ -147,6 +150,12 @@ class NormalProjectionNetwork(DistributionNetwork):
                 self._mean_transform = (
                     lambda inputs: self._action_means + self._action_magnitudes
                     * inputs.tanh())
+            else:
+                self._transforms = [
+                    dist_squashing_transform,
+                    dist_utils.AffineTransform(
+                        loc=self._action_means, scale=self._action_magnitudes)
+                ]
 
         self._std_transform = math_ops.identity
         if std_transform is not None:
@@ -185,13 +194,7 @@ class NormalProjectionNetwork(DistributionNetwork):
             #               TransformedDistribution(Independent, transforms))
             # ````
             squashed_dist = td.TransformedDistribution(
-                base_distribution=normal_dist,
-                transforms=[
-                    dist_utils.StableTanh(),
-                    dist_utils.AffineTransform(
-                        loc=self._action_means, scale=self._action_magnitudes)
-                ])
-
+                base_distribution=normal_dist, transforms=self._transforms)
             return squashed_dist
         else:
             return normal_dist
@@ -229,6 +232,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
                  init_std=1.0,
                  min_std=0.0,
                  max_std=None,
+                 dist_squashing_transform=dist_utils.StableTanh(),
                  name="StableNormalProjectionNetwork"):
         """Creates an instance of StableNormalProjectionNetwork.
 
@@ -261,7 +265,9 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             min_std (float): Minimum value for standard deviation.
             max_std (float): Maximum value for standard deviation. If None, no
                 maximum is enforced.
-            name (str):
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+            name (str): name of this network.
         """
         self._min_std = min_std
         self._max_std = max_std
@@ -292,6 +298,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             state_dependent_std=state_dependent_std,
             std_transform=std_transform,
             scale_distribution=scale_distribution,
+            dist_squashing_transform=dist_squashing_transform,
             name=name)
 
     def forward(self, inputs, state=()):
