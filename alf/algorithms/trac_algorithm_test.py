@@ -39,7 +39,7 @@ def create_ac_algorithm(observation_spec, action_spec, debug_summaries):
         action_spec=action_spec,
         actor_network=actor_network,
         value_network=value_network,
-        optimizer=torch.optim.Adam(lr=0.1),
+        optimizer=alf.optimizers.Adam(lr=0.1),
         debug_summaries=debug_summaries,
         name="MyActorCritic")
 
