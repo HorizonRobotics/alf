@@ -26,6 +26,7 @@ from alf.environments.torch_environment import TorchEnvironment
 
 class SuiteGymTest(alf.test.TestCase):
     def tearDown(self):
+        gin.clear_config()
         super(SuiteGymTest, self).tearDown()
 
     def test_load_adds_time_limit_steps(self):

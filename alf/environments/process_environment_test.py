@@ -35,7 +35,6 @@ class ProcessEnvironmentTest(alf.test.TestCase):
             min_duration=2,
             max_duration=2)
         env = ProcessEnvironment(constructor)
-        # alf.set_default_device('cuda')
         env.start()
         env.close()
 
@@ -49,7 +48,6 @@ class ProcessEnvironmentTest(alf.test.TestCase):
             min_duration=5,
             max_duration=5)
         env = ProcessEnvironment(constructor)
-        # alf.set_default_device('cuda')
         env.start()
         action_spec = env.action_spec()
         env.reset()
@@ -60,14 +58,12 @@ class ProcessEnvironmentTest(alf.test.TestCase):
     def test_reraise_exception_in_init(self):
         constructor = MockEnvironmentCrashInInit
         env = ProcessEnvironment(constructor)
-        # alf.set_default_device('cuda')
         with self.assertRaises(Exception):
             env.start()
 
     def test_reraise_exception_in_reset(self):
         constructor = MockEnvironmentCrashInReset
         env = ProcessEnvironment(constructor)
-        # alf.set_default_device('cuda')
         env.start()
         with self.assertRaises(Exception):
             env.reset()
@@ -77,7 +73,6 @@ class ProcessEnvironmentTest(alf.test.TestCase):
         constructor = functools.partial(MockEnvironmentCrashInStep,
                                         crash_at_step)
         env = ProcessEnvironment(constructor)
-        # alf.set_default_device('cuda')
         env.start()
         env.reset()
         action_spec = env.action_spec()

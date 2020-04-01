@@ -151,7 +151,7 @@ def _observation_channel_transpose(time_step):
 
     def _channel_transpose(tensor):
         if tensor.dim() == 3:
-            return tensor.transpose(0, 2)
+            return tensor.permute(2, 0, 1)
         return tensor
 
     observation = nest.map_structure(_channel_transpose, time_step.observation)

@@ -14,6 +14,7 @@
 """Test for alf.environments.suite_socialbot."""
 
 import functools
+import gin
 import torch
 
 import alf
@@ -26,6 +27,8 @@ class SuiteSocialbotTest(alf.test.TestCase):
         super().setUp()
         if not suite_socialbot.is_available():
             self.skipTest('suite_socialbot is not available.')
+        else:
+            gin.clear_config()
 
     def tearDown(self):
         super().tearDown()
