@@ -253,40 +253,6 @@ def cast_transformer(observation, dtype=torch.float32):
     return alf.nest.map_structure(_cast, observation)
 
 
-def transform_observation(observation, field, func):
-    """Transform the child observation in observation indicated by field using func
-
-    Args:
-        observation (nested Tensor): observations to be applied the transformation
-        field (str): field to be transformed, multi-level path denoted by "A.B.C"
-            If None, then non-nested observation is transformed
-        func (Callable): transform func, the function will be called as
-            func(observation, field) and should return new observation
-    Returns:
-        transformed observation
-    """
-
-    def _traverse_transform(obs, levels):
-        if not levels:
-            return func(obs, field)
-        level = levels[0]
-        if nest.is_namedtuple(obs):
-            new_val = _traverse_transform(
-                obs=getattr(obs, level), levels=levels[1:])
-            return obs._replace(**{level: new_val})
-        elif isinstance(obs, dict):
-            new_val = obs.copy()
-            new_val[level] = _traverse_transform(
-                obs=obs[level], levels=levels[1:])
-            return new_val
-        else:
-            raise TypeError("If value is a nest, it must be either " +
-                            "a dict or namedtuple!")
-
-    return _traverse_transform(
-        obs=observation, levels=field.split('.') if field else [])
-
-
 @gin.configurable
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     """Scale image to min and max (0->min, 255->max)
@@ -303,7 +269,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
         Transfromed observation
     """
 
-    def _transform_image(obs, field):
+    def _transform_image(obs):
         assert isinstance(obs, torch.Tensor), str(type(obs)) + ' is not Tensor'
         assert obs.dtype == torch.uint8, "Image must have dtype uint8!"
         obs = obs.type(torch.float32)
@@ -311,8 +277,8 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
 
     fields = fields or [None]
     for field in fields:
-        observation = transform_observation(
-            observation=observation, field=field, func=_transform_image)
+        observation = nest.utils.transform_nest(
+            nested=observation, field=field, func=_transform_image)
     return observation
 
 
@@ -330,13 +296,13 @@ def scale_transformer(observation, scale, dtype=torch.float32, fields=None):
         scaled observation
     """
 
-    def _scale_obs(obs, field):
+    def _scale_obs(obs):
         return (obs * scale).type(dtype)
 
     fields = fields or [None]
     for field in fields:
-        observation = transform_observation(
-            observation=observation, field=field, func=_scale_obs)
+        observation = nest.utils.transform_nest(
+            nested=observation, field=field, func=_scale_obs)
     return observation
 
 

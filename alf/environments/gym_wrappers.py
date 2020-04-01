@@ -22,7 +22,7 @@ import numpy as np
 import random
 
 import alf
-from alf.utils import common
+from alf.nest.utils import transform_nest
 
 
 def transform_space(observation_space, field, func):
@@ -40,7 +40,7 @@ def transform_space(observation_space, field, func):
 
     def _traverse_transform(space, levels):
         if not levels:
-            return func(space, field)
+            return func(space)
 
         assert isinstance(space, gym.spaces.Dict)
         level = levels[0]
@@ -85,33 +85,31 @@ class BaseObservationWrapper(gym.ObservationWrapper):
 
     def observation(self, observation):
         for field in self._fields:
-            observation = common.transform_observation(
-                observation=observation,
+            observation = transform_nest(
+                nested=observation,
                 field=field,
                 func=self.transform_observation)
         return observation
 
-    def transform_space(self, observation_space, field=None):
+    def transform_space(self, observation_space):
         """Transform space
 
         Subclass should implement this to perform transformation
 
         Args:
              observation_space (gym.Space): space to be transformed
-             field (str): field to be transformed, it's a multi-level path denoted by "A.B.C"
         Returns:
             transformed space
         """
         raise NotImplementedError("transform_space is not implemented")
 
-    def transform_observation(self, observation, field=None):
+    def transform_observation(self, observation):
         """Transform observation
 
         Subclass should implement this to perform transformation
 
         Args:
              observation (ndarray): observation to be transformed
-             field (str): field to be transformed, it's a multi-level path denoted by "A.B.C"
         Returns:
             transformed space
         """
@@ -125,7 +123,7 @@ class ImageChannelFirst(BaseObservationWrapper):
     def __init__(self, env, fields=None):
         super().__init__(env, fields=fields)
 
-    def transform_space(self, observation_space, field=None):
+    def transform_space(self, observation_space):
         if isinstance(observation_space, gym.spaces.Box):
             if self._need_channel_transpose(observation_space.shape):
                 low = observation_space.low
@@ -146,7 +144,7 @@ class ImageChannelFirst(BaseObservationWrapper):
                         low=low, high=high, dtype=observation_space.dtype)
         return observation_space
 
-    def transform_observation(self, observation, field=None):
+    def transform_observation(self, observation):
         transpose = self._need_channel_transpose(observation.shape)
         return self._make_channel_first(observation, transpose)
 
@@ -201,7 +199,7 @@ class FrameStack(BaseObservationWrapper):
         self._frames = dict()
         super().__init__(env, fields=fields)
 
-    def transform_space(self, observation_space, field=None):
+    def transform_space(self, observation_space):
         if isinstance(observation_space, gym.spaces.Box):
             low = np.repeat(
                 observation_space.low,
@@ -219,7 +217,15 @@ class FrameStack(BaseObservationWrapper):
         else:
             raise ValueError("Unsupported space:%s" % observation_space)
 
-    def transform_observation(self, observation, field=None):
+    def observation(self, observation):
+        for field in self._fields:
+            observation = transform_nest(
+                nested=observation,
+                field=field,
+                func=lambda obs: self.transform_observation(obs, field))
+        return observation
+
+    def transform_observation(self, observation, field):
         queue = self._frames.get(field, None)
         if not queue:
             queue = deque(maxlen=self._stack_size)
@@ -288,7 +294,7 @@ class FrameResize(BaseObservationWrapper):
         self._height = height
         super().__init__(env, fields=fields)
 
-    def transform_space(self, observation_space, field=None):
+    def transform_space(self, observation_space):
         obs_shape = observation_space.shape
         assert len(obs_shape) == 3, "observation shape should be (H,W,C)"
         return gym.spaces.Box(
@@ -297,7 +303,7 @@ class FrameResize(BaseObservationWrapper):
             shape=[self._width, self._height] + list(obs_shape[2:]),
             dtype=np.uint8)
 
-    def transform_observation(self, observation, field=None):
+    def transform_observation(self, observation):
         obs = cv2.resize(
             observation, (self._width, self._height),
             interpolation=cv2.INTER_AREA)
@@ -320,14 +326,14 @@ class FrameGrayScale(BaseObservationWrapper):
         """
         super().__init__(env, fields=fields)
 
-    def transform_space(self, observation_space, field=None):
+    def transform_space(self, observation_space):
         obs_shape = observation_space.shape
         assert len(obs_shape) == 3 and obs_shape[-1] == 3, \
             "observation shape should be (H, W, C) where C=3"
         return gym.spaces.Box(
             low=0, high=255, shape=list(obs_shape[:-1]) + [1], dtype=np.uint8)
 
-    def transform_observation(self, obs, field=None):
+    def transform_observation(self, obs):
         obs = cv2.cvtColor(obs, cv2.COLOR_RGB2GRAY)
         return np.expand_dims(obs, -1)
 
