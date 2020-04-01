@@ -1,0 +1,16 @@
+absl-py
+atari_py == 0.1.7
+fasteners
+gin-config
+gym==0.12.5
+matplotlib
+opencv-python>=3.4.1.15
+pathos==0.2.4
+psutil
+sphinx==2.4.4
+sphinxcontrib-napoleon==0.7
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch==1.4.0+cpu
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torchvision==0.5.0+cpu
+tensorboard==2.1.0

@@ -29,6 +29,9 @@ setup(
         'pillow',
         'psutil',
         'pybullet == 2.5.0',
+        'sphinx==2.4.4',
+        'sphinxcontrib-napoleon==0.7',
+        'sphinx-rtd-theme==0.4.3',  # used to build html docs locally
         'tensorboard == 2.1.0',
         'torch == 1.4.0',
         'torchvision == 0.5.0',

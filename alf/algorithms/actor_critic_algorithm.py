@@ -45,8 +45,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                  optimizer=None,
                  debug_summaries=False,
                  name="ActorCriticAlgorithm"):
-        """Create an ActorCriticAlgorithm.
-
+        """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.

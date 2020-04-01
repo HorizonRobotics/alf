@@ -1,0 +1,116 @@
+Knowlege Base
+=============
+
+Debugging using VScode
+----------------------
+
+Currently, ALF uses separate processes to launch multiple environments. Because
+vscode does not support debug for `multiprocessing
+<https://github.com/microsoft/ptvsd/issues/1706>`_, in order to debug in vscode,
+you need to make ALF not to start separate processes by setting the following
+gin config:
+
+.. code-block:: python
+
+  create_environment.num_parallel_environments=1
+  Trainer._create_environment.nonparallel=True
+
+Algorithm
+---------
+
+Algorithm is the most important concept in ALF. (TODO: more description about
+the design.)
+
+TimeStep
+--------
+
+:code:`TimeStep` is a data structure that stores the information from the result
+of each environment step. It contains six fields:
+
+* :code:`step_type`: type of this step. It has three possible values:
+
+  - :code:`StepType.FIRST` is the first step of an episode, which is typically
+    the step generated from :code:`env.reset()`.
+
+  - :code:`StepType.LAST` is the last step of an episode.
+
+  - :code:`StepType.MID` is for all the other steps in an episode.
+
+* :code:`reward`: reward from the previous action. In most RL literature, the
+  reward for an action :math:`a_t` at time :math:`t` is usually written as
+  :math:`r_t`. However, in ALF, :math:`r_t` will always represent the reward for
+  the previous action at time :math:`t-1`.
+
+* :code:`discount`: discount value for discounting future reward. When
+  calculating the cumulative discounted return, :code:`discount` is used to
+  discount the future reward. There is some subtleties on how this value is set
+  which we will describe later.
+
+* :code:`observation`: observation from the environment. It can be a nest of
+  Tensors. It is obtained after the environment execute :code:`prev_action`.
+
+* :code:`prev_action`: the previous action taken by the agent.
+
+* :code:`env_id`: which environment this :code:`TimeStep` comes from. This id
+  information can be used by replay buffers and metrics if there are multiple
+  environments accessing them asynchronously.
+
+About :code:`TimeStep.discount`
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a `gym <https://https://gym.openai.com/>`_ environment is registered, there
+is an optional parameter named :code:`max_episode_steps` which has default value
+of :code:`None`. For example, the following is the registration for
+:code:`MountainCar` environment:
+
+.. code-block:: python
+
+  register(
+      id='MountainCar-v0',
+      entry_point='gym.envs.classic_control:MountainCarEnv',
+      max_episode_steps=200,
+      reward_threshold=-110.0,
+  )
+
+Gym creates an :code:`EnvSpec` object for each registered environment.
+:code:`EnvSpec` has an attribute :code:`timestep_limit` which returns the value
+of :code:`max_episode_steps`.
+
+A gym environment can be loaded by using :code:`gym.make()` defined in
+:code:`gym.envs.registration`. If :code:`timestep_limit` of the spec of this
+environment is not :code:`None`, this function will wrap the environment using
+:code:`gym.wrappers.time_limit.TimeLimit`. This wrapper will end an episode by
+returning :code:`done=True` if the number of steps exceeds
+:code:`max_episode_steps`.
+
+Each :code:`TimeStep` is associated with a :code:`discount` value. In general,
+if an episode ends, :code:`TimeStep.step_type` is set to :code:`StepType.LAST`
+and :code:`TimeStep.discount` is set to 0 to prevent using the value estimation
+at the last step. However, if an episode ends because the
+:code:`max_episode_steps` is reached, it wants to use the original
+:code:`discount` instead of 0 so that the value estimation at the last step can
+be properly used to estimate the value of previous steps. In order to achieve
+this, we create an environemnt in the following way to avoid
+:code:`gym.wrappers.time_limit.TimeLimit`:
+
+.. code-block:: python
+
+  gym_spec = gym.spec(environment_name)
+  gym_env = gym_spec.make()
+
+Then we use the wrapper :code:`environments.torch_wrappers.TimeLimit` to wrap
+the environment to limit the steps so that it does not change the discount when
+:code:`max_episode_steps` is reached.
+
+The following table summarizes how step type and discount affect the learning.
+
+============== ======== ===================== ================ ===================================================
+Step type      Discount | Value used          | Value          Note
+                        | for bootstrapping   | to be learned?
+                        | the previous value?
+============== ======== ===================== ================ ===================================================
+:code:`FIRST`   1           No                  Yes            First step of an episode
+:code:`MID`     1           Yes                 Yes            Any step other than :code:`FIRST` and :code:`LAST`
+:code:`LAST`    0           No                  No             Last step because of a normal game end
+:code:`LAST`    1           Yes                 No             Last step because of time limit
+============== ======== ===================== ================ ===================================================
