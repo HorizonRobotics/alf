@@ -156,11 +156,19 @@ class ImageChannelFirst(BaseObservationWrapper):
         return False
 
     def _make_channel_first(self, np_array, transpose=False):
+        """
+        Note that the extra copy() after np.transpose is crucial to pickle dump speed
+        when called by subprocesses. An explanation of the non-contiguous memory caused
+        by numpy tranpose can be found in the following:
+
+        https://stackoverflow.com/questions/26998223/
+        """
+
         if transpose:
             rank = np_array.ndim
             np_array = np.transpose(np_array,
                                     (rank - 1, ) + tuple(range(rank - 1)))
-        return np_array
+        return np_array.copy()
 
 
 @gin.configurable

@@ -58,8 +58,18 @@ function test() {
         alf.bin.train_play_test \
         alf.data_structures_test \
         alf.device_ctx_test \
-        alf.environments.suite_unittest_test \
+        alf.environments.gym_wrappers_test \
+        alf.environments.parallel_torch_environment_test \
+        alf.environments.process_environment_test \
+        alf.environments.random_torch_environment_test \
         alf.environments.simple.noisy_array_test \
+        alf.environments.suite_gym_test \
+        alf.environments.suite_mario_test \
+        alf.environments.suite_socialbot_test \
+        alf.environments.suite_unittest_test \
+        alf.environments.torch_environment_test \
+        alf.environments.torch_gym_wrapper_test \
+        alf.environments.torch_wrappers_test \
         alf.experience_replayers.replay_buffer_test \
         alf.metrics.metrics_test \
         alf.nest.nest_test \
