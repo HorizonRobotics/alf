@@ -55,7 +55,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
             continuous_projection_net_ctor=StableNormalProjectionNetwork)
         value_net = ValueNetwork(observation_spec, fc_layer_params=())
 
-    optimizer = torch.optim.Adam(lr=learning_rate)
+    optimizer = alf.optimizers.Adam(lr=learning_rate)
 
     config = TrainerConfig(
         root_dir="dummy",

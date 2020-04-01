@@ -18,17 +18,13 @@ import gym
 import torch
 
 import alf
-from alf.optimizers import AdamTF
 
-torch.optim.Adam = gin.external_configurable(torch.optim.Adam,
-                                             'torch.optim.Adam')
-gin.bind_parameter('torch.optim.Adam.params', [{'params': []}])
-
-gin.bind_parameter('AdamTF.params', [{'params': []}])
-
-torch.optim.AdamW = gin.external_configurable(torch.optim.AdamW,
-                                              'torch.optim.AdamW')
-gin.bind_parameter('torch.optim.AdamW.params', [{'params': []}])
+alf.optimizers.Adam = gin.external_configurable(alf.optimizers.Adam,
+                                                'alf.optimizers.Adam')
+alf.optimizers.AdamW = gin.external_configurable(alf.optimizers.AdamW,
+                                                 'alf.optimizers.AdamW')
+alf.optimizers.SGD = gin.external_configurable(alf.optimizers.SGD,
+                                               'alf.optimizers.SGD')
 
 # This allows the environment creation arguments to be configurable by supplying
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE

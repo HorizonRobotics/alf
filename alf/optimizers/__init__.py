@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,3 +13,6 @@
 # limitations under the License.
 
 from .adam_tf import AdamTF
+from .optimizers import Adam
+from .optimizers import AdamW
+from .optimizers import SGD

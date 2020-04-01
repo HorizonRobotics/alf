@@ -49,7 +49,7 @@ def create_algorithm(env):
         value_network=value_network,
         env=env,
         config=config,
-        optimizer=torch.optim.Adam(lr=1e-2),
+        optimizer=alf.optimizers.Adam(lr=1e-2),
         debug_summaries=True,
         name="MyActorCritic")
     return alg
@@ -87,4 +87,4 @@ class ActorCriticAlgorithmTest(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

@@ -70,7 +70,9 @@ class AlgorithmTest(alf.test.TestCase):
         alg_2 = MyAlg(params=[param_2], name="alg_2")
 
         alg_root = MyAlg(
-            optimizer=torch.optim.Adam(lr=0.25), sub_algs=[alg_1], name="root")
+            optimizer=alf.optimizers.Adam(lr=0.25),
+            sub_algs=[alg_1],
+            name="root")
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 1)
         self.assertEqual(info[0]['parameters'],
@@ -78,7 +80,7 @@ class AlgorithmTest(alf.test.TestCase):
 
         alg_1 = MyAlg(params=[param_1, param_1])
         alg_root = MyAlg(
-            optimizer=torch.optim.Adam(lr=0.25),
+            optimizer=alf.optimizers.Adam(lr=0.25),
             sub_algs=[alg_1, alg_1],
             name="root")
         info = json.loads(alg_root.get_optimizer_info())
@@ -87,10 +89,10 @@ class AlgorithmTest(alf.test.TestCase):
                          [alg_root.get_param_name(param_1)])
 
         alg_root = MyAlg(
-            optimizer=torch.optim.Adam(lr=0.25),
+            optimizer=alf.optimizers.Adam(lr=0.25),
             sub_algs=[alg_1, alg_2],
             name="root")
-        alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
+        alg_root.add_optimizer(alf.optimizers.Adam(lr=0.5), [alg_2])
         info = json.loads(alg_root.get_optimizer_info())
         logging.info(pprint.pformat(info))
         self.assertEqual(len(info), 2)
@@ -112,7 +114,7 @@ class AlgorithmTest(alf.test.TestCase):
                          [alg_root.get_param_name(param_2)])
 
         alg_root = MyAlg(sub_algs=[alg_1, alg_2], name="root")
-        alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
+        alg_root.add_optimizer(alf.optimizers.Adam(lr=0.5), [alg_2])
         info = json.loads(alg_root.get_optimizer_info())
         self.assertEqual(len(info), 2)
         self.assertEqual(info[0]['optimizer'], 'None')
@@ -151,15 +153,15 @@ class AlgorithmTest(alf.test.TestCase):
         alg_2 = MyAlg(params=[param_2], name="alg_2")
 
         alg_root = MyAlg(sub_algs=[alg_1, alg_2], name="root")
-        alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
+        alg_root.add_optimizer(alf.optimizers.Adam(lr=0.5), [alg_2])
         loss = alg_root.calc_loss(TrainingInfo())
         self.assertRaises(AssertionError, alg_root.update_with_gradient, loss)
 
         alg_root = MyAlg(
-            optimizer=torch.optim.Adam(lr=0.25),
+            optimizer=alf.optimizers.Adam(lr=0.25),
             sub_algs=[alg_1, alg_2],
             name="root")
-        alg_root.add_optimizer(torch.optim.Adam(lr=0.5), [alg_2])
+        alg_root.add_optimizer(alf.optimizers.Adam(lr=0.5), [alg_2])
         loss_info, params = alg_root.update_with_gradient(
             alg_root.calc_loss(TrainingInfo()))
         self.assertEqual(set(params), set(alg_root.named_parameters()))

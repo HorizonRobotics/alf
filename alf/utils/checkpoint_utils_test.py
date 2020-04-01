@@ -202,7 +202,7 @@ class TestMultiAlgSingleOpt(alf.test.TestCase):
             alg_2 = SimpleAlg(
                 params=[param_2], sub_algs=[alg_2_1], name="alg_2")
 
-            optimizer_root = torch.optim.Adam(lr=0.1)
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
             alg_root = SimpleAlg(
                 params=[param_root],
@@ -247,11 +247,11 @@ class TestMultiAlgMultiOpt(alf.test.TestCase):
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
             param_2 = nn.Parameter(torch.Tensor([2]))
-            optimizer_2 = torch.optim.Adam(lr=0.2)
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(
                 params=[param_2], optimizer=optimizer_2, name="alg_2")
 
-            optimizer_root = torch.optim.Adam(lr=0.1)
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
             alg_root = ComposedAlg(
                 params=[param_root],
@@ -289,12 +289,12 @@ class TestWithParamSharing(alf.test.TestCase):
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
             param_2 = nn.Parameter(torch.Tensor([2]))
-            optimizer_2 = torch.optim.Adam(lr=0.2)
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(
                 params=[param_2], optimizer=optimizer_2, name="alg_2")
             alg_2.ignored_param = param_1
 
-            optimizer_root = torch.optim.Adam(lr=0.1)
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
             alg_root = ComposedAlg(
                 params=[param_root],
@@ -342,11 +342,11 @@ class TestWithCycle(alf.test.TestCase):
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
             param_2 = nn.Parameter(torch.Tensor([2]))
-            optimizer_2 = torch.optim.Adam(lr=0.2)
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(
                 params=[param_2], optimizer=optimizer_2, name="alg_2")
 
-            optimizer_root = torch.optim.Adam(lr=0.1)
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
 
             # case 1: cycle without ignore
@@ -441,11 +441,11 @@ class TestModelMismatch(alf.test.TestCase):
             alg_1 = SimpleAlg(params=[param_1], name="alg_1")
 
             param_2 = nn.Parameter(torch.Tensor([2]))
-            optimizer_2 = torch.optim.Adam(lr=0.2)
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(
                 params=[param_2], optimizer=optimizer_2, name="alg_2")
 
-            optimizer_root = torch.optim.Adam(lr=0.1)
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
             alg_root12 = ComposedAlg(
                 params=[param_root],
@@ -481,17 +481,17 @@ class TestOptMismatch(alf.test.TestCase):
         # test optimizer mis-match
         with tempfile.TemporaryDirectory() as ckpt_dir:
             param_1 = nn.Parameter(torch.Tensor([1]))
-            optimizer_1 = torch.optim.Adam(lr=0.2)
+            optimizer_1 = alf.optimizers.Adam(lr=0.2)
             alg_1_no_op = SimpleAlg(params=[param_1], name="alg_1_no_op")
             alg_1 = SimpleAlg(
                 params=[param_1], optimizer=optimizer_1, name="alg_1")
 
             param_2 = nn.Parameter(torch.Tensor([2]))
-            optimizer_2 = torch.optim.Adam(lr=0.2)
+            optimizer_2 = alf.optimizers.Adam(lr=0.2)
             alg_2 = SimpleAlg(
                 params=[param_2], optimizer=optimizer_2, name="alg_2")
 
-            optimizer_root = torch.optim.Adam(lr=0.1)
+            optimizer_root = alf.optimizers.Adam(lr=0.1)
             param_root = nn.Parameter(torch.Tensor([0]))
             alg_root_1_no_op = ComposedAlg(
                 params=[param_root],
@@ -523,4 +523,4 @@ class TestOptMismatch(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    alf.test.main()

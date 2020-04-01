@@ -39,7 +39,7 @@ class MyAlg(OnPolicyAlgorithm):
             train_state_spec=observation_spec,
             env=env,
             config=config,
-            optimizer=torch.optim.Adam(lr=1e-1),
+            optimizer=alf.optimizers.Adam(lr=1e-1),
             debug_summaries=debug_summaries,
             name="MyAlg")
 

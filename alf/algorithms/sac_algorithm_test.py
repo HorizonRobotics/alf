@@ -80,9 +80,9 @@ class SACAlgorithmTest(alf.test.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-2),
-            critic_optimizer=torch.optim.Adam(lr=1e-2),
-            alpha_optimizer=torch.optim.Adam(lr=1e-2),
+            actor_optimizer=alf.optimizers.Adam(lr=1e-2),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
+            alpha_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,
             name="MySAC")
 
@@ -140,9 +140,9 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             critic_network=critic_network,
             env=env,
             config=config,
-            actor_optimizer=torch.optim.Adam(lr=1e-2),
-            critic_optimizer=torch.optim.Adam(lr=1e-2),
-            alpha_optimizer=torch.optim.Adam(lr=1e-2),
+            actor_optimizer=alf.optimizers.Adam(lr=1e-2),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
+            alpha_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,
             name="MySAC")
 
