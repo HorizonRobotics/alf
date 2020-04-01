@@ -156,9 +156,10 @@ def get_outer_rank(tensors, specs):
 
 
 def transform_nest(nested, field, func):
-    """Transform the node of a nested structure indicated by `field` using `func`.
+    """Transform the node of a nested structure indicated by ``field`` using
+    ``func``.
 
-    This function can be used to update our `namedtuple` structure conveniently,
+    This function can be used to update our ``namedtuple`` structure conveniently,
     comparing the following two methods:
 
         .. code-block:: python
@@ -172,7 +173,7 @@ def transform_nest(nested, field, func):
             info = transform_nest(info, 'rl.sac', lambda x: x * 0.5)
 
     The second method is usually shorter, more intuitive, and less error-prone
-    when `field` is a long string.
+    when ``field`` is a long string.
 
     Args:
         nested (nested Tensor): the structure to be applied the transformation.
