@@ -1,9 +1,8 @@
 import alf.algorithms.actor_critic_algorithm
-import alf.trainers.on_policy_trainer
+import alf.algorithms.agent
 import alf.environments.suite_socialbot
 
 # environment config
-import alf.environments.wrappers
 create_environment.env_name='SocialBot-SimpleNavigationDiscreteAction-v0'
 create_environment.env_load_fn=@suite_socialbot.load
 suite_socialbot.load.gym_env_wrappers=(@FrameStack,)
@@ -19,35 +18,38 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256,)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.elu
+actor/ActorDistributionNetwork.activation=@torch.nn.functional.elu
 actor/ActorDistributionNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
-actor/ActorDistributionNetwork.discrete_projection_net=@CategoricalProjectionNetwork
+actor/ActorDistributionNetwork.discrete_projection_net_ctor=@CategoricalProjectionNetwork
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256,)
-value/ValueNetwork.activation_fn=@tf.nn.elu
+value/ValueNetwork.activation=@torch.nn.functional.elu
 value/ValueNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 
-ac/Adam.learning_rate=1e-4
+ac/AdamTF.lr=1e-4
 
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/Adam()
-Agent.gradient_clipping=None
 
+import alf.algorithms.trac_algorithm
+TracAlgorithm.ac_algorithm_cls=@ActorCriticAlgorithm
+TracAlgorithm.action_dist_clip_per_dim=0.25
+
+Agent.optimizer=@ac/AdamTF()
+Agent.gradient_clipping=None
+Agent.rl_algorithm_cls=@TracAlgorithm
 
 # training config
-TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=100
 TrainerConfig.algorithm_ctor=@Agent
-TrainerConfig.num_iterations=1000000
-TrainerConfig.use_tf_functions=1
+TrainerConfig.num_iterations=100000
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
-TrainerConfig.summary_interval=1
+TrainerConfig.summary_interval=100
 
 Agent.observation_transformer=@image_scale_transformer
 

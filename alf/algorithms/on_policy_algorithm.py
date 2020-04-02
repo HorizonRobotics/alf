@@ -19,6 +19,7 @@ import alf
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import Experience, StepType, TimeStep, TrainingInfo
+from alf.utils.summary_utils import record_time
 
 
 class OnPolicyAlgorithm(OffPolicyAlgorithm):
@@ -66,14 +67,18 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
     def _train_iter_on_policy(self):
         """User may override this for their own training procedure."""
         alf.summary.get_global_counter().add_(1)
-        training_info = self.unroll(self._config.unroll_length)
-        training_info = training_info._replace(
-            rollout_info=(), info=training_info.rollout_info)
-        valid_masks = (training_info.step_type != StepType.LAST).to(
-            torch.float32)
-        loss_info, params = self.update_with_gradient(
-            self.calc_loss(training_info), valid_masks)
-        self.after_update(training_info)
-        self.summarize_train(training_info, loss_info, params)
-        self.summarize_metrics()
+
+        with record_time("time/unroll"):
+            training_info = self.unroll(self._config.unroll_length)
+
+        with record_time("time/train"):
+            training_info = training_info._replace(
+                rollout_info=(), info=training_info.rollout_info)
+            valid_masks = (training_info.step_type != StepType.LAST).to(
+                torch.float32)
+            loss_info, params = self.update_with_gradient(
+                self.calc_loss(training_info), valid_masks)
+            self.after_update(training_info)
+            self.summarize_train(training_info, loss_info, params)
+            self.summarize_metrics()
         return torch.tensor(training_info.step_type.shape).prod()

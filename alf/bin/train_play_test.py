@@ -326,7 +326,6 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(gin_file='ac_cart_pole.gin', test_perf_func=_test_func)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ac_simple_navigation(self):
         self._test(
             gin_file='ac_simple_navigation.gin',
