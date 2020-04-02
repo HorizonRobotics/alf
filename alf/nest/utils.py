@@ -177,10 +177,11 @@ def transform_nest(nested, field, func):
 
     Args:
         nested (nested Tensor): the structure to be applied the transformation.
-        field (str): field to be transformed, multi-level path denoted by "A.B.C"
-            If None, then the root object is transformed.
+        field (str): If a string, it's the field to be transformed, multi-level
+            path denoted by "A.B.C". If ``None``, then the root object is
+            transformed.
         func (Callable): transform func, the function will be called as
-            func(nested) and should return a new nest.
+            ``func(nested)`` and should return a new nest.
     Returns:
         transformed nest
     """

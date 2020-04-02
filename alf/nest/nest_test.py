@@ -21,7 +21,7 @@ import alf
 import alf.nest as nest
 from alf.data_structures import namedtuple
 from alf.tensor_specs import TensorSpec
-from alf.nest.utils import NestConcat, NestSum
+from alf.nest.utils import NestConcat, NestSum, transform_nest
 
 NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 
@@ -238,6 +238,30 @@ class TestPruneNestLike(alf.test.TestCase):
         d1 = dict(x=1, y=2)
         d2 = dict(x=1, z=2)
         self.assertRaises(ValueError, nest.prune_nest_like, d1, d2)
+
+
+class TestTransformNest(alf.test.TestCase):
+    def test_transform_nest(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=torch.zeros((4, )))
+        transformed_ntuple = transform_nest(
+            ntuple, field='a.x', func=lambda x: x + 1.0)
+        ntuple.a.update({'x': torch.ones(())})
+        alf.nest.map_structure(self.assertEqual, transformed_ntuple, ntuple)
+
+        ntuple = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.zeros((2, 4))),
+            b=NTuple(a=torch.zeros((4, )), b=NTuple(a=[1], b=[1])))
+        transformed_ntuple = transform_nest(
+            ntuple, field='b.b.b', func=lambda _: [2])
+        ntuple = ntuple._replace(
+            b=ntuple.b._replace(b=ntuple.b.b._replace(b=[2])))
+        alf.nest.map_structure(self.assertEqual, transformed_ntuple, ntuple)
+
+        ntuple = NTuple(a=1, b=2)
+        transformed_ntuple = transform_nest(ntuple, None, NestSum())
+        self.assertEqual(transformed_ntuple, 3)
 
 
 if __name__ == '__main__':
