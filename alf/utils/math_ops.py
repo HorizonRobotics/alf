@@ -182,3 +182,19 @@ def argmin(x):
     i = torch.cumsum(num_mins, 0)
     i = torch.cat([torch.tensor([0]), i[:-1]])
     return c[i]
+
+
+def shuffle(values):
+    """Shuffle a nest.
+
+    Shuffle all the tensors in `values` by a same random order.
+
+    Args:
+        values (nested Tensor): nested Tensor to be shuffled. All the tensor
+            need to have the same batch size (i.e. shape[0]).
+    Returns:
+        shuffled value along dimension 0.
+    """
+    batch_size = alf.nest.get_nest_batch_size(values)
+    indices = torch.randperm(batch_size)
+    return nest_map(lambda value: value[indices], values)

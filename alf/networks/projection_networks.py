@@ -28,10 +28,6 @@ from alf.utils import dist_utils
 import alf.utils.math_ops as math_ops
 
 
-def DiagMultivariateNormal(loc, scale_diag):
-    return td.Independent(td.Normal(loc, scale_diag), 1)
-
-
 @gin.configurable
 class CategoricalProjectionNetwork(DistributionNetwork):
     def __init__(self,
@@ -181,7 +177,7 @@ class NormalProjectionNetwork(DistributionNetwork):
             self._std_projection_layer = lambda _: self._std
 
     def _normal_dist(self, means, stds):
-        normal_dist = DiagMultivariateNormal(loc=means, scale_diag=stds)
+        normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
         if self._scale_distribution:
             # The transformed distribution can also do reparameterized sampling
             # i.e., `.has_rsample=True`

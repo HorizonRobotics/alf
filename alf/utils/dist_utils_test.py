@@ -79,7 +79,7 @@ class DistributionSpecTest(alf.test.TestCase):
         }
         dist1 = spec.build_distribution(params1)
         self.assertEqual(dist1.event_shape, dist.event_shape)
-        self.assertEqual(type(dist1), td.Independent)
+        self.assertEqual(type(dist1), dist_utils.DiagMultivariateNormal)
         self.assertEqual(type(dist1.base_dist), td.Normal)
         self.assertEqual(dist1.base_dist.mean, params1['loc'])
         self.assertEqual(dist1.base_dist.stddev, params1['scale'])
@@ -104,7 +104,8 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertEqual(type(dist1), td.TransformedDistribution)
         self.assertEqual(dist1.event_shape, dist.event_shape)
         self.assertEqual(dist1.transforms, transforms)
-        self.assertEqual(type(dist1.base_dist), td.Independent)
+        self.assertEqual(
+            type(dist1.base_dist), dist_utils.DiagMultivariateNormal)
         self.assertEqual(type(dist1.base_dist.base_dist), td.Normal)
         self.assertEqual(dist1.base_dist.base_dist.mean, params1['loc'])
         self.assertEqual(dist1.base_dist.base_dist.stddev, params1['scale'])
