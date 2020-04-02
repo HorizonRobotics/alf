@@ -58,8 +58,7 @@ class RingBuffer(nn.Module):
                  max_length=1024,
                  device="cpu",
                  name="RingBuffer"):
-        """Create a RingBuffer.
-
+        """
         Args:
             data_spec (nested TensorSpec): spec describing a single item that
                 can be stored in this buffer.
