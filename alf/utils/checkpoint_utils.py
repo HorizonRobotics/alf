@@ -69,12 +69,15 @@ class Checkpointer(object):
 
         f_path_latest = os.path.join(self._ckpt_dir, "latest")
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
+        map_location = None
+        if not torch.cuda.is_available():
+            map_location = torch.device('cpu')
         if global_step == "latest" and os.path.isfile(f_path_latest):
-            checkpoint = torch.load(f_path_latest)
+            checkpoint = torch.load(f_path_latest, map_location=map_location)
             _load_checkpoint(checkpoint)
             logging.info("Checkpoint 'latest' is loaded successfully.")
         elif os.path.isfile(f_path):
-            checkpoint = torch.load(f_path)
+            checkpoint = torch.load(f_path, map_location=map_location)
             _load_checkpoint(checkpoint)
             logging.info("Checkpoint 'ckpt-{}' is loaded successfully.".format(
                 global_step))
