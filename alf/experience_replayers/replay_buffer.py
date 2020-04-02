@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,8 +45,8 @@ def _convert_device(nests):
         raise NotImplementedError("Unknown device %s" % d)
 
 
-class ReplayBuffer(nn.Module):
-    """Replay buffer.
+class RingBuffer(nn.Module):
+    """Ring buffer -- Underlying implementation for replay buffer.
 
     Different from tf_agents.replay_buffers.tf_uniform_replay_buffer, this
     replay buffer allow users to specify the environment id when adding batch.
@@ -57,13 +57,13 @@ class ReplayBuffer(nn.Module):
                  num_environments,
                  max_length=1024,
                  device="cpu",
-                 name="ReplayBuffer"):
-        """Create a ReplayBuffer.
+                 name="RingBuffer"):
+        """Create a RingBuffer.
 
         Args:
             data_spec (nested TensorSpec): spec describing a single item that
                 can be stored in this buffer.
-            num_environments (int): number of environments.
+            num_environments (int): number of environments or total batch size.
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
             device (str): A TensorFlow device to place the Variables and ops.
@@ -217,3 +217,21 @@ class ReplayBuffer(nn.Module):
     def total_size(self):
         """Total size from all environments."""
         return _convert_device(self._current_size.sum())
+
+
+class ReplayBuffer(RingBuffer):
+    """Replay buffer with RingBuffer as implementation.
+    """
+
+    def __init__(self,
+                 data_spec,
+                 num_environments,
+                 max_length=1024,
+                 device="cpu",
+                 name="ReplayBuffer"):
+        super().__init__(
+            data_spec,
+            num_environments,
+            max_length=max_length,
+            device=device,
+            name=name)
