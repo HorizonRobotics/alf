@@ -303,10 +303,10 @@ def play(root_dir,
 
     recorder = None
     if record_file is not None:
-        recorder = VideoRecorder(env.gym, path=record_file)
+        recorder = VideoRecorder(env, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
-        env.gym.render(mode='human')
+        env.render(mode='human')
     env.reset()
     if recorder:
         recorder.capture_frame()
@@ -326,7 +326,7 @@ def play(root_dir,
         if recorder:
             recorder.capture_frame()
         else:
-            env.gym.render(mode='human')
+            env.render(mode='human')
             time.sleep(sleep_time_per_step)
 
         episode_reward += float(time_step.reward)
