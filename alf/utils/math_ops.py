@@ -187,7 +187,7 @@ def argmin(x):
 def shuffle(values):
     """Shuffle a nest.
 
-    Shuffle all the tensors in `values` by a same random order.
+    Shuffle all the tensors in ``values`` by a same random order.
 
     Args:
         values (nested Tensor): nested Tensor to be shuffled. All the tensor

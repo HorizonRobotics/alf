@@ -75,7 +75,7 @@ class MIEstimator(Algorithm):
        samples from the two buffers.
     * 'shuffle': randomly shuffle batch y
     * 'shift': shift batch y by one sample, i.e.
-      torch.cat([y[-1:, ...], y[0:-1, ...]], dim=0)
+      ``torch.cat([y[-1:, ...], y[0:-1, ...]], dim=0)``
     * direct sampling: You can also provide the marginal distribution of y to
       train_step(). In this case, sampler is ignored and samples of y for
       estimating E_Q(.) are sampled from y_distribution.
@@ -107,7 +107,7 @@ class MIEstimator(Algorithm):
                  estimator_type='DV',
                  averager=ScalarAdaptiveAverager(),
                  name="MIEstimator"):
-        """Create a MIEstimator.
+        """
 
         Args:
             x_spec (nested TensorSpec): spec of x
@@ -178,12 +178,12 @@ class MIEstimator(Algorithm):
             self._delta_loc_layer = alf.layers.FC(
                 hidden_size,
                 y_spec.shape[-1],
-                kernel_initializer=lambda x: x.fill_(0),
+                kernel_initializer=torch.nn.init.zeros_,
                 bias_init_value=0.0)
             self._delta_scale_layer = alf.layers.FC(
                 hidden_size,
                 y_spec.shape[-1],
-                kernel_initializer=lambda x: x.fill_(0),
+                kernel_initializer=torch.nn.init.zeros_,
                 bias_init_value=math.log(math.e - 1))
 
     def _buffer_sampler(self, x, y):
@@ -300,7 +300,7 @@ class MIEstimator(Algorithm):
         """Return estimated pointwise mutual information.
 
         The pointwise mutual information is defined as:
-            log P(x|y)/P(x) = log P(y|x)/P(y)
+            :math:`log P(x|y)/P(x) = log P(y|x)/P(y)`
 
         Args:
             x (Tensor): x
