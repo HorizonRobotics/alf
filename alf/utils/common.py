@@ -613,15 +613,19 @@ def epsilon_greedy_sample(nested_dist, eps=0.1):
 
     def dist_fn(dist):
         try:
-            greedy_action = tf.cond(
-                tf.less(tf.random.uniform((), 0, 1), eps), dist.sample,
-                dist.mode)
+            random_action = dist.sample()
+            greedy_action = dist.mode()
+            batch_size = tf.shape(greedy_action)[:1]
+            choose_random_action = tf.random.uniform(batch_size) < eps
+            action = tf.where(
+                expand_dims_as(choose_random_action, greedy_action),
+                random_action, greedy_action)
         except NotImplementedError:
             raise ValueError(
                 "Your network's distribution does not implement mode "
                 "making it incompatible with a greedy policy.")
 
-        return greedy_action
+        return action
 
     if eps >= 1.0:
         return sample_action_distribution(nested_dist)
