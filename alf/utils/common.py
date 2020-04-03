@@ -168,11 +168,11 @@ def concat_shape(shape1, shape2):
     Returns:
         Tensor for the concatenated shape
     """
-    if not isinstance(shape1, tf.Tensor):
-        shape1 = tf.convert_to_tensor(shape1, dtype=tf.int32)
-    if not isinstance(shape2, tf.Tensor):
-        shape2 = tf.convert_to_tensor(shape2, dtype=tf.int32)
-    return tf.concat([shape1, shape2], axis=0)
+    if not torch.is_tensor(shape1):
+        shape1 = torch.as_tensor(shape1, dtype=torch.int32)
+    if not torch.is_tensor(shape2):
+        shape2 = torch.as_tensor(shape2, dtype=torch.int32)
+    return torch.cat((shape1, shape2), dim=0)
 
 
 def expand_dims_as(x, y):

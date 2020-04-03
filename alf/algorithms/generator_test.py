@@ -16,52 +16,49 @@ import math
 
 from absl import logging
 from absl.testing import parameterized
-import tensorflow as tf
+import torch
 
-from tf_agents.networks.network import Network
+import alf
 from alf.algorithms.generator import Generator
-from alf.algorithms.mi_estimator import MIEstimator
+# from alf.algorithms.mi_estimator import MIEstimator
+from alf.networks import Network
+from alf.tensor_specs import TensorSpec
 
 
 class Net(Network):
-    def __init__(self, dim):
+    def __init__(self, dim=2):
         super().__init__(
-            input_tensor_spec=tf.TensorSpec(shape=(dim, )),
-            state_spec=(),
-            name="Net")
-        self._w = tf.Variable(
-            initial_value=[[1, 2], [-1, 1], [1, 1]],
-            shape=(3, dim),
-            dtype=tf.float32)
+            input_tensor_spec=TensorSpec(shape=(dim, )), name="Net")
+        self._w = torch.tensor([[1, 2], [-1, 1], [1, 1]],
+                               dtype=torch.float32,
+                               requires_grad=True)
 
-    def call(self, input):
-        return tf.matmul(input, self._w), ()
+    def forward(self, input, state=()):
+        return torch.matmul(input, self._w), ()
 
 
 class Net2(Network):
-    def __init__(self, dim):
+    def __init__(self, dim=2):
         super().__init__(
             input_tensor_spec=[
-                tf.TensorSpec(shape=(dim, )),
-                tf.TensorSpec(shape=(dim, ))
+                TensorSpec(shape=(dim, )),
+                TensorSpec(shape=(dim, ))
             ],
-            state_spec=(),
             name="Net")
-        self._w = tf.Variable(
-            initial_value=[[1, 2], [1, 1]], shape=(dim, dim), dtype=tf.float32)
-        self._u = tf.Variable(
-            initial_value=tf.zeros((dim, dim)),
-            shape=(dim, dim),
-            dtype=tf.float32)
+        self._w = torch.tensor([[1, 2], [1, 1]],
+                               dtype=torch.float32,
+                               requires_grad=True)
+        self._u = torch.zeros((dim, dim), requires_grad=True)
 
-    def call(self, input):
-        return tf.matmul(input[0], self._w) + tf.matmul(input[1], self._u), ()
+    def forward(self, input, state=()):
+        return torch.matmul(input[0], self._w) + torch.matmul(
+            input[1], self._u), ()
 
 
-class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
+class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
     def assertArrayEqual(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
-        self.assertLessEqual(float(tf.reduce_max(abs(x - y))), eps)
+        self.assertLessEqual(float(torch.max(abs(x - y))), eps)
 
     @parameterized.parameters(
         dict(entropy_regularization=1.0),
@@ -87,41 +84,38 @@ class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
             noise_dim=3,
             entropy_regularization=entropy_regularization,
             net=net,
-            mi_weight=mi_weight,
-            optimizer=tf.optimizers.Adam(learning_rate=1e-3))
+            mi_weight=None,  #mi_weight,
+            optimizer=alf.optimizers.Adam(lr=1e-3))
 
-        var = tf.constant([1, 4], dtype=tf.float32)
+        var = torch.as_tensor([1, 4], dtype=torch.float32)
         precision = 1. / var
 
         def _neglogprob(x):
-            return tf.squeeze(
-                0.5 * tf.matmul(x * x, tf.reshape(precision, (dim, 1))),
+            return torch.squeeze(
+                0.5 * torch.matmul(x * x, torch.reshape(precision, (dim, 1))),
                 axis=-1)
 
-        @tf.function
         def _train():
-            with tf.GradientTape() as tape:
-                alg_step = generator.train_step(
-                    inputs=None, loss_func=_neglogprob, batch_size=batch_size)
-            generator.train_complete(tape, alg_step.info)
+            alg_step = generator.train_step(
+                inputs=None, loss_func=_neglogprob, batch_size=batch_size)
+            generator.update_with_gradient(alg_step.info)
 
         for i in range(5000):
             _train()
             # older version of tf complains about directly multiplying two
             # variables.
-            learned_var = tf.matmul((1. * net._w), (1. * net._w),
-                                    transpose_a=True)
+            learned_var = torch.matmul((1. * net._w).t(), (1. * net._w))
             if i % 500 == 0:
-                tf.print(i, "learned var=", learned_var)
+                print(i, "learned var=", learned_var)
 
         if entropy_regularization == 1.0:
-            self.assertArrayEqual(tf.linalg.diag(var), learned_var, 0.1)
+            self.assertArrayEqual(torch.diag(var), learned_var, 0.1)
         else:
             if mi_weight is None:
-                self.assertArrayEqual(tf.zeros((dim, dim)), learned_var, 0.1)
+                self.assertArrayEqual(torch.zeros(dim, dim), learned_var, 0.1)
             else:
                 self.assertGreater(
-                    float(tf.reduce_sum(tf.abs(learned_var))), 0.5)
+                    float(torch.sum(torch.abs(learned_var))), 0.5)
 
     @parameterized.parameters(
         dict(entropy_regularization=1.0),
@@ -146,51 +140,45 @@ class GeneratorTest(parameterized.TestCase, tf.test.TestCase):
             noise_dim=dim,
             entropy_regularization=entropy_regularization,
             net=net,
-            mi_weight=mi_weight,
-            input_tensor_spec=tf.TensorSpec((dim, )),
-            optimizer=tf.optimizers.Adam(learning_rate=1e-3))
+            mi_weight=None,  #mi_weight,
+            input_tensor_spec=TensorSpec((dim, )),
+            optimizer=alf.optimizers.Adam(lr=1e-3))
 
-        var = tf.constant([1, 4], dtype=tf.float32)
+        var = torch.as_tensor([1, 4], dtype=torch.float32)
         precision = 1. / var
-        u = tf.constant([[-0.3, 1], [1, 2]], dtype=tf.float32)
+        u = torch.as_tensor([[-0.3, 1], [1, 2]], dtype=torch.float32)
 
         def _neglogprob(xy):
             x, y = xy
-            d = x - tf.matmul(y, u)
-            return tf.squeeze(
-                0.5 * tf.matmul(d * d, tf.reshape(precision, (dim, 1))),
+            d = x - torch.matmul(y, u)
+            return torch.squeeze(
+                0.5 * torch.matmul(d * d, torch.reshape(precision, (dim, 1))),
                 axis=-1)
 
-        @tf.function
         def _train():
-            y = tf.random.normal(shape=(batch_size, dim))
-            with tf.GradientTape() as tape:
-                alg_step = generator.train_step(
-                    inputs=y, loss_func=_neglogprob)
-            generator.train_complete(tape, alg_step.info)
+            y = torch.randn(batch_size, dim)
+            alg_step = generator.train_step(inputs=y, loss_func=_neglogprob)
+            generator.update_with_gradient(alg_step.info)
 
         for i in range(5000):
             _train()
             # older version of tf complains about directly multiplying two
             # variables.
-            learned_var = tf.matmul((1. * net._w), (1. * net._w),
-                                    transpose_a=True)
+            learned_var = torch.matmul((1. * net._w).t(), (1. * net._w))
             if i % 500 == 0:
-                tf.print(i, "learned var=", learned_var)
-                tf.print("u=", net._u)
+                print(i, "learned var=", learned_var)
+                print("u=", net._u)
 
         if mi_weight is not None:
-            self.assertGreater(float(tf.reduce_sum(tf.abs(learned_var))), 0.5)
+            self.assertGreater(float(torch.sum(torch.abs(learned_var))), 0.5)
         elif entropy_regularization == 1.0:
             self.assertArrayEqual(net._u, u, 0.1)
-            self.assertArrayEqual(tf.linalg.diag(var), learned_var, 0.1)
+            self.assertArrayEqual(torch.diag(var), learned_var, 0.1)
         else:
             self.assertArrayEqual(net._u, u, 0.1)
-            self.assertArrayEqual(tf.zeros((dim, dim)), learned_var, 0.1)
+            self.assertArrayEqual(torch.zeros(dim, dim), learned_var, 0.1)
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
-    from alf.utils.common import set_per_process_memory_growth
-    set_per_process_memory_growth()
-    tf.test.main()
+    # logging.set_verbosity(logging.INFO)
+    alf.test.main()
