@@ -17,7 +17,7 @@ import gin
 import torch
 
 from alf.algorithms.algorithm import Algorithm
-# from alf.algorithms.mi_estimator import MIEstimator
+from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
 from alf.networks import Network, EncodingNetwork
@@ -72,20 +72,19 @@ class Generator(Algorithm):
     and Maximization" https://arxiv.org/pdf/1808.06670.pdf
     """
 
-    def __init__(
-            self,
-            output_dim,
-            noise_dim=32,
-            input_tensor_spec=None,
-            hidden_layers=(256, ),
-            net: Network = None,
-            net_moving_average_rate=None,
-            entropy_regularization=0.,
-            kernel_sharpness=2.,
-            mi_weight=None,
-            mi_estimator_cls=None,  #MIEstimator,
-            optimizer=None,
-            name="Generator"):
+    def __init__(self,
+                 output_dim,
+                 noise_dim=32,
+                 input_tensor_spec=None,
+                 hidden_layers=(256, ),
+                 net: Network = None,
+                 net_moving_average_rate=None,
+                 entropy_regularization=0.,
+                 kernel_sharpness=2.,
+                 mi_weight=None,
+                 mi_estimator_cls=MIEstimator,
+                 optimizer=None,
+                 name="Generator"):
         """Create a Generator.
 
         Args:

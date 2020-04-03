@@ -84,7 +84,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             noise_dim=3,
             entropy_regularization=entropy_regularization,
             net=net,
-            mi_weight=None,  #mi_weight,
+            mi_weight=mi_weight,
             optimizer=alf.optimizers.Adam(lr=1e-3))
 
         var = torch.as_tensor([1, 4], dtype=torch.float32)
@@ -140,7 +140,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             noise_dim=dim,
             entropy_regularization=entropy_regularization,
             net=net,
-            mi_weight=None,  #mi_weight,
+            mi_weight=mi_weight,
             input_tensor_spec=TensorSpec((dim, )),
             optimizer=alf.optimizers.Adam(lr=1e-3))
 
