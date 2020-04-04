@@ -17,10 +17,10 @@ import math
 from absl import logging
 from absl.testing import parameterized
 import torch
+import torch.nn as nn
 
 import alf
 from alf.algorithms.generator import Generator
-# from alf.algorithms.mi_estimator import MIEstimator
 from alf.networks import Network
 from alf.tensor_specs import TensorSpec
 
@@ -28,13 +28,16 @@ from alf.tensor_specs import TensorSpec
 class Net(Network):
     def __init__(self, dim=2):
         super().__init__(
-            input_tensor_spec=TensorSpec(shape=(dim, )), name="Net")
-        self._w = torch.tensor([[1, 2], [-1, 1], [1, 1]],
-                               dtype=torch.float32,
-                               requires_grad=True)
+            input_tensor_spec=TensorSpec(shape=(dim, )),
+            skip_input_preprocessing=True,
+            name="Net")
+
+        self.fc = nn.Linear(3, dim, bias=False)
+        w = torch.tensor([[1, 2], [-1, 1], [1, 1]], dtype=torch.float32)
+        self.fc.weight = nn.Parameter(w.t())
 
     def forward(self, input, state=()):
-        return torch.matmul(input, self._w), ()
+        return self.fc(input)
 
 
 class Net2(Network):
@@ -44,15 +47,17 @@ class Net2(Network):
                 TensorSpec(shape=(dim, )),
                 TensorSpec(shape=(dim, ))
             ],
+            skip_input_preprocessing=True,
             name="Net")
-        self._w = torch.tensor([[1, 2], [1, 1]],
-                               dtype=torch.float32,
-                               requires_grad=True)
-        self._u = torch.zeros((dim, dim), requires_grad=True)
+        self.fc1 = nn.Linear(dim, dim, bias=False)
+        self.fc2 = nn.Linear(dim, dim, bias=False)
+        w = torch.tensor([[1, 2], [1, 1]], dtype=torch.float32)
+        u = torch.zeros((dim, dim), dtype=torch.float32)
+        self.fc1.weight = nn.Parameter(w.t())
+        self.fc2.weight = nn.Parameter(u.t())
 
     def forward(self, input, state=()):
-        return torch.matmul(input[0], self._w) + torch.matmul(
-            input[1], self._u), ()
+        return self.fc1(input[0]) + self.fc2(input[1])
 
 
 class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
@@ -85,9 +90,9 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             entropy_regularization=entropy_regularization,
             net=net,
             mi_weight=mi_weight,
-            optimizer=alf.optimizers.Adam(lr=1e-3))
+            optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
-        var = torch.as_tensor([1, 4], dtype=torch.float32)
+        var = torch.tensor([1, 4], dtype=torch.float32)
         precision = 1. / var
 
         def _neglogprob(x):
@@ -102,9 +107,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
 
         for i in range(5000):
             _train()
-            # older version of tf complains about directly multiplying two
-            # variables.
-            learned_var = torch.matmul((1. * net._w).t(), (1. * net._w))
+            learned_var = torch.matmul(net.fc.weight, net.fc.weight.t())
             if i % 500 == 0:
                 print(i, "learned var=", learned_var)
 
@@ -144,9 +147,9 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             input_tensor_spec=TensorSpec((dim, )),
             optimizer=alf.optimizers.Adam(lr=1e-3))
 
-        var = torch.as_tensor([1, 4], dtype=torch.float32)
+        var = torch.tensor([1, 4], dtype=torch.float32)
         precision = 1. / var
-        u = torch.as_tensor([[-0.3, 1], [1, 2]], dtype=torch.float32)
+        u = torch.tensor([[-0.3, 1], [1, 2]], dtype=torch.float32)
 
         def _neglogprob(xy):
             x, y = xy
@@ -162,23 +165,20 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
 
         for i in range(5000):
             _train()
-            # older version of tf complains about directly multiplying two
-            # variables.
-            learned_var = torch.matmul((1. * net._w).t(), (1. * net._w))
+            learned_var = torch.matmul(net.fc1.weight, net.fc1.weight.t())
             if i % 500 == 0:
                 print(i, "learned var=", learned_var)
-                print("u=", net._u)
+                print("u=", net.fc2.weight.t())
 
         if mi_weight is not None:
             self.assertGreater(float(torch.sum(torch.abs(learned_var))), 0.5)
         elif entropy_regularization == 1.0:
-            self.assertArrayEqual(net._u, u, 0.1)
+            self.assertArrayEqual(net.fc2.weight.t(), u, 0.1)
             self.assertArrayEqual(torch.diag(var), learned_var, 0.1)
         else:
-            self.assertArrayEqual(net._u, u, 0.1)
+            self.assertArrayEqual(net.fc2.weight.t(), u, 0.1)
             self.assertArrayEqual(torch.zeros(dim, dim), learned_var, 0.1)
 
 
 if __name__ == '__main__':
-    # logging.set_verbosity(logging.INFO)
     alf.test.main()

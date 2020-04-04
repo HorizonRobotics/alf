@@ -41,7 +41,7 @@ class Generator(Algorithm):
 
     The generator is trained to minimize the following objective:
 
-        E(loss_func(net([noise, input]))) - entropy_regulariztion * H(P)
+        :math:'E(loss_func(net([noise, input]))) - entropy_regulariztion \cdot H(P)'
 
     where P is the (conditional) distribution of outputs given the inputs
     implied by `net` and H(P) is the (conditional) entropy of P.
@@ -102,7 +102,7 @@ class Generator(Algorithm):
             entropy_regularization (float): weight of entropy regularization
             kernel_sharpness (float): Used only for entropy_regularization > 0.
                 We calcualte the kernel in SVGD as:
-                    exp(-kernel_sharpness * reduce_mean((x-y)^2/width)),
+                    :math:'\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))'
                 where width is the elementwise moving average of (x-y)^2
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
@@ -121,7 +121,7 @@ class Generator(Algorithm):
                 tensor_spec=TensorSpec(shape=(output_dim, )))
             self._kernel_sharpness = kernel_sharpness
 
-        noise_spec = TensorSpec(shape=[noise_dim])
+        noise_spec = TensorSpec(shape=(noise_dim, ))
 
         if net is None:
             net_input_spec = noise_spec
@@ -160,12 +160,12 @@ class Generator(Algorithm):
         else:
             nest.assert_same_structure(inputs, self._input_tensor_spec)
             batch_size = nest.flatten(inputs)[0].shape[0]
-        noise = torch.randn((batch_size, self._noise_dim))
+        noise = torch.randn(batch_size, self._noise_dim)
         gen_inputs = noise if inputs is None else [noise, inputs]
         if self._predict_net and not training:
-            outputs = self._predict_net(gen_inputs)[0]
+            outputs = self._predict_net(gen_inputs)
         else:
-            outputs = self._net(gen_inputs)[0]
+            outputs = self._net(gen_inputs)
         return outputs, gen_inputs
 
     def predict_step(self, inputs, batch_size=None, state=None):
@@ -207,7 +207,7 @@ class Generator(Algorithm):
         if self._mi_estimator is not None:
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
             mi_loss = mi_step.info.loss
-            loss_propagated += self._mi_weight * mi_loss
+            loss_propagated = loss_propagated + self._mi_weight * mi_loss
 
         return AlgStep(
             output=outputs,

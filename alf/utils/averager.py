@@ -19,9 +19,10 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import DataBuffer
-from alf.nest.utils import get_outer_rank
+from alf.utils.tensor_utils import to_tensor
 
 
 def average_outer_dims(tensor, spec):
@@ -168,7 +169,7 @@ class EMAverager(nn.Module):
 
         self._average = alf.nest.map_structure(_create_variable, tensor_spec)
         # mass can be shared by different structure elements
-        self.register_buffer("_mass", torch.zeros((), dtype=torch.float64))
+        self.register_buffer("_mass", torch.zeros((), dtype=torch.float32))
 
     def update(self, tensor):
         """Update the average.
@@ -181,11 +182,11 @@ class EMAverager(nn.Module):
         """
         alf.nest.map_structure(
             lambda average, t, spec: average.add_(
-                torch.as_tensor(self._update_rate, dtype=t.dtype) * (
+                to_tensor(self._update_rate, dtype=t.dtype) * (
                     average_outer_dims(t, spec) - average)), self._average,
             tensor, self._tensor_spec)
         self._mass.add_(
-            torch.as_tensor(self._update_rate, dtype=torch.float64) *
+            to_tensor(self._update_rate, dtype=torch.float32) *
             (1 - self._mass))
 
     def get(self):
@@ -197,7 +198,7 @@ class EMAverager(nn.Module):
         return alf.nest.map_structure(
             lambda average: average / torch.max(
                 self._mass.to(average.dtype),
-                torch.as_tensor(self._update_rate, dtype=average.dtype)),
+                to_tensor(self._update_rate, dtype=average.dtype)),
             self._average)
 
     def average(self, tensor):
@@ -258,11 +259,11 @@ class AdaptiveAverager(EMAverager):
             speed (float): speed of updating mean and variance.
             name (str): name of this averager
         """
-        update_rate = torch.ones((), dtype=torch.float64)
+        update_rate = torch.ones((), dtype=torch.float32)
         super().__init__(tensor_spec, update_rate)
         self.register_buffer("_update_ema_rate", update_rate)
-        self.register_buffer("_total_steps",
-                             torch.as_tensor(speed, dtype=torch.int64))
+        self.register_buffer("_total_steps", to_tensor(
+            speed, dtype=torch.int64))
         self._speed = speed
 
     def update(self, tensor):
@@ -273,7 +274,7 @@ class AdaptiveAverager(EMAverager):
                 will be first averaged before being added to the average
         """
         self._update_ema_rate.fill_(
-            self._speed / self._total_steps.to(torch.float64))
+            self._speed / self._total_steps.to(torch.float32))
         self._total_steps.add_(1)
         super().update(tensor)
 

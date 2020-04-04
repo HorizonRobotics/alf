@@ -50,6 +50,7 @@ function test() {
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \
         alf.algorithms.icm_algorithm_test \
+        alf.algorithms.generator_test \
         alf.algorithms.memory_test \
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
