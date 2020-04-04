@@ -125,8 +125,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_loss_ctor (None|OneStepTDLoss): a critic loss constructor.
                 If ``None``, a default ``OneStepTDLoss`` will be used.
             initial_log_alpha (float): initial value for variable ``log_alpha``.
-            target_entropy (float|None): The target average policy entropy,
-                for updating ``alpha``.
+            target_entropy (float|Callable|None): If a floating value, it's the
+                target average policy entropy, for updating ``alpha``. If a
+                callable function, then it will be called on the action spec to
+                calculate a target entropy. If ``None``, a default entropy will
+                be calculated.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -196,14 +199,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._flat_action_spec = flat_action_spec
 
         self._is_continuous = flat_action_spec[0].is_continuous
-        if target_entropy is None:
+        if target_entropy is None or callable(target_entropy):
+            if target_entropy is None:
+                target_entropy = dist_utils.calc_default_target_entropy
             target_entropy = np.sum(
-                list(
-                    map(dist_utils.calc_default_target_entropy,
-                        flat_action_spec)))
-            logging.info(
-                "Default target entropy is calculated for {}: {}.".format(
-                    self.name, target_entropy))
+                list(map(target_entropy, flat_action_spec)))
+            logging.info("Target entropy is calculated for {}: {}.".format(
+                self.name, target_entropy))
         else:
             logging.info("User-supplied target entropy for {}: {}".format(
                 self.name, target_entropy))
