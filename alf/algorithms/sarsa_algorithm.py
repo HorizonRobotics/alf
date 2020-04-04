@@ -55,12 +55,16 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     r"""SARSA Algorithm.
 
     SARSA update Q function using the following loss:
-        ||Q(s_t,a_t) - stop_gradient(r_t + \gamma * Q(s_{t+1}, a_{t+1})||^2
+
+    .. math::
+
+        ||Q(s_t,a_t) - \text{nograd}(r_t + \gamma * Q(s_{t+1}, a_{t+1}))||^2
+
     See https://en.wikipedia.org/wiki/State-action-reward-state-action
 
     Currently, this is only implemented for continuous action problems.
-    The policy is dervied by a DDPG/SAC manner by maximizing Q(a(s_t), s_t),
-    where a(s_t) is the action.
+    The policy is dervied by a DDPG/SAC manner by maximizing :math:`Q(a(s_t), s_t)`,
+    where :math:`a(s_t)` is the action.
     """
 
     def __init__(self,
@@ -89,30 +93,32 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  on_policy=False,
                  debug_summaries=False,
                  name="SarsaAlgorithm"):
-        """Create an SarsaAlgorithm.
-
+        """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             observation_spec (nested TensorSpec): spec for observation.
             actor_network (Network|DistributionNetwork):  The network will be
-                called with call(observation, step_type). If it is DistributionNetwork
-                an action will be sampled.
+                called with ``call(observation, step_type)``. If it is
+                ``DistributionNetwork`` an action will be sampled.
             critic_network (Network): The network will be called with
-                call(observation, action, step_type).
-            env (Environment): The environment to interact with. `env` is a
+                ``call(observation, action, step_type)``.
+            env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
                 parallel is crucial to on-policy algorithms as it increases the
-                diversity of data and decreases temporal correlation. `env` only
-                needs to be provided to the root `Algorithm`.
-            config (TrainerConfig): config for training. `config` only needs to
-                be provided to the algorithm which performs `train_iter()` by
+                diversity of data and decreases temporal correlation. ``env`` only
+                needs to be provided to the root ``Algorithm``.
+            config (TrainerConfig): config for training. ``config`` only needs to
+                be provided to the algorithm which performs ``train_iter()`` by
                 itself.
-            initial_alpha (float|None): If provided, will add -alpha*entropy to
-                the loss to encourage diverse action.
-            target_entropy (float|None): The target average policy entropy, for
-                updating alpha. Only used if `initial_alpha` is not None
-            use_entropy_reward (bool): If True, will use alpha*entropy as
+            initial_alpha (float|None): If provided, will add ``-alpha*entropy``
+                to the loss to encourage diverse action.
+            target_entropy (float|Callable|None): If a floating value, it's the
+                target average policy entropy, for updating ``alpha``. If a
+                callable function, then it will be called on the action spec to
+                calculate a target entropy. If ``None``, a default entropy will
+                be calculated.
+            use_entropy_reward (bool): If ``True``, will use alpha*entropy as
                 additional reward.
             ou_stddev (float): Only used for DDPG. Standard deviation for the
                 Ornstein-Uhlenbeck (OU) noise added in the default collect policy.
@@ -123,19 +129,20 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             target_update_period (int): Period for soft update of the target
                 networks.
             use_smoothed_actor (bool): use a smoothed version of actor for
-                predict and rollout. This option can be used if `on_policy` is
-                False.
+                predict and rollout. This option can be used if ``on_policy`` is
+                ``False``.
             dqda_clipping (float): when computing the actor loss, clips the
-                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
-                Does not perform clipping if dqda_clipping == 0.
+                gradient ``dqda`` element-wise between
+                ``[-dqda_clipping, dqda_clipping]``. Does not perform clipping
+                if ``dqda_clipping == 0``.
             actor_optimizer (torch.optim.Optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.Optimizer): The optimizer for critic
                 networks.
             alpha_optimizer (torch.optim.Optimizer): The optimizer for alpha.
-                Only used if `initial_alpha` is not None.
+                Only used if ``initial_alpha`` is not ``None``.
             gradient_clipping (float): Norm length to clip gradients.
             on_policy (bool): whether it is used as an on-policy algorithm.
-            debug_summaries (bool): True if debug summaries should be created.
+            debug_summaries (bool): ``True`` if debug summaries should be created.
             name (str): The name of this algorithm.
         """
         flat_action_spec = alf.nest.flatten(action_spec)
@@ -196,13 +203,19 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         self._use_entropy_reward = False
         if initial_alpha is not None:
             if isinstance(actor_network, DistributionNetwork):
-                if target_entropy is None:
+                if target_entropy is None or callable(target_entropy):
+                    if target_entropy is None:
+                        target_entropy = dist_utils.calc_default_target_entropy
                     target_entropy = np.sum(
-                        list(
-                            map(dist_utils.calc_default_target_entropy,
-                                flat_action_spec)))
+                        list(map(target_entropy, flat_action_spec)))
+                    logging.info(
+                        "Target entropy is calculated for {}: {}.".format(
+                            self.name, target_entropy))
+                else:
+                    logging.info(
+                        "User-supplied target entropy for {}: {}".format(
+                            self.name, target_entropy))
                 self._target_entropy = target_entropy
-                logging.info("Sarsa target_entropy=%s" % target_entropy)
                 log_alpha = torch.tensor(
                     np.log(initial_alpha), dtype=torch.float32)
                 if alpha_optimizer is None:
