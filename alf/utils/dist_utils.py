@@ -615,19 +615,20 @@ def entropy_with_fallback(distributions, action_spec):
     return sum(entropies), sum(entropies_for_gradient)
 
 
-def calc_default_target_entropy(spec):
+@gin.configurable
+def calc_default_target_entropy(spec, min_prob=0.1):
     """Calc default target entropy
     Args:
         spec (TensorSpec): action spec
+        min_prob (float): If continuous spec, we suppose the prob concentrates on
+            a delta of ``min_prob * (M-m)``; if discrete spec, we ignore the entry
+            of ``1 - min_prob`` and uniformly distribute probs on rest.
     Returns:
     """
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
     cont = spec.is_continuous
-    min_prob = 0.01
     log_mp = np.log(min_prob)
-    # continuous: suppose the prob concentrates on a delta of 0.01*(M-m)
-    # discrete: ignore the entry of 0.99 and uniformly distribute probs on rest
     e = np.sum([(np.log(M - m) + log_mp
                  if cont else min_prob * (np.log(M - m) - log_mp))
                 for m, M, _ in min_max])

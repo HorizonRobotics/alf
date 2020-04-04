@@ -13,6 +13,8 @@
 # limitations under the License.
 """Functions for handling nest."""
 
+from absl import logging
+
 import torch
 
 
@@ -86,8 +88,15 @@ def assert_same_structure(nest1, nest2):
     """Asserts that two structures are nested in the same way."""
     # When neither is nested, the assertion won't fail
     if is_nested(nest1) or is_nested(nest2):
-        assert_same_type(nest1, nest2)
-        assert_same_length(nest1, nest2)
+        try:
+            assert_same_type(nest1, nest2)
+            assert_same_length(nest1, nest2)
+        except AssertionError as e:
+            logging.error(str(e))
+            raise AssertionError(
+                "assert_same_structure() fails between {} and {}".format(
+                    nest1, nest2))
+
         if isinstance(nest1, list) or is_unnamedtuple(nest1):
             for value1, value2 in zip(nest1, nest2):
                 assert_same_structure(value1, value2)
@@ -189,7 +198,13 @@ def map_structure_up_to(shallow_nest, func, *nests):
             ret = type(shallow_nest)(**ret)
         return ret
 
-    return _map(shallow_nest, *nests)
+    try:
+        return _map(shallow_nest, *nests)
+    except AssertionError as e:
+        logging.error(str(e))
+        raise AssertionError(
+            "map_structure_up_to() fails for a shallow_nest {} with nests {}".
+            format(shallow_nest, nests))
 
 
 def fast_map_structure_flatten(func, structure, *flat_structure):
@@ -344,4 +359,10 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
         else:
             return nest
 
-    return _prune(nest, slim_nest)
+    try:
+        return _prune(nest, slim_nest)
+    except AssertionError as e:
+        logging.error(str(e))
+        raise AssertionError(
+            "prune_nest_like() fails between {} and {}".format(
+                nest, slim_nest))
