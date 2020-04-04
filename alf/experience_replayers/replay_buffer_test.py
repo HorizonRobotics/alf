@@ -16,36 +16,65 @@ from collections import namedtuple
 import torch
 
 import alf
-from alf.experience_replayers.replay_buffer import ReplayBuffer
+from alf.experience_replayers.replay_buffer import RingBuffer, ReplayBuffer
 
 DataItem = namedtuple("DataItem", ["env_id", "x", "t"])
 
 
-class ReplayBufferTest(alf.test.TestCase):
-    def test_replay_buffer(self):
-        dim = 20
-        max_length = 4
-        num_envs = 8
-        data_spec = DataItem(
+def _get_batch(env_ids, dim, t, x):
+    batch_size = len(env_ids)
+    x = (x * torch.arange(batch_size, dtype=torch.float32).unsqueeze(1) *
+         torch.arange(dim, dtype=torch.float32).unsqueeze(0))
+    return DataItem(
+        env_id=torch.tensor(env_ids, dtype=torch.int64),
+        x=x,
+        t=t * torch.ones(batch_size, dtype=torch.int32))
+
+
+class RingBufferTest(alf.test.TestCase):
+    dim = 20
+    max_length = 4
+    num_envs = 8
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.data_spec = DataItem(
             env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
-            x=alf.TensorSpec(shape=(dim, ), dtype=torch.float32),
+            x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
             t=alf.TensorSpec(shape=(), dtype=torch.int32))
 
+    def test_ring_buffer(self):
+        ring_buffer = RingBuffer(
+            data_spec=self.data_spec,
+            num_environments=self.num_envs,
+            max_length=self.max_length)
+        # Test dequeque()
+        for t in range(2, 10):
+            batch1 = _get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
+            ring_buffer.enqueue(batch1, batch1.env_id)
+        # Exception because some environments do not have data
+        self.assertRaises(AssertionError, ring_buffer.dequeue)
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id)
+        self.assertEqual(batch.t, torch.tensor([6] * 5))
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id)
+        self.assertEqual(batch.t, torch.tensor([7] * 5))
+        batch = ring_buffer.dequeue(env_ids=torch.tensor([1, 2]))
+        self.assertEqual(batch.t, torch.tensor([8] * 2))
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id)
+        self.assertEqual(batch.t, torch.tensor([[9], [9], [8], [8], [8]]))
+        # Exception because some environments do not have data
+        self.assertRaises(
+            AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
+
+
+class ReplayBufferTest(RingBufferTest):
+    def test_replay_buffer(self):
         replay_buffer = ReplayBuffer(
-            data_spec=data_spec,
-            num_environments=num_envs,
-            max_length=max_length)
+            data_spec=self.data_spec,
+            num_environments=self.num_envs,
+            max_length=self.max_length)
 
-        def _get_batch(env_ids, t, x):
-            batch_size = len(env_ids)
-            x = (x * torch.arange(batch_size, dtype=torch.float32).unsqueeze(1)
-                 * torch.arange(dim, dtype=torch.float32).unsqueeze(0))
-            return DataItem(
-                env_id=torch.tensor(env_ids, dtype=torch.int64),
-                x=x,
-                t=t * torch.ones(batch_size, dtype=torch.int32))
-
-        batch1 = _get_batch([0, 4, 7], t=0, x=0.1)
+        batch1 = _get_batch([0, 4, 7], self.dim, t=0, x=0.1)
         replay_buffer.add_batch(batch1, batch1.env_id)
         self.assertEqual(replay_buffer._current_size,
                          torch.tensor([1, 0, 0, 0, 1, 0, 0, 1]))
@@ -53,7 +82,7 @@ class ReplayBufferTest(alf.test.TestCase):
                          torch.tensor([1, 0, 0, 0, 1, 0, 0, 1]))
         self.assertRaises(AssertionError, replay_buffer.get_batch, 8, 1)
 
-        batch2 = _get_batch([1, 2, 3, 5, 6], t=0, x=0.2)
+        batch2 = _get_batch([1, 2, 3, 5, 6], self.dim, t=0, x=0.2)
         replay_buffer.add_batch(batch2, batch2.env_id)
         self.assertEqual(replay_buffer._current_size,
                          torch.tensor([1, 1, 1, 1, 1, 1, 1, 1]))
@@ -79,16 +108,16 @@ class ReplayBufferTest(alf.test.TestCase):
         self.assertEqual(bat2.t, batch2.t)
 
         for t in range(1, 10):
-            batch3 = _get_batch([0, 4, 7], t=t, x=0.3)
-            j = (t + 1) % max_length
-            s = min(t + 1, max_length)
+            batch3 = _get_batch([0, 4, 7], self.dim, t=t, x=0.3)
+            j = (t + 1) % self.max_length
+            s = min(t + 1, self.max_length)
             replay_buffer.add_batch(batch3, batch3.env_id)
             self.assertEqual(replay_buffer._current_size,
                              torch.tensor([s, 1, 1, 1, s, 1, 1, s]))
             self.assertEqual(replay_buffer._current_pos,
                              torch.tensor([j, 1, 1, 1, j, 1, 1, j]))
 
-        batch2 = _get_batch([1, 2, 3, 5, 6], t=1, x=0.2)
+        batch2 = _get_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.2)
         replay_buffer.add_batch(batch2, batch2.env_id)
         batch = replay_buffer.get_batch(8, 1)
         # squeeze the time dimension
@@ -137,7 +166,7 @@ class ReplayBufferTest(alf.test.TestCase):
         self.assertRaises(AssertionError, replay_buffer.gather_all)
 
         for t in range(2, 10):
-            batch4 = _get_batch([1, 2, 3, 5, 6], t=t, x=0.4)
+            batch4 = _get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             replay_buffer.add_batch(batch4, batch4.env_id)
         batch = replay_buffer.gather_all()
         self.assertEqual(list(batch.t.shape), [8, 4])
@@ -145,24 +174,6 @@ class ReplayBufferTest(alf.test.TestCase):
         # Test clear()
         replay_buffer.clear()
         self.assertEqual(replay_buffer.total_size, 0)
-
-        # Test dequeque()
-        for t in range(2, 10):
-            batch5 = _get_batch([1, 2, 3, 5, 6], t=t, x=0.4)
-            replay_buffer.add_batch(batch5, batch5.env_id)
-        # Exception because some environments do not have data
-        self.assertRaises(AssertionError, replay_buffer.dequeue)
-        batch = replay_buffer.dequeue(env_ids=batch5.env_id)
-        self.assertEqual(batch.t, torch.tensor([6] * 5))
-        batch = replay_buffer.dequeue(env_ids=batch5.env_id)
-        self.assertEqual(batch.t, torch.tensor([7] * 5))
-        batch = replay_buffer.dequeue(env_ids=torch.tensor([1, 2]))
-        self.assertEqual(batch.t, torch.tensor([8] * 2))
-        batch = replay_buffer.dequeue(env_ids=batch5.env_id)
-        self.assertEqual(batch.t, torch.tensor([[9], [9], [8], [8], [8]]))
-        # Exception because some environments do not have data
-        self.assertRaises(
-            AssertionError, replay_buffer.dequeue, env_ids=batch5.env_id)
 
 
 if __name__ == '__main__':

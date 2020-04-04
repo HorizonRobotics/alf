@@ -108,7 +108,7 @@ class RingBuffer(nn.Module):
             env_ids = _convert_device(env_ids)
             return env_ids
 
-    def add_batch(self, batch, env_ids=None):
+    def enqueue(self, batch, env_ids=None):
         """Add a batch of items to the buffer.
 
         Args:
@@ -197,6 +197,9 @@ class ReplayBuffer(RingBuffer):
             max_length=max_length,
             device=device,
             name=name)
+
+    def add_batch(self, batch, env_ids=None):
+        self.enqueue(batch, env_ids)
 
     def get_batch(self, batch_size, batch_length):
         """Randomly get `batch_size` trajectories from the buffer.
