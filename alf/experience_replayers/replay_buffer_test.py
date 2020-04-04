@@ -146,6 +146,24 @@ class ReplayBufferTest(alf.test.TestCase):
         replay_buffer.clear()
         self.assertEqual(replay_buffer.total_size, 0)
 
+        # Test dequeque()
+        for t in range(2, 10):
+            batch5 = _get_batch([1, 2, 3, 5, 6], t=t, x=0.4)
+            replay_buffer.add_batch(batch5, batch5.env_id)
+        # Exception because some environments do not have data
+        self.assertRaises(AssertionError, replay_buffer.dequeue)
+        batch = replay_buffer.dequeue(env_ids=batch5.env_id)
+        self.assertEqual(batch.t, torch.tensor([6] * 5))
+        batch = replay_buffer.dequeue(env_ids=batch5.env_id)
+        self.assertEqual(batch.t, torch.tensor([7] * 5))
+        batch = replay_buffer.dequeue(env_ids=torch.tensor([1, 2]))
+        self.assertEqual(batch.t, torch.tensor([8] * 2))
+        batch = replay_buffer.dequeue(env_ids=batch5.env_id)
+        self.assertEqual(batch.t, torch.tensor([[9], [9], [8], [8], [8]]))
+        # Exception because some environments do not have data
+        self.assertRaises(
+            AssertionError, replay_buffer.dequeue, env_ids=batch5.env_id)
+
 
 if __name__ == '__main__':
     alf.test.main()

@@ -46,10 +46,14 @@ def _convert_device(nests):
 
 
 class RingBuffer(nn.Module):
-    """Ring buffer -- Underlying implementation for replay buffer.
+    """Batched Ring Buffer.
+
+    To be made multiprocessing safe.
+    Can be used to implement ReplayBuffer and Queue.
 
     Different from tf_agents.replay_buffers.tf_uniform_replay_buffer, this
-    replay buffer allow users to specify the environment id when adding batch.
+    replay buffer allows users to specify the environment id when adding batch.
+    Thus, multiple actors can store experience in the same buffer.
     """
 
     def __init__(self,
@@ -65,7 +69,7 @@ class RingBuffer(nn.Module):
             num_environments (int): number of environments or total batch size.
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
-            device (str): A TensorFlow device to place the Variables and ops.
+            device (str): A torch device to place the Variables and ops.
             name (str): name of the replay buffer.
         """
         super().__init__()
@@ -86,6 +90,7 @@ class RingBuffer(nn.Module):
             self.register_buffer(
                 "_current_size",
                 torch.zeros(num_environments, dtype=torch.int64))
+            # Current *ending* position of data in the buffer
             self.register_buffer(
                 "_current_pos", torch.zeros(
                     num_environments, dtype=torch.int64))
@@ -93,6 +98,15 @@ class RingBuffer(nn.Module):
             bs = BatchSquash(batch_dims=2)
             self._flattened_buffer = alf.nest.map_structure(
                 lambda x: bs.flatten(x), self._buffer)
+
+    def check_convert_env_ids(self, env_ids):
+        with alf.device(self._device):
+            if env_ids is None:
+                env_ids = torch.arange(self._num_envs)
+            else:
+                env_ids = env_ids.to(torch.int64)
+            env_ids = _convert_device(env_ids)
+            return env_ids
 
     def add_batch(self, batch, env_ids=None):
         """Add a batch of items to the buffer.
@@ -106,12 +120,8 @@ class RingBuffer(nn.Module):
         """
         batch_size = alf.nest.get_nest_batch_size(batch)
         with alf.device(self._device):
-            env_ids = _convert_device(env_ids)
             batch = _convert_device(batch)
-            if env_ids is None:
-                env_ids = torch.arange(self._num_envs)
-            else:
-                env_ids = env_ids.to(torch.int64)
+            env_ids = self.check_convert_env_ids(env_ids)
 
             assert len(env_ids.shape) == 1, "env_ids should be an 1D tensor"
             assert batch_size == env_ids.shape[0], (
@@ -122,6 +132,7 @@ class RingBuffer(nn.Module):
             _, env_id_count = torch.unique(env_ids, return_counts=True)
             assert torch.max(env_id_count) == 1, (
                 "There are duplicated ids in env_ids %s" % env_ids)
+
             current_pos = self._current_pos[env_ids]
             indices = env_ids * self._max_length + current_pos
             alf.nest.map_structure(
@@ -133,64 +144,43 @@ class RingBuffer(nn.Module):
             self._current_size[env_ids] = torch.min(
                 current_size + 1, torch.tensor(self._max_length))
 
-    def get_batch(self, batch_size, batch_length):
-        """Randomly get `batch_size` trajectories from the buffer.
-
-        Note: The environments where the sampels are from are ordered in the
-            returned batch.
-
-        Args:
-            batch_size (int): get so many trajectories
-            batch_length (int): the length of each trajectory
-        Returns:
-            nested Tensors. The shapes are [batch_size, batch_length, ...]
-        """
+    def dequeue(self, env_ids=None):
+        """Return earliest batch and remove it from buffer."""
         with alf.device(self._device):
-            min_size = self._current_size.min()
-            assert min_size >= batch_length, (
-                "Not all environments has enough data. The smallest data "
-                "size is: %s Try storing more data before calling get_batch" %
+            env_ids = self.check_convert_env_ids(env_ids)
+            assert len(env_ids.shape) == 1, "env_ids should be an 1D tensor"
+
+            current_size = self._current_size[env_ids]
+            min_size = current_size.min()
+            assert min_size >= 1, (
+                "Not all environments have enough data. The smallest data "
+                "size is: %s Try storing more data before calling dequeue" %
                 min_size)
-
-            batch_size_per_env = batch_size // self._num_envs
-            remaining = batch_size % self._num_envs
-            if batch_size_per_env > 0:
-                env_ids = torch.arange(
-                    self._num_envs).repeat(batch_size_per_env)
-            else:
-                env_ids = torch.zeros(0, dtype=torch.int64)
-            if remaining > 0:
-                eids = torch.randperm(self._num_envs)[:remaining]
-                env_ids = torch.cat([env_ids, eids], dim=0)
-
-            r = torch.rand(*env_ids.shape)
-            num_positions = self._current_size - batch_length + 1
-            num_positions = num_positions[env_ids]
-            pos = (r * num_positions).to(torch.int64)
-            pos += (self._current_pos - self._current_size)[env_ids]
+            pos = self._current_pos[env_ids] - current_size
             pos = pos.reshape(-1, 1)  # [B, 1]
-            pos = pos + torch.arange(batch_length).unsqueeze(0)  # [B, T]
             pos = pos % self._max_length
-            env_ids = env_ids.reshape(-1, 1).repeat(1, batch_length)  # [B, T]
+            env_ids = env_ids.reshape(-1, 1).repeat(1, 1)  # [B, T]
             indices = env_ids * self._max_length + pos  # [B, T]
             indices = indices.reshape(-1)  # [B*T]
+
+            batch_size = env_ids.shape[0]
             result = alf.nest.map_structure(
                 lambda buffer: buffer[indices].reshape(
-                    batch_size, batch_length, *buffer.shape[1:]),
-                self._flattened_buffer)
+                    batch_size, 1, *buffer.shape[1:]), self._flattened_buffer)
+
+            self._current_size[env_ids] = (current_size - 1).reshape(-1, 1)
         return _convert_device(result)
 
     def clear(self):
-        """Clear the replay bufer."""
+        """Clear the whole buffer."""
         self._current_size.fill_(0)
         self._current_pos.fill_(0)
 
     def gather_all(self):
-        """Returns all the items in buffer.
+        """Returns all the items in the buffer.
 
         Returns:
-            Returns all the items currently in the buffer. The shapes of the
-            tensors are [B, T, ...] where B=num_environments, T=current_size
+            Tensors of shape [B, T, ...], B=num_environments, T=current_size
         Raises:
             AssertionError: if the current_size is not same for
                 all the environments
@@ -198,7 +188,7 @@ class RingBuffer(nn.Module):
         size = self._current_size.min()
         max_size = self._current_size.max()
         assert size == max_size, (
-            "Not all environment have the same size. min_size: %s "
+            "Not all environments have the same size. min_size: %s "
             "max_size: %s" % (size, max_size))
 
         if size == self._max_length:
@@ -234,3 +224,51 @@ class ReplayBuffer(RingBuffer):
             max_length=max_length,
             device=device,
             name=name)
+
+    def get_batch(self, batch_size, batch_length):
+        """Randomly get `batch_size` trajectories from the buffer.
+
+        Note: The environments where the sampels are from are ordered in the
+            returned batch.
+
+        Args:
+            batch_size (int): get so many trajectories
+            batch_length (int): the length of each trajectory
+        Returns:
+            nested Tensors. The shapes are [batch_size, batch_length, ...]
+        """
+        with alf.device(self._device):
+            min_size = self._current_size.min()
+            assert min_size >= batch_length, (
+                "Not all environments have enough data. The smallest data "
+                "size is: %s Try storing more data before calling get_batch" %
+                min_size)
+
+            batch_size_per_env = batch_size // self._num_envs
+            remaining = batch_size % self._num_envs
+            if batch_size_per_env > 0:
+                env_ids = torch.arange(
+                    self._num_envs).repeat(batch_size_per_env)
+            else:
+                env_ids = torch.zeros(0, dtype=torch.int64)
+            if remaining > 0:
+                eids = torch.randperm(self._num_envs)[:remaining]
+                env_ids = torch.cat([env_ids, eids], dim=0)
+
+            r = torch.rand(*env_ids.shape)
+
+            num_positions = self._current_size - batch_length + 1
+            num_positions = num_positions[env_ids]
+            pos = (r * num_positions).to(torch.int64)
+            pos += (self._current_pos - self._current_size)[env_ids]
+            pos = pos.reshape(-1, 1)  # [B, 1]
+            pos = pos + torch.arange(batch_length).unsqueeze(0)  # [B, T]
+            pos = pos % self._max_length
+            env_ids = env_ids.reshape(-1, 1).repeat(1, batch_length)  # [B, T]
+            indices = env_ids * self._max_length + pos  # [B, T]
+            indices = indices.reshape(-1)  # [B*T]
+            result = alf.nest.map_structure(
+                lambda buffer: buffer[indices].reshape(
+                    batch_size, batch_length, *buffer.shape[1:]),
+                self._flattened_buffer)
+        return _convert_device(result)
