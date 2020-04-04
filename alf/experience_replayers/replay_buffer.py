@@ -176,36 +176,9 @@ class RingBuffer(nn.Module):
         self._current_size.fill_(0)
         self._current_pos.fill_(0)
 
-    def gather_all(self):
-        """Returns all the items in the buffer.
-
-        Returns:
-            Tensors of shape [B, T, ...], B=num_environments, T=current_size
-        Raises:
-            AssertionError: if the current_size is not same for
-                all the environments
-        """
-        size = self._current_size.min()
-        max_size = self._current_size.max()
-        assert size == max_size, (
-            "Not all environments have the same size. min_size: %s "
-            "max_size: %s" % (size, max_size))
-
-        if size == self._max_length:
-            result = self._buffer
-        else:
-            result = alf.nest.map_structure(lambda buf: buf[:, :size, ...],
-                                            self._buffer)
-        return _convert_device(result)
-
     @property
     def num_environments(self):
         return self._num_envs
-
-    @property
-    def total_size(self):
-        """Total size from all environments."""
-        return _convert_device(self._current_size.sum())
 
 
 class ReplayBuffer(RingBuffer):
@@ -272,3 +245,38 @@ class ReplayBuffer(RingBuffer):
                     batch_size, batch_length, *buffer.shape[1:]),
                 self._flattened_buffer)
         return _convert_device(result)
+
+    def gather_all(self):
+        """Returns all the items in the buffer.
+
+        Returns:
+            Tensors of shape [B, T, ...], B=num_environments, T=current_size
+        Raises:
+            AssertionError: if the current_size is not same for
+                all the environments
+        """
+        size = self._current_size.min()
+        max_size = self._current_size.max()
+        assert size == max_size, (
+            "Not all environments have the same size. min_size: %s "
+            "max_size: %s" % (size, max_size))
+
+        # NOTE: this is not the proper way to gather all from a ring
+        # buffer whose data can start from the middle, so this is limited
+        # to the case where clear() is the only way to remove data from
+        # the buffer.
+        if size == self._max_length:
+            result = self._buffer
+        else:
+            # Assumes that non-full buffer always stores data starting from 0
+            result = alf.nest.map_structure(lambda buf: buf[:, :size, ...],
+                                            self._buffer)
+        return _convert_device(result)
+
+    def dequeue(self, env_ids=None):
+        raise NotImplementedError("gather is not compatible with dequeue.")
+
+    @property
+    def total_size(self):
+        """Total size from all environments."""
+        return _convert_device(self._current_size.sum())
