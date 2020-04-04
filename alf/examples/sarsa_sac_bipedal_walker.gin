@@ -1,0 +1,14 @@
+include 'sarsa_sac.gin'
+
+# Need to install Box2D by "pip install box2d-py"
+create_environment.env_name="BipedalWalker-v2"
+create_environment.num_parallel_environments=32
+
+actor/StableNormalProjectionNetwork.dist_squashing_transform=@dist_utils.Softsign()
+
+import alf.algorithms.multi_step_td_loss
+MultiStepTDLoss.td_lambda=0.95
+SarsaAlgorithm.critic_loss_cls=@MultiStepTDLoss
+
+TrainerConfig.mini_batch_length=4
+TrainerConfig.mini_batch_size=4096

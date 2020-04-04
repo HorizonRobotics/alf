@@ -50,9 +50,9 @@ class OneStepTDLoss(nn.Module):
             values=target_value,
             step_types=training_info.step_type,
             discounts=training_info.discount * self._gamma)
-        returns = tensor_utils.tensor_extend(returns, value[-1])
+        value = value[:-1]
         if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = training_info.step_type != StepType.LAST
+            mask = training_info.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
                 alf.summary.scalar(
                     "explained_variance_of_return_by_value",
@@ -61,6 +61,7 @@ class OneStepTDLoss(nn.Module):
                 safe_mean_hist_summary('returns', returns, mask)
                 safe_mean_hist_summary("td_error", returns - value, mask)
         loss = self._td_error_loss_fn(returns.detach(), value)
+        loss = tensor_utils.tensor_extend_zero(loss)
         return LossInfo(loss=loss, extra=loss)
 
     @property

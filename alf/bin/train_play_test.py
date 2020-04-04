@@ -436,7 +436,6 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='ppo_rnd_mrevenge.gin',
             extra_train_params=PPO_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_bipedal_walker(self):
         self._test(
             gin_file='sac_bipedal_walker.gin',
@@ -476,6 +475,11 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sarsa_sac_pendulum(self):
         self._test(
             gin_file='sarsa_sac_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_sarsa_sac_bipedal_walker(self):
+        self._test(
+            gin_file='sarsa_sac_bipedal_walker.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
