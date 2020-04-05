@@ -31,44 +31,46 @@ from alf.utils.dist_utils import DiagMultivariateNormal
 
 
 class MIEstimator(Algorithm):
-    """Mutual Infomation Estimator.
+    r"""Mutual Infomation Estimator.
 
     Implements several mutual information estimator from
-    Belghazi et al "Mutual Information Neural Estimation"
-    http://proceedings.mlr.press/v80/belghazi18a/belghazi18a.pdf
-    Hjelm et al "Learning Deep Representations by Mutual Information Estimation
-    and Maximization" https://arxiv.org/pdf/1808.06670.pdf
+    Belghazi et al `Mutual Information Neural Estimation
+    <http://proceedings.mlr.press/v80/belghazi18a/belghazi18a.pdf>`_
+    Hjelm et al `Learning Deep Representations by Mutual Information Estimation
+    and Maximization <https://arxiv.org/pdf/1808.06670.pdf>`_
 
-    Currently 3 types of estimator are implemented, which are based on the
+    Currently, 3 types of estimator are implemented, which are based on the
     following variational lower bounds:
-    * 'DV':  :math:`\sup_T E_P(T) - \log E_Q(\exp(T))`
-    * 'KLD': :math:`\sup_T E_P(T) - E_Q(\exp(T)) + 1`
-    * 'JSD': :math:`\sup_T -E_P(softplus(-T))) - E_Q(solftplus(T)) + \log(4)`
-    * 'ML': :math:\sup_q E_P(\log(q(y|x)) - \log(P(y)))`
+
+    * *DV*:  :math:`\sup_T E_P(T) - \log E_Q(\exp(T))`
+    * *KLD*: :math:`\sup_T E_P(T) - E_Q(\exp(T)) + 1`
+    * *JSD*: :math:`\sup_T -E_P(softplus(-T))) - E_Q(solftplus(T)) + \log(4)`
+    * *ML*: :math:`\sup_q E_P(\log(q(y|x)) - \log(P(y)))`
 
     where P is the joint distribution of X and Y, and Q is the product marginal
-    distribution of P. Both DV and KLD are lower bounds for KLD(P||Q)=MI(X, Y).
-    However, JSD is not a lower bound for mutual information, it is a lower
-    bound for JSD(P||Q), which is closely correlated with MI as pointed out in
+    distribution of P. Both DV and KLD are lower bounds for :math:`KLD(P||Q)=MI(X, Y)`.
+    However, *JSD* is not a lower bound for mutual information, it is a lower
+    bound for :math:`JSD(P||Q)`, which is closely correlated with MI as pointed out in
     Hjelm et al.
 
-    For ML, P(y) is the margianl distribution of y, and it needs to be provided.
+    For *ML*, :math:`P(y)` is the margianl distribution of y, and it needs to be provided.
     The current implementation uses a normal distribution with diagonal variance
-    for q(y|x). So it only support continous `y`. If P(y|x) can be reasonably
+    for :math:`q(y|x)`. So it only support continous `y`. If :math:`P(y|x)` can be reasonably
     approximated as an diagonal normal distribution and P(y) is known, then 'ML'
     may give better estimation for the mutual information.
 
     Assumming the function class of T is rich enough to represent any function,
-    for KLD and JSD, T will converge to log(P/Q) and hence E_P(T) can also be
+    for *KLD* and *JSD*, T will converge to :math:`\log(\frac{P}{Q})` and hence :math:`E_P(T)` can also be
     used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`. For DV, T will converge to
-    log(P/Q) + c, where c=log E_Q(exp(T)).
+    :math:`\log(\frac{P}{Q}) + c`, where :math:`c=\log E_Q(\exp(T))`.
 
-    Among 'DV', 'KLD' and 'JSD',  'DV' and 'KLD' seem to give a better estimation
-    of PMI than 'JSD'. But 'JSD' might be numerically more stable than 'DV' and
-    'KLD' because of the use of softplus instead of exp. And 'DV' is more stable
-    than 'KLD' because of the logarithm.
+    Among *DV*, *KLD* and *JSD*,  *DV* and *KLD* seem to give a better estimation
+    of PMI than *JSD*. But *JSD* might be numerically more stable than *DV* and
+    *KLD* because of the use of softplus instead of exp. And *DV* is more stable
+    than *KLD* because of the logarithm.
 
-    Several strategies are implemented in order to estimate E_Q(.):
+    Several strategies are implemented in order to estimate :math:`E_Q(.)`:
+
     * 'buffer': store y to a buffer and randomly retrieve samples from the
        buffer.
     * 'double_buffer': stroe both x and y to buffers and randomly retrieve
@@ -77,8 +79,8 @@ class MIEstimator(Algorithm):
     * 'shift': shift batch y by one sample, i.e.
       ``torch.cat([y[-1:, ...], y[0:-1, ...]], dim=0)``
     * direct sampling: You can also provide the marginal distribution of y to
-      train_step(). In this case, sampler is ignored and samples of y for
-      estimating E_Q(.) are sampled from y_distribution.
+      ``train_step()``. In this case, sampler is ignored and samples of y for
+      estimating :math:`E_Q(.)` are sampled from y_distribution.
 
     If you need the gradient of y, you should use sampler 'shift' and 'shuffle'.
 
@@ -89,10 +91,10 @@ class MIEstimator(Algorithm):
     need to worry about the assumption of independence.
 
     MIEstimator can be also used to estimate conditional mutual information
-    MI(X,Y|Z) using 'KLD', 'JSD' or 'ML'. In this case, you should let `x` to
-    represent X and Z, and `y` to represent Y. And when calling train_step(),
-    you need to provide `y_distribution` which is the distribution P(Y|z).
-    Note that 'DV' cannot be used for estimating conditional mutual information.
+    :math:`MI(X,Y|Z)` using *KLD*, *JSD* or *ML*. In this case, you should let `x` to
+    represent X and Z, and `y` to represent Y. And when calling ``train_step()``,
+    you need to provide `y_distribution` which is the distribution :math:`P(Y|z)`.
+    Note that *DV* cannot be used for estimating conditional mutual information.
     See mi_estimator_test.py for example.
     """
 
@@ -297,10 +299,10 @@ class MIEstimator(Algorithm):
         return AlgStep(output=pmi, state=(), info=LossInfo(loss=-pmi))
 
     def calc_pmi(self, x, y, y_distribution=None):
-        """Return estimated pointwise mutual information.
+        r"""Return estimated pointwise mutual information.
 
         The pointwise mutual information is defined as:
-            :math:`log P(x|y)/P(x) = log P(y|x)/P(y)`
+            :math:`\log \frac{P(x|y)}{P(x)} = \log \frac{P(y|x)}{P(y)}`
 
         Args:
             x (Tensor): x
