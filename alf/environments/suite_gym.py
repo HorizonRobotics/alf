@@ -53,8 +53,11 @@ def load(environment_name,
     gym_spec = gym.spec(environment_name)
     gym_env = gym_spec.make()
 
-    if max_episode_steps is None and gym_spec.max_episode_steps is not None:
-        max_episode_steps = gym_spec.max_episode_steps
+    if max_episode_steps is None:
+        if gym_spec.max_episode_steps is not None:
+            max_episode_steps = gym_spec.max_episode_steps
+        else:
+            max_episode_steps = 0
 
     return wrap_env(
         gym_env,
