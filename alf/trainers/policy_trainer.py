@@ -267,6 +267,7 @@ def play(root_dir,
          checkpoint_step="latest",
          epsilon_greedy=0.1,
          num_episodes=10,
+         max_episode_length=0,
          sleep_time_per_step=0.01,
          record_file=None):
     """Play using the latest checkpoint under `train_dir`.
@@ -281,7 +282,7 @@ def play(root_dir,
     Args:
         root_dir (str): same as the root_dir used for `train()`
         env (TorchEnvironment): the environment
-        algorithm (OnPolicyAlgorithm): the training algorithm
+        algorithm (RLAlgorithm): the training algorithm
         checkpoint_step (int|str): the number of training steps which is used to
             specify the checkpoint to be loaded. If checkpoint_step is 'latest',
             the most recent checkpoint named 'latest' will be loaded.
@@ -290,6 +291,8 @@ def play(root_dir,
             help prevent a dead loop in some deterministic environment like
             Breakout.
         num_episodes (int): number of episodes to play
+        max_episode_length (int): if >0, each episode is limited to so many
+            steps.
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
@@ -331,12 +334,13 @@ def play(root_dir,
 
         episode_reward += float(time_step.reward)
 
-        if time_step.is_last():
+        if time_step.is_last() or episode_length >= max_episode_length > 0:
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
             episode_reward = 0.
             episode_length = 0.
             episodes += 1
+            time_step = env.reset()
         else:
             episode_length += 1
     if recorder:
