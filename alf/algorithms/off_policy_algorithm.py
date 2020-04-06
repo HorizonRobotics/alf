@@ -201,7 +201,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
         train_steps = batch_size * mini_batch_length * num_updates
         return train_steps
 
-    def _update(self, experience, weight):
+    def _collect_train_info_sequentially(self, experience):
         batch_size = experience.step_type.shape[1]
         initial_train_state = self.get_initial_train_state(batch_size)
         if self._use_rollout_state:
@@ -229,6 +229,39 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         info = alf.nest.utils.stack_nests(info_list)
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
+        return info
+
+    def _collect_train_info_parallelly(self, experience):
+        batch_size = experience.step_type.shape[1]
+        length = experience.step_type.shape[0]
+
+        exp = alf.nest.map_structure(lambda x: x.reshape(-1, *x.shape[2:]),
+                                     experience)
+
+        if self._use_rollout_state:
+            policy_state = exp.state
+        else:
+            policy_state = self.get_initial_train_state(exp.step_type.shape[0])
+
+        exp = dist_utils.params_to_distributions(
+            exp, self.processed_experience_spec)
+        policy_step = self.train_step(exp, policy_state)
+
+        if self._train_info_spec is None:
+            self._train_info_spec = dist_utils.extract_spec(policy_step.info)
+        info = dist_utils.distributions_to_params(policy_step.info)
+        info = alf.nest.map_structure(
+            lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
+        info = dist_utils.params_to_distributions(info, self.train_info_spec)
+        return info
+
+    def _update(self, experience, weight):
+        length = experience.step_type.shape[0]
+        if self._config.temporally_independent_train_step or length == 1:
+            info = self._collect_train_info_parallelly(experience)
+        else:
+            info = self._collect_train_info_sequentially(experience)
+
         experience = dist_utils.params_to_distributions(
             experience, self.processed_experience_spec)
         training_info = TrainingInfo(
@@ -239,7 +272,6 @@ class OffPolicyAlgorithm(RLAlgorithm):
             rollout_info=experience.rollout_info,
             info=info,
             env_id=experience.env_id)
-
         loss_info = self.calc_loss(training_info)
         valid_masks = (training_info.step_type != StepType.LAST).to(
             torch.float32)

@@ -12,3 +12,4 @@ SarsaAlgorithm.critic_loss_cls=@MultiStepTDLoss
 
 TrainerConfig.mini_batch_length=4
 TrainerConfig.mini_batch_size=4096
+TrainerConfig.temporally_independent_train_step=True
