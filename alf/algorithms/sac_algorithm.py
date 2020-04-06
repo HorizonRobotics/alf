@@ -13,6 +13,7 @@
 # limitations under the License.
 """Soft Actor Critic Algorithm."""
 
+from absl import logging
 import numpy as np
 import gin
 import functools
@@ -22,6 +23,7 @@ import torch.nn as nn
 import torch.distributions as td
 from typing import Callable
 
+import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
@@ -57,30 +59,55 @@ SacInfo = namedtuple(
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
 
 
+def _set_target_entropy(name, target_entropy, flat_action_spec):
+    """A helper function for computing the target entropy under different
+    scenarios of ``target_entropy``.
+
+    Args:
+        name (str): the name of the algorithm that calls this function.
+        target_entropy (float|Callable|None): If a floating value, it will return
+            as it is. If a callable function, then it will be called on the action
+            spec to calculate a target entropy. If ``None``, a default entropy will
+            be calculated.
+        flat_action_spec (list[TensorSpec]): a flattened list of action specs
+    """
+    if target_entropy is None or callable(target_entropy):
+        if target_entropy is None:
+            target_entropy = dist_utils.calc_default_target_entropy
+        target_entropy = np.sum(list(map(target_entropy, flat_action_spec)))
+        logging.info("Target entropy is calculated for {}: {}.".format(
+            name, target_entropy))
+    else:
+        logging.info("User-supplied target entropy for {}: {}".format(
+            name, target_entropy))
+    return target_entropy
+
+
 @gin.configurable
 class SacAlgorithm(OffPolicyAlgorithm):
-    """Soft Actor Critic
+    """Soft Actor Critic algorithm, described in:
 
-    It's described in:
-    Haarnoja et al "Soft Actor-Critic Algorithms and Applications" arXiv:1812.05905v2
+    ::
 
-    There are 3 points different with `tf_agents.agents.sac.sac_agent`:
+        Haarnoja et al "Soft Actor-Critic Algorithms and Applications", arXiv:1812.05905v2
+
+    There are 3 points different with ``tf_agents.agents.sac.sac_agent``:
 
     1. To reduce computation, here we sample actions only once for calculating
-    actor, critic, and alpha loss while `tf_agents.agents.sac.sac_agent` samples
-    actions for each loss. This difference has little influence on the training
-    performance.
+    actor, critic, and alpha loss while ``tf_agents.agents.sac.sac_agent``
+    samples actions for each loss. This difference has little influence on
+    the training performance.
 
     2. We calculate losses for every sampled steps.
-    (s_t, a_t), (s_{t+1}, a_{t+1}) in sampled transition are used to calculate
-    actor, critic and alpha loss while `tf_agents.agents.sac.sac_agent` only
-    uses (s_t, a_t) and critic loss for s_{t+1} is 0. You should handle this
-    carefully, it is equivalent to applying a coefficient of 0.5 on the critic
-    loss.
+    :math:`(s_t, a_t), (s_{t+1}, a_{t+1})` in sampled transition are used
+    to calculate actor, critic and alpha loss while
+    ``tf_agents.agents.sac.sac_agent`` only uses :math:`(s_t, a_t)` and
+    critic loss for :math:`s_{t+1}` is 0. You should handle this carefully,
+    it is equivalent to applying a coefficient of 0.5 on the critic loss.
 
-    3. We mask out `StepType.LAST` steps when calculating losses but
-    `tf_agents.agents.sac.sac_agent` does not. We believe the correct
-    implementation should mask out LAST steps. And this may make different
+    3. We mask out ``StepType.LAST`` steps when calculating losses but
+    ``tf_agents.agents.sac.sac_agent`` does not. We believe the correct
+    implementation should mask out ``LAST`` steps. And this may make different
     performance on same tasks.
     """
 
@@ -104,40 +131,44 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  clip_by_global_norm=False,
                  debug_summaries=False,
                  name="SacAlgorithm"):
-        """Create a SacAlgorithm
-
+        """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network): The network will be called with
-                call(observation).
+                ``call(observation)``.
             critic_network (Network): The network will be called with
-                call(observation, action).
+                ``call(observation, action)``.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
                 Algorithm.
             config (TrainerConfig): config for training. config only needs to be
-                provided to the algorithm which performs `train_iter()` by
+                provided to the algorithm which performs ``train_iter()`` by
                 itself.
             critic_loss_ctor (None|OneStepTDLoss): a critic loss constructor.
-                If None, a default OneStepTDLoss will be used.
-            initial_log_alpha (float): initial value for variable log_alpha
-            target_entropy (float|None): The target average policy entropy, for updating alpha.
+                If ``None``, a default ``OneStepTDLoss`` will be used.
+            initial_log_alpha (float): initial value for variable ``log_alpha``.
+            target_entropy (float|Callable|None): If a floating value, it's the
+                target average policy entropy, for updating ``alpha``. If a
+                callable function, then it will be called on the action spec to
+                calculate a target entropy. If ``None``, a default entropy will
+                be calculated.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
             dqda_clipping (float): when computing the actor loss, clips the
-                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
-                Does not perform clipping if dqda_clipping == 0.
+                gradient dqda element-wise between
+                ``[-dqda_clipping, dqda_clipping]``. Does not perform clipping if
+                ``dqda_clipping == 0``.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
             gradient_clipping (float): Norm length to clip gradients.
-            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
-                to clip gradient. If False, use `tensor_utils.clip_by_norms` for
-                each grad.
+            clip_by_global_norm (bool): If ``True``, use
+                ``tensor_utils.clip_by_global_norm`` to clip gradient. If ``False``,
+                use ``tensor_utils.clip_by_norms`` for each grad.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -192,12 +223,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._flat_action_spec = flat_action_spec
 
         self._is_continuous = flat_action_spec[0].is_continuous
-        if target_entropy is None:
-            target_entropy = np.sum(
-                list(
-                    map(dist_utils.calc_default_target_entropy,
-                        flat_action_spec)))
-        self._target_entropy = target_entropy
+        self._target_entropy = _set_target_entropy(self.name, target_entropy,
+                                                   flat_action_spec)
         self._dqda_clipping = dqda_clipping
 
         self._update_target = common.get_target_updater(
@@ -334,6 +361,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _alpha_train_step(self, log_pi):
+        with alf.summary.scope(self.name):
+            alf.summary.scalar("alpha", self._log_alpha.exp())
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
         info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))

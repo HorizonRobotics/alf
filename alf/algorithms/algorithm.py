@@ -13,7 +13,6 @@
 # limitations under the License.
 """Algorithm base class."""
 
-from absl import logging
 import copy
 from collections import OrderedDict
 from functools import wraps
