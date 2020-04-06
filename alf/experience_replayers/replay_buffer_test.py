@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from collections import namedtuple
+import multiprocessing as mp
+from time import sleep
 import torch
 
 from absl.testing import parameterized
@@ -55,10 +57,28 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             num_environments=self.num_envs,
             max_length=self.max_length,
             allow_multiprocess=allow_multiprocess)
+
+        batch1 = _get_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.4)
+        if not allow_multiprocess:
+            # enqueue: blocking mode only available under allow_multiprocess
+            self.assertRaises(
+                AssertionError,
+                ring_buffer.enqueue,
+                batch1,
+                env_ids=batch1.env_id,
+                blocking=True)
+
         # Test dequeque()
         for t in range(2, 10):
             batch1 = _get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             ring_buffer.enqueue(batch1, batch1.env_id)
+        if not allow_multiprocess:
+            # dequeue: blocking mode only available under allow_multiprocess
+            self.assertRaises(
+                AssertionError,
+                ring_buffer.dequeue,
+                env_ids=batch1.env_id,
+                blocking=True)
         # Exception because some environments do not have data
         self.assertRaises(AssertionError, ring_buffer.dequeue)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
@@ -72,6 +92,60 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         # Exception because some environments do not have data
         self.assertRaises(
             AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
+
+        if allow_multiprocess:
+            # Test block on dequeue without enough data
+            def delayed_enqueue(ring_buffer, batch):
+                sleep(0.04)
+                ring_buffer.enqueue(batch, batch.env_id)
+
+            ring_buffer.share_memory()
+            p = mp.Process(target=delayed_enqueue, args=(ring_buffer, batch1))
+            p.start()
+            batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
+            self.assertEqual(batch.t, torch.tensor([9] * 2))
+
+            # Test block on enqueue without free space
+            ring_buffer.clear()
+            for t in range(6, 10):
+                batch2 = _get_batch(range(0, 8), self.dim, t=t, x=0.4)
+                ring_buffer.enqueue(batch2)
+
+            def delayed_dequeue():
+                sleep(0.04)
+                ring_buffer.dequeue()  # 6(deleted), 7, 8, 9
+                sleep(0.04)  # 10, 7, 8, 9
+                ring_buffer.dequeue()  # 10, 7(deleted), 8, 9
+
+            p = mp.Process(target=delayed_dequeue)
+            p.start()
+            batch2 = _get_batch(range(0, 8), self.dim, t=10, x=0.4)
+            ring_buffer.enqueue(batch2, blocking=True)
+            p.join()
+            self.assertEqual(ring_buffer._current_size[0], torch.tensor([3]))
+
+            # Test stop queue event
+            def blocking_dequeue(ring_buffer):
+                ring_buffer.dequeue(blocking=True)
+
+            p = mp.Process(target=blocking_dequeue, args=(ring_buffer, ))
+            ring_buffer.clear()
+            p.start()
+            sleep(0.02)  # for subprocess to enter while loop
+            ring_buffer._stop.set()
+            p.join()
+            self.assertEqual(
+                ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True),
+                None)
+
+            ring_buffer._stop.clear()
+            for t in range(6, 10):
+                batch2 = _get_batch(range(0, 8), self.dim, t=t, x=0.4)
+                self.assertEqual(
+                    ring_buffer.enqueue(batch2, blocking=True), True)
+
+            ring_buffer._stop.set()
+            self.assertEqual(ring_buffer.enqueue(batch2, blocking=True), False)
 
 
 class ReplayBufferTest(RingBufferTest):
