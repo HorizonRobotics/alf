@@ -35,7 +35,7 @@ class MultiStepTDLoss(nn.Module):
 
         Let :math:`G_{t:T}` be the bootstaped return from t to T:
             :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_t + \gamma^{T-t} V(s_T)`
-        If ``td_lambda`` = 1, the target for step t is :math:`R_{t:T}`.
+        If ``td_lambda`` = 1, the target for step t is :math:`G_{t:T}`.
         If ``td_lambda`` < 1, the target for step t is the :math:`\lambda`-return:
             :math:`G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}`
         There is a simple relationship between :math:`\lambda`-return and
@@ -53,11 +53,13 @@ class MultiStepTDLoss(nn.Module):
         <http://incompleteideas.net/book/the-book.html>`_, Chapter 12, 2018
 
         Args:
+            gamma (float): A discount factor for future rewards.
             td_errors_loss_fn (Callable): A function for computing the TD errors
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
             td_lambda (float): Lambda parameter for TD-lambda computation.
-            td_loss_weight (float): the weigt for the loss of td error.
+            debug_summaries (bool): True if debug summaries should be created.
+            name (str): The name of this loss.
         """
         super().__init__()
 
@@ -80,7 +82,7 @@ class MultiStepTDLoss(nn.Module):
                 step. The loss is between this and the calculated return.
             target_value (torch.Tensor): the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
-                can be same as ``value``
+                can be same as ``value``.
         Returns:
             loss_info (LossInfo): with loss_info.extra same as loss_info.loss
         """
