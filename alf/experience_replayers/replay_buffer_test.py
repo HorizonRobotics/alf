@@ -15,6 +15,8 @@
 from collections import namedtuple
 import torch
 
+from absl.testing import parameterized
+
 import alf
 from alf.experience_replayers.replay_buffer import RingBuffer, ReplayBuffer
 
@@ -31,7 +33,7 @@ def _get_batch(env_ids, dim, t, x):
         t=t * torch.ones(batch_size, dtype=torch.int32))
 
 
-class RingBufferTest(alf.test.TestCase):
+class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
     dim = 20
     max_length = 4
     num_envs = 8
@@ -43,11 +45,16 @@ class RingBufferTest(alf.test.TestCase):
             x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
             t=alf.TensorSpec(shape=(), dtype=torch.int32))
 
-    def test_ring_buffer(self):
+    @parameterized.named_parameters([
+        ('test_sync', False),
+        ('test_async', True),
+    ])
+    def test_ring_buffer(self, allow_multiprocess):
         ring_buffer = RingBuffer(
             data_spec=self.data_spec,
             num_environments=self.num_envs,
-            max_length=self.max_length)
+            max_length=self.max_length,
+            allow_multiprocess=allow_multiprocess)
         # Test dequeque()
         for t in range(2, 10):
             batch1 = _get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
@@ -68,11 +75,16 @@ class RingBufferTest(alf.test.TestCase):
 
 
 class ReplayBufferTest(RingBufferTest):
-    def test_replay_buffer(self):
+    @parameterized.named_parameters([
+        ('test_sync', False),
+        ('test_async', True),
+    ])
+    def test_replay_buffer(self, allow_multiprocess):
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,
             num_environments=self.num_envs,
-            max_length=self.max_length)
+            max_length=self.max_length,
+            allow_multiprocess=allow_multiprocess)
 
         batch1 = _get_batch([0, 4, 7], self.dim, t=0, x=0.1)
         replay_buffer.add_batch(batch1, batch1.env_id)

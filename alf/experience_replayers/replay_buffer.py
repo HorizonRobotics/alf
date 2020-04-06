@@ -13,7 +13,9 @@
 # limitations under the License.
 """Replay buffer."""
 
+import functools
 import gin
+from multiprocessing import Lock
 import torch
 import torch.nn as nn
 
@@ -45,10 +47,28 @@ def _convert_device(nests):
         raise NotImplementedError("Unknown device %s" % d)
 
 
+def atomic(func):
+    """Make class member function atomic by checking class._lock."""
+
+    def atomic_deco(func):
+        @functools.wraps(func)
+        def atomic_wrapper(self, *args, **kwargs):
+            lock = getattr(self, '_lock')
+            if lock:
+                with lock:
+                    return func(self, *args, **kwargs)
+            else:
+                return func(self, *args, **kwargs)
+
+        return atomic_wrapper
+
+    return atomic_deco(func)
+
+
 class RingBuffer(nn.Module):
     """Batched Ring Buffer.
 
-    To be made multiprocessing safe.
+    To be made multiprocessing safe, optionally.
     Can be used to implement ReplayBuffer and Queue.
 
     Different from tf_agents.replay_buffers.tf_uniform_replay_buffer, this
@@ -61,6 +81,7 @@ class RingBuffer(nn.Module):
                  num_environments,
                  max_length=1024,
                  device="cpu",
+                 allow_multiprocess=False,
                  name="RingBuffer"):
         """
         Args:
@@ -70,6 +91,8 @@ class RingBuffer(nn.Module):
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
             device (str): A torch device to place the Variables and ops.
+            allow_multiprocess (bool): if true, allows multiple processes to
+                write and read the buffer asynchronously.
             name (str): name of the replay buffer.
         """
         super().__init__()
@@ -77,6 +100,11 @@ class RingBuffer(nn.Module):
         self._max_length = max_length
         self._num_envs = num_environments
         self._device = device
+        self._allow_multiprocess = allow_multiprocess
+        if allow_multiprocess:
+            self._lock = Lock()
+        else:
+            self._lock = None
 
         buffer_id = [0]
 
@@ -108,6 +136,7 @@ class RingBuffer(nn.Module):
             env_ids = _convert_device(env_ids)
             return env_ids
 
+    @atomic
     def enqueue(self, batch, env_ids=None):
         """Add a batch of items to the buffer.
 
@@ -144,6 +173,7 @@ class RingBuffer(nn.Module):
             self._current_size[env_ids] = torch.min(
                 current_size + 1, torch.tensor(self._max_length))
 
+    @atomic
     def dequeue(self, env_ids=None):
         """Return earliest batch and remove it from buffer.
 
@@ -177,6 +207,7 @@ class RingBuffer(nn.Module):
             self._current_size[env_ids] = (current_size - 1)
         return _convert_device(result)
 
+    @atomic
     def clear(self):
         """Clear the whole buffer."""
         self._current_size.fill_(0)
@@ -196,17 +227,20 @@ class ReplayBuffer(RingBuffer):
                  num_environments,
                  max_length=1024,
                  device="cpu",
+                 allow_multiprocess=False,
                  name="ReplayBuffer"):
         super().__init__(
             data_spec,
             num_environments,
             max_length=max_length,
             device=device,
+            allow_multiprocess=allow_multiprocess,
             name=name)
 
     def add_batch(self, batch, env_ids=None):
         self.enqueue(batch, env_ids)
 
+    @atomic
     def get_batch(self, batch_size, batch_length):
         """Randomly get `batch_size` trajectories from the buffer.
 
@@ -255,6 +289,7 @@ class ReplayBuffer(RingBuffer):
                 self._flattened_buffer)
         return _convert_device(result)
 
+    @atomic
     def gather_all(self):
         """Returns all the items in the buffer.
 
