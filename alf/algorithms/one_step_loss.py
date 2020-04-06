@@ -37,6 +37,7 @@ class OneStepTDLoss(nn.Module):
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
             debug_summaries (bool): True if debug summaries should be created
+            name (str): The name of this loss.
         """
         super().__init__()
         self._gamma = gamma
@@ -50,9 +51,9 @@ class OneStepTDLoss(nn.Module):
             values=target_value,
             step_types=training_info.step_type,
             discounts=training_info.discount * self._gamma)
-        returns = tensor_utils.tensor_extend(returns, value[-1])
+        value = value[:-1]
         if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = training_info.step_type != StepType.LAST
+            mask = training_info.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
                 alf.summary.scalar(
                     "explained_variance_of_return_by_value",
@@ -61,6 +62,10 @@ class OneStepTDLoss(nn.Module):
                 safe_mean_hist_summary('returns', returns, mask)
                 safe_mean_hist_summary("td_error", returns - value, mask)
         loss = self._td_error_loss_fn(returns.detach(), value)
+
+        # The shape of the loss expected by Algorith.update_with_gradient is
+        # [T, B], so we need to augment it with additional zeros.
+        loss = tensor_utils.tensor_extend_zero(loss)
         return LossInfo(loss=loss, extra=loss)
 
     @property
