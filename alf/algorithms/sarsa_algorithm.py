@@ -22,6 +22,7 @@ import torch.nn as nn
 
 import alf
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.sac_algorithm import _set_target_entropy
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
@@ -203,19 +204,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         self._use_entropy_reward = False
         if initial_alpha is not None:
             if isinstance(actor_network, DistributionNetwork):
-                if target_entropy is None or callable(target_entropy):
-                    if target_entropy is None:
-                        target_entropy = dist_utils.calc_default_target_entropy
-                    target_entropy = np.sum(
-                        list(map(target_entropy, flat_action_spec)))
-                    logging.info(
-                        "Target entropy is calculated for {}: {}.".format(
-                            self.name, target_entropy))
-                else:
-                    logging.info(
-                        "User-supplied target entropy for {}: {}".format(
-                            self.name, target_entropy))
-                self._target_entropy = target_entropy
+                self._target_entropy = _set_target_entropy(
+                    self.name, target_entropy, flat_action_spec)
                 log_alpha = torch.tensor(
                     np.log(initial_alpha), dtype=torch.float32)
                 if alpha_optimizer is None:

@@ -59,9 +59,33 @@ SacInfo = namedtuple(
 SacLossInfo = namedtuple('SacLossInfo', ('actor', 'critic', 'alpha'))
 
 
+def _set_target_entropy(name, target_entropy, flat_action_spec):
+    """A helper function for computing the target entropy under different
+    scenarios of ``target_entropy``.
+
+    Args:
+        name (str): the name of the algorithm that calls this function.
+        target_entropy (float|Callable|None): If a floating value, it will return
+            as it is. If a callable function, then it will be called on the action
+            spec to calculate a target entropy. If ``None``, a default entropy will
+            be calculated.
+        flat_action_spec (list[TensorSpec]): a flattened list of action specs
+    """
+    if target_entropy is None or callable(target_entropy):
+        if target_entropy is None:
+            target_entropy = dist_utils.calc_default_target_entropy
+        target_entropy = np.sum(list(map(target_entropy, flat_action_spec)))
+        logging.info("Target entropy is calculated for {}: {}.".format(
+            name, target_entropy))
+    else:
+        logging.info("User-supplied target entropy for {}: {}".format(
+            name, target_entropy))
+    return target_entropy
+
+
 @gin.configurable
 class SacAlgorithm(OffPolicyAlgorithm):
-    """Soft Actor Critic algortihm, described in:
+    """Soft Actor Critic algorithm, described in:
 
     ::
 
@@ -199,17 +223,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._flat_action_spec = flat_action_spec
 
         self._is_continuous = flat_action_spec[0].is_continuous
-        if target_entropy is None or callable(target_entropy):
-            if target_entropy is None:
-                target_entropy = dist_utils.calc_default_target_entropy
-            target_entropy = np.sum(
-                list(map(target_entropy, flat_action_spec)))
-            logging.info("Target entropy is calculated for {}: {}.".format(
-                self.name, target_entropy))
-        else:
-            logging.info("User-supplied target entropy for {}: {}".format(
-                self.name, target_entropy))
-        self._target_entropy = target_entropy
+        self._target_entropy = _set_target_entropy(self.name, target_entropy,
+                                                   flat_action_spec)
         self._dqda_clipping = dqda_clipping
 
         self._update_target = common.get_target_updater(
