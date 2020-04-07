@@ -13,13 +13,12 @@
 # limitations under the License.
 """Decoding algorithm."""
 
-import tensorflow as tf
-import gin.tf
-from tf_agents.networks.network import Network
-import tf_agents.specs.tensor_spec as tensor_spec
+import gin
+import torch
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.utils.encoding_network import EncodingNetwork
+from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import AlgStep, LossInfo
+from alf.networks import Network
 
 
 @gin.configurable
@@ -28,13 +27,13 @@ class DecodingAlgorithm(Algorithm):
 
     def __init__(self,
                  decoder: Network,
-                 loss=tf.losses.mean_squared_error,
+                 loss=torch.nn.functional.mse_loss,
                  loss_weight=1.0):
         """Create a decoding algorithm.
 
         Args:
             decoder (Network)
-            loss (Callable): loss function with signature loss(y_true, y_pred)
+            loss (Callable): loss function with signature loss(y_pred, y_true)
             loss_weight (float): weight for the loss
         """
         super(DecodingAlgorithm, self).__init__(
@@ -59,15 +58,14 @@ class DecodingAlgorithm(Algorithm):
 
         """
         input, target = inputs
-        pred, state = self._decoder(input, network_state=state)
+        pred, state = self._decoder(input, state=state)
         assert pred.shape == target.shape
-        loss = self._loss(target, pred)
+        loss = self._loss(pred, target)
 
         if len(loss.shape) > 1:
             # reduce to (B,)
-            reduce_dims = list(range(1, len(loss.shape)))
-            loss = tf.reduce_sum(loss, axis=reduce_dims)
-        return AlgorithmStep(
-            outputs=pred,
+            loss = loss.mean(*list(range(1, len(loss.shape))))
+        return AlgStep(
+            output=pred,
             state=state,
             info=LossInfo(loss=self._loss_weight * loss))

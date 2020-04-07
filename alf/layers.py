@@ -285,3 +285,20 @@ class ConvTranspose2D(nn.Module):
     @property
     def bias(self):
         return self._conv_trans2d.bias
+
+
+class Reshape(nn.Module):
+    def __init__(self, shape):
+        """A layer for reshape the tensor.
+
+        The result of this layer is a tensor reshaped to ``(B, *shape)`` where
+        ``B`` is ``x.shape[0]``
+
+        Args:
+            shape (tuple): desired shape not including the batch dimension.
+        """
+        super().__init__()
+        self._shape = shape
+
+    def forward(self, x):
+        return x.reshape(x.shape[0], *self._shape)

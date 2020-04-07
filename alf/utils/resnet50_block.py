@@ -12,90 +12,75 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import tensorflow as tf
-from tensorflow.keras import layers
+import torch
+import torch.nn as nn
 
 
-class BottleneckBlock(tf.keras.models.Model):
+def _tuplify2d(x):
+    if isinstance(x, tuple):
+        assert len(x) == 2
+        return x
+    return (x, x)
+
+
+class BottleneckBlock(nn.Module):
     def __init__(self,
+                 in_channels,
                  kernel_size,
                  filters,
                  strides=(2, 2),
-                 transpose=False,
-                 name='BottleneckBlock'):
+                 transpose=False):
         """A resnet bottleneck block.
 
         Reference:
-        Deep Residual Learning for Image Recognition
-        https://arxiv.org/abs/1512.03385
+        `Deep Residual Learning for Image Recognition <https://arxiv.org/abs/1512.03385>`_
 
         Args:
             kernel_size (tuple[int]|int): the kernel size of middle layer at main path
             filters (tuple[int]): the filters of 3 layer at main path
             strides (tuple[int]|int): stride for first layer in the block
             transpose (bool): a bool indicate using Conv2D or Conv2DTranspose
-            name (str): block name
         Return:
             Output tensor for the block
         """
-        super().__init__(name=name)
+        super().__init__()
         filters1, filters2, filters3 = filters
-        if tf.keras.backend.image_data_format() == 'channels_last':
-            bn_axis = 3
-        else:
-            bn_axis = 1
-        conv_name_base = 'res_branch'
-        bn_name_base = 'bn_branch'
+        kernel_size = _tuplify2d(kernel_size)
 
-        conv_fn = layers.Conv2DTranspose if transpose else layers.Conv2D
+        conv_fn = nn.ConvTranspose2d if transpose else nn.Conv2d
 
-        a = conv_fn(
-            filters1, (1, 1),
-            strides=strides,
-            kernel_initializer='he_normal',
-            name=conv_name_base + '2a')
+        a = conv_fn(in_channels, filters1, (1, 1), stride=strides)
+        nn.init.kaiming_normal_(a.weight.data, 'relu')
 
         b = conv_fn(
+            filters1,
             filters2,
             kernel_size,
-            padding='same',
-            kernel_initializer='he_normal',
-            name=conv_name_base + '2b')
+            padding=((kernel_size[0] - 1) // 2, (kernel_size[1] - 1) // 2))
+        nn.init.kaiming_normal_(b.weight.data, 'relu')
 
-        c = conv_fn(
-            filters3, (1, 1),
-            kernel_initializer='he_normal',
-            name=conv_name_base + '2c')
+        c = conv_fn(filters2, filters3, (1, 1))
+        nn.init.kaiming_normal_(c.weight.data, 'relu')
 
-        core_layers = [
+        core_layers = nn.Sequential([
             a,
-            layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2a'),
-            layers.Activation('relu'), b,
-            layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2b'),
-            layers.Activation('relu'), c,
-            layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')
-        ]
+            nn.BatchNorm2d(filters1),
+            nn.ReLU(), b,
+            nn.BatchNorm2d(filters2),
+            nn.ReLU(), c,
+            nn.BatchNorm2d(filters3)
+        ])
 
-        s = conv_fn(
-            filters3, (1, 1),
-            strides=strides,
-            kernel_initializer='he_normal',
-            name=conv_name_base + '1')
+        s = conv_fn(in_channels, filters3, (1, 1), stride=strides)
+        nn.init.kaiming_normal_(s.weight.data, 'relu')
 
-        shortcut_layers = [
-            s,
-            layers.BatchNormalization(axis=bn_axis, name=bn_name_base + '1')
-        ]
+        shortcut_layers = nn.Sequential([s, nn.BatchNorm2d(filters3)])
 
         self._core_layers = core_layers
         self._shortcut_layers = shortcut_layers
 
-    def call(self, inputs, training=True):
-        core, shortcut = inputs, inputs
-        for l in self._core_layers:
-            core = l(core, training=training)
+    def forward(self, inputs):
+        core = self._core_layers(inputs)
+        shortcut = self._shortcut_layers(inputs)
 
-        for l in self._shortcut_layers:
-            shortcut = l(shortcut, training=training)
-
-        return tf.nn.relu(core + shortcut)
+        return nn.functional.relu(core + shortcut)

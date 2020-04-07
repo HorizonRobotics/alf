@@ -27,11 +27,11 @@ from alf.utils.math_ops import argmin
 
 
 @six.add_metaclass(abc.ABCMeta)
-class Memory(nn.Module):
+class Memory(object):
     """Abstract base class for Memory."""
 
     def __init__(self, dim, size, state_spec, name="Memory"):
-        """Create an instance of `Memory`.
+        """
 
         Args:
             dim (int): dimension of memory content
@@ -103,10 +103,10 @@ class MemoryWithUsage(Memory):
                  scale=None,
                  usage_decay=None,
                  name='MemoryWithUsage'):
-        """Create an instance of `MemoryWithUsage`.
+        """
 
-        See Methods 2.3 of "Unsupervised Predictive Memory in a Goal-Directed
-        Agent"
+        See Methods 2.3 of `Unsupervised Predictive Memory in a Goal-Directed
+        Agent <https://arxiv.org/abs/1803.10760>`_
 
         Args:
             dim (int): dimension of memory content
@@ -117,11 +117,11 @@ class MemoryWithUsage(Memory):
             normalize (bool): If True, use cosine similarity, otherwise use dot
               product.
             scale (None|float): Scale the similarity by this. If scale is None,
-              a default value is used based `normalize`. If `normalize` is True,
-              `scale` is default to 5.0. If `normalize` is False, `scale` is
-              default to `1/sqrt(dim)`.
+              a default value is used based ``normalize``. If ``normalize`` is True,
+              ``scale`` is default to 5.0. If ``normalize`` is False, ``scale`` is
+              default to ``1/sqrt(dim)``.
             usage_decay (None|float): The usage will be scaled by this factor
-              at every `write` call. If None, it is default to `1 - 1 / size`
+              at every ``write`` call. If None, it is default to ``1 - 1 / size``
         """
         self._normalize = normalize
         if scale is None:
@@ -135,8 +135,8 @@ class MemoryWithUsage(Memory):
         if usage_decay is None:
             usage_decay = 1. - 1. / size
         self._usage_decay = usage_decay
-        state_spec = (alf.TensorSpec([size, dim], dtype=torch.float32),
-                      alf.TensorSpec([size], dtype=torch.float32))
+        state_spec = (alf.TensorSpec((size, dim), dtype=torch.float32),
+                      alf.TensorSpec((size, ), dtype=torch.float32))
         super(MemoryWithUsage, self).__init__(
             dim, size, state_spec=state_spec, name=name)
 
@@ -155,20 +155,39 @@ class MemoryWithUsage(Memory):
         self._usage = torch.zeros(batch_size, self.size)
         self._built = True
 
+    def create_keynet(self, query_spec, num_keys):
+        """Create a net which can be used to generate keys.
+
+        The created keynet can be used with ``genkey_and_read``.
+
+        Args:
+            query_spec (alf.TensorSpec): the spec for the query
+            num_keys (int): the number of keys to be generated.
+        Returns:
+            a function which calculates ``num_keys`` keys given query.
+        """
+        assert isinstance(
+            query_spec, alf.TensorSpec), ("Wrong type for "
+                                          "query_spec: %s" % type(query_spec))
+        assert query_spec.ndim == 1, (
+            "Query mush be a rank-1 tensor. Got: %s" % query_spec.ndim)
+        return alf.layers.FC(query_spec.shape[0], num_keys * (self.dim + 1))
+
     def genkey_and_read(self, keynet: Callable, query, flatten_result=True):
         """Generate key and read.
 
         Args:
-            keynet (Callable): keynet(query) is a tensor of shape
-              (batch_size, num_keys * (dim + 1))
+            keynet (Callable): ``keynet(query)`` is a tensor of shape
+                (batch_size, num_keys * (dim + 1)). ``keynet`` can be created
+                using ``create_keynet``.
             query (Tensor): the query from which the keys are generated
             flatten_result (bool): If True, the result shape will be
-               (batch_size, num_keys * dim), otherwise it is
-               (batch_size, num_keys, dim)
+                (batch_size, num_keys * dim), otherwise it is
+                (batch_size, num_keys, dim)
         Returns:
             resutl Tensor: If flatten_result is True,
-              its shape is (batch_size, num_keys * dim), otherwise it is
-              (batch_size, num_keys, dim)
+                its shape is (batch_size, num_keys * dim), otherwise it is
+                (batch_size, num_keys, dim)
 
         """
         batch_size = query.shape[0]
@@ -186,13 +205,13 @@ class MemoryWithUsage(Memory):
         return r
 
     def read(self, keys, scale=None):
-        """Read from memory.
+        r"""Read from memory.
 
         Read the memory for given the keys. For each key in keys we will get one
-        result as `r = sum_i M[i] a[i]` where `M[i]` is the memory content
-        at location i and `a[i]` is the attention weight for key at location i.
-        `a` is calculated as softmax of a scaled similarity between key and
-        each memory content: `a[i] = exp(scale*sim[i])/(sum_i scale*sim[i])`
+        result as :math:`r = \sum_i M_i a_i` where :math:`M_i` is the memory content
+        at location i and :math:`a_i` is the attention weight for key at location i.
+        :math:`a` is calculated as softmax of a scaled similarity between key and
+        each memory content: :math:`a_i = \exp(\frac{scale*sim_i}{\sum_i scale*sim_i})`
 
         Args:
             keys (Tensor): shape[-1] is dim.
@@ -200,7 +219,7 @@ class MemoryWithUsage(Memory):
               For multiple key read, the shape is (batch_szie, k, dim), where
               k is the number of keys.
             scale (None|float|Tensor): shape is () or keys.shape[:-1]. The
-              cosine similarities are multiplied with `scale` before softmax
+              cosine similarities are multiplied with ``scale`` before softmax
               is applied. If None, use the scale provided at constructor.
         Returns:
             resutl Tensor: shape is same as keys. result[..., i] is the read
