@@ -76,8 +76,7 @@ class CriticNetwork(Network):
                 with uniform distribution will be used.
             name (str):
         """
-        super(CriticNetwork, self).__init__(
-            input_tensor_spec, skip_input_preprocessing=True, name=name)
+        super().__init__(input_tensor_spec, name=name)
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
@@ -135,9 +134,6 @@ class CriticNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size]
             state: empty
         """
-        # this line is just a placeholder doing nothing
-        inputs, state = Network.forward(self, inputs, state)
-
         observations, actions = inputs
         actions = actions.to(torch.float32)
 
@@ -204,8 +200,7 @@ class CriticRNNNetwork(Network):
                 with uniform distribution will be used.
             name (str):
         """
-        super(CriticRNNNetwork, self).__init__(
-            input_tensor_spec, skip_input_preprocessing=True, name=name)
+        super().__init__(input_tensor_spec, name=name)
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
@@ -270,9 +265,6 @@ class CriticRNNNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size]
             new_state (nest[tuple]): the updated states
         """
-        # this line is just a placeholder doing nothing
-        inputs, state = Network.forward(self, inputs, state)
-
         observations, actions = inputs
         actions = actions.to(torch.float32)
 

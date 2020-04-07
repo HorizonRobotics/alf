@@ -20,13 +20,13 @@ import torch
 import torch.nn as nn
 
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
-from alf.networks import Network
+from alf.networks import PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 import alf.utils.math_ops as math_ops
 
 
 @gin.configurable
-class ValueNetwork(Network):
+class ValueNetwork(PreprocessorNetwork):
     """Output temporally uncorrelated values."""
 
     def __init__(self,
@@ -69,7 +69,7 @@ class ValueNetwork(Network):
             initializer will be used.
             name (str):
         """
-        super(ValueNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
@@ -104,13 +104,13 @@ class ValueNetwork(Network):
             value (torch.Tensor): a 1D tensor
             state: empty
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         value, _ = self._encoding_net(observation)
         return torch.squeeze(value, -1), state
 
 
 @gin.configurable
-class ValueRNNNetwork(Network):
+class ValueRNNNetwork(PreprocessorNetwork):
     """Outputs temporally correlated values."""
 
     def __init__(self,
@@ -160,7 +160,7 @@ class ValueRNNNetwork(Network):
                 initializer will be used.
             name (str):
         """
-        super(ValueRNNNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
@@ -197,7 +197,7 @@ class ValueRNNNetwork(Network):
             value (torch.Tensor): a 1D tensor
             new_state (nest[tuple]): the updated states
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         value, state = self._encoding_net(observation, state)
         return torch.squeeze(value, -1), state
 

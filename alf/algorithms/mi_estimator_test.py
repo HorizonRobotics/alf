@@ -38,10 +38,7 @@ class Net_YGivenZX_manual(Network):
 
 class NetML(Network):
     def __init__(self, input_spec):
-        super().__init__(
-            input_tensor_spec=input_spec,
-            skip_input_preprocessing=True,
-            name="Net")
+        super().__init__(input_tensor_spec=input_spec, name="Net")
         size = sum([x.shape[-1] for x in alf.nest.flatten(input_spec)])
         self._l1a = alf.layers.FC(size, 128, activation=F.relu)
         self._l1b = alf.layers.FC(size, 128, activation=F.relu)
@@ -55,10 +52,7 @@ class NetML(Network):
 
 class NetJSD(Network):
     def __init__(self, input_spec):
-        super().__init__(
-            input_tensor_spec=input_spec,
-            skip_input_preprocessing=True,
-            name="Net")
+        super().__init__(input_tensor_spec=input_spec, name="Net")
         size = sum([x.shape[-1] for x in alf.nest.flatten(input_spec)])
         self._l1a = alf.layers.FC(size, 128, activation=F.relu)
         self._l1b = alf.layers.FC(size, 128, activation=F.relu)

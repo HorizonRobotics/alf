@@ -21,11 +21,11 @@ import torch.nn as nn
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
-from alf.networks.network import DistributionNetwork, Network
+from alf.networks.network import PreprocessorNetwork, Network
 
 
 @gin.configurable
-class ActorDistributionNetwork(DistributionNetwork):
+class ActorDistributionNetwork(PreprocessorNetwork):
     """Outputs temporally correlated actions."""
 
     def __init__(self,
@@ -77,7 +77,7 @@ class ActorDistributionNetwork(DistributionNetwork):
                 continuous actions.
             name (str):
         """
-        super(ActorDistributionNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
@@ -118,7 +118,7 @@ class ActorDistributionNetwork(DistributionNetwork):
             act_dist (torch.distributions): action distribution
             state: empty
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         act_dist, _ = self._projection_net(self._encoding_net(observation)[0])
         return act_dist, state
 
@@ -183,13 +183,13 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
                 continuous actions.
             name (str):
         """
-        super(ActorDistributionRNNNetwork, self).__init__(
-            input_tensor_spec,
-            action_spec,
-            input_preprocessors,
-            preprocessing_combiner,
-            conv_layer_params,
-            fc_layer_params,
+        super().__init__(
+            input_tensor_spec=input_tensor_spec,
+            action_spec=action_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
             name=name)
 
         if kernel_initializer is None:
@@ -217,7 +217,8 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             act_dist (torch.distributions): action distribution
             new_state (nest[tuple]): the updated states
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = PreprocessorNetwork.forward(
+            self, observation, state)
         encoding, state = self._encoding_net(observation, state)
         act_dist, _ = self._projection_net(encoding)
         return act_dist, state

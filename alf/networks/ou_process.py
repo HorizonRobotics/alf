@@ -41,10 +41,7 @@ class OUProcess(Network):
                 Hence in most applications a small non-zero value is appropriate.
             stddev (float): Standard deviation of the Gaussian component.
         """
-        super(OUProcess, self).__init__(
-            input_tensor_spec=(),
-            skip_input_preprocessing=True,
-            name="OUProcess")
+        super().__init__(input_tensor_spec=(), name="OUProcess")
         self._state_spec = state_spec
         self._1_sub_damping = 1 - damping
         self._stddev = stddev

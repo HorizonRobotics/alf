@@ -23,13 +23,13 @@ import torch.distributions as td
 
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.networks.network import DistributionNetwork, Network
+from alf.networks.network import Network
 from alf.utils import dist_utils
 import alf.utils.math_ops as math_ops
 
 
 @gin.configurable
-class CategoricalProjectionNetwork(DistributionNetwork):
+class CategoricalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
                  action_spec,
@@ -69,7 +69,6 @@ class CategoricalProjectionNetwork(DistributionNetwork):
             kernel_init_gain=logits_init_output_factor)
 
     def forward(self, inputs, state=()):
-        inputs, state = Network.forward(self, inputs, state)
         logits = self._projection_layer(inputs)
         logits = logits.reshape(inputs.shape[0], *self._output_shape)
         return td.Independent(
@@ -78,7 +77,7 @@ class CategoricalProjectionNetwork(DistributionNetwork):
 
 
 @gin.configurable
-class NormalProjectionNetwork(DistributionNetwork):
+class NormalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
                  action_spec,
@@ -196,7 +195,6 @@ class NormalProjectionNetwork(DistributionNetwork):
             return normal_dist
 
     def forward(self, inputs, state=()):
-        inputs, state = Network.forward(self, inputs, state)
         means = self._mean_transform(self._means_projection_layer(inputs))
         stds = self._std_transform(self._std_projection_layer(inputs))
         return self._normal_dist(means, stds), state
@@ -298,7 +296,6 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             name=name)
 
     def forward(self, inputs, state=()):
-        inputs, state = Network.forward(self, inputs, state)
         inv_stds = self._std_transform(self._std_projection_layer(inputs))
         if self._max_std is not None:
             inv_stds = inv_stds + 1 / (self._max_std - self._min_std)

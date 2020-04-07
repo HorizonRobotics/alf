@@ -29,7 +29,7 @@ from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.data_structures import (AlgStep, Experience, experience_to_time_step,
                                  LossInfo, namedtuple, StepType, TimeStep,
                                  TrainingInfo)
-from alf.networks import Network, DistributionNetwork
+from alf.networks import Network
 from alf.utils import common, dist_utils, losses, math_ops, spec_utils, tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
 
@@ -71,7 +71,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 actor_network: DistributionNetwork,
+                 actor_network: Network,
                  critic_network: Network,
                  env=None,
                  config=None,
@@ -98,9 +98,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             observation_spec (nested TensorSpec): spec for observation.
-            actor_network (Network|DistributionNetwork):  The network will be
-                called with ``call(observation, step_type)``. If it is
-                ``DistributionNetwork`` an action will be sampled.
+            actor_network (Network):  The network will be called with observation.
+                If its output is Distribution, an action will be sampled.
             critic_network (Network): The network will be called with
                 ``call(observation, action, step_type)``.
             env (Environment): The environment to interact with. ``env`` is a
@@ -161,7 +160,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         self._on_policy = on_policy
 
-        if not isinstance(actor_network, DistributionNetwork):
+        if not actor_network.is_distribution_output:
             noise_process = alf.networks.OUProcess(
                 state_spec=action_spec, damping=ou_damping, stddev=ou_stddev)
             noise_state = noise_process.state_spec
@@ -203,7 +202,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         self._log_alpha = None
         self._use_entropy_reward = False
         if initial_alpha is not None:
-            if isinstance(actor_network, DistributionNetwork):
+            if actor_network.is_distribution_output:
                 self._target_entropy = _set_target_entropy(
                     self.name, target_entropy, flat_action_spec)
                 log_alpha = torch.tensor(
@@ -217,7 +216,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             else:
                 logging.info(
                     "initial_alpha and alpha_optimizer is ignored. "
-                    "The `actor_network` needs to be a DistributionNetwork in "
+                    "The `actor_network` needs to output Distribution in "
                     "order to use entropy as regularization or reward")
 
         models = copy.copy(critic_networks)
@@ -261,7 +260,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                     epsilon_greedy=1.0):
         action_distribution, actor_state = actor_network(
             time_step.observation, state=state.actor)
-        if isinstance(actor_network, DistributionNetwork):
+        if actor_network.is_distribution_output:
             if epsilon_greedy == 1.0:
                 action = dist_utils.rsample_action_distribution(
                     action_distribution)
