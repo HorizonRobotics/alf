@@ -93,28 +93,41 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
     def test_encoding_network_nonimg(self, last_layer_size, last_activation):
         input_spec = TensorSpec((100, ), torch.float32)
         embedding = input_spec.zeros(outer_dims=(1, ))
-        network = EncodingNetwork(
-            input_tensor_spec=input_spec,
-            fc_layer_params=(30, 40, 50),
-            activation=torch.tanh,
-            last_layer_size=last_layer_size,
-            last_activation=last_activation)
 
-        num_layers = 3 if last_layer_size is None else 4
-        self.assertLen(list(network.parameters()), num_layers * 2)
-
-        if last_activation is None:
-            self.assertEqual(network._fc_layers[-1]._activation, torch.tanh)
+        if (last_layer_size is None and last_activation is not None) or (
+                last_activation is None and last_layer_size is not None):
+            with self.assertRaises(AssertionError):
+                network = EncodingNetwork(
+                    input_tensor_spec=input_spec,
+                    fc_layer_params=(30, 40, 50),
+                    activation=torch.tanh,
+                    last_layer_size=last_layer_size,
+                    last_activation=last_activation)
         else:
-            self.assertEqual(network._fc_layers[-1]._activation,
-                             last_activation)
+            network = EncodingNetwork(
+                input_tensor_spec=input_spec,
+                fc_layer_params=(30, 40, 50),
+                activation=torch.tanh,
+                last_layer_size=last_layer_size,
+                last_activation=last_activation)
 
-        output, _ = network(embedding)
-        if last_layer_size is None:
-            self.assertEqual(output.size()[1], 50)
-        else:
-            self.assertEqual(output.size()[1], last_layer_size)
-        self.assertEqual(network.output_spec.shape, tuple(output.size()[1:]))
+            num_layers = 3 if last_layer_size is None else 4
+            self.assertLen(list(network.parameters()), num_layers * 2)
+
+            if last_activation is None:
+                self.assertEqual(network._fc_layers[-1]._activation,
+                                 torch.tanh)
+            else:
+                self.assertEqual(network._fc_layers[-1]._activation,
+                                 last_activation)
+
+            output, _ = network(embedding)
+            if last_layer_size is None:
+                self.assertEqual(output.size()[1], 50)
+            else:
+                self.assertEqual(output.size()[1], last_layer_size)
+            self.assertEqual(network.output_spec.shape,
+                             tuple(output.size()[1:]))
 
     def test_encoding_network_img(self):
         input_spec = TensorSpec((3, 80, 80), torch.float32)
@@ -210,7 +223,8 @@ class EncodingNetworkSideEffectsTest(alf.test.TestCase):
         enc_net = EncodingNetwork(
             input_tensor_spec=input_spec,
             fc_layer_params=fc_layer_params,
-            last_layer_size=3)
+            last_layer_size=3,
+            last_activation=torch.relu)
 
         self.assertTrue((fc_layer_params == (20, 10)))
 

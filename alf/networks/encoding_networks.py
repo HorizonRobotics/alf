@@ -25,6 +25,7 @@ import alf.layers as layers
 from alf.networks.initializers import variance_scaling_init
 from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
+from alf.utils import common
 
 
 def _tuplify2d(x):
@@ -307,13 +308,19 @@ class EncodingNetwork(Network):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If None, a variance_scaling_initializer will be
                 used.
-            last_layer_size (int): an optional size of the last layer
-            last_activation (nn.functional): activation function of the last
-                layer. If None, it will be the SAME with `activation`.
-            last_kernel_initializer (Callable): initializer for the last layer.
-                If None, it will be the same with `kernel_initializer`.
+            last_layer_size (int): an optional size of an additional layer
+                appended at the very end. Note that if last_activation is
+                specified, last_layer_size has to be specified explicitly.
+            last_activation (nn.functional): activation function of the
+                additional layer specified by last_layer_size. Note that if
+                last_layer_size is not None, last_activation has to be specified explicitly.
+            last_kernel_initializer (Callable): initializer for the the
+                additional layer specified by last_layer_size.
+                If None, it will be the same with `kernel_initializer`. If
+                last_layer_size is None, last_kernel_initializer will not be used.
             name (str):
         """
+
         super(EncodingNetwork, self).__init__(
             input_tensor_spec,
             input_preprocessors,
@@ -355,24 +362,32 @@ class EncodingNetwork(Network):
             assert isinstance(fc_layer_params, tuple)
             fc_layer_params = list(fc_layer_params)
 
-        if last_layer_size is not None:
-            fc_layer_params.append(last_layer_size)
         for i, size in enumerate(fc_layer_params):
-            act = activation
-            if i == len(fc_layer_params) - 1:
-                act = (activation
-                       if last_activation is None else last_activation)
-                kernel_initializer = (kernel_initializer
-                                      if last_kernel_initializer is None else
-                                      last_kernel_initializer)
             self._fc_layers.append(
                 layers.FC(
                     input_size,
                     size,
-                    activation=act,
+                    activation=activation,
                     kernel_initializer=kernel_initializer))
             input_size = size
 
+        if last_layer_size is not None or last_activation is not None:
+            assert last_layer_size is not None and last_activation is not None, \
+            "Both last_layer_size and last_activation need to be specified!"
+
+            if last_kernel_initializer is None:
+                common.warning_once(
+                    "last_kernel_initializer is not specified "
+                    "for the last layer of size {}.".format(last_layer_size))
+                last_kernel_initializer = kernel_initializer
+
+            self._fc_layers.append(
+                layers.FC(
+                    input_size,
+                    last_layer_size,
+                    activation=last_activation,
+                    kernel_initializer=last_kernel_initializer))
+            input_size = last_layer_size
         self._output_size = input_size
 
     def forward(self, inputs, state=()):
@@ -450,11 +465,16 @@ class LSTMEncodingNetwork(Network):
                 last layer.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer.
-            last_layer_size (int): an optional size of the last layer
-            last_activation (nn.functional): activation function of the last
-                layer. If None, it will be the same with `activation`.
-            last_kernel_initializer (Callable): initializer for the last layer.
-                If None, it will be the same with `kernel_initializer`.
+            last_layer_size (int): an optional size of an additional layer
+                appended at the very end. Note that if last_activation is
+                specified, last_layer_size has to be specified explicitly.
+            last_activation (nn.functional): activation function of the
+                additional layer specified by last_layer_size. Note that if
+                last_layer_size is not None, last_activation has to be specified explicitly.
+            last_kernel_initializer (Callable): initializer for the the
+                additional layer specified by last_layer_size.
+                If None, it will be the same with `kernel_initializer`. If
+                last_layer_size is None, last_kernel_initializer will not be used.
         """
         super(LSTMEncodingNetwork, self).__init__(
             input_tensor_spec,

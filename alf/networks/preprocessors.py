@@ -102,8 +102,9 @@ class EmbeddingPreprocessor(InputPreprocessor):
             fc_layer_params (tuple[int]): a tuple of integers representing FC
                 layer sizes.
             activation (torch.nn.functional): activation applied to the embedding
-            last_activation (nn.functional): activation function of the last
-                layer. If None, it will be the SAME with `activation`.
+            last_activation (nn.functional): activation function of the
+                last layer specified by embedding_dim. math_ops.identity is used
+                by default.
             name (str):
         """
         super(EmbeddingPreprocessor, self).__init__(input_tensor_spec, name)
