@@ -105,8 +105,6 @@ COMMON_TRAIN_CONF = [
     'TrainerConfig.summarize_action_distributions=False',
     # train two iterations
     'TrainerConfig.num_iterations=2',
-    # minimal env steps
-    'TrainerConfig.num_steps_per_iter=1',
     # only save checkpoint after train iteration finished
     'TrainerConfig.num_checkpoints=1',
     # disable evaluate

@@ -53,7 +53,6 @@ Agent.rl_algorithm_cls=@SarsaAlgorithm
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=1
-TrainerConfig.num_steps_per_iter=128
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=20000
 TrainerConfig.checkpoint_interval=10000
