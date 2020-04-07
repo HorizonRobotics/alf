@@ -118,7 +118,7 @@ class NormalProjectionNetwork(Network):
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
             dist_squashing_transform (td.Transform):  A distribution Transform
-                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+                which transforms values into :math:`(-1, 1)`. Default to `dist_utils.StableTanh()`
             name (str): name of this network.
         """
         super(NormalProjectionNetwork, self).__init__(
@@ -204,10 +204,10 @@ class NormalProjectionNetwork(Network):
 class StableNormalProjectionNetwork(NormalProjectionNetwork):
     """Generates a Multi-variate normal by predicting a mean and std.
 
-    It parameterizes the normal distributions as std=c0+1/(c1+softplus(b))
-    and mean=a*std where a and b are outputs from means_projection_layer and
-    stds_projectin_layer respectively. c0 and c1 are chosen so that
-    min_std <= std <= max_std. The advantage of this parameterization is that
+    It parameterizes the normal distributions as :math:`\sigma=c_0+\frac{1}{c_1+softplus(b)}`
+    and :math:`\mu=a\cdot\sigma` where a and b are outputs from means_projection_layer and
+    stds_projectin_layer respectively. :math:`c_0` and :math:`c_1` are chosen so that
+    :math:`\sigma_{min} <= \sigma <= \sigma_{max}`. The advantage of this parameterization is that
     its second order derivatives with respect to a and b are bounded even when
     the standard deviations become very small so that the optimization is
     more stable. See docs/stable_gradient_descent_for_gaussian_distribution.py
@@ -260,7 +260,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             max_std (float): Maximum value for standard deviation. If None, no
                 maximum is enforced.
             dist_squashing_transform (td.Transform):  A distribution Transform
-                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+                which transforms values into :math:`(-1, 1)`. Default to `dist_utils.StableTanh()`
             name (str): name of this network.
         """
         self._min_std = min_std

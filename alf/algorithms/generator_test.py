@@ -129,8 +129,8 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
                                    entropy_regularization=0.0,
                                    mi_weight=None):
         """
-        The target conditional distribution is N(yu; diag(1, 4)). After training
-        net._u should be u for both STEIN and ML. And w^T*w should be diag(1, 4)
+        The target conditional distribution is :math:`N(\mu; diag(1, 4))`. After training
+        net._u should be u for both STEIN and ML. And :math:`w^T w` should be :math:`diag(1, 4)`
         for STEIN and 0 for ML.
         """
         logging.info("entropy_regularization: %s mi_weight: %s" %

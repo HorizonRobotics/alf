@@ -41,14 +41,14 @@ class Generator(Algorithm):
 
     The generator is trained to minimize the following objective:
 
-        :math:'E(loss_func(net([noise, input]))) - entropy_regulariztion \cdot H(P)'
+        :math:`E(loss_func(net([noise, input]))) - entropy_regulariztion \cdot H(P)`
 
     where P is the (conditional) distribution of outputs given the inputs
     implied by `net` and H(P) is the (conditional) entropy of P.
 
     If the loss is the (unnormalized) negative log probability of some
     distribution Q and the entropy_regularization is 1, this objective is
-    equivalent to minimizing KL(P||Q).
+    equivalent to minimizing :math:`KL(P||Q)`.
 
     It uses two different ways to optimize `net` depending on
     entropy_regularization:
@@ -102,8 +102,8 @@ class Generator(Algorithm):
             entropy_regularization (float): weight of entropy regularization
             kernel_sharpness (float): Used only for entropy_regularization > 0.
                 We calcualte the kernel in SVGD as:
-                    :math:'\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))'
-                where width is the elementwise moving average of (x-y)^2
+                    :math:`\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))`
+                where width is the elementwise moving average of :math:`(x-y)^2`
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
