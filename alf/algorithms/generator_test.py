@@ -37,7 +37,7 @@ class Net(Network):
         self.fc.weight = nn.Parameter(w.t())
 
     def forward(self, input, state=()):
-        return self.fc(input)
+        return self.fc(input), ()
 
 
 class Net2(Network):
@@ -57,7 +57,7 @@ class Net2(Network):
         self.fc2.weight = nn.Parameter(u.t())
 
     def forward(self, input, state=()):
-        return self.fc1(input[0]) + self.fc2(input[1])
+        return self.fc1(input[0]) + self.fc2(input[1]), ()
 
 
 class GeneratorTest(parameterized.TestCase, alf.test.TestCase):

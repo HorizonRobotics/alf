@@ -22,7 +22,7 @@ from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
 from alf.networks import Network, EncodingNetwork
 from alf.tensor_specs import TensorSpec
-from alf.utils import common
+from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
@@ -131,6 +131,7 @@ class Generator(Algorithm):
                 input_tensor_spec=net_input_spec,
                 fc_layer_params=hidden_layers,
                 last_layer_size=output_dim,
+                last_activation=math_ops.identity,
                 name="Generator")
 
         self._mi_estimator = None
@@ -163,9 +164,9 @@ class Generator(Algorithm):
         noise = torch.randn(batch_size, self._noise_dim)
         gen_inputs = noise if inputs is None else [noise, inputs]
         if self._predict_net and not training:
-            outputs = self._predict_net(gen_inputs)
+            outputs = self._predict_net(gen_inputs)[0]
         else:
-            outputs = self._net(gen_inputs)
+            outputs = self._net(gen_inputs)[0]
         return outputs, gen_inputs
 
     def predict_step(self, inputs, batch_size=None, state=None):
@@ -220,9 +221,7 @@ class Generator(Algorithm):
         loss_inputs = outputs if inputs is None else [outputs, inputs]
         loss = loss_func(loss_inputs)
 
-        grad = nest.pack_sequence_as(
-            outputs,
-            list(torch.autograd.grad(loss.sum(), nest.flatten(outputs))))
+        grad = torch.autograd.grad(loss.sum(), outputs)[0]
 
         return loss, grad
 
@@ -238,19 +237,13 @@ class Generator(Algorithm):
         kernel_weight = self._kernel_func(outputs, outputs2)
         weight_sum = self._entropy_regularization * kernel_weight.sum()
 
-        kernel_grad = nest.pack_sequence_as(
-            outputs2,
-            list(torch.autograd.grad(weight_sum, nest.flatten(outputs2))))
+        kernel_grad = torch.autograd.grad(weight_sum, outputs2)[0]
 
         loss_inputs = outputs2 if inputs is None else [outputs2, inputs]
         loss = loss_func(loss_inputs)
         weighted_loss = kernel_weight.detach() * loss
 
-        loss_grad = nest.pack_sequence_as(
-            outputs2,
-            list(
-                torch.autograd.grad(weighted_loss.sum(),
-                                    nest.flatten(outputs2))))
+        loss_grad = torch.autograd.grad(weighted_loss.sum(), outputs2)[0]
 
         return loss, loss_grad - kernel_grad
 
