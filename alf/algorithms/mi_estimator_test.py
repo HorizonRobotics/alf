@@ -12,38 +12,43 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
-
 from absl import logging
 from absl.testing import parameterized
-import tensorflow as tf
-import tensorflow_probability as tfp
+import math
+import torch
+import torch.distributions as td
+import torch.nn.functional as F
 
-from tf_agents.networks.network import Network
+import alf
 from alf.algorithms.mi_estimator import MIEstimator, ScalarAdaptiveAverager
+from alf.networks import Network
+from alf.utils import math_ops
+from alf.utils.dist_utils import DiagMultivariateNormal
 
 
 class Net_YGivenZX_manual(Network):
     def __init__(self, input_spec):
-        super().__init__(
-            input_tensor_spec=input_spec, state_spec=(), name="Net")
+        super().__init__(input_tensor_spec=input_spec, name="Net")
 
-    def call(self, input):
+    def forward(self, input, state=()):
         z, x = input
-        z = tf.nn.relu(z)
-        return tf.concat([z, x * z], axis=-1), ()
+        z = F.relu(z)
+        return torch.cat([z, x * z], dim=-1), ()
 
 
 class NetML(Network):
     def __init__(self, input_spec):
         super().__init__(
-            input_tensor_spec=input_spec, state_spec=(), name="Net")
-        self._l1a = tf.keras.layers.Dense(128, activation='relu')
-        self._l1b = tf.keras.layers.Dense(128, activation='relu')
-        self._l1 = tf.keras.layers.Dense(128, activation='relu')
+            input_tensor_spec=input_spec,
+            skip_input_preprocessing=True,
+            name="Net")
+        size = sum([x.shape[-1] for x in alf.nest.flatten(input_spec)])
+        self._l1a = alf.layers.FC(size, 128, activation=F.relu)
+        self._l1b = alf.layers.FC(size, 128, activation=F.relu)
+        self._l1 = alf.layers.FC(128, 128, activation=F.relu)
 
-    def call(self, input):
-        x = tf.concat(tf.nest.flatten(input), axis=-1)
+    def forward(self, input, state=()):
+        x = torch.cat(alf.nest.flatten(input), dim=-1)
         x = self._l1(self._l1a(x) * self._l1b(x))
         return x, ()
 
@@ -51,26 +56,29 @@ class NetML(Network):
 class NetJSD(Network):
     def __init__(self, input_spec):
         super().__init__(
-            input_tensor_spec=input_spec, state_spec=(), name="Net")
-        self._l1a = tf.keras.layers.Dense(128, activation='relu')
-        self._l1b = tf.keras.layers.Dense(128, activation='relu')
+            input_tensor_spec=input_spec,
+            skip_input_preprocessing=True,
+            name="Net")
+        size = sum([x.shape[-1] for x in alf.nest.flatten(input_spec)])
+        self._l1a = alf.layers.FC(size, 128, activation=F.relu)
+        self._l1b = alf.layers.FC(size, 128, activation=F.relu)
 
-        self._l2a = tf.keras.layers.Dense(128, activation='relu')
-        self._l2b = tf.keras.layers.Dense(128, activation='relu')
-        self._l_out = tf.keras.layers.Dense(1)
+        self._l2a = alf.layers.FC(128, 128, activation=F.relu)
+        self._l2b = alf.layers.FC(128, 128, activation=F.relu)
+        self._l_out = alf.layers.FC(128, 1)
 
-    def call(self, input):
-        x = tf.concat(tf.nest.flatten(input), axis=-1)
+    def forward(self, input):
+        x = torch.cat(alf.nest.flatten(input), dim=-1)
         x = self._l1a(x) * self._l1b(x)
         x = self._l2a(x) * self._l2b(x)
         return self._l_out(x), ()
 
 
-class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
+class MIEstimatorTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(
-        dict(estimator='DV', rho=0.0, eps=0.02),
-        dict(estimator='KLD', rho=0.0, eps=0.02),
-        dict(estimator='JSD', rho=0.0, eps=0.02),
+        dict(estimator='DV', rho=0.0, eps=0.03),
+        dict(estimator='KLD', rho=0.0, eps=0.03),
+        dict(estimator='JSD', rho=0.0, eps=0.03),
         dict(estimator='DV', rho=0.5, eps=0.4),
         dict(estimator='DV', rho=0.5, eps=0.4, sampler='double_buffer'),
         dict(estimator='DV', rho=0.5, eps=0.4, buffer_size=1048576),
@@ -91,44 +99,45 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
                           dim=20):
         mi_estimator = MIEstimator(
             x_spec=[
-                tf.TensorSpec(shape=(dim // 3, ), dtype=tf.float32),
-                tf.TensorSpec(shape=(dim - dim // 3, ), dtype=tf.float32)
+                alf.TensorSpec(shape=(dim // 3, ), dtype=torch.float32),
+                alf.TensorSpec(shape=(dim - dim // 3, ), dtype=torch.float32)
             ],
             y_spec=[
-                tf.TensorSpec(shape=(dim // 2, ), dtype=tf.float32),
-                tf.TensorSpec(shape=(dim // 2, ), dtype=tf.float32)
+                alf.TensorSpec(shape=(dim // 2, ), dtype=torch.float32),
+                alf.TensorSpec(shape=(dim // 2, ), dtype=torch.float32)
             ],
             fc_layers=(512, ),
             buffer_size=buffer_size,
             estimator_type=estimator,
             sampler=sampler,
             averager=ScalarAdaptiveAverager(),
-            optimizer=tf.optimizers.Adam(learning_rate=1e-4))
+            optimizer=alf.optimizers.AdamTF(lr=1e-4))
 
         a = 0.5 * (math.sqrt(1 + rho) + math.sqrt(1 - rho))
         b = 0.5 * (math.sqrt(1 + rho) - math.sqrt(1 - rho))
         # This matrix transforms standard Gaussian to a Gaussian with variance
         # [[1, rho], [rho, 1]]
-        w = tf.constant([[a, b], [b, a]], dtype=tf.float32)
-        var = tf.matmul(w, w)
-        entropy = 0.5 * tf.math.log(tf.linalg.det(2 * math.pi * math.e * var))
-        entropy_x = 0.5 * tf.math.log(2 * math.pi * math.e * var[0, 0])
-        entropy_y = 0.5 * tf.math.log(2 * math.pi * math.e * var[1, 1])
+        w = torch.tensor([[a, b], [b, a]], dtype=torch.float32)
+        var = torch.matmul(w, w)
+        entropy = 0.5 * torch.logdet(2 * math.pi * math.e * var)
+        entropy_x = 0.5 * torch.log(2 * math.pi * math.e * var[0, 0])
+        entropy_y = 0.5 * torch.log(2 * math.pi * math.e * var[1, 1])
         mi = float(dim * (entropy_x + entropy_y - entropy))
 
         def _get_batch(batch_size):
-            xy = tf.random.normal(shape=(batch_size * dim, 2))
-            xy = tf.matmul(xy, w)
+            xy = torch.randn(batch_size * dim, 2)
+            xy = torch.matmul(xy, w)
             x = xy[:, 0]
             y = xy[:, 1]
-            x = tf.reshape(x, (-1, dim))
-            y = tf.reshape(y, (-1, dim))
+            x = x.reshape(-1, dim)
+            y = y.reshape(-1, dim)
             x = [x[..., :dim // 3], x[..., dim // 3:]]
             y = [y[..., :dim // 2], y[..., dim // 2:]]
             return x, y
 
         def _calc_estimated_mi(i, mi_samples):
-            estimated_mi, var = tf.nn.moments(mi_samples, axes=(0, ))
+            estimated_mi = mi_samples.mean(dim=0)
+            var = torch.var(mi_samples, dim=0, unbiased=False)
             estimated_mi = float(estimated_mi)
             # For DV estimator, the following std is an approximated std.
             logging.info(
@@ -140,18 +149,16 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
         info = "mi=%s estimator=%s buffer_size=%s sampler=%s dim=%s" % (
             float(mi), estimator, buffer_size, sampler, dim)
 
-        @tf.function
         def _train():
             x, y = _get_batch(batch_size)
-            with tf.GradientTape() as tape:
-                alg_step = mi_estimator.train_step((x, y))
-            mi_estimator.train_complete(tape, alg_step.info)
+            alg_step = mi_estimator.train_step((x, y))
+            mi_estimator.update_with_gradient(alg_step.info)
             return alg_step
 
         for i in range(5000):
             alg_step = _train()
             if i % 1000 == 0:
-                _calc_estimated_mi(i, alg_step.outputs)
+                _calc_estimated_mi(i, alg_step.output)
         x, y = _get_batch(16384)
         log_ratio = mi_estimator.calc_pmi(x, y)
         estimated_mi = _calc_estimated_mi(info, log_ratio)
@@ -176,12 +183,12 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
         dict(estimator='ML', switch_xy=True, use_default_model=True),
         dict(estimator='ML', switch_xy=True, use_default_model=False),
     )
-    def test_conditional_mi_estimator(self,
-                                      estimator='ML',
-                                      switch_xy=False,
-                                      use_default_model=True,
-                                      eps=0.02,
-                                      dim=2):
+    def __test_conditional_mi_estimator(self,
+                                        estimator='ML',
+                                        switch_xy=False,
+                                        use_default_model=True,
+                                        eps=0.02,
+                                        dim=2):
         """Estimate the conditional mutual information MI(X;Y|Z)
 
         X, Y and Z are generated by the following procedure:
@@ -195,12 +202,11 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
             [X, Y] ~ N([z, z+z^2], [[1, z], [z, e^2+z^2]])
             MI(X;Y|z) = 0.5 * log(1+z^2/e^2)
         """
-        tf.random.set_seed(123)
         x_spec = [
-            tf.TensorSpec(shape=(dim, ), dtype=tf.float32),
-            tf.TensorSpec(shape=(dim, ), dtype=tf.float32)
+            alf.TensorSpec(shape=(dim, ), dtype=torch.float32),
+            alf.TensorSpec(shape=(dim, ), dtype=torch.float32)
         ]
-        y_spec = tf.TensorSpec(shape=(dim, ), dtype=tf.float32)
+        y_spec = alf.TensorSpec(shape=(dim, ), dtype=torch.float32)
         if use_default_model:
             model = None
         elif estimator == 'ML':
@@ -213,23 +219,23 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
             fc_layers=(256, 256),
             model=model,
             estimator_type=estimator,
-            optimizer=tf.optimizers.Adam(learning_rate=2e-4))
+            optimizer=alf.optimizers.AdamTF(lr=2e-4))
 
-        z = tf.random.normal((10000, ))
+        z = torch.randn(10000, )
         e = 0.5
-        mi = 0.25 * dim * tf.reduce_mean(tf.math.log(1 + (z / e)**2))
+        mi = 0.25 * dim * torch.mean(torch.log(1 + (z / e)**2))
 
         def _get_batch(batch_size, z=None):
             if z is None:
-                z = tf.random.normal(shape=(batch_size, dim))
-            x_dist = tfp.distributions.Normal(loc=z, scale=tf.ones_like(z))
-            mask = tf.cast(z > 0, tf.float32)
-            y_dist = tfp.distributions.Normal(
+                z = torch.randn(batch_size, dim)
+            x_dist = DiagMultivariateNormal(loc=z, scale=torch.ones_like(z))
+            mask = (z > 0).to(torch.float32)
+            y_dist = DiagMultivariateNormal(
                 loc=(z + z * z) * mask,
-                scale=1 - mask + mask * tf.sqrt(e * e + z * z))
+                scale=1 - mask + mask * torch.sqrt(e * e + z * z))
             x = x_dist.sample()
-            y = (z + x * z) * mask + (1 - mask + e * mask) * tf.random.normal(
-                shape=(batch_size, dim))
+            y = (z + x * z) * mask + (1 - mask + e * mask) * torch.randn(
+                batch_size, dim)
             if not switch_xy:
                 X = [z, x]
                 Y = y
@@ -245,13 +251,15 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
                                                   batch['Y_dist'])
             batch_size = estimated_pmi.shape[0]
             x, y, z = batch['x'], batch['y'], batch['z']
-            pmi = 0.5 * (tf.square(y - z - z * z) /
-                         (e * e + z * z) - tf.square(y - z - x * z) /
-                         (e * e) + tf.math.log(1 + (z / e)**2))
-            pmi = pmi * tf.cast(z > 0, tf.float32)
-            pmi = tf.reduce_sum(pmi, axis=-1)
-            pmi_rmse = tf.sqrt(tf.reduce_mean(tf.square(pmi - estimated_pmi)))
-            estimated_mi, var = tf.nn.moments(estimated_pmi, axes=(0, ))
+            pmi = 0.5 * (math_ops.square(y - z - z * z) /
+                         (e * e + z * z) - math_ops.square(y - z - x * z) /
+                         (e * e) + torch.log(1 + (z / e)**2))
+            pmi = pmi * (z > 0).to(torch.float32)
+            pmi = torch.sum(pmi, dim=-1)
+            pmi_rmse = torch.sqrt(
+                torch.mean(math_ops.square(pmi - estimated_pmi)))
+            estimated_mi = estimated_pmi.mean(dim=0)
+            var = torch.var(estimated_pmi, dim=0, unbiased=False)
             estimated_mi = float(estimated_mi)
             logging.info("%s estimated_mi=%s std=%s pmi_rmse=%s" % (
                 i, estimated_mi, math.sqrt(var / batch_size), float(pmi_rmse)))
@@ -262,13 +270,11 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
         info = "mi=%s estimator=%s use_default_model=%s switch_xy=%s dim=%s" % (
             float(mi), estimator, use_default_model, switch_xy, dim)
 
-        @tf.function
         def _train():
             batch = _get_batch(batch_size)
-            with tf.GradientTape() as tape:
-                alg_step = mi_estimator.train_step(
-                    (batch['X'], batch['Y']), y_distribution=batch['Y_dist'])
-            mi_estimator.train_complete(tape, alg_step.info)
+            alg_step = mi_estimator.train_step((batch['X'], batch['Y']),
+                                               y_distribution=batch['Y_dist'])
+            mi_estimator.update_with_gradient(alg_step.info)
             return alg_step
 
         for i in range(20000):
@@ -286,19 +292,16 @@ class MIEstimatorTest(parameterized.TestCase, tf.test.TestCase):
         # different values of z
         detail_result = False
         if detail_result:
-            for z in tf.range(-2., 2.001, 0.125):
-                batch = _get_batch(batch_size, z * tf.ones((batch_size, dim)))
+            for z in torch.arange(-2., 2.001, 0.125):
+                batch = _get_batch(batch_size, z * torch.ones(batch_size, dim))
                 info = "z={z} mi={mi}".format(
                     z=float(z),
                     mi=float(
-                        0.5 * tf.math.log(1 + tf.square(tf.nn.relu(z / e)))))
+                        0.5 * torch.log(1 + math_ops.square(F.relu(z / e)))))
                 _estimate_mi(info, batch)
 
         return mi, estimated_mi
 
 
 if __name__ == '__main__':
-    logging.set_verbosity(logging.INFO)
-    from alf.utils.common import set_per_process_memory_growth
-    set_per_process_memory_growth()
-    tf.test.main()
+    alf.test.main()

@@ -181,9 +181,19 @@ class OUProcess(nn.Module):
         return self._x.data.copy_((1 - self._damping) * self._x + noise)
 
 
-def DiagMultivariateNormal(loc, scale_diag):
-    """Create a Normal distribution with diagonal variance."""
-    return td.Independent(td.Normal(loc, scale_diag), 1)
+class DiagMultivariateNormal(td.Independent):
+    def __init__(self, loc, scale):
+        """Create multivariate normal distribution with diagonal variance.
+
+        Args:
+            loc (Tensor): mean of the distribution
+            scale (Tensor): standard deviation. Should have same shape as loc
+        """
+        super().__init__(td.Normal(loc, scale), reinterpreted_batch_ndims=1)
+
+    @property
+    def stddev(self):
+        return self.base_dist.stddev
 
 
 def _builder_independent(base_builder, reinterpreted_batch_ndims, **kwargs):
@@ -204,6 +214,8 @@ def _get_builder(obj):
         new_builder = functools.partial(_builder_independent, builder,
                                         obj.reinterpreted_batch_ndims)
         return new_builder, params
+    elif type(obj) == DiagMultivariateNormal:
+        return DiagMultivariateNormal, {'loc': obj.mean, 'scale': obj.stddev}
     elif isinstance(obj, td.TransformedDistribution):
         builder, params = _get_builder(obj.base_dist)
         new_builder = functools.partial(_builder_transformed, builder,
