@@ -30,7 +30,7 @@ def identity(x):
 
 @gin.configurable
 def clipped_exp(value, clip_value_min=-20, clip_value_max=2):
-    """ Clip value to the range :math:`[\text{clip(value)}_{\min}, \text{clip(value)}_{\max}]`
+    """ Clip value to the range [`clip_value_min`, `clip_value_max`]
     then compute exponential
 
     Args:
