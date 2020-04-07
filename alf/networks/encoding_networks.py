@@ -63,7 +63,7 @@ class ImageEncodingNetwork(Network):
         where H = output size, H1 = input size, HF = size of kernel, P = padding
 
         Regarding padding: in the previous TF version, we have two padding modes:
-        "valid" and "same". For the former, we always have no padding (P=0); for
+        ``valid`` and ``same``. For the former, we always have no padding (P=0); for
         the latter, it's also called "half padding" (P=(HF-1)//2 when strides=1
         and HF is an odd number the output has the same size with the input.
         Currently, PyTorch don't support different left and right paddings and
@@ -76,16 +76,16 @@ class ImageEncodingNetwork(Network):
             conv_layer_params (tuppe[tuple]): a non-empty tuple of
                 tuple (num_filters, kernel_size, strides, padding), where
                 padding is optional
-            same_padding (bool): similar to TF' conv2d 'same' padding mode. If
+            same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
                 True, the user provided paddings in `conv_layer_params` will be
                 replaced by automatically calculated ones; if False, it
-                corresponds to TF's 'valid' padding mode (the user can still
+                corresponds to TF's ``valid`` padding mode (the user can still
                 provide custom paddings though)
             activation (torch.nn.functional): activation for all the layers
             kernel_initializer (Callable): initializer for all the layers.
             flatten_output (bool): If False, the output will be an image
-                structure of shape `BxCxHxW`; otherwise the output will be
-                flattened into a feature of shape `BxN`
+                structure of shape ``BxCxHxW``; otherwise the output will be
+                flattened into a feature of shape ``BxN``.
         """
         input_size = _tuplify2d(input_size)
         super(ImageEncodingNetwork, self).__init__(
@@ -158,10 +158,10 @@ class ImageDecodingNetwork(Network):
         OP = output_padding (currently hardcoded to be 0 for this class).
 
         Regarding padding: in the previous TF version, we have two padding modes:
-        "valid" and "same". For the former, we always have no padding (P=0); for
-        the latter, it's also called "half padding" (P=(HF-1)//2 when strides=1
+        ``valid`` and ``same``. For the former, we always have no padding (P=0); for
+        the latter, it's also called ``half padding`` (P=(HF-1)//2 when strides=1
         and HF is an odd number the output has the same size with the input.
-        Currently, PyTorch don't support different left and right paddings and
+        Currently, PyTorch doesn't support different left and right paddings and
         P is always (HF-1)//2. So if HF is an even number, the output size will
         increaseby 1 when strides=1).
 
@@ -169,18 +169,18 @@ class ImageDecodingNetwork(Network):
             input_size (int): the size of the input latent vector
             transconv_layer_params (tuple[tuple]): a non-empty
                 tuple of tuple (num_filters, kernel_size, strides, padding),
-                where `padding` is optional.
+                where ``padding`` is optional.
             start_decoding_size (int or tuple): the initial height and width
                 we'd like to have for the feature map
             start_decoding_channels (int): the initial number of channels we'd
                 like to have for the feature map. Note that we always first
                 project an input latent vector into a vector of an appropriate
-                length so that it can be reshaped into (`start_decoding_channels`,
-                `start_decoding_height`, `start_decoding_width`).
-            same_padding (bool): similar to TF' conv2d 'same' padding mode. If
-                True, the user provided paddings in `transconv_layer_params` will
+                length so that it can be reshaped into (``start_decoding_channels``,
+                ``start_decoding_height``, ``start_decoding_width``).
+            same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
+                True, the user provided paddings in ``transconv_layer_params`` will
                 be replaced by automatically calculated ones; if False, it
-                corresponds to TF's 'valid' padding mode (the user can still
+                corresponds to TF's ``valid`` padding mode (the user can still
                 provide custom paddings though).
             preprocess_fc_layer_params (tuple[int]): a tuple of fc
                 layer units. These fc layers are used for preprocessing the
@@ -189,8 +189,8 @@ class ImageDecodingNetwork(Network):
             kernel_initializer (Callable): initializer for all the layers.
             output_activation (nn.functional): activation for the output layer.
                 Usually our image inputs are normalized to [0, 1] or [-1, 1],
-                so this function should be `torch.sigmoid` or
-                `torch.tanh`.
+                so this function should be ``torch.sigmoid`` or
+                ``torch.tanh``.
             name (str):
         """
         super(ImageDecodingNetwork, self).__init__(
@@ -282,25 +282,25 @@ class EncodingNetwork(Network):
         from the other layers.
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then `preprocessing_combiner` must not be
+                the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
-                structure with `input_tensor_spec`. This arg is helpful if you
+                structure with ``input_tensor_spec``. This arg is helpful if you
                 want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
             activation (nn.functional): activation used for all the layers but
@@ -309,15 +309,17 @@ class EncodingNetwork(Network):
                 the last layer. If None, a variance_scaling_initializer will be
                 used.
             last_layer_size (int): an optional size of an additional layer
-                appended at the very end. Note that if last_activation is
-                specified, last_layer_size has to be specified explicitly.
+                appended at the very end. Note that if ``last_activation`` is
+                specified, ``last_layer_size`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
-                additional layer specified by last_layer_size. Note that if
-                last_layer_size is not None, last_activation has to be specified explicitly.
+                additional layer specified by ``last_layer_size``. Note that if
+                ``last_layer_size`` is not None, ``last_activation`` has to be
+                specified explicitly.
             last_kernel_initializer (Callable): initializer for the the
-                additional layer specified by last_layer_size.
-                If None, it will be the same with `kernel_initializer`. If
-                last_layer_size is None, last_kernel_initializer will not be used.
+                additional layer specified by ``last_layer_size``.
+                If None, it will be the same with ``kernel_initializer``. If
+                ``last_layer_size`` is None, ``last_kernel_initializer`` will
+                not be used.
             name (str):
         """
 
@@ -437,22 +439,22 @@ class LSTMEncodingNetwork(Network):
                 the input. If nested, then `preprocessing_combiner` must not be
                 None.
             input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
-                structure with `input_tensor_spec`. This arg is helpful if you
+                structure with ``input_tensor_spec``. This arg is helpful if you
                 want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             pre_fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layers that are applied before the LSTM cells.
             hidden_size (int or tuple[int]): the hidden size(s) of
@@ -466,15 +468,17 @@ class LSTMEncodingNetwork(Network):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer.
             last_layer_size (int): an optional size of an additional layer
-                appended at the very end. Note that if last_activation is
-                specified, last_layer_size has to be specified explicitly.
+                appended at the very end. Note that if ``last_activation`` is
+                specified, ``last_layer_size`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
-                additional layer specified by last_layer_size. Note that if
-                last_layer_size is not None, last_activation has to be specified explicitly.
+                additional layer specified by ``last_layer_size``. Note that if
+                ``last_layer_size`` is not None, ``last_activation`` has to be
+                specified explicitly.
             last_kernel_initializer (Callable): initializer for the the
-                additional layer specified by last_layer_size.
-                If None, it will be the same with `kernel_initializer`. If
-                last_layer_size is None, last_kernel_initializer will not be used.
+                additional layer specified by ``last_layer_size``.
+                If None, it will be the same with ``kernel_initializer``. If
+                ``last_layer_size`` is None, ``last_kernel_initializer`` will
+                not be used.
         """
         super(LSTMEncodingNetwork, self).__init__(
             input_tensor_spec,
@@ -535,7 +539,7 @@ class LSTMEncodingNetwork(Network):
         Args:
             inputs (nested torch.Tensor):
             state (list[tuple]): a list of tuples, where each tuple is a pair
-                of `h_state` and `c_state`.
+                of ``h_state`` and ``c_state``.
 
         Returns:
             output (torch.Tensor): output of the network
