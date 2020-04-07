@@ -61,14 +61,16 @@ class TrainerConfig(object):
                 for the definition of FrameSkip.
             unroll_length (int):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
-                iteration can be computed as: ``num_envs * env_batch_size``
-                * `unroll_length`.
+                iteration can be computed as: ``num_envs * env_batch_size * unroll_length``.
             use_rollout_state (bool): Include the RNN state for the experiences
                 used for off-policy training
             temporally_independent_train_step (bool): If True, the ``train_step``
                 is called with all the experiences in one batch instead of being
                 called sequentially with ``mini_batch_length`` batches. Only used
-                by ``OffPolicyAlgorithm``.
+                by ``OffPolicyAlgorithm``. In general, this option can only be
+                used if the algorithm has no state. For Algorithm with state (e.g.
+                ``SarsaAlgorithm`` not using RNN), if there is no need to
+                recompute state at train_step, this option can also be used.
             num_checkpoints (int): how many checkpoints to save for the training
             evaluate (bool): A bool to evaluate when training
             eval_interval (int): evaluate every so many iteration
