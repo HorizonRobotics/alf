@@ -135,6 +135,9 @@ class RingBuffer(nn.Module):
             self._flattened_buffer = alf.nest.map_structure(
                 lambda x: bs.flatten(x), self._buffer)
 
+        if allow_multiprocess:
+            self.share_memory()
+
     def check_convert_env_ids(self, env_ids):
         with alf.device(self._device):
             if env_ids is None:

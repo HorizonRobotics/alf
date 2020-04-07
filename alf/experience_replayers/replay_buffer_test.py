@@ -99,7 +99,6 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 sleep(0.04)
                 ring_buffer.enqueue(batch, batch.env_id)
 
-            ring_buffer.share_memory()
             p = mp.Process(target=delayed_enqueue, args=(ring_buffer, batch1))
             p.start()
             batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
