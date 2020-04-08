@@ -62,7 +62,7 @@ class InputPreprocessor(nn.Module):
             inputs (TensorSpec or Tensor):
 
         Returns:
-            Tensor or TensorSpec: if `Tensor`, the returned is the preprocessed
+            Tensor or TensorSpec: if ``Tensor``, the returned is the preprocessed
                 result; otherwise it's the tensor spec of the result.
         """
         if isinstance(inputs, TensorSpec):
@@ -80,7 +80,7 @@ class EmbeddingPreprocessor(InputPreprocessor):
     """A preprocessor that converts the input to an embedding vector. This can
     be used when the input is a discrete scalar, or a continuous vector to be
     projected to a different dimension (to have the same length with other
-    vectors). Different from an `EncodingNetwork`, the input can be in the
+    vectors). Different from an ``EncodingNetwork``, the input can be in the
     original format from the environment.
     """
 
@@ -97,13 +97,14 @@ class EmbeddingPreprocessor(InputPreprocessor):
             input_tensor_spec (TensorSpec): the input spec
             embedding_dim (int): output embedding size
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing FC
                 layer sizes.
             activation (torch.nn.functional): activation applied to the embedding
-            last_activation (nn.functional): activation function of the last
-                layer. If None, it will be the SAME with `activation`.
+            last_activation (nn.functional): activation function of the
+                last layer specified by embedding_dim. ``math_ops.identity`` is
+                used by default.
             name (str):
         """
         super(EmbeddingPreprocessor, self).__init__(input_tensor_spec, name)
