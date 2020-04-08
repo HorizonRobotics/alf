@@ -340,13 +340,15 @@ class RingBuffer(nn.Module):
         return _convert_device(result)
 
     @atomic
-    def clear(self):
+    def clear(self, env_ids=None):
         """Clear the whole buffer."""
-        self._current_size.fill_(0)
-        self._current_pos.fill_(0)
-        if self._dequeued:
-            self._dequeued.set()
-            self._enqueued.clear()
+        with alf.device(self._device):
+            env_ids = self.check_convert_env_ids(env_ids)
+            self._current_size.scatter_(0, env_ids, 0)
+            self._current_pos.scatter_(0, env_ids, 0)
+            if self._dequeued:
+                self._dequeued.set()
+                self._enqueued.clear()
 
     @property
     def num_environments(self):
@@ -372,8 +374,8 @@ class ReplayBuffer(RingBuffer):
             allow_multiprocess=allow_multiprocess,
             name=name)
 
-    def add_batch(self, batch, env_ids=None):
-        self.enqueue(batch, env_ids)
+    def add_batch(self, batch, env_ids=None, blocking=False):
+        self.enqueue(batch, env_ids, blocking=blocking)
 
     @atomic
     def get_batch(self, batch_size, batch_length):
