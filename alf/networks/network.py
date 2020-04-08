@@ -94,108 +94,21 @@ class Network(nn.Module):
     """A base class for various networks.
 
     Base extension to nn.Module to simplify copy operations.
-
-    It also handles complex nested inputs.
     """
 
-    def __init__(self,
-                 input_tensor_spec,
-                 input_preprocessors=None,
-                 preprocessing_combiner=None,
-                 skip_input_preprocessing=False,
-                 name="Network"):
+    def __init__(self, input_tensor_spec, name="Network"):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then `preprocessing_combiner` must not be
                 None.
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
-            preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
-                arg is helpful if you want to combine inputs by configuring a
-                gin file without changing the code.
-            skip_input_preprocessing (bool): If True, skip preprocessing and
-                checking the inputs, and the subclass will be responsible for
-                the input handling. This can be set for a subclass that has its
-                own fixed and specialized way of handling nested inputs.
             name (str):
         """
         super(Network, self).__init__()
         self._name = name
-        self._skip_input_preprocessing = skip_input_preprocessing
         self._input_tensor_spec = input_tensor_spec
-
-        if not skip_input_preprocessing:
-            # make sure the network holds the parameters of any trainable input
-            # preprocessor
-            self._input_preprocessor_modules = nn.ModuleList()
-
-            def _get_preprocessed_spec(preproc, spec):
-                if not isinstance(preproc, InputPreprocessor):
-                    # In this case we just assume the spec won't change after the
-                    # preprocessing. If it does change, then you should consider
-                    # defining an `InputPreprocessor` instead.
-                    return spec
-                self._input_preprocessor_modules.append(preproc)
-                return preproc(spec)
-
-            self._input_preprocessors = alf.nest.map_structure(
-                lambda _: math_ops.identity, input_tensor_spec)
-            if input_preprocessors is not None:
-                input_preprocessors = alf.nest.pack_sequence_as(
-                    input_tensor_spec, alf.nest.flatten(input_preprocessors))
-                input_tensor_spec = alf.nest.map_structure(
-                    _get_preprocessed_spec, input_preprocessors,
-                    input_tensor_spec)
-                # allow None as a placeholder in the nest
-                self._input_preprocessors = alf.nest.map_structure(
-                    lambda preproc: math_ops.identity
-                    if preproc is None else preproc, input_preprocessors)
-
-            self._preprocessing_combiner = preprocessing_combiner
-            if alf.nest.is_nested(input_tensor_spec):
-                assert preprocessing_combiner is not None, \
-                    ("When a nested input tensor spec is provided, a input " +
-                    "preprocessing combiner must also be provided!")
-                input_tensor_spec = preprocessing_combiner(input_tensor_spec)
-            else:
-                assert isinstance(input_tensor_spec, TensorSpec), \
-                    "The spec must be an instance of TensorSpec!"
-                self._preprocessing_combiner = math_ops.identity
-
-        # This input spec is the final resulting spec after input preprocessors
-        # and the nest combiner.
-        self._processed_input_tensor_spec = input_tensor_spec
         self._output_spec = None
-
-    def forward(self, inputs, state=()):
-        """Preprocessing nested inputs."""
-        if self._skip_input_preprocessing:
-            return inputs, state
-        else:
-            proc_inputs = self._preprocessing_combiner(
-                alf.nest.map_structure(lambda preproc, tensor: preproc(tensor),
-                                       self._input_preprocessors, inputs))
-            assert get_outer_rank(proc_inputs, self._processed_input_tensor_spec) == 1, \
-                ("Only supports one outer rank (batch dim)! "
-                + "After preprocessing: inputs size {} vs. input tensor spec {}".format(
-                    proc_inputs.size(), self._processed_input_tensor_spec)
-                + "\n Make sure that you have provided the right input preprocessors"
-                + " and nest combiner!\n"
-                + "Before preprocessing: inputs size {} vs. input tensor spec {}".format(
-                    alf.nest.map_structure(lambda tensor: tensor.size(), inputs),
-                    self._input_tensor_spec))
-            return proc_inputs, state
+        self._is_distribution = None
 
     def _test_forward(self):
         """Generate a dummy input according to `nested_input_tensor_spec` and
@@ -231,6 +144,7 @@ class Network(nn.Module):
 
     @property
     def name(self):
+        """Name of this ``Network``."""
         return self._name
 
     @property
@@ -241,32 +155,112 @@ class Network(nn.Module):
         can be obtained easily in other ways.
         """
         if self._output_spec is None:
-            self._output_spec = TensorSpec.from_tensor(
+            self._output_spec = extract_spec(
                 self._test_forward()[0], from_dim=1)
         return self._output_spec
 
     @property
     def state_spec(self):
-        """Return the state spec to be used by an `Algorithm`."""
+        """Return the state spec to be used by an ``Algorithm``.
+
+        Subclass should override this to return the correct ``state_spec``.
+        """
         return ()
 
+    @property
+    def is_distribution_output(self):
+        """Whether the output is Distribution."""
+        if self._is_distribution is None:
+            self._is_distribution = all(
+                map(lambda spec: isinstance(spec, DistributionSpec),
+                    alf.nest.flatten(self.output_spec)))
+        return self._is_distribution
 
-class DistributionNetwork(Network):
-    """A network that outputs distribution."""
+
+class PreprocessorNetwork(Network):
+    """A base class for networks with input processing need."""
 
     def __init__(self,
                  input_tensor_spec,
                  input_preprocessors=None,
                  preprocessing_combiner=None,
-                 skip_input_preprocessing=False,
-                 name="DistributionNetwork"):
-        super(DistributionNetwork, self).__init__(
-            input_tensor_spec, input_preprocessors, preprocessing_combiner,
-            skip_input_preprocessing, name)
+                 name="PreprocessorNetwork"):
+        """
+        Args:
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If nested, then `preprocessing_combiner` must not be
+                None.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with `input_tensor_spec` (after reshaping).
+                If any element is None, then it will be treated as math_ops.identity.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                `input_tensor_spec` as the input to compute the processed
+                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            name (str): name of the network
+        """
+        super().__init__(input_tensor_spec, name)
 
-    @property
-    def output_spec(self):
-        if self._output_spec is None:
-            self._output_spec = extract_spec(
-                self._test_forward()[0], from_dim=1)
-        return self._output_spec
+        # make sure the network holds the parameters of any trainable input
+        # preprocessor
+        self._input_preprocessor_modules = nn.ModuleList()
+
+        def _get_preprocessed_spec(preproc, spec):
+            if not isinstance(preproc, InputPreprocessor):
+                # In this case we just assume the spec won't change after the
+                # preprocessing. If it does change, then you should consider
+                # defining an `InputPreprocessor` instead.
+                return spec
+            self._input_preprocessor_modules.append(preproc)
+            return preproc(spec)
+
+        self._input_preprocessors = alf.nest.map_structure(
+            lambda _: math_ops.identity, input_tensor_spec)
+        if input_preprocessors is not None:
+            input_preprocessors = alf.nest.pack_sequence_as(
+                input_tensor_spec, alf.nest.flatten(input_preprocessors))
+            input_tensor_spec = alf.nest.map_structure(
+                _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
+            # allow None as a placeholder in the nest
+            self._input_preprocessors = alf.nest.map_structure(
+                lambda preproc: math_ops.identity
+                if preproc is None else preproc, input_preprocessors)
+
+        self._preprocessing_combiner = preprocessing_combiner
+        if alf.nest.is_nested(input_tensor_spec):
+            assert preprocessing_combiner is not None, \
+                ("When a nested input tensor spec is provided, a input " +
+                "preprocessing combiner must also be provided!")
+            input_tensor_spec = preprocessing_combiner(input_tensor_spec)
+        else:
+            assert isinstance(input_tensor_spec, TensorSpec), \
+                "The spec must be an instance of TensorSpec!"
+            self._preprocessing_combiner = math_ops.identity
+
+        # This input spec is the final resulting spec after input preprocessors
+        # and the nest combiner.
+        self._processed_input_tensor_spec = input_tensor_spec
+
+    def forward(self, inputs, state=()):
+        """Preprocessing nested inputs."""
+        proc_inputs = self._preprocessing_combiner(
+            alf.nest.map_structure(lambda preproc, tensor: preproc(tensor),
+                                   self._input_preprocessors, inputs))
+        assert get_outer_rank(proc_inputs, self._processed_input_tensor_spec) == 1, \
+            ("Only supports one outer rank (batch dim)! "
+            + "After preprocessing: inputs size {} vs. input tensor spec {}".format(
+                proc_inputs.size(), self._processed_input_tensor_spec)
+            + "\n Make sure that you have provided the right input preprocessors"
+            + " and nest combiner!\n"
+            + "Before preprocessing: inputs size {} vs. input tensor spec {}".format(
+                alf.nest.map_structure(lambda tensor: tensor.size(), inputs),
+                self._input_tensor_spec))
+        return proc_inputs, state

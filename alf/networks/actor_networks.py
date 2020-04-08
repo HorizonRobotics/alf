@@ -26,11 +26,11 @@ import alf.nest as nest
 from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import math_ops, spec_utils
-from .network import Network
+from .network import PreprocessorNetwork
 
 
 @gin.configurable
-class ActorNetwork(Network):
+class ActorNetwork(PreprocessorNetwork):
     """Create an instance of ActorNetwork."""
 
     def __init__(self,
@@ -133,7 +133,7 @@ class ActorNetwork(Network):
             state: empty
         """
 
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         encoded_obs, _ = self._encoding_net(observation)
 
         actions = []
@@ -147,7 +147,7 @@ class ActorNetwork(Network):
 
 
 @gin.configurable
-class ActorRNNNetwork(Network):
+class ActorRNNNetwork(PreprocessorNetwork):
     """Create an instance of ActorNetwork with RNN."""
 
     def __init__(self,
@@ -260,7 +260,7 @@ class ActorRNNNetwork(Network):
             action (torch.Tensor): a tensor consistent with `action_spec`
             new_state (nest[tuple]): the updated states
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         encoded_obs, state = self._lstm_encoding_net(observation, state)
 
         actions = []

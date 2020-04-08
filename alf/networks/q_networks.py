@@ -21,13 +21,13 @@ import torch.nn as nn
 
 import alf.layers as layers
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
-from alf.networks import Network
+from alf.networks import PreprocessorNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 import alf.utils.math_ops as math_ops
 
 
 @gin.configurable
-class QNetwork(Network):
+class QNetwork(PreprocessorNetwork):
     """Create an instance of QNetwork."""
 
     def __init__(self,
@@ -112,14 +112,14 @@ class QNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size, num_actions]
             state: empty
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         encoded_obs, _ = self._encoding_net(observation)
         action_value = self._final_layer(encoded_obs)
         return action_value, state
 
 
 @gin.configurable
-class QRNNNetwork(Network):
+class QRNNNetwork(PreprocessorNetwork):
     """Create a RNN-based that outputs temporally correlated q-values."""
 
     def __init__(self,
@@ -173,7 +173,7 @@ class QRNNNetwork(Network):
                 the last layer. If none is provided a default
                 variance_scaling_initializer will be used.
         """
-        super(QRNNNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
@@ -212,7 +212,7 @@ class QRNNNetwork(Network):
             action_value (torch.Tensor): a tensor of the size [batch_size, num_actions]
             new_state (nest[tuple]): the updated states
         """
-        observation, state = Network.forward(self, observation, state)
+        observation, state = super().forward(observation, state)
         encoded_obs, state = self._encoding_net(observation, state)
         action_value = self._final_layer(encoded_obs)
         return action_value, state

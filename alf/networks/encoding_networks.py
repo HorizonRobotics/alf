@@ -23,7 +23,7 @@ import torch.nn as nn
 import alf
 import alf.layers as layers
 from alf.networks.initializers import variance_scaling_init
-from alf.networks.network import Network
+from alf.networks.network import PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
@@ -36,7 +36,7 @@ def _tuplify2d(x):
 
 
 @gin.configurable
-class ImageEncodingNetwork(Network):
+class ImageEncodingNetwork(PreprocessorNetwork):
     """
     A general template class for creating convolutional encoding networks.
     """
@@ -88,7 +88,7 @@ class ImageEncodingNetwork(Network):
                 flattened into a feature of shape ``BxN``.
         """
         input_size = _tuplify2d(input_size)
-        super(ImageEncodingNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec=TensorSpec((input_channels, ) + input_size),
             name=name)
 
@@ -128,7 +128,7 @@ class ImageEncodingNetwork(Network):
 
 
 @gin.configurable
-class ImageDecodingNetwork(Network):
+class ImageDecodingNetwork(PreprocessorNetwork):
     """
     A general template class for creating transposed convolutional decoding networks.
     """
@@ -193,7 +193,7 @@ class ImageDecodingNetwork(Network):
                 ``torch.tanh``.
             name (str):
         """
-        super(ImageDecodingNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec=TensorSpec((input_size, )), name=name)
 
         assert isinstance(transconv_layer_params, tuple)
@@ -262,7 +262,7 @@ class ImageDecodingNetwork(Network):
 
 
 @gin.configurable
-class EncodingNetwork(Network):
+class EncodingNetwork(PreprocessorNetwork):
     """Feed Forward network with CNN and FC layers which allows the last layer
     to have different settings from the other layers.
     """
@@ -322,8 +322,7 @@ class EncodingNetwork(Network):
                 not be used.
             name (str):
         """
-
-        super(EncodingNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
@@ -415,7 +414,7 @@ class EncodingNetwork(Network):
 
 
 @gin.configurable
-class LSTMEncodingNetwork(Network):
+class LSTMEncodingNetwork(PreprocessorNetwork):
     """LSTM cells followed by an encoding network."""
 
     def __init__(self,
@@ -479,7 +478,7 @@ class LSTMEncodingNetwork(Network):
                 ``last_layer_size`` is None, ``last_kernel_initializer`` will
                 not be used.
         """
-        super(LSTMEncodingNetwork, self).__init__(
+        super().__init__(
             input_tensor_spec,
             input_preprocessors,
             preprocessing_combiner,
