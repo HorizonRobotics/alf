@@ -131,7 +131,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
             ring_buffer.clear()
             p.start()
             sleep(0.02)  # for subprocess to enter while loop
-            ring_buffer._stop.set()
+            ring_buffer.stop()
             p.join()
             self.assertEqual(
                 ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True),

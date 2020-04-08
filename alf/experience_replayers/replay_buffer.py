@@ -191,8 +191,6 @@ class RingBuffer(nn.Module):
                 with self._lock:
                     if self.has_space(env_ids):
                         self._enqueue(batch, env_ids)
-                        self._enqueued.set()
-                        self._dequeued.clear()
                         return True
                 # The wait here is outside the lock, so multiple dequeue and
                 # enqueue could theoretically happen before the wait.  The
@@ -202,17 +200,8 @@ class RingBuffer(nn.Module):
                 self._dequeued.wait(timeout=0.2)
             return False
         else:
-            if self._lock:
-                with self._lock:
-                    self._enqueue(batch, env_ids)
-                    # set flags if they exist to unblock potential consumers
-                    if self._enqueued:
-                        self._enqueued.set()
-                        self._dequeued.clear()
-                    return True
-            else:
-                self._enqueue(batch, env_ids)
-                return True
+            self._enqueue(batch, env_ids)
+            return True
 
     @atomic
     def _enqueue(self, batch, env_ids=None):
@@ -248,6 +237,10 @@ class RingBuffer(nn.Module):
             current_size = self._current_size[env_ids]
             self._current_size[env_ids] = torch.min(
                 current_size + 1, torch.tensor(self._max_length))
+            # set flags if they exist to unblock potential consumers
+            if self._enqueued:
+                self._enqueued.set()
+                self._dequeued.clear()
 
     def has_data(self, env_ids):
         """Check one batch of data available for env_ids.
@@ -284,10 +277,7 @@ class RingBuffer(nn.Module):
             while not self._stop.is_set():
                 with self._lock:
                     if self.has_data(env_ids):
-                        res = self._dequeue(env_ids)
-                        self._dequeued.set()
-                        self._enqueued.clear()
-                        return res
+                        return self._dequeue(env_ids)
                 # The wait here is outside the lock, so multiple dequeue and
                 # enqueue could theoretically happen before the wait.  The
                 # wait only acts as a more responsive sleep, and the return
@@ -296,16 +286,7 @@ class RingBuffer(nn.Module):
                 self._enqueued.wait(timeout=0.2)
             return None
         else:
-            if self._lock:
-                with self._lock:
-                    res = self._dequeue(env_ids)
-                    # set flags if they exist to unblock potential consumers
-                    if self._dequeued:
-                        self._dequeued.set()
-                        self._enqueued.clear()
-                    return res
-            else:
-                return self._dequeue(env_ids)
+            return self._dequeue(env_ids)
 
     @atomic
     def _dequeue(self, env_ids=None):
@@ -337,6 +318,10 @@ class RingBuffer(nn.Module):
                     batch_size, 1, *buffer.shape[1:]), self._flattened_buffer)
 
             self._current_size[env_ids] = current_size - 1
+            # set flags if they exist to unblock potential consumers
+            if self._dequeued:
+                self._dequeued.set()
+                self._enqueued.clear()
         return _convert_device(result)
 
     @atomic
@@ -349,6 +334,12 @@ class RingBuffer(nn.Module):
             if self._dequeued:
                 self._dequeued.set()
                 self._enqueued.clear()
+
+    def stop(self):
+        self._stop.set()
+
+    def revive(self):
+        self._stop.clear()
 
     @property
     def num_environments(self):
