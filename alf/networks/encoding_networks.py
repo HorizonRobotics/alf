@@ -263,7 +263,9 @@ class ImageDecodingNetwork(Network):
 
 @gin.configurable
 class EncodingNetwork(Network):
-    """Feed Forward network with CNN and FC layers."""
+    """Feed Forward network with CNN and FC layers which allows the last layer
+    to have different settings from the other layers.
+    """
 
     def __init__(self,
                  input_tensor_spec,
@@ -277,9 +279,7 @@ class EncodingNetwork(Network):
                  last_activation=None,
                  last_kernel_initializer=None,
                  name="EncodingNetwork"):
-        """Create an EncodingNetwork
-        This EncodingNetwork allows the last layer to have different settings
-        from the other layers.
+        """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
@@ -432,8 +432,7 @@ class LSTMEncodingNetwork(Network):
                  last_activation=None,
                  last_kernel_initializer=None,
                  name="LSTMEncodingNetwork"):
-        """Creates an instance of `LSTMEncodingNetwork`.
-
+        """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then `preprocessing_combiner` must not be
