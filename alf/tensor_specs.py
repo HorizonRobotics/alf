@@ -118,7 +118,7 @@ class TensorSpec(object):
                 dimensions to add to the spec shape before sampling.
 
         Returns:
-            tensor (torch.Tensor): a tensor of `self._dtype`
+            tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
         value = torch.as_tensor(value).to(self._dtype)
         assert len(value.size()) == 0, "The input value must be a scalar!"
@@ -135,7 +135,7 @@ class TensorSpec(object):
                 dimensions to add to the spec shape before sampling.
 
         Returns:
-            tensor (torch.Tensor): a tensor of `self._dtype`
+            tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
         return self.constant(0, outer_dims)
 
@@ -147,7 +147,7 @@ class TensorSpec(object):
                 dimensions to add to the spec shape before sampling.
 
         Returns:
-            tensor (torch.Tensor): a tensor of `self._dtype`
+            tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
         return self.constant(1, outer_dims)
 
@@ -159,7 +159,7 @@ class TensorSpec(object):
                 dimensions to add to the spec shape before sampling.
 
         Returns:
-            tensor (torch.Tensor): a tensor of `self._dtype`
+            tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
         shape = self._shape
         if outer_dims is not None:

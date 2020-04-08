@@ -150,9 +150,13 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         length = experience.step_type.shape[1]
         mini_batch_length = (mini_batch_length or length)
-        assert length % mini_batch_length == 0, (
-            "length=%s not a multiple of mini_batch_length=%s" %
-            (length, mini_batch_length))
+        if length % mini_batch_length:
+            common.warning_once(
+                "length=%s not a multiple of mini_batch_length=%s" %
+                (length, mini_batch_length))
+            length = length // mini_batch_length * mini_batch_length
+            common.warning_once(
+                "Experience length has been cut to %s" % length)
 
         if len(alf.nest.flatten(
                 self.train_state_spec)) > 0 and not self._use_rollout_state:

@@ -112,7 +112,11 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         self._batch_size = None
 
     def observe(self, exp):
-        # exp shape is [num_envs, ...]
+        """This function assumes that every time ``exp`` contains the data from
+        all the environments. It doesn't handle ``env_id`` yet (observe only some of
+        the environments each time).
+        """
+        # exp shape is [num_envs] + exp_spec
         if self._experience is None:
             self._experience = alf.nest.map_structure(lambda _: [], exp)
             self._exp_sample = exp
@@ -136,7 +140,7 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
 
     def replay_all(self):
         assert self._experience is not None, "No experience is observed yet!"
-        # batch major (B, T, ...)
+        # batch major: [B, T] + exp_spec
         exps = alf.nest.map_structure_up_to(
             self._exp_sample, lambda e: torch.transpose(
                 torch.stack(e, dim=0), 0, 1), self._experience)
@@ -158,7 +162,9 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
         if not self._batch_size:
             return torch.tensor(0, torch.int64)
         else:
-            return alf.nest.get_nest_batch_size(self._experience)
+            time_length = alf.nest.map_structure_up_to(
+                self._exp_sample, lambda e: len(e), self._experience)[0]
+            return self._batch_size * time_length
 
 
 class SyncUniformExperienceReplayer(ExperienceReplayer):

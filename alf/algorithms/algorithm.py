@@ -50,12 +50,13 @@ def _flatten_module(module):
 
 
 class Algorithm(nn.Module):
-    """Algorithm base class.
+    """Algorithm base class. ``Algorithm`` is a generic interface for supervised
+    training algorithms. Users need to implement:
 
-    Algorithm is a generic interface for supervised training algorithms.
-
-    User needs to implement predict_step(), train_step() and
-    calc_loss()/update_with_gradient().
+    - ``predict_step()``
+    - ``train_step()``
+    - ``calc_loss()``
+    - ``update_with_gradient()``
     """
 
     def __init__(self,
@@ -67,9 +68,7 @@ class Algorithm(nn.Module):
                  clip_by_global_norm=False,
                  debug_summaries=False,
                  name="Algorithm"):
-        """Create an Algorithm.
-
-        Each algorithm can have a default optimimzer. By default, the parameters
+        """Each algorithm can have a default optimimzer. By default, the parameters
         and/or modules under an algorithm are optimized by the default
         optimizer. One can also specify an optimizer for a set of parameters
         and/or modules using add_optimizer.
@@ -81,14 +80,15 @@ class Algorithm(nn.Module):
 
         Args:
             train_state_spec (nested TensorSpec): for the network state of
-                `train_step()`
+                ``train_step()``.
             predict_state_spec (nested TensorSpec): for the network state of
-                `predict_step()`. If None, it's assume to be same as rollout_state_spec
+                ``predict_step()``. If None, it's assume to be same as
+                ``rollout_state_spec``.
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
-                to clip gradient. If False, use `tensor_utils.clip_by_norms` for
+            clip_by_global_norm (bool): If True, use ``tensor_utils.clip_by_global_norm``
+                to clip gradient. If False, use ``tensor_utils.clip_by_norms`` for
                 each grad.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
@@ -125,16 +125,16 @@ class Algorithm(nn.Module):
 
     def add_optimizer(self, optimizer: torch.optim.Optimizer,
                       modules_and_params):
-        """Add an optimizer
+        """Add an optimizer.
 
-        Note that the modules and params contained in `modules_and_params`
+        Note that the modules and params contained in ``modules_and_params``
         should still be the attributes of the algorithm (i.e., they can be
-        retrieved in self.children() or self.parameters())
+        retrieved in ``self.children()`` or ``self.parameters()``).
 
         Args:
             optimizer (Optimizer): optimizer
             modules_and_params (list of Module or Parameter): The modules and
-                parameters to be optimized by `optimizer`
+                parameters to be optimized by ``optimizer``.
         """
         assert optimizer is not None, "You shouldn't add a None optimizer!"
         for module in modules_and_params:
@@ -147,16 +147,18 @@ class Algorithm(nn.Module):
         member names should be ignored when getting trainable variables, to
         avoid being assigned with multiple optimizers.
 
-        For example, if in your algorithm you've created a member self._vars
+        For example, if in your algorithm you've created a member ``self._vars``
         pointing to the variables of a module for some purpose, you can avoid
-        assigning an optimizer to self._vars (because the module will be assigned
+        assigning an optimizer to ``self._vars`` (because the module will be assigned
         with one) by doing:
+
+        .. code-block:: python
 
             def _trainable_attributes_to_ignore(self):
                 return ["_vars"]
 
         Returns:
-            names (list[str]): a list of attribute names to ignore
+            names (list[str]): a list of attribute names to ignore.
         """
         return []
 
@@ -196,8 +198,8 @@ class Algorithm(nn.Module):
         """Get the name of the parameter.
 
         Returns:
-            string of the name if the parameter can be found.
-            None if the parameter cannot be found.
+            string of the name if the parameter can be found. None if the parameter
+            cannot be found.
         """
         return self._param_to_name.get(param)
 
@@ -219,9 +221,10 @@ class Algorithm(nn.Module):
         """Setup the param groups for optimizers.
 
         Returns:
-            tuple of
-                list of parameters not handled by any optimizers under this algorithm
-                list of parameters not handled under this algorithm
+            A tuple of:
+
+            - list of parameters not handled by any optimizers under this algorithm
+            - list of parameters not handled under this algorithm
         """
         default_optimizer = self.default_optimizer
         new_params = []
@@ -270,7 +273,7 @@ class Algorithm(nn.Module):
             include_ignored_attributes (bool): If True, still include all child
                 attributes without ignoring any.
         Returns:
-            list of Optimizer
+            list of ``Optimizer``.
         """
         opts = copy.copy(self._optimizers)
         if recurse:
@@ -308,21 +311,22 @@ class Algorithm(nn.Module):
 
     @property
     def predict_state_spec(self):
-        """Returns the RNN state spec for predict_step()."""
+        """Returns the RNN state spec for ``predict_step()``."""
         return self._predict_state_spec
 
     @property
     def rollout_state_spec(self):
-        """Returns the RNN state spec for rollout_step()."""
+        """Returns the RNN state spec for ``rollout_step()``."""
         return self._rollout_state_spec
 
     @property
     def train_state_spec(self):
-        """Returns the RNN state spec for train_step()."""
+        """Returns the RNN state spec for ``train_step()``."""
         return self._train_state_spec
 
     def convert_train_state_to_predict_state(self, state):
-        """Convert RNN state for train_step() to RNN state for predict_step()."""
+        """Convert RNN state for ``train_step()`` to RNN state for
+        ``predict_step()``."""
         alf.nest.assert_same_structure(self._train_state_spec,
                                        self._predict_state_spec)
         return state
@@ -340,20 +344,21 @@ class Algorithm(nn.Module):
     def state_dict(self, destination=None, prefix='', visited=None):
         """Get state dictionary recursively, including both model state
         and optimizers' state (if any). It can handle a number of special cases:
-            1) graph with cycle: save all the states and avoid infinite loop
-            2) parameter sharing: save only one copy of the shared module/param
-            3) optimizers: save the optimizers for all the (sub-)algorithms
+
+        - graph with cycle: save all the states and avoid infinite loop
+        - parameter sharing: save only one copy of the shared module/param
+        - optimizers: save the optimizers for all the (sub-)algorithms
 
         Args:
-            destination (OrderedDict): the destination for storing the state
+            destination (OrderedDict): the destination for storing the state.
             prefix (str): a string to be added before the name of the items
                 (modules, params, algorithms etc) as the key used in the
-                state dictionary
-            visited (set): a set keeping track of the visited objects
+                state dictionary.
+            visited (set): a set keeping track of the visited objects.
+
         Returns:
             destination (OrderedDict): the dictionary including both model state
-                and optimizers' state (if any)
-
+                and optimizers' state (if any).
         """
 
         if destination is None:
@@ -385,22 +390,24 @@ class Algorithm(nn.Module):
         return destination
 
     def load_state_dict(self, state_dict, strict=True):
-        """Load state dictionary for Algorithm
+        """Load state dictionary for Algorithm.
 
         Args:
             state_dict (dict): a dict containing parameters and
                 persistent buffers.
             strict (bool, optional): whether to strictly enforce that the keys
-                in :attr:`state_dict` match the keys returned by this module's
-                :meth:`~torch.nn.Module.state_dict` function. Default: ``True``
-            If 'strict=True', will keep lists of missing and unexpected keys and
-            raise error when any of the lists is non-empty; if `strict=False`,
-            missing/unexpected keys will be omitted and no error will be raised.
-            ''
+                in ``state_dict`` match the keys returned by this module's
+                ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
+                keep lists of missing and unexpected keys and raise error when
+                any of the lists is non-empty; if ``strict=False``, missing/unexpected
+                keys will be omitted and no error will be raised.
+                (Default: ``True``)
+
         Returns:
             ``NamedTuple`` with ``missing_keys`` and ``unexpected_keys`` fields:
-                * **missing_keys** is a list of str containing the missing keys
-                * **unexpected_keys** is a list of str containing the unexpected keys
+
+            - ``missing_keys`` is a list of str containing the missing keys.
+            - ``unexpected_keys`` is a list of str containing the unexpected keys.
         """
         missing_keys = []
         unexpected_keys = []
@@ -456,16 +463,17 @@ class Algorithm(nn.Module):
 
     @common.add_method(nn.Module)
     def _save_to_state_dict(self, destination, prefix, visited=None):
-        r"""Saves module state to `destination` dictionary, containing a state
+        r"""Saves module state to ``destination`` dictionary, containing a state
         of the module, but not its descendants. This is called on every
-        submodule in :meth:`~torch.nn.Module.state_dict`.
-        In rare cases, subclasses can achieve class-specific behavior by
-        overriding this method with custom logic.
-        Arguments:
-            destination (dict): a dict where state will be stored
+        submodule in ``torch.nn.Module.state_dict``. In rare cases, subclasses
+        can achieve class-specific behavior by overriding this method with custom
+        logic.
+
+        Args:
+            destination (dict): a dict where state will be stored.
             prefix (str): the prefix for parameters and buffers used in this
-                module
-            visited (set): a set keeping track of the visited objects
+                module.
+            visited (set): a set keeping track of the visited objects.
         """
         if visited is None:
             visited = set()
@@ -496,29 +504,30 @@ class Algorithm(nn.Module):
         For state dicts without metadata, :attr:`local_metadata` is empty.
         Subclasses can achieve class-specific backward compatible loading using
         the version number at `local_metadata.get("version", None)`.
+
         .. note::
-            :attr:`state_dict` is not the same object as the input
-            :attr:`state_dict` to :meth:`~torch.nn.Module.load_state_dict`. So
-            it can be modified.
-        Arguments:
+
+            ``state_dict`` is not the same object as the input ``state_dict`` to
+            ``torch.nn.Module.load_state_dict``. So it can be modified.
+
+        Args:
             state_dict (dict): a dict containing parameters and
                 persistent buffers.
             prefix (str): the prefix for parameters and buffers used in this
-                module
+                module.
             local_metadata (dict): a dict containing the metadata for this module.
-                See
             strict (bool): whether to strictly enforce that the keys in
-                :attr:`state_dict` with :attr:`prefix` match the names of
-                parameters and buffers in this module; if 'strict=True',
-                will keep a list of missing and unexpected keys
+                ``state_dict`` with ``prefix`` match the names of
+                parameters and buffers in this module; if ``strict=True``,
+                will keep a list of missing and unexpected keys.
             missing_keys (list of str): if ``strict=True``, add missing keys to
-                this list
+                this list.
             unexpected_keys (list of str): if ``strict=True``, add unexpected
-                keys to this list
+                keys to this list.
             error_msgs (list of str): error messages should be added to this
                 list, and will be reported together in
-                :meth:`~torch.nn.Module.load_state_dict`
-            visited (set): a set keeping track of the visited objects
+                ``torch.nn.Module.load_state_dict``.
+            visited (set): a set keeping track of the visited objects.
         """
         if visited is None:
             visited = set()
@@ -622,13 +631,14 @@ class Algorithm(nn.Module):
         """Predict for one step of inputs.
 
         Args:
-            inputs (nested Tensor): inputs for prediction
-            state (nested Tensor): network state (for RNN)
+            inputs (nested Tensor): inputs for prediction.
+            state (nested Tensor): network state (for RNN).
 
         Returns:
-            AlgStep
-                output (nested Tensor): prediction result
-                state (nested Tensor): should match `predict_state_spec`
+            ``AlgStep`` that contains two return fields.
+
+            - output (nested Tensor): prediction result.
+            - state (nested Tensor): should match ``predict_state_spec``.
         """
         algorithm_step = self.rollout_step(inputs, state)
         return algorithm_step._replace(info=None)
@@ -637,13 +647,14 @@ class Algorithm(nn.Module):
         """Rollout for one step of inputs.
 
         Args:
-            inputs (nested Tensor): inputs for prediction
-            state (nested Tensor): network state (for RNN)
+            inputs (nested Tensor): inputs for prediction.
+            state (nested Tensor): network state (for RNN).
 
         Returns:
-            AlgStep
-                output (nested Tensor): prediction result
-                state (nested Tensor): should match `rollout_state_spec`
+            ``AlgStep`` that contains two return fields.
+
+            - output (nested Tensor): prediction result.
+            - state (nested Tensor): should match ``rollout_state_spec``.
         """
         algorithm_step = self.train_step(inputs, state)
         return algorithm_step._replace(info=None)
@@ -655,17 +666,18 @@ class Algorithm(nn.Module):
         It also needs to generate necessary information for training.
 
         Args:
-            inputs (nested Tensor): inputs for train
-            state (nested Tensor): consistent with train_state_spec
+            inputs (nested Tensor): inputs for train.
+            state (nested Tensor): consistent with ``train_state_spec``.
 
         Returns:
             AlgStep
-                output (nested Tensor): predict outputs
-                state (nested Tensor): should match `train_state_spec`
+                output (nested Tensor): predict outputs.
+                state (nested Tensor): should match ``train_state_spec``.
                 info (nested Tensor): information for training. If this is
-                    LossInfo, calc_loss() in Algorithm can be used. Otherwise,
-                    the user needs to override calc_loss() to calculate loss or
-                    override update_with_gradient() to do customized training.
+                    ``LossInfo``, ``calc_loss()`` in ``Algorithm`` can be used.
+                    Otherwise, the user needs to override ``calc_loss()`` to
+                    calculate loss or override ``update_with_gradient()`` to do
+                    customized training.
         """
         return AlgStep()
 
@@ -673,17 +685,18 @@ class Algorithm(nn.Module):
     def update_with_gradient(self, loss_info, valid_masks=None, weight=1.0):
         """Complete one iteration of training.
 
-        Update parameters using the gradient with respect to `loss_info`.
+        Update parameters using the gradient with respect to ``loss_info``.
 
         Args:
-            loss_info (LossInfo): loss with shape (T, B) (except for
-                `loss_info.scalar_loss`)
+            loss_info (LossInfo): loss with shape :math:`(T, B)` (except for
+                ``loss_info.scalar_loss``)
             valid_masks (tf.Tensor): masks indicating which samples are valid.
-                shape=(T, B), dtype=tf.float32
+                (``shape=(T, B), dtype=tf.float32``)
             weight (float): weight for this batch. Loss will be multiplied with
-                this weight before calculating gradient
+                this weight before calculating gradient.
+
         Returns:
-            loss_info (LossInfo): loss information
+            loss_info (LossInfo): loss information.
             params (list[(name, Parameter)]): list of parameters being updated.
         """
         if valid_masks is not None:
@@ -731,14 +744,12 @@ class Algorithm(nn.Module):
         return loss_info, all_params
 
     def after_update(self, training_info):
-        """Do things after complete one gradient update (i.e. update_with_gradient())
+        """Do things after complete one gradient update (i.e. ``update_with_gradient()``).
 
         Args:
             training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned by `rollout_step()` or
-                `train_step()`
-        Returns:
-            None
+                It is batched from each ``info`` returned by ``rollout_step()`` or
+                ``train_step()``.
         """
         pass
 
@@ -748,10 +759,11 @@ class Algorithm(nn.Module):
 
         Args:
             training_info (nested Tensor): information collected for training.
-                It is batched from each `info` returned by `train_step()`
+                It is batched from each ``info`` returned by ``train_step()``.
         Returns:
             loss_info (LossInfo): loss at each time step for each sample in the
-                batch. The shapes of the tensors in loss_info should be (T, B)
+                batch. The shapes of the tensors in loss_info should be
+                :math:`(T, B)`.
         """
         assert isinstance(training_info, LossInfo), (
             "training_info returned by"
