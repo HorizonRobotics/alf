@@ -329,14 +329,14 @@ class RingBuffer(nn.Module):
                 min_size)
             pos = self._current_pos[env_ids] - current_size
             pos = pos % self._max_length
-            indices = env_ids * self._max_length + pos  # shape [B*1]
+            indices = env_ids * self._max_length + pos  # shape [B]
 
             batch_size = env_ids.shape[0]
             result = alf.nest.map_structure(
                 lambda buffer: buffer[indices].reshape(
                     batch_size, 1, *buffer.shape[1:]), self._flattened_buffer)
 
-            self._current_size[env_ids] = (current_size - 1)
+            self._current_size[env_ids] = current_size - 1
         return _convert_device(result)
 
     @atomic
