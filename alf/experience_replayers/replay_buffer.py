@@ -86,7 +86,6 @@ class RingBuffer(nn.Module):
                  max_length=1024,
                  device="cpu",
                  allow_multiprocess=False,
-                 polling_sleep_secs=0.001,
                  name="RingBuffer"):
         """
         Args:
@@ -110,9 +109,16 @@ class RingBuffer(nn.Module):
         self._stop = Event()
         if allow_multiprocess:
             self._lock = RLock()  # re-entrant lock
-            self._polling_sleep_secs = polling_sleep_secs
+            # notify a finished dequeue event, so blocked enqueues may start
+            self._dequeued = Event()
+            self._dequeued.set()
+            # notify a finished enqueue event, so blocked dequeues may start
+            self._enqueued = Event()
+            self._enqueued.clear()
         else:
             self._lock = None
+            self._dequeued = None
+            self._enqueued = None
 
         buffer_id = [0]
 
@@ -185,12 +191,28 @@ class RingBuffer(nn.Module):
                 with self._lock:
                     if self.has_space(env_ids):
                         self._enqueue(batch, env_ids)
+                        self._enqueued.set()
+                        self._dequeued.clear()
                         return True
-                time.sleep(self._polling_sleep_secs)
+                # The wait here is outside the lock, so multiple dequeue and
+                # enqueue could theoretically happen before the wait.  The
+                # wait only acts as a more responsive sleep, and the return
+                # value is not used.  We anyways need to check has_space after
+                # the wait timed out.
+                self._dequeued.wait(timeout=0.2)
             return False
         else:
-            self._enqueue(batch, env_ids)
-            return True
+            if self._lock:
+                with self._lock:
+                    self._enqueue(batch, env_ids)
+                    # set flags if they exist to unblock potential consumers
+                    if self._enqueued:
+                        self._enqueued.set()
+                        self._dequeued.clear()
+                    return True
+            else:
+                self._enqueue(batch, env_ids)
+                return True
 
     @atomic
     def _enqueue(self, batch, env_ids=None):
@@ -262,11 +284,28 @@ class RingBuffer(nn.Module):
             while not self._stop.is_set():
                 with self._lock:
                     if self.has_data(env_ids):
-                        return self._dequeue(env_ids)
-                time.sleep(self._polling_sleep_secs)
+                        res = self._dequeue(env_ids)
+                        self._dequeued.set()
+                        self._enqueued.clear()
+                        return res
+                # The wait here is outside the lock, so multiple dequeue and
+                # enqueue could theoretically happen before the wait.  The
+                # wait only acts as a more responsive sleep, and the return
+                # value is not used.  We anyways need to check has_data after
+                # the wait timed out.
+                self._enqueued.wait(timeout=0.2)
             return None
         else:
-            return self._dequeue(env_ids)
+            if self._lock:
+                with self._lock:
+                    res = self._dequeue(env_ids)
+                    # set flags if they exist to unblock potential consumers
+                    if self._dequeued:
+                        self._dequeued.set()
+                        self._enqueued.clear()
+                    return res
+            else:
+                return self._dequeue(env_ids)
 
     @atomic
     def _dequeue(self, env_ids=None):
@@ -305,6 +344,9 @@ class RingBuffer(nn.Module):
         """Clear the whole buffer."""
         self._current_size.fill_(0)
         self._current_pos.fill_(0)
+        if self._dequeued:
+            self._dequeued.set()
+            self._enqueued.clear()
 
     @property
     def num_environments(self):
