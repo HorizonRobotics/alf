@@ -146,8 +146,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
-            critic_loss_ctor (None|OneStepTDLoss): a critic loss constructor.
-                If ``None``, a default ``OneStepTDLoss`` will be used.
+            critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
+                constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
             initial_log_alpha (float): initial value for variable ``log_alpha``.
             target_entropy (float|Callable|None): If a floating value, it's the
                 target average policy entropy, for updating ``alpha``. If a
@@ -213,8 +213,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._target_critic_network2 = self._critic_network2.copy()
 
         if critic_loss_ctor is None:
-            critic_loss_ctor = functools.partial(
-                OneStepTDLoss, debug_summaries=debug_summaries)
+            critic_loss_ctor = OneStepTDLoss
+        critic_loss_ctor = functools.partial(
+            critic_loss_ctor, debug_summaries=debug_summaries)
         # Have different names to separate their summary curves
         self._critic_loss1 = critic_loss_ctor(name="critic_loss1")
         self._critic_loss2 = critic_loss_ctor(name="critic_loss2")
@@ -426,7 +427,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             target_value=target_critic)
 
         critic_loss = critic_loss1.loss + critic_loss2.loss
-        return LossInfo(loss=critic_loss, extra=critic_loss)
+        return LossInfo(loss=critic_loss, extra=critic_loss / 2.)
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_network1', '_target_critic_network2']

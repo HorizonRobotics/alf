@@ -51,12 +51,13 @@ class ActorCriticLoss(nn.Module):
                  td_loss_weight=1.0,
                  debug_summaries=False,
                  name="ActorCriticLoss"):
-        """Create a ActorCriticLoss object
+        """Create a ActorCriticLoss object. The overall loss equals to
 
-        The total loss equals to
-        (policy_gradient_loss
-         + td_loss_weight * td_loss
-         - entropy_regularization * entropy)
+        .. code-block:: python
+
+            (policy_gradient_loss
+            + td_loss_weight * td_loss
+            - entropy_regularization * entropy)
 
         Args:
             td_errors_loss_fn (Callable): A function for computing the TD errors
@@ -66,13 +67,13 @@ class ActorCriticLoss(nn.Module):
                 computing per-timestep advantage. Else, just subtracts value
                 predictions from empirical return.
             use_td_lambda_return (bool): Only effective if use_gae is True.
-                If True, uses td_lambda_return for training value function.
-                (td_lambda_return = gae_advantage + value_predictions)
+                If True, uses ``td_lambda_return`` for training value function.
+                ``(td_lambda_return = gae_advantage + value_predictions)``.
             td_lambda (float): Lambda parameter for TD-lambda computation.
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
                 gradient. This is commonly used for PPO.
-            advantage_clip (float): If set, clip advantages to [-x, x]
+            advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
@@ -94,19 +95,18 @@ class ActorCriticLoss(nn.Module):
         self._debug_summaries = debug_summaries
 
     def forward(self, training_info: TrainingInfo, value):
-        """Cacluate actor critic loss
-
-        The first dimension of all the tensors is time dimension and the second
-        dimesion is the batch dimension.
+        """Cacluate actor critic loss. The first dimension of all the tensors is
+        time dimension and the second dimesion is the batch dimension.
 
         Args:
-            training_info (TrainingInfo): training_info collected by
-                OnPolicyDriver/OffPolicyAlgorithm. All tensors in training_info
-                are time-major
+            training_info (TrainingInfo): training information collected by
+                ``OnPolicyAlgorithm`` or ``OffPolicyAlgorithm``. All tensors in
+                ``training_info`` are time-major.
             value (torch.Tensor): the time-major tensor for the value at each time
-                step
+                step.
         Returns:
-            loss_info (LossInfo): with loss_info.extra being ActorCriticLossInfo
+            loss_info (LossInfo): with ``loss_info.extra`` being
+                ``ActorCriticLossInfo``.
         """
 
         returns, advantages = self._calc_returns_and_advantages(

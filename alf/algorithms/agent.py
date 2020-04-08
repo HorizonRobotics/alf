@@ -43,9 +43,7 @@ AgentInfo = namedtuple(
 
 @gin.configurable
 class Agent(OnPolicyAlgorithm):
-    """Agent
-
-    Agent is a master algorithm that integrates different algorithms together.
+    """Agent is a master algorithm that integrates different algorithms together.
     """
 
     def __init__(self,
@@ -67,19 +65,18 @@ class Agent(OnPolicyAlgorithm):
                  observation_transformer=cast_transformer,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
-        """Create an Agent
-
+        """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
-            env (Environment): The environment to interact with. `env` is a
+            env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
                 parallel is crucial to on-policy algorithms as it increases the
-                diversity of data and decreases temporal correlation. `env` only
-                needs to be provided to the root `Algorithm`.
+                diversity of data and decreases temporal correlation. ``env`` only
+                needs to be provided to the root ``Algorithm``.
             config (TrainerConfig): config for training. config only needs to be
-                provided to the algorithm which performs `train_iter()` by
+                provided to the algorithm which performs ``train_iter()`` by
                 itself.
             rl_algorithm_cls (type): The algorithm class for learning the policy.
             intrinsic_reward_module (Algorithm): an algorithm whose outputs
@@ -87,26 +84,26 @@ class Agent(OnPolicyAlgorithm):
             goal_generator (Algorithm): an algorithm with output a goal vector
             intrinsic_reward_coef (float): Coefficient for intrinsic reward
             extrinsic_reward_coef (float): Coefficient for extrinsic reward
-            enforce_entropy_target (bool): If True, use EntropyTargetAlgorithm
+            enforce_entropy_target (bool): If True, use ``EntropyTargetAlgorithm``
                 to dynamically adjust entropy regularization so that entropy is
-                not smaller than `entropy_target` supplied for constructing
-                EntropyTargetAlgorithm. If this is enabled, make sure you don't
-                use entropy_regularization for loss (see ActorCriticLoss or
-                PPOLoss). In order to use this, The PolicyStep.info from
-                rl_algorithm_cls.train_step() and rl_algorithm_cls.rollout()
-                needs to contain `action_distribution`.
+                not smaller than ``entropy_target`` supplied for constructing
+                ``EntropyTargetAlgorithm``. If this is enabled, make sure you don't
+                use ``entropy_regularization`` for loss (see ``ActorCriticLoss`` or
+                ``PPOLoss``). In order to use this, The ``PolicyStep.info`` from
+                ``rl_algorithm_cls.train_step()`` and ``rl_algorithm_cls.rollout()``
+                needs to contain ``action_distribution``.
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
             optimizer (tf.optimizers.Optimizer): The optimizer for training
             gradient_clipping (float): If not None, serve as a positive threshold
                 for clipping gradient norms
-            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
-                to clip gradients. If False, use `tensor_utils.clip_by_norm` for
+            clip_by_global_norm (bool): If True, use ``tensor_utils.clip_by_global_norm``
+                to clip gradients. If False, use ``tensor_utils.clip_by_norm`` for
                 each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             observation_transformer (Callable | list[Callable]): transformation(s)
-                applied to `time_step.observation`
+                applied to ``time_step.observation``.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
@@ -267,7 +264,7 @@ class Agent(OnPolicyAlgorithm):
         the external reward.
         Args:
             external_reward (Tensor): reward from environment
-            info (ActorCriticInfo): (batched) policy_step.info from train_step()
+            info (ActorCriticInfo): (batched) ``policy_step.info`` from ``train_step()``
         Returns:
             reward used for training.
         """
