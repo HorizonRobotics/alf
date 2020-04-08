@@ -145,6 +145,7 @@ class RingBuffer(nn.Module):
             else:
                 env_ids = env_ids.to(torch.int64)
             env_ids = _convert_device(env_ids)
+            assert len(env_ids.shape) == 1, "env_ids should be a 1D tensor"
             return env_ids
 
     def has_space(self, env_ids):
@@ -177,11 +178,9 @@ class RingBuffer(nn.Module):
             True on success
         """
         if blocking:
-            assert self._allow_multiprocess, [
-                "Set allow_multiprocess", "to enable blocking mode."
-            ]
+            assert self._allow_multiprocess, (
+                "Set allow_multiprocess to enable blocking mode.")
             env_ids = self.check_convert_env_ids(env_ids)
-            assert len(env_ids.shape) == 1, "env_ids should be an 1D tensor"
             while not self._stop.is_set():
                 with self._lock:
                     if self.has_space(env_ids):
@@ -208,8 +207,6 @@ class RingBuffer(nn.Module):
         with alf.device(self._device):
             batch = _convert_device(batch)
             env_ids = self.check_convert_env_ids(env_ids)
-
-            assert len(env_ids.shape) == 1, "env_ids should be an 1D tensor"
             assert batch_size == env_ids.shape[0], (
                 "batch and env_ids do not have same length %s vs. %s" %
                 (batch_size, env_ids.shape[0]))
@@ -262,7 +259,6 @@ class RingBuffer(nn.Module):
                 "Set allow_multiprocess", "to enable blocking mode."
             ]
             env_ids = self.check_convert_env_ids(env_ids)
-            assert len(env_ids.shape) == 1, "env_ids should be an 1D tensor"
             while not self._stop.is_set():
                 with self._lock:
                     if self.has_data(env_ids):
@@ -286,8 +282,6 @@ class RingBuffer(nn.Module):
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
-            assert len(env_ids.shape) == 1, "env_ids should be an 1D tensor"
-
             current_size = self._current_size[env_ids]
             min_size = current_size.min()
             assert min_size >= 1, (
