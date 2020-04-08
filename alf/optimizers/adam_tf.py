@@ -12,29 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import math
 import torch
 from torch.optim import Optimizer
 
 
-@gin.configurable
-class AdamTF(Optimizer):
+class AdamTFUnwrapped(Optimizer):
     """Implementation of Adam algorithm following Tensorflow's convention.
+
+    This class should not be direclty used as it will be wrapped for clipping
+    gradients. Use the wrapped optimizer ``AdamTF`` in ``alf/optimizers/optimizers.py``
+    instead.
 
     Arguments:
         params (iterable): iterable of parameters to optimize or dicts defining
-            parameter groups
-        lr (float, optional): learning rate (default: 1e-3)
+            parameter groups.
+        lr (float, optional): learning rate (default: 1e-3).
         betas (Tuple[float, float], optional): coefficients used for computing
-            running averages of gradient and its square (default: (0.9, 0.999))
+            running averages of gradient and its square (default: (0.9, 0.999)).
         eps (float, optional): term added to the denominator to improve
             numerical stability which corresponds to the
             epsilon_hat in the Adam paper (default: 1e-7).
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
         amsgrad (boolean, optional): whether to use the AMSGrad variant of this
             algorithm from the paper `On the Convergence of Adam and Beyond`_
-            (default: False)
+            (default: False).
 
     References:
         .. _Adam\: A Method for Stochastic Optimization:
@@ -71,10 +73,10 @@ class AdamTF(Optimizer):
             eps=eps,
             weight_decay=weight_decay,
             amsgrad=amsgrad)
-        super(AdamTF, self).__init__(params, defaults)
+        super().__init__(params, defaults)
 
     def __setstate__(self, state):
-        super(AdamTF, self).__setstate__(state)
+        super().__setstate__(state)
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 

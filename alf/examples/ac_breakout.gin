@@ -43,7 +43,6 @@ ac/Adam.lr=1e-3
 ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
 ActorCriticAlgorithm.value_network=@value/ValueNetwork()
 ActorCriticAlgorithm.optimizer=@ac/Adam()
-# ActorCriticAlgorithm.gradient_clipping=None
 
 RLAlgorithm.reward_shaping_fn=@reward_clipping
 

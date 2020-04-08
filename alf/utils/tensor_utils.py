@@ -188,7 +188,7 @@ def clip_by_global_norm(tensors, clip_norm, use_norm=None, in_place=False):
     if use_norm is None:
         use_norm = global_norm(tensors)
 
-    clip_norm = torch.as_tensor(clip_norm)
+    clip_norm = torch.as_tensor(clip_norm, dtype=torch.float32)
     assert clip_norm.ndim == 0, "clip_norm must be a scalar!"
     assert clip_norm > 0, "clip_norm must be positive!"
 

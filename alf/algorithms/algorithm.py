@@ -64,8 +64,6 @@ class Algorithm(nn.Module):
                  rollout_state_spec=None,
                  predict_state_spec=None,
                  optimizer=None,
-                 gradient_clipping=None,
-                 clip_by_global_norm=False,
                  debug_summaries=False,
                  name="Algorithm"):
         """Each algorithm can have a default optimimzer. By default, the parameters
@@ -86,10 +84,6 @@ class Algorithm(nn.Module):
                 ``rollout_state_spec``.
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
-            gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use ``tensor_utils.clip_by_global_norm``
-                to clip gradient. If False, use ``tensor_utils.clip_by_norms`` for
-                each grad.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): name of this algorithm.
         """
@@ -108,8 +102,6 @@ class Algorithm(nn.Module):
 
         self._is_rnn = len(alf.nest.flatten(train_state_spec)) > 0
 
-        self._gradient_clipping = gradient_clipping
-        self._clip_by_global_norm = clip_by_global_norm
         self._debug_summaries = debug_summaries
         self._default_optimizer = optimizer
         self._optimizers = []
@@ -722,22 +714,9 @@ class Algorithm(nn.Module):
         loss.backward()
 
         all_params = []
-        for i, optimizer in enumerate(optimizers):
-            params = []
+        for optimizer in optimizers:
             for param_group in optimizer.param_groups:
-                params.extend(param_group['params'])
-            all_params.extend(params)
-            if self._gradient_clipping is not None:
-                grads = alf.nest.map_structure(lambda p: p.grad, params)
-                if self._clip_by_global_norm:
-                    _, global_norm = tensor_utils.clip_by_global_norm(
-                        grads, self._gradient_clipping, in_place=True)
-                    if alf.summary.should_record_summaries():
-                        alf.summary.scalar("global_grad_norm/%s" % i,
-                                           global_norm)
-                else:
-                    tensor_utils.clip_by_norms(
-                        grads, self._gradient_clipping, in_place=True)
+                all_params.extend(param_group['params'])
             optimizer.step()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]

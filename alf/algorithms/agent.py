@@ -59,8 +59,6 @@ class Agent(OnPolicyAlgorithm):
                  enforce_entropy_target=False,
                  entropy_target_cls=None,
                  optimizer=None,
-                 gradient_clipping=None,
-                 clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  observation_transformer=cast_transformer,
                  debug_summaries=False,
@@ -95,11 +93,6 @@ class Agent(OnPolicyAlgorithm):
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
             optimizer (tf.optimizers.Optimizer): The optimizer for training
-            gradient_clipping (float): If not None, serve as a positive threshold
-                for clipping gradient norms
-            clip_by_global_norm (bool): If True, use ``tensor_utils.clip_by_global_norm``
-                to clip gradients. If False, use ``tensor_utils.clip_by_norm`` for
-                each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             observation_transformer (Callable | list[Callable]): transformation(s)
@@ -146,8 +139,6 @@ class Agent(OnPolicyAlgorithm):
             optimizer=optimizer,
             env=env,
             config=config,
-            gradient_clipping=gradient_clipping,
-            clip_by_global_norm=clip_by_global_norm,
             reward_shaping_fn=reward_shaping_fn,
             observation_transformer=observation_transformer,
             debug_summaries=debug_summaries,

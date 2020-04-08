@@ -127,8 +127,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  actor_optimizer=None,
                  critic_optimizer=None,
                  alpha_optimizer=None,
-                 gradient_clipping=None,
-                 clip_by_global_norm=False,
                  debug_summaries=False,
                  name="SacAlgorithm"):
         """
@@ -165,10 +163,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             alpha_optimizer (torch.optim.optimizer): The optimizer for alpha.
-            gradient_clipping (float): Norm length to clip gradients.
-            clip_by_global_norm (bool): If ``True``, use
-                ``tensor_utils.clip_by_global_norm`` to clip gradient. If ``False``,
-                use ``tensor_utils.clip_by_norms`` for each grad.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -192,8 +186,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     target_critic2=critic_network.state_spec)),
             env=env,
             config=config,
-            gradient_clipping=gradient_clipping,
-            clip_by_global_norm=clip_by_global_norm,
             debug_summaries=debug_summaries,
             name=name)
 

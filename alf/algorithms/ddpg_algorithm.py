@@ -67,7 +67,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
-                 gradient_clipping=None,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
         """Create a DdpgAlgorithm.
@@ -100,7 +99,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 Does not perform clipping if dqda_clipping == 0.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
-            gradient_clipping (float): Norm length to clip gradients.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
@@ -119,7 +117,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             train_state_spec=train_state_spec,
             env=env,
             config=config,
-            gradient_clipping=gradient_clipping,
             debug_summaries=debug_summaries,
             name=name)
 

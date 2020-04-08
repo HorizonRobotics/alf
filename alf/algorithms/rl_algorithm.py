@@ -75,8 +75,6 @@ class RLAlgorithm(Algorithm):
                  env=None,
                  config: TrainerConfig = None,
                  optimizer=None,
-                 gradient_clipping=None,
-                 clip_by_global_norm=False,
                  reward_shaping_fn: Callable = None,
                  observation_transformer=common.cast_transformer,
                  debug_summaries=False,
@@ -104,10 +102,6 @@ class RLAlgorithm(Algorithm):
                 be provided to the algorithm which performs `train_iter()` by
                 itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
-            gradient_clipping (float): If not None, serve as a positive threshold
-            clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
-                to clip gradient. If False, use `tensor_utils.clip_by_norms` for
-                each grad.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards.
             observation_transformer (Callable | list[Callable]): transformation(s)
@@ -120,8 +114,6 @@ class RLAlgorithm(Algorithm):
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
             optimizer=optimizer,
-            gradient_clipping=gradient_clipping,
-            clip_by_global_norm=clip_by_global_norm,
             debug_summaries=debug_summaries,
             name=name)
 

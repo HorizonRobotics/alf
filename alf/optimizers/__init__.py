@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .adam_tf import AdamTF
+from .optimizers import AdamTF
 from .optimizers import Adam
 from .optimizers import AdamW
 from .optimizers import SGD
