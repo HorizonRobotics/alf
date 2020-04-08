@@ -46,9 +46,11 @@ flags.DEFINE_integer(
 flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
 flags.DEFINE_integer('random_seed', None, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
+flags.DEFINE_integer('max_episode_length', 0,
+                     "If >0,  each episode is limited "
+                     "to so many steps")
 flags.DEFINE_float('sleep_time_per_step', 0.01,
-                   "sleep so many seconds for each"
-                   " step")
+                   "sleep so many seconds for each step")
 flags.DEFINE_string(
     'record_file', None, "If provided, video will be recorded"
     "to a file instead of shown on the screen.")
@@ -76,6 +78,7 @@ def main(_):
         checkpoint_step=FLAGS.checkpoint_step or "latest",
         epsilon_greedy=FLAGS.epsilon_greedy,
         num_episodes=FLAGS.num_episodes,
+        max_episode_length=FLAGS.max_episode_length,
         sleep_time_per_step=FLAGS.sleep_time_per_step,
         record_file=FLAGS.record_file)
     env.close()
