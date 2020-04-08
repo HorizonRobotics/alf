@@ -21,8 +21,6 @@ from alf.utils import common
 from alf.utils import tensor_utils
 from alf.optimizers.adam_tf import AdamTFUnwrapped
 
-optimizer_counter = 0
-
 
 def wrap_optimizer(cls):
     """A helper function to construct torch optimizers with
@@ -33,6 +31,7 @@ def wrap_optimizer(cls):
     """
     NewClsName = cls.__name__ + "_"
     NewCls = type(NewClsName, (cls, ), {})
+    NewCls.counter = 0
 
     @common.add_method(NewCls)
     def __init__(self,
@@ -55,9 +54,8 @@ def wrap_optimizer(cls):
         self._clip_by_global_norm = clip_by_global_norm
         self._name = name
         if name is None:
-            global optimizer_counter
-            self._name = NewClsName + str(optimizer_counter)
-            optimizer_counter += 1
+            self._name = NewClsName + str(NewCls.counter)
+            NewCls.counter += 1
 
     @common.add_method(NewCls)
     def step(self, closure=None):

@@ -21,13 +21,15 @@ from alf.utils import tensor_utils
 
 class OptimizersTest(alf.test.TestCase):
     def test_optimizer_name(self):
+        i = Adam.counter
+        j = AdamTF.counter
         opt1 = Adam(lr=0.1)
         opt2 = AdamTF(lr=0.1)
         opt3 = Adam(lr=0.1)
         opt4 = AdamTF(lr=0.1, name="AdamTF")
-        self.assertEqual(opt1._name, "Adam_0")
-        self.assertEqual(opt2._name, "AdamTFUnwrapped_1")
-        self.assertEqual(opt3._name, "Adam_2")
+        self.assertEqual(opt1._name, "Adam_%s" % i)
+        self.assertEqual(opt2._name, "AdamTFUnwrapped_%s" % j)
+        self.assertEqual(opt3._name, "Adam_%s" % (i + 1))
         self.assertEqual(opt4._name, "AdamTF")
 
     def test_gradient_clipping(self):
@@ -37,10 +39,7 @@ class OptimizersTest(alf.test.TestCase):
         loss = torch.sum(y**2)
         clip_norm = 1e-4
         opt = AdamTF(
-            lr=0.1,
-            gradient_clipping=clip_norm,
-            clip_by_global_norm=True,
-            name="AdamTF")
+            lr=0.1, gradient_clipping=clip_norm, clip_by_global_norm=True)
         opt.add_param_group({'params': layer.parameters()})
         opt.zero_grad()
         loss.backward()
