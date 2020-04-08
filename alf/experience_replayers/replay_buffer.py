@@ -166,18 +166,15 @@ class RingBuffer(nn.Module):
                 "size is: %s Try storing more data before calling dequeue" %
                 min_size)
             pos = self._current_pos[env_ids] - current_size
-            pos = pos.reshape(-1, 1)  # [B, 1]
             pos = pos % self._max_length
-            env_ids = env_ids.reshape(-1, 1)  # [B, 1]
-            indices = env_ids * self._max_length + pos  # [B, 1]
-            indices = indices.reshape(-1)  # [B * 1]
+            indices = env_ids * self._max_length + pos  # shape [B*1]
 
             batch_size = env_ids.shape[0]
             result = alf.nest.map_structure(
                 lambda buffer: buffer[indices].reshape(
                     batch_size, 1, *buffer.shape[1:]), self._flattened_buffer)
 
-            self._current_size[env_ids] = (current_size - 1).reshape(-1, 1)
+            self._current_size[env_ids] = (current_size - 1)
         return _convert_device(result)
 
     def clear(self):
@@ -272,6 +269,15 @@ class ReplayBuffer(RingBuffer):
         assert size == max_size, (
             "Not all environments have the same size. min_size: %s "
             "max_size: %s" % (size, max_size))
+        if size < self._max_length:
+            pos = self._current_pos.min()
+            max_pos = self._current_pos.max()
+            assert pos == max_pos, (
+                "Not all environments have the same ending position. "
+                "min_pos: %s max_pos: %s" % (pos, max_pos))
+            assert size == pos, (
+                "When buffer not full, ending position of the data in the "
+                "buffer current_pos coincides with current_size")
 
         # NOTE: this is not the proper way to gather all from a ring
         # buffer whose data can start from the middle, so this is limited
