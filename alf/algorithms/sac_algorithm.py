@@ -426,8 +426,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             value=critic_info.critic2,
             target_value=target_critic)
 
-        critic_loss = (critic_loss1.loss + critic_loss2.loss) / 2.
-        return LossInfo(loss=critic_loss, extra=critic_loss)
+        critic_loss = critic_loss1.loss + critic_loss2.loss
+        return LossInfo(loss=critic_loss, extra=critic_loss / 2.)
 
     def _trainable_attributes_to_ignore(self):
         return ['_target_critic_network1', '_target_critic_network2']
