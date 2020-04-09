@@ -28,9 +28,7 @@ from alf.tensor_specs import TensorSpec
 class Net(Network):
     def __init__(self, dim=2):
         super().__init__(
-            input_tensor_spec=TensorSpec(shape=(dim, )),
-            skip_input_preprocessing=True,
-            name="Net")
+            input_tensor_spec=TensorSpec(shape=(dim, )), name="Net")
 
         self.fc = nn.Linear(3, dim, bias=False)
         w = torch.tensor([[1, 2], [-1, 1], [1, 1]], dtype=torch.float32)
@@ -47,7 +45,6 @@ class Net2(Network):
                 TensorSpec(shape=(dim, )),
                 TensorSpec(shape=(dim, ))
             ],
-            skip_input_preprocessing=True,
             name="Net")
         self.fc1 = nn.Linear(dim, dim, bias=False)
         self.fc2 = nn.Linear(dim, dim, bias=False)
