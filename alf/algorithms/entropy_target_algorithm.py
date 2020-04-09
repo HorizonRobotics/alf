@@ -31,30 +31,35 @@ EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
 
 @gin.configurable
 class EntropyTargetAlgorithm(Algorithm):
-    """Algorithm for adjust entropy regularization.
+    """Algorithm for adjusting entropy regularization.
 
     It tries to adjust the entropy regularization (i.e. alpha) so that the
-    the entropy is not smaller than `target_entropy`.
+    the entropy is not smaller than ``target_entropy``.
 
     The algorithm has three stages:
+
     0. init stage. This is an optional stage. If the initial entropy is already
-       below `max_entropy`, then this stage is skipped. Otherwise, the alpha will
-       be slowly decreased so that the entropy will land at `max_entropy` to
-       trigger the next `free stage`. Basically, this stage let the user to choose
+       below ``max_entropy``, then this stage is skipped. Otherwise, the alpha will
+       be slowly decreased so that the entropy will land at ``max_entropy`` to
+       trigger the next ``free_stage``. Basically, this stage let the user to choose
        an arbitrary large init alpha without considering every specific case.
     1. free stage. During this stage, the alpha is not changed. It transitions
-       to adjust_stage once entropy drops below `target_entropy`.
-    2. adjust stage. During this stage, log_alpha is adjusted using this formula:
-       ((below + 0.5 * above) * decreasing - (above + 0.5 * below) * increasing) * update_rate
-       Note that log_alpha will always be decreased if entropy is increasing
+       to adjust_stage once entropy drops below ``target_entropy``.
+    2. adjust stage. During this stage, ``log_alpha`` is adjusted using this formula:
+
+       .. code-block:: python
+
+            ((below + 0.5 * above) * decreasing - (above + 0.5 * below) * increasing) * update_rate
+
+       Note that ``log_alpha`` will always be decreased if entropy is increasing
        even when the entropy is below the target entropy. This is to prevent
-       overshooting log_alpha to a too big value. Same reason for always
-       increasing log_alpha even when the entropy is above the target entropy.
-       `update_rate` is initialized to `fast_update_rate` and is reduced by a
-       factor of 0.9 whenever the entropy crosses `target_entropy`. `udpate_rate`
-       is reset to `fast_update_rate` if entropy drops too much below
-       `target_entropy` (i.e., fast_stage_thresh in the code, which is the half
-       of `target_entropy` if it is positive, and twice of `target_entropy` if
+       overshooting ``log_alpha`` to a too big value. Same reason for always
+       increasing ``log_alpha`` even when the entropy is above the target entropy.
+       ``update_rate`` is initialized to ``fast_update_rate`` and is reduced by a
+       factor of 0.9 whenever the entropy crosses ``target_entropy``. ``udpate_rate``
+       is reset to ``fast_update_rate`` if entropy drops too much below
+       ``target_entropy`` (i.e., ``fast_stage_thresh`` in the code, which is the half
+       of ``target_entropy`` if it is positive, and twice of ``target_entropy`` if
        it is negative.
     """
 
@@ -71,27 +76,26 @@ class EntropyTargetAlgorithm(Algorithm):
                  average_window=2,
                  debug_summaries=False,
                  name="EntropyTargetAlgorithm"):
-        """Create an EntropyTargetAlgorithm
-
+        """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             initial_alpha (float): initial value for alpha; make sure that it's
                 large enough for initial meaningful exploration
             skip_free_stage (bool): If True, directly goes to the adjust stage.
             max_entropy (float): the upper bound of the entropy. If not provided,
-                min(initial_entropy * 0.8, initial_entropy / 0.8) is used.
-                initial_entropy is estimated from the first `average_window`
+                ``min(initial_entropy * 0.8, initial_entropy / 0.8)`` is used.
+                initial_entropy is estimated from the first ``average_window``
                 steps. 0.8 is to ensure that we can get a policy a less random
                 as the initial policy before starting the free stage.
             target_entropy (float): the lower bound of the entropy. If not
                 provided, a default value proportional to the action dimension
-                is used. This value should be less or equal than `max_entropy`.
-            very_slow_update_rate (float): a tiny update rate for log_alpha; used
-                in stage 0
-            slow_update_rate (float): minimal update rate for log_alpha; used in
-                stage 2
-            fast_update_rate (float): maximum update rate for log_alpha; used in
-                state 2
+                is used. This value should be less or equal than ``max_entropy``.
+            very_slow_update_rate (float): a tiny update rate for ``log_alpha``;
+                used in stage 0.
+            slow_update_rate (float): minimal update rate for ``log_alpha``; used
+                in stage 2.
+            fast_update_rate (float): maximum update rate for ``log_alpha``; used
+                in state 2.
             min_alpha (float): the minimal value of alpha. If <=0, :math:`e^{-100}`
                 is used.
             average_window (int): window size for averaging past entropies.
@@ -168,10 +172,9 @@ class EntropyTargetAlgorithm(Algorithm):
                 policy.
             step_type (StepType): the step type for the distributions.
         Returns:
-            AlgStep. `info` field is LossInfo, other fields are empty.
+            AlgStep. ``info`` field is ``LossInfo``, other fields are empty.
         """
-        entropy, entropy_for_gradient = entropy_with_fallback(
-            distribution, self._action_spec)
+        entropy, entropy_for_gradient = entropy_with_fallback(distribution)
         return AlgStep(
             output=(),
             state=(),

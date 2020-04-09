@@ -582,7 +582,7 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
 
 
 # Here, we compute entropy of transformed distributions using sampling.
-def entropy_with_fallback(distributions, action_spec):
+def entropy_with_fallback(distributions):
     """Computes total entropy of nested distribution.
     If entropy() of a distribution is not implemented, this function will
     fallback to use sampling to calculate the entropy. It returns two values:
@@ -601,15 +601,14 @@ def entropy_with_fallback(distributions, action_spec):
     Args:
         distributions (nested Distribution): A possibly batched tuple of
             distributions.
-        action_spec (nested BoundedTensorSpec): A nested tuple representing the
-            action spec.
+
     Returns:
         tuple of (entropy, entropy_for_gradient). You should use entropy in
         situations where its value is needed, and entropy_for_gradient where
         you need to calculate the gradient of entropy.
     """
 
-    def _compute_entropy(dist: td.Distribution, action_spec):
+    def _compute_entropy(dist: td.Distribution):
         if isinstance(dist, td.TransformedDistribution):
             # TransformedDistribution is used by NormalProjectionNetwork with
             # scale_distribution=True, in which case we estimate with sampling.
@@ -619,9 +618,7 @@ def entropy_with_fallback(distributions, action_spec):
             entropy_for_gradient = entropy
         return entropy, entropy_for_gradient
 
-    entropies = list(
-        map(_compute_entropy, nest.flatten(distributions),
-            nest.flatten(action_spec)))
+    entropies = list(map(_compute_entropy, nest.flatten(distributions)))
     entropies, entropies_for_gradient = zip(*entropies)
 
     return sum(entropies), sum(entropies_for_gradient)
