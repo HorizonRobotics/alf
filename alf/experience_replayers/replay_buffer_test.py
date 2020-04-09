@@ -137,13 +137,13 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True),
                 None)
 
-            ring_buffer._stop.clear()
+            ring_buffer.revive()
             for t in range(6, 10):
                 batch2 = _get_batch(range(0, 8), self.dim, t=t, x=0.4)
                 self.assertEqual(
                     ring_buffer.enqueue(batch2, blocking=True), True)
 
-            ring_buffer._stop.set()
+            ring_buffer.stop()
             self.assertEqual(ring_buffer.enqueue(batch2, blocking=True), False)
 
 

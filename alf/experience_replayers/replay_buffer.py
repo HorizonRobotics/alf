@@ -69,8 +69,11 @@ def atomic(func):
 class RingBuffer(nn.Module):
     """Batched Ring Buffer.
 
-    To be made multiprocessing safe, optionally.
-    Can be used to implement ReplayBuffer and Queue.
+    Multiprocessing safe, optionally via allow_multiprocess flag, blocking
+    modes to enqueue and dequeue, a stop event to terminate blocked
+    processes, and putting buffer into shared memory.
+
+    This is the underlying implementation of ReplayBuffer and Queue.
 
     Different from tf_agents.replay_buffers.tf_uniform_replay_buffer, this
     buffer allows users to specify the environment id when adding batch.
@@ -267,7 +270,8 @@ class RingBuffer(nn.Module):
             blocking (bool): If True, blocks if there is no free slot to add
                 data.
         Returns:
-            nested Tensors. The shapes are [batch_size, ...]
+            nested Tensors or None when blocking dequeue gets terminated by
+            stop event. The shapes of the Tensors are [batch_size, ...].
         """
         if blocking:
             assert self._allow_multiprocess, [
