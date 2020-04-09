@@ -19,13 +19,6 @@ import torch
 
 import alf
 
-alf.optimizers.Adam = gin.external_configurable(alf.optimizers.Adam,
-                                                'alf.optimizers.Adam')
-alf.optimizers.AdamW = gin.external_configurable(alf.optimizers.AdamW,
-                                                 'alf.optimizers.AdamW')
-alf.optimizers.SGD = gin.external_configurable(alf.optimizers.SGD,
-                                               'alf.optimizers.SGD')
-
 # This allows the environment creation arguments to be configurable by supplying
 # gym.envs.registration.EnvSpec.make.ARG_NAME=VALUE
 gym.envs.registration.EnvSpec.make = gin.external_configurable(

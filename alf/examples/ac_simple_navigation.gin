@@ -40,7 +40,6 @@ TracAlgorithm.ac_algorithm_cls=@ActorCriticAlgorithm
 TracAlgorithm.action_dist_clip_per_dim=0.25
 
 Agent.optimizer=@ac/AdamTF()
-Agent.gradient_clipping=None
 Agent.rl_algorithm_cls=@TracAlgorithm
 
 # training config

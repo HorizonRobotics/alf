@@ -90,7 +90,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  target_update_period=10,
                  use_smoothed_actor=False,
                  dqda_clipping=0.,
-                 gradient_clipping=None,
                  on_policy=False,
                  debug_summaries=False,
                  name="SarsaAlgorithm"):
@@ -140,7 +139,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 networks.
             alpha_optimizer (torch.optim.Optimizer): The optimizer for alpha.
                 Only used if ``initial_alpha`` is not ``None``.
-            gradient_clipping (float): Norm length to clip gradients.
             on_policy (bool): whether it is used as an on-policy algorithm.
             debug_summaries (bool): ``True`` if debug summaries should be created.
             name (str): The name of this algorithm.
@@ -186,7 +184,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 critics=[critic_network.state_spec] * num_replicas,
                 target_critics=[critic_network.state_spec] * num_replicas,
             ),
-            gradient_clipping=gradient_clipping,
             debug_summaries=debug_summaries,
             name=name)
         self._actor_network = actor_network
