@@ -35,7 +35,7 @@ from alf.networks import EncodingNetwork, StackedLSTMCell
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.networks.action_encoder import SimpleActionEncoder
 from alf.nest import flatten, map_structure
-from alf.utils import common, dist_utils, math_ops, resnet50_block
+from alf.utils import common, dist_utils, math_ops
 
 MBPState = namedtuple(
     "MBPState",
@@ -353,11 +353,13 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
 
     Current differences:
-    * no action encoding and decoding
-    * no retroactive memory update
-    * no prediction of state-action value
-    * value prediction does not use action distribution as feature
-    * no q-value prediction
+
+    * No action encoding and decoding
+    * No retroactive memory update
+    * No prediction of state-action value
+    * Value prediction does not use action distribution as feature.
+    * No q-value prediction
+    * Image encoding and decoding use batch-norm. The paper didn't use.
     """
 
     def __init__(self,
@@ -494,7 +496,7 @@ class ResnetEncodingNetwork(alf.networks.Network):
         in_channels = input_tensor_spec.shape[0]
         shape = input_tensor_spec.shape
         for stride in [2, 1, 2, 1, 2, 1]:
-            res_block = resnet50_block.BottleneckBlock(
+            res_block = alf.layers.BottleneckBlock(
                 in_channels=in_channels,
                 kernel_size=3,
                 filters=(64, 32, 64),
@@ -543,7 +545,7 @@ class ResnetDecodingNetwork(alf.networks.Network):
 
         for stride in reversed([2, 1, 2, 1, 2, 1]):
             dec_layers.append(
-                resnet50_block.BottleneckBlock(
+                alf.layers.BottleneckBlock(
                     in_channels=64,
                     kernel_size=3,
                     filters=(64, 32, 64),

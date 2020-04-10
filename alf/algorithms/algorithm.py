@@ -432,9 +432,21 @@ class Algorithm(nn.Module):
 
             local_metadata = {} if metadata is None else metadata.get(
                 prefix[:-1], {})
-            module._load_from_state_dict(state_dict, prefix, local_metadata,
-                                         True, missing_keys, unexpected_keys,
-                                         error_msgs, visited)
+            if type(module)._load_from_state_dict == type(
+                    self)._load_from_state_dict:
+                module._load_from_state_dict(
+                    state_dict, prefix, local_metadata, True, missing_keys,
+                    unexpected_keys, error_msgs, visited)
+            else:
+                # Some pytorch modules (e.g. BatchNorm layers) override
+                # _load_from_state_dict, which uses the original
+                # Module._load_from_state_dict. So we have to handle them
+                # differently. Not using `visited` should not cause a problem
+                # because those modules are not implemented by ALF and will have
+                # have cycle through them.
+                module._load_from_state_dict(
+                    state_dict, prefix, local_metadata, True, missing_keys,
+                    unexpected_keys, error_msgs)
 
         load(self)
 
