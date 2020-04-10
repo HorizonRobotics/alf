@@ -30,7 +30,17 @@ from alf.nest.utils import convert_device
 
 
 def atomic(func):
-    """Make class member function atomic by checking class._lock."""
+    """Make class member function atomic by checking class._lock.
+    
+    Can only be applied on class methods, whose containing class
+    must have _lock set to None or a multiprocessing.Lock object.
+
+    Args:
+        func: the function to be wrapped.
+
+    Returns:
+        the wrapped function
+    """
 
     def atomic_deco(func):
         @functools.wraps(func)
@@ -347,10 +357,12 @@ class RingBuffer(nn.Module):
         return self._num_envs
 
 
-class DataBuffer(nn.Module):
+class DataBuffer(RingBuffer):
     """A simple circular buffer supporting random sampling. This buffer doesn't
     preserve temporality as data from multiple environments will be arbitrarily
     stored.
+
+    Not multiprocessing safe.
     """
 
     def __init__(self,
@@ -367,32 +379,22 @@ class DataBuffer(nn.Module):
             device (str): which device to store the data
             name (str): name of the buffer
         """
-        super().__init__()
-        self._name = name
-        self._device = device
-
-        buffer_id = [0]
-
-        def _create_buffer(tensor_spec):
-            buf = tensor_spec.zeros((capacity, ))
-            self.register_buffer("_buffer%s" % buffer_id[0], buf)
-            buffer_id[0] += 1
-            return buf
-
-        with alf.device(self._device):
-            self._capacity = torch.as_tensor(capacity, dtype=torch.int64)
-            self.register_buffer("_current_size",
-                                 torch.zeros((), dtype=torch.int64))
-            self.register_buffer("_current_pos",
-                                 torch.zeros((), dtype=torch.int64))
-            self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
-
-    @property
-    def current_size(self):
-        return convert_device(self._current_size)
+        super().__init__(
+            data_spec=data_spec,
+            num_environments=1,
+            max_length=capacity,
+            device=device,
+            allow_multiprocess=False,
+            name=name)
+        self._capacity = torch.as_tensor(
+            self._max_length, dtype=torch.int64, device=device)
 
     def add_batch(self, batch):
         """Add a batch of items to the buffer.
+
+        Add batch_size items along the length of the underlying RingBuffer,
+        whereas RingBuffer.enqueue only adds data of length 1.
+        Truncates the data if batch_size > capacity.
 
         Args:
             batch (Tensor): shape should be [batch_size] + tensor_space.shape
@@ -401,11 +403,11 @@ class DataBuffer(nn.Module):
         with alf.device(self._device):
             batch = convert_device(batch)
             n = torch.min(self._capacity, torch.as_tensor(batch_size))
-            indices = torch.arange(self._current_pos,
-                                   self._current_pos + n) % self._capacity
+            indices = torch.arange(self._current_pos[0],
+                                   self._current_pos[0] + n) % self._capacity
             alf.nest.map_structure(
-                lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
-                self._buffer, batch)
+                lambda buf, bat: buf[0].__setitem__(indices, bat[-n:].detach()
+                                                    ), self._buffer, batch)
 
             self._current_pos.copy_((self._current_pos + n) % self._capacity)
             self._current_size.copy_(
@@ -443,12 +445,17 @@ class DataBuffer(nn.Module):
             indices.copy_(
                 (indices +
                  (self._current_pos - self._current_size)) % self._capacity)
-            result = alf.nest.map_structure(lambda buf: buf[indices],
+            result = alf.nest.map_structure(lambda buf: buf[0][indices],
                                             self._buffer)
         return convert_device(result)
 
+    @property
+    def current_size(self):
+        return self._current_size[0]
+
     def get_all(self):
-        return convert_device(self._buffer)
+        return convert_device(
+            alf.nest.map_structure(lambda buf: buf[0], self._buffer))
 
     def clear(self):
         """Clear the buffer.
@@ -460,6 +467,7 @@ class DataBuffer(nn.Module):
         self._current_size.fill_(0)
 
     def pop(self, n):
+        """Remove last n items."""
         n = torch.min(torch.as_tensor(n), self._current_size)
         self._current_size.cppy_(self._current_size - n)
         self._current_pos.copy_((self._current_pos - n) % self._capacity)
