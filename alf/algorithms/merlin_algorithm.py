@@ -54,7 +54,8 @@ class MemoryBasedPredictor(Algorithm):
     """The Memroy Based Predictor.
 
     It's described in:
-    Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
+    Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" 
+    `arXiv:1803.10760 <https://arxiv.org/abs/1803.10760>`_
     """
 
     def __init__(self,
@@ -67,7 +68,7 @@ class MemoryBasedPredictor(Algorithm):
                  memory_size=1350,
                  loss_weight=1.0,
                  name="mbp"):
-        """Create a MemoryBasedPredictor.
+        """
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
@@ -88,11 +89,7 @@ class MemoryBasedPredictor(Algorithm):
         rnn_input_size = (latent_dim + num_read_keys * latent_dim +
                           action_encoder.output_spec.shape[0])
 
-        rnn = StackedLSTMCell(
-            rnn_input_size,
-            lstm_size,
-            output_layers=list(range(len(lstm_size))),
-            name=name + "/lstm")
+        rnn = StackedLSTMCell(rnn_input_size, lstm_size, name=name + "/lstm")
 
         state_spec = MBPState(
             latent_vector=alf.TensorSpec((latent_dim, )),
@@ -193,6 +190,21 @@ class MemoryBasedPredictor(Algorithm):
                                                    decoder_losses)
         return LossInfo(loss=loss, extra=decoder_losses)
 
+    def predict_step(self, inputs, state: MBPState):
+        """Train one step.
+
+        Args:
+            inputs (tuple): a tuple of (observation, action)
+        Returns:
+            AlgStep:
+                output: latent vector
+                state: next state
+                info: empty tuple
+        """
+        encode_step = self.encode_step(inputs, state)
+
+        return encode_step._replace(info=())
+
     def train_step(self, inputs, state: MBPState):
         """Train one step.
 
@@ -234,27 +246,25 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                  loss_weight=1.0,
                  debug_summaries=False,
                  name="mba"):
-        """Create the policy module of MERLIN.
+        """
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            memory (MemoryWithUsage): the memory module from MemoryBasedPredictor
+            memory (MemoryWithUsage): the memory module from ``MemoryBasedPredictor``
             num_read_keys (int): number of keys for reading memory.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers
             loss (None|ActorCriticLoss): an object for calculating the loss
-                for reinforcement learning. If None, a default ActorCriticLoss
+                for reinforcement learning. If None, a default ``ActorCriticLoss``
                 will be used.
+            loss_class (type): the class of the loss. The signature of its
+                constructor: loss_class(debug_summaries)
             name (str): name of the algorithm.
         """
-        rnn = StackedLSTMCell(
-            latent_dim,
-            lstm_size,
-            output_layers=list(range(len(lstm_size))),
-            name=name + "/lstm")
+        rnn = StackedLSTMCell(latent_dim, lstm_size, name=name + "/lstm")
 
         actor_input_dim = (
-            latent_dim + lstm_size[-1] + num_read_keys * memory.dim)
+            latent_dim + rnn.output_spec.shape[0] + num_read_keys * memory.dim)
 
         actor_net = ActorDistributionNetwork(
             input_tensor_spec=alf.TensorSpec((actor_input_dim, ),
@@ -282,8 +292,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         # TODO: add log p(a_i) as input to value net
         value_input_dim = latent_dim
         self._value_net = ValueNetwork(
-            input_tensor_spec=alf.TensorSpec((value_input_dim, ),
-                                             dtype=torch.float32),
+            input_tensor_spec=alf.TensorSpec((value_input_dim, )),
             fc_layer_params=(200, ),
             activation=torch.tanh,
             name=name + "/value_net")
@@ -292,6 +301,14 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         self._actor_net = actor_net
 
         # TODO: add qvalue_net for predicting Q-value
+
+    def _get_action(self, latent_vector, state):
+        rnn_output, rnn_state = self._rnn(latent_vector, state)
+        mem_readout = self._memory.genkey_and_read(self._key_net, rnn_output)
+        policy_input = torch.cat(
+            [latent_vector.detach(), rnn_output, mem_readout], dim=-1)
+        action_distribution, _ = self._actor_net(policy_input)
+        return action_distribution, rnn_state
 
     def rollout_step(self, time_step: TimeStep, state):
         """Train one step.
@@ -302,24 +319,20 @@ class MemoryBasedActor(OnPolicyAlgorithm):
             state (nested Tensor): state of the model
         """
         latent_vector = time_step.observation
-        rnn_output, rnn_state = self._rnn(latent_vector, state)
-        mem_readout = self._memory.genkey_and_read(self._key_net, rnn_output)
-        policy_input = torch.cat(
-            [latent_vector.detach(), rnn_output, mem_readout], dim=-1)
-        action_distribution, _ = self._actor_net(policy_input)
-
+        action_distribution, state = self._get_action(latent_vector, state)
         value, _ = self._value_net(latent_vector)
         action = dist_utils.sample_action_distribution(action_distribution)
 
         info = ActorCriticInfo(
             action_distribution=action_distribution, value=value)
-        return AlgStep(output=action, state=rnn_state, info=info)
+        return AlgStep(output=action, state=state, info=info)
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        policy_step = self.rollout_step(time_step, state)
-        action = dist_utils.epsilon_greedy_sample(
-            policy_step.info.action_distribution, epsilon_greedy)
-        return policy_step._replace(output=action)
+        action_distribution, state = self._get_action(time_step.observation,
+                                                      state)
+        action = dist_utils.epsilon_greedy_sample(action_distribution,
+                                                  epsilon_greedy)
+        return AlgStep(output=action, state=state, info=())
 
     def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
@@ -343,7 +356,8 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     * no action encoding and decoding
     * no retroactive memory update
     * no prediction of state-action value
-    * only uses outputs from last layers of stacked LSTMs
+    * value prediction does not use action distribution as feature
+    * no q-value prediction
     """
 
     def __init__(self,
@@ -461,14 +475,14 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
 
 @gin.configurable
 class ResnetEncodingNetwork(alf.networks.Network):
-    """Image encoding network
+    """Image encoding network using ResNet bottleneck blocks.
 
     This is not a generic network, it implements `ImageEncoder` described in
     2.1.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
 
     def __init__(self, input_tensor_spec, name='ResnetEncodingNetwork'):
-        """Create a `ResnetEncodingNetwork` instance
+        """
 
         Args:
             input_tensor_spec (TensorSpec|nested TensorSpec): input observations spec.
@@ -477,20 +491,22 @@ class ResnetEncodingNetwork(alf.networks.Network):
 
         enc_layers = []
 
-        in_channels = input_tensor_spec.shape[1]
+        in_channels = input_tensor_spec.shape[0]
+        shape = input_tensor_spec.shape
         for stride in [2, 1, 2, 1, 2, 1]:
             res_block = resnet50_block.BottleneckBlock(
                 in_channels=in_channels,
-                kernel_size=(3, 3),
+                kernel_size=3,
                 filters=(64, 32, 64),
-                strides=stride)
+                stride=stride)
+            shape = res_block.calc_output_shape(shape)
             enc_layers.append(res_block)
             in_channels = 64
 
         enc_layers.extend([
             nn.Flatten(),
             alf.layers.FC(
-                input_size=np.prod(res_block.output_spec.shape),
+                input_size=np.prod(shape),
                 output_size=500,
                 activation=torch.tanh)
         ])
@@ -503,14 +519,14 @@ class ResnetEncodingNetwork(alf.networks.Network):
 
 @gin.configurable
 class ResnetDecodingNetwork(alf.networks.Network):
-    """Image decoding network
+    """Image decoding network using ResNet bottleneck blocks.
 
     This is not a generic network, it implements `ImageDecoder` described in
     2.2.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
 
     def __init__(self, input_tensor_spec, name='ResnetDecodingNetwork'):
-        """Create a `ResnetDecodingNetwork` instance
+        """
 
         Args:
              input_tensor_spec (TensorSpec): input latent spec.
@@ -529,9 +545,9 @@ class ResnetDecodingNetwork(alf.networks.Network):
             dec_layers.append(
                 resnet50_block.BottleneckBlock(
                     in_channels=64,
-                    kernel_size=(3, 3),
+                    kernel_size=3,
                     filters=(64, 32, 64),
-                    strides=stride,
+                    stride=stride,
                     transpose=True))
 
         dec_layers.append(

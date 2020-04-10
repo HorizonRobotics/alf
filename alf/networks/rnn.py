@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import copy
+import gin
 import torch
 import torch.nn as nn
 
@@ -20,19 +21,20 @@ import alf
 from .network import Network
 
 
+@gin.configurable(whitelist=['output_layers'])
 class StackedLSTMCell(Network):
     def __init__(self,
                  input_size,
                  lstm_size,
-                 output_layers=-1,
+                 output_layers=None,
                  name="StackedLSTMCELL"):
         """Stacked LSTM Cell.
 
         Args:
             input_size (int): input dimension
             lstm_size (int|list[int]): specifying the LSTM cell sizes to use.
-            output_layers (int|list[int]): -1 means the output from the last
-                layer.
+            output_layers (None|int|list[int]): -1 means the output from the last
+                layer. ``None`` means all layers.
             name (str):
         """
         super().__init__(
@@ -40,13 +42,16 @@ class StackedLSTMCell(Network):
 
         self._cells = nn.ModuleList()
         self._state_spec = []
-        if type(output_layers) == int:
+        if output_layers is None:
+            output_layers = list(range(len(lstm_size)))
+        elif type(output_layers) == int:
             output_layers = [output_layers]
         self._output_layers = copy.copy(output_layers)
         for hidden_size in lstm_size:
             self._cells.append(nn.LSTMCell(input_size, hidden_size))
             spec = alf.TensorSpec(shape=(hidden_size, ))
             self._state_spec.append((spec, spec))
+            input_size = hidden_size
 
     @property
     def state_spec(self):

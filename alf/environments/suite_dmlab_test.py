@@ -65,9 +65,9 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
         self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
-        actions = self._env.action_spec().sample()
         for _ in range(10):
-            time_step = self._env.step(actions)
+            actions = self._env.action_spec().sample()
+            self._env.step(actions)
 
     def test_thread_env(self):
         scene = 'lt_chasm'
@@ -82,9 +82,9 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
         self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
-        actions = self._env.action_spec().sample()
         for _ in range(10):
-            time_step = self._env.step(actions)
+            actions = self._env.action_spec().sample()
+            self._env.step(actions)
 
     def test_parallel_env(self):
         scene = 'lt_chasm'
@@ -122,11 +122,11 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
         self._env = parallel_torch_environment.ParallelTorchEnvironment(
             [constructor] * 5)
-        self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
+        self.assertEqual((3, 84, 84), self._env.observation_spec().shape)
 
-        actions = self._env.action_spec().sample(outer_dims=(5, ))
         for _ in range(10):
-            time_step = self._env(actions)
+            actions = self._env.action_spec().sample(outer_dims=(5, ))
+            self._env.step(actions)
 
 
 if __name__ == '__main__':

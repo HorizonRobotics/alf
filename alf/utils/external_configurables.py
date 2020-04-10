@@ -32,5 +32,10 @@ gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
 gin.external_configurable(torch.nn.functional.softsign,
                           'torch.nn.functional.softsign')
 
+gin.external_configurable(torch.nn.MSELoss, 'torch.nn.MSELoss')
+gin.external_configurable(torch.nn.BCELoss, 'torch.nn.BCELoss')
+gin.external_configurable(torch.nn.CrossEntropyLoss,
+                          'torch.nn.CrossEntropyLoss')
+
 # gin.external_configurable(tf.keras.initializers.GlorotUniform,
 #                           'tf.keras.initializers.GlorotUniform')

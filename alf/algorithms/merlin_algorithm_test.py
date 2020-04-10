@@ -27,7 +27,7 @@ from alf.utils import common, math_ops
 
 def _create_merlin_algorithm(env,
                              encoder_fc_layers=(3, ),
-                             latent_dim=3,
+                             latent_dim=4,
                              lstm_size=(4, ),
                              memory_size=20,
                              learning_rate=1e-3,
@@ -64,7 +64,6 @@ def _create_merlin_algorithm(env,
 class MerlinAlgorithmTest(alf.test.TestCase):
     def setUp(self):
         super().setUp()
-        torch.set_num_threads(1)
         if os.environ.get('SKIP_LONG_TIME_COST_TESTS', False):
             self.skipTest("It takes very long to run this test.")
 
@@ -79,7 +78,7 @@ class MerlinAlgorithmTest(alf.test.TestCase):
         algorithm = _create_merlin_algorithm(
             env, learning_rate=1e-3, debug_summaries=False)
 
-        for i in range(3000):
+        for i in range(2000):
             algorithm.train_iter()
             if (i + 1) % 100 == 0:
                 eval_env.reset()
@@ -93,6 +92,4 @@ class MerlinAlgorithmTest(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    n = torch.get_num_threads()
     alf.test.main()
-    n = torch.set_num_threads(n)

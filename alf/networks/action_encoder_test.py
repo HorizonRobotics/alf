@@ -15,7 +15,7 @@
 import torch
 
 import alf
-from alf.utils.action_encoder import SimpleActionEncoder
+from alf.networks.action_encoder import SimpleActionEncoder
 
 
 class SimpleActionEncoderTest(alf.test.TestCase):
@@ -28,12 +28,12 @@ class SimpleActionEncoderTest(alf.test.TestCase):
 
         # test scalar
         x = [torch.tensor([0.5, 1.5, 2.5]), torch.tensor(3)]
-        y = encoder(x)
+        y = encoder(x)[0]
         self.assertEqual(y, torch.tensor([0.5, 1.5, 2.5, 0, 0, 0, 1]))
 
         # test batch
         x = [torch.tensor([[0.5, 1.5, 2.5], [1, 2, 3]]), torch.tensor([3, 2])]
-        y = encoder(x)
+        y = encoder(x)[0]
         self.assertEqual(
             y,
             torch.tensor([[0.5, 1.5, 2.5, 0, 0, 0, 1], [1, 2, 3, 0, 0, 1, 0]]))

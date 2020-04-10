@@ -1,28 +1,25 @@
 # MERLIN on deepmindlab rooms_collect_good_objects
 
+import alf.algorithms.agent
 import alf.algorithms.merlin_algorithm
-import alf.algorithms.decoding_algorithm
-import alf.trainers.on_policy_trainer
 
-# `DeepmindLab` is required,
-#  Stimuli dataset should be downloaded before building the python module.
-#   follow instructions `https://github.com/deepmind/lab/blob \
-#     /master/data/brady_konkle_oliva2008/README.md`
-#  And see `https://github.com/deepmind/lab/blob/master/python/pip_package/README.md`
-#   to build `DeepmindLab` Python module
+# DeepmindLab is required.
+# Stimuli dataset should be downloaded before building the python module.
+# Follow instructions https://github.com/deepmind/lab/blob/master/data/brady_konkle_oliva2008/README.md
+# And see https://github.com/deepmind/lab/blob/master/python/pip_package/README.md
+# to build `DeepmindLab` Python module.
 
 # environment config
 import alf.environments.suite_dmlab
-import alf.environments.wrappers
 
-# environment config
 create_environment.env_load_fn=@suite_dmlab.load
 create_environment.env_name="contributed/dmlab30/rooms_collect_good_objects_train"
-# test performance on `rooms_collect_good_objects_test`, just enable the following two lines
+
+# To test performance on `rooms_collect_good_objects_test`, just enable the following two lines
 # create_environment.env_name="contributed/dmlab30/rooms_collect_good_objects_test"
 # DeepmindLabEnv.config={'allowHoldOutLevels':'true'}
+
 create_environment.num_parallel_environments=16
-suite_dmlab.load.wrap_with_process=0
 suite_dmlab.load.gym_env_wrappers=(@FrameResize, )
 FrameResize.width=64
 FrameResize.height=64
@@ -36,10 +33,12 @@ suite_dmlab.action_discretize.look_left_right_pixels_per_frame=(-30, 30)
 suite_dmlab.DeepmindLabEnv.renderer='hardware'
 
 observation_spec=@get_observation_spec()
-action_spec=@get_action_spec()
 
 # algorithm config
 LATENT_DIM=200
+
+StackedLSTMCell.output_layers=-1
+BottleneckBlock.v1_5=False
 
 img_enc/ResnetEncodingNetwork.input_tensor_spec=%observation_spec
 
@@ -62,24 +61,19 @@ MerlinAlgorithm.memory_size=1350
 # ActorCriticLoss.td_lambda=0.9
 # ActorCriticLoss.entropy_regularization=0.01
 
-ac/Adam.learning_rate=1e-4
+ac/AdamTF.lr=1e-4
 
-Agent.optimizer=@ac/Adam()
+Agent.optimizer=@ac/AdamTF()
 Agent.rl_algorithm_cls=@MerlinAlgorithm
 Agent.observation_transformer=@image_scale_transformer
 common.image_scale_transformer.min=0.0
 
 # training config
-TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=20
 TrainerConfig.algorithm_ctor=@Agent
-TrainerConfig.num_iterations=10000
-TrainerConfig.checkpoint_interval=200
-TrainerConfig.use_tf_functions=1
+TrainerConfig.num_iterations=50000
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=10
 TrainerConfig.evaluate=False
 TrainerConfig.eval_interval=200
-
-

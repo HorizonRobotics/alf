@@ -52,14 +52,14 @@ def action_discretize(action_spec,
     Mapping all valid action values to discrete action
 
     original deepmind lab environment action_spec:
-
-    `[{'max': 512, 'min': -512, 'name': 'LOOK_LEFT_RIGHT_PIXELS_PER_FRAME'},
-    {'max': 512, 'min': -512, 'name': 'LOOK_DOWN_UP_PIXELS_PER_FRAME'},
-    {'max': 1, 'min': -1, 'name': 'STRAFE_LEFT_RIGHT'},
-    {'max': 1, 'min': -1, 'name': 'MOVE_BACK_FORWARD'},
-    {'max': 1, 'min': 0, 'name': 'FIRE'},
-    {'max': 1, 'min': 0, 'name': 'JUMP'},
-    {'max': 1, 'min': 0, 'name': 'CROUCH'}]`
+    .. code-block:: python
+        [{'max': 512, 'min': -512, 'name': 'LOOK_LEFT_RIGHT_PIXELS_PER_FRAME'},
+        {'max': 512, 'min': -512, 'name': 'LOOK_DOWN_UP_PIXELS_PER_FRAME'},
+        {'max': 1, 'min': -1, 'name': 'STRAFE_LEFT_RIGHT'},
+        {'max': 1, 'min': -1, 'name': 'MOVE_BACK_FORWARD'},
+        {'max': 1, 'min': 0, 'name': 'FIRE'},
+        {'max': 1, 'min': 0, 'name': 'JUMP'},
+        {'max': 1, 'min': 0, 'name': 'CROUCH'}]
 
     and discretized actions:
 
@@ -134,13 +134,13 @@ class DeepmindLabEnv(gym.Env):
 
         Args:
             scene (str): script for the deepmind_lab env. See available script:
-                `https://github.com/deepmind/lab/tree/master/game_scripts/levels`
+                `<https://github.com/deepmind/lab/tree/master/game_scripts/levels>`_
             action_repeat (int): the interval at which the agent experiences the game
             observation (str):  observation format. See doc about the available observations:
-                `https://github.com/deepmind/lab/blob/master/docs/users/python_api.md`
+                `<https://github.com/deepmind/lab/blob/master/docs/users/python_api.md>`_
             config (dict): config for env
-            renderer (str): 'software' or 'hardware', when set to `hardware` then EGL or GLX is
-                used for rendering, make sure you have GPU if you use.
+            renderer (str): 'software' or 'hardware'. If set to 'hardware', EGL or GLX is
+                used for rendering. Make sure you have GPU if you use 'hardware'.
         """
         super(DeepmindLabEnv, self).__init__()
 
@@ -198,13 +198,13 @@ def load(scene,
     """Load deepmind lab envs.
     Args:
         scene (str): script for the deepmind_lab env. See available script:
-            https://github.com/deepmind/lab/tree/master/game_scripts/levels
+            `<https://github.com/deepmind/lab/tree/master/game_scripts/levels>`_
         env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
         frame_skip (int): the frequency at which the agent experiences the game
-        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
             classes to use on the torch environment.
         wrap_with_process (bool): Whether wrap env in a process
         max_episode_steps (int): max episode step limit
