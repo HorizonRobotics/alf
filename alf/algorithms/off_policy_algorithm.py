@@ -150,7 +150,12 @@ class OffPolicyAlgorithm(RLAlgorithm):
 
         length = experience.step_type.shape[1]
         mini_batch_length = (mini_batch_length or length)
-        if length % mini_batch_length:
+        if mini_batch_length > length:
+            common.warning_once(
+                "mini_batch_length=%s is set to a smaller length=%s" %
+                (mini_batch_length, length))
+            mini_batch_length = length
+        elif length % mini_batch_length:
             common.warning_once(
                 "length=%s not a multiple of mini_batch_length=%s" %
                 (length, mini_batch_length))

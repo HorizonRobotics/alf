@@ -354,11 +354,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _alpha_train_step(self, log_pi):
-        with alf.summary.scope(self.name):
-            alf.summary.scalar("alpha", self._log_alpha.exp())
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
-        info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))
+        info = SacAlphaInfo(
+            loss=LossInfo(
+                loss=alpha_loss,
+                extra=dict(alpha_loss=alpha_loss, alpha=self._log_alpha.
+                           exp())))
         return info
 
     def train_step(self, exp: Experience, state: SacState):
