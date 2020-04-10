@@ -153,6 +153,94 @@ class FC(nn.Module):
 
 
 @gin.configurable
+class ParallelFC(nn.Module):
+    def __init__(self,
+                 input_size,
+                 output_size,
+                 n,
+                 activation=identity,
+                 use_bias=True,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """Parallel FC layer.
+        
+        It is equivalent to ``n`` separate FC layers with the same
+        ``input_size`` and ``output_size``.
+
+        Args:
+            input_size (int): input size
+            output_size (int): output size
+            n (int): n indepedent ``FC`` layer
+            activation (torch.nn.functional):
+            use_bias (bool): whether use bias
+            kernel_initializer (Callable): initializer for the FC layer kernel.
+                If none is provided a variance_scaling_initializer with gain as
+                `kernel_init_gain` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to
+                the std of kernel init distribution. It will be ignored if
+                `kernel_initializer` is not None.
+            bias_init_value (float): a constant
+        """
+        super().__init__()
+        self._activation = activation
+        self._weight = nn.Parameter(torch.Tensor(n, input_size, output_size))
+        if use_bias:
+            self._bias = nn.Parameter(torch.Tensor(n, 1, output_size))
+        else:
+            self._bias = None
+
+        for i in range(n):
+            if kernel_initializer is None:
+                variance_scaling_init(
+                    self._weight.data[i],
+                    gain=kernel_init_gain,
+                    nonlinearity=self._activation)
+            else:
+                kernel_initializer(self._weight.data[i])
+
+        if use_bias:
+            nn.init.constant_(self._bias.data, bias_init_value)
+
+    def forward(self, inputs):
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, n, input_size]`` or ``[B, input_size]``
+        Returns:
+            torch.Tensor with shape ``[B, n, output_size]``
+        """
+        n, k, l = self._weight.shape
+        if inputs.ndim == 2:
+            assert inputs.shape[1] == k, (
+                "inputs has wrong shape %s. Expecting (B, %d)" % (inputs.shape,
+                                                                  n))
+            inputs = inputs.unsqueeze(0).expand(n, *inputs.shape)
+        elif inputs.ndim == 3:
+            assert (inputs.shape[1] == n and inputs.shape[2] == k), (
+                "inputs has wrong shape %s. Expecting (B, %d, %d)" %
+                (inputs.shape, n, k))
+            inputs = inputs.transpose(0, 1)  # [n, B, k]
+        else:
+            raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
+
+        if self.bias is not None:
+            y = torch.baddbmm(self._bias, inputs, self.weight)  # [n, B, l]
+        else:
+            y = torch.bmm(inputs, self._weight)  # [n, B, l]
+        y = y.transpose(0, 1)  # [B, n, l]
+        return self._activation(y)
+
+    @property
+    def weight(self):
+        return self._weight
+
+    @property
+    def bias(self):
+        return self._bias
+
+
+@gin.configurable
 class Conv2D(nn.Module):
     def __init__(self,
                  in_channels,

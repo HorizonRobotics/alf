@@ -20,8 +20,8 @@ import torch
 
 import alf
 from alf.tensor_specs import TensorSpec
-from alf.networks import CriticNetwork
-from alf.networks import CriticRNNNetwork
+from alf.networks import CriticNetwork, CriticRNNNetwork, ParallelCriticNetwork
+from alf.networks.network import NaiveParallelNetwork
 
 
 class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
@@ -45,8 +45,8 @@ class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
             state = ()
         return network_ctor, state
 
-    @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_critic(self, lstm_hidden_size):
+    #@parameterized.parameters((100, ), (None, ), ((200, 100), ))
+    def test_critic(self, lstm_hidden_size=(100, )):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((5, ), torch.float32)
         input_spec = (obs_spec, action_spec)
@@ -79,6 +79,25 @@ class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))
 
+        # test make_parallel
+        pnet = critic_net.make_parallel(6)
+
+        # shape of state should be [B, n, ...]
+        self.assertRaises(AssertionError, pnet, network_input, state)
+
+        state = alf.nest.map_structure(
+            lambda x: x.unsqueeze(1).expand(x.shape[0], 6, x.shape[1]), state)
+
+        if lstm_hidden_size is None:
+            self.assertTrue(isinstance(pnet, ParallelCriticNetwork))
+        else:
+            self.assertTrue(isinstance(pnet, NaiveParallelNetwork))
+
+        value, state = pnet(network_input, state)
+        self.assertEqual(pnet.output_spec, TensorSpec((6, )))
+        self.assertEqual(value.shape, (1, 6))
+
 
 if __name__ == "__main__":
+    TestCriticNetworks().test_critic()
     alf.test.main()

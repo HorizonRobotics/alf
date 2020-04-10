@@ -26,7 +26,7 @@ import alf.layers as layers
 from alf.networks.initializers import variance_scaling_init
 from alf.networks.network import Network, PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
-from alf.utils import common
+from alf.utils import common, math_ops
 
 
 def _tuplify2d(x):
@@ -388,7 +388,9 @@ class EncodingNetwork(PreprocessorNetwork):
                     activation=last_activation,
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
-        self._output_size = input_size
+
+        self._output_spec = TensorSpec(
+            (input_size, ), dtype=self._processed_input_tensor_spec.dtype)
 
     def forward(self, inputs, state=()):
         """
@@ -403,13 +405,139 @@ class EncodingNetwork(PreprocessorNetwork):
             z = fc(z)
         return z, state
 
-    @property
-    def output_spec(self):
-        if self._output_spec is None:
-            self._output_spec = TensorSpec(
-                (self._output_size, ),
-                dtype=self._processed_input_tensor_spec.dtype)
-        return self._output_spec
+    def make_parallel(self, n):
+        if (self.saved_args.get('conv_layer_params') is None
+                and self.saved_args.get('input_preprocessors') is None and
+            (self._preprocessing_combiner == math_ops.identity or isinstance(
+                self._preprocessing_combiner,
+                (alf.nest.utils.NestSum, alf.nest.utils.NestConcat)))):
+            return ParallelEncodingNetwork(
+                **self.saved_args, n=n, **dict(name="parallel_" + self.name))
+        else:
+            return super().make_parallel(n)
+
+
+@gin.configurable
+class ParallelEncodingNetwork(PreprocessorNetwork):
+    """Parallel feed-forward network with FC layers which allows the last layer
+    to have different settings from the other layers.
+    """
+
+    # TODO: handle input_preprocessors and conv_layer_params
+    def __init__(self,
+                 input_tensor_spec,
+                 n,
+                 input_preprocessors=None,
+                 preprocessing_combiner=None,
+                 conv_layer_params=None,
+                 fc_layer_params=None,
+                 activation=torch.relu,
+                 kernel_initializer=None,
+                 last_layer_size=None,
+                 last_activation=None,
+                 last_kernel_initializer=None,
+                 name="ParallelEncodingNetwork"):
+        """
+        Args:
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If nested, then ``preprocessing_combiner`` must not be
+                None.
+            n (int): number of parallel networks
+            input_preprocessors (None): must be ``None``.
+            preprocessing_combiner (NestCombiner): preprocessing called on
+                complex inputs. Note that this combiner must also accept
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
+                arg is helpful if you want to combine inputs by configuring a
+                gin file without changing the code.
+            conv_layer_params (None): must be ``None``
+            fc_layer_params (tuple[int]): a tuple of integers
+                representing FC layer sizes.
+            activation (nn.functional): activation used for all the layers but
+                the last layer.
+            kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If None, a variance_scaling_initializer will be
+                used.
+            last_layer_size (int): an optional size of an additional layer
+                appended at the very end. Note that if ``last_activation`` is
+                specified, ``last_layer_size`` has to be specified explicitly.
+            last_activation (nn.functional): activation function of the
+                additional layer specified by ``last_layer_size``. Note that if
+                ``last_layer_size`` is not None, ``last_activation`` has to be
+                specified explicitly.
+            last_kernel_initializer (Callable): initializer for the the
+                additional layer specified by ``last_layer_size``.
+                If None, it will be the same with ``kernel_initializer``. If
+                ``last_layer_size`` is None, ``last_kernel_initializer`` will
+                not be used.
+            name (str):
+        """
+        super().__init__(
+            input_tensor_spec,
+            input_preprocessors=None,
+            preprocessing_combiner=preprocessing_combiner,
+            name=name)
+
+        if kernel_initializer is None:
+            kernel_initializer = functools.partial(
+                variance_scaling_init,
+                mode='fan_in',
+                distribution='truncated_normal',
+                nonlinearity=activation)
+
+        assert len(self._processed_input_tensor_spec.shape) == 1, \
+            "The input shape {} should be like (N,)!".format(
+                self._processed_input_tensor_spec.shape)
+        input_size = self._processed_input_tensor_spec.shape[0]
+
+        self._fc_layers = nn.ModuleList()
+        if fc_layer_params is None:
+            fc_layer_params = []
+        else:
+            assert isinstance(fc_layer_params, tuple)
+            fc_layer_params = list(fc_layer_params)
+
+        for size in fc_layer_params:
+            self._fc_layers.append(
+                layers.ParallelFC(
+                    input_size,
+                    size,
+                    n,
+                    activation=activation,
+                    kernel_initializer=kernel_initializer))
+            input_size = size
+
+        if last_layer_size is not None or last_activation is not None:
+            assert last_layer_size is not None and last_activation is not None, \
+            "Both last_layer_size and last_activation need to be specified!"
+
+            if last_kernel_initializer is None:
+                common.warning_once(
+                    "last_kernel_initializer is not specified "
+                    "for the last layer of size {}.".format(last_layer_size))
+                last_kernel_initializer = kernel_initializer
+
+            self._fc_layers.append(
+                layers.ParallelFC(
+                    input_size,
+                    last_layer_size,
+                    n,
+                    activation=last_activation,
+                    kernel_initializer=last_kernel_initializer))
+            input_size = last_layer_size
+        self._output_spec = TensorSpec(
+            (n, input_size), dtype=self._processed_input_tensor_spec.dtype)
+
+    def forward(self, inputs, state=()):
+        """
+        Args:
+            inputs (nested Tensor):
+        """
+        # call super to preprocess inputs
+        z, state = super().forward(inputs, state)
+        for fc in self._fc_layers:
+            z = fc(z)
+        return z, state
 
 
 @gin.configurable

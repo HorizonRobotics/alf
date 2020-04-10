@@ -150,12 +150,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             "SarsaAlgorithm only supports continuous action."
             " action_spec: %s" % action_spec)
 
-        # TODO: implement ParallelCriticNetwork to speed up computation
-        critic_networks = [
-            critic_network.copy(name='critic_network%s' % i)
-            for i in range(num_replicas)
-        ]
-
+        critic_networks = critic_network.make_parallel(num_replicas)
         self._on_policy = on_policy
 
         if not actor_network.is_distribution_output:
@@ -181,20 +176,18 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 prev_observation=observation_spec,
                 prev_step_type=alf.TensorSpec((), torch.int32),
                 actor=actor_network.state_spec,
-                critics=[critic_network.state_spec] * num_replicas,
-                target_critics=[critic_network.state_spec] * num_replicas,
+                critics=critic_networks.state_spec,
+                target_critics=critic_networks.state_spec,
             ),
             debug_summaries=debug_summaries,
             name=name)
         self._actor_network = actor_network
         self._num_replicas = num_replicas
-        self._critic_networks = nn.ModuleList(critic_networks)
-        self._target_critic_networks = [
-            critic_network.copy(name='target_critic_network%s' % i)
-            for i in range(num_replicas)
-        ]
+        self._critic_networks = critic_networks
+        self._target_critic_networks = critic_networks.copy(
+            name='target_critic_networks')
         self.add_optimizer(actor_optimizer, [actor_network])
-        self.add_optimizer(critic_optimizer, critic_networks)
+        self.add_optimizer(critic_optimizer, [critic_networks])
 
         self._log_alpha = None
         self._use_entropy_reward = False
@@ -296,15 +289,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def convert_train_state_to_predict_state(self, state: SarsaState):
         return state._replace(critics=(), target_critics=())
 
-    def _calc_critics(self, critic_networks, inputs, states):
-        critics = []
-        new_states = []
-        for i in range(self._num_replicas):
-            critic, state = critic_networks[i](inputs=inputs, state=states[i])
-            critics.append(critic)
-            new_states.append(state)
-        return critics, new_states
-
     def rollout_step(self, time_step: TimeStep, state: SarsaState):
         if self._on_policy:
             return self._train_step(time_step, state)
@@ -312,10 +296,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         if not self._is_rnn:
             critic_states = state.critics
         else:
-            _, critic_states = self._calc_critics(
-                self._critic_networks,
-                inputs=(state.prev_observation, time_step.prev_action),
-                states=state.critics)
+            _, critic_states = self._critic_networks(
+                (state.prev_observation, time_step.prev_action), state.critics)
 
             not_first_step = time_step.step_type != StepType.FIRST
 
@@ -328,10 +310,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         if not self._is_rnn:
             target_critic_states = state.target_critics
         else:
-            _, target_critic_states = self._calc_critics(
-                self._target_critic_networks,
-                inputs=(time_step.observation, action),
-                states=state.target_critics)
+            _, target_critic_states = self._target_critic_networks(
+                (time_step.observation, action), state.target_critics)
 
         info = SarsaInfo(action_distribution=action_distribution)
 
@@ -350,10 +330,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
     def _train_step(self, time_step: TimeStep, state: SarsaState):
         not_first_step = time_step.step_type != StepType.FIRST
-        prev_critics, critic_states = self._calc_critics(
-            self._critic_networks,
-            inputs=(state.prev_observation, time_step.prev_action),
-            states=state.critics)
+        prev_critics, critic_states = self._critic_networks(
+            (state.prev_observation, time_step.prev_action), state.critics)
 
         critic_states = common.reset_state_if_necessary(
             state.critics, critic_states, not_first_step)
@@ -361,11 +339,9 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         action_distribution, action, actor_state, noise_state = self._get_action(
             self._actor_network, time_step, state)
 
-        critics, _ = self._calc_critics(
-            self._critic_networks,
-            inputs=(time_step.observation, action),
-            states=critic_states)
-        critic = math_ops.min_n(critics)
+        critics, _ = self._critic_networks((time_step.observation, action),
+                                           critic_states)
+        critic = critics.min(dim=1)[0]
         dqda = alf.nest.pack_sequence_as(
             action, torch.autograd.grad(critic.sum(),
                                         alf.nest.flatten(action)))
@@ -386,10 +362,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             neg_entropy = dist_utils.compute_log_probability(
                 action_distribution, action)
 
-        target_critics, target_critic_states = self._calc_critics(
-            self._target_critic_networks,
-            inputs=(time_step.observation, action),
-            states=state.target_critics)
+        target_critics, target_critic_states = self._target_critic_networks(
+            (time_step.observation, action), state.target_critics)
 
         info = SarsaInfo(
             action_distribution=action_distribution,
@@ -440,9 +414,9 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         critic_losses = []
         for i in range(self._num_replicas):
             critic = tensor_utils.tensor_extend_zero(
-                training_info.info.critics[i])
+                training_info.info.critics[..., i])
             target_critic = tensor_utils.tensor_prepend_zero(
-                training_info.info.target_critics[i])
+                training_info.info.target_critics[..., i])
             loss_info = self._critic_losses[i](shifted_training_info, critic,
                                                target_critic)
             critic_losses.append(nest_map(lambda l: l[:-1], loss_info.loss))

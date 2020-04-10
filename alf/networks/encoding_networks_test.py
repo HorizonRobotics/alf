@@ -24,6 +24,7 @@ import alf
 from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
 from alf.networks.encoding_networks import EncodingNetwork
+from alf.networks.encoding_networks import ParallelEncodingNetwork
 from alf.networks import Network
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
@@ -205,6 +206,26 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(len(list(network.parameters())), 4 + 2 + 1)
             self.assertEqual(network.output_spec, TensorSpec((500, )))
             self.assertEqual(output.size()[-1], 500)
+
+    def test_make_parallel(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(6, ))
+
+        network = EncodingNetwork(
+            input_tensor_spec=input_spec,
+            fc_layer_params=(30, 40, 50),
+            activation=torch.tanh)
+        replicas = 4
+        num_layers = 3
+
+        pnet = network.make_parallel(replicas)
+        self.assertTrue(isinstance(pnet, ParallelEncodingNetwork))
+
+        self.assertEqual(len(list(pnet.parameters())), num_layers * 2)
+
+        output, _ = pnet(embedding)
+        self.assertEqual(output.shape, (6, replicas, 50))
+        self.assertEqual(pnet.output_spec.shape, (replicas, 50))
 
 
 class EncodingNetworkSideEffectsTest(alf.test.TestCase):
