@@ -26,7 +26,7 @@ import gin
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, make_experience, TimeStep, TrainingInfo
-from alf.utils import common, dist_utils, summary_utils
+from alf.utils import common, dist_utils, summary_utils, math_ops
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncUniformExperienceReplayer)
 from .config import TrainerConfig
@@ -76,7 +76,7 @@ class RLAlgorithm(Algorithm):
                  config: TrainerConfig = None,
                  optimizer=None,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer=common.cast_transformer,
+                 observation_transformer=math_ops.identity,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """Create a RLAlgorithm.

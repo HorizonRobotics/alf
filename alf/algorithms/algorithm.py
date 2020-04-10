@@ -29,6 +29,7 @@ from alf.data_structures import AlgStep, namedtuple, LossInfo
 from alf.utils import common
 from alf.utils import spec_utils
 from alf.utils import tensor_utils
+from alf.utils.math_ops import add_ignore_empty
 
 
 def _get_optimizer_params(optimizer: torch.optim.Optimizer):
@@ -701,12 +702,12 @@ class Algorithm(nn.Module):
         if isinstance(loss_info.scalar_loss, torch.Tensor):
             assert len(loss_info.scalar_loss.shape) == 0
             loss_info = loss_info._replace(
-                loss=loss_info.loss + loss_info.scalar_loss)
+                loss=add_ignore_empty(loss_info.loss, loss_info.scalar_loss))
         loss = weight * loss_info.loss
 
         unhandled = self._setup_optimizers()
-        assert not unhandled, ("Some modules/parameters do not have optimizer"
-                               ": %s" % unhandled)
+        assert not unhandled, ("'%s' has some modules/parameters do not have "
+                               "optimizer: %s" % (self.name, unhandled))
         optimizers = self.optimizers()
         for optimizer in optimizers:
             optimizer.zero_grad()

@@ -154,6 +154,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
             common.warning_once(
                 "length=%s not a multiple of mini_batch_length=%s" %
                 (length, mini_batch_length))
+            mini_batch_length = min(mini_batch_length, length)
             length = length // mini_batch_length * mini_batch_length
             experience = alf.nest.map_structure(lambda x: x[:, :length, ...],
                                                 experience)
