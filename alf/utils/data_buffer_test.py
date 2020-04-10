@@ -169,6 +169,7 @@ class DataBufferTest(alf.test.TestCase):
         self.assertEqual(int(data_buffer.current_size), 100)
         batch = _get_batch(1000)
         data_buffer.add_batch(batch)
+        ret = data_buffer.get_batch(2)
         self.assertEqual(int(data_buffer.current_size), capacity)
         ret = data_buffer.get_batch_by_indices(torch.arange(capacity))
         self.assertEqual(ret[0], batch[0][-capacity:])

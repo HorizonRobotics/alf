@@ -424,7 +424,7 @@ class DataBuffer(RingBuffer):
         with alf.device(self._device):
             indices = torch.randint(
                 low=0,
-                high=self._current_size,
+                high=self._current_size[0],
                 size=(batch_size, ),
                 dtype=torch.int64)
             result = self.get_batch_by_indices(indices)
@@ -443,8 +443,8 @@ class DataBuffer(RingBuffer):
         with alf.device(self._device):
             indices = convert_device(indices)
             indices.copy_(
-                (indices +
-                 (self._current_pos - self._current_size)) % self._capacity)
+                (indices + (self._current_pos[0] - self._current_size[0])) %
+                self._capacity)
             result = alf.nest.map_structure(lambda buf: buf[0][indices],
                                             self._buffer)
         return convert_device(result)
