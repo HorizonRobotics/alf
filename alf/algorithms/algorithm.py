@@ -412,7 +412,7 @@ class Algorithm(nn.Module):
         if metadata is not None:
             state_dict._metadata = metadata
 
-        def load(module, prefix='', visited=None):
+        def _load(module, prefix='', visited=None):
             if visited is None:
                 visited = {self}
             if isinstance(module, Algorithm):
@@ -432,8 +432,9 @@ class Algorithm(nn.Module):
 
             local_metadata = {} if metadata is None else metadata.get(
                 prefix[:-1], {})
-            if type(module)._load_from_state_dict == type(
-                    self)._load_from_state_dict:
+            if type(module)._load_from_state_dict in (
+                    Algorithm._load_from_state_dict,
+                    nn.Module._load_from_state_dict):
                 module._load_from_state_dict(
                     state_dict, prefix, local_metadata, True, missing_keys,
                     unexpected_keys, error_msgs, visited)
@@ -448,7 +449,7 @@ class Algorithm(nn.Module):
                     state_dict, prefix, local_metadata, True, missing_keys,
                     unexpected_keys, error_msgs)
 
-        load(self)
+        _load(self)
 
         if strict:
             if len(unexpected_keys) > 0:

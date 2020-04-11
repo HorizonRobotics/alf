@@ -276,7 +276,7 @@ class TestMultiAlgMultiOpt(alf.test.TestCase):
             ckpt_mngr.load(0)
 
             # check the recovered optimizers
-            expected = torch.Tensor([0.1, 0.2])
+            expected = [0.1, 0.2]
             np.testing.assert_array_almost_equal(
                 get_learning_rate(all_optimizers), expected)
 
