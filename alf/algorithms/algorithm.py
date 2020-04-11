@@ -725,6 +725,8 @@ class Algorithm(nn.Module):
 
     def after_update(self, training_info):
         """Do things after complete one gradient update (i.e. ``update_with_gradient()``).
+        This function can be used for post-processings following one minibatch
+        update, such as copy a training model to a target model in SAC, DQN, etc.
 
         Args:
             training_info (nested Tensor): information collected for training.

@@ -36,34 +36,35 @@ from .config import TrainerConfig
 class RLAlgorithm(Algorithm):
     """Abstract base class for RL Algorithms.
 
-    RLAlgorithm provide basic functions and generic interface for rl algorithms.
+    ``RLAlgorithm`` provide basic functions and generic interface for rl algorithms.
 
     The key interface functions are:
-    1. predict_step(): one step of computation of action for evaluation.
-    2. rollout_step(): one step of computation for rollout. `rollout_step()` is
+
+    1. ``predict_step()``: one step of computation of action for evaluation.
+    2. ``rollout_step()``: one step of computation for rollout. It is
        used for collecting experiences during training. Different from
-       `predict_step`, `rollout_step` may include addtional computations for
+       ``predict_step``, ``rollout_step`` may include addtional computations for
        training. For on-policy algorithms (e.g., AC, PPO, etc), the collected
        experiences will be immediately used to update parameters after one
        rollout (multiple rollout steps) is performed; for off-policy algorithms
        (e.g., SAC, DDPG, etc), these collected experiences will be put into a
        replay buffer.
-    3. train_step(): only used for off-policy training. The training data are
-       sampled from the replay buffer filled by `rollout_step()`.
-    4. train_iter(): perform one iteration of training (rollout [and train]).
-       `train_iter()` are called `num_iterations` time by `Trainer`.
+    3. ``train_step()``: only used for off-policy training. The training data are
+       sampled from the replay buffer filled by ``rollout_step()``.
+    4. ``train_iter()``: perform one iteration of training (rollout [and train]).
+       ``train_iter()`` is called ``num_iterations`` times by ``Trainer``.
        We provide a default implementation. Users can choose to implement
-       their own `train_iter()`.
-    5. update_with_gradient(): Do one gradient update based on the loss. It is
-       used by the default `train_iter()` implementation. You can override to
-       implement your own `update_with_gradient()`.
-    6. calc_loss(): calculate loss based the training_info collected from
-       `rollout_step()` or `train_step()`. It is used by the default
-       implementation of `train_iter()`. If you want to use the default
-       `train_iter()`, you need to implement `calc_loss()`.
-    7. after_update(): called by `train_iter()` after every call to
-       `update_with_gradient()`, mainly for some postprocessing steps such as
-        copying a training model to a target model in SAC or DQN.
+       their own ``train_iter()``.
+    5. ``update_with_gradient()``: Do one gradient update based on the loss. It is
+       used by the default ``train_iter()`` implementation. You can override to
+       implement your own ``update_with_gradient()``.
+    6. ``calc_loss()``: calculate loss based the training_info collected from
+       ``rollout_step()`` or ``train_step()``. It is used by the default
+       implementation of ``train_iter()``. If you want to use the default
+       ``train_iter()``, you need to implement ``calc_loss()``.
+    7. ``after_update()``: called by ``train_iter()`` after every call to
+       ``update_with_gradient()``, mainly for some postprocessing steps such as
+       copying a training model to a target model in SAC or DQN.
     """
 
     def __init__(self,
@@ -79,33 +80,32 @@ class RLAlgorithm(Algorithm):
                  observation_transformer=math_ops.identity,
                  debug_summaries=False,
                  name="RLAlgorithm"):
-        """Create a RLAlgorithm.
-
+        """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             train_state_spec (nested TensorSpec): for the network state of
-                `train_step()`.
+                ``train_step()``.
             rollout_state_spec (nested TensorSpec): for the network state of
-                `predict_step()`. If None, it's assumed to be the same as
-                `train_state_spec`.
+                ``predict_step()``. If None, it's assumed to be the same as
+                ``train_state_spec``.
             predict_state_spec (nested TensorSpec): for the network state of
-                `predict_step()`. If None, it's assumed to be the same as
-                `rollout_state_spec`.
-            env (Environment): The environment to interact with. `env` is a
+                ``predict_step()``. If None, it's assumed to be the same as
+                ``rollout_state_spec``.
+            env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
                 parallel is crucial to on-policy algorithms as it increases the
-                diversity of data and decreases temporal correlation. `env` only
-                needs to be provided to the root `Algorithm`.
-            config (TrainerConfig): config for training. `config` only needs to
-                be provided to the algorithm which performs `train_iter()` by
+                diversity of data and decreases temporal correlation. ``env`` only
+                needs to be provided to the root ``Algorithm``.
+            config (TrainerConfig): config for training. ``config`` only needs to
+                be provided to the algorithm which performs ``train_iter()`` by
                 itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards.
             observation_transformer (Callable | list[Callable]): transformation(s)
-                applied to `time_step.observation`.
+                applied to ``time_step.observation``.
             debug_summaries (bool): If True, debug summaries will be created.
             name (str): Name of this algorithm.
         """
@@ -172,7 +172,9 @@ class RLAlgorithm(Algorithm):
         self.rollout_step = self._rollout_step
 
     def _set_children_property(self, property_name, value):
-        """Set the property named `property_name` in child RLAlgorithm to `value`."""
+        """Set the property named ``property_name`` in child RLAlgorithm to
+        ``value``.
+        """
         for child in self._get_children():
             if isinstance(child, RLAlgorithm):
                 child.__setattr__(property_name, value)
@@ -181,14 +183,20 @@ class RLAlgorithm(Algorithm):
     def is_on_policy(self):
         """Whehter this algorithm is an on-policy algorithm.
 
-        If it's on-policy algorihtm, train_iter() will use
-         _train_iter_on_policy() to train. Otherwise, it will use
-        _train_iter_off_policy()
+        If it's on-policy algorihtm, ``train_iter()`` will use
+        ``_train_iter_on_policy()`` to train. Otherwise, it will use
+        ``_train_iter_off_policy()``.
         """
         pass
 
     @property
     def use_rollout_state(self):
+        """If True, when off-policy training, the RNN states will be taken
+        from the replay buffer; otherwise they will be set to 0.
+
+        In the case of True, the ``train_state_spec`` of an algorithm should always
+        be a subset of the ``rollout_state_spec``.
+        """
         return self._use_rollout_state
 
     @use_rollout_state.setter
@@ -197,10 +205,10 @@ class RLAlgorithm(Algorithm):
         self._set_children_property('use_rollout_state', flag)
 
     def need_full_rollout_state(self):
-        """Whether AlgStep.state from rollout_step should be full.
+        """Whether ``AlgStep.state`` from ``rollout_step`` should be full.
 
-        If True, it means that rollout_step() should return the complete state
-        for train_step().
+        If True, it means that ``rollout_step()`` should return the complete state
+        for ``train_step()``.
         """
         return self._is_rnn and self._use_rollout_state
 
@@ -211,7 +219,7 @@ class RLAlgorithm(Algorithm):
 
     @property
     def rollout_info_spec(self):
-        """The spec for the AlgStep.info returned from rollout_step()."""
+        """The spec for the ``AlgStep.info`` returned from ``rollout_step()``."""
         assert self._rollout_info_spec is not None, (
             "rollout_step() has not "
             " been used. rollout_info_spec is not available.")
@@ -255,7 +263,8 @@ class RLAlgorithm(Algorithm):
         """Get step metrics that used for generating summaries against
 
         Returns:
-             list[StepMetric]: step metrics `EnvironmentSteps` and `NumberOfEpisodes`
+            list[StepMetric]: step metrics ``EnvironmentSteps`` and
+            ``NumberOfEpisodes``.
         """
         return self._metrics[:2]
 
@@ -263,7 +272,7 @@ class RLAlgorithm(Algorithm):
         """Returns the metrics monitored by this driver.
 
         Returns:
-            list[StepMetric]
+            list[StepMetric]:
         """
         return self._metrics
 
@@ -276,7 +285,7 @@ class RLAlgorithm(Algorithm):
         """Add an observer to receive experience.
 
         Args:
-            observer (Callable): callable which accept Experience as argument.
+            observer (Callable): callable which accept ``Experience`` as argument.
         """
 
     def set_exp_replayer(self, exp_replayer: str, num_envs, max_length: int):
@@ -296,10 +305,10 @@ class RLAlgorithm(Algorithm):
         self._exp_replayer_num_envs = num_envs
         self._exp_replayer_length = max_length
 
-    def _set_exp_replayer(self, exp_replayer: str, num_envs):
-        if exp_replayer == "one_time":
+    def _set_exp_replayer(self):
+        if self._exp_replayer_type == "one_time":
             self._exp_replayer = OnetimeExperienceReplayer()
-        elif exp_replayer == "uniform":
+        elif self._exp_replayer_type == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
                 self.experience_spec)
             self._exp_replayer = SyncUniformExperienceReplayer(
@@ -310,17 +319,16 @@ class RLAlgorithm(Algorithm):
         self._observers.append(self._exp_replayer.observe)
 
     def observe(self, exp: Experience):
-        """An algorithm can override to manipulate experience.
+        r"""An algorithm can override to record experience.
 
         Args:
-            exp (Experience): The shapes can be either [Q, T, B, ...] or
-                [B, ...], where Q is `learn_queue_cap` in `AsyncOffPolicyDriver`,
-                T is the sequence length, and B is the batch size of the batched
-                environment.
+            exp (Experience): The shapes can be either :math:`[Q, T, B, \ldots]` or
+                :math:`[B, \ldots]`, where :math:`Q` is ``learn_queue_cap`` in
+                ``AsyncOffPolicyAlgorithm``, :math:`T` is the sequence length,
+                and :math:`B` is the batch size of the batched environment.
         """
         if self._exp_replayer is None and self._exp_replayer_type:
-            self._set_exp_replayer(self._exp_replayer_type,
-                                   self._config.num_envs)
+            self._set_exp_replayer()
 
         if not self._use_rollout_state:
             exp = exp._replace(state=())
@@ -337,14 +345,12 @@ class RLAlgorithm(Algorithm):
     def summarize_rollout(self, training_info):
         """Generate summaries for rollout.
 
-        Note that training_info.info is empty here. Should use
-        training_info.rollout_info to generate the summaries.
+        Note that ``training_info.info`` is empty here. Should use
+        ``training_info.rollout_info`` to generate the summaries.
 
         Args:
-            training_info (TrainingInfo): TrainingInfo structure collected from
-                `rollout_step()`.
-        Returns:
-            None
+            training_info (TrainingInfo): ``TrainingInfo`` structure collected
+                from ``rollout_step()``.
         """
         if self._debug_summaries:
             summary_utils.summarize_action(training_info.action,
@@ -364,22 +370,20 @@ class RLAlgorithm(Algorithm):
     def summarize_train(self, training_info, loss_info, params):
         """Generate summaries for training & loss info.
 
-        For on-policy algorithms, training_info.info is available.
-        For off-policy alogirthms, both training_info.info and training_info.rollout_info
-        are available. However, the statistics in these two structures are for
-        the data sampled from the replay buffer. They store the update-to-date
-        model outputs and the historical model outputs (on the past rollout data),
-        respectively. They do not represent the model outputs on the current
-        on-going rollout.
+        For on-policy algorithms, ``training_info.info`` is available.
+        For off-policy alogirthms, both ``training_info.info`` and
+        ``training_info.rollout_info`` are available. However, the statistics in
+        these two structures are for the data sampled from the replay buffer.
+        They store the update-to-date model outputs and the historical model
+        outputs (on the past rollout data), respectively. They do not represent
+        the model outputs on the current on-going rollout.
 
         Args:
-            training_info (TrainingInfo): TrainingInfo structure collected from
-                `rollout_step` (on-policy training) or `train_step` (off-policy
+            training_info (TrainingInfo): ``TrainingInfo`` structure collected from
+                ``rollout_step`` (on-policy training) or ``train_step`` (off-policy
                 training).
             loss_info (LossInfo): loss
             params (list[Parameter]): list of parameters with gradients
-        Returns:
-            None
         """
         if self._config.summarize_grads_and_vars:
             summary_utils.summarize_variables(params)
@@ -397,7 +401,9 @@ class RLAlgorithm(Algorithm):
                                                     self._action_spec)
 
     def summarize_metrics(self):
-        """Generate summaries for metrics `AverageEpisodeLength`, `AverageReturn`..."""
+        """Generate summaries for metrics ``AverageEpisodeLength``,
+        ``AverageReturn``, etc.
+        """
         if self._metrics:
             for metric in self._metrics:
                 metric.gen_summaries(
@@ -409,7 +415,7 @@ class RLAlgorithm(Algorithm):
 
     # Subclass may override predict_step() to allow more efficient implementation
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        """Predict for one step of observation.
+        r"""Predict for one step of observation.
 
         This only used for evaluation. So it only need to perform computations
         for generating action distribution.
@@ -418,22 +424,20 @@ class RLAlgorithm(Algorithm):
             time_step (ActionTimeStep): Current observation and other inputs
                 for computing action.
             state (nested Tensor): should be consistent with predict_state_spec
-            epsilon_greedy (float): a floating value in [0,1], representing the
-                chance of action sampling instead of taking argmax. This can
-                help prevent a dead loop in some deterministic environment like
-                Breakout.
+            epsilon_greedy (float): a floating value in :math:`[0,1]`, representing
+                the chance of action sampling instead of taking argmax.
+                This can help prevent a dead loop in some deterministic environment
+                like `Breakout`.
         Returns:
-            policy_step (AlgStep):
-              output (nested Tensor): should be consistent with
-                `action_spec`
-              state (nested Tensor): should be consistent with
-                `predict_state_spec`
+            AlgStep:
+            - output (nested Tensor): should be consistent with ``action_spec``.
+            - state (nested Tensor): should be consistent with ``predict_state_spec``.
         """
         policy_step = self.rollout_step(time_step, state)
         return policy_step._replace(info=())
 
     def _rollout_step(self, time_step: TimeStep, state):
-        """A wrapper around user-defined `rollout_step`. For every rl algorithm,
+        """A wrapper around user-defined ``rollout_step``. For every rl algorithm,
         this wrapper ensures that the rollout info spec will be computed.
         """
         policy_step = self._original_rollout_step(time_step, state)
@@ -450,35 +454,35 @@ class RLAlgorithm(Algorithm):
 
         Args:
             time_step (ActionTimeStep):
-            state (nested Tensor): should be consistent with train_state_spec
+            state (nested Tensor): should be consistent with ``train_state_spec``.
 
         Returns:
-            policy_step (AlgStep):
-              output (nested Tensor): should be consistent with
-                `action_spec`
-              state (nested Tensor): should be consistent with `train_state_spec`
-              info (nested Tensor): everything necessary for training. Note that
-                ("action", "reward", "discount", "is_last") are automatically
-                collected in `unroll()`. So the user only need to put other
-                stuff (e.g. value estimation) into `policy_step.info`
+            AlgStep:
+            - output (nested Tensor): should be consistent with ``action_spec``.
+            - state (nested Tensor): should be consistent with ``train_state_spec``.
+            - info (nested Tensor): everything necessary for training. Note that
+              ("action", "reward", "discount", "is_last") are automatically
+              collected in ``unroll()``. So the user only need to put other
+              stuff (e.g. value estimation) into ``policy_step.info``.
         """
         pass
 
     def transform_timestep(self, time_step):
         """Transform time_step.
 
-        `transform_timestep` is called for all raw time_step got from
-        the environment before passing to `predict_step` and 'rollout_step`. For
+        ``transform_timestep`` is called for all raw time_step got from
+        the environment before passing to ``predict_step`` and ``rollout_step``. For
         off-policy algorithms, the replay buffer stores raw time_step. So when
         experiences are retrieved from the replay buffer, they are tranformed by
-        `transform_timestep` in OffPolicyAlgorithm before passing to `_update()`.
+        ``transform_timestep`` in ``OffPolicyAlgorithm`` before passing to
+        ``_update()``.
 
         It includes tranforming observation and reward and should be stateless.
 
         Args:
-            time_step (TimeStep | Experience): time step
+            time_step (TimeStep or Experience): time step
         Returns:
-            TimeStep | Experience: transformed time step
+            TimeStep or Experience: transformed time step
         """
         if self._reward_shaping_fn is not None:
             time_step = time_step._replace(
@@ -495,12 +499,13 @@ class RLAlgorithm(Algorithm):
 
         Args:
             experience (Experience):
-            state (nested Tensor): should be consistent with train_state_spec
+            state (nested Tensor): should be consistent with ``train_state_spec``.
 
-        Returns (AlgStep):
-            output (nested Tensor): should be consistent with `action_spec`
-            state (nested Tensor): should be consistent with `train_state_spec`
-            info (nested Tensor): everything necessary for training.
+        Returns:
+            AlgStep:
+            - output (nested Tensor): should be consistent with ``action_spec``.
+            - state (nested Tensor): should be consistent with ``train_state_spec``.
+            - info (nested Tensor): everything necessary for training.
         """
         pass
 
@@ -508,32 +513,33 @@ class RLAlgorithm(Algorithm):
     def calc_loss(self, training_info: TrainingInfo):
         """Calculate the loss for each step.
 
-        `calc_loss()` does not need to mask out the loss at invalid steps as
-        `train_iter()` will apply the mask automatically.
+        ``calc_loss()`` does not need to mask out the loss at invalid steps as
+        ``train_iter()`` will apply the mask automatically.
 
         Args:
             training_info (TrainingInfo): information collected for training.
-                training_info.info are batched from each policy_step.info
-                returned by train_step(). Note that training_info.next_discount
-                is 0 if the next step is the last step in an episode.
+                ``training_info.info`` are batched from each ``policy_step.info``
+                returned by ``train_step()``. Note that
+                ``training_info.next_discount`` is 0 if the next step is the last
+                step in an episode.
 
-        Returns (LossInfo):
-            loss at each time step for each sample in the batch. The shapes of
-            the tensors in loss_info should be (T, B)
+        Returns:
+            LossInfo: loss at each time step for each sample in the batch. The
+            shapes of the tensors in ``loss_info`` should be :math:`[T, B]`.
         """
         pass
 
     def unroll(self, unroll_length):
-        """Unroll `unroll_length` steps using the current policy.
+        r"""Unroll ``unroll_length`` steps using the current policy.
 
-        Because the self._env is a batched environment. The total number of
-        environment steps is `self._env.batch_size * unroll_length`.
+        Because the ``self._env`` is a batched environment. The total number of
+        environment steps is ``self._env.batch_size * unroll_length``.
 
         Args:
             unroll_length (int): number of steps to unroll.
         Returns:
-            training_info (TrainingInfo): The stacked information with shape
-                (T, B, ...) for each of its members.
+            TrainingInfo: The stacked information with shape :math:`[T, B, \ldots]`
+            for each of its members.
         """
         if self._current_time_step is None:
             self._current_time_step = common.get_initial_time_step(self._env)
@@ -593,9 +599,11 @@ class RLAlgorithm(Algorithm):
     def train_iter(self):
         """Perform one iteration of training.
 
-        Users may choose to implement their own train_iter()
+        Users may choose to implement their own ``train_iter()``.
+
         Returns:
-            number of samples being trained on (including duplicates)
+            int:
+            - number of samples being trained on (including duplicates).
         """
         if self.is_on_policy():
             return self._train_iter_on_policy()
@@ -603,9 +611,9 @@ class RLAlgorithm(Algorithm):
             return self._train_iter_off_policy()
 
     def _train_iter_on_policy(self):
-        """Implemented in OnPolicyAlgorithm."""
+        """Implemented in ``OnPolicyAlgorithm``."""
         raise NotImplementedError()
 
     def _train_iter_off_policy(self):
-        """Implemented in OffPolicyAlgorithm."""
+        """Implemented in ``OffPolicyAlgorithm``."""
         raise NotImplementedError()

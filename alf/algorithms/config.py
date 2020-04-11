@@ -62,8 +62,10 @@ class TrainerConfig(object):
             unroll_length (int):  number of time steps each environment proceeds per
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: ``num_envs * env_batch_size * unroll_length``.
-            use_rollout_state (bool): Include the RNN state for the experiences
-                used for off-policy training
+            use_rollout_state (bool): If True, when off-policy training, the RNN
+                states will be taken from the replay buffer; otherwise they will
+                be set to 0. In the case of True, the ``train_state_spec`` of an
+                algorithm should always be a subset of the ``rollout_state_spec``.
             temporally_independent_train_step (bool): If True, the ``train_step``
                 is called with all the experiences in one batch instead of being
                 called sequentially with ``mini_batch_length`` batches. Only used
