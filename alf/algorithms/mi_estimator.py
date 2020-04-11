@@ -61,7 +61,7 @@ class MIEstimator(Algorithm):
 
     Assumming the function class of T is rich enough to represent any function,
     for *KLD* and *JSD*, T will converge to :math:`\log(\frac{P}{Q})` and hence :math:`E_P(T)` can also be
-    used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`. For DV, T will converge to
+    used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`. For *DV*, T will converge to
     :math:`\log(\frac{P}{Q}) + c`, where :math:`c=\log E_Q(\exp(T))`.
 
     Among *DV*, *KLD* and *JSD*,  *DV* and *KLD* seem to give a better estimation

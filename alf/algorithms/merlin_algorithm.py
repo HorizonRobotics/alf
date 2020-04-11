@@ -31,7 +31,7 @@ from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.data_structures import TimeStep, AlgStep, LossInfo, TrainingInfo
-from alf.networks import EncodingNetwork, StackedLSTMCell
+from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.networks.action_encoder import SimpleActionEncoder
 from alf.nest import flatten, map_structure
@@ -89,7 +89,10 @@ class MemoryBasedPredictor(Algorithm):
         rnn_input_size = (latent_dim + num_read_keys * latent_dim +
                           action_encoder.output_spec.shape[0])
 
-        rnn = StackedLSTMCell(rnn_input_size, lstm_size, name=name + "/lstm")
+        rnn = LSTMEncodingNetwork(
+            input_tensor_spec=alf.TensorSpec((rnn_input_size, )),
+            hidden_size=lstm_size,
+            name=name + "/lstm")
 
         state_spec = MBPState(
             latent_vector=alf.TensorSpec((latent_dim, )),
@@ -138,7 +141,7 @@ class MemoryBasedPredictor(Algorithm):
 
         Args:
             inputs (tuple): a tuple of (observation, prev_action)
-            state (MBPState)
+            state (MBPState): RNN state
         Returns:
             AlgStep:
                 output: latent vector
@@ -195,6 +198,7 @@ class MemoryBasedPredictor(Algorithm):
 
         Args:
             inputs (tuple): a tuple of (observation, action)
+            state (nested Tensor): RNN state
         Returns:
             AlgStep:
                 output: latent vector
@@ -261,7 +265,10 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                 constructor: loss_class(debug_summaries)
             name (str): name of the algorithm.
         """
-        rnn = StackedLSTMCell(latent_dim, lstm_size, name=name + "/lstm")
+        rnn = LSTMEncodingNetwork(
+            input_tensor_spec=alf.TensorSpec((latent_dim, )),
+            hidden_size=lstm_size,
+            name=name + "/lstm")
 
         actor_input_dim = (
             latent_dim + rnn.output_spec.shape[0] + num_read_keys * memory.dim)
@@ -536,10 +543,10 @@ class ResnetDecodingNetwork(alf.networks.Network):
         super().__init__(input_tensor_spec, name=name)
 
         dec_layers = []
+        relu = nn.ReLU(inplace=True)
         dec_layers.extend([
-            alf.layers.FC(
-                input_tensor_spec.shape[0], 500, activation=torch.relu),
-            alf.layers.FC(500, 8 * 8 * 64, activation=torch.relu),
+            alf.layers.FC(input_tensor_spec.shape[0], 500, activation=relu),
+            alf.layers.FC(500, 8 * 8 * 64, activation=relu),
             alf.layers.Reshape((64, 8, 8))
         ])
 

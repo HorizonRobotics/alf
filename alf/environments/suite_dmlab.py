@@ -52,7 +52,9 @@ def action_discretize(action_spec,
     Mapping all valid action values to discrete action
 
     original deepmind lab environment action_spec:
+
     .. code-block:: python
+
         [{'max': 512, 'min': -512, 'name': 'LOOK_LEFT_RIGHT_PIXELS_PER_FRAME'},
         {'max': 512, 'min': -512, 'name': 'LOOK_DOWN_UP_PIXELS_PER_FRAME'},
         {'max': 1, 'min': -1, 'name': 'STRAFE_LEFT_RIGHT'},
@@ -63,14 +65,16 @@ def action_discretize(action_spec,
 
     and discretized actions:
 
-    0  -> [20,0,0,0,0,0,0] (look left 20 pixels),
-    1  -> [-20,0,0,0,0,0,0] (look right 20 pixels),
-    ...,
-    m  -> [0,0,0,-1,0,0,0] (move back),
-    m+1-> [0,0,0,1,0,0,0] (move forward) ,
-    ...,
-    n  -> [0,0,0,0,1,1,0] (jump and fire),
-    ...
+    .. code-block::
+
+        0  -> [20,0,0,0,0,0,0] (look left 20 pixels),
+        1  -> [-20,0,0,0,0,0,0] (look right 20 pixels),
+        ...,
+        m  -> [0,0,0,-1,0,0,0] (move back),
+        m+1-> [0,0,0,1,0,0,0] (move forward) ,
+        ...,
+        n  -> [0,0,0,0,1,1,0] (jump and fire),
+        ...
 
     see `SuiteDMLabTest.test_action_discretize` in `suite_dmlab_test.py` for examples
 

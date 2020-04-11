@@ -391,13 +391,15 @@ class BottleneckBlock(nn.Module):
         nn.init.kaiming_normal_(s.weight.data)
         nn.init.zeros_(s.bias.data)
 
+        relu = nn.ReLU(inplace=True)
+
         if with_batch_normalization:
-            core_layers = nn.Sequential(a, nn.BatchNorm2d(filters1),
-                                        nn.ReLU(), b, nn.BatchNorm2d(filters2),
-                                        nn.ReLU(), c, nn.BatchNorm2d(filters3))
+            core_layers = nn.Sequential(a, nn.BatchNorm2d(filters1), relu, b,
+                                        nn.BatchNorm2d(filters2), relu, c,
+                                        nn.BatchNorm2d(filters3))
             shortcut_layers = nn.Sequential(s, nn.BatchNorm2d(filters3))
         else:
-            core_layers = nn.Sequential(a, nn.ReLU(), b, nn.ReLU(), c)
+            core_layers = nn.Sequential(a, relu, b, relu, c)
             shortcut_layers = s
 
         self._core_layers = core_layers
@@ -407,7 +409,7 @@ class BottleneckBlock(nn.Module):
         core = self._core_layers(inputs)
         shortcut = self._shortcut_layers(inputs)
 
-        return nn.functional.relu(core + shortcut)
+        return nn.functional.relu_(core + shortcut)
 
     def calc_output_shape(self, input_shape):
         x = torch.zeros(1, *input_shape)

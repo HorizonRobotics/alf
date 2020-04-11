@@ -37,7 +37,7 @@ class VariationalAutoEncoder(Algorithm):
 
     :math:`\log p(x) >= E_z \log P(x|z) - \beta KL(q(z|x) || prior(z))`
 
-    ``forward()`` method returns sampled z and KLD, it is up to the user of
+    ``train_step()`` method returns sampled z and KLD, it is up to the user of
     this class to use the returned z to decode and compute reconstructive loss to
     combine with kl loss returned here to optimize the whole network.
 
@@ -144,11 +144,11 @@ class VariationalAutoEncoder(Algorithm):
 
         Returns:
             AlgStep:
-                output: the latent vector ``z``
-                state: empty tuple ()
-                info (LossInfo):
-                    loss: ``beta*KLD``
-                    extra: KLD
+            - output: the latent vector ``z``
+            - state: empty tuple ()
+            - info (LossInfo):
+                - loss: ``beta*KLD``
+                - extra: KLD
         """
         z, kld_loss = self._sampling_forward(inputs)
         return AlgStep(

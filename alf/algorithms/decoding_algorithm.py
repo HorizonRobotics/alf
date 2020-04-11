@@ -35,9 +35,9 @@ class DecodingAlgorithm(Algorithm):
         Args:
             decoder (Network): network for decoding target from input.
             loss (Callable): loss function with signature ``loss(y_pred, y_true)``.
-                Note that is should not reduce. It should at least keep the
-                batch dimension in the returned loss.
-            loss_weight (float): weight for the loss
+                Note that it should not reduce to a scalar. It should at least
+                keep the batch dimension in the returned loss.
+            loss_weight (float): weight for the loss.
         """
         super(DecodingAlgorithm, self).__init__(
             train_state_spec=decoder.state_spec, name="DecodingAlgorithm")
@@ -54,11 +54,10 @@ class DecodingAlgorithm(Algorithm):
             state (nested Tensor): network state for ``decoder``
 
         Returns:
-            AlgorithmStep with the following fields:
-            outputs: decoding result
-            state: rnn state
-            info: loss of decoding
-
+            AlgStep:
+            - output: decoding result
+            - state: rnn state from ``decoder``
+            - info: loss of decoding
         """
         input, target = inputs
         pred, state = self._decoder(input, state=state)

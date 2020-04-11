@@ -164,7 +164,7 @@ class MemoryWithUsage(Memory):
             query_spec (alf.TensorSpec): the spec for the query
             num_keys (int): the number of keys to be generated.
         Returns:
-            a function which calculates ``num_keys`` keys given query.
+            Callable: a function which calculates ``num_keys`` keys given query.
         """
         assert isinstance(
             query_spec, alf.TensorSpec), ("Wrong type for "
@@ -185,9 +185,8 @@ class MemoryWithUsage(Memory):
                 (batch_size, num_keys * dim), otherwise it is
                 (batch_size, num_keys, dim)
         Returns:
-            resutl Tensor: If flatten_result is True,
-                its shape is (batch_size, num_keys * dim), otherwise it is
-                (batch_size, num_keys, dim)
+            Tensor: If flatten_result is True, its shape is ``(batch_size, num_keys * dim)``,
+                otherwise it is ``(batch_size, num_keys, dim)``
 
         """
         batch_size = query.shape[0]

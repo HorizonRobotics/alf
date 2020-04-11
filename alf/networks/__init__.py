@@ -20,5 +20,4 @@ from .network import Network, PreprocessorNetwork
 from .ou_process import OUProcess
 from .projection_networks import *
 from .q_networks import *
-from .rnn import *
 from .value_networks import *

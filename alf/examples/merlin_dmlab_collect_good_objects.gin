@@ -37,8 +37,13 @@ observation_spec=@get_observation_spec()
 # algorithm config
 LATENT_DIM=200
 
-StackedLSTMCell.output_layers=-1
+# MERLIN paper uses outputs from all LSTM layers, which would be output_layers=None
+LSTMEncodingNetwork.lstm_output_layers=-1
+# MERLIN paper uses v1 (i.e. v1_5=False)
 BottleneckBlock.v1_5=False
+# MERLIN paper does not use batch normalization.
+# Batch normalization uses 70% more memory (3.8G => 6.4G), but seems to converge faster.
+BottleneckBlock.with_batch_normalization=True
 
 img_enc/ResnetEncodingNetwork.input_tensor_spec=%observation_spec
 
