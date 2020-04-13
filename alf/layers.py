@@ -285,3 +285,133 @@ class ConvTranspose2D(nn.Module):
     @property
     def bias(self):
         return self._conv_trans2d.bias
+
+
+class Reshape(nn.Module):
+    def __init__(self, shape):
+        """A layer for reshape the tensor.
+
+        The result of this layer is a tensor reshaped to ``(B, *shape)`` where
+        ``B`` is ``x.shape[0]``
+
+        Args:
+            shape (tuple): desired shape not including the batch dimension.
+        """
+        super().__init__()
+        self._shape = shape
+
+    def forward(self, x):
+        return x.reshape(x.shape[0], *self._shape)
+
+
+def _tuplify2d(x):
+    if isinstance(x, tuple):
+        assert len(x) == 2
+        return x
+    return (x, x)
+
+
+def _conv_transpose_2d(in_channels,
+                       out_channels,
+                       kernel_size,
+                       stride=1,
+                       padding=0):
+    # need output_padding so that output_size is stride * input_size
+    # See https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
+    output_padding = stride + 2 * padding - kernel_size
+    return nn.ConvTranspose2d(
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding)
+
+
+@gin.configurable(whitelist=['v1_5', 'with_batch_normalization'])
+class BottleneckBlock(nn.Module):
+    """Bottleneck block for ResNet.
+
+    We allow two slightly different architectures:
+    * v1: Placing the stride at the first 1x1 convolution as described in the 
+      original ResNet paper `Deep residual learning for image recognition 
+      <https://arxiv.org/abs/1512.03385>`_.
+    * v1.5: Placing the stride for downsampling at 3x3 convolution. This variant
+      is also known as ResNet V1.5 and improves accuracy according to
+      `<https://ngc.nvidia.com/catalog/model-scripts/nvidia:resnet_50_v1_5_for_pytorch>`_.
+    """
+
+    def __init__(self,
+                 in_channels,
+                 kernel_size,
+                 filters,
+                 stride,
+                 transpose=False,
+                 v1_5=True,
+                 with_batch_normalization=True):
+        """
+        Args:
+            kernel_size (int): the kernel size of middle layer at main path
+            filters (int): the filters of 3 layer at main path
+            stride (int): stride for this block.
+            transpose (bool): a bool indicate using ``Conv2D`` or ``Conv2DTranspose``.
+                If two BottleneckBlock layers ``L`` and ``LT`` are constructed
+                with the same arguments except ``transpose``, it is gauranteed that 
+                ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
+                by ``stride``.
+            v1_5 (bool): whether to use the ResNet V1.5 structure
+            with_batch_normalization (bool): whether to include batch normalization.
+                Note that standard ResNet uses batch normalization.
+        Return:
+            Output tensor for the block
+        """
+        super().__init__()
+        filters1, filters2, filters3 = filters
+
+        conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
+
+        padding = (kernel_size - 1) // 2
+        if v1_5:
+            a = conv_fn(in_channels, filters1, 1)
+            b = conv_fn(filters1, filters2, kernel_size, stride, padding)
+        else:
+            a = conv_fn(in_channels, filters1, 1, stride)
+            b = conv_fn(filters1, filters2, kernel_size, 1, padding)
+
+        nn.init.kaiming_normal_(a.weight.data)
+        nn.init.zeros_(a.bias.data)
+        nn.init.kaiming_normal_(b.weight.data)
+        nn.init.zeros_(b.bias.data)
+
+        c = conv_fn(filters2, filters3, 1)
+        nn.init.kaiming_normal_(c.weight.data)
+        nn.init.zeros_(c.bias.data)
+
+        s = conv_fn(in_channels, filters3, 1, stride)
+        nn.init.kaiming_normal_(s.weight.data)
+        nn.init.zeros_(s.bias.data)
+
+        relu = nn.ReLU(inplace=True)
+
+        if with_batch_normalization:
+            core_layers = nn.Sequential(a, nn.BatchNorm2d(filters1), relu, b,
+                                        nn.BatchNorm2d(filters2), relu, c,
+                                        nn.BatchNorm2d(filters3))
+            shortcut_layers = nn.Sequential(s, nn.BatchNorm2d(filters3))
+        else:
+            core_layers = nn.Sequential(a, relu, b, relu, c)
+            shortcut_layers = s
+
+        self._core_layers = core_layers
+        self._shortcut_layers = shortcut_layers
+
+    def forward(self, inputs):
+        core = self._core_layers(inputs)
+        shortcut = self._shortcut_layers(inputs)
+
+        return nn.functional.relu_(core + shortcut)
+
+    def calc_output_shape(self, input_shape):
+        x = torch.zeros(1, *input_shape)
+        y = self.forward(x)
+        return y.shape[1:]

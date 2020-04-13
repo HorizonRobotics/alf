@@ -44,7 +44,7 @@ class TensorSpec(object):
             dtype (str or torch.dtype): The type of the tensor values,
                 e.g., "int32" or torch.int32
         """
-        self._shape = shape
+        self._shape = tuple(shape)
         if isinstance(dtype, str):
             self._dtype = getattr(torch, dtype)
         else:
@@ -78,6 +78,11 @@ class TensorSpec(object):
     def shape(self):
         """Returns the `TensorShape` that represents the shape of the tensor."""
         return self._shape
+
+    @property
+    def ndim(self):
+        """Return the rank of the tensor."""
+        return len(self._shape)
 
     @property
     def dtype(self):

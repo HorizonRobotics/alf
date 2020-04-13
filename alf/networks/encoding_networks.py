@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import abc
+import copy
 import functools
 import gin
 import numpy as np
@@ -23,7 +24,7 @@ import torch.nn as nn
 import alf
 import alf.layers as layers
 from alf.networks.initializers import variance_scaling_init
-from alf.networks.network import PreprocessorNetwork
+from alf.networks.network import Network, PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
@@ -36,7 +37,7 @@ def _tuplify2d(x):
 
 
 @gin.configurable
-class ImageEncodingNetwork(PreprocessorNetwork):
+class ImageEncodingNetwork(Network):
     """
     A general template class for creating convolutional encoding networks.
     """
@@ -118,8 +119,7 @@ class ImageEncodingNetwork(PreprocessorNetwork):
 
     def forward(self, inputs, state=()):
         """The empty state just keeps the interface same with other networks."""
-        # call super to handle nested inputs
-        z, state = super().forward(inputs, state)
+        z = inputs
         for conv_l in self._conv_layers:
             z = conv_l(z)
         if self._flatten_output:
@@ -128,7 +128,7 @@ class ImageEncodingNetwork(PreprocessorNetwork):
 
 
 @gin.configurable
-class ImageDecodingNetwork(PreprocessorNetwork):
+class ImageDecodingNetwork(Network):
     """
     A general template class for creating transposed convolutional decoding networks.
     """
@@ -211,7 +211,7 @@ class ImageDecodingNetwork(PreprocessorNetwork):
                 input_size = size
 
         start_decoding_size = _tuplify2d(start_decoding_size)
-        # Python assumes "channels_first" !
+        # pytorch assumes "channels_first" !
         self._start_decoding_shape = [
             start_decoding_channels, start_decoding_size[0],
             start_decoding_size[1]
@@ -251,8 +251,7 @@ class ImageDecodingNetwork(PreprocessorNetwork):
         """Returns an image of shape (B,C,H,W). The empty state just keeps the
         interface same with other networks.
         """
-        # call super to handle nested inputs
-        z, state = super().forward(inputs, state)
+        z = inputs
         for fc_l in self._preprocess_fc_layers:
             z = fc_l(z)
         z = torch.reshape(z, [-1] + self._start_decoding_shape)
@@ -363,7 +362,7 @@ class EncodingNetwork(PreprocessorNetwork):
             assert isinstance(fc_layer_params, tuple)
             fc_layer_params = list(fc_layer_params)
 
-        for i, size in enumerate(fc_layer_params):
+        for size in fc_layer_params:
             self._fc_layers.append(
                 layers.FC(
                     input_size,
@@ -414,7 +413,7 @@ class EncodingNetwork(PreprocessorNetwork):
 
 
 @gin.configurable
-class LSTMEncodingNetwork(PreprocessorNetwork):
+class LSTMEncodingNetwork(Network):
     """LSTM cells followed by an encoding network."""
 
     def __init__(self,
@@ -424,6 +423,7 @@ class LSTMEncodingNetwork(PreprocessorNetwork):
                  conv_layer_params=None,
                  pre_fc_layer_params=None,
                  hidden_size=(100, ),
+                 lstm_output_layers=-1,
                  post_fc_layer_params=None,
                  activation=torch.relu,
                  kernel_initializer=None,
@@ -458,6 +458,8 @@ class LSTMEncodingNetwork(PreprocessorNetwork):
             hidden_size (int or tuple[int]): the hidden size(s) of
                 the lstm cell(s). Each size corresponds to a cell. If there are
                 multiple sizes, then lstm cells are stacked.
+            lstm_output_layers (None|int|list[int]): -1 means the output from
+                the last lstm layer. ``None`` means all lstm layers.
             post_fc_layer_params (tuple[int]): an optional tuple of
                 integers representing hidden FC layers that are applied after
                 the LSTM cells.
@@ -478,19 +480,22 @@ class LSTMEncodingNetwork(PreprocessorNetwork):
                 ``last_layer_size`` is None, ``last_kernel_initializer`` will
                 not be used.
         """
-        super().__init__(
-            input_tensor_spec,
-            input_preprocessors,
-            preprocessing_combiner,
-            name=name)
+        super().__init__(input_tensor_spec, name=name)
 
-        self._pre_encoding_net = EncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=pre_fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer)
-        input_size = self._pre_encoding_net.output_spec.shape[0]
+        if (input_preprocessors or preprocessing_combiner or conv_layer_params
+                or pre_fc_layer_params):
+            self._pre_encoding_net = EncodingNetwork(
+                input_tensor_spec=input_tensor_spec,
+                input_preprocessors=input_preprocessors,
+                preprocessing_combiner=preprocessing_combiner,
+                conv_layer_params=conv_layer_params,
+                fc_layer_params=pre_fc_layer_params,
+                activation=activation,
+                kernel_initializer=kernel_initializer)
+            input_size = self._pre_encoding_net.output_spec.shape[0]
+        else:
+            self._pre_encoding_net = lambda x: (x, ())
+            input_size = input_tensor_spec.shape[0]
 
         if isinstance(hidden_size, int):
             hidden_size = [hidden_size]
@@ -505,14 +510,27 @@ class LSTMEncodingNetwork(PreprocessorNetwork):
             self._state_spec.append(self._create_lstm_cell_state_spec(hs))
             input_size = hs
 
-        self._post_encoding_net = EncodingNetwork(
-            input_tensor_spec=TensorSpec((input_size, )),
-            fc_layer_params=post_fc_layer_params,
-            activation=activation,
-            kernel_initializer=kernel_initializer,
-            last_layer_size=last_layer_size,
-            last_activation=last_activation,
-            last_kernel_initializer=last_kernel_initializer)
+        if lstm_output_layers is None:
+            lstm_output_layers = list(range(len(hidden_size)))
+        elif type(lstm_output_layers) == int:
+            lstm_output_layers = [lstm_output_layers]
+        self._lstm_output_layers = lstm_output_layers
+        self._lstm_output_layers = copy.copy(lstm_output_layers)
+        input_size = sum(hidden_size[i] for i in lstm_output_layers)
+
+        if post_fc_layer_params is None and last_layer_size is None:
+            self._post_encoding_net = lambda x: (x, ())
+            self._output_spec = TensorSpec((input_size, ))
+        else:
+            self._post_encoding_net = EncodingNetwork(
+                input_tensor_spec=TensorSpec((input_size, )),
+                fc_layer_params=post_fc_layer_params,
+                activation=activation,
+                kernel_initializer=kernel_initializer,
+                last_layer_size=last_layer_size,
+                last_activation=last_activation,
+                last_kernel_initializer=last_kernel_initializer)
+            self._output_spec = self._post_encoding_net.output_spec
 
     def _create_lstm_cell_state_spec(self, hidden_size, dtype=torch.float32):
         """Create LSTMCell state specs given the hidden size and dtype. According to
@@ -543,9 +561,6 @@ class LSTMEncodingNetwork(PreprocessorNetwork):
             output (torch.Tensor): output of the network
             new_state (list[tuple]): the updated states
         """
-        # call super to preprocess inputs
-        inputs, state = super().forward(inputs, state)
-
         assert isinstance(state, list)
         for s in state:
             assert isinstance(s, tuple) and len(s) == 2, \
@@ -557,13 +572,16 @@ class LSTMEncodingNetwork(PreprocessorNetwork):
         for cell, s in zip(self._cells, state):
             h_state, c_state = cell(h_state, s)
             new_state.append((h_state, c_state))
+
+        if len(self._lstm_output_layers) == 1:
+            lstm_output = new_state[self._lstm_output_layers[0]][0]
+        else:
+            lstm_output = [new_state[l][0] for l in self._lstm_output_layers]
+            h_state = torch.cat(lstm_output, -1)
+
         output, _ = self._post_encoding_net(h_state)
         return output, new_state
 
     @property
     def state_spec(self):
         return self._state_spec
-
-    @property
-    def output_spec(self):
-        return self._post_encoding_net.output_spec

@@ -412,7 +412,7 @@ class Algorithm(nn.Module):
         if metadata is not None:
             state_dict._metadata = metadata
 
-        def load(module, prefix='', visited=None):
+        def _load(module, prefix='', visited=None):
             if visited is None:
                 visited = {self}
             if isinstance(module, Algorithm):
@@ -428,15 +428,28 @@ class Algorithm(nn.Module):
             for name, child in module._modules.items():
                 if child is not None and child not in visited:
                     visited.add(child)
-                    load(child, prefix + name + '.', visited=visited)
+                    _load(child, prefix + name + '.', visited=visited)
 
             local_metadata = {} if metadata is None else metadata.get(
                 prefix[:-1], {})
-            module._load_from_state_dict(state_dict, prefix, local_metadata,
-                                         True, missing_keys, unexpected_keys,
-                                         error_msgs, visited)
+            if type(module)._load_from_state_dict in (
+                    Algorithm._load_from_state_dict,
+                    nn.Module._load_from_state_dict):
+                module._load_from_state_dict(
+                    state_dict, prefix, local_metadata, True, missing_keys,
+                    unexpected_keys, error_msgs, visited)
+            else:
+                # Some pytorch modules (e.g. BatchNorm layers) override
+                # _load_from_state_dict, which uses the original
+                # Module._load_from_state_dict. So we have to handle them
+                # differently. Not using `visited` should not cause a problem
+                # because those modules are not implemented by ALF and will not
+                # have cycle through them.
+                module._load_from_state_dict(
+                    state_dict, prefix, local_metadata, True, missing_keys,
+                    unexpected_keys, error_msgs)
 
-        load(self)
+        _load(self)
 
         if strict:
             if len(unexpected_keys) > 0:

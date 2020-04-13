@@ -39,8 +39,8 @@ class VaeTest(alf.test.TestCase):
 
     def test_vae(self):
         """Test for one dimensional Gaussion."""
-        encoder = vae.VariationalAutoEncoder(self._latent_dim,
-                                             self._input_spec)
+        encoder = vae.VariationalAutoEncoder(
+            self._latent_dim, input_tensor_spec=self._input_spec)
         decoding_layers = FC(self._latent_dim, 1)
 
         optimizer = torch.optim.Adam(
@@ -72,27 +72,27 @@ class VaeTest(alf.test.TestCase):
         """
         prior_input_spec = BoundedTensorSpec((), 'int64')
 
-        z_mean_prior_network = EncodingNetwork(
+        z_prior_network = EncodingNetwork(
             TensorSpec(
                 (prior_input_spec.maximum - prior_input_spec.minimum + 1, )),
             fc_layer_params=(10, ) * 2,
-            last_layer_size=self._latent_dim,
+            last_layer_size=2 * self._latent_dim,
             last_activation=math_ops.identity)
-        z_log_var_prior_network = z_mean_prior_network.copy()
         preprocess_network = EncodingNetwork(
-            input_tensor_spec=[
-                z_mean_prior_network.input_tensor_spec, self._input_spec,
-                z_mean_prior_network.output_spec,
-                z_log_var_prior_network.output_spec
-            ],
+            input_tensor_spec=(
+                z_prior_network.input_tensor_spec,
+                self._input_spec,
+                z_prior_network.output_spec,
+            ),
             preprocessing_combiner=NestConcat(),
             fc_layer_params=(10, ) * 2,
             last_layer_size=self._latent_dim,
             last_activation=math_ops.identity)
 
         encoder = vae.VariationalAutoEncoder(
-            self._latent_dim, None, preprocess_network, z_mean_prior_network,
-            z_log_var_prior_network)
+            self._latent_dim,
+            preprocess_network=preprocess_network,
+            z_prior_network=z_prior_network)
         decoding_layers = FC(self._latent_dim, 1)
 
         optimizer = torch.optim.Adam(
@@ -117,8 +117,8 @@ class VaeTest(alf.test.TestCase):
         ],
                             dim=0)
         pr_test = torch.nn.functional.one_hot(
-            pr_test, int(z_mean_prior_network.input_tensor_spec.shape[0])).to(
-                torch.float32)
+            pr_test,
+            int(z_prior_network.input_tensor_spec.shape[0])).to(torch.float32)
 
         for _ in range(self._epochs):
             idx = torch.randperm(x_train.shape[0])
@@ -131,7 +131,7 @@ class VaeTest(alf.test.TestCase):
                 y_batch = y_train[i:i + self._batch_size]
                 pr_batch = torch.nn.functional.one_hot(
                     pr_train[i:i + self._batch_size],
-                    int(z_mean_prior_network.input_tensor_spec.shape[0])).to(
+                    int(z_prior_network.input_tensor_spec.shape[0])).to(
                         torch.float32)
                 alg_step = encoder.train_step([pr_batch, batch])
                 outputs = decoding_layers(alg_step.output)

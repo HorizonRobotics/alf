@@ -319,13 +319,14 @@ def play(root_dir,
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        time_step, policy_state = _step(
-            algorithm=algorithm,
-            env=env,
-            time_step=time_step,
-            policy_state=policy_state,
-            epsilon_greedy=epsilon_greedy,
-            metrics=[])
+        with torch.no_grad():
+            time_step, policy_state = _step(
+                algorithm=algorithm,
+                env=env,
+                time_step=time_step,
+                policy_state=policy_state,
+                epsilon_greedy=epsilon_greedy,
+                metrics=[])
         if recorder:
             recorder.capture_frame()
         else:

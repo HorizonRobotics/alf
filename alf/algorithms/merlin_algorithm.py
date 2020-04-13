@@ -14,35 +14,28 @@
 """Implementation of MERLIN algorithm. See class MerlinAlgorithm for detail."""
 
 from collections import namedtuple
+import copy
 import functools
 import gin
-
-import tensorflow as tf
-import tensorflow_probability as tfp
-
-from tf_agents.networks.encoding_network import EncodingNetwork
-from tf_agents.networks.network import Network
-from tf_agents.networks.actor_distribution_network import ActorDistributionNetwork
-from tf_agents.networks.value_network import ValueNetwork
-from tf_agents.specs import TensorSpec
-from tf_agents.specs.tensor_spec import TensorSpec
-from tf_agents.trajectories.policy_step import PolicyStep
-from tf_agents.networks import network
-from tf_agents.networks import utils
-from tf_agents.utils import nest_utils
+import numpy as np
+import torch
+import torch.nn as nn
 
 import alf
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_algorithm import ActorCriticInfo
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep
+from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.config import TrainerConfig
 from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.vae import VariationalAutoEncoder
-from alf.data_structures import TrainingInfo, ActionTimeStep, LossInfo
-from alf.utils.action_encoder import SimpleActionEncoder
-from alf.utils import common
-from alf.utils import resnet50_block
+from alf.data_structures import TimeStep, AlgStep, LossInfo, TrainingInfo
+from alf.networks import EncodingNetwork, LSTMEncodingNetwork
+from alf.networks import ActorDistributionNetwork, ValueNetwork
+from alf.networks.action_encoder import SimpleActionEncoder
+from alf.nest import flatten, map_structure
+from alf.utils import common, dist_utils, math_ops
 
 MBPState = namedtuple(
     "MBPState",
@@ -56,46 +49,13 @@ MBPState = namedtuple(
 MBPLossInfo = namedtuple("MBPLossInfo", ["decoder", "vae"])
 
 
-def get_rnn_cell_state_spec(cell):
-    """Get the state spec for RNN cell."""
-    return tf.nest.map_structure(
-        lambda size: TensorSpec(size, dtype=tf.float32), cell.state_size)
-
-
-def make_lstm_cell(lstm_size, name="lstm_cell"):
-    """Make a stacked LSTM cell.
-
-    Args:
-      lstm_size (int|list[int]): specifying the LSTM cell sizes to use.
-      name (str): name of the cell.
-
-    Returns:
-      cell (LSTMCell|StackedRNNCell): the stacked LSTM cell.
-
-    """
-    implementation = 2  # FUSED IMPLEMENTATION
-    cells = [
-        tf.keras.layers.LSTMCell(
-            size, implementation=implementation, name=name + "/" + str(i))
-        for i, size in enumerate(lstm_size)
-    ]
-    if len(cells) == 1:
-        return cells[0]
-    else:
-        return tf.keras.layers.StackedRNNCells(cells)
-
-
-def _collect_variables(*modules):
-    modules = tf.nest.flatten(modules)
-    return sum([mod.variables for mod in modules], [])
-
-
 @gin.configurable
 class MemoryBasedPredictor(Algorithm):
     """The Memroy Based Predictor.
 
     It's described in:
-    Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
+    Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" 
+    `arXiv:1803.10760 <https://arxiv.org/abs/1803.10760>`_
     """
 
     def __init__(self,
@@ -108,7 +68,7 @@ class MemoryBasedPredictor(Algorithm):
                  memory_size=1350,
                  loss_weight=1.0,
                  name="mbp"):
-        """Create a MemoryBasedPredictor.
+        """
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
@@ -121,43 +81,53 @@ class MemoryBasedPredictor(Algorithm):
             loss_weight (float): weight for the loss
             name (str): name of the algorithm.
         """
-        rnn = make_lstm_cell(lstm_size, name=name + "/lstm")
+        action_encoder = SimpleActionEncoder(action_spec)
+
         memory = MemoryWithUsage(
             latent_dim, memory_size, name=name + "/memory")
 
+        rnn_input_size = (latent_dim + num_read_keys * latent_dim +
+                          action_encoder.output_spec.shape[0])
+
+        rnn = LSTMEncodingNetwork(
+            input_tensor_spec=alf.TensorSpec((rnn_input_size, )),
+            hidden_size=lstm_size,
+            name=name + "/lstm")
+
         state_spec = MBPState(
-            latent_vector=TensorSpec(shape=(latent_dim, ), dtype=tf.float32),
-            mem_readout=TensorSpec(
-                shape=(num_read_keys * latent_dim, ), dtype=tf.float32),
-            rnn_state=get_rnn_cell_state_spec(rnn),
+            latent_vector=alf.TensorSpec((latent_dim, )),
+            mem_readout=alf.TensorSpec((num_read_keys * latent_dim, )),
+            rnn_state=rnn.state_spec,
             memory=memory.state_spec)
 
-        super(MemoryBasedPredictor, self).__init__(
-            train_state_spec=state_spec, name=name)
+        super().__init__(train_state_spec=state_spec, name=name)
 
         self._encoders = encoders
         self._decoders = decoders
-        self._action_encoder = SimpleActionEncoder(action_spec)
+        self._action_encoder = action_encoder
 
-        # This is different from Merlin LSTM. This rnn only uses the output from
-        # ths last LSTM layer, while Merlin uses outputs from all LSTM layers
         self._rnn = rnn
         self._memory = memory
 
-        self._key_net = tf.keras.layers.Dense(
-            num_read_keys * (self._memory.dim + 1), name=name + "/key_net")
+        self._key_net = self._memory.create_keynet(rnn.output_spec,
+                                                   num_read_keys)
 
-        prior_network = tf.keras.Sequential(
-            name=name + "/prior_network",
-            layers=[
-                tf.keras.layers.Dense(2 * latent_dim, activation='tanh'),
-                tf.keras.layers.Dense(2 * latent_dim, activation='tanh'),
-                tf.keras.layers.Dense(2 * latent_dim),
-                alf.layers.Split(2, axis=-1)
-            ])
+        prior_network = EncodingNetwork(
+            input_tensor_spec=(rnn.output_spec, state_spec.mem_readout),
+            preprocessing_combiner=alf.nest.utils.NestConcat(),
+            fc_layer_params=(2 * latent_dim, 2 * latent_dim),
+            activation=torch.tanh,
+            last_layer_size=2 * latent_dim,
+            last_activation=math_ops.identity,
+            name=name + "/prior_network")
 
+        encoder_output_specs = alf.nest.map_structure(
+            lambda encoder: encoder.output_spec, self._encoders)
         self._vae = VariationalAutoEncoder(
-            latent_dim, prior_network, name=name + "/vae")
+            latent_dim,
+            input_tensor_spec=encoder_output_specs,
+            z_prior_network=prior_network,
+            name=name + "/vae")
 
         self._loss_weight = loss_weight
 
@@ -171,18 +141,20 @@ class MemoryBasedPredictor(Algorithm):
 
         Args:
             inputs (tuple): a tuple of (observation, prev_action)
-            state (MBPState)
+            state (MBPState): RNN state
         Returns:
-            tuple of (latent_vector, kl_divergence, next_state)
-
+            AlgStep:
+                output: latent vector
+                state: next_state
+                info (LossInfo): loss
         """
         observation, prev_action = inputs
         self._memory.from_states(state.memory)
 
-        prev_action = self._action_encoder(prev_action)
+        prev_action = self._action_encoder(prev_action)[0]
 
-        prev_rnn_input = tf.concat(
-            [state.latent_vector, prev_action, state.mem_readout], axis=-1)
+        prev_rnn_input = torch.cat(
+            [state.latent_vector, prev_action, state.mem_readout], dim=-1)
 
         prev_rnn_output, prev_rnn_state = self._rnn(prev_rnn_input,
                                                     state.rnn_state)
@@ -190,56 +162,76 @@ class MemoryBasedPredictor(Algorithm):
         prev_mem_readout = self._memory.genkey_and_read(
             self._key_net, prev_rnn_output)
 
-        self._memory.write(tf.stop_gradient(state.latent_vector))
+        self._memory.write(state.latent_vector.detach())
 
-        prior_input = tf.concat([prev_rnn_output, prev_mem_readout], axis=-1)
+        prior_input = (prev_rnn_output, prev_mem_readout)
 
-        current_input = tf.nest.map_structure(
-            lambda encoder, obs: encoder(obs)[0], self._encoders, observation)
-        current_input = tf.concat(tf.nest.flatten(current_input), axis=-1)
+        current_input = map_structure(lambda encoder, obs: encoder(obs)[0],
+                                      self._encoders, observation)
 
-        latent_vector, kld = self._vae.sampling_forward((prior_input,
-                                                         current_input))
+        vae_step = self._vae.train_step((prior_input, current_input))
 
         next_state = MBPState(
-            latent_vector=latent_vector,
+            latent_vector=vae_step.output,
             mem_readout=prev_mem_readout,
             rnn_state=prev_rnn_state,
             memory=self._memory.states)
 
-        return latent_vector, kld, next_state
+        return vae_step._replace(state=next_state)
 
     def decode_step(self, latent_vector, observations):
         """Calculate decoding loss."""
-        decoders = tf.nest.flatten(self._decoders)
-        observations = tf.nest.flatten(observations)
+        decoders = flatten(self._decoders)
+        observations = flatten(observations)
         decoder_losses = [
             decoder.train_step((latent_vector, obs)).info
             for decoder, obs in zip(decoders, observations)
         ]
-        loss = tf.add_n([decoder_loss.loss for decoder_loss in decoder_losses])
-        decoder_losses = tf.nest.pack_sequence_as(self._decoders,
-                                                  decoder_losses)
+        loss = math_ops.add_n(
+            [decoder_loss.loss for decoder_loss in decoder_losses])
+        decoder_losses = alf.nest.pack_sequence_as(self._decoders,
+                                                   decoder_losses)
         return LossInfo(loss=loss, extra=decoder_losses)
+
+    def predict_step(self, inputs, state: MBPState):
+        """Train one step.
+
+        Args:
+            inputs (tuple): a tuple of (observation, action)
+            state (nested Tensor): RNN state
+        Returns:
+            AlgStep:
+                output: latent vector
+                state: next state
+                info: empty tuple
+        """
+        encode_step = self.encode_step(inputs, state)
+
+        return encode_step._replace(info=())
 
     def train_step(self, inputs, state: MBPState):
         """Train one step.
 
         Args:
             inputs (tuple): a tuple of (observation, action)
+        Returns:
+            AlgStep:
+                output: latent vector
+                state: next state
+                info (LossInfo): loss
         """
         observation, _ = inputs
-        latent_vector, kld, next_state = self.encode_step(inputs, state)
+        encode_step = self.encode_step(inputs, state)
 
         # TODO: decoder for action
-        decoder_loss = self.decode_step(latent_vector, observation)
+        decoder_loss = self.decode_step(encode_step.output, observation)
 
-        return AlgorithmStep(
-            outputs=latent_vector,
-            state=next_state,
+        return encode_step._replace(
             info=LossInfo(
-                loss=self._loss_weight * (decoder_loss.loss + kld),
-                extra=MBPLossInfo(decoder=decoder_loss, vae=kld)))
+                loss=self._loss_weight *
+                (decoder_loss.loss + encode_step.info.loss),
+                extra=MBPLossInfo(
+                    decoder=decoder_loss.extra, vae=encode_step.info.extra)))
 
 
 @gin.configurable
@@ -254,57 +246,62 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                  lstm_size=(256, 256),
                  latent_dim=200,
                  loss=None,
+                 loss_class=ActorCriticLoss,
                  loss_weight=1.0,
+                 debug_summaries=False,
                  name="mba"):
-        """Create the policy module of MERLIN.
+        """
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            memory (MemoryWithUsage): the memory module from MemoryBasedPredictor
+            memory (MemoryWithUsage): the memory module from ``MemoryBasedPredictor``
             num_read_keys (int): number of keys for reading memory.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers
             loss (None|ActorCriticLoss): an object for calculating the loss
-                for reinforcement learning. If None, a default ActorCriticLoss
+                for reinforcement learning. If None, a default ``ActorCriticLoss``
                 will be used.
+            loss_class (type): the class of the loss. The signature of its
+                constructor: loss_class(debug_summaries)
             name (str): name of the algorithm.
         """
-        # This is different from Merlin LSTM. This rnn only uses the output
-        # from ths last LSTM layer, while Merlin uses outputs from all LSTM
-        # layers
-        rnn = make_lstm_cell(lstm_size, name=name + "/lstm")
+        rnn = LSTMEncodingNetwork(
+            input_tensor_spec=alf.TensorSpec((latent_dim, )),
+            hidden_size=lstm_size,
+            name=name + "/lstm")
 
         actor_input_dim = (
-            latent_dim + lstm_size[-1] + num_read_keys * memory.dim)
+            latent_dim + rnn.output_spec.shape[0] + num_read_keys * memory.dim)
 
         actor_net = ActorDistributionNetwork(
-            input_tensor_spec=TensorSpec((actor_input_dim, ),
-                                         dtype=tf.float32),
-            output_tensor_spec=action_spec,
+            input_tensor_spec=alf.TensorSpec((actor_input_dim, ),
+                                             dtype=torch.float32),
+            action_spec=action_spec,
             fc_layer_params=(200, ),
-            activation_fn=tf.keras.activations.tanh,
+            activation=torch.tanh,
             name=name + "/actor_net")
 
         super(MemoryBasedActor, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
-            train_state_spec=get_rnn_cell_state_spec(rnn),
+            train_state_spec=rnn.state_spec,
             name=name)
 
-        self._loss = ActorCriticLoss(action_spec) if loss is None else loss
+        if loss is None:
+            loss = loss_class(debug_summaries=debug_summaries)
+        self._loss = loss
         self._loss_weight = loss_weight
         self._memory = memory
 
-        self._key_net = tf.keras.layers.Dense(
-            num_read_keys * (self._memory.dim + 1), name=name + "/key_net")
+        self._key_net = self._memory.create_keynet(rnn.output_spec,
+                                                   num_read_keys)
 
         # TODO: add log p(a_i) as input to value net
         value_input_dim = latent_dim
         self._value_net = ValueNetwork(
-            input_tensor_spec=TensorSpec((value_input_dim, ),
-                                         dtype=tf.float32),
+            input_tensor_spec=alf.TensorSpec((value_input_dim, )),
             fc_layer_params=(200, ),
-            activation_fn=tf.keras.activations.tanh,
+            activation=torch.tanh,
             name=name + "/value_net")
 
         self._rnn = rnn
@@ -312,34 +309,37 @@ class MemoryBasedActor(OnPolicyAlgorithm):
 
         # TODO: add qvalue_net for predicting Q-value
 
-    def rollout(self,
-                time_step: ActionTimeStep,
-                state,
-                mode,
-                epsilon_greedy=1.0):
+    def _get_action(self, latent_vector, state):
+        rnn_output, rnn_state = self._rnn(latent_vector, state)
+        mem_readout = self._memory.genkey_and_read(self._key_net, rnn_output)
+        policy_input = torch.cat(
+            [latent_vector.detach(), rnn_output, mem_readout], dim=-1)
+        action_distribution, _ = self._actor_net(policy_input)
+        return action_distribution, rnn_state
+
+    def rollout_step(self, time_step: TimeStep, state):
         """Train one step.
 
         Args:
-            time_step: time_step.observation should be the latent vector
-            state: state of the model
+            time_step (TimeStep): ``time_step.observation`` should be the latent
+                vector.
+            state (nested Tensor): state of the model
         """
         latent_vector = time_step.observation
-        rnn_output, rnn_state = self._rnn(latent_vector, state)
-        mem_readout = self._memory.genkey_and_read(self._key_net, rnn_output)
-        policy_input = tf.concat(
-            [tf.stop_gradient(latent_vector), rnn_output, mem_readout],
-            axis=-1)
-        action_distribution, _ = self._actor_net(
-            policy_input, step_type=time_step.step_type, network_state=None)
-
-        value, _ = self._value_net(
-            latent_vector, step_type=time_step.step_type, network_state=None)
+        action_distribution, state = self._get_action(latent_vector, state)
+        value, _ = self._value_net(latent_vector)
+        action = dist_utils.sample_action_distribution(action_distribution)
 
         info = ActorCriticInfo(
             action_distribution=action_distribution, value=value)
-        action = common.epsilon_greedy_sample(action_distribution,
-                                              epsilon_greedy)
-        return PolicyStep(action=action, state=rnn_state, info=info)
+        return AlgStep(output=action, state=state, info=info)
+
+    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+        action_distribution, state = self._get_action(time_step.observation,
+                                                      state)
+        action = dist_utils.epsilon_greedy_sample(action_distribution,
+                                                  epsilon_greedy)
+        return AlgStep(output=action, state=state, info=())
 
     def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
@@ -360,10 +360,13 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" arXiv:1803.10760
 
     Current differences:
-    * no action encoding and decoding
-    * no retroactive memory update
-    * no prediction of state-action value
-    * only uses outputs from last layers of stacked LSTMs
+
+    * No action encoding and decoding
+    * No retroactive memory update
+    * No prediction of state-action value
+    * Value prediction does not use action distribution as feature.
+    * No q-value prediction
+    * Image encoding and decoding use batch-norm. The paper didn't use.
     """
 
     def __init__(self,
@@ -371,6 +374,8 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  action_spec,
                  encoders,
                  decoders,
+                 env=None,
+                 config: TrainerConfig = None,
                  latent_dim=200,
                  lstm_size=(256, 256),
                  memory_size=1350,
@@ -384,13 +389,22 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
             decoders (nested Algorithm): the nest should match observation_spec
+            env (Environment): The environment to interact with. ``env`` is a
+                batched environment, which means that it runs multiple
+                simulations simultaneously. Running multiple environments in
+                parallel is crucial to on-policy algorithms as it increases the
+                diversity of data and decreases temporal correlation. ``env`` only
+                needs to be provided to the root ``Algorithm``.
+            config (TrainerConfig): config for training. ``config`` only needs to
+                be provided to the algorithm which performs ``train_iter()`` by
+                itself.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers for MBP and MBA
             memroy_size (int): number of memory slots
             rl_loss (None|ActorCriticLoss): an object for calculating the loss
-                for reinforcement learning. If None, a default ActorCriticLoss
+                for reinforcement learning. If None, a default ``ActorCriticLoss``
                 will be used.
-            optimizer (tf.optimizers.Optimizer): The optimizer for training.
+            optimizer (torch.optim.Optimizer): The optimizer for training.
             debug_summaries: True if debug summaries should be created.
             name (str): name of the algorithm.
         """
@@ -408,7 +422,8 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             latent_dim=latent_dim,
             lstm_size=lstm_size,
             loss=rl_loss,
-            memory=mbp.memory)
+            memory=mbp.memory,
+            debug_summaries=debug_summaries)
 
         super(MerlinAlgorithm, self).__init__(
             observation_spec=observation_spec,
@@ -416,6 +431,8 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             train_state_spec=MerlinState(
                 mbp_state=mbp.train_state_spec,
                 mba_state=mba.train_state_spec),
+            env=env,
+            config=config,
             optimizer=optimizer,
             debug_summaries=debug_summaries,
             name=name)
@@ -423,34 +440,38 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
         self._mbp = mbp
         self._mba = mba
 
-    def rollout(self,
-                time_step: ActionTimeStep,
-                state,
-                mode,
-                epsilon_greedy=1.0):
+    def rollout_step(self, time_step: TimeStep, state):
         """Train one step."""
         mbp_step = self._mbp.train_step(
             inputs=(time_step.observation, time_step.prev_action),
             state=state.mbp_state)
-        mba_step = self._mba.rollout(
-            time_step=time_step._replace(observation=mbp_step.outputs),
-            state=state.mba_state,
-            mode=mode,
-            epsilon_greedy=epsilon_greedy)
+        mba_step = self._mba.rollout_step(
+            time_step=time_step._replace(observation=mbp_step.output),
+            state=state.mba_state)
 
-        return PolicyStep(
-            action=mba_step.action,
+        return AlgStep(
+            output=mba_step.output,
             state=MerlinState(
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=MerlinInfo(mbp_info=mbp_step.info, mba_info=mba_step.info))
 
-    def predict(self, time_step: ActionTimeStep, state, epsilon_greedy):
-        return self.rollout(
-            time_step, state, mode=self.ROLLOUT, epsilon_greedy=epsilon_greedy)
+    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
+        mbp_step = self._mbp.predict_step(
+            inputs=(time_step.observation, time_step.prev_action),
+            state=state.mbp_state)
+        mba_step = self._mba.predict_step(
+            time_step=time_step._replace(observation=mbp_step.output),
+            state=state.mba_state,
+            epsilon_greedy=epsilon_greedy)
+        return AlgStep(
+            output=mba_step.output,
+            state=MerlinState(
+                mbp_state=mbp_step.state, mba_state=mba_step.state),
+            info=())
 
     def calc_loss(self, training_info: TrainingInfo):
         """Calculate loss."""
-        self.add_reward_summary("reward", training_info.reward)
+        self.summarize_reward("reward", training_info.reward)
         mbp_loss_info = self._mbp.calc_loss(training_info.info.mbp_info)
         mba_loss_info = self._mba.calc_loss(
             training_info._replace(info=training_info.info.mba_info))
@@ -462,94 +483,90 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
 
 
 @gin.configurable
-class ResnetEncodingNetwork(network.Network):
-    """Image encoding network
+class ResnetEncodingNetwork(alf.networks.Network):
+    """Image encoding network using ResNet bottleneck blocks.
 
     This is not a generic network, it implements `ImageEncoder` described in
     2.1.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
 
     def __init__(self, input_tensor_spec, name='ResnetEncodingNetwork'):
-        """Create a `ResnetEncodingNetwork` instance
+        """
 
         Args:
             input_tensor_spec (TensorSpec|nested TensorSpec): input observations spec.
         """
-        super().__init__(input_tensor_spec, state_spec=(), name=name)
+        super().__init__(input_tensor_spec, name=name)
 
         enc_layers = []
 
-        for i, stride in enumerate([2, 1, 2, 1, 2, 1]):
-            enc_layers.append(
-                resnet50_block.BottleneckBlock(
-                    kernel_size=(3, 3),
-                    filters=(64, 32, 64),
-                    strides=stride,
-                    name='block%d' % i))
+        in_channels = input_tensor_spec.shape[0]
+        shape = input_tensor_spec.shape
+        for stride in [2, 1, 2, 1, 2, 1]:
+            res_block = alf.layers.BottleneckBlock(
+                in_channels=in_channels,
+                kernel_size=3,
+                filters=(64, 32, 64),
+                stride=stride)
+            shape = res_block.calc_output_shape(shape)
+            enc_layers.append(res_block)
+            in_channels = 64
 
         enc_layers.extend([
-            tf.keras.layers.Flatten(),
-            tf.keras.layers.Dense(500, activation='tanh', name='fc1')
+            nn.Flatten(),
+            alf.layers.FC(
+                input_size=np.prod(shape),
+                output_size=500,
+                activation=torch.tanh)
         ])
 
-        self._layers = enc_layers
+        self._model = nn.Sequential(*enc_layers)
 
-    def call(self, observation, step_type=None, network_state=()):
-        outer_rank = nest_utils.get_outer_rank(observation,
-                                               self.input_tensor_spec)
-        batch_squash = utils.BatchSquash(outer_rank)
-        output = batch_squash.flatten(observation)
-        for l in self._layers:
-            output = l(output)
-        return batch_squash.unflatten(output), network_state
+    def forward(self, observation, state=()):
+        return self._model(observation), ()
 
 
 @gin.configurable
-class ResnetDecodingNetwork(network.Network):
-    """Image decoding network
+class ResnetDecodingNetwork(alf.networks.Network):
+    """Image decoding network using ResNet bottleneck blocks.
 
     This is not a generic network, it implements `ImageDecoder` described in
     2.2.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
 
     def __init__(self, input_tensor_spec, name='ResnetDecodingNetwork'):
-        """Create a `ResnetDecodingNetwork` instance
+        """
 
         Args:
              input_tensor_spec (TensorSpec): input latent spec.
         """
-        super().__init__(input_tensor_spec, state_spec=(), name=name)
+        super().__init__(input_tensor_spec, name=name)
 
         dec_layers = []
+        relu = nn.ReLU(inplace=True)
         dec_layers.extend([
-            tf.keras.layers.Dense(500, activation='relu', name='fc1'),
-            tf.keras.layers.Dense(8 * 8 * 64, activation='relu', name='fc2'),
-            tf.keras.layers.Reshape((8, 8, 64))
+            alf.layers.FC(input_tensor_spec.shape[0], 500, activation=relu),
+            alf.layers.FC(500, 8 * 8 * 64, activation=relu),
+            alf.layers.Reshape((64, 8, 8))
         ])
 
-        for i, stride in enumerate(reversed([2, 1, 2, 1, 2, 1])):
+        for stride in reversed([2, 1, 2, 1, 2, 1]):
             dec_layers.append(
-                resnet50_block.BottleneckBlock(
-                    kernel_size=(3, 3),
+                alf.layers.BottleneckBlock(
+                    in_channels=64,
+                    kernel_size=3,
                     filters=(64, 32, 64),
-                    strides=stride,
-                    transpose=True,
-                    name='block%d' % i))
+                    stride=stride,
+                    transpose=True))
 
         dec_layers.append(
-            tf.keras.layers.Conv2DTranspose(
-                filters=3, kernel_size=1, activation='sigmoid',
-                name='deconv6'))
+            alf.layers.ConvTranspose2D(
+                in_channels=64,
+                out_channels=3,
+                kernel_size=1,
+                activation=torch.sigmoid))
 
-        self._layers = dec_layers
+        self._model = nn.Sequential(*dec_layers)
 
-    def call(self, observation, step_type=None, network_state=()):
-        outer_rank = nest_utils.get_outer_rank(observation,
-                                               self.input_tensor_spec)
-        batch_squash = utils.BatchSquash(outer_rank)
-        output = batch_squash.flatten(observation)
-
-        for l in self._layers:
-            output = l(output)
-
-        return batch_squash.unflatten(output), network_state
+    def forward(self, observation, state=()):
+        return self._model(observation), ()
