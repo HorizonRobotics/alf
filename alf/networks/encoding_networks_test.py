@@ -221,34 +221,26 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         replicas = 2
         num_layers = 3
 
+        def _benchmark(pnet, name):
+            t0 = time.time()
+            outputs = []
+            for _ in range(1000):
+                embedding = input_spec.randn(outer_dims=(batch_size, ))
+                output, _ = pnet(embedding)
+                outputs.append(output)
+            o = math_ops.add_n(outputs).sum()
+            logging.info("%s time=%s %s" % (name, time.time() - t0, float(o)))
+
+            self.assertEqual(output.shape, (batch_size, replicas, 1))
+            self.assertEqual(pnet.output_spec.shape, (replicas, 1))
+
         pnet = network.make_parallel(replicas)
         self.assertTrue(isinstance(pnet, ParallelEncodingNetwork))
-
         self.assertEqual(len(list(pnet.parameters())), num_layers * 2)
-
-        t0 = time.time()
-        outputs = []
-        for _ in range(1000):
-            embedding = input_spec.randn(outer_dims=(batch_size, ))
-            output, _ = pnet(embedding)
-            outputs.append(output)
-        o = math_ops.add_n(outputs).sum()
-        logging.info("ParallelEconcingNetwork time=%s %s" % (time.time() - t0,
-                                                             float(o)))
-
-        self.assertEqual(output.shape, (batch_size, replicas, 1))
-        self.assertEqual(pnet.output_spec.shape, (replicas, 1))
+        _benchmark(pnet, "ParallelENcodingNetwork")
 
         pnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
-        t0 = time.time()
-        outputs = []
-        for _ in range(1000):
-            embedding = input_spec.randn(outer_dims=(batch_size, ))
-            output, _ = pnet(embedding)
-            outputs.append(output)
-        o = math_ops.add_n(outputs).sum()
-        logging.info(
-            "NaiveParallelNetwork time=%s %s" % (time.time() - t0, float(o)))
+        _benchmark(pnet, "NaiveParallelNetwork")
 
 
 class EncodingNetworkSideEffectsTest(alf.test.TestCase):

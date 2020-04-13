@@ -47,7 +47,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         return network_ctor, state
 
     @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_critic(self, lstm_hidden_size=(100, )):
+    def test_critic(self, lstm_hidden_size):
         obs_spec = TensorSpec((3, 20, 20), torch.float32)
         action_spec = TensorSpec((5, ), torch.float32)
         input_spec = (obs_spec, action_spec)
@@ -83,8 +83,9 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         # test make_parallel
         pnet = critic_net.make_parallel(6)
 
-        # shape of state should be [B, n, ...]
-        self.assertRaises(AssertionError, pnet, network_input, state)
+        if lstm_hidden_size is not None:
+            # shape of state should be [B, n, ...]
+            self.assertRaises(AssertionError, pnet, network_input, state)
 
         state = alf.nest.map_structure(
             lambda x: x.unsqueeze(1).expand(x.shape[0], 6, x.shape[1]), state)
@@ -104,7 +105,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         critic_net = CriticNetwork((obs_spec, action_spec),
                                    joint_fc_layer_params=(256, 256))
 
-        replicas = 32
+        replicas = 4
         # ParallelCriticNetwork (PCN) is not always faster than NaiveParallelNetwork (NPN).
         # On my machine, for this particular example, with replicas=2,
         # PCN is faster when batch_size in (128, 256, ..., 2048)
@@ -116,7 +117,7 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         def _train(pnet, name):
             t0 = time.time()
             optimizer = alf.optimizers.AdamTF(list(pnet.parameters()), lr=1e-4)
-            for _ in range(1000):
+            for _ in range(100):
                 obs = obs_spec.randn((batch_size, ))
                 action = action_spec.randn((batch_size, ))
                 values = pnet((obs, action))[0]

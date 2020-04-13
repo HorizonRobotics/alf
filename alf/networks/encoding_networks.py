@@ -550,7 +550,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
             inputs (nested Tensor):
         """
         # call super to preprocess inputs
-        z, state = super().forward(inputs, state)
+        z, state = super().forward(inputs, state, max_outer_rank=2)
         for fc in self._fc_layers:
             z = fc(z)
         return z, state

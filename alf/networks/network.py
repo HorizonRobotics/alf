@@ -336,15 +336,26 @@ class PreprocessorNetwork(Network):
         # and the nest combiner.
         self._processed_input_tensor_spec = input_tensor_spec
 
-    def forward(self, inputs, state=()):
-        """Preprocessing nested inputs."""
+    def forward(self, inputs, state=(), min_outer_rank=1, max_outer_rank=1):
+        """Preprocessing nested inputs.
+        
+        Args:
+            inputs (nested Tensor): inputs to the network
+            state (nested Tensor): RNN state of the network
+            min_outer_rank (int): the minimal outer rank allowed
+            max_outer_rank (int): the maximal outer rank allowed
+        Returns:
+            Tensor: tensor after preprocessing.
+        """
         if self._input_preprocessors:
             inputs = alf.nest.map_structure(
                 lambda preproc, tensor: preproc(tensor),
                 self._input_preprocessors, inputs)
         proc_inputs = self._preprocessing_combiner(inputs)
-        assert get_outer_rank(proc_inputs, self._processed_input_tensor_spec) == 1, \
-            ("Only supports one outer rank (batch dim)! "
+        outer_rank = get_outer_rank(proc_inputs,
+                                    self._processed_input_tensor_spec)
+        assert min_outer_rank <= outer_rank <= max_outer_rank, \
+            ("Only supports {}<=outer_rank<={}! ".format(min_outer_rank, max_outer_rank)
             + "After preprocessing: inputs size {} vs. input tensor spec {}".format(
                 proc_inputs.size(), self._processed_input_tensor_spec)
             + "\n Make sure that you have provided the right input preprocessors"
