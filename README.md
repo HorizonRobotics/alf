@@ -5,7 +5,7 @@
 
 ![CI](https://github.com/HorizonRobotics/alf/workflows/CI/badge.svg?branch=pytorch)
 
-Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [PyTorch](https://pytorch.org/).
+Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [PyTorch](https://pytorch.org/). The development of [previous version](https://github.com/HorizonRobotics/alf/tree/master) based on [Tensorflow 2.1](https://www.tensorflow.org/) has been stopped. 
 
 ## Algorithms
 
@@ -29,6 +29,7 @@ git clone https://github.com/HorizonRobotics/alf
 cd alf
 pip install -e .
 ```
+## [Documentation](https://alf.readthedocs.io/)
 
 ## Examples
 
@@ -40,7 +41,8 @@ python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
 ```
 GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
 You can find sample gin configuration files for different tasks under directory
-[alf/examples](alf/examples). LOG_DIR is the directory when you want to store
+[alf/examples](alf/examples) (note that some of the examples have not been converted to use
+the latest pytorch version of ALF). LOG_DIR is the directory when you want to store
 the training results.
 
 During training, you can use tensorboard to show the progress of training:
