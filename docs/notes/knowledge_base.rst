@@ -173,7 +173,7 @@ this, we create an environemnt in the following way to avoid
   gym_spec = gym.spec(environment_name)
   gym_env = gym_spec.make()
 
-Then we use the wrapper :code:`environments.torch_wrappers.TimeLimit` to wrap
+Then we use the wrapper :code:`environments.alf_wrappers.TimeLimit` to wrap
 the environment to limit the steps so that it does not change the discount when
 :code:`max_episode_steps` is reached.
 

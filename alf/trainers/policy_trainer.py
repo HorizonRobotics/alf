@@ -192,6 +192,7 @@ class Trainer(object):
 
     def train(self):
         """Perform training."""
+        #os.system("taskset -p -c %s %d" % (','.join([str(i) for i in range(20, 32)]), os.getpid()))
         self._restore_checkpoint()
         alf.summary.enable_summary()
         try:
@@ -325,6 +326,7 @@ class Trainer(object):
         common.log_metrics(self._eval_metrics)
 
 
+@torch.no_grad()
 def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
@@ -359,7 +361,7 @@ def play(root_dir,
 
     Args:
         root_dir (str): same as the root_dir used for `train()`
-        env (TorchEnvironment): the environment
+        env (AlfEnvironment): the environment
         algorithm (RLAlgorithm): the training algorithm
         checkpoint_step (int|str): the number of training steps which is used to
             specify the checkpoint to be loaded. If checkpoint_step is 'latest',
@@ -397,14 +399,13 @@ def play(root_dir,
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        with torch.no_grad():
-            time_step, policy_state = _step(
-                algorithm=algorithm,
-                env=env,
-                time_step=time_step,
-                policy_state=policy_state,
-                epsilon_greedy=epsilon_greedy,
-                metrics=[])
+        time_step, policy_state = _step(
+            algorithm=algorithm,
+            env=env,
+            time_step=time_step,
+            policy_state=policy_state,
+            epsilon_greedy=epsilon_greedy,
+            metrics=[])
         episode_length += 1
         if recorder:
             recorder.capture_frame()

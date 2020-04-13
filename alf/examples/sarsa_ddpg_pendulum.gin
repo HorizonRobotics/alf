@@ -2,7 +2,7 @@ include 'sarsa_ddpg.gin'
 
 # environment config
 RandomFirstEpisodeLength.random_length_range=200
-suite_gym.load.torch_env_wrappers=(@RandomFirstEpisodeLength, )
+suite_gym.load.alf_env_wrappers=(@RandomFirstEpisodeLength, )
 create_environment.env_name="Pendulum-v0"
 create_environment.num_parallel_environments=1
 

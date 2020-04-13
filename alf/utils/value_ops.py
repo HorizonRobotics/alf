@@ -60,8 +60,7 @@ def action_importance_ratio(action_distribution, collect_action_distribution,
     current_policy_distribution = action_distribution
 
     sample_action_log_probs = dist_utils.compute_log_probability(
-        collect_action_distribution, action)
-    sample_action_log_probs = sample_action_log_probs.detach()
+        collect_action_distribution, action).detach()
 
     action_log_prob = dist_utils.compute_log_probability(
         current_policy_distribution, action)

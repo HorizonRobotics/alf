@@ -57,9 +57,8 @@ except ImportError:
 import alf
 import alf.data_structures as ds
 from alf.utils import common
-from .torch_environment import TorchEnvironment
-from .process_environment import array_to_tensor, tensor_to_array
 from .suite_socialbot import _get_unused_port
+from .alf_environment import AlfEnvironment
 
 
 def is_available():
@@ -1137,7 +1136,7 @@ class CarlaServer(object):
 
 
 @gin.configurable
-class CarlaEnvironment(TorchEnvironment):
+class CarlaEnvironment(AlfEnvironment):
     """Carla simulation environment.
 
     In order to use it, you need to either download a valid docker image or
@@ -1308,7 +1307,7 @@ class CarlaEnvironment(TorchEnvironment):
         return self._players[0].render(mode)
 
     def _step(self, action):
-        action = tensor_to_array(action)
+        action = alf.nest.map_structure(lambda x: x.cpu().numpy(), action)
         commands = []
         for player, act in zip(self._players, action):
             commands.extend(player.act(act))
@@ -1324,7 +1323,7 @@ class CarlaEnvironment(TorchEnvironment):
             for player in self._players
         ]
         time_step = alf.nest.map_structure(lambda *a: np.stack(a), *time_step)
-        time_step = array_to_tensor(time_step)
+        time_step = alf.nest.map_structure(torch.as_tensor, time_step)
 
         common.check_numerics(time_step)
 

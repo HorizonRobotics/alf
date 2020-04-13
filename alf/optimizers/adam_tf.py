@@ -17,8 +17,8 @@ import torch
 from torch.optim import Optimizer
 
 
-class AdamTFUnwrapped(Optimizer):
-    """Implementation of Adam algorithm following Tensorflow's convention.
+class AdamTF(Optimizer):
+    r"""Implementation of Adam algorithm following Tensorflow's convention.
 
     This class should not be direclty used as it will be wrapped for clipping
     gradients. Use the wrapped optimizer ``AdamTF`` in ``alf/optimizers/optimizers.py``

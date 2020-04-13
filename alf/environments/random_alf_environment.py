@@ -20,12 +20,12 @@ import numpy as np
 import torch
 
 import alf.data_structures as ds
-from alf.environments import torch_environment
+from alf.environments import alf_environment
 from alf.nest import nest
 import alf.tensor_specs as ts
 
 
-class RandomTorchEnvironment(torch_environment.TorchEnvironment):
+class RandomAlfEnvironment(alf_environment.AlfEnvironment):
     """Randomly generates observations following the given observation_spec.
 
     If an action_spec is provided it validates that the actions used to step the
@@ -108,7 +108,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         self._max_duration = max_duration
         self._rng = np.random.RandomState(seed)
         self._render_size = render_size
-        super(RandomTorchEnvironment, self).__init__()
+        super(RandomAlfEnvironment, self).__init__()
 
     def observation_spec(self):
         return self._observation_spec

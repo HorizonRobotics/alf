@@ -420,7 +420,6 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_pr2(self):
         self._test(
             gin_file='ppo_pr2.gin',

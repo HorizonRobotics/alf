@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the parallel_torch_environment. 
+"""Tests for the parallel_environment.
 Adapted from TF-Agents' parallel_py_environment_test.py
 """
 
@@ -24,21 +24,21 @@ import torch
 
 import alf
 import alf.data_structures as ds
-from alf.environments import parallel_torch_environment
-from alf.environments.random_torch_environment import RandomTorchEnvironment
+from alf.environments import parallel_environment
+from alf.environments.random_alf_environment import RandomAlfEnvironment
 import alf.tensor_specs as ts
 
 
-class SlowStartingEnvironment(RandomTorchEnvironment):
+class SlowStartingEnvironment(RandomAlfEnvironment):
     def __init__(self, *args, **kwargs):
         time_sleep = kwargs.pop('time_sleep', 1.0)
         time.sleep(time_sleep)
         super(SlowStartingEnvironment, self).__init__(*args, **kwargs)
 
 
-class ParallelTorchEnvironmentTest(alf.test.TestCase):
+class ParallelAlfEnvironmentTest(alf.test.TestCase):
     def setUp(self):
-        parallel_torch_environment.multiprocessing = dummy_multiprocessing
+        parallel_environment.multiprocessing = dummy_multiprocessing
 
     def _set_default_specs(self):
         self.observation_spec = ts.TensorSpec((3, 3), torch.float32)
@@ -49,25 +49,25 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
         self.time_step_spec = ds.time_step_spec(self.observation_spec,
                                                 self.action_spec)
 
-    def _make_parallel_torch_environment(self,
-                                         constructor=None,
-                                         num_envs=2,
-                                         start_serially=True,
-                                         blocking=True):
+    def _make_parallel_environment(self,
+                                   constructor=None,
+                                   num_envs=2,
+                                   start_serially=True,
+                                   blocking=True):
         self._set_default_specs()
         constructor = constructor or functools.partial(
-            RandomTorchEnvironment, self.observation_spec, self.action_spec)
-        return parallel_torch_environment.ParallelTorchEnvironment(
+            RandomAlfEnvironment, self.observation_spec, self.action_spec)
+        return parallel_environment.ParallelAlfEnvironment(
             env_constructors=[constructor] * num_envs,
             blocking=blocking,
             start_serially=start_serially)
 
     def test_close_no_hang_after_init(self):
-        env = self._make_parallel_torch_environment()
+        env = self._make_parallel_environment()
         env.close()
 
     def test_get_specs(self):
-        env = self._make_parallel_torch_environment()
+        env = self._make_parallel_environment()
         self.assertEqual(self.observation_spec, env.observation_spec())
         self.assertEqual(self.time_step_spec, env.time_step_spec())
         self.assertEqual(self.action_spec, env.action_spec())
@@ -76,7 +76,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
 
     def test_step(self):
         num_envs = 2
-        env = self._make_parallel_torch_environment(num_envs=num_envs)
+        env = self._make_parallel_environment(num_envs=num_envs)
 
         action_spec = env.action_spec()
         observation_spec = env.observation_spec()
@@ -105,7 +105,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
             self.action_spec,
             time_sleep=1.0)
         start_time = time.time()
-        env = self._make_parallel_torch_environment(
+        env = self._make_parallel_environment(
             constructor=constructor,
             num_envs=10,
             start_serially=False,
@@ -126,7 +126,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
             self.action_spec,
             time_sleep=1.0)
         start_time = time.time()
-        env = self._make_parallel_torch_environment(
+        env = self._make_parallel_environment(
             constructor=constructor,
             num_envs=10,
             start_serially=True,
@@ -142,7 +142,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
 
     def test_unstack_actions(self):
         num_envs = 2
-        env = self._make_parallel_torch_environment(num_envs=num_envs)
+        env = self._make_parallel_environment(num_envs=num_envs)
         action_spec = env.action_spec()
         batched_action = torch.stack(
             [action_spec.sample() for _ in range(num_envs)])
@@ -155,7 +155,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
 
     def test_unstack_nested_actions(self):
         num_envs = 2
-        env = self._make_parallel_torch_environment(num_envs=num_envs)
+        env = self._make_parallel_environment(num_envs=num_envs)
         action_spec = env.action_spec()
         batched_action = torch.stack(
             [action_spec.sample() for _ in range(num_envs)])
@@ -167,7 +167,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
             pass
 
         nested_action = NestedAction(
-            action=batched_action, other_var=np.array([13.0] * num_envs))
+            action=batched_action, other_var=torch.tensor([13.0] * num_envs))
         unstacked_actions = env._unstack_actions(nested_action)
         for nested_action in unstacked_actions:
             self.assertEqual(
@@ -177,7 +177,7 @@ class ParallelTorchEnvironmentTest(alf.test.TestCase):
 
     def test_seedable(self):
         seeds = [0, 1]
-        env = self._make_parallel_torch_environment()
+        env = self._make_parallel_environment()
         env.seed(seeds)
         self.assertEqual(
             np.random.RandomState(0).get_state()[1][-1],

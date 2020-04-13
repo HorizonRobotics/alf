@@ -14,7 +14,6 @@
 """Functions for handling nest."""
 
 from absl import logging
-from collections import OrderedDict
 
 import torch
 

@@ -19,7 +19,7 @@ import torch
 import alf
 from alf.utils import common
 from alf.utils import tensor_utils
-from alf.optimizers.adam_tf import AdamTFUnwrapped
+from . import adam_tf
 
 
 def wrap_optimizer(cls):
@@ -87,4 +87,4 @@ AdamW = gin.external_configurable(wrap_optimizer(torch.optim.AdamW), 'AdamW')
 
 SGD = gin.external_configurable(wrap_optimizer(torch.optim.SGD), 'SGD')
 
-AdamTF = gin.external_configurable(wrap_optimizer(AdamTFUnwrapped), 'AdamTF')
+AdamTF = gin.external_configurable(wrap_optimizer(adam_tf.AdamTF), 'AdamTF')

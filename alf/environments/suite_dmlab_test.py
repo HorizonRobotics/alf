@@ -17,8 +17,8 @@ import functools
 import gin
 
 import alf
-from alf.environments import gym_wrappers, suite_dmlab, torch_environment
-from alf.environments import parallel_torch_environment, thread_torch_environment
+from alf.environments import gym_wrappers, suite_dmlab, alf_environment
+from alf.environments import parallel_environment, thread_environment
 
 
 class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
@@ -62,7 +62,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
                 gym_wrappers.FrameStack
             ],
             wrap_with_process=True)
-        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
+        self.assertIsInstance(self._env, alf_environment.AlfEnvironment)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
         for _ in range(10):
@@ -71,7 +71,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_thread_env(self):
         scene = 'lt_chasm'
-        self._env = thread_torch_environment.ThreadTorchEnvironment(
+        self._env = thread_environment.ThreadEnvironment(
             lambda: suite_dmlab.load(
                 scene=scene,
                 gym_env_wrappers=[
@@ -79,7 +79,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
                     gym_wrappers.FrameStack
                 ],
                 wrap_with_process=False))
-        self.assertIsInstance(self._env, torch_environment.TorchEnvironment)
+        self.assertIsInstance(self._env, alf_environment.AlfEnvironment)
         self.assertEqual((4, 84, 84), self._env.observation_spec().shape)
 
         for _ in range(10):
@@ -101,7 +101,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
         constructor = functools.partial(ctor, scene)
 
-        self._env = parallel_torch_environment.ParallelTorchEnvironment(
+        self._env = parallel_environment.ParallelEnvironment(
             [constructor] * env_num)
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
@@ -120,8 +120,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
         constructor = functools.partial(ctor, scene)
 
-        self._env = parallel_torch_environment.ParallelTorchEnvironment(
-            [constructor] * 5)
+        self._env = parallel_environment.ParallelEnvironment([constructor] * 5)
         self.assertEqual((3, 84, 84), self._env.observation_spec().shape)
 
         for _ in range(10):

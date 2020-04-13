@@ -18,15 +18,15 @@ from absl.testing import parameterized
 import torch
 import numpy as np
 
-from alf.environments.random_torch_environment import RandomTorchEnvironment
+from alf.environments.random_alf_environment import RandomAlfEnvironment
 from alf.tensor_specs import BoundedTensorSpec
 
 
-class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
+class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
     def testEnvResetAutomatically(self):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec([], torch.int32)
-        env = RandomTorchEnvironment(obs_spec, action_spec)
+        env = RandomAlfEnvironment(obs_spec, action_spec)
 
         action = torch.tensor(0, dtype=torch.int64)
         time_step = env.step(action)
@@ -51,7 +51,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
     def testEnvMinDuration(self, min_duration):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec([], torch.int32)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
             episode_end_probability=0.9,
@@ -75,7 +75,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
     def testEnvMaxDuration(self, max_duration):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec([], torch.int32)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
             episode_end_probability=0.1,
@@ -98,7 +98,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
 
         action_spec = BoundedTensorSpec((1, ), torch.int64, -10, 10)
         observation_spec = BoundedTensorSpec((1, ), torch.int32, -10, 10)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             observation_spec, action_spec, reward_fn=reward_fn)
 
         action = torch.tensor(1, dtype=torch.int64)
@@ -112,7 +112,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
     def testRendersImage(self):
         action_spec = BoundedTensorSpec((1, ), torch.int64, -10, 10)
         observation_spec = BoundedTensorSpec((1, ), torch.int32, -10, 10)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             observation_spec, action_spec, render_size=(4, 4, 3))
 
         env.reset()
@@ -127,7 +127,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         batch_size = 3
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             obs_spec, action_spec, batch_size=batch_size)
         time_step = env.step(torch.tensor(0, dtype=torch.int64))
         self.assertEqual(time_step.observation.shape, (3, 2, 3))
@@ -138,7 +138,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
         batch_size = 3
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
             reward_fn=lambda *_: torch.ones(batch_size),
@@ -153,7 +153,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         # Ensure batch size 1 with scalar reward works
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
             reward_fn=lambda *_: torch.tensor([1.0]),
@@ -169,7 +169,7 @@ class RandomTorchEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         # ValueError
         obs_spec = BoundedTensorSpec((2, 3), torch.int32, -10, 10)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
-        env = RandomTorchEnvironment(
+        env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
             reward_fn=lambda *_: torch.tensor([1.0]),

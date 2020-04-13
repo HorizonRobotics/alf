@@ -23,29 +23,27 @@ import gin
 import numpy as np
 import random
 import six
-import torch
 
 from alf.data_structures import StepType, TimeStep
-from alf.environments import torch_environment
+from alf.environments.alf_environment import AlfEnvironment
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils import spec_utils
-from alf.utils.tensor_utils import to_tensor
 
 
-class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
-    """TorchEnvironment wrapper forwards calls to the given environment."""
+class AlfEnvironmentBaseWrapper(AlfEnvironment):
+    """AlfEnvironment wrapper forwards calls to the given environment."""
 
     def __init__(self, env):
         """Create a torch environment base wrapper.
 
         Args:
-            env (TorchEnvironment): A TorchEnvironment instance to wrap.
+            env (AlfEnvironment): An AlfEnvironment instance to wrap.
 
         Returns:
-            A wrapped TorchEnvironment
+            A wrapped AlfEnvironment
         """
-        super(TorchEnvironmentBaseWrapper, self).__init__()
+        super(AlfEnvironmentBaseWrapper, self).__init__()
         self._env = env
 
     def __getattr__(self, name):
@@ -93,14 +91,14 @@ class TorchEnvironmentBaseWrapper(torch_environment.TorchEnvironment):
 
 # Used in ALF
 @gin.configurable
-class TimeLimit(TorchEnvironmentBaseWrapper):
+class TimeLimit(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
     def __init__(self, env, duration):
         """Create a TimeLimit torch environment.
 
         Args:
-            env (TorchEnvironment): An TorchEnvironment instance to wrap.
+            env (AlfEnvironment): An AlfEnvironment instance to wrap.
             duration (int): time limit, usually set to be the max_eposode_steps
                 of the environment.
         """
@@ -120,7 +118,7 @@ class TimeLimit(TorchEnvironmentBaseWrapper):
 
         self._num_steps += 1
         if self._num_steps >= self._duration:
-            time_step = time_step._replace(step_type=to_tensor(StepType.LAST))
+            time_step = time_step._replace(step_type=StepType.LAST)
 
         if time_step.is_last():
             self._num_steps = None
@@ -159,14 +157,14 @@ def _observation_channel_transpose(time_step):
 
 
 @gin.configurable
-class ImageChannelFirst(TorchEnvironmentBaseWrapper):
+class ImageChannelFirst(AlfEnvironmentBaseWrapper):
     """Make images in observations channel_first. """
 
     def __init__(self, env):
         """Create a TimeLimit torch environment.
 
         Args:
-            env (TorchEnvironment): An TorchEnvironment instance to wrap.
+            env (AlfEnvironment): An AlfEnvironment instance to wrap.
         """
         super(ImageChannelFirst, self).__init__(env)
 
@@ -186,14 +184,14 @@ class ImageChannelFirst(TorchEnvironmentBaseWrapper):
 
 
 @gin.configurable
-class PerformanceProfiler(TorchEnvironmentBaseWrapper):
+class PerformanceProfiler(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
     def __init__(self, env, process_profile_fn, process_steps):
         """Create a PerformanceProfiler that uses cProfile to profile env execution.
 
         Args:
-            env (TorchEnvironment): A TorchEnvironment instance to wrap.
+            env (AlfEnvironment): An AlfEnvironment instance to wrap.
             process_profile_fn (Callable): A callback that accepts a `Profile` object.
                 After `process_profile_fn` is called, profile information is reset.
             process_steps (int): The frequency with which `process_profile_fn` is
@@ -245,7 +243,7 @@ class PerformanceProfiler(TorchEnvironmentBaseWrapper):
 
 # TODO: trajectory is not a data structure in alf.
 @six.add_metaclass(abc.ABCMeta)
-class GoalReplayEnvWrapper(TorchEnvironmentBaseWrapper):
+class GoalReplayEnvWrapper(AlfEnvironmentBaseWrapper):
     """Adds a goal to the observation, used for HER (Hindsight Experience Replay).
 
     Sources:
@@ -259,7 +257,7 @@ class GoalReplayEnvWrapper(TorchEnvironmentBaseWrapper):
         """Create a wrapper to add a goal to the observation.
 
         Args:
-            env (TorchEnvironment): A TorchEnvironment isinstance to wrap.
+            env (AlfEnvironment): An AlfEnvironment isinstance to wrap.
 
         Raises:
             ValueError: If environment observation is not a dict
@@ -317,7 +315,7 @@ class GoalReplayEnvWrapper(TorchEnvironmentBaseWrapper):
 
 # Used in ALF
 @gin.configurable
-class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
+class NonEpisodicAgent(AlfEnvironmentBaseWrapper):
     """
     Make the agent non-episodic by replacing all termination time steps with
     a non-zero discount (essentially the same type as returned by the TimeLimit
@@ -353,7 +351,7 @@ class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
         """Create a NonEpisodicAgent wrapper.
 
         Args:
-            env (TorchEnvironment): A TorchEnvironment instance to wrap.
+            env (AlfEnvironment): An AlfEnvironment instance to wrap.
             discount (float): discount of the environment.
         """
         super().__init__(env)
@@ -364,14 +362,13 @@ class NonEpisodicAgent(TorchEnvironmentBaseWrapper):
         if time_step.is_last():
             # We set a non-zero discount so that the target value would not be
             # zero (non-episodic).
-            time_step = time_step._replace(
-                discount=torch.as_tensor(self._discount, torch.float32))
+            time_step = time_step._replace(discount=np.float32(self._discount))
         return time_step
 
 
 # Used in ALF
 @gin.configurable
-class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
+class RandomFirstEpisodeLength(AlfEnvironmentBaseWrapper):
     """Randomize the length of the first episode.
 
     The motivation is to make the observations less correlated for the
@@ -379,14 +376,14 @@ class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
 
     Example usage:
         RandomFirstEpisodeLength.random_length_range=200
-        suite_gym.load.torch_env_wrappers=(@RandomFirstEpisodeLength, )
+        suite_gym.load.alf_env_wrappers=(@RandomFirstEpisodeLength, )
     """
 
     def __init__(self, env, random_length_range, num_episodes=1):
         """Create a RandomFirstEpisodeLength wrapper.
 
         Args:
-            env (TorchEnvironment): A TorchEnvironment isinstance to wrap.
+            env (AlfEnvironment): An AlfEnvironment isinstance to wrap.
             random_length_range (int): [1, random_length_range]
             num_episodes (int): randomize the episode length for the first so
                 many episodes.
@@ -411,7 +408,7 @@ class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
         self._num_steps += 1
         if (self._episode < self._num_episodes
                 and self._num_steps >= self._max_length):
-            time_step = time_step._replace(step_type=to_tensor(StepType.LAST))
+            time_step = time_step._replace(step_type=StepType.LAST)
             self._max_length = random.randint(1, self._random_length_range)
             self._episode += 1
 

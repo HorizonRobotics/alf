@@ -19,8 +19,8 @@ import random
 import torch
 
 from alf.environments import suite_gym
-from alf.environments import thread_torch_environment, parallel_torch_environment
-from alf.environments import torch_wrappers
+from alf.environments import thread_environment, parallel_environment
+from alf.environments import alf_wrappers
 
 
 class UnwrappedEnvChecker(object):
@@ -71,13 +71,13 @@ def create_environment(env_name='CartPole-v0',
             If env_load_fn has attribute ``batched`` and it is True,
             ``evn_load_fn(env_name, batch_size=num_parallel_environments)``
             will be used to create the batched environment. Otherwise, a
-            ``ParallTorchEnvironment`` will be created.
+            ``ParallAlfEnvironment`` will be created.
         num_parallel_environments (int): num of parallel environments
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
 
     Returns:
-        TorchEnvironment:
+        AlfEnvironment:
     """
 
     if hasattr(env_load_fn, 'batched') and env_load_fn.batched:
@@ -92,8 +92,8 @@ def create_environment(env_name='CartPole-v0',
         # Create and step the env in a separate thread. env `step` and `reset` must
         #   run in the same thread which the env is created in for some simulation
         #   environments such as social_bot(gazebo)
-        torch_env = thread_torch_environment.ThreadTorchEnvironment(
-            lambda: env_load_fn(env_name))
+        torch_env = thread_environment.ThreadEnvironment(lambda: env_load_fn(
+            env_name))
         if seed is None:
             torch_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
         else:
@@ -101,10 +101,10 @@ def create_environment(env_name='CartPole-v0',
     else:
         # flatten=True will use flattened action and time_step in
         #   process environments to reduce communication overhead.
-        torch_env = parallel_torch_environment.ParallelTorchEnvironment(
+        torch_env = parallel_environment.ParallelAlfEnvironment(
             [functools.partial(env_load_fn, env_name)] *
             num_parallel_environments,
-            flatten=False)
+            flatten=True)
 
         if seed is None:
             torch_env.seed([
@@ -136,7 +136,7 @@ def load_with_random_max_episode_steps(env_name,
         min_steps (int): represent min value of the random range
         max_steps (int): represent max value of the random range
     Returns:
-        TorchEnvironment:
+        AlfEnvironment:
     """
     return env_load_fn(
         env_name, max_episode_steps=random.randint(min_steps, max_steps))

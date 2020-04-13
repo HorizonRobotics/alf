@@ -537,7 +537,7 @@ def get_initial_policy_state(batch_size, policy_state_spec):
 def get_initial_time_step(env, first_env_id=0):
     """Return the initial time step.
     Args:
-        env (TorchEnvironment):
+        env (AlfEnvironment):
         first_env_id (int): the environment ID for the first sample in this
             batch.
     Returns:

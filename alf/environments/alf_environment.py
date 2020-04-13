@@ -25,7 +25,7 @@ from alf.data_structures import time_step_spec
 
 
 @six.add_metaclass(abc.ABCMeta)
-class TorchEnvironment(object):
+class AlfEnvironment(object):
     """Abstract base class for Torch RL environments.
 
     Observations and valid actions are described with ``TensorSpec``s, defined in
@@ -54,7 +54,7 @@ class TorchEnvironment(object):
 
     .. code-block:: python
 
-        env = TorchEnvironment()
+        env = AlfEnvironment()
 
         # reset() creates the initial time_step and resets the environment.
         time_step = env.reset()
@@ -102,6 +102,9 @@ class TorchEnvironment(object):
                 'Environment %s marked itself as batched but did not override the '
                 'batch_size property' % type(self))
         return 1
+
+    def env_info_spec(self):
+        return {}
 
     @abc.abstractmethod
     def observation_spec(self):

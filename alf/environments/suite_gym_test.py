@@ -19,9 +19,9 @@ import gin
 
 import alf
 from alf.environments import suite_gym
-from alf.environments import torch_wrappers
+from alf.environments import alf_wrappers
 from alf.environments.gym_wrappers import DMAtariPreprocessing, FrameStack
-from alf.environments.torch_environment import TorchEnvironment
+from alf.environments.alf_environment import AlfEnvironment
 
 
 class SuiteGymTest(alf.test.TestCase):
@@ -31,35 +31,35 @@ class SuiteGymTest(alf.test.TestCase):
 
     def test_load_adds_time_limit_steps(self):
         env = suite_gym.load('CartPole-v1')
-        self.assertIsInstance(env, TorchEnvironment)
-        self.assertIsInstance(env, torch_wrappers.TimeLimit)
+        self.assertIsInstance(env, AlfEnvironment)
+        self.assertIsInstance(env, alf_wrappers.TimeLimit)
 
     def test_load_disable_step_limit(self):
         env = suite_gym.load('CartPole-v1', max_episode_steps=0)
-        self.assertIsInstance(env, TorchEnvironment)
-        self.assertNotIsInstance(env, torch_wrappers.TimeLimit)
+        self.assertIsInstance(env, AlfEnvironment)
+        self.assertNotIsInstance(env, alf_wrappers.TimeLimit)
 
-    def test_load_disable_torch_wrappers_applied(self):
+    def test_load_disable_alf_wrappers_applied(self):
         duration_wrapper = functools.partial(
-            torch_wrappers.TimeLimit, duration=10)
+            alf_wrappers.TimeLimit, duration=10)
         env = suite_gym.load(
             'CartPole-v1',
             max_episode_steps=0,
-            torch_env_wrappers=(duration_wrapper, ))
-        self.assertIsInstance(env, TorchEnvironment)
-        self.assertIsInstance(env, torch_wrappers.TimeLimit)
+            alf_env_wrappers=(duration_wrapper, ))
+        self.assertIsInstance(env, AlfEnvironment)
+        self.assertIsInstance(env, alf_wrappers.TimeLimit)
 
     def test_custom_max_steps(self):
         env = suite_gym.load('CartPole-v1', max_episode_steps=5)
-        self.assertIsInstance(env, TorchEnvironment)
-        self.assertIsInstance(env, torch_wrappers.TimeLimit)
+        self.assertIsInstance(env, AlfEnvironment)
+        self.assertIsInstance(env, alf_wrappers.TimeLimit)
         self.assertEqual(5, env._duration)
 
     def test_load_atari(self):
         env = suite_gym.load(
             'BreakoutNoFrameskip-v4',
             gym_env_wrappers=(DMAtariPreprocessing, FrameStack))
-        self.assertIsInstance(env, TorchEnvironment)
+        self.assertIsInstance(env, AlfEnvironment)
 
     # # TODO: unittest does not have test_src_dir_path
     # def testGinConfig(self):
@@ -67,8 +67,8 @@ class SuiteGymTest(alf.test.TestCase):
     #         unittest.test_src_dir_path('environments/configs/suite_gym.gin')
     #     )
     #     env = suite_gym.load()
-    #     self.assertIsInstance(env, TorchEnvironment)
-    #     self.assertIsInstance(env, torch_wrappers.TimeLimit)
+    #     self.assertIsInstance(env, AlfEnvironment)
+    #     self.assertIsInstance(env, alf_wrappers.TimeLimit)
 
 
 if __name__ == '__main__':
