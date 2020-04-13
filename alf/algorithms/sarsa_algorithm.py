@@ -73,6 +73,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  action_spec,
                  actor_network: Network,
                  critic_network: Network,
+                 use_parallel_network=False,
                  env=None,
                  config=None,
                  critic_loss_cls=OneStepTDLoss,
