@@ -36,7 +36,7 @@ def atomic(func):
     must have _lock set to None or a multiprocessing.Lock object.
 
     Args:
-        func: the function to be wrapped.
+        func (callable): the function to be wrapped.
 
     Returns:
         the wrapped function
@@ -403,15 +403,15 @@ class DataBuffer(RingBuffer):
         with alf.device(self._device):
             batch = convert_device(batch)
             n = torch.min(self._capacity, torch.as_tensor(batch_size))
-            indices = torch.arange(self._current_pos[0],
-                                   self._current_pos[0] + n) % self._capacity
+            indices = torch.arange(self.current_pos,
+                                   self.current_pos + n) % self._capacity
             alf.nest.map_structure(
                 lambda buf, bat: buf[0].__setitem__(indices, bat[-n:].detach()
                                                     ), self._buffer, batch)
 
-            self._current_pos.copy_((self._current_pos + n) % self._capacity)
-            self._current_size.copy_(
-                torch.min(self._current_size + n, self._capacity))
+            self.current_pos.copy_((self.current_pos + n) % self._capacity)
+            self.current_size.copy_(
+                torch.min(self.current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
         """Get batsh_size random samples in the buffer.
@@ -424,7 +424,7 @@ class DataBuffer(RingBuffer):
         with alf.device(self._device):
             indices = torch.randint(
                 low=0,
-                high=self._current_size[0],
+                high=self.current_size,
                 size=(batch_size, ),
                 dtype=torch.int64)
             result = self.get_batch_by_indices(indices)
@@ -443,8 +443,8 @@ class DataBuffer(RingBuffer):
         with alf.device(self._device):
             indices = convert_device(indices)
             indices.copy_(
-                (indices + (self._current_pos[0] - self._current_size[0])) %
-                self._capacity)
+                (indices +
+                 (self.current_pos - self.current_size)) % self._capacity)
             result = alf.nest.map_structure(lambda buf: buf[0][indices],
                                             self._buffer)
         return convert_device(result)
@@ -452,6 +452,14 @@ class DataBuffer(RingBuffer):
     @property
     def current_size(self):
         return self._current_size[0]
+
+    @property
+    def current_pos(self):
+        return self._current_pos[0]
+
+    @property
+    def buffer(self):
+        return self._buffer[0]
 
     def get_all(self):
         return convert_device(
@@ -463,11 +471,11 @@ class DataBuffer(RingBuffer):
         Returns:
             None
         """
-        self._current_pos.fill_(0)
-        self._current_size.fill_(0)
+        self.current_pos.fill_(0)
+        self.current_size.fill_(0)
 
     def pop(self, n):
         """Remove last n items."""
-        n = torch.min(torch.as_tensor(n), self._current_size)
-        self._current_size.cppy_(self._current_size - n)
-        self._current_pos.copy_((self._current_pos - n) % self._capacity)
+        n = torch.min(torch.as_tensor(n), self.current_size)
+        self.current_size.cppy_(self.current_size - n)
+        self.current_pos.copy_((self.current_pos - n) % self._capacity)
