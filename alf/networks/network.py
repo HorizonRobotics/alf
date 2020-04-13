@@ -222,8 +222,7 @@ class PreprocessorNetwork(Network):
             self._input_preprocessor_modules.append(preproc)
             return preproc(spec)
 
-        self._input_preprocessors = alf.nest.map_structure(
-            lambda _: math_ops.identity, input_tensor_spec)
+        self._input_preprocessors = None
         if input_preprocessors is not None:
             input_preprocessors = alf.nest.pack_sequence_as(
                 input_tensor_spec, alf.nest.flatten(input_preprocessors))
@@ -251,9 +250,11 @@ class PreprocessorNetwork(Network):
 
     def forward(self, inputs, state=()):
         """Preprocessing nested inputs."""
-        proc_inputs = self._preprocessing_combiner(
-            alf.nest.map_structure(lambda preproc, tensor: preproc(tensor),
-                                   self._input_preprocessors, inputs))
+        if self._input_preprocessors:
+            inputs = alf.nest.map_structure(
+                lambda preproc, tensor: preproc(tensor),
+                self._input_preprocessors, inputs)
+        proc_inputs = self._preprocessing_combiner(inputs)
         assert get_outer_rank(proc_inputs, self._processed_input_tensor_spec) == 1, \
             ("Only supports one outer rank (batch dim)! "
             + "After preprocessing: inputs size {} vs. input tensor spec {}".format(

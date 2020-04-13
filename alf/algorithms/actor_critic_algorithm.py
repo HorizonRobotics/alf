@@ -54,7 +54,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
                 simultateously. env only needs to be provided to the root
                 Algorithm.
             config (TrainerConfig): config for training. config only needs to be
-                provided to the algorithm which performs `train_iter()` by
+                provided to the algorithm which performs ``train_iter()`` by
                 itself.
             actor_network : A network that returns nested
                 tensor of action distribution for each observation given observation
@@ -65,7 +65,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             loss (None|ActorCriticLoss): an object for calculating loss. If
                 None, a default loss of class loss_class will be used.
             loss_class (type): the class of the loss. The signature of its
-                constructor: loss_class(action_spec, debug_summaries)
+                constructor: ``loss_class(debug_summaries)``
             optimizer (torch.optim.Optimizer): The optimizer for training
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.

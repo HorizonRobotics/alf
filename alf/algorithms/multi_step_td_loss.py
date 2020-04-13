@@ -42,7 +42,7 @@ class MultiStepTDLoss(nn.Module):
         the generalized advantage estimation :math:`\hat{A}^{GAE}_t`:
             :math:`G_t^\lambda = \hat{A}^{GAE}_t + V(s_t)`
         where the generalized advantage estimation is defined as:
-            :math:`\hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))`
+            :math:`\hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))`
 
         References:
 
