@@ -388,6 +388,7 @@ class DataBuffer(RingBuffer):
             name=name)
         self._capacity = torch.as_tensor(
             self._max_length, dtype=torch.int64, device=device)
+        self.buffer = alf.nest.map_structure(lambda buf: buf[0], self._buffer)
 
     def add_batch(self, batch):
         """Add a batch of items to the buffer.
@@ -406,8 +407,8 @@ class DataBuffer(RingBuffer):
             indices = torch.arange(self.current_pos,
                                    self.current_pos + n) % self._capacity
             alf.nest.map_structure(
-                lambda buf, bat: buf[0].__setitem__(indices, bat[-n:].detach()
-                                                    ), self._buffer, batch)
+                lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
+                self.buffer, batch)
 
             self.current_pos.copy_((self.current_pos + n) % self._capacity)
             self.current_size.copy_(
@@ -445,8 +446,8 @@ class DataBuffer(RingBuffer):
             indices.copy_(
                 (indices +
                  (self.current_pos - self.current_size)) % self._capacity)
-            result = alf.nest.map_structure(lambda buf: buf[0][indices],
-                                            self._buffer)
+            result = alf.nest.map_structure(lambda buf: buf[indices],
+                                            self.buffer)
         return convert_device(result)
 
     @property
@@ -457,13 +458,9 @@ class DataBuffer(RingBuffer):
     def current_pos(self):
         return self._current_pos[0]
 
-    @property
-    def buffer(self):
-        return self._buffer[0]
-
     def get_all(self):
         return convert_device(
-            alf.nest.map_structure(lambda buf: buf[0], self._buffer))
+            alf.nest.map_structure(lambda buf: buf, self.buffer))
 
     def clear(self):
         """Clear the buffer.
