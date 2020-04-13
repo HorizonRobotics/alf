@@ -30,7 +30,7 @@ from alf.utils import math_ops
 @gin.configurable
 class VariationalAutoEncoder(Algorithm):
     r"""VariationalAutoEncoder encodes data into diagonal multivariate gaussian,
-    performs sampling with reparametrization trick, and returns kl divergence
+    performs sampling with reparametrization trick, and returns KL divergence
     between posterior and prior.
 
     Mathematically:
@@ -52,7 +52,7 @@ class VariationalAutoEncoder(Algorithm):
                  z_prior_network: EncodingNetwork = None,
                  beta=1.0,
                  name="VariationalAutoEncoder"):
-        """Create an instance of `VariationalAutoEncoder`.
+        """
 
         Args:
             z_dim (int): dimension of latent vector ``z``, namely, the dimension
@@ -106,8 +106,9 @@ class VariationalAutoEncoder(Algorithm):
                 tuple of ``(prior_input, new_observation)``.
 
         Returns:
-            (z, kl_loss): ``z`` is a tensor of shape (``B``, ``z_dim``), ``kl_loss``
-                is a tensor of shape (``B``,).
+            tuple:
+            - z (Tensor): ``z`` is a tensor of shape (``B``, ``z_dim``).
+            - kl_loss (Tensor): ``kl_loss`` is a tensor of shape (``B``,).
         """
         if self._z_prior_network:
             prior_input, new_obs = inputs

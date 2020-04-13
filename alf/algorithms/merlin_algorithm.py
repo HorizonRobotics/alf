@@ -321,7 +321,7 @@ class MemoryBasedActor(OnPolicyAlgorithm):
         """Train one step.
 
         Args:
-            time_step (TimeStep): time_step.observation should be the latent
+            time_step (TimeStep): ``time_step.observation`` should be the latent
                 vector.
             state (nested Tensor): state of the model
         """
@@ -389,20 +389,20 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
             decoders (nested Algorithm): the nest should match observation_spec
-            env (Environment): The environment to interact with. `env` is a
+            env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
                 parallel is crucial to on-policy algorithms as it increases the
-                diversity of data and decreases temporal correlation. `env` only
-                needs to be provided to the root `Algorithm`.
-            config (TrainerConfig): config for training. `config` only needs to
-                be provided to the algorithm which performs `train_iter()` by
+                diversity of data and decreases temporal correlation. ``env`` only
+                needs to be provided to the root ``Algorithm``.
+            config (TrainerConfig): config for training. ``config`` only needs to
+                be provided to the algorithm which performs ``train_iter()`` by
                 itself.
             latent_dim (int): the dimension of the hidden representation of VAE.
             lstm_size (list[int]): size of lstm layers for MBP and MBA
             memroy_size (int): number of memory slots
             rl_loss (None|ActorCriticLoss): an object for calculating the loss
-                for reinforcement learning. If None, a default ActorCriticLoss
+                for reinforcement learning. If None, a default ``ActorCriticLoss``
                 will be used.
             optimizer (torch.optim.Optimizer): The optimizer for training.
             debug_summaries: True if debug summaries should be created.
