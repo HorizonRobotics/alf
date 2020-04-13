@@ -350,7 +350,7 @@ class EncodingNetwork(PreprocessorNetwork):
                 flatten_output=True)
             input_size = self._img_encoding_net.output_spec.shape[0]
         else:
-            assert len(self._processed_input_tensor_spec.shape) == 1, \
+            assert self._processed_input_tensor_spec.ndim == 1, \
                 "The input shape {} should be like (N,)!".format(
                     self._processed_input_tensor_spec.shape)
             input_size = self._processed_input_tensor_spec.shape[0]
@@ -406,6 +406,20 @@ class EncodingNetwork(PreprocessorNetwork):
         return z, state
 
     def make_parallel(self, n):
+        """Make a parllelized version of this network.
+        
+        A parallel network has ``n`` copies of network with the same structure but
+        different indepently initialized parameters.
+
+        For supported network structures (currently, networks with only FC layers)
+        it will create ``ParallelCriticNetwork`` (PCN). Otherwise, it will
+        create a ``NaiveParallelNetwork`` (NPN). However, PCN is not always
+        faster than NPN. Especially for small ``n`` and large batch_size. See
+        ``test_make_parallel()`` in critic_networks_test.py for detail.
+        
+        Returns:
+            Network: A paralle network
+        """
         if (self.saved_args.get('conv_layer_params') is None
                 and self.saved_args.get('input_preprocessors') is None and
             (self._preprocessing_combiner == math_ops.identity or isinstance(
@@ -423,7 +437,6 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
     to have different settings from the other layers.
     """
 
-    # TODO: handle input_preprocessors and conv_layer_params
     def __init__(self,
                  input_tensor_spec,
                  n,
@@ -478,6 +491,9 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
             preprocessing_combiner=preprocessing_combiner,
             name=name)
 
+        # TODO: handle input_preprocessors and conv_layer_params
+        assert input_preprocessors is None and conv_layer_params is None
+
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
                 variance_scaling_init,
@@ -485,7 +501,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                 distribution='truncated_normal',
                 nonlinearity=activation)
 
-        assert len(self._processed_input_tensor_spec.shape) == 1, \
+        assert self._processed_input_tensor_spec.ndim == 1, \
             "The input shape {} should be like (N,)!".format(
                 self._processed_input_tensor_spec.shape)
         input_size = self._processed_input_tensor_spec.shape[0]

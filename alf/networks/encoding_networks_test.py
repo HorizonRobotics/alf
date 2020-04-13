@@ -14,9 +14,10 @@
 """Tests for alf.encoding_networks."""
 
 from absl.testing import parameterized
+from absl import logging
 import numpy as np
 import functools
-
+import time
 import torch
 import torch.nn as nn
 
@@ -29,7 +30,7 @@ from alf.networks import Network
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import common
+from alf.utils import common, math_ops
 from alf.nest.utils import NestSum, NestConcat
 
 
@@ -208,14 +209,16 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(output.size()[-1], 500)
 
     def test_make_parallel(self):
+        batch_size = 128
         input_spec = TensorSpec((100, ), torch.float32)
-        embedding = input_spec.zeros(outer_dims=(6, ))
 
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            fc_layer_params=(30, 40, 50),
-            activation=torch.tanh)
-        replicas = 4
+            fc_layer_params=(256, 256),
+            activation=nn.ReLU(inplace=True),
+            last_layer_size=1,
+            last_activation=math_ops.identity)
+        replicas = 2
         num_layers = 3
 
         pnet = network.make_parallel(replicas)
@@ -223,9 +226,29 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         self.assertEqual(len(list(pnet.parameters())), num_layers * 2)
 
-        output, _ = pnet(embedding)
-        self.assertEqual(output.shape, (6, replicas, 50))
-        self.assertEqual(pnet.output_spec.shape, (replicas, 50))
+        t0 = time.time()
+        outputs = []
+        for _ in range(1000):
+            embedding = input_spec.randn(outer_dims=(batch_size, ))
+            output, _ = pnet(embedding)
+            outputs.append(output)
+        o = math_ops.add_n(outputs).sum()
+        logging.info("ParallelEconcingNetwork time=%s %s" % (time.time() - t0,
+                                                             float(o)))
+
+        self.assertEqual(output.shape, (batch_size, replicas, 1))
+        self.assertEqual(pnet.output_spec.shape, (replicas, 1))
+
+        pnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
+        t0 = time.time()
+        outputs = []
+        for _ in range(1000):
+            embedding = input_spec.randn(outer_dims=(batch_size, ))
+            output, _ = pnet(embedding)
+            outputs.append(output)
+        o = math_ops.add_n(outputs).sum()
+        logging.info(
+            "NaiveParallelNetwork time=%s %s" % (time.time() - t0, float(o)))
 
 
 class EncodingNetworkSideEffectsTest(alf.test.TestCase):

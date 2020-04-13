@@ -101,6 +101,12 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 If its output is Distribution, an action will be sampled.
             critic_network (Network): The network will be called with
                 ``call(observation, action, step_type)``.
+            use_parallel_network (bool): whether to use parallel network for
+                calculating critics. This can be useful when
+                ``mini_batch_size * mini_batch_length`` (when ``temporally_independent_train_step``
+                is True)  or ``mini_batch_size``  (when ``temporally_independent_train_step``
+                is False) is not very large. You have to test to see which way
+                is faster for your particular situation.
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
@@ -150,7 +156,12 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             "SarsaAlgorithm only supports continuous action."
             " action_spec: %s" % action_spec)
 
-        critic_networks = critic_network.make_parallel(num_replicas)
+        if use_parallel_network:
+            critic_networks = critic_network.make_parallel(num_replicas)
+        else:
+            critic_networks = alf.networks.NaiveParallelNetwork(
+                critic_network, num_replicas)
+
         self._on_policy = on_policy
 
         if not actor_network.is_distribution_output:

@@ -184,9 +184,9 @@ class ParallelFC(nn.Module):
         """
         super().__init__()
         self._activation = activation
-        self._weight = nn.Parameter(torch.Tensor(n, input_size, output_size))
+        self._weight = nn.Parameter(torch.Tensor(n, output_size, input_size))
         if use_bias:
-            self._bias = nn.Parameter(torch.Tensor(n, 1, output_size))
+            self._bias = nn.Parameter(torch.Tensor(n, output_size))
         else:
             self._bias = None
 
@@ -212,31 +212,47 @@ class ParallelFC(nn.Module):
         """
         n, k, l = self._weight.shape
         if inputs.ndim == 2:
-            assert inputs.shape[1] == k, (
+            assert inputs.shape[1] == l, (
                 "inputs has wrong shape %s. Expecting (B, %d)" % (inputs.shape,
-                                                                  n))
+                                                                  l))
             inputs = inputs.unsqueeze(0).expand(n, *inputs.shape)
         elif inputs.ndim == 3:
-            assert (inputs.shape[1] == n and inputs.shape[2] == k), (
+            assert (inputs.shape[1] == n and inputs.shape[2] == l), (
                 "inputs has wrong shape %s. Expecting (B, %d, %d)" %
                 (inputs.shape, n, k))
-            inputs = inputs.transpose(0, 1)  # [n, B, k]
+            inputs = inputs.transpose(0, 1)  # [n, B, l]
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
 
         if self.bias is not None:
-            y = torch.baddbmm(self._bias, inputs, self.weight)  # [n, B, l]
+            y = torch.baddbmm(
+                self._bias.unsqueeze(1), inputs,
+                self.weight.transpose(1, 2))  # [n, B, k]
         else:
-            y = torch.bmm(inputs, self._weight)  # [n, B, l]
+            y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
         y = y.transpose(0, 1)  # [B, n, l]
         return self._activation(y)
 
     @property
     def weight(self):
+        """Get the weight Tensor.
+
+        Returns:
+            Tensor: with shape (n, output_size, input_size). ``weight[i]`` is
+                the weight for the i-th FC layer. ``weight[i]`` can be used for
+                ``FC`` layer with the same ``input_size`` and ``output_size``
+        """
         return self._weight
 
     @property
     def bias(self):
+        """Get the bias Tensor.
+
+        Returns:
+            Tensor: with shape (n, output_size). ``bias[i]`` is the bias for the
+                i-th FC layer. ``bias[i]`` can be used for ``FC`` layer with
+                the same ``input_size`` and ``output_size``
+        """
         return self._bias
 
 

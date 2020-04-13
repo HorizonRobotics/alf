@@ -185,19 +185,37 @@ class Network(nn.Module):
     def make_parallel(self, n):
         """Make a parllelized version of this network.
         
+        A parallel network has ``n`` copies of network with the same structure but
+        different indepently initialized parameters.
+
         By default, it creates ``NaiveParallelNetwork``, which simply making
         ``n`` copies of this network and use a loop to call them in ``forward()``.
         If possible, the subclass should override this to generate an optimized
         parallel implementation.
         
         Returns:
-            A paralle network
+            Network: A paralle network
         """
         return NaiveParallelNetwork(self, n, "naive_parall_" + self.name)
 
 
 class NaiveParallelNetwork(Network):
+    """Naive implementation of parallel network."""
+
     def __init__(self, network, n, name="NaiveParallelNetwork"):
+        """
+        A parallel network has ``n`` copies of network with the same structure but
+        different indepently initialized parameters.
+
+        ``NaiveParallelNetwork`` created ``n`` independent networks with the same
+        structure as ``network`` and evaluate them separately in loop during
+        ``forward()``.
+
+        Args:
+            network (Network): the parallel network will have ``n`` copies of
+                ``network``.
+            n (int): ``n`` copies of ``network``
+        """
         super().__init__(network.input_tensor_spec, name)
         self._networks = nn.ModuleList(
             [network.copy(name=name + '_%d' % i) for i in range(n)])
@@ -207,14 +225,15 @@ class NaiveParallelNetwork(Network):
             network.state_spec)
 
     def forward(self, inputs, state=()):
-        """Compute output and next state.
+        """Compute the output and the next state.
         
         Args:
-            inputs (nested torch.Tensor): its shape can be [B, n, ...], or [B, ...]
-            state (nested torch.Tensor): its shape must be [B, n, ...]
+            inputs (nested torch.Tensor): its shape can be ``[B, n, ...]``, or
+                ``[B, ...]``
+            state (nested torch.Tensor): its shape must be ``[B, n, ...]``
         Returns:
-            output (nested torch.Tensor): its shape is [B, n, ...]
-            next_state (nested torch.Tensor): its shape is [B, n, ...]
+            output (nested torch.Tensor): its shape is ``[B, n, ...]``
+            next_state (nested torch.Tensor): its shape is ``[B, n, ...]``
         """
         outer_rank = alf.nest.utils.get_outer_rank(inputs,
                                                    self._input_tensor_spec)

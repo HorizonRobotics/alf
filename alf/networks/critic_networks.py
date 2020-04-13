@@ -177,12 +177,14 @@ class ParallelCriticNetwork(Network):
         """Computes action-value given an observation.
 
         Args:
-            inputs:  A tuple of Tensors consistent with `input_tensor_spec`
-            state: empty for API consistent with CriticRNNNetwork
+            inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
+            state (tuple): Empty for API consistent with CriticRNNNetwork.
 
         Returns:
-            action_value (torch.Tensor): a tensor of the size [batch_size]
-            state: empty
+            tuple:
+            - action_value (torch.Tensor): a tensor of shape ``(B, n)``, where
+                ``B`` is the batch size.
+            - state: empty
         """
         observations, actions = inputs
         actions = actions.to(torch.float32)
