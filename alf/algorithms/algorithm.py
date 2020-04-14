@@ -748,7 +748,7 @@ class Algorithm(nn.Module):
         """
         pass
 
-    def after_train_iter(self, training_info):
+    def after_train_iter(self, training_info=None):
         """Do things after completing one training iteration (i.e. ``train_iter()``
         that consists of one or multiple gradient updates). This function can
         be used for training additional modules that have their own training logic
@@ -767,7 +767,8 @@ class Algorithm(nn.Module):
                 Note that it won't contain the field ``rollout_info`` because this
                 is the info collected just from the unroll but not from a replay
                 buffer. So if ``training_info`` is used, make sure you are doing
-                on-policy training in this function.
+                on-policy training in this function; if it's None, then only
+                off-policy training is allowed.
         """
         pass
 

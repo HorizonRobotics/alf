@@ -162,7 +162,7 @@ class AgentHelper(object):
             else:
                 alg.after_update(getattr(training_info.info, field))
 
-    def after_train_iter(self, algorithms, training_info):
+    def after_train_iter(self, algorithms, training_info=None):
         """For each provided algorithm, call its ``after_train_iter()`` to do
         things after the agent finishes one training iteration (i.e.,
         ``train_iter()``).
@@ -176,8 +176,11 @@ class AgentHelper(object):
         """
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
-            if isinstance(alg, RLAlgorithm):
-                alg.after_train_iter(
-                    _make_rl_training_info(training_info, field))
+            if training_info is not None:
+                if isinstance(alg, RLAlgorithm):
+                    alg.after_train_iter(
+                        _make_rl_training_info(training_info, field))
+                else:
+                    alg.after_train_iter(getattr(training_info.info, field))
             else:
-                alg.after_train_iter(getattr(training_info.info, field))
+                alg.after_train_iter()

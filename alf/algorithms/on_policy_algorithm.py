@@ -78,7 +78,11 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             steps = self.train_from_unroll(training_info)
 
         with record_time("time/after_train_iter"):
-            self.after_train_iter(training_info)
+            # Here we don't pass ``training_info`` to disable another on-policy
+            # training because otherwise it will backprop on the same graph twice,
+            # which is unnecessary because we could have simply merged the two
+            # trainings into the parent's ``rollout_step``.
+            self.after_train_iter()
 
         return steps
 

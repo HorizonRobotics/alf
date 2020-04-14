@@ -292,7 +292,7 @@ class Agent(OnPolicyAlgorithm):
             algorithms.append(self._goal_generator)
         self._agent_helper.after_update(algorithms, training_info)
 
-    def after_train_iter(self, training_info):
+    def after_train_iter(self, training_info=None):
         algorithms = [self._rl_algorithm]
         if self._goal_generator:
             algorithms.append(self._goal_generator)
