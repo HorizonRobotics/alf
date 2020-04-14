@@ -40,7 +40,7 @@ class ActorNetwork(PreprocessorNetwork):
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  squashing_func=torch.tanh,
                  kernel_initializer=None,
                  name="ActorNetwork"):
@@ -159,7 +159,7 @@ class ActorRNNNetwork(PreprocessorNetwork):
                  fc_layer_params=None,
                  lstm_hidden_size=100,
                  actor_fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  squashing_func=torch.tanh,
                  kernel_initializer=None,
                  name="ActorRNNNetwork"):

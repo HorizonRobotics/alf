@@ -89,7 +89,7 @@ class EmbeddingPreprocessor(InputPreprocessor):
                  embedding_dim,
                  conv_layer_params=None,
                  fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  last_activation=math_ops.identity,
                  name="EmbeddingPreproc"):
         """

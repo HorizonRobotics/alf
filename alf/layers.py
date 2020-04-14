@@ -262,7 +262,7 @@ class Conv2D(nn.Module):
                  in_channels,
                  out_channels,
                  kernel_size,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  strides=1,
                  padding=0,
                  use_bias=True,
@@ -329,7 +329,7 @@ class ConvTranspose2D(nn.Module):
                  in_channels,
                  out_channels,
                  kernel_size,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  strides=1,
                  padding=0,
                  use_bias=True,
@@ -513,7 +513,7 @@ class BottleneckBlock(nn.Module):
         core = self._core_layers(inputs)
         shortcut = self._shortcut_layers(inputs)
 
-        return nn.functional.relu_(core + shortcut)
+        return torch.relu_(core + shortcut)
 
     def calc_output_shape(self, input_shape):
         x = torch.zeros(1, *input_shape)
