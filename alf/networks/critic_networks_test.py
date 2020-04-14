@@ -14,17 +14,18 @@
 """Tests for alf.networks.value_networks."""
 
 from absl.testing import parameterized
+from absl import logging
 import functools
-
+import time
 import torch
 
 import alf
 from alf.tensor_specs import TensorSpec
-from alf.networks import CriticNetwork
-from alf.networks import CriticRNNNetwork
+from alf.networks import CriticNetwork, CriticRNNNetwork, ParallelCriticNetwork
+from alf.networks.network import NaiveParallelNetwork
 
 
-class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
+class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
     def _init(self, lstm_hidden_size):
         if lstm_hidden_size is not None:
             post_rnn_fc_layer_params = (6, 4)
@@ -78,6 +79,60 @@ class TestCriticNetworks(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(critic_net.output_spec, TensorSpec(()))
         # (batch_size,)
         self.assertEqual(value.shape, (1, ))
+
+        # test make_parallel
+        pnet = critic_net.make_parallel(6)
+
+        if lstm_hidden_size is not None:
+            # shape of state should be [B, n, ...]
+            self.assertRaises(AssertionError, pnet, network_input, state)
+
+        state = alf.nest.map_structure(
+            lambda x: x.unsqueeze(1).expand(x.shape[0], 6, x.shape[1]), state)
+
+        if lstm_hidden_size is None:
+            self.assertTrue(isinstance(pnet, ParallelCriticNetwork))
+        else:
+            self.assertTrue(isinstance(pnet, NaiveParallelNetwork))
+
+        value, state = pnet(network_input, state)
+        self.assertEqual(pnet.output_spec, TensorSpec((6, )))
+        self.assertEqual(value.shape, (1, 6))
+
+    def test_make_parallel(self):
+        obs_spec = TensorSpec((20, ), torch.float32)
+        action_spec = TensorSpec((5, ), torch.float32)
+        critic_net = CriticNetwork((obs_spec, action_spec),
+                                   joint_fc_layer_params=(256, 256))
+
+        replicas = 4
+        # ParallelCriticNetwork (PCN) is not always faster than NaiveParallelNetwork (NPN).
+        # On my machine, for this particular example, with replicas=2,
+        # PCN is faster when batch_size in (128, 256, ..., 2048)
+        # NPN is faster when batch_size in (4096, 8192, 16384).
+        # For a moderately large replicas (32), and smaller batch_size (128),
+        # the speed difference is huge: PCN is 20 times faster than NPN.
+        batch_size = 128
+
+        def _train(pnet, name):
+            t0 = time.time()
+            optimizer = alf.optimizers.AdamTF(list(pnet.parameters()), lr=1e-4)
+            for _ in range(100):
+                obs = obs_spec.randn((batch_size, ))
+                action = action_spec.randn((batch_size, ))
+                values = pnet((obs, action))[0]
+                target = torch.randn_like(values)
+                cost = ((values - target)**2).sum()
+                cost.backward()
+                optimizer.step()
+            logging.info(
+                "%s time=%s cost=%s" % (name, time.time() - t0, float(cost)))
+
+        pnet = critic_net.make_parallel(replicas)
+        _train(pnet, "ParallelCriticNetwork")
+
+        pnet = alf.networks.network.NaiveParallelNetwork(critic_net, replicas)
+        _train(pnet, "NaiveParallelNetwork")
 
 
 if __name__ == "__main__":

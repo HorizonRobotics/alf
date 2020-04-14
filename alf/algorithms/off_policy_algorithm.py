@@ -28,18 +28,16 @@ from alf.utils.summary_utils import record_time
 
 
 class OffPolicyAlgorithm(RLAlgorithm):
-    """`OffPolicyAlgorithm` implements basic off-policy training pipeline.
+    """``OffPolicyAlgorithm`` implements basic off-policy training pipeline. User
+    needs to implement ``rollout_step()`` and ``train_step()``.
+    - ``rollout_step()`` is called to generate actions at every environment step.
+    - ``train_step()`` is called to generate necessary information for training.
 
-       User needs to implement `rollout_step()` and `train_step()`.
+    The following is the pseudo code to illustrate how ``OffPolicyAlgorithm``
+    is used:
 
-       `rollout_step()` is called to generate actions at every environment step.
+    .. code-block:: python
 
-       `train_step()` is called to generate necessary information for training.
-
-       The following is the pseudo code to illustrate how `OffPolicyAlgorithm`
-       is used:
-
-       ```python
         # (1) collect stage
         for _ in range(steps_per_collection):
             # collect experience and store to replay buffer
@@ -60,12 +58,11 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 write train_info to batched_training_info
             loss = calc_loss(batched_training_info)
             update_with_gradient(loss)
-    ```
     """
 
     @property
     def train_info_spec(self):
-        """The spec for the `AlgStep.info` returned from train_step()."""
+        """The spec for the ``AlgStep.info`` returned from ``train_step()``."""
         assert self._train_info_spec is not None, (
             "train_step() has not been used. train_info_spec is not available")
         return self._train_info_spec
@@ -75,7 +72,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """Spec for processed experience.
 
         Returns:
-            Spec for the experience returned by preprocess_experience().
+            TensorSpec: Spec for the experience returned by
+                ``preprocess_experience()``.
         """
         assert self._processed_experience_spec is not None, (
             "preprocess_experience() has not been used. processed_experience_spec"
@@ -83,18 +81,16 @@ class OffPolicyAlgorithm(RLAlgorithm):
         return self._processed_experience_spec
 
     def preprocess_experience(self, experience: Experience):
-        """Preprocess experience.
-
-        `preprocess_experience()` is called on the experiences got from a replay
+        """This function is called on the experiences got from a replay
         buffer. An example usage of this function is to calculate advantages and
-        returns in `PPOAlgorithm`.
+        returns in ``PPOAlgorithm``.
 
-        The shapes of tensors in experience are assumed to be (B, T, ...).
+        The shapes of tensors in experience are assumed to be :math:`(B, T, ...)`.
 
         Args:
             experience (Experience): original experience
         Returns:
-            processed experience
+            Experience: processed experience
         """
         return experience
 
@@ -108,14 +104,38 @@ class OffPolicyAlgorithm(RLAlgorithm):
         if not config.update_counter_every_mini_batch:
             alf.summary.get_global_counter().add_(1)
 
-        with torch.no_grad():
-            with record_time("time/unroll"):
-                while True:
-                    training_info = self.unroll(config.unroll_length)
-                    self.summarize_rollout(training_info)
-                    self.summarize_metrics()
-                    if self._exp_replayer.total_size >= config.initial_collect_steps:
-                        break
+        with record_time("time/unroll"):
+            training_info = self.unroll(config.unroll_length)
+            self.summarize_rollout(training_info)
+            self.summarize_metrics()
+
+        steps = self.train_from_replay_buffer(update_global_counter=True)
+
+        with record_time("time/after_train_iter"):
+            training_info = training_info._replace(
+                rollout_info=(), info=training_info.rollout_info)
+            self.after_train_iter(training_info)
+
+        # For now, we only return the steps of the primary algorithm's training
+        return steps
+
+    def train_from_replay_buffer(self, update_global_counter=False):
+        """This function can be called by any RL algorithm that has its own
+        replay buffer configured.
+
+        Args:
+            update_global_counter (bool): controls whether this function changes
+                the global counter for summary. If there are multiple RL
+                algorithms, then only the parent algorithm should change this
+                quantity and child algorithms should disable the flag. When it's
+                ``True``, it will affect the counter only if
+                ``config.update_counter_every_mini_batch=True``.
+        """
+        config: TrainerConfig = self._config
+
+        if self._exp_replayer.total_size < config.initial_collect_steps:
+            # returns 0 if haven't started training yet; throughput will be 0
+            return 0
 
         with record_time("time/replay"):
             mini_batch_size = config.mini_batch_size
@@ -134,7 +154,8 @@ class OffPolicyAlgorithm(RLAlgorithm):
             return self._train_experience(
                 experience, config.num_updates_per_train_step, mini_batch_size,
                 config.mini_batch_length,
-                config.update_counter_every_mini_batch)
+                config.update_counter_every_mini_batch
+                and update_global_counter)
 
     def _train_experience(self, experience, num_updates, mini_batch_size,
                           mini_batch_length, update_counter_every_mini_batch):

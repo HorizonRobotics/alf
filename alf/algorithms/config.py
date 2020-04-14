@@ -54,7 +54,10 @@ class TrainerConfig(object):
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             random_seed (None|int): random seed, a random seed is used if None
-            num_iterations (int): number of update iterations (ignored if 0)
+            num_iterations (int): number of update iterations (ignored if 0). Note
+                that for off-policy algorithms, if ``initial_collect_steps>0``,
+                then the first ``initial_collect_steps//(unroll_length*num_envs)``
+                iterations won't perform any training.
             num_env_steps (int): number of environment steps (ignored if 0). The
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
