@@ -227,7 +227,7 @@ class RingBuffer(nn.Module):
             current_pos = self._current_pos[env_ids]
             indices = env_ids * self._max_length + current_pos
             alf.nest.map_structure(
-                lambda buf, bat: buf.__setitem__(indices, bat),
+                lambda buf, bat: buf.__setitem__(indices, bat.detach()),
                 self._flattened_buffer, batch)
 
             self._current_pos[env_ids] = (current_pos + 1) % self._max_length
@@ -388,7 +388,8 @@ class DataBuffer(RingBuffer):
             name=name)
         self._capacity = torch.as_tensor(
             self._max_length, dtype=torch.int64, device=device)
-        self.buffer = alf.nest.map_structure(lambda buf: buf[0], self._buffer)
+        self._derived_buffer = alf.nest.map_structure(lambda buf: buf[0],
+                                                      self._buffer)
 
     def add_batch(self, batch):
         """Add a batch of items to the buffer.
@@ -408,7 +409,7 @@ class DataBuffer(RingBuffer):
                                    self.current_pos + n) % self._capacity
             alf.nest.map_structure(
                 lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
-                self.buffer, batch)
+                self._derived_buffer, batch)
 
             self.current_pos.copy_((self.current_pos + n) % self._capacity)
             self.current_size.copy_(
@@ -447,7 +448,7 @@ class DataBuffer(RingBuffer):
                 (indices +
                  (self.current_pos - self.current_size)) % self._capacity)
             result = alf.nest.map_structure(lambda buf: buf[indices],
-                                            self.buffer)
+                                            self._derived_buffer)
         return convert_device(result)
 
     @property
@@ -460,7 +461,7 @@ class DataBuffer(RingBuffer):
 
     def get_all(self):
         return convert_device(
-            alf.nest.map_structure(lambda buf: buf, self.buffer))
+            alf.nest.map_structure(lambda buf: buf, self._derived_buffer))
 
     def clear(self):
         """Clear the buffer.

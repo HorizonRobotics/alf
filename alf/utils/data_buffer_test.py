@@ -202,6 +202,9 @@ class DataBufferTest(alf.test.TestCase):
         self.assertEqual(ret[1], batch[1])
         self.assertEqual(ret[2], batch[2][-capacity:])
 
+        data_buffer.clear()
+        self.assertEqual(int(data_buffer.current_size), 0)
+
 
 if __name__ == '__main__':
     alf.test.main()
