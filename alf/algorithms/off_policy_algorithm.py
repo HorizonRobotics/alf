@@ -105,18 +105,41 @@ class OffPolicyAlgorithm(RLAlgorithm):
         """User may override this for their own training procedure."""
         config: TrainerConfig = self._config
 
+        first_iter = (alf.summary.get_global_counter() == 0)
+
         if not config.update_counter_every_mini_batch:
             alf.summary.get_global_counter().add_(1)
 
-        with torch.no_grad():
-            with record_time("time/unroll"):
-                while True:
-                    training_info = self.unroll(config.unroll_length)
-                    self.summarize_rollout(training_info)
-                    self.summarize_metrics()
-                    if self._exp_replayer.total_size >= config.initial_collect_steps:
-                        break
+        with record_time("time/unroll"):
+            while True:
+                training_info = self.unroll(config.unroll_length)
+                self.summarize_rollout(training_info)
+                self.summarize_metrics()
+                if self._exp_replayer.total_size >= config.initial_collect_steps:
+                    break
 
+        steps = self.train_from_replay_buffer(True)
+
+        with record_time("time/after_train_iter"):
+            # skip the first iteration as it can unroll quite long
+            if not first_iter:
+                training_info = training_info._replace(
+                    rollout_info=(), info=training_info.rollout_info)
+                self.after_train_iter(training_info)
+
+        return steps
+
+    def train_from_replay_buffer(self, update_global_counter=False):
+        """This API can be used by any RL algorithm that has its own replay
+        buffer.
+
+        Args:
+            update_global_counter (bool): controls whether this function changes
+                the global counter for summary. If there are multiple RL
+                algorithms, then only the parent algorithm should change this
+                quantity and child algorithms should disable the flag.
+        """
+        config: TrainerConfig = self._config
         with record_time("time/replay"):
             mini_batch_size = config.mini_batch_size
             if mini_batch_size is None:

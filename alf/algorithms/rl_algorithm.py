@@ -339,6 +339,7 @@ class RLAlgorithm(Algorithm):
                     exp.state, self.train_state_spec, value_to_match=()))
         exp = dist_utils.distributions_to_params(exp)
 
+        exp = common.detach(exp)
         for observer in self._observers:
             observer(exp)
 

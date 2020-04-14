@@ -61,7 +61,7 @@ class Algorithm(nn.Module):
     """
 
     def __init__(self,
-                 train_state_spec=None,
+                 train_state_spec=(),
                  rollout_state_spec=None,
                  predict_state_spec=None,
                  optimizer=None,
@@ -737,14 +737,37 @@ class Algorithm(nn.Module):
         return loss_info, all_params
 
     def after_update(self, training_info):
-        """Do things after complete one gradient update (i.e. ``update_with_gradient()``).
+        """Do things after completing one gradient update (i.e. ``update_with_gradient()``).
         This function can be used for post-processings following one minibatch
         update, such as copy a training model to a target model in SAC, DQN, etc.
 
         Args:
-            training_info (nested Tensor): information collected for training.
+            training_info (TrainingInfo): information collected for training.
                 It is batched from each ``info`` returned by ``rollout_step()`` or
                 ``train_step()``.
+        """
+        pass
+
+    def after_train_iter(self, training_info):
+        """Do things after completing one training iteration (i.e. ``train_iter()``
+        that consists of one or multiple gradient updates). This function can
+        be used for training additional modules that have their own training logic
+        (e.g., on/off-policy, replay buffers, etc). These modules should be added
+        to ``_trainable_attributes_to_ignore`` in the parent algorithm.
+
+        Other things might also be possible as long as they should be done once
+        every training iteration.
+
+        This function will serve the same purpose with ``after_update`` if there
+        is always only one gradient update in each training iteration. Otherwise
+        it's less frequently called than ``after_update``.
+
+        Args:
+            training_info (TrainingInfo): information collected during ``unroll()``.
+                Note that it won't contain the field ``rollout_info`` because this
+                is the info collected just from the unroll but not from a replay
+                buffer. So if ``training_info`` is used, make sure you are doing
+                on-policy training in this function.
         """
         pass
 

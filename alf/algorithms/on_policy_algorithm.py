@@ -70,15 +70,33 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
 
         with record_time("time/unroll"):
             training_info = self.unroll(self._config.unroll_length)
+            self.summarize_metrics()
 
         with record_time("time/train"):
             training_info = training_info._replace(
                 rollout_info=(), info=training_info.rollout_info)
-            valid_masks = (training_info.step_type != StepType.LAST).to(
-                torch.float32)
-            loss_info, params = self.update_with_gradient(
-                self.calc_loss(training_info), valid_masks)
-            self.after_update(training_info)
-            self.summarize_train(training_info, loss_info, params)
-            self.summarize_metrics()
+            steps = self.train_from_unroll(training_info)
+
+        with record_time("time/after_train_iter"):
+            self.after_train_iter(training_info)
+
+        return steps
+
+    def train_from_unroll(self, training_info):
+        """Train given the info collected from ``unroll()``. This function can
+        be called by any child algorithm that doesn't have the unroll logic but
+        has a different training logic with its parent (e.g., off-policy).
+
+        Args:
+            training_info (TrainingInfo):
+
+        Returns:
+            int: number of steps that have been trained
+        """
+        valid_masks = (training_info.step_type != StepType.LAST).to(
+            torch.float32)
+        loss_info, params = self.update_with_gradient(
+            self.calc_loss(training_info), valid_masks)
+        self.after_update(training_info)
+        self.summarize_train(training_info, loss_info, params)
         return torch.tensor(training_info.step_type.shape).prod()
