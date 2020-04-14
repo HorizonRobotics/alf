@@ -50,7 +50,7 @@ class AgentHelper(object):
         This function also registers ``alg`` with ``alg_field``.
 
         Args:
-            alg (Algorithm):
+            alg (Algorithm): a child algorithm in the agent.
             alg_field (str): the corresponding algorithm field in an
                 ``AgentState`` or ``AgentInfo``.
         """
@@ -90,7 +90,7 @@ class AgentHelper(object):
                 a reward.
 
         Returns:
-            A single reward after accumulation.
+            Tensor: A single reward after accumulation.
         """
         assert len(rewards) > 0
 
@@ -112,10 +112,11 @@ class AgentHelper(object):
             algorithms (list[Algorithm]): the list of algorithms whose loss infos
                 are to be accumulated.
             training_info (nested Tensor): information collected for training
-                algorithms. It is batched from each `info` returned by `train_step()`.
+                algorithms. It is batched from each ``info`` returned by
+                ``train_step()``.
 
         Returns:
-            loss_info (LossInfo): the accumulated loss info
+            LossInfo: the accumulated loss info.
         """
 
         def _update_loss(loss_info, training_info, algorithm, name):
@@ -144,14 +145,15 @@ class AgentHelper(object):
         return loss_info
 
     def after_update(self, algorithms, training_info):
-        """For each provided algorithm, call its `after_update()` to do things after
-        the agent completes one gradient update (i.e. `update_with_gradient()`).
+        """For each provided algorithm, call its ``after_update()`` to do things after
+        the agent completes one gradient update (i.e. ``update_with_gradient()``).
 
         Args:
-            algorithms (list[Algorithm]): the list of algorithms whose `after_update`
-                is to be called.
+            algorithms (list[Algorithm]): the list of algorithms whose
+                ``after_update`` is to be called.
             training_info (nested Tensor): information collected for training
-                algorithms. It is batched from each `info` returned by `train_step()`.
+                algorithms. It is batched from each ``info`` returned by
+                ``train_step()``.
         """
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
@@ -161,14 +163,16 @@ class AgentHelper(object):
                 alg.after_update(getattr(training_info.info, field))
 
     def after_train_iter(self, algorithms, training_info):
-        """For each provided algorithm, call its `after_train_iter()` to do things
-        after the agent finishes one training iteration (i.e., ``train_iter()``).
+        """For each provided algorithm, call its ``after_train_iter()`` to do
+        things after the agent finishes one training iteration (i.e.,
+        ``train_iter()``).
 
         Args:
             algorithms (list[Algorithm]): the list of algorithms whose
-                `after_train_iter` is to be called.
+                ``after_train_iter`` is to be called.
             training_info (nested Tensor): information collected for training
-                algorithms. It is batched from each `info` returned by `rollout_step()`.
+                algorithms. It is batched from each ``info`` returned by
+                ``rollout_step()``.
         """
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
