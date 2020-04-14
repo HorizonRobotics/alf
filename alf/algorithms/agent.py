@@ -265,7 +265,7 @@ class Agent(OnPolicyAlgorithm):
         if self._goal_generator and 'reward' in info.goal_generator._fields:
             rewards.append((info.goal_generator.reward, 1., "goal_generator"))
 
-        return self._agent_helper.accumulate_algortihm_rewards(
+        return self._agent_helper.accumulate_algorithm_rewards(
             *zip(*rewards),
             summary_prefix="reward",
             summarize_fn=self.summarize_reward)

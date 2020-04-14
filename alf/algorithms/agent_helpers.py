@@ -76,7 +76,7 @@ class AgentHelper(object):
             predict_state_spec=self._predict_state_spec)
 
     @staticmethod
-    def accumulate_algortihm_rewards(rewards, weights, names, summary_prefix,
+    def accumulate_algorithm_rewards(rewards, weights, names, summary_prefix,
                                      summarize_fn):
         """Sum a list of rewards by their weights. Also summarize the rewards
         statistics given their names.
