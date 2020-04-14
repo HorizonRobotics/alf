@@ -409,7 +409,7 @@ class EncodingNetwork(PreprocessorNetwork):
         """Make a parllelized version of this network.
         
         A parallel network has ``n`` copies of network with the same structure but
-        different indepently initialized parameters.
+        different independently initialized parameters.
 
         For supported network structures (currently, networks with only FC layers)
         it will create ``ParallelCriticNetwork`` (PCN). Otherwise, it will

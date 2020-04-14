@@ -73,7 +73,7 @@ function test() {
         alf.environments.torch_gym_wrapper_test \
         alf.environments.torch_wrappers_test \
         alf.experience_replayers.replay_buffer_test \
-        alf.layers_test.py \
+        alf.layers_test \
         alf.metrics.metrics_test \
         alf.nest.nest_test \
         alf.networks.network_test \

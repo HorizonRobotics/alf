@@ -219,7 +219,7 @@ class ParallelFC(nn.Module):
         elif inputs.ndim == 3:
             assert (inputs.shape[1] == n and inputs.shape[2] == l), (
                 "inputs has wrong shape %s. Expecting (B, %d, %d)" %
-                (inputs.shape, n, k))
+                (inputs.shape, n, l))
             inputs = inputs.transpose(0, 1)  # [n, B, l]
         else:
             raise ValueError("Wrong inputs.ndim=%d" % inputs.ndim)
@@ -230,7 +230,7 @@ class ParallelFC(nn.Module):
                 self.weight.transpose(1, 2))  # [n, B, k]
         else:
             y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
-        y = y.transpose(0, 1)  # [B, n, l]
+        y = y.transpose(0, 1)  # [B, n, k]
         return self._activation(y)
 
     @property

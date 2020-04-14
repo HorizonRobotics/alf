@@ -162,7 +162,7 @@ class ParallelCriticNetwork(Network):
         Args:
             critic_network (CriticNetwork): non-parallelized critic network
             n (int): make ``n`` replicas from ``critic_network`` with different
-                initializaztion.
+                initialization.
             name (str): name of this network
         """
         super().__init__(
