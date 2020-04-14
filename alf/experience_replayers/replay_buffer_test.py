@@ -51,6 +51,8 @@ class ReplayBufferTest(RingBufferTest):
 
         batch = replay_buffer.gather_all()
         self.assertEqual(list(batch.t.shape), [8, 1])
+        # test that RingBuffer detaches gradients of inputs
+        self.assertFalse(batch.x.requires_grad)
 
         self.assertRaises(AssertionError, replay_buffer.get_batch, 8, 2)
         replay_buffer.get_batch(13, 1)

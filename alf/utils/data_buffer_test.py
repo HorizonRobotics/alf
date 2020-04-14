@@ -31,8 +31,10 @@ DataItem = namedtuple("DataItem", ["env_id", "x", "t"])
 
 def get_batch(env_ids, dim, t, x):
     batch_size = len(env_ids)
-    x = (x * torch.arange(batch_size, dtype=torch.float32).unsqueeze(1) *
-         torch.arange(dim, dtype=torch.float32).unsqueeze(0))
+    x = (x * torch.arange(batch_size, dtype=torch.float32,
+                          requires_grad=True).unsqueeze(1) * torch.arange(
+                              dim, dtype=torch.float32,
+                              requires_grad=True).unsqueeze(0))
     return DataItem(
         env_id=torch.tensor(env_ids, dtype=torch.int64),
         x=x,
@@ -75,6 +77,8 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         # Test dequeque()
         for t in range(2, 10):
             batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
+            # test that the created batch has gradients
+            self.assertTrue(batch1.x.requires_grad)
             ring_buffer.enqueue(batch1, batch1.env_id)
         if not allow_multiprocess:
             # dequeue: blocking mode only available under allow_multiprocess
@@ -87,6 +91,8 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertRaises(AssertionError, ring_buffer.dequeue)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
         self.assertEqual(batch.t, torch.tensor([6] * 5))
+        # test that RingBuffer detaches gradients of inputs
+        self.assertFalse(batch.x.requires_grad)
         batch = ring_buffer.dequeue(env_ids=batch1.env_id)
         self.assertEqual(batch.t, torch.tensor([7] * 5))
         batch = ring_buffer.dequeue(env_ids=torch.tensor([1, 2]))
@@ -161,15 +167,19 @@ class DataBufferTest(alf.test.TestCase):
         data_buffer = DataBuffer(data_spec=data_spec, capacity=capacity)
 
         def _get_batch(batch_size):
-            x = torch.randn(batch_size, dim)
+            x = torch.randn(batch_size, dim, requires_grad=True)
             x = (x[:, 0], x[:, 1:dim // 3], x[..., dim // 3:])
             return x
 
         data_buffer.add_batch(_get_batch(100))
         self.assertEqual(int(data_buffer.current_size), 100)
         batch = _get_batch(1000)
+        # test that the created batch has gradients
+        self.assertTrue(batch[0].requires_grad)
         data_buffer.add_batch(batch)
         ret = data_buffer.get_batch(2)
+        # test that DataBuffer detaches gradients of inputs
+        self.assertFalse(ret[0].requires_grad)
         self.assertEqual(int(data_buffer.current_size), capacity)
         ret = data_buffer.get_batch_by_indices(torch.arange(capacity))
         self.assertEqual(ret[0], batch[0][-capacity:])
