@@ -767,8 +767,13 @@ class Algorithm(nn.Module):
                 Note that it won't contain the field ``rollout_info`` because this
                 is the info collected just from the unroll but not from a replay
                 buffer. So if ``training_info`` is used, make sure you are doing
-                on-policy training in this function; if it's None, then only
-                off-policy training is allowed.
+                on-policy training in this function; if it's ``None``, then only
+                off-policy training is allowed. Currently this arg is always
+                ``None`` if this function is called by ``_train_iter_on_policy``,
+                because it's not recomended to backprop on the same graph twice.
+                A user-implemented Agent class can also choose not to pass
+                ``training_info`` to sub-algorithms when calling their
+                ``after_train_iter()`` if on-policy training is not needed.
         """
         pass
 
