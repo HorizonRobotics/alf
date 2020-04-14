@@ -339,7 +339,10 @@ class RLAlgorithm(Algorithm):
                     exp.state, self.train_state_spec, value_to_match=()))
         exp = dist_utils.distributions_to_params(exp)
 
+        # TODO: @le-horizon remove this detach line after fixing the detaching
+        # issue in replay buffers and metrics.
         exp = common.detach(exp)
+
         for observer in self._observers:
             observer(exp)
 
