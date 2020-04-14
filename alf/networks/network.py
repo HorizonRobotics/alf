@@ -19,6 +19,7 @@ import abc
 import functools
 import inspect
 import six
+import torch
 
 import torch.nn as nn
 
@@ -137,6 +138,11 @@ class Network(nn.Module):
         return type(self)(**dict(self._saved_kwargs, **kwargs))
 
     @property
+    def saved_args(self):
+        """Return the dictionary of the arguments used to construct the network."""
+        return self._saved_kwargs
+
+    @property
     def input_tensor_spec(self):
         """Return the input tensor spec BEFORE preprocessings have been applied.
         """
@@ -175,6 +181,88 @@ class Network(nn.Module):
                 map(lambda spec: isinstance(spec, DistributionSpec),
                     alf.nest.flatten(self.output_spec)))
         return self._is_distribution
+
+    def make_parallel(self, n):
+        """Make a parllelized version of this network.
+        
+        A parallel network has ``n`` copies of network with the same structure but
+        different indepently initialized parameters.
+
+        By default, it creates ``NaiveParallelNetwork``, which simply making
+        ``n`` copies of this network and use a loop to call them in ``forward()``.
+        If possible, the subclass should override this to generate an optimized
+        parallel implementation.
+        
+        Returns:
+            Network: A paralle network
+        """
+        return NaiveParallelNetwork(self, n, "naive_parall_" + self.name)
+
+
+class NaiveParallelNetwork(Network):
+    """Naive implementation of parallel network."""
+
+    def __init__(self, network, n, name="NaiveParallelNetwork"):
+        """
+        A parallel network has ``n`` copies of network with the same structure but
+        different indepently initialized parameters.
+
+        ``NaiveParallelNetwork`` created ``n`` independent networks with the same
+        structure as ``network`` and evaluate them separately in loop during
+        ``forward()``.
+
+        Args:
+            network (Network): the parallel network will have ``n`` copies of
+                ``network``.
+            n (int): ``n`` copies of ``network``
+        """
+        super().__init__(network.input_tensor_spec, name)
+        self._networks = nn.ModuleList(
+            [network.copy(name=name + '_%d' % i) for i in range(n)])
+        self._n = n
+        self._state_spec = alf.nest.map_structure(
+            lambda spec: alf.TensorSpec((n, ) + spec.shape, spec.dtype),
+            network.state_spec)
+
+    def forward(self, inputs, state=()):
+        """Compute the output and the next state.
+        
+        Args:
+            inputs (nested torch.Tensor): its shape can be ``[B, n, ...]``, or
+                ``[B, ...]``
+            state (nested torch.Tensor): its shape must be ``[B, n, ...]``
+        Returns:
+            output (nested torch.Tensor): its shape is ``[B, n, ...]``
+            next_state (nested torch.Tensor): its shape is ``[B, n, ...]``
+        """
+        outer_rank = alf.nest.utils.get_outer_rank(inputs,
+                                                   self._input_tensor_spec)
+        assert 1 <= outer_rank <= 2, ("inputs should have shape [B, %d, ...] "
+                                      " or [B, ...]" % self._n)
+
+        if state != ():
+            state_outer_rank = alf.nest.utils.get_outer_rank(
+                state, self.state_spec)
+            assert state_outer_rank == 1, (
+                "state should have shape [B, %d, ...] " % self._n)
+
+        output_states = []
+        for i in range(self._n):
+            if outer_rank == 1:
+                inp = inputs
+            else:
+                inp = alf.nest.map_structure(lambda x: x[:, i, ...], inputs)
+            s = alf.nest.map_structure(lambda x: x[:, i, ...], state)
+            ret = self._networks[i](inp, s)
+            ret = alf.nest.map_structure(lambda x: x.unsqueeze(1), ret)
+            output_states.append(ret)
+        output, new_state = alf.nest.map_structure(
+            lambda *tensors: torch.cat(tensors, dim=1), *output_states)
+        return output, new_state
+
+    @property
+    def state_spec(self):
+        return self._state_spec
 
 
 class PreprocessorNetwork(Network):
@@ -248,15 +336,26 @@ class PreprocessorNetwork(Network):
         # and the nest combiner.
         self._processed_input_tensor_spec = input_tensor_spec
 
-    def forward(self, inputs, state=()):
-        """Preprocessing nested inputs."""
+    def forward(self, inputs, state=(), min_outer_rank=1, max_outer_rank=1):
+        """Preprocessing nested inputs.
+        
+        Args:
+            inputs (nested Tensor): inputs to the network
+            state (nested Tensor): RNN state of the network
+            min_outer_rank (int): the minimal outer rank allowed
+            max_outer_rank (int): the maximal outer rank allowed
+        Returns:
+            Tensor: tensor after preprocessing.
+        """
         if self._input_preprocessors:
             inputs = alf.nest.map_structure(
                 lambda preproc, tensor: preproc(tensor),
                 self._input_preprocessors, inputs)
         proc_inputs = self._preprocessing_combiner(inputs)
-        assert get_outer_rank(proc_inputs, self._processed_input_tensor_spec) == 1, \
-            ("Only supports one outer rank (batch dim)! "
+        outer_rank = get_outer_rank(proc_inputs,
+                                    self._processed_input_tensor_spec)
+        assert min_outer_rank <= outer_rank <= max_outer_rank, \
+            ("Only supports {}<=outer_rank<={}! ".format(min_outer_rank, max_outer_rank)
             + "After preprocessing: inputs size {} vs. input tensor spec {}".format(
                 proc_inputs.size(), self._processed_input_tensor_spec)
             + "\n Make sure that you have provided the right input preprocessors"

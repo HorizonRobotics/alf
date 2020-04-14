@@ -22,9 +22,11 @@ import torch.nn as nn
 
 import alf.utils.math_ops as math_ops
 import alf.nest as nest
-from alf.networks import Network, EncodingNetwork, LSTMEncodingNetwork
 from alf.networks.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
+
+from .network import Network
+from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork
 
 
 @gin.configurable
@@ -133,6 +135,56 @@ class CriticNetwork(Network):
         Returns:
             action_value (torch.Tensor): a tensor of the size [batch_size]
             state: empty
+        """
+        observations, actions = inputs
+        actions = actions.to(torch.float32)
+
+        encoded_obs, _ = self._obs_encoder(observations)
+        encoded_action, _ = self._action_encoder(actions)
+        joint = torch.cat([encoded_obs, encoded_action], -1)
+        action_value, _ = self._joint_encoder(joint)
+        return torch.squeeze(action_value, -1), state
+
+    def make_parallel(self, n):
+        return ParallelCriticNetwork(self, n, "parallel_" + self._name)
+
+
+class ParallelCriticNetwork(Network):
+    """Perform ``n`` critic computations in parallel."""
+
+    def __init__(self,
+                 critic_network: CriticNetwork,
+                 n: int,
+                 name='ParallelCriticNetwork'):
+        """
+        It create a parallelized version of ``critic_network``.
+        
+        Args:
+            critic_network (CriticNetwork): non-parallelized critic network
+            n (int): make ``n`` replicas from ``critic_network`` with different
+                initialization.
+            name (str): name of this network
+        """
+        super().__init__(
+            input_tensor_spec=critic_network.input_tensor_spec,
+            name="parallel_" + critic_network.name)
+        self._obs_encoder = critic_network._obs_encoder.make_parallel(n)
+        self._action_encoder = critic_network._action_encoder.make_parallel(n)
+        self._joint_encoder = critic_network._joint_encoder.make_parallel(n)
+        self._output_spec = TensorSpec((n, ))
+
+    def forward(self, inputs, state=()):
+        """Computes action-value given an observation.
+
+        Args:
+            inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
+            state (tuple): Empty for API consistent with CriticRNNNetwork.
+
+        Returns:
+            tuple:
+            - action_value (torch.Tensor): a tensor of shape ``(B, n)``, where
+                ``B`` is the batch size.
+            - state: empty
         """
         observations, actions = inputs
         actions = actions.to(torch.float32)

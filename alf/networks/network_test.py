@@ -22,6 +22,8 @@ import alf
 from alf.tensor_specs import TensorSpec
 from alf.networks.initializers import _numerical_calculate_gain
 from alf.networks.initializers import _calculate_gain
+from alf.networks import EncodingNetwork, LSTMEncodingNetwork
+from alf.networks.network import NaiveParallelNetwork
 
 
 class BaseNetwork(alf.networks.Network):
@@ -89,6 +91,50 @@ class InitializerTest(parameterized.TestCase, alf.test.TestCase):
             gain = _calculate_gain(activation.__name__)
         print(activation.__name__, numerical_gain, gain)
         self.assertLess(abs(numerical_gain - gain), 0.1)
+
+
+class NaiveParallelNetworkTest(alf.test.TestCase):
+    def test_non_rnn(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(6, ))
+
+        network = EncodingNetwork(
+            input_tensor_spec=input_spec,
+            fc_layer_params=(30, 40, 50),
+            activation=torch.tanh)
+        replicas = 4
+        num_layers = 3
+
+        pnet = NaiveParallelNetwork(network, replicas)
+
+        self.assertEqual(
+            len(list(pnet.parameters())), num_layers * 2 * replicas)
+
+        output, _ = pnet(embedding)
+        self.assertEqual(output.shape, (6, replicas, 50))
+        self.assertEqual(pnet.output_spec.shape, (replicas, 50))
+
+    def test_rnn(self):
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(6, ))
+
+        network = LSTMEncodingNetwork(
+            input_tensor_spec=input_spec, hidden_size=(30, 40))
+        replicas = 4
+        pnet = NaiveParallelNetwork(network, replicas)
+
+        self.assertEqual(pnet.state_spec,
+                         [(TensorSpec((4, 30)), TensorSpec((4, 30))),
+                          (TensorSpec((4, 40)), TensorSpec((4, 40)))])
+        state = alf.utils.common.zero_tensor_from_nested_spec(
+            pnet.state_spec, 6)
+        output, state = pnet(embedding, state)
+        self.assertEqual(output.shape, (6, replicas, 40))
+        self.assertEqual(pnet.output_spec.shape, (replicas, 40))
+        self.assertEqual(
+            alf.utils.dist_utils.extract_spec(state),
+            [(TensorSpec((4, 30)), TensorSpec((4, 30))),
+             (TensorSpec((4, 40)), TensorSpec((4, 40)))])
 
 
 if __name__ == '__main__':
