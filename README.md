@@ -5,7 +5,7 @@
 
 ![CI](https://github.com/HorizonRobotics/alf/workflows/CI/badge.svg?branch=master)
 
-Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [Tensorflow 2.1](https://www.tensorflow.org/).
+Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing on the flexibility and easiness of implementing complex algorithms involving many different components. ALF is built on [Tensorflow 2.1](https://www.tensorflow.org/). We have stopped developing using Tensorflow and switched to pytorch. You can find the pytorch version of ALF [here](https://github.com/HorizonRobotics/alf)
 
 ## Algorithms
 
