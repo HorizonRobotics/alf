@@ -73,7 +73,11 @@ Please comment all the public functions with the following style:
             a (type of a): purpose
             b (type of b): purpose
         Returns:
-            return value1 (type 1): purpose
-            return value2 (type 1): purpose
+            return type:
+            - return value1 (type 1): purpose
+            - return value2 (type 1): purpose
         """
+
+For a comprehensive guide on how to write docstrings for public functions, see
+:doc:`notes/howto_docstring`.
 

@@ -65,6 +65,12 @@ class RLAlgorithm(Algorithm):
     7. ``after_update()``: called by ``train_iter()`` after every call to
        ``update_with_gradient()``, mainly for some postprocessing steps such as
        copying a training model to a target model in SAC or DQN.
+    8. ``after_train_iter()``: called by ``train_iter()`` after every call to
+       ``train_from_unroll()`` (on-policy training iter) or
+       ``train_from_replay_buffer`` (off-policy training iter). It's mainly for
+       training additional modules that have their own training logic
+       (e.g., on/off-policy, replay buffers, etc). Other things might also be
+       possible as long as they should be done once every training iteration.
     """
 
     def __init__(self,
@@ -338,6 +344,10 @@ class RLAlgorithm(Algorithm):
                 state=alf.nest.prune_nest_like(
                     exp.state, self.train_state_spec, value_to_match=()))
         exp = dist_utils.distributions_to_params(exp)
+
+        # TODO: @le-horizon remove this detach line after fixing the detaching
+        # issue in replay buffers and metrics.
+        exp = common.detach(exp)
 
         for observer in self._observers:
             observer(exp)

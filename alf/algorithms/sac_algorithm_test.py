@@ -87,7 +87,7 @@ class SACAlgorithmTest(alf.test.TestCase):
             name="MySAC")
 
         eval_env.reset()
-        for i in range(200):
+        for i in range(700):
             alg.train_iter()
             eval_env.reset()
             eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
@@ -147,7 +147,7 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             name="MySAC")
 
         eval_env.reset()
-        for i in range(200):
+        for i in range(700):
             alg2.train_iter()
 
             eval_env.reset()
