@@ -104,17 +104,27 @@ class OffPolicyAlgorithm(RLAlgorithm):
         if not config.update_counter_every_mini_batch:
             alf.summary.get_global_counter().add_(1)
 
-        with record_time("time/unroll"):
-            training_info = self.unroll(config.unroll_length)
-            self.summarize_rollout(training_info)
-            self.summarize_metrics()
+        def _unroll():
+            with record_time("time/unroll"):
+                training_info = self.unroll(config.unroll_length)
+                self.summarize_rollout(training_info)
+                self.summarize_metrics()
+
+        if config.unroll_with_grad:
+            _unroll()
+        else:
+            with torch.no_grad():
+                _unroll()
 
         steps = self.train_from_replay_buffer(update_global_counter=True)
 
         with record_time("time/after_train_iter"):
-            training_info = training_info._replace(
-                rollout_info=(), info=training_info.rollout_info)
-            self.after_train_iter(training_info)
+            if config.unroll_with_grad:
+                training_info = training_info._replace(
+                    rollout_info=(), info=training_info.rollout_info)
+                self.after_train_iter(training_info)
+            else:
+                self.after_train_iter()  # only off-policy training
 
         # For now, we only return the steps of the primary algorithm's training
         return steps
