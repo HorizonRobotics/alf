@@ -42,3 +42,18 @@ Then open an :code:`.rst` file and use `shift+alt+r` (on Mac `cmd+shift+r`)
 to open the preview. The extension will automatically generate the api files
 and build html files.
 
+
+Troubleshooting
+---------------
+
+
+1. If previewing fails with error `Could not import extension sphinxcontrib.napoleon`, try
+
+.. code-block:: bash
+
+    pip install sphinxcontrib-napoleon sphinx_rtd_theme
+
+2. If preview pane is empty, wait for a while, generation can take time.
+
+3. After file change, close preview tab and then generate preview again in
+vscode to view the change.

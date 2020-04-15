@@ -19,6 +19,7 @@ import gin
 import torch
 import torch.nn as nn
 
+import alf
 from . import nest
 from alf.tensor_specs import TensorSpec
 
@@ -205,3 +206,27 @@ def transform_nest(nested, field, func):
 
     return _traverse_transform(
         nested=nested, levels=field.split('.') if field else [])
+
+
+def convert_device(nests):
+    """Convert the device of the tensors in nests to default device."""
+
+    def _convert_cuda(tensor):
+        if tensor.device.type != 'cuda':
+            return tensor.cuda()
+        else:
+            return tensor
+
+    def _convert_cpu(tensor):
+        if tensor.device.type != 'cpu':
+            return tensor.cpu()
+        else:
+            return tensor
+
+    d = alf.get_default_device()
+    if d == 'cpu':
+        return nest.map_structure(_convert_cpu, nests)
+    elif d == 'cuda':
+        return nest.map_structure(_convert_cuda, nests)
+    else:
+        raise NotImplementedError("Unknown device %s" % d)

@@ -11,15 +11,150 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import multiprocessing as mp
+from collections import namedtuple
 import os
 import tempfile
+from time import sleep
 
 import torch
 
+from absl.testing import parameterized
+
 import alf
 from alf.tensor_specs import TensorSpec
-from alf.utils.data_buffer import DataBuffer
+from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
+
+DataItem = namedtuple("DataItem", ["env_id", "x", "t"])
+
+
+def get_batch(env_ids, dim, t, x):
+    batch_size = len(env_ids)
+    x = (x * torch.arange(batch_size, dtype=torch.float32,
+                          requires_grad=True).unsqueeze(1) * torch.arange(
+                              dim, dtype=torch.float32,
+                              requires_grad=True).unsqueeze(0))
+    return DataItem(
+        env_id=torch.tensor(env_ids, dtype=torch.int64),
+        x=x,
+        t=t * torch.ones(batch_size, dtype=torch.int32))
+
+
+class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
+    dim = 20
+    max_length = 4
+    num_envs = 8
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.data_spec = DataItem(
+            env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
+            x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
+            t=alf.TensorSpec(shape=(), dtype=torch.int32))
+
+    @parameterized.named_parameters([
+        ('test_sync', False),
+        ('test_async', True),
+    ])
+    def test_ring_buffer(self, allow_multiprocess):
+        ring_buffer = RingBuffer(
+            data_spec=self.data_spec,
+            num_environments=self.num_envs,
+            max_length=self.max_length,
+            allow_multiprocess=allow_multiprocess)
+
+        batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=1, x=0.4)
+        if not allow_multiprocess:
+            # enqueue: blocking mode only available under allow_multiprocess
+            self.assertRaises(
+                AssertionError,
+                ring_buffer.enqueue,
+                batch1,
+                env_ids=batch1.env_id,
+                blocking=True)
+
+        # Test dequeque()
+        for t in range(2, 10):
+            batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
+            # test that the created batch has gradients
+            self.assertTrue(batch1.x.requires_grad)
+            ring_buffer.enqueue(batch1, batch1.env_id)
+        if not allow_multiprocess:
+            # dequeue: blocking mode only available under allow_multiprocess
+            self.assertRaises(
+                AssertionError,
+                ring_buffer.dequeue,
+                env_ids=batch1.env_id,
+                blocking=True)
+        # Exception because some environments do not have data
+        self.assertRaises(AssertionError, ring_buffer.dequeue)
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id)
+        self.assertEqual(batch.t, torch.tensor([6] * 5))
+        # test that RingBuffer detaches gradients of inputs
+        self.assertFalse(batch.x.requires_grad)
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id)
+        self.assertEqual(batch.t, torch.tensor([7] * 5))
+        batch = ring_buffer.dequeue(env_ids=torch.tensor([1, 2]))
+        self.assertEqual(batch.t, torch.tensor([8] * 2))
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id)
+        self.assertEqual(batch.t, torch.tensor([[9], [9], [8], [8], [8]]))
+        # Exception because some environments do not have data
+        self.assertRaises(
+            AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
+
+        if allow_multiprocess:
+            # Test block on dequeue without enough data
+            def delayed_enqueue(ring_buffer, batch):
+                sleep(0.04)
+                ring_buffer.enqueue(batch, batch.env_id)
+
+            p = mp.Process(target=delayed_enqueue, args=(ring_buffer, batch1))
+            p.start()
+            batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
+            self.assertEqual(batch.t, torch.tensor([9] * 2))
+
+            # Test block on enqueue without free space
+            ring_buffer.clear()
+            for t in range(6, 10):
+                batch2 = get_batch(range(0, 8), self.dim, t=t, x=0.4)
+                ring_buffer.enqueue(batch2)
+
+            def delayed_dequeue():
+                sleep(0.04)
+                ring_buffer.dequeue()  # 6(deleted), 7, 8, 9
+                sleep(0.04)  # 10, 7, 8, 9
+                ring_buffer.dequeue()  # 10, 7(deleted), 8, 9
+
+            p = mp.Process(target=delayed_dequeue)
+            p.start()
+            batch2 = get_batch(range(0, 8), self.dim, t=10, x=0.4)
+            ring_buffer.enqueue(batch2, blocking=True)
+            p.join()
+            self.assertEqual(ring_buffer._current_size[0], torch.tensor([3]))
+
+            # Test stop queue event
+            def blocking_dequeue(ring_buffer):
+                ring_buffer.dequeue(blocking=True)
+
+            p = mp.Process(target=blocking_dequeue, args=(ring_buffer, ))
+            ring_buffer.clear()
+            p.start()
+            sleep(0.02)  # for subprocess to enter while loop
+            ring_buffer.stop()
+            p.join()
+            self.assertEqual(
+                ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True),
+                None)
+
+            ring_buffer.revive()
+            for t in range(6, 10):
+                batch2 = get_batch(range(0, 8), self.dim, t=t, x=0.4)
+                self.assertEqual(
+                    ring_buffer.enqueue(batch2, blocking=True), True)
+
+            ring_buffer.stop()
+            self.assertEqual(ring_buffer.enqueue(batch2, blocking=True), False)
 
 
 class DataBufferTest(alf.test.TestCase):
@@ -32,14 +167,19 @@ class DataBufferTest(alf.test.TestCase):
         data_buffer = DataBuffer(data_spec=data_spec, capacity=capacity)
 
         def _get_batch(batch_size):
-            x = torch.randn(batch_size, dim)
+            x = torch.randn(batch_size, dim, requires_grad=True)
             x = (x[:, 0], x[:, 1:dim // 3], x[..., dim // 3:])
             return x
 
         data_buffer.add_batch(_get_batch(100))
         self.assertEqual(int(data_buffer.current_size), 100)
         batch = _get_batch(1000)
+        # test that the created batch has gradients
+        self.assertTrue(batch[0].requires_grad)
         data_buffer.add_batch(batch)
+        ret = data_buffer.get_batch(2)
+        # test that DataBuffer detaches gradients of inputs
+        self.assertFalse(ret[0].requires_grad)
         self.assertEqual(int(data_buffer.current_size), capacity)
         ret = data_buffer.get_batch_by_indices(torch.arange(capacity))
         self.assertEqual(ret[0], batch[0][-capacity:])
@@ -71,6 +211,9 @@ class DataBufferTest(alf.test.TestCase):
         self.assertEqual(ret[0], batch[0])
         self.assertEqual(ret[1], batch[1])
         self.assertEqual(ret[2], batch[2][-capacity:])
+
+        data_buffer.clear()
+        self.assertEqual(int(data_buffer.current_size), 0)
 
 
 if __name__ == '__main__':
