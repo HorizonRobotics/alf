@@ -67,11 +67,12 @@ class TrainerConfig(object):
                 iteration. The total number of time steps from all environments per
                 iteration can be computed as: ``num_envs * env_batch_size * unroll_length``.
             unroll_with_grad (bool): a bool flag indicating whether we require
-                grad during ``unroll()``. ``OnPolicyAlgorithm`` always unrolls with
-                grads. Thus this flag is only used by ``OffPolicyAlgorithm``. In
-                most cases it's unnecessary and turned off for saving memory.
-                However, when there is an on-policy sub-algorithm, then we can
-                enable this flag for its training.
+                grad during ``unroll()``. This flag is only used by
+                ``OffPolicyAlgorithm`` where unrolling with grads is usually
+                unnecessary and turned off for saving memory. However, when there
+                is an on-policy sub-algorithm, we can enable this flag for its
+                training. ``OnPolicyAlgorithm`` always unrolls with grads and this
+                flag doesn't apply to it.
             use_rollout_state (bool): If True, when off-policy training, the RNN
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
