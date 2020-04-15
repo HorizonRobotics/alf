@@ -370,8 +370,7 @@ class DataBuffer(RingBuffer):
                  capacity,
                  device='cpu',
                  name="DataBuffer"):
-        """Create a DataBuffer.
-
+        """
         Args:
             data_spec (nested TensorSpec): spec for the data item (without batch
                 dimension) to be stored.
@@ -392,14 +391,14 @@ class DataBuffer(RingBuffer):
                                                       self._buffer)
 
     def add_batch(self, batch):
-        """Add a batch of items to the buffer.
+        r"""Add a batch of items to the buffer.
 
         Add batch_size items along the length of the underlying RingBuffer,
         whereas RingBuffer.enqueue only adds data of length 1.
-        Truncates the data if batch_size > capacity.
+        Truncates the data if ``batch_size > capacity``.
 
         Args:
-            batch (Tensor): shape should be [batch_size] + tensor_space.shape
+            batch (Tensor): of shape ``[batch_size] + tensor_space.shape``
         """
         batch_size = alf.nest.get_nest_batch_size(batch)
         with alf.device(self._device):
@@ -416,12 +415,12 @@ class DataBuffer(RingBuffer):
                 torch.min(self.current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
-        """Get batsh_size random samples in the buffer.
+        r"""Get batsh_size random samples in the buffer.
 
         Args:
             batch_size (int): batch size
         Returns:
-            Tensor of shape [batch_size] + tensor_spec.shape
+            Tensor of shape ``[batch_size] + tensor_spec.shape``
         """
         with alf.device(self._device):
             indices = torch.randint(
@@ -433,14 +432,17 @@ class DataBuffer(RingBuffer):
         return convert_device(result)
 
     def get_batch_by_indices(self, indices):
-        """Get the samples by indices
+        r"""Get the samples by indices
 
         index=0 corresponds to the earliest added sample in the DataBuffer.
+
         Args:
             indices (Tensor): indices of the samples
+
         Returns:
-            Tensor of shape [batch_size] + tensor_spec.shape, where batch_size
-                is indices.shape[0]
+            Tensor:
+            Tensor of shape ``[batch_size] + tensor_spec.shape``, where
+            ``batch_size`` is ``indices.shape[0]``
         """
         with alf.device(self._device):
             indices = convert_device(indices)
@@ -473,7 +475,11 @@ class DataBuffer(RingBuffer):
         self.current_size.fill_(0)
 
     def pop(self, n):
-        """Remove last n items."""
+        """Remove last n items.
+
+        Args:
+            n (int): number of items to remove from buffer
+        """
         n = torch.min(torch.as_tensor(n), self.current_size)
         self.current_size.cppy_(self.current_size - n)
         self.current_pos.copy_((self.current_pos - n) % self._capacity)

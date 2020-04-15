@@ -54,3 +54,6 @@ Troubleshooting
     pip install sphinxcontrib-napoleon sphinx_rtd_theme
 
 2. If preview pane is empty, wait for a while, generation can take time.
+
+3. After file change, close preview tab and then generate preview again in
+vscode to view the change.
