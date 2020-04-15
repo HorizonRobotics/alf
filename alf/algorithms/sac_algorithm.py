@@ -359,8 +359,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         info = SacAlphaInfo(
             loss=LossInfo(
                 loss=alpha_loss,
-                extra=dict(alpha_loss=alpha_loss, alpha=self._log_alpha.
-                           exp())))
+                extra=dict(
+                    alpha_loss=alpha_loss,
+                    alpha=self._log_alpha.exp().repeat(alpha_loss.shape[0]))))
         return info
 
     def train_step(self, exp: Experience, state: SacState):

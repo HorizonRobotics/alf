@@ -282,8 +282,15 @@ class OffPolicyAlgorithm(RLAlgorithm):
         if self._train_info_spec is None:
             self._train_info_spec = dist_utils.extract_spec(policy_step.info)
         info = dist_utils.distributions_to_params(policy_step.info)
-        info = alf.nest.map_structure(
-            lambda x: x.reshape(length, batch_size, *x.shape[1:]), info)
+
+        def _unsquash(x):
+            assert x.shape[0] == length * batch_size, \
+                ("The tensor {} in info {} cannot be reshaped to [{}, {}, ...]!".format(
+                    x, info, length, batch_size)
+                 + "\nPlease check 'train_step()' to see if it's computed correctly.")
+            return x.reshape(length, batch_size, *x.shape[1:])
+
+        info = alf.nest.map_structure(_unsquash, info)
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
 
