@@ -41,7 +41,7 @@ def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
     """
     dist = torch.distributions.normal.Normal(0, 1)
     z = torch.arange(-r, r, dz)
-    # `nonlinearity` might be an inplace op, need to use `z` be for applying
+    # `nonlinearity` might be an inplace op, need to use `z` before applying
     # `nonlinearity` to `z`
     prob = torch.exp(dist.log_prob(z))
     x = nonlinearity(z)
