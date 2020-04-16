@@ -46,7 +46,7 @@ class ICMAlgorithm(Algorithm):
                  encoding_net: EncodingNetwork = None,
                  forward_net: EncodingNetwork = None,
                  inverse_net: EncodingNetwork = None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  optimizer=None,
                  name="ICMAlgorithm"):
         """Create an ICMAlgorithm.

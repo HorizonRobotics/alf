@@ -41,7 +41,7 @@ class CriticNetwork(Network):
                  observation_fc_layer_params=None,
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  kernel_initializer=None,
                  name="CriticNetwork"):
         """Creates an instance of `CriticNetwork` for estimating action-value of
@@ -210,7 +210,7 @@ class CriticRNNNetwork(Network):
                  joint_fc_layer_params=None,
                  lstm_hidden_size=100,
                  critic_fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  kernel_initializer=None,
                  name="CriticRNNNetwork"):
         """Creates an instance of `CriticRNNNetwork` for estimating action-value

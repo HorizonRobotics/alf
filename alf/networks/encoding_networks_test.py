@@ -215,7 +215,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
             fc_layer_params=(256, 256),
-            activation=nn.ReLU(inplace=True),
+            activation=torch.relu_,
             last_layer_size=1,
             last_activation=math_ops.identity)
         replicas = 2

@@ -410,6 +410,9 @@ class RLAlgorithm(Algorithm):
         """Generate summaries for metrics ``AverageEpisodeLength``,
         ``AverageReturn``, etc.
         """
+        if not alf.summary.should_record_summaries():
+            return
+
         if self._metrics:
             for metric in self._metrics:
                 metric.gen_summaries(
@@ -417,7 +420,18 @@ class RLAlgorithm(Algorithm):
                     step_metrics=self._metrics[:2])
 
         mem = self._proc.memory_info().rss // 1e6
-        alf.summary.scalar(name='memory_usage', data=mem)
+        alf.summary.scalar(name='memory/cpu', data=mem)
+        if torch.cuda.is_available():
+            mem = torch.cuda.memory_allocated() // 1e6
+            alf.summary.scalar(name='memory/gpu_allocated', data=mem)
+            mem = torch.cuda.memory_reserved() // 1e6
+            alf.summary.scalar(name='memory/gpu_reserved', data=mem)
+            mem = torch.cuda.max_memory_allocated() // 1e6
+            alf.summary.scalar(name='memory/max_gpu_allocated', data=mem)
+            mem = torch.cuda.max_memory_reserved() // 1e6
+            alf.summary.scalar(name='memory/max_gpu_reserved', data=mem)
+            torch.cuda.reset_max_memory_allocated()
+            # TODO: consider using torch.cuda.empty_cache() to save memory.
 
     # Subclass may override predict_step() to allow more efficient implementation
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):

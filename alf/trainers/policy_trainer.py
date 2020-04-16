@@ -19,6 +19,7 @@ import gin
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import math
 import os
+import pprint
 import sys
 import time
 import torch
@@ -88,6 +89,9 @@ class Trainer(object):
         self._random_seed = common.set_random_seed(self._random_seed)
 
         env = self._create_environment(random_seed=self._random_seed)
+        logging.info(
+            "observation_spec=%s" % pprint.pformat(env.observation_spec()))
+        logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
         common.set_global_env(env)
 
         self._algorithm = self._algorithm_ctor(

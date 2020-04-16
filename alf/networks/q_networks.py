@@ -37,7 +37,7 @@ class QNetwork(PreprocessorNetwork):
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  kernel_initializer=None,
                  name="QNetwork"):
         """Creates an instance of `QNetwork` for estimating action-value of
@@ -131,7 +131,7 @@ class QRNNNetwork(PreprocessorNetwork):
                  fc_layer_params=None,
                  lstm_hidden_size=100,
                  value_fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  kernel_initializer=None,
                  name="QRNNNetwork"):
         """Creates an instance of `QRNNNetwork` for estimating action-value of

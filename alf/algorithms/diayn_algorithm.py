@@ -48,7 +48,7 @@ class DIAYNAlgorithm(Algorithm):
                  reward_adapt_speed=8.0,
                  observation_spec=None,
                  hidden_size=(),
-                 hidden_activation=torch.relu,
+                 hidden_activation=torch.relu_,
                  name="DIAYNAlgorithm"):
         """Create a DIAYNAlgorithm.
 

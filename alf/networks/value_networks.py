@@ -35,7 +35,7 @@ class ValueNetwork(PreprocessorNetwork):
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  kernel_initializer=None,
                  name="ValueNetwork"):
         """Creates a value network that estimates the expected return.
@@ -121,7 +121,7 @@ class ValueRNNNetwork(PreprocessorNetwork):
                  fc_layer_params=None,
                  lstm_hidden_size=100,
                  value_fc_layer_params=None,
-                 activation=torch.relu,
+                 activation=torch.relu_,
                  kernel_initializer=None,
                  name="ValueRNNNetwork"):
         """Creates an instance of `ValueRNNNetwork`.

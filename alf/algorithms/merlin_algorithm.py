@@ -543,7 +543,7 @@ class ResnetDecodingNetwork(alf.networks.Network):
         super().__init__(input_tensor_spec, name=name)
 
         dec_layers = []
-        relu = nn.ReLU(inplace=True)
+        relu = torch.relu_
         dec_layers.extend([
             alf.layers.FC(input_tensor_spec.shape[0], 500, activation=relu),
             alf.layers.FC(500, 8 * 8 * 64, activation=relu),

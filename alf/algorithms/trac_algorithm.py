@@ -181,6 +181,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
             action_distribution=training_info.info.action_distribution)
         self._ac_algorithm.after_update(training_info._replace(info=ac_info))
 
+    @torch.no_grad()
     def _calc_change(self, exp_array):
         """Calculate the distance between old/new action distributions.
 

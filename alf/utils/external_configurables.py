@@ -28,14 +28,16 @@ gym.envs.registration.EnvSpec.make = gin.external_configurable(
 gin.external_configurable(torch.exp, 'torch.exp')
 gin.external_configurable(torch.tanh, 'torch.tanh')
 gin.external_configurable(torch.relu, 'torch.relu')
+gin.external_configurable(torch.relu, 'torch.relu_')
 gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
 gin.external_configurable(torch.nn.functional.softsign,
                           'torch.nn.functional.softsign')
+
+gin.external_configurable(torch.nn.ELU, 'torch.nn.ELU')
+gin.external_configurable(torch.nn.LeakyReLU, 'torch.nn.LeakyReLU')
+gin.external_configurable(torch.nn.ReLU, 'torch.nn.ReLU')
 
 gin.external_configurable(torch.nn.MSELoss, 'torch.nn.MSELoss')
 gin.external_configurable(torch.nn.BCELoss, 'torch.nn.BCELoss')
 gin.external_configurable(torch.nn.CrossEntropyLoss,
                           'torch.nn.CrossEntropyLoss')
-
-# gin.external_configurable(tf.keras.initializers.GlorotUniform,
-#                           'tf.keras.initializers.GlorotUniform')
