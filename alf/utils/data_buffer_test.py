@@ -103,6 +103,15 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertRaises(
             AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
 
+        # Test dequeue multiple
+        ring_buffer.clear()
+        for t in range(6, 10):
+            batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
+            # test that the created batch has gradients
+            ring_buffer.enqueue(batch1, batch1.env_id)
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id, n=2)
+        self.assertEqual(batch.t, torch.tensor([[6, 7]] * 5))
+
         # Test pop
         ring_buffer.pop(4)
         for t in range(6, 10):

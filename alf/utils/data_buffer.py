@@ -154,7 +154,6 @@ class RingBuffer(nn.Module):
         Args:
             env_ids (Tensor): Assumed not ``None``, properly checked by
                 ``check_convert_env_ids()``.
-        
         Returns:
             bool
         """
@@ -207,7 +206,13 @@ class RingBuffer(nn.Module):
 
         Args:
             batch (Tensor): shape should be
-                ``[batch_size] + tensor_space.shape``
+                ``[batch_size] + tensor_space.shape``.
+                If we ever want to enqueue ``n`` batches (or
+                ``[batch_size, n]`` shaped batch), we'll need to use something
+                like this:
+                ``buf.index_put_((env_ids.reshape(batch_size, 1).repeat(1,
+                batch_size), _current_pos[env_ids] - n to _current_pos[env_ids]
+                ), batch)``
             env_ids (Tensor): If ``None``, ``batch_size`` must be
                 ``num_environments``. If not ``None``, its shape should be
                 ``[batch_size]``. We assume there are no duplicate ids in
@@ -242,33 +247,37 @@ class RingBuffer(nn.Module):
                 self._enqueued.set()
                 self._dequeued.clear()
 
-    def has_data(self, env_ids):
-        """Check one batch of data available for ``env_ids``.
+    def has_data(self, env_ids, n):
+        """Check ``n`` batches of data available for ``env_ids``.
 
         Args:
             env_ids (Tensor): Assumed not ``None``, properly checked by
                 ``check_convert_env_ids()``.
-        
+            n (int): Number of batches to check.
         Returns:
             bool
         """
         current_size = self._current_size[env_ids]
         min_size = current_size.min()
-        return min_size > 0
+        return min_size >= n
 
-    def dequeue(self, env_ids=None, blocking=False):
-        """Return earliest batch and remove it from buffer.
+    def dequeue(self, env_ids=None, n=1, blocking=False):
+        """Return earliest ``n`` batches and mark them removed in the buffer.
 
         Args:
             env_ids (Tensor): If None, ``batch_size`` must be num_environments.
                 If not None, dequeue from these environments. We assume there
                 is no duplicate ids in ``env_id``. ``result[i]`` will be from
                 environment ``env_ids[i]``.
-            blocking (bool): If ``True``, blocks if there is no free slot to
-                add data.
+            n (int): Number of batches to dequeue.
+            blocking (bool): If ``True``, blocks if there is not enough data to
+                dequeue.
         Returns:
             nested Tensors or None when blocking dequeue gets terminated by
             stop event. The shapes of the Tensors are ``[batch_size, ...]``.
+        Raises:
+            ``AssertionError`` when not enough data is present, in non-blocking
+            mode.
         """
         if blocking:
             assert self._allow_multiprocess, [
@@ -277,8 +286,8 @@ class RingBuffer(nn.Module):
             env_ids = self.check_convert_env_ids(env_ids)
             while not self._stop.is_set():
                 with self._lock:
-                    if self.has_data(env_ids):
-                        return self._dequeue(env_ids)
+                    if self.has_data(env_ids, n):
+                        return self._dequeue(env_ids=env_ids, n=n)
                 # The wait here is outside the lock, so multiple dequeue and
                 # enqueue could theoretically happen before the wait.  The
                 # wait only acts as a more responsive sleep, and the return
@@ -287,17 +296,18 @@ class RingBuffer(nn.Module):
                 self._enqueued.wait(timeout=0.2)
             return None
         else:
-            return self._dequeue(env_ids)
+            return self._dequeue(env_ids=env_ids, n=n)
 
     @atomic
-    def _dequeue(self, env_ids=None):
-        """Return earliest batch and remove it from buffer.
+    def _dequeue(self, env_ids=None, n=1):
+        """Return earliest ``n`` batches and mark them removed in the buffer.
 
         Args:
             env_ids (Tensor): If None, ``batch_size`` must be num_environments.
                 If not None, dequeue from these environments. We assume there
                 is no duplicate ids in ``env_id``. ``result[i]`` will be from
                 environment env_ids[i].
+            n (int): Number of batches to dequeue.
         Returns:
             nested Tensors of shapes ``[batch_size, ...]``.
         Raises:
@@ -307,20 +317,39 @@ class RingBuffer(nn.Module):
             env_ids = self.check_convert_env_ids(env_ids)
             current_size = self._current_size[env_ids]
             min_size = current_size.min()
-            assert min_size >= 1, (
+            assert min_size >= n, (
                 "Not all environments have enough data. The smallest data "
                 "size is: %s Try storing more data before calling dequeue" %
                 min_size)
             pos = self._current_pos[env_ids] - current_size
-            pos = pos % self._max_length
-            indices = env_ids * self._max_length + pos  # shape [B]
 
-            batch_size = env_ids.shape[0]
-            result = alf.nest.map_structure(
-                lambda buffer: buffer[indices].reshape(
-                    batch_size, 1, *buffer.shape[1:]), self._flattened_buffer)
+            def _create_empty(buf):
+                return []
 
-            self._current_size[env_ids] = current_size - 1
+            result_arr = alf.nest.map_structure(_create_empty, self._buffer)
+
+            for _ in range(n):
+                pos = pos % self._max_length
+                indices = env_ids * self._max_length + pos  # shape [B]
+
+                batch_size = env_ids.shape[0]
+                alf.nest.map_structure_up_to(
+                    self._flattened_buffer,
+                    lambda buffer, arr: arr.append(buffer[indices].reshape(
+                        batch_size, 1, *buffer.shape[1:])),  # shape [B, 1, ..]
+                    self._flattened_buffer,
+                    result_arr)
+                pos += 1
+
+            def _cat_tuple(arr):
+                return torch.cat(
+                    tuple(arr), dim=1).reshape(
+                        batch_size, n, *arr[0].shape[2:])  # shape [B, n, ..]
+
+            result = alf.nest.map_structure_up_to(self._flattened_buffer,
+                                                  _cat_tuple, result_arr)
+
+            self._current_size[env_ids] = current_size - n
             # set flags if they exist to unblock potential consumers
             if self._dequeued:
                 self._dequeued.set()
@@ -329,10 +358,10 @@ class RingBuffer(nn.Module):
 
     @atomic
     def pop(self, n, env_ids=None):
-        """Remove last n items.
+        """Mark as removed up to the last n batches.
 
         Args:
-            n (int): number of items to remove from buffer
+            n (int): max number of batches to mark removed from buffer.
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
