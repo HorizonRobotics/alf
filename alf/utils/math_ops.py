@@ -198,3 +198,58 @@ def shuffle(values):
     batch_size = alf.nest.get_nest_batch_size(values)
     indices = torch.randperm(batch_size)
     return nest_map(lambda value: value[indices], values)
+
+
+class Softsign_(torch.autograd.Function):
+    r"""softsign(input) -> Tensor
+
+    Applies element-wise inplace, the function :math:`\text{SoftSign}(x) = \frac{x}{1 + |x|}`
+    
+    The `current pytorch implementation of softsign
+    <https://pytorch.org/docs/stable/_modules/torch/nn/functional.html#softsign>`_
+    is inefficient for backward and does not have an inplace version. Hence we
+    provide a more efficient implementation.
+
+    Reference:
+    `PyTorch: Defining New Autograd Functions
+    <https://pytorch.org/tutorials/beginner/examples_autograd/two_layer_net_custom_function.html>`_
+    """
+
+    @staticmethod
+    def forward(ctx, input):
+        output = torch.div(input, input.abs() + 1, out=input)
+        ctx.save_for_backward(output)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        output, = ctx.saved_tensors
+        return torch.mul(grad_output, torch.pow(1 - output.abs(), 2))
+
+
+softsign_ = Softsign_.apply
+
+
+class Softsign(torch.autograd.Function):
+    r"""softsign(input) -> Tensor
+
+    Applies element-wise, the function :math:`\text{SoftSign}(x) = \frac{x}{1 + |x|}`
+    
+    Compared to Softsign_, this uses more memory but is faster and has higher precision
+    for backward.
+    """
+
+    @staticmethod
+    def forward(ctx, input):
+        x = torch.pow(input.abs() + 1, -1)
+        output = torch.mul(input, x)
+        ctx.save_for_backward(x)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        return torch.mul(grad_output, torch.pow(x, 2))
+
+
+softsign = Softsign.apply

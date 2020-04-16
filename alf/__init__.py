@@ -18,6 +18,7 @@ from . import nest
 from . import optimizers
 from . import summary
 from . import test
+from .utils import math_ops as math
 
 from .device_ctx import *
 from .tensor_specs import *

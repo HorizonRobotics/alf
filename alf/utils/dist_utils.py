@@ -21,6 +21,7 @@ import torch.distributions as td
 from torch.distributions import constraints
 import torch.nn as nn
 
+import alf
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
@@ -65,7 +66,7 @@ class Softsign(td.Transform):
         return isinstance(other, Softsign)
 
     def _call(self, x):
-        return nn.functional.softsign(x)
+        return alf.math.softsign(x)
 
     def _inverse(self, y):
         """
@@ -79,7 +80,7 @@ class Softsign(td.Transform):
     def log_abs_det_jacobian(self, x, y):
         """
         x > 0:
-            y = x / (1+x) => dy/dx = -1/(1+x)^2
+            y = x / (1+x) => dy/dx = 1/(1+x)^2
         x < 0:
             y = x / (1-x) => dy/dx = 1/(1-x)^2
         """

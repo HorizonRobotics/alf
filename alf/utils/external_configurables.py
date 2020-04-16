@@ -30,12 +30,11 @@ gin.external_configurable(torch.tanh, 'torch.tanh')
 gin.external_configurable(torch.relu, 'torch.relu')
 gin.external_configurable(torch.relu, 'torch.relu_')
 gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
-gin.external_configurable(torch.nn.functional.softsign,
-                          'torch.nn.functional.softsign')
+gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu_')
+gin.external_configurable(alf.math.softsign, 'alf.math.softsign')
+gin.external_configurable(alf.math.softsign_, 'alf.math.softsign_')
 
-gin.external_configurable(torch.nn.ELU, 'torch.nn.ELU')
 gin.external_configurable(torch.nn.LeakyReLU, 'torch.nn.LeakyReLU')
-gin.external_configurable(torch.nn.ReLU, 'torch.nn.ReLU')
 
 gin.external_configurable(torch.nn.MSELoss, 'torch.nn.MSELoss')
 gin.external_configurable(torch.nn.BCELoss, 'torch.nn.BCELoss')
