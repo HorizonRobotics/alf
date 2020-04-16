@@ -328,6 +328,19 @@ class RingBuffer(nn.Module):
         return convert_device(result)
 
     @atomic
+    def pop(self, n, env_ids=None):
+        """Remove last n items.
+
+        Args:
+            n (int): number of items to remove from buffer
+        """
+        with alf.device(self._device):
+            env_ids = self.check_convert_env_ids(env_ids)
+            n = torch.min(
+                torch.as_tensor([n] * self._num_envs), self._current_size)
+            self._current_size[env_ids] = self._current_size[env_ids] - n
+
+    @atomic
     def clear(self, env_ids=None):
         """Clear the buffer.
 
@@ -472,22 +485,3 @@ class DataBuffer(RingBuffer):
     def get_all(self):
         return convert_device(
             alf.nest.map_structure(lambda buf: buf, self._derived_buffer))
-
-    def clear(self):
-        """Clear the buffer.
-
-        Returns:
-            None
-        """
-        self.current_pos.fill_(0)
-        self.current_size.fill_(0)
-
-    def pop(self, n):
-        """Remove last n items.
-
-        Args:
-            n (int): number of items to remove from buffer
-        """
-        n = torch.min(torch.as_tensor(n), self.current_size)
-        self.current_size.cppy_(self.current_size - n)
-        self.current_pos.copy_((self.current_pos - n) % self._capacity)

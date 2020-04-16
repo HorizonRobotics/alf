@@ -103,6 +103,21 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         self.assertRaises(
             AssertionError, ring_buffer.dequeue, env_ids=batch1.env_id)
 
+        # Test pop
+        ring_buffer.pop(4)
+        for t in range(6, 10):
+            batch2 = get_batch(range(0, 8), self.dim, t=t, x=0.4)
+            ring_buffer.enqueue(batch2)
+        prev_size = ring_buffer._current_size.clone()
+        prev_pos = ring_buffer._current_pos.clone()
+        ring_buffer.pop(2)
+        self.assertEqual(prev_size - 2, ring_buffer._current_size)
+        # shouldn't change last data pos
+        self.assertEqual(prev_pos, ring_buffer._current_pos)
+        # popping more than there are elements shouldn't raise error
+        ring_buffer.pop(3)
+        self.assertEqual(ring_buffer._current_size, torch.tensor([0] * 8))
+
         if allow_multiprocess:
             # Test block on dequeue without enough data
             def delayed_enqueue(ring_buffer, batch):
