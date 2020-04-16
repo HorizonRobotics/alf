@@ -16,9 +16,8 @@
 import torch
 
 import alf
-from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.data_structures import Experience, StepType, TimeStep, TrainingInfo
+from alf.data_structures import Experience, TimeStep
 from alf.utils.summary_utils import record_time
 
 
@@ -43,9 +42,10 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
         for _ in range(unroll_length):
             policy_step = rollout_step(time_step, policy_step.state)
             action = sample action from policy_step.action
-            collect necessary information and policy_step.info into training_info
+            collect information from time_step into experience
+            collect information from policy_step.info into train_info
             time_step = env.step(action)
-        loss = calc_loss(training_info)
+        loss = calc_loss(experience, train_info)
         update_with_gradient(loss)
     """
 
@@ -69,38 +69,19 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
         alf.summary.get_global_counter().add_(1)
 
         with record_time("time/unroll"):
-            training_info = self.unroll(self._config.unroll_length)
+            experience = self.unroll(self._config.unroll_length)
             self.summarize_metrics()
 
         with record_time("time/train"):
-            training_info = training_info._replace(
-                rollout_info=(), info=training_info.rollout_info)
-            steps = self.train_from_unroll(training_info)
+            train_info = experience.rollout_info
+            experience = experience._replace(rollout_info=())
+            steps = self.train_from_unroll(experience, train_info)
 
         with record_time("time/after_train_iter"):
-            # Here we don't pass ``training_info`` to disable another on-policy
-            # training because otherwise it will backprop on the same graph twice,
-            # which is unnecessary because we could have simply merged the two
-            # trainings into the parent's ``rollout_step``.
+            # Here we don't pass ``experience`` and ```train_info`` to disable
+            # another on-policy training because otherwise it will backprop on
+            # the same graph twice, which is unnecessary because we could have
+            # simply merged the two trainings into the parent's ``rollout_step``.
             self.after_train_iter()
 
         return steps
-
-    def train_from_unroll(self, training_info):
-        """Train given the info collected from ``unroll()``. This function can
-        be called by any child algorithm that doesn't have the unroll logic but
-        has a different training logic with its parent (e.g., off-policy).
-
-        Args:
-            training_info (TrainingInfo):
-
-        Returns:
-            int: number of steps that have been trained
-        """
-        valid_masks = (training_info.step_type != StepType.LAST).to(
-            torch.float32)
-        loss_info, params = self.update_with_gradient(
-            self.calc_loss(training_info), valid_masks)
-        self.after_update(training_info)
-        self.summarize_train(training_info, loss_info, params)
-        return torch.tensor(training_info.step_type.shape).prod()

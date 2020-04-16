@@ -28,7 +28,7 @@ from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import AlgStep, Experience
-from alf.data_structures import TimeStep, TrainingInfo, namedtuple
+from alf.data_structures import TimeStep, namedtuple
 from alf.utils.common import cast_transformer
 
 AgentState = namedtuple(
@@ -270,12 +270,12 @@ class Agent(OnPolicyAlgorithm):
             summary_prefix="reward",
             summarize_fn=self.summarize_reward)
 
-    def calc_loss(self, training_info):
+    def calc_loss(self, experience, train_info: AgentInfo):
         """Calculate loss."""
-        if training_info.rollout_info == ():
-            training_info = training_info._replace(
-                reward=self.calc_training_reward(training_info.reward,
-                                                 training_info.info))
+        if experience.rollout_info == ():
+            experience = experience._replace(
+                reward=self.calc_training_reward(experience.reward,
+                                                 train_info))
         algorithms = [self._rl_algorithm]
         if self._irm:
             algorithms.append(self._irm)
@@ -283,22 +283,32 @@ class Agent(OnPolicyAlgorithm):
             algorithms.append(self._goal_generator)
         if self._entropy_target_algorithm:
             algorithms.append(self._entropy_target_algorithm)
-        return self._agent_helper.accumulate_loss_info(algorithms,
-                                                       training_info)
+        return self._agent_helper.accumulate_loss_info(algorithms, experience,
+                                                       train_info)
 
-    def after_update(self, training_info):
+    def after_update(self, experience, train_info: AgentInfo):
+        """Call ``after_update()`` of the RL algorithm and goal generator,
+        respectively.
+        """
         algorithms = [self._rl_algorithm]
         if self._goal_generator:
             algorithms.append(self._goal_generator)
-        self._agent_helper.after_update(algorithms, training_info)
+        self._agent_helper.after_update(algorithms, experience, train_info)
 
-    def after_train_iter(self, training_info=None):
+    def after_train_iter(self, experience=None, train_info: AgentInfo = None):
+        """Call ``after_train_iter()`` of the RL algorithm and goal generator,
+        respectively.
+        """
         algorithms = [self._rl_algorithm]
         if self._goal_generator:
             algorithms.append(self._goal_generator)
-        self._agent_helper.after_train_iter(algorithms, training_info)
+        self._agent_helper.after_train_iter(algorithms, experience, train_info)
 
     def preprocess_experience(self, exp: Experience):
+        """Add intrinsic rewards to extrinsic rewards if there is an intrinsic
+        reward module. Also call ``preprocess_experience()`` of the rl
+        algorithm.
+        """
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)
         new_exp = self._rl_algorithm.preprocess_experience(
             exp._replace(reward=reward, rollout_info=exp.rollout_info.rl))

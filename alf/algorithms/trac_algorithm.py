@@ -42,16 +42,20 @@ class TracAlgorithm(OnPolicyAlgorithm):
     It compares the action distributions after the SGD with the action
     distributions from the previous model. If the average distance is too big,
     the new parameters are shrinked as:
+
+    .. code-block:: python
+
         w_new' = old_w + 0.9 * distance_clip / distance * (w_new - w_old)
 
-    If the distribution is Categorical, the squared distance is
-    ||logits_1 - logits_2||^2, and if the distribution is Deterministic, it is
-    ||loc_1 - loc_2||^2,  otherwise it's KL(d1||d2) + KL(d2||d1).
+    If the distribution is ``Categorical``, the squared distance is
+    :math:`||logits_1 - logits_2||^2`, and if the distribution is
+    ``Deterministic``, it is :math:`||loc_1 - loc_2||^2`,  otherwise it's
+    :math:`KL(d1||d2) + KL(d2||d1)`.
 
-    The reason of using ||logits_1 - logits_2||^2 for Categorical distribution
-    is that KL can be small even if there are large differences in logits when
-    the entropy is small. This means that KL cannot fully capture how much the
-    change is.
+    The reason of using :math:`||logits_1 - logits_2||^2` for categorical
+    distributions is that KL can be small even if there are large differences in
+    logits when the entropy is small. This means that KL cannot fully capture
+    how much the change is.
     """
 
     def __init__(self,
@@ -63,7 +67,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
                  action_dist_clip_per_dim=0.01,
                  debug_summaries=False,
                  name="TracAlgorithm"):
-        """Create an instance TracAlgorithm.
+        """
 
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
@@ -144,30 +148,30 @@ class TracAlgorithm(OnPolicyAlgorithm):
         policy_step = self._ac_algorithm.train_step(exp, state)
         return self._make_policy_step(exp, state, policy_step)
 
-    def calc_loss(self, training_info):
+    def calc_loss(self, experience, train_info: TracInfo):
         if self._trusted_updater is None:
             self._trusted_updater = TrustedUpdater(
                 list(self._ac_algorithm._actor_network.parameters()))
         rollout_ac_info = ()
-        if training_info.rollout_info != ():
-            rollout_ac_info = training_info.rollout_info.ac._replace(
-                action_distribution=training_info.rollout_info.
+        if experience.rollout_info != ():
+            rollout_ac_info = experience.rollout_info.ac._replace(
+                action_distribution=experience.rollout_info.
                 action_distribution)
-        ac_info = training_info.info.ac._replace(
-            action_distribution=training_info.info.action_distribution)
+        ac_info = train_info.ac._replace(
+            action_distribution=train_info.action_distribution)
         return self._ac_algorithm.calc_loss(
-            training_info._replace(rollout_info=rollout_ac_info, info=ac_info))
+            experience._replace(rollout_info=rollout_ac_info), ac_info)
 
-    def after_update(self, training_info):
+    def after_update(self, experience, train_info: TracInfo):
         """Adjust actor parameter according to KL-divergence."""
         action_param = dist_utils.distributions_to_params(
-            training_info.info.action_distribution)
+            train_info.action_distribution)
         exp_array = TracExperience(
-            observation=training_info.info.observation,
-            step_type=training_info.step_type,
+            observation=train_info.observation,
+            step_type=experience.step_type,
             action_param=action_param,
-            prev_action=training_info.info.prev_action,
-            state=training_info.info.state)
+            prev_action=train_info.prev_action,
+            state=train_info.state)
         dists, steps = self._trusted_updater.adjust_step(
             lambda: self._calc_change(exp_array), self._action_dist_clips)
 
@@ -177,18 +181,19 @@ class TracAlgorithm(OnPolicyAlgorithm):
                     alf.summary.scalar("unadjusted_action_dist/%s" % i, d)
                 alf.summary.scalar("adjust_steps", steps)
 
-        ac_info = training_info.info.ac._replace(
-            action_distribution=training_info.info.action_distribution)
-        self._ac_algorithm.after_update(training_info._replace(info=ac_info))
+        ac_info = train_info.ac._replace(
+            action_distribution=train_info.action_distribution)
+        self._ac_algorithm.after_update(experience, ac_info)
 
     @torch.no_grad()
     def _calc_change(self, exp_array):
         """Calculate the distance between old/new action distributions.
 
         The squared distance is:
-        ||logits_1 - logits_2||^2 for Categorical distribution
-        ||loc_1 - loc_2||^2 for Deterministic distribution
-        KL(d1||d2) + KL(d2||d1) for others
+
+        - :math:`||logits_1 - logits_2||^2` for Categorical distribution
+        - :math:`||loc_1 - loc_2||^2` for Deterministic distribution
+        - :math:`KL(d1||d2) + KL(d2||d1)` for others
         """
 
         def _get_base_dist(dist: td.Distribution):

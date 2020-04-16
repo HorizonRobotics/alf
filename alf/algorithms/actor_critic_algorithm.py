@@ -120,6 +120,6 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             info=ActorCriticInfo(
                 value=value, action_distribution=action_distribution))
 
-    def calc_loss(self, training_info):
+    def calc_loss(self, experience, train_info: ActorCriticInfo):
         """Calculate loss."""
-        return self._loss(training_info, training_info.info.value)
+        return self._loss(experience, train_info)

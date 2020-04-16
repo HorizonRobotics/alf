@@ -24,7 +24,7 @@ import alf
 import torch
 import torch.nn as nn
 
-from alf.data_structures import LossInfo, TrainingInfo
+from alf.data_structures import LossInfo
 from alf.algorithms.algorithm import Algorithm
 import alf.utils.checkpoint_utils as ckpt_utils
 
@@ -85,12 +85,6 @@ class SimpleAlg(Algorithm):
         self._module_list = nn.ModuleList(sub_algs)
         self._param_list = nn.ParameterList(params)
 
-    def calc_loss(self, training_info):
-        loss = torch.tensor(0.)
-        for p in self.parameters():
-            loss = loss + torch.sum(p)
-        return LossInfo(loss=loss)
-
     def _trainable_attributes_to_ignore(self):
         return ['ignored_param']
 
@@ -107,12 +101,6 @@ class ComposedAlg(Algorithm):
         self._sub_alg2 = sub_alg2
         self._param_list = nn.ParameterList(params)
 
-    def calc_loss(self, training_info):
-        loss = torch.tensor(0.)
-        for p in self.parameters():
-            loss = loss + torch.sum(p)
-        return LossInfo(loss=loss)
-
 
 class ComposedAlgWithIgnore(Algorithm):
     def __init__(self,
@@ -125,12 +113,6 @@ class ComposedAlgWithIgnore(Algorithm):
         self._sub_alg1 = sub_alg1
         self._sub_alg2 = sub_alg2
         self._param_list = nn.ParameterList(params)
-
-    def calc_loss(self, training_info):
-        loss = torch.tensor(0.)
-        for p in self.parameters():
-            loss = loss + torch.sum(p)
-        return LossInfo(loss=loss)
 
     def _trainable_attributes_to_ignore(self):
         return ['_sub_alg2']
@@ -302,8 +284,6 @@ class TestWithParamSharing(alf.test.TestCase):
                 sub_alg1=alg_1,
                 sub_alg2=alg_2,
                 name="root")
-
-            all_optimizers = alg_root.optimizers()
 
             ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root)
 

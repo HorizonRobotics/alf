@@ -43,11 +43,10 @@ class WindowAverager(nn.Module):
                  tensor_spec: TensorSpec,
                  window_size,
                  name="WindowAverager"):
-        """Create a WindowAverager.
-
-        WindowAverager calculate the average of the past `window_size` samples.
+        """
+        WindowAverager calculate the average of the past ``window_size`` samples.
         Args:
-            tensor_spec (nested TensorSpec): the TensorSpec for the value to be
+            tensor_spec (nested TensorSpec): the ``TensorSpec`` for the value to be
                 averaged
             window_size (int): the size of the window
             name (str): name of this averager
@@ -63,7 +62,7 @@ class WindowAverager(nn.Module):
 
         Args:
             tensor (nested Tensor): value for updating the average; outer dims
-                will be averaged first before being added
+                will be averaged first before being added.
         Returns:
             None
         """
@@ -81,13 +80,14 @@ class WindowAverager(nn.Module):
 
         def _get(buf):
             n = torch.max(buf.current_size,
-                          torch.as_tensor(1)).to(torch.float32)
+                          torch.ones_like(buf.current_size)).to(torch.float32)
             return torch.sum(buf.get_all(), dim=0) * (1. / n)
 
         return alf.nest.map_structure(_get, self._buf)
 
     def average(self, tensor):
-        """Combines self.update and self.get in one step. Can be handy in practice.
+        """Combines ``self.update`` and ``self.get`` in one step. Can be handy
+        in practice.
 
         Args:
             tensor (nested Tensor): a value for updating the average;  outer dims
@@ -107,7 +107,7 @@ class ScalarWindowAverager(WindowAverager):
                  window_size,
                  dtype=torch.float32,
                  name="ScalarWindowAverager"):
-        """Create a ScalarWindowAverager.
+        """
 
         Args:
             window_size (int): the size of the window
@@ -124,10 +124,16 @@ class ScalarWindowAverager(WindowAverager):
 class EMAverager(nn.Module):
     """Class for exponential moving average.
 
-    x_t = (1-update_rate)* x_{t-1} + update_Rate * x
-    The average is corrected by a mass as x_t / mass_t, and the mass is
+    .. code-block:: python
+
+        x_t = (1-update_rate)* x_{t-1} + update_Rate * x
+
+    The average is corrected by a mass as ``x_t / mass_t``, and the mass is
     calculated as:
-    mass_t = (1-update_rate) * mass_{t-1} + update_rate
+
+    .. code-block:: python
+
+        mass_t = (1-update_rate) * mass_{t-1} + update_rate
 
     Note that update_rate can be a fixed floating number or a Variable. If it is
     a Variable, the update_rate can be changed by the user.
@@ -135,10 +141,10 @@ class EMAverager(nn.Module):
 
     def __init__(self, tensor_spec: TensorSpec, update_rate,
                  name="EMAverager"):
-        """Create an EMAverager.
+        """
 
         Args:
-            tensor_spec (nested TensorSpec): the TensorSpec for the value to be
+            tensor_spec (nested TensorSpec): the ``TensorSpec`` for the value to be
                 averaged
             update_rate (float|Variable): the update rate
             name (str): name of this averager
@@ -191,7 +197,8 @@ class EMAverager(nn.Module):
             self._average)
 
     def average(self, tensor):
-        """Combines self.update and self.get in one step. Can be handy in practice.
+        """Combines ``self.update`` and ``self.get`` in one step. Can be handy
+        in practice.
 
         Args:
             tensor (nested Tensor): a value for updating the average; outer dims
@@ -211,7 +218,7 @@ class ScalarEMAverager(EMAverager):
                  update_rate,
                  dtype=torch.float32,
                  name="ScalarEMAverager"):
-        """Create a ScalarEMAverager.
+        """
 
         Args:
             udpate_rate (float|Variable): update rate
@@ -229,19 +236,20 @@ class AdaptiveAverager(EMAverager):
     """Averager with adaptive update_rate.
 
     This averager gives higher weight to more recent samples for calculating the
-    average. Roughly speaking, the weight for each sample at time t is roughly
-    proportional to (t/T)^(speed-1), where T is the current time step. See
-    docs/streaming_averaging_amd_sampling.py for detail.
+    average. Roughly speaking, the weight for each sample at time :math:`t` is
+    roughly proportional to :math:`(t/T)^{speed-1}`, where :math:`T` is the
+    current time step. See :doc:`notes/streaming_averaging_amd_sampling` for
+    detail.
     """
 
     def __init__(self,
                  tensor_spec: TensorSpec,
                  speed=10.,
                  name="AdaptiveAverager"):
-        """Create an AdpativeAverager.
+        """
 
         Args:
-            tensor_spec (nested TensorSpec): the TensorSpec for the value to be
+            tensor_spec (nested TensorSpec): the ``TensorSpec`` for the value to be
                 averaged
             speed (float): speed of updating mean and variance.
             name (str): name of this averager
@@ -259,8 +267,6 @@ class AdaptiveAverager(EMAverager):
         Args:
             tensor (nested Tensor): a value for updating the average; outer dims
                 will be first averaged before being added to the average
-        Returns:
-            None
         """
         self._update_ema_rate.fill_(
             self._speed / self._total_steps.to(torch.float64))
@@ -276,7 +282,7 @@ class ScalarAdaptiveAverager(AdaptiveAverager):
                  speed=10,
                  dtype=torch.float32,
                  name="ScalarAdaptiveAverager"):
-        """Create a ScalarAdpativeAverager.
+        """
 
         Args:
             speed (float): speed of updating mean and variance.

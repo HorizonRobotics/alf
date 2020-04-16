@@ -41,7 +41,7 @@ class ICMAlgorithmTest(alf.test.TestCase):
                                         maximum=3)
         alg = ICMAlgorithm(
             action_spec=action_spec,
-            feature_spec=self._input_tensor_spec,
+            observation_spec=self._input_tensor_spec,
             hidden_size=self._hidden_size)
         state = self._input_tensor_spec.zeros(outer_dims=(1, ))
 
@@ -60,7 +60,7 @@ class ICMAlgorithmTest(alf.test.TestCase):
         action_spec = TensorSpec((4, ))
         alg = ICMAlgorithm(
             action_spec=action_spec,
-            feature_spec=self._input_tensor_spec,
+            observation_spec=self._input_tensor_spec,
             hidden_size=self._hidden_size)
         state = self._input_tensor_spec.zeros(outer_dims=(1, ))
 

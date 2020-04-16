@@ -30,7 +30,7 @@ from alf.algorithms.decoding_algorithm import DecodingAlgorithm
 from alf.algorithms.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.vae import VariationalAutoEncoder
-from alf.data_structures import TimeStep, AlgStep, LossInfo, TrainingInfo
+from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.networks.action_encoder import SimpleActionEncoder
@@ -54,7 +54,7 @@ class MemoryBasedPredictor(Algorithm):
     """The Memroy Based Predictor.
 
     It's described in:
-    Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent" 
+    Wayne et al "Unsupervised Predictive Memory in a Goal-Directed Agent"
     `arXiv:1803.10760 <https://arxiv.org/abs/1803.10760>`_
     """
 
@@ -69,7 +69,6 @@ class MemoryBasedPredictor(Algorithm):
                  loss_weight=1.0,
                  name="mbp"):
         """
-
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
@@ -140,13 +139,13 @@ class MemoryBasedPredictor(Algorithm):
         """Calculate latent vector.
 
         Args:
-            inputs (tuple): a tuple of (observation, prev_action)
+            inputs (tuple): a tuple of ``(observation, prev_action)``.
             state (MBPState): RNN state
         Returns:
             AlgStep:
-                output: latent vector
-                state: next_state
-                info (LossInfo): loss
+            - output: latent vector
+            - state: next_state
+            - info (LossInfo): loss
         """
         observation, prev_action = inputs
         self._memory.from_states(state.memory)
@@ -197,13 +196,13 @@ class MemoryBasedPredictor(Algorithm):
         """Train one step.
 
         Args:
-            inputs (tuple): a tuple of (observation, action)
+            inputs (tuple): a tuple of ``(observation, action)``.
             state (nested Tensor): RNN state
         Returns:
             AlgStep:
-                output: latent vector
-                state: next state
-                info: empty tuple
+            - output: latent vector
+            - state: next state
+            - info: empty tuple
         """
         encode_step = self.encode_step(inputs, state)
 
@@ -213,12 +212,12 @@ class MemoryBasedPredictor(Algorithm):
         """Train one step.
 
         Args:
-            inputs (tuple): a tuple of (observation, action)
+            inputs (tuple): a tuple of ``(observation, action)``.
         Returns:
             AlgStep:
-                output: latent vector
-                state: next state
-                info (LossInfo): loss
+            - output: latent vector
+            - state: next state
+            - info (LossInfo): loss
         """
         observation, _ = inputs
         encode_step = self.encode_step(inputs, state)
@@ -251,7 +250,6 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                  debug_summaries=False,
                  name="mba"):
         """
-
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             memory (MemoryWithUsage): the memory module from ``MemoryBasedPredictor``
@@ -341,9 +339,9 @@ class MemoryBasedActor(OnPolicyAlgorithm):
                                                   epsilon_greedy)
         return AlgStep(output=action, state=state, info=())
 
-    def calc_loss(self, training_info: TrainingInfo):
+    def calc_loss(self, experience, train_info: ActorCriticInfo):
         """Calculate loss."""
-        loss = self._loss(training_info, training_info.info.value)
+        loss = self._loss(experience, train_info)
         return loss._replace(loss=self._loss_weight * loss.loss)
 
 
@@ -383,8 +381,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                  optimizer=None,
                  debug_summaries=False,
                  name="Merlin"):
-        """Create MerlinAlgorithm.
-
+        """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             encoders (nested Network): the nest should match observation_spec
@@ -469,12 +466,11 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 mbp_state=mbp_step.state, mba_state=mba_step.state),
             info=())
 
-    def calc_loss(self, training_info: TrainingInfo):
+    def calc_loss(self, experience, train_info: MerlinInfo):
         """Calculate loss."""
-        self.summarize_reward("reward", training_info.reward)
-        mbp_loss_info = self._mbp.calc_loss(training_info.info.mbp_info)
-        mba_loss_info = self._mba.calc_loss(
-            training_info._replace(info=training_info.info.mba_info))
+        self.summarize_reward("reward", experience.reward)
+        mbp_loss_info = self._mbp.calc_loss(train_info.mbp_info)
+        mba_loss_info = self._mba.calc_loss(experience, train_info.mba_info)
 
         return LossInfo(
             loss=mbp_loss_info.loss + mba_loss_info.loss,
@@ -492,9 +488,8 @@ class ResnetEncodingNetwork(alf.networks.Network):
 
     def __init__(self, input_tensor_spec, name='ResnetEncodingNetwork'):
         """
-
         Args:
-            input_tensor_spec (TensorSpec|nested TensorSpec): input observations spec.
+            input_tensor_spec (nested TensorSpec): input observations spec.
         """
         super().__init__(input_tensor_spec, name=name)
 

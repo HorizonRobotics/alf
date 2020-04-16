@@ -56,33 +56,35 @@ class MIEstimator(Algorithm):
     For *ML*, :math:`P(y)` is the margianl distribution of y, and it needs to be provided.
     The current implementation uses a normal distribution with diagonal variance
     for :math:`q(y|x)`. So it only support continous `y`. If :math:`P(y|x)` can be reasonably
-    approximated as an diagonal normal distribution and P(y) is known, then 'ML'
-    may give better estimation for the mutual information.
+    approximated as an diagonal normal distribution and :math:`P(y)` is known,
+    then 'ML' may give better estimation for the mutual information.
 
     Assumming the function class of T is rich enough to represent any function,
-    for *KLD* and *JSD*, T will converge to :math:`\log(\frac{P}{Q})` and hence :math:`E_P(T)` can also be
-    used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`. For *DV*, T will converge to
-    :math:`\log(\frac{P}{Q}) + c`, where :math:`c=\log E_Q(\exp(T))`.
+    for *KLD* and *JSD*, T will converge to :math:`\log(\frac{P}{Q})` and hence
+    :math:`E_P(T)` can also be used as an estimator of :math:`KLD(P||Q)=MI(X,Y)`.
+    For *DV*, :math:`T` will converge to :math:`\log(\frac{P}{Q}) + c`, where
+    :math:`c=\log E_Q(\exp(T))`.
 
     Among *DV*, *KLD* and *JSD*,  *DV* and *KLD* seem to give a better estimation
     of PMI than *JSD*. But *JSD* might be numerically more stable than *DV* and
     *KLD* because of the use of softplus instead of exp. And *DV* is more stable
     than *KLD* because of the logarithm.
 
-    Several strategies are implemented in order to estimate :math:`E_Q(.)`:
+    Several strategies are implemented in order to estimate :math:`E_Q(\cdot)`:
 
-    * 'buffer': store y to a buffer and randomly retrieve samples from the
-       buffer.
-    * 'double_buffer': stroe both x and y to buffers and randomly retrieve
-       samples from the two buffers.
-    * 'shuffle': randomly shuffle batch y
-    * 'shift': shift batch y by one sample, i.e.
+    * 'buffer': store :math:`y` to a buffer and randomly retrieve samples from
+      the buffer.
+    * 'double_buffer': stroe both :math:`x` and :math:`y` to buffers and randomly
+      retrieve samples from the two buffers.
+    * 'shuffle': randomly shuffle batch :math:`y`
+    * 'shift': shift batch :math:`y` by one sample, i.e.
       ``torch.cat([y[-1:, ...], y[0:-1, ...]], dim=0)``
-    * direct sampling: You can also provide the marginal distribution of y to
-      ``train_step()``. In this case, sampler is ignored and samples of y for
-      estimating :math:`E_Q(.)` are sampled from y_distribution.
+    * direct sampling: You can also provide the marginal distribution of :math:`y`
+      to ``train_step()``. In this case, sampler is ignored and samples of :math:`y`
+      for estimating :math:`E_Q(.)` are sampled from ``y_distribution``.
 
-    If you need the gradient of y, you should use sampler 'shift' and 'shuffle'.
+    If you need the gradient of :math:`y`, you should use sampler 'shift' and
+    'shuffle'.
 
     Among these, 'buffer' and 'shift' seem to perform better and 'shuffle'
     performs worst. 'buffer' incurs additional storage cost. 'shift' has the
@@ -90,12 +92,13 @@ class MIEstimator(Algorithm):
     memory is not a concern, we recommend 'buffer' sampler so that there is no
     need to worry about the assumption of independence.
 
-    MIEstimator can be also used to estimate conditional mutual information
-    :math:`MI(X,Y|Z)` using *KLD*, *JSD* or *ML*. In this case, you should let `x` to
-    represent X and Z, and `y` to represent Y. And when calling ``train_step()``,
-    you need to provide `y_distribution` which is the distribution :math:`P(Y|z)`.
-    Note that *DV* cannot be used for estimating conditional mutual information.
-    See mi_estimator_test.py for example.
+    ``MIEstimator`` can be also used to estimate conditional mutual information
+    :math:`MI(X,Y|Z)` using *KLD*, *JSD* or *ML*. In this case, you should let
+    ``x`` to represent :math:`X` and :math:`Z`, and ``y`` to represent :math:`Y`.
+    And when calling ``train_step()``, you need to provide ``y_distribution``
+    which is the distribution :math:`P(Y|z)`. Note that *DV* cannot be used for
+    estimating conditional mutual information. See ``mi_estimator_test.py`` for
+    an example.
     """
 
     def __init__(self,
@@ -112,22 +115,22 @@ class MIEstimator(Algorithm):
         """
 
         Args:
-            x_spec (nested TensorSpec): spec of x
-            y_spec (nested TensorSpec): spec of y
-            model (Network): can be called as model([x, y]) and return a Tensor
-                with shape=[batch_size, 1]. If None, a default MLP with
-                fc_layers will be created.
+            x_spec (nested TensorSpec): spec of ``x``
+            y_spec (nested TensorSpec): spec of ``y``
+            model (Network): can be called as ``model([x, y])`` and return a Tensor
+                with ``shape=[batch_size, 1]``. If None, a default MLP with
+                ``fc_layers`` will be created.
             fc_layers (tuple[int]): size of hidden layers. Only used if model is
                 None.
             sampler (str): type of sampler used to get samples from marginal
-                distribution, should be one of ['buffer', 'double_buffer',
-                'shuffle', 'shift']
+                distribution, should be one of ``['buffer', 'double_buffer',
+                'shuffle', 'shift']``.
             buffer_size (int): capacity of buffer for storing y for sampler
-                'buffer' and 'double_buffer'
+                'buffer' and 'double_buffer'.
             optimzer (torch.optim.Optimzer): optimizer
             estimator_type (str): one of 'DV', 'KLD' or 'JSD'
             averager (EMAverager): averager used to maintain a moving average
-                of exp(T). Only used for 'DV' estimator
+                of :math:`exp(T)`. Only used for 'DV' estimator
             name (str): name of this estimator
         """
         assert estimator_type in ['ML', 'DV', 'KLD', 'JSD'
@@ -219,19 +222,19 @@ class MIEstimator(Algorithm):
         """Perform training on one batch of inputs.
 
         Args:
-            inputs (tuple(nested Tensor, nested Tensor)): tuple of x and y
+            inputs (tuple(nested Tensor, nested Tensor)): tuple of ``x`` and ``y``
             y_distribution (nested td.Distribution): distribution
-                for the marginal distribution of y. If None, will use the
-                sampling method `sampler` provided at constructor to generate
-                the samples for the marginal distribution of Y.
+                for the marginal distribution of ``y``. If None, will use the
+                sampling method ``sampler`` provided at constructor to generate
+                the samples for the marginal distribution of :math:`Y`.
             state: not used
         Returns:
-            AlgorithmStep
-                outputs (Tensor): shape=[batch_size], its mean is the estimated
-                    MI for estimator 'KL', 'DV' and 'KLD', and Jensen-Shannon
-                    divergence for estimator 'JSD'
-                state: not used
-                info (LossInfo): info.loss is the loss
+            AlgStep:
+            - outputs (Tensor): shape is ``[batch_size]``, its mean is the
+              estimated MI for estimator 'KL', 'DV' and 'KLD', and
+              Jensen-Shannon divergence for estimator 'JSD'
+            - state: not used
+            - info (LossInfo): ``info.loss`` is the loss
         """
         x, y = inputs
 
@@ -302,7 +305,10 @@ class MIEstimator(Algorithm):
         r"""Return estimated pointwise mutual information.
 
         The pointwise mutual information is defined as:
-            :math:`\log \frac{P(x|y)}{P(x)} = \log \frac{P(y|x)}{P(y)}`
+
+        .. math::
+
+            \log \frac{P(x|y)}{P(x)} = \log \frac{P(y|x)}{P(y)}
 
         Args:
             x (Tensor): x
@@ -310,7 +316,7 @@ class MIEstimator(Algorithm):
             y_distribution (DiagMultivariateNormal): needs to be provided for
                 'ML' estimator.
         Returns:
-            Tensor: pointwise mutual information between x and y
+            Tensor: pointwise mutual information between ``x`` and ``y``.
         """
         if self._type == 'ML':
             assert isinstance(y_distribution, DiagMultivariateNormal), (

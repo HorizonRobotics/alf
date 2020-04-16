@@ -20,6 +20,7 @@ import torch
 
 import alf.nest as nest
 import alf.tensor_specs as ts
+from alf.utils import common
 from alf.utils.tensor_utils import to_tensor
 
 
@@ -27,10 +28,10 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
     """namedtuple with default value.
 
     Args:
-        typename (str): type name of this namedtuple
-        field_names (list[str]): name of each field
-        default_value (Any): the default value for all fields
-        default_values (list|dict): default value for each field
+        typename (str): type name of this namedtuple.
+        field_names (list[str]): name of each field.
+        default_value (Any): the default value for all fields.
+        default_values (list|dict): default value for each field.
     Returns:
         the type for the namedtuple
     """
@@ -45,7 +46,7 @@ def namedtuple(typename, field_names, default_value=None, default_values=()):
 
 
 class StepType(object):
-    """Defines the status of a `TimeStep` within a sequence."""
+    """Defines the status of a ``TimeStep`` within a sequence."""
     # Denotes the first `TimeStep` in a sequence.
     FIRST = np.int32(0)
     # Denotes any `TimeStep` in a sequence that is not FIRST or LAST.
@@ -54,7 +55,7 @@ class StepType(object):
     LAST = np.int32(2)
 
     def __new__(cls, value):
-        """Add ability to create StepType constants from a value."""
+        """Add ability to create ``StepType`` constants from a value."""
         if value == cls.FIRST:
             return cls.FIRST
         if value == cls.MID:
@@ -66,43 +67,74 @@ class StepType(object):
             'No known conversion for `%r` into a StepType' % value)
 
 
-class TimeStep(
-        namedtuple('TimeStep', [
-            'step_type',
-            'reward',
-            'discount',
-            'observation',
-            'prev_action',
-            'env_id',
-        ])):
-    """TimeStep with action.
+def create_experience_data(name, fields):
+    """Create a new experience data structure. If ``fields`` contains "step_type",
+    then three functions ``is_first``, ``is_mid``, and ``is_last`` will be added
+    as members.
 
-    A `TimeStep` contains the data emitted by an environment at each step of
-    interaction. A `TimeStep` holds a `step_type`, an `observation` (typically a
-    NumPy array or a dict or list of arrays), and an associated `reward` and
-    `discount`.
+    An algorithm can call this function to create a specialized "experience"
+    structure for storing data that are related to itself's training.
 
-    The first `TimeStep` in a sequence will equal `StepType.FIRST`. The final
-    `TimeStep` will equal `StepType.LAST`. All other `TimeStep`s in a sequence
-    will equal `StepType.MID.
+    Args:
+        name (str): the name of the new structure
+        fields (list[str]): a list of strings
 
-    Attributes:
-        step_type: a `Tensor` or numpy int of `StepType` enum values.
-        reward: a `Tensor` of reward values from executing 'prev_action'.
-        discount: A discount value in the range `[0, 1]`.
-        observation: A (nested) 'Tensor' for observation
-        prev_action: A (nested) 'Tensor' for action from previous time step
-        env_id: A scalar 'Tensor' of the environment ID of the time step
+    Returns:
+        The new structure class (derived from ``namedtuple``).
     """
+    ExperienceData = type(name, (namedtuple(name, fields, default_value=()), ),
+                          {})
 
-    def is_first(self):
-        return self.step_type == StepType.FIRST
+    if "step_type" in fields:
 
-    def is_mid(self):
-        return self.step_type == StepType.MID
+        @common.add_method(ExperienceData)
+        def is_first(self):
+            return self.step_type == StepType.FIRST
 
-    def is_last(self):
-        return self.step_type == StepType.LAST
+        @common.add_method(ExperienceData)
+        def is_mid(self):
+            return self.step_type == StepType.MID
+
+        @common.add_method(ExperienceData)
+        def is_last(self):
+            return self.step_type == StepType.LAST
+
+    return ExperienceData
+
+
+TimeStep = create_experience_data('TimeStep', [
+    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'env_id'
+])
+"""A ``TimeStep`` contains the data emitted by an environment at each step of
+interaction. A ``TimeStep`` holds a ``step_type``, an ``observation`` (typically a
+NumPy array or a dict or list of arrays), and an associated ``reward`` and
+``discount``.
+
+The first ``TimeStep`` in a sequence will equal ``StepType.FIRST``. The final
+``TimeStep`` will equal ``StepType.LAST``. All other ``TimeStep``s in a sequence
+will equal to ``StepType.MID``.
+
+It has six attributes:
+
+- step_type: a ``Tensor`` or numpy int of ``StepType`` enum values.
+- reward: a ``Tensor`` of reward values from executing 'prev_action'.
+- discount: A discount value in the range :math:`[0, 1]`.
+- observation: A (nested) ``Tensor`` for observation.
+- prev_action: A (nested) ``Tensor`` for action from previous time step.
+- env_id: A scalar ``Tensor`` of the environment ID of the time step.
+"""
+
+Experience = create_experience_data('Experience', [
+    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'env_id',
+    'action', 'rollout_info', 'state'
+])
+"""An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
+For the training purpose, it's augmented with three new attributes:
+
+- action: A (nested) ``Tensor`` for action taken for the current time step.
+- rollout_info: ``AlgStep.info`` from ``rollout_step()``.
+- state: State passed to ``rollout_step()`` to generate ``action``.
+"""
 
 
 def _create_timestep(observation, prev_action, reward, discount, env_id,
@@ -141,18 +173,18 @@ AlgStep = namedtuple('AlgStep', ['output', 'state', 'info'], default_value=())
 
 
 def restart(observation, action_spec, env_id=None, batched=False):
-    """Returns a `TimeStep` with `step_type` set equal to `StepType.FIRST`.
+    """Returns a ``TimeStep`` with ``step_type`` set equal to ``StepType.FIRST``.
 
-    Called by env.reset().
+    Called by ``env.reset()``.
 
     Args:
-        observation (nested tensors): observations of the env
-        action_spec (nested TensorSpec): tensor spec of actions
-        env_id (batched or scalar torch.int32): (optional) ID of the env
-        batched (bool): (optional) whether batched envs or not
+        observation (nested tensors): observations of the env.
+        action_spec (nested TensorSpec): tensor spec of actions.
+        env_id (batched or scalar torch.int32): (optional) ID of the env.
+        batched (bool): (optional) whether batched envs or not.
 
     Returns:
-        A `TimeStep`.
+        TimeStep:
     """
     first_observation = nest.flatten(observation)
     assert all(
@@ -184,29 +216,29 @@ def restart(observation, action_spec, env_id=None, batched=False):
 
 
 def transition(observation, prev_action, reward, discount=1.0, env_id=None):
-    """Returns a `TimeStep` with `step_type` set equal to `StepType.MID`.
+    """Returns a ``TimeStep`` with ``step_type`` set equal to ``StepType.MID``.
 
-    Called by env.step() if not 'Done'.
+    Called by ``env.step()`` if not 'Done'.
 
-    The batch size is inferred from the shape of `reward`.
+    The batch size is inferred from the shape of ``reward``.
 
-    If `discount` is a scalar, and `observation` contains Tensors,
-    then `discount` will be broadcasted to match `reward.shape`.
+    If ``discount`` is a scalar, and ``observation`` contains tensors,
+    then ``discount`` will be broadcasted to match ``reward.shape``.
 
     Args:
         observation (nested tensors): current observations of the env.
         prev_action (nested tensors): previous actions to the the env.
         reward (float): A scalar, or 1D NumPy array, or tensor.
         discount (float): (optional) A scalar, or 1D NumPy array, or tensor.
-        env_id (torch.int32): (optional) A scalar or 1D tensor of
-            the environment ID(s).
+        env_id (torch.int32): (optional) A scalar or 1D tensor of the environment
+            ID(s).
 
     Returns:
-        A `TimeStep`.
+        TimeStep:
 
     Raises:
         ValueError: If observations are tensors but reward's rank
-            is not `0` or `1`.
+            is not 0 or 1.
     """
     flat_observation = nest.flatten(observation)
     assert all(
@@ -240,24 +272,24 @@ def transition(observation, prev_action, reward, discount=1.0, env_id=None):
 
 
 def termination(observation, prev_action, reward, env_id=None):
-    """Returns a `TimeStep` with `step_type` set to `StepType.LAST`.
+    """Returns a ``TimeStep`` with ``step_type`` set to ``StepType.LAST``.
 
-    Called by env.step() if 'Done'. 'discount' should not be sent in and
+    Called by ``env.step()`` if 'Done'. ``discount`` should not be sent in and
     will be set as 0.
 
     Args:
         observation (nested tensors): current observations of the env.
         prev_action (nested tensors): previous actions to the the env.
         reward (float): A scalar, or 1D NumPy array, or tensor.
-        env_id (torch.int32): (optional) A scalar or 1D tensor of
-            the environment ID(s).
+        env_id (torch.int32): (optional) A scalar or 1D tensor of the environment
+            ID(s).
 
     Returns:
-        A `TimeStep`.
+        TimeStep:
 
     Raises:
         ValueError: If observations are tensors but reward's statically known rank
-            is not `0` or `1`.
+            is not 0 or 1.
     """
     flat_observation = nest.flatten(observation)
     assert all(
@@ -283,7 +315,8 @@ def termination(observation, prev_action, reward, env_id=None):
 
 
 def time_step_spec(observation_spec, action_spec):
-    """Returns a `TimeStep` spec given the observation_spec and the action_spec.
+    """Returns a ``TimeStep`` spec given the ``observation_spec`` and the
+    ``action_spec``.
     """
 
     def is_valid_tensor_spec(spec):
@@ -303,65 +336,16 @@ def time_step_spec(observation_spec, action_spec):
         env_id=ts.TensorSpec([], torch.int32))
 
 
-TrainingInfo = namedtuple(
-    "TrainingInfo",
-    [
-        "action",
-        "step_type",
-        "reward",
-        "discount",
-
-        # For on-policy training, it's the AlgStep.info from rollout
-        # For off-policy training, it's the AlgStep.info from train_step
-        "info",
-
-        # Only used for off-policy training. It's the AlgStep.info from rollout
-        "rollout_info",
-        "env_id"
-    ],
-    default_value=())
-
-
-class Experience(
-        namedtuple(
-            "Experience",
-            [
-                'step_type',
-                'reward',
-                'discount',
-                'observation',
-                'prev_action',
-                'env_id',
-                'action',
-                'rollout_info',  # AlgStep.info from rollout()
-                'state'  # state passed to rollout() to generate `action`
-            ])):
-    def is_first(self):
-        if torch.is_tensor(self.step_type):
-            return torch.eq(self.step_type, StepType.FIRST)
-        return np.equal(self.step_type, StepType.FIRST)
-
-    def is_mid(self):
-        if torch.is_tensor(self.step_type):
-            return torch.eq(self.step_type, StepType.MID)
-        return np.equal(self.step_type, StepType.MID)
-
-    def is_last(self):
-        if torch.is_tensor(self.step_type):
-            return torch.eq(self.step_type, StepType.LAST)
-        return np.equal(self.step_type, StepType.LAST)
-
-
 def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
-    """Make an instance of Experience from TimeStep and AlgStep.
+    """Make an instance of ``Experience`` from ``TimeStep`` and ``AlgStep``.
 
     Args:
-        time_step (TimeStep): time step from the environment
-        alg_step (AlgStep): policy step returned from rollout()
-        state (nested Tensor): state used for calling rollout() to get the
-            `policy_step`
+        time_step (TimeStep): time step from the environment.
+        alg_step (AlgStep): policy step returned from ``rollout()``.
+        state (nested Tensor): state used for calling ``rollout()`` to get the
+            ``policy_step``.
     Returns:
-        Experience
+        Experience:
     """
     return Experience(
         step_type=time_step.step_type,
@@ -376,7 +360,7 @@ def make_experience(time_step: TimeStep, alg_step: AlgStep, state):
 
 
 def experience_to_time_step(exp: Experience):
-    """Make TimeStep from Experience."""
+    """Make ``TimeStep`` from ``Experience``."""
     return TimeStep(
         step_type=exp.step_type,
         reward=exp.reward,

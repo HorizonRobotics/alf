@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.data_structures import TrainingInfo, LossInfo, StepType
+from alf.data_structures import LossInfo, StepType
 from alf.utils import common, losses, value_ops
 from alf.utils import tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
@@ -45,15 +45,15 @@ class OneStepTDLoss(nn.Module):
         self._debug_summaries = debug_summaries
         self._name = name
 
-    def forward(self, training_info: TrainingInfo, value, target_value):
+    def forward(self, experience, value, target_value):
         returns = value_ops.one_step_discounted_return(
-            rewards=training_info.reward,
+            rewards=experience.reward,
             values=target_value,
-            step_types=training_info.step_type,
-            discounts=training_info.discount * self._gamma)
+            step_types=experience.step_type,
+            discounts=experience.discount * self._gamma)
         value = value[:-1]
         if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = training_info.step_type[:-1] != StepType.LAST
+            mask = experience.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
                 alf.summary.scalar(
                     "explained_variance_of_return_by_value",

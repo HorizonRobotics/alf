@@ -26,7 +26,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import AlgStep, TrainingInfo
+from alf.data_structures import AlgStep
 from alf.nest import nest
 from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -69,34 +69,33 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
-        """Create a DdpgAlgorithm.
-
+        """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network):  The network will be called with
-                call(observation).
+                ``call(observation)``.
             critic_network (Network): The network will be called with
-                call(observation, action).
-            env (Environment): The environment to interact with. env is a batched
+                ``call(observation, action)``.
+            env (Environment): The environment to interact with. ``env`` is a batched
                 environment, which means that it runs multiple simulations
-                simultateously. env only needs to be provided to the root
-                Algorithm.
+                simultateously. ``env`` only needs to be provided to the root
+                algorithm.
             config (TrainerConfig): config for training. config only needs to be
-                provided to the algorithm which performs `train_iter()` by
+                provided to the algorithm which performs ``train_iter()`` by
                 itself.
             ou_stddev (float): Standard deviation for the Ornstein-Uhlenbeck
                 (OU) noise added in the default collect policy.
             ou_damping (float): Damping factor for the OU noise added in the
                 default collect policy.
             critic_loss (None|OneStepTDLoss): an object for calculating critic
-                loss. If None, a default OneStepTDLoss will be used.
+                loss. If None, a default ``OneStepTDLoss`` will be used.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
             dqda_clipping (float): when computing the actor loss, clips the
-                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
-                Does not perform clipping if dqda_clipping == 0.
+                gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
+                Does not perform clipping if ``dqda_clipping == 0``.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             debug_summaries (bool): True if debug summaries should be created.
@@ -230,20 +229,20 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 critic=critic_info,
                 actor_loss=policy_step.info))
 
-    def calc_loss(self, training_info: TrainingInfo):
+    def calc_loss(self, experience, train_info: DdpgInfo):
         critic_loss = self._critic_loss(
-            training_info=training_info,
-            value=training_info.info.critic.q_value,
-            target_value=training_info.info.critic.target_q_value)
+            experience=experience,
+            value=train_info.critic.q_value,
+            target_value=train_info.critic.target_q_value)
 
-        actor_loss = training_info.info.actor_loss
+        actor_loss = train_info.actor_loss
 
         return LossInfo(
             loss=critic_loss.loss + actor_loss.loss,
             extra=DdpgLossInfo(
                 critic=critic_loss.extra, actor=actor_loss.extra))
 
-    def after_update(self, training_info):
+    def after_update(self, experience, train_info: DdpgInfo):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):

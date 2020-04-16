@@ -23,22 +23,24 @@ import torch.nn as nn
 
 import alf
 import alf.nest as nest
+import alf.nest.utils as nest_utils
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
 
 def get_invertable(cls):
     """A helper function to turn on the cache mechanism for transformation.
-    This is useful as some transformations (say g) may not be able to provide
-    an accurate inversion therefore the difference between x and g_inv(g(x)) is
-    large. This could lead to unstable training in practice.
-    For a torch transformation y=g(x), when cache_size is set to one, the latest
-    value for (x, y) is cached and will be used later for future computations.
-    E.g. for inversion, a call to g_inv(y) will return x, solving the inversion
-    error issue mentioned above.
-    Note that in the case of having a chain of transformations (G), all the element
-    transformations need to turn on the cache to ensure the composite transformation
-    G satisfy: x=G_inv(G(x)).
+    This is useful as some transformations (say :math:`g`) may not be able to
+    provide an accurate inversion therefore the difference between :math:`x` and
+    :math:`g^{-1}(g(x))` is large. This could lead to unstable training in
+    practice. For a torch transformation :math:`y=g(x)`, when ``cache_size`` is
+    set to one, the latest value for :math:`(x, y)` is cached and will be used
+    later for future computations. E.g. for inversion, a call to
+    :math:`g^{-1}(y)` will return :math:`x`, solving the inversion error issue
+    mentioned above. Note that in the case of having a chain of transformations
+    (:math:`G`), all the element transformations need to turn on the cache to
+    ensure the composite transformation :math:`G` satisfy:
+    :math:`x=G^{-1}(G(x))`.
     """
 
     class NewCls(cls):
@@ -69,39 +71,45 @@ class Softsign(td.Transform):
         return alf.math.softsign(x)
 
     def _inverse(self, y):
-        """
-        y > 0:
-            y = x / (1+x) => x = y / (1 - y)
-        y < 0:
-            y = x / (1-x) => x = y / (1 + y)
+        r"""
+        .. math::
+
+            \begin{array}{ll}
+                y = \frac{x}{1+x} \rightarrow x = \frac{y}{1 - y}, &\text{if} y > 0\\
+                y = \frac{x}{1-x} \rightarrow x = \frac{y}{1 + y}, &\text{else}\\
+            \end{array}
         """
         return torch.where(y > 0, y / (1 - y), y / (1 + y))
 
     def log_abs_det_jacobian(self, x, y):
-        """
-        x > 0:
-            y = x / (1+x) => dy/dx = 1/(1+x)^2
-        x < 0:
-            y = x / (1-x) => dy/dx = 1/(1-x)^2
+        r"""
+        .. math::
+
+            \begin{array}{ll}
+                y = \frac{x}{1+x} \rightarrow \frac{dy}{dx} = \frac{1}{(1+x)^2}, &\text{if} x > 0\\
+                y = \frac{x}{1-x} \rightarrow \frac{dy}{dx} = \frac{1}{(1-x)^2}, &\text{else}\\
+            \end{array}
         """
         return -2. * torch.log(1 + x.abs())
 
 
 @gin.configurable
 class StableTanh(td.Transform):
-    """Invertable transformation (bijector) that computes `Y = tanh(X)`,
-    therefore `Y in (-1, 1)`.
+    r"""Invertable transformation (bijector) that computes :math:`Y = tanh(X)`,
+    therefore :math:`Y \in (-1, 1)`.
 
     This can be achieved by an affine transform of the Sigmoid transformation,
     i.e., it is equivalent to applying a list of transformations sequentially:
-        ```
+
+    .. code-block:: python
+
         transforms = [AffineTransform(loc=0, scale=2)
-                        SigmoidTransform(),
-                        AffineTransform(
+                      SigmoidTransform(),
+                      AffineTransform(
                             loc=-1,
                             scale=2]
-        ```
-    However, using the `StableTanh` transformation directly is more numerically
+
+    However, using the ``StableTanh`` transformation directly is more numerically
     stable.
     """
     domain = constraints.real
@@ -150,11 +158,10 @@ def _kl_transformed_transformed(p, q):
 
 
 class OUProcess(nn.Module):
-    """A zero-mean Ornstein-Uhlenbeck process."""
+    """A zero-mean Ornstein-Uhlenbeck process for generating noises."""
 
     def __init__(self, initial_value, damping=0.15, stddev=0.2):
-        """A Class for generating noise from a zero-mean Ornstein-Uhlenbeck process.
-
+        """
         The Ornstein-Uhlenbeck process is a process that generates temporally
         correlated noise via a random walk with damping. This process describes
         the velocity of a particle undergoing brownian motion in the presence of
@@ -162,14 +169,18 @@ class OUProcess(nn.Module):
         environments with momentum.
 
         The temporal update equation is:
-        `x_next = (1 - damping) * x + N(0, std_dev)`
+
+        .. code-block:: python
+
+            x_next = (1 - damping) * x + N(0, std_dev)
 
         Args:
             initial_value (Tensor): Initial value of the process.
-            damping (float): The rate at which the noise trajectory is damped towards the
-                mean. We must have 0 <= damping <= 1, where a value of 0 gives an
-                undamped random walk and a value of 1 gives uncorrelated Gaussian noise.
-                Hence in most applications a small non-zero value is appropriate.
+            damping (float): The rate at which the noise trajectory is damped
+                towards the mean. We must have :math:`0 <= damping <= 1`, where
+                a value of 0 gives an undamped random walk and a value of 1 gives
+                uncorrelated Gaussian noise. Hence in most applications a small
+                non-zero value is appropriate.
             stddev (float): Standard deviation of the Gaussian component.
         """
         super(OUProcess, self).__init__()
@@ -239,62 +250,61 @@ def extract_distribution_parameters(dist: td.Distribution):
 
 class DistributionSpec(object):
     def __init__(self, builder, input_params_spec):
-        """Create a DistributionSpec instance.
+        """
 
         Args:
             builder (Callable): the function which is used to build the
-                distribution. The returned value of `builder(input_params)`
-                is a Distribution with input parameter as `input_params`
+                distribution. The returned value of ``builder(input_params)``
+                is a ``Distribution`` with input parameter as ``input_params``.
             input_params_spec (nested TensorSpec): the spec for the argument of
-                `builder`
+                ``builder``.
         """
         self.builder = builder
         self.input_params_spec = input_params_spec
 
     def build_distribution(self, input_params):
-        """Build a Distribution using `input_params`
+        """Build a Distribution using ``input_params``.
 
         Args:
             input_params (nested Tensor): the parameters for build the
-                distribution. It should match `input_params_spec` provided as
-                `__init__`
+                distribution. It should match ``input_params_spec`` provided as
+                ``__init__``.
         Returns:
-            A Distribution
+            Distribution:
         """
         nest.assert_same_structure(input_params, self.input_params_spec)
         return self.builder(**input_params)
 
     @classmethod
     def from_distribution(cls, dist, from_dim=0):
-        """Create a DistributionSpec from a Distribution.
+        """Create a ``DistributionSpec`` from a ``Distribution``.
         Args:
-            dist (Distribution): the Distribution from which the spec is
+            dist (Distribution): the ``Distribution`` from which the spec is
                 extracted.
             from_dim (int): only use the dimenions from this. The reason of
-                using `from_dim`>0 is that [0, from_dim) might be batch
+                using ``from_dim>0`` is that ``[0, from_dim)`` might be batch
                 dimension in some scenario.
         Returns:
-            DistributionSpec
+            DistributionSpec:
         """
         builder, input_params = _get_builder(dist)
-        input_param_spec = nest.map_structure(
-            lambda tensor: TensorSpec.from_tensor(tensor, from_dim),
-            input_params)
+        input_param_spec = extract_spec(input_params, from_dim)
         return cls(builder, input_param_spec)
 
 
 def extract_spec(nests, from_dim=1):
     """
-    Extract TensorSpec or DistributionSpec for each element of a nested structure.
-    It assumes that the first dimension of each element is the batch size.
+    Extract ``TensorSpec`` or ``DistributionSpec`` for each element of a nested
+    structure. It assumes that the first dimension of each element is the batch
+    size.
 
     Args:
         nests (nested structure): each leaf node of the nested structure is a
-            Tensor or Distribution of the same batch size
+            Tensor or Distribution of the same batch size/
         from_dim (int): ignore dimension before this when constructing the spec.
     Returns:
-        spec (nested structure): each leaf node of the returned nested spec is the
-            corresponding spec (excluding batch size) of the element of `nest`
+        nest: each leaf node of the returned nested spec is the corresponding
+        spec (excluding batch size) of the element of ``nest``.
     """
 
     def _extract_spec(obj):
@@ -309,16 +319,16 @@ def extract_spec(nests, from_dim=1):
 
 
 def to_distribution_param_spec(nests):
-    """Convert the DistributionSpecs in nests to their parameter specs.
+    """Convert the ``DistributionSpecs`` in nests to their parameter specs.
 
     Args:
-        nests (nested DistributionSpec of TensorSpec):  Each DistributionSpec
-            will be converted to a dictionary of the spec of its input Tensor
+        nests (nested DistributionSpec of TensorSpec):  Each ``DistributionSpec``
+            will be converted to a dictionary of the spec of its input ``Tensor``
             parameters.
     Returns:
-        A nest of TensorSpec/dict[TensorSpec]. Each leaf is a TensorSpec or a
-        dict corresponding to one distribution, with keys as parameter name and
-        values as TensorSpecs for the parameters.
+        nested TensorSpec: Each leaf is a ``TensorSpec`` or a ``dict``
+        corresponding to one distribution, with keys as parameter name and
+        values as ``TensorSpecs`` for the parameters.
     """
 
     def _to_param_spec(spec):
@@ -334,16 +344,16 @@ def to_distribution_param_spec(nests):
 
 
 def params_to_distributions(nests, nest_spec):
-    """Convert distribution parameters to Distribution, keep Tensors unchanged.
+    """Convert distribution parameters to ``Distribution``, keep tensors unchanged.
     Args:
-        nests (nested tf.Tensor): nested Tensor and dictionary of the Tensor
-            parameters of Distribution. Typically, `nest` is obtained using
-            `distributions_to_params()`
+        nests (nested Tensor): a nested ``Tensor`` and dictionary of tensor
+            parameters of ``Distribution``. Typically, ``nest`` is obtained using
+            ``distributions_to_params()``.
         nest_spec (nested DistributionSpec and TensorSpec): The distribution
-            params will be converted to Distribution according to the
-            corresponding DistributionSpec in nest_spec
+            params will be converted to ``Distribution`` according to the
+            corresponding ``DistributionSpec`` in ``nest_spec``.
     Returns:
-        nested Distribution/Tensor
+        nested Distribution or Tensor:
     """
 
     def _to_dist(spec, params):
@@ -360,14 +370,15 @@ def params_to_distributions(nests, nest_spec):
 
 
 def distributions_to_params(nests):
-    """Convert distributions to its parameters, keep Tensors unchanged.
-    Only returns parameters that have tf.Tensor values.
+    """Convert distributions to its parameters, and keep tensors unchanged.
+    Only returns parameters that have ``Tensor`` values.
+
     Args:
-        nests (nested Distribution and Tensor): Each Distribution will be
-            converted to dictionary of its Tensor parameters.
+        nests (nested Distribution and Tensor): Each ``Distribution`` will be
+            converted to dictionary of its ``Tensor`` parameters.
     Returns:
-        A nest of Tensor/Distribution parameters. Each leaf is a Tensor or a
-        dict corresponding to one distribution, with keys as parameter name and
+        nested Tensor/Distribution: Each leaf is a ``Tensor`` or a ``dict``
+        corresponding to one distribution, with keys as parameter name and
         values as tensors containing parameter values.
     """
 
@@ -410,7 +421,7 @@ def compute_log_probability(distributions, actions):
         actions: A possibly batched action tuple.
 
     Returns:
-        A Tensor representing the log probability of each action in the batch.
+        Tensor: the log probability of each action in the batch.
     """
 
     def _compute_log_prob(single_distribution, single_action):
@@ -453,11 +464,11 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
     """Generate greedy sample that maximizes the probability.
     Args:
         nested_distributions (nested Distribution): distribution to sample from
-        eps (float): a floating value in [0,1], representing the chance of
+        eps (float): a floating value in :math:`[0,1]`, representing the chance of
             action sampling instead of taking argmax. This can help prevent
-            a dead loop in some deterministic environment like Breakout.
+            a dead loop in some deterministic environment like `Breakout`.
     Returns:
-        (nested) Tensor
+        (nested) Tensor:
     """
 
     def greedy_fn(dist):
@@ -477,19 +488,19 @@ def epsilon_greedy_sample(nested_distributions, eps=0.1):
 
 
 def get_mode(dist):
-    """Get the mode of the distribution. Note that if dist is a transformed
-        distribution, the result may not be the actual mode of dist.
+    """Get the mode of the distribution. Note that if ``dist`` is a transformed
+    distribution, the result may not be the actual mode of ``dist``.
 
     Args:
-        dist (td.Distribution)
+        dist (td.Distribution):
     Returns:
-        The mode of the distribution. If dist is a transformed distribution,
+        The mode of the distribution. If ``dist`` is a transformed distribution,
         the result is calculated by transforming the mode of its base
-        distribution and may not be the actual mode for dist.
+        distribution and may not be the actual mode for ``dist``.
     Raises:
-        NotImplementedError if dist or its base distribution is not
-            td.Categorical, td.Normal, td.Independent or
-            td.TransformedDistribution.
+        NotImplementedError: if dist or its base distribution is not
+            ``td.Categorical``, ``td.Normal``, ``td.Independent`` or
+            ``td.TransformedDistribution``.
     """
     if isinstance(dist, td.categorical.Categorical):
         mode = torch.argmax(dist.logits, -1)
@@ -514,13 +525,13 @@ def get_base_dist(dist):
     """Get the base distribution.
 
     Args:
-        dist (td.Distribution)
+        dist (td.Distribution):
     Returns:
-        the base distribution if dist is td.Independent or
-            td.TransformedDistribution, and dist if dist is td.Normal
+        The base distribution if dist is ``td.Independent`` or
+            ``td.TransformedDistribution``, and ``dist`` if it is ``td.Normal``.
     Raises:
-        NotImplementedError if dist or its based distribution is not
-            td.Normal, td.Independent or td.TransformedDistribution
+        NotImplementedError: if ``dist`` or its based distribution is not
+            ``td.Normal``, ``td.Independent`` or ``td.TransformedDistribution``.
     """
     if isinstance(dist, td.Normal) or isinstance(dist, td.Categorical):
         return dist
@@ -533,23 +544,23 @@ def get_base_dist(dist):
 
 @gin.configurable
 def estimated_entropy(dist, num_samples=1, check_numerics=False):
-    """Estimate entropy by sampling.
+    r"""Estimate entropy by sampling.
 
     Use sampling to calculate entropy. The unbiased estimator for entropy is
-    -log(p(x)) where x is an unbiased sample of p. However, the gradient of
-    -log(p(x)) is not an unbiased estimator of the gradient of entropy. So we
-    also calculate a value whose gradient is an unbiased estimator of the
-    gradient of entropy. See docs/subtleties_of_estimating_entropy.py for
-    detail.
+    :math:`-\log(p(x))` where :math:`x` is an unbiased sample of :math:`p`.
+    However, the gradient of :math:`-\log(p(x))` is not an unbiased estimator
+    of the gradient of entropy. So we also calculate a value whose gradient is
+    an unbiased estimator of the gradient of entropy. See :doc:`notes/subtleties_of_estimating_entropy`
+    for detail.
 
     Args:
         dist (torch.distributions.Distribution): concerned distribution
         num_samples (int): number of random samples used for estimating entropy.
-        check_numerics (bool): If true, adds tf.debugging.check_numerics to
-            help find NaN / Inf values. For debugging only.
+        check_numerics (bool): If true, find NaN / Inf values. For debugging only.
     Returns:
-        tuple of (entropy, entropy_for_gradient). entropy_for_gradient is for
-        calculating gradient
+        tuple:
+        - entropy
+        - entropy_for_gradient: for calculating gradient.
     """
     sample_shape = (num_samples, )
     if dist.has_rsample:
@@ -584,29 +595,38 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
 
 # Here, we compute entropy of transformed distributions using sampling.
 def entropy_with_fallback(distributions):
-    """Computes total entropy of nested distribution.
-    If entropy() of a distribution is not implemented, this function will
+    r"""Computes total entropy of nested distribution.
+    If ``entropy()`` of a distribution is not implemented, this function will
     fallback to use sampling to calculate the entropy. It returns two values:
-    (entropy, entropy_for_gradient).
+    ``(entropy, entropy_for_gradient)``.
+
     There are two situations:
-    * entropy() is implemented. entropy is same as entropy_for_gradient.
-    * entropy() is not implemented. We use sampling to calculate entropy. The
-        unbiased estimator for entropy is -log(p(x)). However, the gradient of
-        -log(p(x)) is not an unbiased estimator of the gradient of entropy. So
-        we also calculate a value whose gradient is an unbiased estimator of
-        the gradient of entropy. See estimated_entropy() for detail.
-    Example:
+
+    - ``entropy()`` is implemented  and it's same as ``entropy_for_gradient``.
+    - ``entropy()`` is not implemented. We use sampling to calculate entropy. The
+      unbiased estimator for entropy is :math:`-\log(p(x))`. However, the gradient
+      of :math:`-\log(p(x))` is not an unbiased estimator of the gradient of
+      entropy. So we also calculate a value whose gradient is an unbiased
+      estimator of the gradient of entropy. See ``estimated_entropy()`` for detail.
+
+    Examples:
+
+    .. code-block:: python
+
         ent, ent_for_grad = entropy_with_fall_back(dist, action_spec)
         alf.summary.scalar("entropy", ent)
         ent_for_grad.backward()
+
     Args:
         distributions (nested Distribution): A possibly batched tuple of
             distributions.
 
     Returns:
-        tuple of (entropy, entropy_for_gradient). You should use entropy in
-        situations where its value is needed, and entropy_for_gradient where
-        you need to calculate the gradient of entropy.
+        tuple:
+        - entropy
+        - entropy_for_gradient: You should use ``entropy`` in situations where its
+          value is needed, and ``entropy_for_gradient`` where you need to calculate the
+          gradient of entropy.
     """
 
     def _compute_entropy(dist: td.Distribution):
@@ -627,13 +647,14 @@ def entropy_with_fallback(distributions):
 
 @gin.configurable
 def calc_default_target_entropy(spec, min_prob=0.1):
-    """Calc default target entropy
+    """Calc default target entropy.
     Args:
         spec (TensorSpec): action spec
         min_prob (float): If continuous spec, we suppose the prob concentrates on
             a delta of ``min_prob * (M-m)``; if discrete spec, we ignore the entry
             of ``1 - min_prob`` and uniformly distribute probs on rest.
     Returns:
+        target entropy
     """
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
@@ -646,7 +667,7 @@ def calc_default_target_entropy(spec, min_prob=0.1):
 
 
 def calc_default_max_entropy(spec, fraction=0.8):
-    """Calc default max entropy
+    """Calc default max entropy.
     Args:
         spec (TensorSpec): action spec
         fraction (float): this fraction of the theoretical entropy upper bound

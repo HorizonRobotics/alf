@@ -44,15 +44,16 @@ class NestCombiner(abc.ABC):
         pass
 
     def __call__(self, nested):
-        """Combine all elements according to the method defined in `combine_flat`.
+        """Combine all elements according to the method defined in
+        ``combine_flat``.
 
         Args:
             nested (nest): a nested structure; each element can be either a
-                `Tensor` or a `TensorSpec`.
+                ``Tensor` or a `TensorSpec``.
 
         Returns:
-            Tensor or TensorSpec: if `Tensor`, the returned is the concatenated
-                result; otherwise it's the tensor spec of the result.
+            Tensor or TensorSpec: if ``Tensor``, the returned is the concatenated
+            result; otherwise it's the tensor spec of the result.
         """
         flat = nest.flatten(nested)
         assert len(flat) > 0, "The nest is empty!"
@@ -72,7 +73,7 @@ class NestConcat(NestCombiner):
     def __init__(self, dim=-1, name="NestConcat"):
         """A combiner for concatenating all elements in a nest along the specified
         axis. It assumes that all elements have the same tensor spec. Can be used
-        as a preprocessing combiner in `EncodingNetwork`.
+        as a preprocessing combiner in ``EncodingNetwork``.
 
         Args:
             dim (int): the dim along which the elements are concatenated
@@ -90,7 +91,7 @@ class NestSum(NestCombiner):
     def __init__(self, average=False, name="NestSum"):
         """Add all elements in a nest together. It assumes that all elements have
         the same tensor shape. Can be used as a preprocessing combiner in
-        `EncodingNetwork`.
+        ``EncodingNetwork``.
 
         Args:
             average (bool): If True, the elements are averaged instead of summed.
@@ -110,12 +111,13 @@ def stack_nests(nests):
     """Stack tensors to a sequence.
 
     All the nest should have same structure and shape. In the resulted nest,
-    each tensor has shape of [T,...] and is the concat of all the corresponding
-    tensors in nests
+    each tensor has shape of :math:`[T,...]` and is the concat of all the
+    corresponding tensors in nests.
+
     Args:
-        nests (list[nest]): list of nests with same structure and shape
+        nests (list[nest]): list of nests with same structure and shape.
     Returns:
-        a nest with same structure as nests[0]
+        a nest with same structure as ``nests[0]``.
     """
     return nest.map_structure(lambda *tensors: torch.stack(tensors), *nests)
 
@@ -132,13 +134,13 @@ def get_outer_rank(tensors, specs):
         specs (nested TensorSpecs): Nested list/tuple/dict of TensorSpecs,
             describing the shape of unbatched tensors.
     Returns:
-        The number of outer dimensions for all Tensors (zero if all are
+        int: The number of outer dimensions for all tensors (zero if all are
         unbatched or empty).
+
     Raises:
-        AssertionError: If
-        1. The shape of Tensors are not compatible with specs, or
-        2. A mix of batched and unbatched tensors are provided.
-        3. The tensors are batched but have an incorrect number of outer dims.
+        AssertionError: If the shape of Tensors are not compatible with specs,
+            a mix of batched and unbatched tensors are provided, or the tensors
+            are batched but have an incorrect number of outer dims.
     """
 
     def _get_outer_rank(tensor, spec):

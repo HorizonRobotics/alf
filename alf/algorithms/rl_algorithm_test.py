@@ -19,7 +19,7 @@ import unittest
 
 import alf
 from alf.utils import common, dist_utils, tensor_utils
-from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep, TrainingInfo
+from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
 
@@ -62,10 +62,10 @@ class MyAlg(OnPolicyAlgorithm):
         dist, _ = self._proj_net(exp.observation)
         return AlgStep(output=dist.sample(), state=exp.observation, info=dist)
 
-    def calc_loss(self, training_info: TrainingInfo):
-        dist: td.Distribution = training_info.info
-        log_prob = dist.log_prob(training_info.action)
-        loss = -log_prob[:-1] * training_info.reward[1:]
+    def calc_loss(self, experience, train_info: td.Distribution):
+        dist: td.Distribution = train_info
+        log_prob = dist.log_prob(experience.action)
+        loss = -log_prob[:-1] * experience.reward[1:]
         loss = tensor_utils.tensor_extend_zero(loss)
         return LossInfo(loss=loss)
 

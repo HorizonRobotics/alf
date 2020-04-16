@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.data_structures import LossInfo, TrainingInfo
+from alf.data_structures import LossInfo
 from alf.algorithms.algorithm import Algorithm
 
 
@@ -29,7 +29,7 @@ class MyAlg(Algorithm):
         self._module_list = nn.ModuleList(sub_algs)
         self._param_list = nn.ParameterList(params)
 
-    def calc_loss(self, training_info):
+    def calc_loss(self):
         loss = torch.tensor(0.)
         for p in self.parameters():
             loss = loss + torch.sum(p)
@@ -154,7 +154,7 @@ class AlgorithmTest(alf.test.TestCase):
 
         alg_root = MyAlg(sub_algs=[alg_1, alg_2], name="root")
         alg_root.add_optimizer(alf.optimizers.Adam(lr=0.5), [alg_2])
-        loss = alg_root.calc_loss(TrainingInfo())
+        loss = alg_root.calc_loss()
         self.assertRaises(AssertionError, alg_root.update_with_gradient, loss)
 
         alg_root = MyAlg(
@@ -162,8 +162,7 @@ class AlgorithmTest(alf.test.TestCase):
             sub_algs=[alg_1, alg_2],
             name="root")
         alg_root.add_optimizer(alf.optimizers.Adam(lr=0.5), [alg_2])
-        loss_info, params = alg_root.update_with_gradient(
-            alg_root.calc_loss(TrainingInfo()))
+        loss_info, params = alg_root.update_with_gradient(alg_root.calc_loss())
         self.assertEqual(set(params), set(alg_root.named_parameters()))
         for param in alg_root.parameters():
             self.assertTrue(torch.all(param.grad == 1.0))
