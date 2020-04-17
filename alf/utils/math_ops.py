@@ -201,14 +201,15 @@ def shuffle(values):
 
 
 class Softsign_(torch.autograd.Function):
-    r"""softsign(input) -> Tensor
+    r"""Inplace version of softsign function.
 
     Applies element-wise inplace, the function :math:`\text{SoftSign}(x) = \frac{x}{1 + |x|}`
     
     The `current pytorch implementation of softsign
     <https://pytorch.org/docs/stable/_modules/torch/nn/functional.html#softsign>`_
-    is inefficient for backward and does not have an inplace version. Hence we
-    provide a more efficient implementation.
+    is inefficient for backward because it relies on automatic differentiation
+    and does not have an inplace version. Hence we provide a more efficient
+    implementation.
 
     Reference:
     `PyTorch: Defining New Autograd Functions
@@ -231,11 +232,11 @@ softsign_ = Softsign_.apply
 
 
 class Softsign(torch.autograd.Function):
-    r"""softsign(input) -> Tensor
+    r"""Softsign function.
 
     Applies element-wise, the function :math:`\text{SoftSign}(x) = \frac{x}{1 + |x|}`
     
-    Compared to Softsign_, this uses more memory but is faster and has higher precision
+    Compared to ``Softsign_``, this uses more memory but is faster and has higher precision
     for backward.
     """
 
