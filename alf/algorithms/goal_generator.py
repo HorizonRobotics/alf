@@ -147,5 +147,5 @@ class RandomCategoricalGoalGenerator(RLAlgorithm):
         goal = exp.rollout_info.goal
         return AlgStep(output=goal, state=state, info=GoalInfo(goal=goal))
 
-    def calc_loss(self, info: GoalInfo):
+    def calc_loss(self, experience, info: GoalInfo):
         return LossInfo()

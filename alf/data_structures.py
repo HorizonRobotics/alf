@@ -67,74 +67,74 @@ class StepType(object):
             'No known conversion for `%r` into a StepType' % value)
 
 
-def create_experience_data(name, fields):
-    """Create a new experience data structure. If ``fields`` contains "step_type",
-    then three functions ``is_first``, ``is_mid``, and ``is_last`` will be added
-    as members.
+class TimeStep(
+        namedtuple('TimeStep', [
+            'step_type',
+            'reward',
+            'discount',
+            'observation',
+            'prev_action',
+            'env_id',
+        ])):
+    """A ``TimeStep`` contains the data emitted by an environment at each step of
+    interaction. A ``TimeStep`` holds a ``step_type``, an ``observation`` (typically a
+    NumPy array or a dict or list of arrays), and an associated ``reward`` and
+    ``discount``.
 
-    An algorithm can call this function to create a specialized "experience"
-    structure for storing data that are related to itself's training.
+    The first ``TimeStep`` in a sequence will equal ``StepType.FIRST``. The final
+    ``TimeStep`` will equal ``StepType.LAST``. All other ``TimeStep``s in a sequence
+    will equal to ``StepType.MID``.
 
-    Args:
-        name (str): the name of the new structure
-        fields (list[str]): a list of strings
+    It has six attributes:
 
-    Returns:
-        The new structure class (derived from ``namedtuple``).
+    - step_type: a ``Tensor`` or numpy int of ``StepType`` enum values.
+    - reward: a ``Tensor`` of reward values from executing 'prev_action'.
+    - discount: A discount value in the range :math:`[0, 1]`.
+    - observation: A (nested) ``Tensor`` for observation.
+    - prev_action: A (nested) ``Tensor`` for action from previous time step.
+    - env_id: A scalar ``Tensor`` of the environment ID of the time step.
     """
-    ExperienceData = type(name, (namedtuple(name, fields, default_value=()), ),
-                          {})
 
-    if "step_type" in fields:
+    def is_first(self):
+        return self.step_type == StepType.FIRST
 
-        @common.add_method(ExperienceData)
-        def is_first(self):
-            return self.step_type == StepType.FIRST
+    def is_mid(self):
+        return self.step_type == StepType.MID
 
-        @common.add_method(ExperienceData)
-        def is_mid(self):
-            return self.step_type == StepType.MID
-
-        @common.add_method(ExperienceData)
-        def is_last(self):
-            return self.step_type == StepType.LAST
-
-    return ExperienceData
+    def is_last(self):
+        return self.step_type == StepType.LAST
 
 
-TimeStep = create_experience_data('TimeStep', [
-    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'env_id'
-])
-"""A ``TimeStep`` contains the data emitted by an environment at each step of
-interaction. A ``TimeStep`` holds a ``step_type``, an ``observation`` (typically a
-NumPy array or a dict or list of arrays), and an associated ``reward`` and
-``discount``.
+class Experience(
+        namedtuple(
+            "Experience",
+            [
+                'step_type',
+                'reward',
+                'discount',
+                'observation',
+                'prev_action',
+                'env_id',
+                'action',
+                'rollout_info',  # AlgStep.info from rollout()
+                'state'  # state passed to rollout() to generate `action`
+            ])):
+    """An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
+    For the training purpose, it's augmented with three new attributes:
 
-The first ``TimeStep`` in a sequence will equal ``StepType.FIRST``. The final
-``TimeStep`` will equal ``StepType.LAST``. All other ``TimeStep``s in a sequence
-will equal to ``StepType.MID``.
+    - action: A (nested) ``Tensor`` for action taken for the current time step.
+    - rollout_info: ``AlgStep.info`` from ``rollout_step()``.
+    - state: State passed to ``rollout_step()`` to generate ``action``.
+    """
 
-It has six attributes:
+    def is_first(self):
+        return self.step_type == StepType.FIRST
 
-- step_type: a ``Tensor`` or numpy int of ``StepType`` enum values.
-- reward: a ``Tensor`` of reward values from executing 'prev_action'.
-- discount: A discount value in the range :math:`[0, 1]`.
-- observation: A (nested) ``Tensor`` for observation.
-- prev_action: A (nested) ``Tensor`` for action from previous time step.
-- env_id: A scalar ``Tensor`` of the environment ID of the time step.
-"""
+    def is_mid(self):
+        return self.step_type == StepType.MID
 
-Experience = create_experience_data('Experience', [
-    'step_type', 'reward', 'discount', 'observation', 'prev_action', 'env_id',
-    'action', 'rollout_info', 'state'
-])
-"""An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
-For the training purpose, it's augmented with three new attributes:
-
-- action: A (nested) ``Tensor`` for action taken for the current time step.
-- rollout_info: ``AlgStep.info`` from ``rollout_step()``.
-- state: State passed to ``rollout_step()`` to generate ``action``.
-"""
+    def is_last(self):
+        return self.step_type == StepType.LAST
 
 
 def _create_timestep(observation, prev_action, reward, discount, env_id,

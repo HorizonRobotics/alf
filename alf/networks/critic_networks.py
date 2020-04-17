@@ -94,6 +94,12 @@ class CriticNetwork(Network):
             raise ValueError(
                 'Only a single action is supported by this network')
 
+        if action_spec.is_discrete:
+            raise ValueError(
+                'CriticNetwork only supports continuous actions. The given '
+                'action spec {} is discrete. Use QNetwork instead.'.format(
+                    action_spec))
+
         self._single_action_spec = flat_action_spec[0]
         self._obs_encoder = EncodingNetwork(
             observation_spec,
@@ -158,7 +164,7 @@ class ParallelCriticNetwork(Network):
                  name='ParallelCriticNetwork'):
         """
         It create a parallelized version of ``critic_network``.
-        
+
         Args:
             critic_network (CriticNetwork): non-parallelized critic network
             n (int): make ``n`` replicas from ``critic_network`` with different

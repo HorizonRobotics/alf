@@ -26,7 +26,7 @@ from alf.utils.averager import ScalarWindowAverager
 from alf.utils.dist_utils import calc_default_target_entropy, entropy_with_fallback
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
-EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
+EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["loss"])
 
 
 @gin.configurable
@@ -179,15 +179,15 @@ class EntropyTargetAlgorithm(Algorithm):
             output=(),
             state=(),
             info=EntropyTargetInfo(
-                step_type=step_type,
                 loss=LossInfo(
                     loss=-entropy_for_gradient,
                     extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
 
-    def calc_loss(self, info: EntropyTargetInfo, valid_mask=None):
+    def calc_loss(self, experience, info: EntropyTargetInfo, valid_mask=None):
         """Calculate loss.
 
         Args:
+            experience (Experience): experience for gradient update
             info (EntropyTargetInfo): for computing loss.
             valid_mask (tensor): valid mask to be applied on time steps.
 
@@ -195,7 +195,7 @@ class EntropyTargetAlgorithm(Algorithm):
             LossInfo:
         """
         loss_info = info.loss
-        mask = (info.step_type != StepType.LAST).type(torch.float32)
+        mask = (experience.step_type != StepType.LAST).type(torch.float32)
         if valid_mask:
             mask = mask * (valid_mask).type(torch.float32)
         entropy = -loss_info.extra.neg_entropy * mask

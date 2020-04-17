@@ -122,10 +122,10 @@ class AgentHelper(object):
         def _update_loss(loss_info, algorithm, name):
             info = getattr(train_info, name)
             if algorithm.is_rl():
-                new_loss_info = algorithm.calc_loss(
-                    _make_rl_experience(experience, name), info)
+                exp = _make_rl_experience(experience, name)
             else:
-                new_loss_info = algorithm.calc_loss(info)
+                exp = experience._replace(rollout_info=())
+            new_loss_info = algorithm.calc_loss(exp, info)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})
@@ -160,9 +160,10 @@ class AgentHelper(object):
             field = self._get_algorithm_field(alg)
             info = getattr(train_info, field)
             if alg.is_rl():
-                alg.after_update(_make_rl_experience(experience, field), info)
+                exp = _make_rl_experience(experience, field)
             else:
-                alg.after_update(experience, info)
+                exp = experience._replace(rollout_info=())
+            alg.after_update(exp, info)
 
     def after_train_iter(self, algorithms, experience=None, train_info=None):
         """For each provided algorithm, call its ``after_train_iter()`` to do
@@ -182,9 +183,9 @@ class AgentHelper(object):
             if experience is not None:
                 info = getattr(train_info, field)
                 if alg.is_rl():
-                    alg.after_train_iter(
-                        _make_rl_experience(experience, field), info)
+                    exp = _make_rl_experience(experience, field)
                 else:
-                    alg.after_train_iter(experience, info)
+                    exp = experience._replace(rollout_info=())
+                alg.after_train_iter(exp, info)
             else:
                 alg.after_train_iter()

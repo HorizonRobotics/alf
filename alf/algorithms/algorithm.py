@@ -27,7 +27,7 @@ import torch.nn as nn
 from torch.nn.modules.module import _IncompatibleKeys, _addindent
 
 import alf
-from alf.data_structures import AlgStep, namedtuple, LossInfo
+from alf.data_structures import AlgStep, namedtuple, LossInfo, StepType
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncUniformExperienceReplayer)
 from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
@@ -1032,7 +1032,7 @@ class Algorithm(nn.Module):
         Returns:
             int: number of steps that have been trained
         """
-        valid_masks = (~experience.is_last()).to(torch.float32)
+        valid_masks = (experience.step_type != StepType.LAST).to(torch.float32)
         if self.is_rl():
             loss_info = self.calc_loss(experience, train_info)
         else:
@@ -1188,7 +1188,8 @@ class Algorithm(nn.Module):
             exp = dist_utils.params_to_distributions(
                 exp, self.processed_experience_spec)
             policy_state = common.reset_state_if_necessary(
-                policy_state, initial_train_state, exp.is_first())
+                policy_state, initial_train_state,
+                exp.step_type == StepType.FIRST)
             policy_step = self.train_step(exp, policy_state)
             if self._train_info_spec is None:
                 self._train_info_spec = dist_utils.extract_spec(
@@ -1239,7 +1240,7 @@ class Algorithm(nn.Module):
             loss_info = self.calc_loss(experience, train_info)
         else:
             loss_info = self.calc_loss(train_info)
-        valid_masks = (~experience.is_last()).to(torch.float32)
+        valid_masks = (experience.step_type != StepType.LAST).to(torch.float32)
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
         self.after_update(experience, train_info)
 
