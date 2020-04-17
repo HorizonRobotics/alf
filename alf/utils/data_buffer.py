@@ -346,8 +346,8 @@ class RingBuffer(nn.Module):
             self._buffer)
 
     @atomic
-    def pop_up_to(self, n, env_ids=None):
-        """Mark as removed, up to the last ``n`` steps.
+    def remove_up_to(self, n, env_ids=None):
+        """Mark as removed earliest up to ``n`` steps.
 
         Args:
             n (int): max number of steps to mark removed from buffer.

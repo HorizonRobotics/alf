@@ -116,19 +116,19 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         batch = ring_buffer.dequeue(env_ids=batch1.env_id, n=2)
         self.assertEqual(batch.t, torch.tensor([[8, 9]] * 5))
 
-        # Test pop_up_to
-        ring_buffer.pop_up_to(4)
+        # Test remove_up_to
+        ring_buffer.remove_up_to(4)
         for t in range(6, 10):
             batch2 = get_batch(range(0, 8), self.dim, t=t, x=0.4)
             ring_buffer.enqueue(batch2)
         prev_size = ring_buffer._current_size.clone()
         prev_pos = ring_buffer._current_pos.clone()
-        ring_buffer.pop_up_to(2)
+        ring_buffer.remove_up_to(2)
         self.assertEqual(prev_size - 2, ring_buffer._current_size)
         # shouldn't change last data pos
         self.assertEqual(prev_pos, ring_buffer._current_pos)
-        # popping more than there are elements shouldn't raise error
-        ring_buffer.pop_up_to(3)
+        # remove_up_to more than there are elements shouldn't raise error
+        ring_buffer.remove_up_to(3)
         self.assertEqual(ring_buffer._current_size, torch.tensor([0] * 8))
 
         if allow_multiprocess:
