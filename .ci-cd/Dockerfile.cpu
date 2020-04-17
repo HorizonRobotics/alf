@@ -25,8 +25,6 @@ RUN pip3 install  pre-commit==1.17.0 \
     pylint==2.3.1 \
     yapf==0.28.0
 
-RUN pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu \
-    -f https://download.pytorch.org/whl/torch_stable.html
 
 RUN apt update && apt install -y  git clang-format
 
@@ -54,6 +52,10 @@ RUN apt update
 RUN apt-get install -q -y gazebo9
 RUN apt-get install -q -y libgazebo9-dev
 
+RUN pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu \
+    -f https://download.pytorch.org/whl/torch_stable.html
+
+
 # build and install social robot
 RUN mkdir -p /opt/local \
     && cd /opt/local \
@@ -67,6 +69,8 @@ RUN mkdir -p /opt/local \
     && cd .. \
     && pip3 install -e . \
     && rm -rf build
+
+RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git@46b4444
 
 # build deepmind lab
 # TODO
