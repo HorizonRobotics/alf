@@ -132,8 +132,6 @@ class RingBuffer(nn.Module):
                     num_environments, dtype=torch.int64))
             self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
             bs = BatchSquash(batch_dims=2)
-            self._flattened_buffer = alf.nest.map_structure(
-                lambda x: bs.flatten(x), self._buffer)
 
         if allow_multiprocess:
             self.share_memory()
@@ -207,12 +205,6 @@ class RingBuffer(nn.Module):
         Args:
             batch (Tensor): shape should be
                 ``[batch_size] + tensor_space.shape``.
-                If we ever want to enqueue ``n`` steps (or
-                ``[batch_size, n]`` shaped batch), we'll need to use something
-                like this:
-                ``buf.index_put_((env_ids.reshape(batch_size, 1).repeat(1,
-                batch_size), _current_pos[env_ids] - n to _current_pos[env_ids]
-                ), batch)``
             env_ids (Tensor): If ``None``, ``batch_size`` must be
                 ``num_environments``. If not ``None``, its shape should be
                 ``[batch_size]``. We assume there are no duplicate ids in
@@ -233,10 +225,10 @@ class RingBuffer(nn.Module):
                 "There are duplicated ids in env_ids %s" % env_ids)
 
             current_pos = self._current_pos[env_ids]
-            indices = env_ids * self._max_length + current_pos
             alf.nest.map_structure(
-                lambda buf, bat: buf.__setitem__(indices, bat.detach()),
-                self._flattened_buffer, batch)
+                lambda buf, bat: buf.__setitem__((env_ids, current_pos),
+                                                 bat.detach()), self._buffer,
+                batch)
 
             self._current_pos[env_ids] = (current_pos + 1) % self._max_length
             current_size = self._current_size[env_ids]
@@ -279,6 +271,7 @@ class RingBuffer(nn.Module):
             ``AssertionError`` when not enough data is present, in non-blocking
             mode.
         """
+        assert n <= self._max_length
         if blocking:
             assert self._allow_multiprocess, [
                 "Set allow_multiprocess", "to enable blocking mode."
@@ -322,8 +315,7 @@ class RingBuffer(nn.Module):
                 "size is: %s Try storing more data before calling dequeue" %
                 min_size)
             batch_size = env_ids.shape[0]
-            pos = self._current_pos[env_ids] - current_size
-            pos = pos % self._max_length
+            pos = self._current_pos[env_ids] - current_size  # mod done later
             b_indices = env_ids.reshape(batch_size, 1).repeat(1, n)
             t_range = torch.as_tensor([range(n)] * batch_size)
             t_indices = (pos.reshape(batch_size, 1).repeat(1, n) +
