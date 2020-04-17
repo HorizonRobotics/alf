@@ -166,7 +166,7 @@ class RingBuffer(nn.Module):
         oldest data if there is no free slot.
 
         Args:
-            batch (Tensor): of shape ``[batch_size] + tensor_space.shape``
+            batch (Tensor): of shape ``[batch_size] + tensor_spec.shape``
             env_ids (Tensor): If ``None``, ``batch_size`` must be
                 ``num_environments``. If not ``None``, its shape should be
                 ``[batch_size]``. We assume there are no duplicate ids in
@@ -204,7 +204,7 @@ class RingBuffer(nn.Module):
 
         Args:
             batch (Tensor): shape should be
-                ``[batch_size] + tensor_space.shape``.
+                ``[batch_size] + tensor_spec.shape``.
             env_ids (Tensor): If ``None``, ``batch_size`` must be
                 ``num_environments``. If not ``None``, its shape should be
                 ``[batch_size]``. We assume there are no duplicate ids in
@@ -239,7 +239,7 @@ class RingBuffer(nn.Module):
                 self._enqueued.set()
                 self._dequeued.clear()
 
-    def has_data(self, env_ids, n):
+    def has_data(self, env_ids, n=1):
         """Check ``n`` steps of data available for ``env_ids``.
 
         Args:
@@ -348,11 +348,11 @@ class RingBuffer(nn.Module):
             self._buffer)
 
     @atomic
-    def pop(self, n, env_ids=None):
-        """Mark as removed up to the last n batches.
+    def pop_up_to(self, n, env_ids=None):
+        """Mark as removed, up to the last ``n`` steps.
 
         Args:
-            n (int): max number of batches to mark removed from buffer.
+            n (int): max number of steps to mark removed from buffer.
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
@@ -439,7 +439,7 @@ class DataBuffer(RingBuffer):
         Truncates the data if ``batch_size > capacity``.
 
         Args:
-            batch (Tensor): of shape ``[batch_size] + tensor_space.shape``
+            batch (Tensor): of shape ``[batch_size] + tensor_spec.shape``
         """
         batch_size = alf.nest.get_nest_batch_size(batch)
         with alf.device(self._device):
