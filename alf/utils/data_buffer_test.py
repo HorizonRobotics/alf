@@ -105,12 +105,16 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
 
         # Test dequeue multiple
         ring_buffer.clear()
-        for t in range(6, 10):
+        for t in range(5, 10):
             batch1 = get_batch([1, 2, 3, 5, 6], self.dim, t=t, x=0.4)
             # test that the created batch has gradients
             ring_buffer.enqueue(batch1, batch1.env_id)
+        # Normal dequeue in the middle of the ring buffer
         batch = ring_buffer.dequeue(env_ids=batch1.env_id, n=2)
         self.assertEqual(batch.t, torch.tensor([[6, 7]] * 5))
+        # This dequeue crosses the end of the ring buffer
+        batch = ring_buffer.dequeue(env_ids=batch1.env_id, n=2)
+        self.assertEqual(batch.t, torch.tensor([[8, 9]] * 5))
 
         # Test pop
         ring_buffer.pop(4)

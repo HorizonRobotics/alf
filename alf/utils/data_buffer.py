@@ -207,7 +207,7 @@ class RingBuffer(nn.Module):
         Args:
             batch (Tensor): shape should be
                 ``[batch_size] + tensor_space.shape``.
-                If we ever want to enqueue ``n`` batches (or
+                If we ever want to enqueue ``n`` steps (or
                 ``[batch_size, n]`` shaped batch), we'll need to use something
                 like this:
                 ``buf.index_put_((env_ids.reshape(batch_size, 1).repeat(1,
@@ -248,12 +248,12 @@ class RingBuffer(nn.Module):
                 self._dequeued.clear()
 
     def has_data(self, env_ids, n):
-        """Check ``n`` batches of data available for ``env_ids``.
+        """Check ``n`` steps of data available for ``env_ids``.
 
         Args:
             env_ids (Tensor): Assumed not ``None``, properly checked by
                 ``check_convert_env_ids()``.
-            n (int): Number of batches to check.
+            n (int): Number of time steps to check.
         Returns:
             bool
         """
@@ -262,7 +262,7 @@ class RingBuffer(nn.Module):
         return min_size >= n
 
     def dequeue(self, env_ids=None, n=1, blocking=False):
-        """Return earliest ``n`` batches and mark them removed in the buffer.
+        """Return earliest ``n`` steps and mark them removed in the buffer.
 
         Args:
             env_ids (Tensor): If None, ``batch_size`` must be num_environments.
@@ -274,7 +274,7 @@ class RingBuffer(nn.Module):
                 dequeue.
         Returns:
             nested Tensors or None when blocking dequeue gets terminated by
-            stop event. The shapes of the Tensors are ``[batch_size, ...]``.
+            stop event. The shapes of the Tensors are ``[batch_size, n, ...]``.
         Raises:
             ``AssertionError`` when not enough data is present, in non-blocking
             mode.
@@ -300,7 +300,7 @@ class RingBuffer(nn.Module):
 
     @atomic
     def _dequeue(self, env_ids=None, n=1):
-        """Return earliest ``n`` batches and mark them removed in the buffer.
+        """Return earliest ``n`` steps and mark them removed in the buffer.
 
         Args:
             env_ids (Tensor): If None, ``batch_size`` must be num_environments.
@@ -309,7 +309,7 @@ class RingBuffer(nn.Module):
                 environment env_ids[i].
             n (int): Number of batches to dequeue.
         Returns:
-            nested Tensors of shapes ``[batch_size, ...]``.
+            nested Tensors of shapes ``[batch_size, n, ...]``.
         Raises:
             ``AssertionError`` when not enough data is present.
         """
@@ -321,34 +321,17 @@ class RingBuffer(nn.Module):
                 "Not all environments have enough data. The smallest data "
                 "size is: %s Try storing more data before calling dequeue" %
                 min_size)
+            batch_size = env_ids.shape[0]
             pos = self._current_pos[env_ids] - current_size
-
-            def _create_empty(buf):
-                return []
-
-            result_arr = alf.nest.map_structure(_create_empty, self._buffer)
-
-            for _ in range(n):
-                pos = pos % self._max_length
-                indices = env_ids * self._max_length + pos  # shape [B]
-
-                batch_size = env_ids.shape[0]
-                alf.nest.map_structure_up_to(
-                    self._flattened_buffer,
-                    lambda buffer, arr: arr.append(buffer[indices].reshape(
-                        batch_size, 1, *buffer.shape[1:])),  # shape [B, 1, ..]
-                    self._flattened_buffer,
-                    result_arr)
-                pos += 1
-
-            def _cat_tuple(arr):
-                return torch.cat(
-                    tuple(arr), dim=1).reshape(
-                        batch_size, n, *arr[0].shape[2:])  # shape [B, n, ..]
-
-            result = alf.nest.map_structure_up_to(self._flattened_buffer,
-                                                  _cat_tuple, result_arr)
-
+            pos = pos % self._max_length
+            b_indices = env_ids.reshape(batch_size, 1).repeat(1, n)
+            t_range = torch.as_tensor([range(n)] * batch_size)
+            t_indices = (pos.reshape(batch_size, 1).repeat(1, n) +
+                         t_range) % self._max_length
+            result = alf.nest.map_structure(
+                lambda buffer: buffer.__getitem__((b_indices, t_indices)).
+                reshape(batch_size, n, *buffer.shape[2:]),  # shape [B, n, ..]
+                self._buffer)
             self._current_size[env_ids] = current_size - n
             # set flags if they exist to unblock potential consumers
             if self._dequeued:
