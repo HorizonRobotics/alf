@@ -266,7 +266,7 @@ class RingBuffer(nn.Module):
                 dequeue.
         Returns:
             nested Tensors or None when blocking dequeue gets terminated by
-            stop event. The shapes of the Tensors are ``[batch_size, n, ...]``.
+            stop event. The shape of the Tensors is ``[batch_size, n, ...]``.
         Raises:
             ``AssertionError`` when not enough data is present, in non-blocking
             mode.
@@ -302,7 +302,7 @@ class RingBuffer(nn.Module):
                 environment env_ids[i].
             n (int): Number of batches to dequeue.
         Returns:
-            nested Tensors of shapes ``[batch_size, n, ...]``.
+            nested Tensors of shape ``[batch_size, n, ...]``.
         Raises:
             ``AssertionError`` when not enough data is present.
         """
@@ -320,16 +320,32 @@ class RingBuffer(nn.Module):
             t_range = torch.as_tensor([range(n)] * batch_size)
             t_indices = (pos.reshape(batch_size, 1).repeat(1, n) +
                          t_range) % self._max_length
-            result = alf.nest.map_structure(
-                lambda buffer: buffer.__getitem__((b_indices, t_indices)).
-                reshape(batch_size, n, *buffer.shape[2:]),  # shape [B, n, ..]
-                self._buffer)
+            result = self.get_data_by_indices(b_indices, t_indices, batch_size,
+                                              n)
             self._current_size[env_ids] = current_size - n
             # set flags if they exist to unblock potential consumers
             if self._dequeued:
                 self._dequeued.set()
                 self._enqueued.clear()
         return convert_device(result)
+
+    def get_data_by_indices(self, b_indices, t_indices, batch_size, n):
+        """Return data by batch and time indices.
+
+        Args:
+            b_indices (Tensor): Batch indices of shape ``[B, 1]``.
+            t_indices (Tensor): Time indices of shape ``[n, 1]``.
+                Should equal ``b_indices.shape[0]``.
+            batch_size (int): Number of batches to retrieve.
+            n (int): Number of time steps to retrieve.
+                Should equal ``t_indices.shape[0]``.
+        Returns:
+            nested Tensors of shape ``[batch_size, n, ...]``.
+        """
+        return alf.nest.map_structure(
+            lambda buffer: buffer.__getitem__((b_indices, t_indices)).reshape(
+                batch_size, n, *buffer.shape[2:]),  # shape [B, n, ..]
+            self._buffer)
 
     @atomic
     def pop(self, n, env_ids=None):
