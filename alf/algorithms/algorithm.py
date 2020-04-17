@@ -259,16 +259,14 @@ class Algorithm(nn.Module):
         ``transform_timestep`` in ``OffPolicyAlgorithm`` before passing to
         ``_update()``.
 
-        It includes tranforming observation and reward and should be stateless.
+        The transformation should be stateless. By default, only observation
+        is transformed.
 
         Args:
             time_step (TimeStep or Experience): time step
         Returns:
             TimeStep or Experience: transformed time step
         """
-        if self._reward_shaping_fn is not None:
-            time_step = time_step._replace(
-                reward=self._reward_shaping_fn(time_step.reward))
         if self._observation_transformers is not None:
             for observation_transformer in self._observation_transformers:
                 time_step = time_step._replace(

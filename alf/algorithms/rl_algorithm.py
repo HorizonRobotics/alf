@@ -399,6 +399,30 @@ class RLAlgorithm(Algorithm):
         """
         pass
 
+    def transform_timestep(self, time_step):
+        """Transform time_step.
+
+        ``transform_timestep`` is called for all raw time_step got from
+        the environment before passing to ``predict_step`` and ``rollout_step``. For
+        off-policy algorithms, the replay buffer stores raw time_step. So when
+        experiences are retrieved from the replay buffer, they are tranformed by
+        ``transform_timestep`` in ``OffPolicyAlgorithm`` before passing to
+        ``_update()``.
+
+        This function additionally transforms rewards on top of the
+        ``transform_timestep()`` of the base class ``Algorithm``.
+
+        Args:
+            time_step (TimeStep or Experience): time step
+        Returns:
+            TimeStep or Experience: transformed time step
+        """
+        time_step = super(RLAlgorithm, self).transform_timestep(time_step)
+        if self._reward_shaping_fn is not None:
+            time_step = time_step._replace(
+                reward=self._reward_shaping_fn(time_step.reward))
+        return time_step
+
     def unroll(self, unroll_length):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
