@@ -22,7 +22,6 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.layers import BatchSquash
 from alf.utils import common
 from alf.nest import get_nest_batch_size
 from alf.tensor_specs import TensorSpec
@@ -131,7 +130,6 @@ class RingBuffer(nn.Module):
                 "_current_pos", torch.zeros(
                     num_environments, dtype=torch.int64))
             self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
-            bs = BatchSquash(batch_dims=2)
 
         if allow_multiprocess:
             self.share_memory()
@@ -261,7 +259,7 @@ class RingBuffer(nn.Module):
                 If not None, dequeue from these environments. We assume there
                 is no duplicate ids in ``env_id``. ``result[i]`` will be from
                 environment ``env_ids[i]``.
-            n (int): Number of batches to dequeue.
+            n (int): Number of steps to dequeue.
             blocking (bool): If ``True``, blocks if there is not enough data to
                 dequeue.
         Returns:
@@ -300,7 +298,7 @@ class RingBuffer(nn.Module):
                 If not None, dequeue from these environments. We assume there
                 is no duplicate ids in ``env_id``. ``result[i]`` will be from
                 environment env_ids[i].
-            n (int): Number of batches to dequeue.
+            n (int): Number of steps to dequeue.
         Returns:
             nested Tensors of shape ``[batch_size, n, ...]``.
         Raises:
@@ -316,10 +314,10 @@ class RingBuffer(nn.Module):
                 min_size)
             batch_size = env_ids.shape[0]
             pos = self._current_pos[env_ids] - current_size  # mod done later
-            b_indices = env_ids.reshape(batch_size, 1).repeat(1, n)
-            t_range = torch.as_tensor([range(n)] * batch_size)
-            t_indices = (pos.reshape(batch_size, 1).repeat(1, n) +
-                         t_range) % self._max_length
+            b_indices = env_ids.reshape(batch_size, 1).expand(-1, n)
+            t_range = torch.arange(n).reshape(1, -1)
+            t_indices = (
+                pos.reshape(batch_size, 1) + t_range) % self._max_length
             result = self.get_data_by_indices(b_indices, t_indices, batch_size,
                                               n)
             self._current_size[env_ids] = current_size - n
@@ -343,7 +341,7 @@ class RingBuffer(nn.Module):
             nested Tensors of shape ``[batch_size, n, ...]``.
         """
         return alf.nest.map_structure(
-            lambda buffer: buffer.__getitem__((b_indices, t_indices)).reshape(
+            lambda buffer: buffer[(b_indices, t_indices)].reshape(
                 batch_size, n, *buffer.shape[2:]),  # shape [B, n, ..]
             self._buffer)
 
