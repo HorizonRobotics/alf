@@ -331,12 +331,12 @@ class RingBuffer(nn.Module):
         """Return data by batch and time indices.
 
         Args:
-            b_indices (Tensor): Batch indices of shape ``[B, 1]``.
-            t_indices (Tensor): Time indices of shape ``[n, 1]``.
-                Should equal ``b_indices.shape[0]``.
+            b_indices (Tensor): Batch indices of shape ``[B, n]``.
+            t_indices (Tensor): Time indices of shape ``[B, n]``.
             batch_size (int): Number of batches to retrieve.
+                Should equal ``*_indices.shape[0]``.
             n (int): Number of time steps to retrieve.
-                Should equal ``t_indices.shape[0]``.
+                Should equal ``*_indices.shape[1]``.
         Returns:
             nested Tensors of shape ``[batch_size, n, ...]``.
         """
