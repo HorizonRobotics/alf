@@ -28,7 +28,7 @@ class TrainerConfig(object):
                  unroll_length=8,
                  unroll_with_grad=False,
                  use_rollout_state=False,
-                 temporally_independent_train_step=False,
+                 temporally_independent_train_step=None,
                  num_checkpoints=10,
                  evaluate=False,
                  eval_interval=10,
@@ -77,13 +77,15 @@ class TrainerConfig(object):
                 states will be taken from the replay buffer; otherwise they will
                 be set to 0. In the case of True, the ``train_state_spec`` of an
                 algorithm should always be a subset of the ``rollout_state_spec``.
-            temporally_independent_train_step (bool): If True, the ``train_step``
+            temporally_independent_train_step (bool|None): If True, the ``train_step``
                 is called with all the experiences in one batch instead of being
                 called sequentially with ``mini_batch_length`` batches. Only used
                 by ``OffPolicyAlgorithm``. In general, this option can only be
                 used if the algorithm has no state. For Algorithm with state (e.g.
                 ``SarsaAlgorithm`` not using RNN), if there is no need to
-                recompute state at train_step, this option can also be used.
+                recompute state at train_step, this option can also be used. If
+                ``None``, its value is inferred based on whether the algorithm
+                has RNN state (``True`` if there is RNN state, ``False`` if not).
             num_checkpoints (int): how many checkpoints to save for the training
             evaluate (bool): A bool to evaluate when training
             eval_interval (int): evaluate every so many iteration

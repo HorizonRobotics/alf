@@ -6,7 +6,7 @@ suite_gym.load.torch_env_wrappers=(@RandomFirstEpisodeLength, )
 create_environment.env_name="Pendulum-v0"
 create_environment.num_parallel_environments=1
 
-actor/ActorNetwork.squashing_func=@torch.nn.functional.softsign
+actor/ActorNetwork.squashing_func=@alf.math.softsign
 actor/AdamTF.lr=1e-4
 critic/AdamTF.lr=5e-4
 

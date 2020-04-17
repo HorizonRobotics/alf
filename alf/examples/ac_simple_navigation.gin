@@ -20,14 +20,14 @@ action_spec=@get_action_spec()
 actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
 actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256,)
-actor/ActorDistributionNetwork.activation=@torch.nn.functional.elu
+actor/ActorDistributionNetwork.activation=@torch.nn.functional.elu_
 actor/ActorDistributionNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
 actor/ActorDistributionNetwork.discrete_projection_net_ctor=@CategoricalProjectionNetwork
 
 value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256,)
-value/ValueNetwork.activation=@torch.nn.functional.elu
+value/ValueNetwork.activation=@torch.nn.functional.elu_
 value/ValueNetwork.conv_layer_params=((16, 3, 2), (32, 3, 2))
 
 ac/AdamTF.lr=1e-4

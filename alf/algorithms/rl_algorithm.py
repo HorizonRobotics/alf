@@ -173,6 +173,9 @@ class RLAlgorithm(Algorithm):
 
         if config:
             self.use_rollout_state = config.use_rollout_state
+            if config.temporally_independent_train_step is None:
+                config.temporally_independent_train_step = (len(
+                    alf.nest.flatten(self.train_state_spec)) == 0)
 
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
