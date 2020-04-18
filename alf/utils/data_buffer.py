@@ -318,32 +318,14 @@ class RingBuffer(nn.Module):
             t_range = torch.arange(n).reshape(1, -1)
             t_indices = (
                 pos.reshape(batch_size, 1) + t_range) % self._max_length
-            result = self.get_data_by_indices(b_indices, t_indices, batch_size,
-                                              n)
+            result = alf.nest.map_structure(
+                lambda b: b[(b_indices, t_indices)], self._buffer)
             self._current_size[env_ids] = current_size - n
             # set flags if they exist to unblock potential consumers
             if self._dequeued:
                 self._dequeued.set()
                 self._enqueued.clear()
         return convert_device(result)
-
-    def get_data_by_indices(self, b_indices, t_indices, batch_size, n):
-        """Return data by batch and time indices.
-
-        Args:
-            b_indices (Tensor): Batch indices of shape ``[B, n]``.
-            t_indices (Tensor): Time indices of shape ``[B, n]``.
-            batch_size (int): Number of batches to retrieve.
-                Should equal ``*_indices.shape[0]``.
-            n (int): Number of time steps to retrieve.
-                Should equal ``*_indices.shape[1]``.
-        Returns:
-            nested Tensors of shape ``[batch_size, n, ...]``.
-        """
-        return alf.nest.map_structure(
-            lambda buffer: buffer[(b_indices, t_indices)].reshape(
-                batch_size, n, *buffer.shape[2:]),  # shape [B, n, ..]
-            self._buffer)
 
     @atomic
     def remove_up_to(self, n, env_ids=None):

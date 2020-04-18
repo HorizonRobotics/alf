@@ -85,8 +85,8 @@ class ReplayBuffer(RingBuffer):
             pos = pos + torch.arange(batch_length).unsqueeze(0)  # [B, T]
             pos = pos % self._max_length
             env_ids = env_ids.reshape(-1, 1).repeat(1, batch_length)  # [B, T]
-            result = self.get_data_by_indices(env_ids, pos, batch_size,
-                                              batch_length)
+            result = alf.nest.map_structure(lambda b: b[(env_ids, pos)],
+                                            self._buffer)
         return convert_device(result)
 
     @atomic
