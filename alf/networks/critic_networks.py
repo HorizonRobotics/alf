@@ -29,9 +29,31 @@ from .network import Network
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork
 
 
+def _check_action_specs_for_critic_networks(action_spec,
+                                            action_input_processors):
+    if len(nest.flatten(action_spec)) > 1:
+        raise ValueError('Only a single action is supported by this network')
+
+    if action_spec.is_discrete:
+        assert action_input_processors is not None, (
+            'CriticNetwork only supports continuous actions. The given ' +
+            'action spec {} is discrete. Use QNetwork instead. '.format(
+                action_spec) +
+            'Alternatively, specify `action_input_processors` to transform ' +
+            'discrete actions to continuous action embeddings first.')
+
+
 @gin.configurable
 class CriticNetwork(Network):
-    """Create an instance of CriticNetwork."""
+    """Creates an instance of ``CriticNetwork`` for estimating action-value of
+    continuous or discrete actions. The action-value is defined as the expected
+    return starting from the given input observation and taking the given action.
+    This module takes observation as input and action as input and outputs an
+    action-value tensor with the shape of ``[batch_size]``.
+
+    Currently there seems no need for this class to handle nested inputs; If
+    necessary, extend the argument list to support it in the future.
+    """
 
     def __init__(self,
                  input_tensor_spec,
@@ -39,33 +61,30 @@ class CriticNetwork(Network):
                  observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
+                 action_input_processors=None,
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
                  name="CriticNetwork"):
-        """Creates an instance of `CriticNetwork` for estimating action-value of
-        continuous actions. The action-value is defined as the expected return
-        starting from the given input observation and taking the given action.
-        This module takes observation as input and action as input and outputs
-        an action-value tensor with the shape of [batch_size].
-
-        Currently there seems no need for this class to handle nested inputs;
-        If necessary, extend the argument list to support it in the future.
+        """
 
         Args:
-            input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
+            input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
             observation_input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding observation input.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
             observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
+            action_input_processors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding action input.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for actions.
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
@@ -89,18 +108,10 @@ class CriticNetwork(Network):
 
         observation_spec, action_spec = input_tensor_spec
 
-        flat_action_spec = nest.flatten(action_spec)
-        if len(flat_action_spec) > 1:
-            raise ValueError(
-                'Only a single action is supported by this network')
+        _check_action_specs_for_critic_networks(action_spec,
+                                                action_input_processors)
 
-        if action_spec.is_discrete:
-            raise ValueError(
-                'CriticNetwork only supports continuous actions. The given '
-                'action spec {} is discrete. Use QNetwork instead.'.format(
-                    action_spec))
-
-        self._single_action_spec = flat_action_spec[0]
+        self._single_action_spec = action_spec
         self._obs_encoder = EncodingNetwork(
             observation_spec,
             input_preprocessors=observation_input_processors,
@@ -112,6 +123,7 @@ class CriticNetwork(Network):
 
         self._action_encoder = EncodingNetwork(
             action_spec,
+            input_preprocessors=action_input_processors,
             fc_layer_params=action_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
@@ -135,12 +147,13 @@ class CriticNetwork(Network):
         """Computes action-value given an observation.
 
         Args:
-            inputs:  A tuple of Tensors consistent with `input_tensor_spec`
-            state: empty for API consistent with CriticRNNNetwork
+            inputs:  A tuple of Tensors consistent with ``input_tensor_spec``
+            state: empty for API consistent with ``CriticRNNNetwork``
 
         Returns:
-            action_value (torch.Tensor): a tensor of the size [batch_size]
-            state: empty
+            tuple:
+            - action_value (torch.Tensor): a tensor of the size ``[batch_size]``
+            - state: empty
         """
         observations, actions = inputs
         actions = actions.to(torch.float32)
@@ -184,7 +197,7 @@ class ParallelCriticNetwork(Network):
 
         Args:
             inputs (tuple):  A tuple of Tensors consistent with `input_tensor_spec``.
-            state (tuple): Empty for API consistent with CriticRNNNetwork.
+            state (tuple): Empty for API consistent with ``CriticRNNNetwork``.
 
         Returns:
             tuple:
@@ -204,7 +217,15 @@ class ParallelCriticNetwork(Network):
 
 @gin.configurable
 class CriticRNNNetwork(Network):
-    """Creates a critic network with RNN."""
+    """Creates an instance of ``CriticRNNNetwork`` for estimating action-value
+    of continuous or discrete actions. The action-value is defined as the
+    expected return starting from the given inputs (observation and state) and
+    taking the given action. It takes observation and state as input and outputs
+    an action-value tensor with the shape of [batch_size].
+
+    Currently there seems no need for this class to handle nested inputs; If
+    necessary, extend the argument list to support it in the future.
+    """
 
     def __init__(self,
                  input_tensor_spec,
@@ -212,6 +233,7 @@ class CriticRNNNetwork(Network):
                  observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
+                 action_input_processors=None,
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  lstm_hidden_size=100,
@@ -219,28 +241,24 @@ class CriticRNNNetwork(Network):
                  activation=torch.relu_,
                  kernel_initializer=None,
                  name="CriticRNNNetwork"):
-        """Creates an instance of `CriticRNNNetwork` for estimating action-value
-        of continuous actions. The action-value is defined as the expected return
-        starting from the given inputs (observation and state) and taking the
-        given action. It takes observation and state as input and outputs an
-        action-value tensor with the shape of [batch_size].
-
-        Currently there seems no need for this class to handle nested inputs;
-        If necessary, extend the argument list to support it in the future.
+        """
 
         Args:
-            input_tensor_spec: A tuple of TensorSpecs (observation_spec, action_spec)
+            input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
             observation_input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding observation input.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
             observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
+            action_input_processors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding action input.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for actions.
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
@@ -254,7 +272,7 @@ class CriticRNNNetwork(Network):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a variance_scaling_initializer
+                the last layer. If none is provided a ``variance_scaling_initializer``
                 with uniform distribution will be used.
             name (str):
         """
@@ -269,12 +287,10 @@ class CriticRNNNetwork(Network):
 
         observation_spec, action_spec = input_tensor_spec
 
-        flat_action_spec = nest.flatten(action_spec)
-        if len(flat_action_spec) > 1:
-            raise ValueError(
-                'Only a single action is supported by this network')
+        _check_action_specs_for_critic_networks(action_spec,
+                                                action_input_processors)
 
-        self._single_action_spec = flat_action_spec[0]
+        self._single_action_spec = action_spec
         self._obs_encoder = EncodingNetwork(
             observation_spec,
             input_preprocessors=observation_input_processors,
@@ -286,6 +302,7 @@ class CriticRNNNetwork(Network):
 
         self._action_encoder = EncodingNetwork(
             action_spec,
+            input_preprocessors=action_input_processors,
             fc_layer_params=action_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
@@ -316,12 +333,13 @@ class CriticRNNNetwork(Network):
         """Computes action-value given an observation.
 
         Args:
-            inputs:  A tuple of Tensors consistent with `input_tensor_spec`
-            state (nest[tuple]): a nest structure of state tuples (h, c)
+            inputs:  A tuple of Tensors consistent with ``input_tensor_spec``
+            state (nest[tuple]): a nest structure of state tuples ``(h, c)``
 
         Returns:
-            action_value (torch.Tensor): a tensor of the size [batch_size]
-            new_state (nest[tuple]): the updated states
+            tuple:
+            - action_value (torch.Tensor): a tensor of the size ``[batch_size]``
+            - new_state (nest[tuple]): the updated states
         """
         observations, actions = inputs
         actions = actions.to(torch.float32)

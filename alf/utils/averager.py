@@ -122,21 +122,22 @@ class ScalarWindowAverager(WindowAverager):
 
 @gin.configurable
 class EMAverager(nn.Module):
-    """Class for exponential moving average.
+    r"""Class for exponential moving average. Suppose the update rate is
+    :math:`\alpha`, and the quantity to be averaged is denoted as :math:`x`, then
 
-    .. code-block:: python
+    .. math::
 
-        x_t = (1-update_rate)* x_{t-1} + update_Rate * x
+        x_t = (1-\alpha)x_{t-1} + \alpha x
 
-    The average is corrected by a mass as ``x_t / mass_t``, and the mass is
-    calculated as:
+    The average is corrected by a mass :math:`w_t` as :math:`\frac{x_t}{w_t}``,
+    and the mass is calculated as:
 
-    .. code-block:: python
+    .. math::
 
-        mass_t = (1-update_rate) * mass_{t-1} + update_rate
+        w_t = (1-\alpha) * w_{t-1} + \alpha
 
-    Note that update_rate can be a fixed floating number or a Variable. If it is
-    a Variable, the update_rate can be changed by the user.
+    Note that update rate can be a fixed floating number or a variable. If it is
+    a variable, the update rate can be changed by the user.
     """
 
     def __init__(self, tensor_spec: TensorSpec, update_rate,

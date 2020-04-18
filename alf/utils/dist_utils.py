@@ -300,7 +300,7 @@ def extract_spec(nests, from_dim=1):
 
     Args:
         nests (nested structure): each leaf node of the nested structure is a
-            Tensor or Distribution of the same batch size/
+            Tensor or Distribution of the same batch size.
         from_dim (int): ignore dimension before this when constructing the spec.
     Returns:
         nest: each leaf node of the returned nested spec is the corresponding

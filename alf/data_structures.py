@@ -68,14 +68,16 @@ class StepType(object):
 
 
 class TimeStep(
-        namedtuple('TimeStep', [
-            'step_type',
-            'reward',
-            'discount',
-            'observation',
-            'prev_action',
-            'env_id',
-        ])):
+        namedtuple(
+            'TimeStep', [
+                'step_type',
+                'reward',
+                'discount',
+                'observation',
+                'prev_action',
+                'env_id',
+            ],
+            default_value=())):
     """A ``TimeStep`` contains the data emitted by an environment at each step of
     interaction. A ``TimeStep`` holds a ``step_type``, an ``observation`` (typically a
     NumPy array or a dict or list of arrays), and an associated ``reward`` and
@@ -118,7 +120,8 @@ class Experience(
                 'action',
                 'rollout_info',  # AlgStep.info from rollout()
                 'state'  # state passed to rollout() to generate `action`
-            ])):
+            ],
+            default_value=())):
     """An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
     For the training purpose, it's augmented with three new attributes:
 

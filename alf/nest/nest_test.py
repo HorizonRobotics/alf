@@ -264,5 +264,14 @@ class TestTransformNest(alf.test.TestCase):
         self.assertEqual(transformed_ntuple, 3)
 
 
+class TestExtractAnyLeaf(alf.test.TestCase):
+    def test_extract_any_leaf(self):
+        nested = NTuple(a=dict(x=3, y=1), b=2)
+        self.assertTrue(
+            isinstance(alf.nest.extract_any_leaf_from_nest(nested), int))
+        self.assertEqual(alf.nest.extract_any_leaf_from_nest([]), None)
+        self.assertEqual(alf.nest.extract_any_leaf_from_nest(2), 2)
+
+
 if __name__ == '__main__':
     alf.test.main()

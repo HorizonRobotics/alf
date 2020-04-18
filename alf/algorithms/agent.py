@@ -295,7 +295,7 @@ class Agent(OnPolicyAlgorithm):
             algorithms.append(self._goal_generator)
         self._agent_helper.after_update(algorithms, experience, train_info)
 
-    def after_train_iter(self, experience=None, train_info: AgentInfo = None):
+    def after_train_iter(self, experience, train_info: AgentInfo = None):
         """Call ``after_train_iter()`` of the RL algorithm and goal generator,
         respectively.
         """

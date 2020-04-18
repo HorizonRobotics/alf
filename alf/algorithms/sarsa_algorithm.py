@@ -432,7 +432,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        not_first_step = ~experience.is_first()
+        not_first_step = (experience.step_type != StepType.FIRST)
         # put critic_loss to scalar_loss because loss will be masked by
         # ~is_last at train_complete(). The critic_loss here should be
         # masked by ~is_first instead, which is done above

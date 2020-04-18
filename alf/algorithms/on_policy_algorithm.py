@@ -17,7 +17,7 @@ import torch
 
 import alf
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
-from alf.data_structures import Experience, TimeStep
+from alf.data_structures import Experience, TimeStep, StepType
 from alf.utils.summary_utils import record_time
 
 
@@ -78,10 +78,10 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
             steps = self.train_from_unroll(experience, train_info)
 
         with record_time("time/after_train_iter"):
-            # Here we don't pass ``experience`` and ```train_info`` to disable
-            # another on-policy training because otherwise it will backprop on
-            # the same graph twice, which is unnecessary because we could have
-            # simply merged the two trainings into the parent's ``rollout_step``.
-            self.after_train_iter()
+            # Here we don't pass ``train_info`` to disable another on-policy
+            # training because otherwise it will backprop on the same graph
+            # twice, which is unnecessary because we could have simply merged
+            # the two trainings into the parent's ``rollout_step``.
+            self.after_train_iter(experience)
 
         return steps

@@ -29,29 +29,35 @@ def assert_same_length(seq1, seq2):
 
 
 def is_namedtuple(value):
-    """Whether the value is a namedtuple instance
+    """Whether the value is a namedtuple instance.
 
     Args:
-         value (Object):
+        value (Object):
     Returns:
-        True if the value is a namedtuple instance
+        ``True`` if the value is a namedtuple instance.
     """
 
     return isinstance(value, tuple) and hasattr(value, '_fields')
 
 
 def is_unnamedtuple(value):
-    """Whether the value is an unnamedtuple instance"""
+    """Whether the value is an unnamedtuple instance."""
     return isinstance(value, tuple) and not is_namedtuple(value)
 
 
 def extract_fields_from_nest(nest):
     """Extract fields and the corresponding values from a nest if it's either
-    a `namedtuple` or `dict`.
+    a ``namedtuple`` or ``dict``.
+
+    Args:
+        nest (nest): a nested structure
 
     Returns:
-        An iterator that generates (field, value) pairs. The fields are sorted
-        before being returned.
+        Iterable: an iterator that generates ``(field, value)`` pairs. The fields
+        are sorted before being returned.
+
+    Raises:
+        AssertionError: if the nest is neither ``namedtuple`` nor ``dict``.
     """
     assert is_namedtuple(nest) or isinstance(nest, dict), \
         "Nest {} must be a dict or namedtuple!".format(nest)
@@ -61,10 +67,34 @@ def extract_fields_from_nest(nest):
         yield field, value
 
 
+def extract_any_leaf_from_nest(nest):
+    """Extract an arbitrary leaf from a nest. Should be faster than doing
+    ``flatten(nest)[0]`` because this function has short circuit.
+
+    Args:
+        nest (nest): a nested structure
+
+    Returns:
+        A ``Tensor`` of there exists a leaf; otherwise ``None``.
+    """
+    if not is_nested(nest):
+        return nest
+    if isinstance(nest, list) or is_unnamedtuple(nest):
+        for value in nest:
+            ret = extract_any_leaf_from_nest(value)
+            if ret is not None:
+                return ret
+    else:
+        for _, value in extract_fields_from_nest(nest):
+            ret = extract_any_leaf_from_nest(value)
+            if ret is not None:
+                return ret
+
+
 def is_nested(value):
-    """Returns true if the input is one of: `list`, `unnamedtuple`, `dict`, or
-    `namedtuple`. Note that this definition is different from tf's is_nested
-    where all types that are collections.abc.Sequence are defined to be nested.
+    """Returns true if the input is one of: ``list``, ``unnamedtuple``, ``dict``,
+    or ``namedtuple``. Note that this definition is different from tf's is_nested
+    where all types that are ``collections.abc.Sequence`` are defined to be nested.
     """
     return isinstance(value, (list, tuple, dict))
 
@@ -135,44 +165,43 @@ def map_structure(func, *nests):
 
 def map_structure_up_to(shallow_nest, func, *nests):
     """
-    Applies a function to `nests` up to the depths of `shallow_nest`. Every
-    sub-nest of each of `nests` beyond the depth of the corresponding sub-nest in
-    `shallow_nest` will be treated as a leaf and input to `func`.
+    Applies a function to ``nests`` up to the depths of ``shallow_nest``. Every
+    sub-nest of each of ``nests`` beyond the depth of the corresponding sub-nest
+    in ``shallow_nest`` will be treated as a leaf and input to ``func``.
 
-    Examples (taken from `tensorflow.nest.map_structure_up_to`):
-    ```python
-    shallow_nest = [None, None]
-    inp_val = [[1], 2]
-    out = map_structure_up_to(shallow_nest, lambda x: 2 * x, inp_val)
-    # Output is: [[1, 1], 4]
-    ```
-    ```python
-    ab_tuple = collections.namedtuple("ab_tuple", "a, b")
-    op_tuple = collections.namedtuple("op_tuple", "add, mul")
-    inp_val = ab_tuple(a=2, b=3)
-    inp_ops = ab_tuple(a=op_tuple(add=1, mul=2), b=op_tuple(add=2, mul=3))
-    out = map_structure_up_to(inp_val, lambda val, ops: (val + ops.add) * ops.mul,
-                                inp_val, inp_ops)
-    # Output is: ab_tuple(a=6, b=15)
-    ```
-    ```python
-    data_list = [[2, 4, 6, 8], [[1, 3, 5, 7, 9], [3, 5, 7]]]
-    name_list = ['evens', ['odds', 'primes']]
-    out = map_structure_up_to(
-        name_list,
-        lambda name, sec: "first_{}_{}".format(len(sec), name),
-        name_list, data_list)
-    # Output is: ['first_4_evens', ['first_5_odds', 'first_3_primes']]
-    ```
+    Examples (taken from ``tensorflow.nest.map_structure_up_to``):
+
+        .. code-block:: python
+
+            shallow_nest = [None, None]
+            inp_val = [[1], 2]
+            out = map_structure_up_to(shallow_nest, lambda x: 2 * x, inp_val)
+            # Output is: [[1, 1], 4]
+
+            ab_tuple = collections.namedtuple("ab_tuple", "a, b")
+            op_tuple = collections.namedtuple("op_tuple", "add, mul")
+            inp_val = ab_tuple(a=2, b=3)
+            inp_ops = ab_tuple(a=op_tuple(add=1, mul=2), b=op_tuple(add=2, mul=3))
+            out = map_structure_up_to(inp_val, lambda val, ops: (val + ops.add) * ops.mul,
+                                        inp_val, inp_ops)
+            # Output is: ab_tuple(a=6, b=15)
+
+            data_list = [[2, 4, 6, 8], [[1, 3, 5, 7, 9], [3, 5, 7]]]
+            name_list = ['evens', ['odds', 'primes']]
+            out = map_structure_up_to(
+                name_list,
+                lambda name, sec: "first_{}_{}".format(len(sec), name),
+                name_list, data_list)
+            # Output is: ['first_4_evens', ['first_5_odds', 'first_3_primes']]
 
     Args:
-        shallow_nest (nest): a shallow nested structure
-        func (Callable): callable which will be applied to `nests`
-        *nests (nest): a variable length of nested structures
+        shallow_nest (nest): a shallow nested structure.
+        func (Callable): callable which will be applied to ``nests``.
+        *nests (nest): a variable length of nested structures.
 
     Returns:
-        mapped_nest (nest): a result nested structure that has the same depths
-            with `shallow_nest`
+        nest: a result nested structure that has the same depths with
+        ``shallow_nest``.
     """
     assert nests, "There should be at least one input nest!"
 
@@ -214,7 +243,7 @@ def fast_map_structure_flatten(func, structure, *flat_structure):
 
 
 def fast_map_structure(func, *structure):
-    """map_structure using pack_sequence_as()."""
+    """map_structure using ``pack_sequence_as()``."""
     flat_structure = [flatten(s) for s in structure]
     entries = zip(*flat_structure)
 
@@ -243,38 +272,65 @@ def pack_sequence_as(nest, flat_seq):
 
 
 def batch_nested_tensor(nested_tensor):
-    """Unsqueeze a zero (batch) dimention for each entry in nested_tensor."""
+    """Unsqueeze a zero (batch) dimention for each entry in ``nested_tensor``."""
     return map_structure(lambda x: torch.unsqueeze(x, dim=0), nested_tensor)
 
 
 def unbatch_nested_tensor(nested_tensor):
-    """Squeeze the first (batch) dimension of each entry in nested_tensor."""
+    """Squeeze the first (batch) dimension of each entry in ``nested_tensor``."""
     return map_structure(lambda x: torch.squeeze(x, dim=0), nested_tensor)
 
 
+def get_nest_shape(nest):
+    """Get the shape of a nest leaf. It assumes that all nodes of the nest share
+    the same shape. For efficiency we don't do a check here.
+
+    Args:
+        nest (nest): a nested structure
+
+    Returns:
+        torch.Size:
+    """
+    leaf = extract_any_leaf_from_nest(nest)
+    assert leaf is not None, "Zero element in the nest!"
+    return leaf.shape
+
+
+def get_nest_size(nest, dim):
+    """Get the size of dimension ``dim`` from a nest.
+    It assumes that all nodes of the nest share the same size.
+
+    Args:
+        nest (nest): a nested structure
+        dim (int): the dimension to get the size for
+
+    Returns:
+        int: size of ``dim``
+    """
+    return get_nest_shape(nest)[dim]
+
+
 def get_nest_batch_size(nest):
-    """Get the batch_size of a nest.
+    """Get the batch size (dim=0) of a nest, assuming batch-major.
 
     Args:
         nest (nest): a nested structure
     Returns:
-        batch_size
+        int: batch size
     """
-    flat_seq = flatten(nest)
-    assert len(flat_seq) > 0, "Zero element in the nest!"
-    batch_size = flat_seq[0].size()[0]
-    return batch_size
+    return get_nest_size(nest, dim=0)
 
 
 def find_field(nest, name, ignore_empty=True):
     """Find fields with given name.
 
     Examples:
-    ```python
-    nest = dict(a=1, b=dict(a=dict(a=2, b=3), b=2))
-    find_filed(nest, 'a')
-    # you would get [1, {"a": 2, "b": 3}]
-    ```
+
+        .. code-block:: python
+
+            nest = dict(a=1, b=dict(a=dict(a=2, b=3), b=2))
+            find_filed(nest, 'a')
+            # you would get [1, {"a": 2, "b": 3}]
 
     Args:
         nest (nest): a nest structure
@@ -302,32 +358,36 @@ def find_field(nest, name, ignore_empty=True):
 def prune_nest_like(nest, slim_nest, value_to_match=None):
     """Prune a nested structure referring to another slim nest. Generally, for
     every corrsponding node, we only keep the fields that're contained in
-    `slim_nest`. In addition, if a field of `slim_nest` contains a value of
-    `value_to_match`, then the corresponding field of `nest` will also be updated
-    to this value.
+    ``slim_nest``. In addition, if a field of ``slim_nest`` contains a value of
+    ``value_to_match``, then the corresponding field of ``nest`` will also be
+    updated to this value.
 
-    Note: If a node is a list or unnamedtuple, then we require their lengths are
-    equal.
+    .. note::
 
-    For example:
-        x = dict(a=1, b=2)
-        y = dict(a=TensorSpec(()))
-        z = prune_nest_like(x, y) # z is dict(a=1)
+        If a node is a ``list`` or ``unnamedtuple``, then we require their
+        lengths are equal.
 
-        y2 = dict(a=TensorSpec(()), b=())
-        z2 = prune_nest_like(x, y2, value_to_match=()) # z2 is dict(a=1, b=())
+    Examples:
+
+        .. code-block:: python
+
+            x = dict(a=1, b=2)
+            y = dict(a=TensorSpec(()))
+            z = prune_nest_like(x, y) # z is dict(a=1)
+
+            y2 = dict(a=TensorSpec(()), b=())
+            z2 = prune_nest_like(x, y2, value_to_match=()) # z2 is dict(a=1, b=())
 
     Args:
         nest (nest): a nested structure
         slim_nest (nest): a slim nested structure. It's required that at every
-            node, its fields is a subset of those of `nest`.
+            node, its fields is a subset of those of ``nest``.
         value_to_match (nest): a value that indicates the paired field of
-            `slim_nest` should be updated in `nest`. Can be set to the default
-            value of a namedtuple.
+            ``slim_nest`` should be updated in ``nest``. Can be set to the default
+            value of a ``namedtuple``.
 
     Returns:
-        pruned_nest (nest): the pruned nest that has the same set of fields with
-            `slim_nest`.
+        nest: the pruned nest that has the same set of fields with ``slim_nest``.
     """
 
     def _prune(nest, slim_nest):

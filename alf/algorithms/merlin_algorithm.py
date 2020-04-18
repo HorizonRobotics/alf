@@ -469,7 +469,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
     def calc_loss(self, experience, train_info: MerlinInfo):
         """Calculate loss."""
         self.summarize_reward("reward", experience.reward)
-        mbp_loss_info = self._mbp.calc_loss(train_info.mbp_info)
+        mbp_loss_info = self._mbp.calc_loss(experience, train_info.mbp_info)
         mba_loss_info = self._mba.calc_loss(experience, train_info.mba_info)
 
         return LossInfo(

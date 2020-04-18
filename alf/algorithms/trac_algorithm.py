@@ -47,7 +47,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
 
         w_new' = old_w + 0.9 * distance_clip / distance * (w_new - w_old)
 
-    If the distribution is ``Categorical``, the squared distance is
+    If the distribution is ``Categorical``, the distance is
     :math:`||logits_1 - logits_2||^2`, and if the distribution is
     ``Deterministic``, it is :math:`||loc_1 - loc_2||^2`,  otherwise it's
     :math:`KL(d1||d2) + KL(d2||d1)`.
@@ -189,7 +189,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
     def _calc_change(self, exp_array):
         """Calculate the distance between old/new action distributions.
 
-        The squared distance is:
+        The distance is:
 
         - :math:`||logits_1 - logits_2||^2` for Categorical distribution
         - :math:`||loc_1 - loc_2||^2` for Deterministic distribution

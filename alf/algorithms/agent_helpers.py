@@ -22,8 +22,8 @@ from alf.data_structures import LossInfo
 from alf.utils.math_ops import add_ignore_empty
 
 
-def _make_rl_experience(experience, name):
-    """Given an experience, extracts the ``rollout_info`` field for an RL
+def _make_alg_experience(experience, name):
+    """Given an experience, extracts the ``rollout_info`` field for an
     algorithm.
     """
     if experience.rollout_info == ():
@@ -121,10 +121,7 @@ class AgentHelper(object):
 
         def _update_loss(loss_info, algorithm, name):
             info = getattr(train_info, name)
-            if algorithm.is_rl():
-                exp = _make_rl_experience(experience, name)
-            else:
-                exp = experience._replace(rollout_info=())
+            exp = _make_alg_experience(experience, name)
             new_loss_info = algorithm.calc_loss(exp, info)
             if loss_info is None:
                 return new_loss_info._replace(
@@ -159,13 +156,10 @@ class AgentHelper(object):
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
             info = getattr(train_info, field)
-            if alg.is_rl():
-                exp = _make_rl_experience(experience, field)
-            else:
-                exp = experience._replace(rollout_info=())
+            exp = _make_alg_experience(experience, field)
             alg.after_update(exp, info)
 
-    def after_train_iter(self, algorithms, experience=None, train_info=None):
+    def after_train_iter(self, algorithms, experience, train_info=None):
         """For each provided algorithm, call its ``after_train_iter()`` to do
         things after the agent finishes one training iteration (i.e.,
         ``train_iter()``).
@@ -178,14 +172,10 @@ class AgentHelper(object):
                 algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``rollout_step()``.
         """
+        assert experience.rollout_info == (), (
+            "'experience' should always be collected from 'unroll()' and its "
+            "'rollout_info' field should have been moved to 'train_info'!")
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
-            if experience is not None:
-                info = getattr(train_info, field)
-                if alg.is_rl():
-                    exp = _make_rl_experience(experience, field)
-                else:
-                    exp = experience._replace(rollout_info=())
-                alg.after_train_iter(exp, info)
-            else:
-                alg.after_train_iter()
+            info = (None if train_info is None else getattr(train_info, field))
+            alg.after_train_iter(experience, info)
