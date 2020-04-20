@@ -138,6 +138,20 @@ way is to make a bullet list under the return type (notice the indent!)::
 
 For an example, see the docstring and rendered result of ``RLAlgorithm.predict_step()``.
 
+Raises
+------
+
+You can also document what exceptions a function will raise by "Raises:"::
+
+    Raises:
+        AttributeError: The ``Raises`` section is a list of all exceptions
+            that are relevant to the interface.
+        ValueError: If ``arg2`` is equal to ``arg1``.
+
+Note that do not put quotes around error classes due to the bug fixed in a recent
+Github `PR <https://github.com/sphinx-doc/sphinx/pull/6237>`_. Otherwise the doc
+won't compile.
+
 Notes and warnings
 ------------------
 

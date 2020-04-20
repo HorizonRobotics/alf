@@ -390,10 +390,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def after_update(self, experience, train_info: SacInfo):
         self._update_target()
 
-    def calc_loss(self, training_info: TrainingInfo):
-        critic_loss = self._calc_critic_loss(training_info)
-        alpha_loss = training_info.info.alpha.loss
-        actor_loss = training_info.info.actor.loss
+    def calc_loss(self, experience, train_info: SacInfo):
+        critic_loss = self._calc_critic_loss(experience, train_info)
+        alpha_loss = train_info.alpha.loss
+        actor_loss = train_info.actor.loss
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):

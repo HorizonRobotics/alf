@@ -96,8 +96,8 @@ class ReplayBuffer(RingBuffer):
         Returns:
             Tensors of shape [B, T, ...], B=num_environments, T=current_size
         Raises:
-            AssertionError: if the current_size is not same for
-                all the environments
+            AssertionError: if the current_size is not same for all the
+            environments.
         """
         size = self._current_size.min()
         max_size = self._current_size.max()

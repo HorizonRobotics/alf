@@ -74,9 +74,9 @@ class Softsign(td.Transform):
         r"""
         .. math::
 
-            \begin{array}{ll}
-                y = \frac{x}{1+x} \rightarrow x = \frac{y}{1 - y}, &\text{if} y > 0\\
-                y = \frac{x}{1-x} \rightarrow x = \frac{y}{1 + y}, &\text{else}\\
+            \begin{array}{lll}
+                y = \frac{x}{1+x} \rightarrow x = \frac{y}{1 - y}, &\text{if}  &y > 0\\
+                y = \frac{x}{1-x} \rightarrow x = \frac{y}{1 + y}, &\text{else}&\\
             \end{array}
         """
         return torch.where(y > 0, y / (1 - y), y / (1 + y))
@@ -85,9 +85,9 @@ class Softsign(td.Transform):
         r"""
         .. math::
 
-            \begin{array}{ll}
-                y = \frac{x}{1+x} \rightarrow \frac{dy}{dx} = \frac{1}{(1+x)^2}, &\text{if} x > 0\\
-                y = \frac{x}{1-x} \rightarrow \frac{dy}{dx} = \frac{1}{(1-x)^2}, &\text{else}\\
+            \begin{array}{lll}
+                y = \frac{x}{1+x} \rightarrow \frac{dy}{dx} = \frac{1}{(1+x)^2}, &\text{if}  &x > 0\\
+                y = \frac{x}{1-x} \rightarrow \frac{dy}{dx} = \frac{1}{(1-x)^2}, &\text{else}&\\
             \end{array}
         """
         return -2. * torch.log(1 + x.abs())
