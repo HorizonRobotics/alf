@@ -64,7 +64,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
                  ou_damping=0.15,
-                 critic_loss_ctor=OneStepTDLoss,
+                 critic_loss_ctor=None,
                  num_replicas=1,
                  target_update_tau=0.05,
                  target_update_period=1,
@@ -88,7 +88,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 simultateously. env only needs to be provided to the root
                 Algorithm.
             config (TrainerConfig): config for training. config only needs to be
-                provided to the algorithm which performs `train_iter()` by
+                provided to the algorithm which performs ``train_iter()`` by
                 itself.
             ou_stddev (float): Standard deviation for the Ornstein-Uhlenbeck
                 (OU) noise added in the default collect policy.
@@ -96,6 +96,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 default collect policy.
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
                 constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
+            num_replicas (int): number of critics to be used. Default is 1.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -186,7 +187,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 ind_explore = torch.where(
                     torch.rand(a.shape[:1]) < epsilon_greedy)
                 noisy_a = a + ou()
-                a[ind[0], :] = noisy_a[ind_explore[0], :]
+                a[ind_explore[0], :] = noisy_a[ind_explore[0], :]
                 return a
 
         noisy_action = nest.map_structure(_sample, action, self._ou_process)
