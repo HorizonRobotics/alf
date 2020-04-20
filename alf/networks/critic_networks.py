@@ -50,9 +50,6 @@ class CriticNetwork(Network):
     return starting from the given input observation and taking the given action.
     This module takes observation as input and action as input and outputs an
     action-value tensor with the shape of ``[batch_size]``.
-
-    Currently there seems no need for this class to handle nested inputs; If
-    necessary, extend the argument list to support it in the future.
     """
 
     def __init__(self,
@@ -222,9 +219,6 @@ class CriticRNNNetwork(Network):
     expected return starting from the given inputs (observation and state) and
     taking the given action. It takes observation and state as input and outputs
     an action-value tensor with the shape of [batch_size].
-
-    Currently there seems no need for this class to handle nested inputs; If
-    necessary, extend the argument list to support it in the future.
     """
 
     def __init__(self,

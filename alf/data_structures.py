@@ -70,12 +70,8 @@ class StepType(object):
 class TimeStep(
         namedtuple(
             'TimeStep', [
-                'step_type',
-                'reward',
-                'discount',
-                'observation',
-                'prev_action',
-                'env_id',
+                'step_type', 'reward', 'discount', 'observation',
+                'prev_action', 'env_id', 'untransformed_time_step'
             ],
             default_value=())):
     """A ``TimeStep`` contains the data emitted by an environment at each step of
@@ -87,7 +83,7 @@ class TimeStep(
     ``TimeStep`` will equal ``StepType.LAST``. All other ``TimeStep``s in a sequence
     will equal to ``StepType.MID``.
 
-    It has six attributes:
+    It has seven attributes:
 
     - step_type: a ``Tensor`` or numpy int of ``StepType`` enum values.
     - reward: a ``Tensor`` of reward values from executing 'prev_action'.
@@ -95,6 +91,8 @@ class TimeStep(
     - observation: A (nested) ``Tensor`` for observation.
     - prev_action: A (nested) ``Tensor`` for action from previous time step.
     - env_id: A scalar ``Tensor`` of the environment ID of the time step.
+    - untransformed_time_step: a nest that represents the entire time step itself
+      *before* any transformation; used for experience replay.
     """
 
     def is_first(self):

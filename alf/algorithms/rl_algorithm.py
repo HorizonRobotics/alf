@@ -189,7 +189,7 @@ class RLAlgorithm(Algorithm):
 
     @property
     def time_step_spec(self):
-        """Return spec for ActionTimeStep."""
+        """Return spec for TimeStep."""
         return TimeStep(
             step_type=alf.TensorSpec((), 'int32'),
             reward=alf.TensorSpec((), 'float32'),
@@ -315,8 +315,8 @@ class RLAlgorithm(Algorithm):
         for generating action distribution.
 
         Args:
-            time_step (ActionTimeStep): Current observation and other inputs
-                for computing action.
+            time_step (TimeStep): Current observation and other inputs for computing
+                action.
             state (nested Tensor): should be consistent with predict_state_spec
             epsilon_greedy (float): a floating value in :math:`[0,1]`, representing
                 the chance of action sampling instead of taking argmax.
@@ -347,7 +347,7 @@ class RLAlgorithm(Algorithm):
         It also needs to generate necessary information for training.
 
         Args:
-            time_step (ActionTimeStep):
+            time_step (TimeStep):
             state (nested Tensor): should be consistent with ``train_state_spec``.
 
         Returns:
@@ -451,8 +451,13 @@ class RLAlgorithm(Algorithm):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
             transformed_time_step = self.transform_timestep(time_step)
+            # save the untransformed time step in case that sub-algorithms need
+            # to store it in replay buffers
+            transformed_time_step._replace(untransformed_time_step=time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
+            # release the reference to ``time_step``
+            transformed_time_step._replace(untransformed_time_step=())
 
             action = common.detach(policy_step.output)
 
