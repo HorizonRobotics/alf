@@ -220,6 +220,6 @@ class ICMAlgorithm(Algorithm):
     def train_step(self, time_step: TimeStep, state):
         return self._step(time_step, state, calc_rewards=False)
 
-    def calc_loss(self, info: ICMInfo):
+    def calc_loss(self, experience, info: ICMInfo):
         loss = alf.nest.map_structure(torch.mean, info.loss)
         return LossInfo(scalar_loss=loss.loss, extra=loss.extra)

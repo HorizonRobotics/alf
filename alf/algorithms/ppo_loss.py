@@ -18,7 +18,7 @@ import torch
 
 import alf
 
-from alf.data_structures import TrainingInfo, LossInfo
+from alf.data_structures import LossInfo
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.algorithms.actor_critic_loss import _normalize_advantages
 from alf.utils.losses import element_wise_squared_loss
@@ -42,20 +42,22 @@ class PPOLoss(ActorCriticLoss):
                  log_prob_clipping=0.0,
                  check_numerics=False,
                  debug_summaries=False):
-        """Create a PPOLoss object
-
-        Implement the simplified surrogate loss in equation (9) of "Proximal
-        Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
+        """
+        Implement the simplified surrogate loss in equation (9) of `Proximal
+        Policy Optimization Algorithms <https://arxiv.org/abs/1707.06347>`_.
 
         The total loss equals to
-        (policy_gradient_loss (L^{CLIP} in equation (9))
-         + td_loss_weight * td_loss (L^{VF} in equation (9))
-         - entropy_regularization * entropy)
 
-        This loss works with PPOAlgorithm. The advantages and returns are
-        pre-computed by PPOAlgorithm.preprocess(). One known difference with
-        baselines.ppo2 is that value estimation is not clipped here, while
-        baselines.ppo2 also clipped value if it is deviate from returns too
+        .. code-block:: python
+
+            (policy_gradient_loss      # (L^{CLIP} in equation (9))
+            + td_loss_weight * td_loss # (L^{VF} in equation (9))
+            - entropy_regularization * entropy)
+
+        This loss works with ``PPOAlgorithm``. The advantages and returns are
+        pre-computed by ``PPOAlgorithm.preprocess()``. One known difference with
+        `baselines.ppo2` is that value estimation is not clipped here, while
+        `baselines.ppo2` also clipped value if it is deviate from returns too
         much.
 
         Args:
@@ -67,16 +69,16 @@ class PPOLoss(ActorCriticLoss):
             normalize_advantages (bool): If True, normalize advantage to zero
                 mean and unit variance within batch for caculating policy
                 gradient.
-            advantage_clip (float): If set, clip advantages to [-x, x]
+            advantage_clip (float): If set, clip advantages to :math:`[-x, x]`
             entropy_regularization (float): Coefficient for entropy
                 regularization loss term.
             td_loss_weight (float): the weigt for the loss of td error.
             importance_ratio_clipping (float):  Epsilon in clipped, surrogate
                 PPO objective. See the cited paper for more detail.
             log_prob_clipping (float): If >0, clipping log probs to the range
-                (-log_prob_clipping, log_prob_clipping) to prevent inf / NaN
+                ``(-log_prob_clipping, log_prob_clipping)`` to prevent ``inf/NaN``
                 values.
-            check_numerics (bool):  If true, checking for NaN / Inf values. For
+            check_numerics (bool):  If true, checking for ``NaN/Inf`` values. For
                 debugging only.
         """
 
@@ -96,13 +98,13 @@ class PPOLoss(ActorCriticLoss):
         self._log_prob_clipping = log_prob_clipping
         self._check_numerics = check_numerics
 
-    def _pg_loss(self, training_info: TrainingInfo, advantages):
+    def _pg_loss(self, experience, train_info, advantages):
         scope = alf.summary.scope(self.__class__.__name__)
         importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
-            action_distribution=training_info.info.action_distribution,
-            collect_action_distribution=training_info.rollout_info.
+            action_distribution=train_info.action_distribution,
+            collect_action_distribution=experience.rollout_info.
             action_distribution,
-            action=training_info.action,
+            action=experience.action,
             clipping_mode='double_sided',
             scope=scope,
             importance_ratio_clipping=self._importance_ratio_clipping,
@@ -126,7 +128,7 @@ class PPOLoss(ActorCriticLoss):
 
         return policy_gradient_loss
 
-    def _calc_returns_and_advantages(self, training_info: TrainingInfo, value):
-        advantages = training_info.rollout_info.advantages
-        returns = training_info.rollout_info.returns
+    def _calc_returns_and_advantages(self, experience, value):
+        advantages = experience.rollout_info.advantages
+        returns = experience.rollout_info.returns
         return returns, advantages

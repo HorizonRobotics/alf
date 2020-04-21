@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.data_structures import TrainingInfo, LossInfo, StepType
+from alf.data_structures import LossInfo, StepType
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, value_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
@@ -69,42 +69,42 @@ class MultiStepTDLoss(nn.Module):
         self._lambda = td_lambda
         self._debug_summaries = debug_summaries
 
-    def forward(self, training_info: TrainingInfo, value, target_value):
-        """Cacluate the loss
+    def forward(self, experience, value, target_value):
+        """Cacluate the loss.
 
         The first dimension of all the tensors is time dimension and the second
         dimesion is the batch dimension.
 
         Args:
-            training_info (TrainingInfo): training_info collected from ``rollout_step``
-                or ``train_step``. All tensors in training_info are time-major
+            experience (Experience): experience collected from ``unroll()`` or
+                a replay buffer. All tensors are time-major.
             value (torch.Tensor): the time-major tensor for the value at each time
                 step. The loss is between this and the calculated return.
             target_value (torch.Tensor): the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
                 can be same as ``value``.
         Returns:
-            loss_info (LossInfo): with loss_info.extra same as loss_info.loss
+            LossInfo: with the ``extra`` field same as ``loss``.
         """
         if self._lambda == 1.0:
             returns = value_ops.discounted_return(
-                rewards=training_info.reward,
+                rewards=experience.reward,
                 values=target_value,
-                step_types=training_info.step_type,
-                discounts=training_info.discount * self._gamma)
+                step_types=experience.step_type,
+                discounts=experience.discount * self._gamma)
         else:
             advantages = value_ops.generalized_advantage_estimation(
-                rewards=training_info.reward,
+                rewards=experience.reward,
                 values=target_value,
-                step_types=training_info.step_type,
-                discounts=training_info.discount * self._gamma,
+                step_types=experience.step_type,
+                discounts=experience.discount * self._gamma,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
 
         value = value[:-1]
 
         if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = training_info.step_type[:-1] != StepType.LAST
+            mask = experience.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
                 alf.summary.scalar(
                     "explained_variance_of_return_by_value",

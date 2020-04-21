@@ -27,8 +27,7 @@ from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.data_structures import (AlgStep, Experience, experience_to_time_step,
-                                 LossInfo, namedtuple, StepType, TimeStep,
-                                 TrainingInfo)
+                                 LossInfo, namedtuple, StepType, TimeStep)
 from alf.networks import Network
 from alf.utils import common, dist_utils, losses, math_ops, spec_utils, tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
@@ -393,9 +392,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         return AlgStep(action, rl_state, info)
 
-    def calc_loss(self, training_info: TrainingInfo):
-        info: SarsaInfo = training_info.info
-
+    def calc_loss(self, experience, info: SarsaInfo):
         loss = info.actor_loss
         if self._log_alpha is not None:
             alpha = self._log_alpha.exp().detach()
@@ -407,34 +404,34 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         # For sarsa, info.critics is actually the critics for the previous step.
         # And info.target_critics is the critics for the current step. So we
-        # need to rearrange training_info to match the requirement for `OneStepTDLoss`.
-        step_type0 = training_info.step_type[0]
+        # need to rearrange ``experience``` to match the requirement for
+        # `OneStepTDLoss`.
+        step_type0 = experience.step_type[0]
         step_type0 = torch.where(step_type0 == StepType.LAST,
                                  torch.tensor(StepType.MID), step_type0)
         step_type0 = torch.where(step_type0 == StepType.FIRST,
                                  torch.tensor(StepType.LAST), step_type0)
 
-        reward = training_info.reward
+        reward = experience.reward
         if self._use_entropy_reward:
             reward -= (self._log_alpha.exp() * info.neg_entropy).detach()
-        shifted_training_info = training_info._replace(
-            discount=tensor_utils.tensor_prepend_zero(training_info.discount),
+        shifted_experience = experience._replace(
+            discount=tensor_utils.tensor_prepend_zero(experience.discount),
             reward=tensor_utils.tensor_prepend_zero(reward),
-            step_type=tensor_utils.tensor_prepend(training_info.step_type,
+            step_type=tensor_utils.tensor_prepend(experience.step_type,
                                                   step_type0))
         critic_losses = []
         for i in range(self._num_replicas):
-            critic = tensor_utils.tensor_extend_zero(
-                training_info.info.critics[..., i])
+            critic = tensor_utils.tensor_extend_zero(info.critics[..., i])
             target_critic = tensor_utils.tensor_prepend_zero(
-                training_info.info.target_critics[..., i])
-            loss_info = self._critic_losses[i](shifted_training_info, critic,
+                info.target_critics[..., i])
+            loss_info = self._critic_losses[i](shifted_experience, critic,
                                                target_critic)
             critic_losses.append(nest_map(lambda l: l[:-1], loss_info.loss))
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        not_first_step = training_info.step_type != StepType.FIRST
+        not_first_step = (experience.step_type != StepType.FIRST)
         # put critic_loss to scalar_loss because loss will be masked by
         # ~is_last at train_complete(). The critic_loss here should be
         # masked by ~is_first instead, which is done above
@@ -455,5 +452,5 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 alpha=alpha_loss,
                 neg_entropy=info.neg_entropy))
 
-    def after_update(self, training_info):
+    def after_update(self, experience, train_info: SarsaInfo):
         self._update_target()

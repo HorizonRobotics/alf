@@ -29,7 +29,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import AlgStep, TrainingInfo
+from alf.data_structures import AlgStep
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -69,7 +69,7 @@ def _set_target_entropy(name, target_entropy, flat_action_spec):
             as it is. If a callable function, then it will be called on the action
             spec to calculate a target entropy. If ``None``, a default entropy will
             be calculated.
-        flat_action_spec (list[TensorSpec]): a flattened list of action specs
+        flat_action_spec (list[TensorSpec]): a flattened list of action specs.
     """
     if target_entropy is None or callable(target_entropy):
         if target_entropy is None:
@@ -137,11 +137,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 ``call(observation)``.
             critic_network (Network): The network will be called with
                 ``call(observation, action)``.
-            env (Environment): The environment to interact with. env is a batched
-                environment, which means that it runs multiple simulations
-                simultateously. env only needs to be provided to the root
-                Algorithm.
-            config (TrainerConfig): config for training. config only needs to be
+            env (Environment): The environment to interact with. ``env`` is a
+                batched environment, which means that it runs multiple simulations
+                simultateously. ``env` only needs to be provided to the root
+                algorithm.
+            config (TrainerConfig): config for training. It only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
@@ -158,7 +158,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 networks.
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between
-                ``[-dqda_clipping, dqda_clipping]``. Does not perform clipping if
+                ``[-dqda_clipping, dqda_clipping]``. Will not perform clipping if
                 ``dqda_clipping == 0``.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
@@ -387,13 +387,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
             alpha=alpha_info)
         return AlgStep(action, state, info)
 
-    def after_update(self, training_info):
+    def after_update(self, experience, train_info: SacInfo):
         self._update_target()
 
-    def calc_loss(self, training_info: TrainingInfo):
-        critic_loss = self._calc_critic_loss(training_info)
-        alpha_loss = training_info.info.alpha.loss
-        actor_loss = training_info.info.actor.loss
+    def calc_loss(self, experience, train_info: SacInfo):
+        critic_loss = self._calc_critic_loss(experience, train_info)
+        alpha_loss = train_info.alpha.loss
+        actor_loss = train_info.actor.loss
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -406,18 +406,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic=critic_loss.extra,
                 alpha=alpha_loss.extra))
 
-    def _calc_critic_loss(self, training_info):
-        critic_info = training_info.info.critic
+    def _calc_critic_loss(self, experience, train_info: SacInfo):
+        critic_info = train_info.critic
 
         target_critic = critic_info.target_critic
 
         critic_loss1 = self._critic_loss1(
-            training_info=training_info,
+            experience=experience,
             value=critic_info.critic1,
             target_value=target_critic)
 
         critic_loss2 = self._critic_loss2(
-            training_info=training_info,
+            experience=experience,
             value=critic_info.critic2,
             target_value=target_critic)
 

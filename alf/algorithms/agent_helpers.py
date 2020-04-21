@@ -18,20 +18,19 @@ import os
 import torch
 
 import alf
-from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import LossInfo
 from alf.utils.math_ops import add_ignore_empty
 
 
-def _make_rl_training_info(training_info, name):
-    """Given an agent's training info, extracts the ``info`` and ``rollout_info``
-    fields for an RL algorithm."""
-    if training_info.rollout_info == ():
+def _make_alg_experience(experience, name):
+    """Given an experience, extracts the ``rollout_info`` field for an
+    algorithm.
+    """
+    if experience.rollout_info == ():
         rollout_info = ()
     else:
-        rollout_info = getattr(training_info.rollout_info, name)
-    info = getattr(training_info.info, name)
-    return training_info._replace(info=info, rollout_info=rollout_info)
+        rollout_info = getattr(experience.rollout_info, name)
+    return experience._replace(rollout_info=rollout_info)
 
 
 class AgentHelper(object):
@@ -103,7 +102,7 @@ class AgentHelper(object):
             summarize_fn(os.path.join(summary_prefix, "overall"), reward)
         return reward
 
-    def accumulate_loss_info(self, algorithms, training_info):
+    def accumulate_loss_info(self, algorithms, experience, train_info):
         """Given an overall Agent training info that contains various training infos
         for different algorithms, compute the accumulated loss info for updating
         parameters.
@@ -111,21 +110,19 @@ class AgentHelper(object):
         Args:
             algorithms (list[Algorithm]): the list of algorithms whose loss infos
                 are to be accumulated.
-            training_info (nested Tensor): information collected for training
-                algorithms. It is batched from each ``info`` returned by
-                ``train_step()``.
+            experience (Experience): experience used for gradient update.
+            train_info (nested Tensor): information collected for training
+                algorithms. It is batched from each ``AlgStep.info`` returned by
+                ``train_step()`` or ``rollout_step()``.
 
         Returns:
             LossInfo: the accumulated loss info.
         """
 
-        def _update_loss(loss_info, training_info, algorithm, name):
-            if isinstance(algorithm, RLAlgorithm):
-                new_loss_info = algorithm.calc_loss(
-                    _make_rl_training_info(training_info, name))
-            else:
-                new_loss_info = algorithm.calc_loss(
-                    getattr(training_info.info, name))
+        def _update_loss(loss_info, algorithm, name):
+            info = getattr(train_info, name)
+            exp = _make_alg_experience(experience, name)
+            new_loss_info = algorithm.calc_loss(exp, info)
             if loss_info is None:
                 return new_loss_info._replace(
                     extra={name: new_loss_info.extra})
@@ -140,29 +137,29 @@ class AgentHelper(object):
         loss_info = None
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
-            loss_info = _update_loss(loss_info, training_info, alg, field)
+            loss_info = _update_loss(loss_info, alg, field)
         assert loss_info is not None, "No loss info is calculated!"
         return loss_info
 
-    def after_update(self, algorithms, training_info):
+    def after_update(self, algorithms, experience, train_info):
         """For each provided algorithm, call its ``after_update()`` to do things after
         the agent completes one gradient update (i.e. ``update_with_gradient()``).
 
         Args:
             algorithms (list[Algorithm]): the list of algorithms whose
                 ``after_update`` is to be called.
-            training_info (nested Tensor): information collected for training
-                algorithms. It is batched from each ``info`` returned by
-                ``train_step()``.
+            experience (Experience): experience used for the gradient update.
+            train_info (AgentInfo): information collected for training
+                algorithms. It is batched from each ``AlgStep.info`` returned by
+                ``train_step()`` or ``rollout_step()``.
         """
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
-            if isinstance(alg, RLAlgorithm):
-                alg.after_update(_make_rl_training_info(training_info, field))
-            else:
-                alg.after_update(getattr(training_info.info, field))
+            info = getattr(train_info, field)
+            exp = _make_alg_experience(experience, field)
+            alg.after_update(exp, info)
 
-    def after_train_iter(self, algorithms, training_info=None):
+    def after_train_iter(self, algorithms, experience, train_info=None):
         """For each provided algorithm, call its ``after_train_iter()`` to do
         things after the agent finishes one training iteration (i.e.,
         ``train_iter()``).
@@ -170,17 +167,15 @@ class AgentHelper(object):
         Args:
             algorithms (list[Algorithm]): the list of algorithms whose
                 ``after_train_iter`` is to be called.
-            training_info (nested Tensor): information collected for training
-                algorithms. It is batched from each ``info`` returned by
+            experience (Experience): experience collected from ``rollout_step()``.
+            train_info (AgentInfo): information collected for training
+                algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``rollout_step()``.
         """
+        assert experience.rollout_info == (), (
+            "'experience' should always be collected from 'unroll()' and its "
+            "'rollout_info' field should have been moved to 'train_info'!")
         for alg in algorithms:
             field = self._get_algorithm_field(alg)
-            if training_info is not None:
-                if isinstance(alg, RLAlgorithm):
-                    alg.after_train_iter(
-                        _make_rl_training_info(training_info, field))
-                else:
-                    alg.after_train_iter(getattr(training_info.info, field))
-            else:
-                alg.after_train_iter()
+            info = (None if train_info is None else getattr(train_info, field))
+            alg.after_train_iter(experience, info)

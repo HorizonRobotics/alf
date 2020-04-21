@@ -28,7 +28,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import AlgStep, TrainingInfo
+from alf.data_structures import AlgStep
 from alf.nest import nest
 from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -73,20 +73,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_optimizer=None,
                  debug_summaries=False,
                  name="DdpgAlgorithm"):
-        """Create a DdpgAlgorithm.
-
+        """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network):  The network will be called with
-                call(observation).
+                ``call(observation)``.
             critic_network (Network): The network will be called with
                 call(observation, action).
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
-                simultateously. env only needs to be provided to the root
-                Algorithm.
+                simultateously. ``env`` only needs to be provided to the root
+                algorithm.
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -102,8 +101,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             target_update_period (int): Period for soft update of the target
                 networks.
             dqda_clipping (float): when computing the actor loss, clips the
-                gradient dqda element-wise between [-dqda_clipping, dqda_clipping].
-                Does not perform clipping if dqda_clipping == 0.
+                gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
+                Does not perform clipping if ``dqda_clipping == 0``.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             debug_summaries (bool): True if debug summaries should be created.
@@ -262,25 +261,24 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 critic=critic_info,
                 actor_loss=policy_step.info))
 
-    def calc_loss(self, training_info: TrainingInfo):
+    def calc_loss(self, experience, train_info: DdpgInfo):
 
         critic_losses = [None] * self._num_replicas
         for i in range(self._num_replicas):
             critic_losses[i] = self._critic_losses[i](
-                training_info=training_info,
-                value=training_info.info.critic.q_values[..., i],
-                target_value=training_info.info.critic.
-                target_q_values[..., i]).loss
+                experience=experience,
+                value=train_info.critic.q_values[..., i],
+                target_value=train_info.critic.target_q_values[..., i]).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        actor_loss = training_info.info.actor_loss
+        actor_loss = train_info.actor_loss
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
-    def after_update(self, training_info):
+    def after_update(self, experience, train_info: DdpgInfo):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):

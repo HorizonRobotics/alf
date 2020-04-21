@@ -26,7 +26,7 @@ from alf.utils.averager import ScalarWindowAverager
 from alf.utils.dist_utils import calc_default_target_entropy, entropy_with_fallback
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
-EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["step_type", "loss"])
+EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["loss"])
 
 
 @gin.configurable
@@ -156,8 +156,8 @@ class EntropyTargetAlgorithm(Algorithm):
             on_policy_training (bool): If False, this step does nothing.
 
         Returns:
-            AlgStep. `info` field is LossInfo, other fields are empty. All fields
-                are empty If `on_policy_training` is False.
+            AlgStep: ``info`` field is ``LossInfo``, other fields are empty. All
+            fields are empty If ``on_policy_training=False``.
         """
         if on_policy_training:
             return self.train_step(distribution, step_type)
@@ -172,30 +172,30 @@ class EntropyTargetAlgorithm(Algorithm):
                 policy.
             step_type (StepType): the step type for the distributions.
         Returns:
-            AlgStep. ``info`` field is ``LossInfo``, other fields are empty.
+            AlgStep: ``info`` field is ``LossInfo``, other fields are empty.
         """
         entropy, entropy_for_gradient = entropy_with_fallback(distribution)
         return AlgStep(
             output=(),
             state=(),
             info=EntropyTargetInfo(
-                step_type=step_type,
                 loss=LossInfo(
                     loss=-entropy_for_gradient,
                     extra=EntropyTargetLossInfo(neg_entropy=-entropy))))
 
-    def calc_loss(self, training_info: EntropyTargetInfo, valid_mask=None):
+    def calc_loss(self, experience, info: EntropyTargetInfo, valid_mask=None):
         """Calculate loss.
 
         Args:
-            training_info (EntropyTargetInfo): for computing loss.
+            experience (Experience): experience for gradient update
+            info (EntropyTargetInfo): for computing loss.
             valid_mask (tensor): valid mask to be applied on time steps.
 
         Returns:
-            LossInfo.
+            LossInfo:
         """
-        loss_info = training_info.loss
-        mask = (training_info.step_type != StepType.LAST).type(torch.float32)
+        loss_info = info.loss
+        mask = (experience.step_type != StepType.LAST).type(torch.float32)
         if valid_mask:
             mask = mask * (valid_mask).type(torch.float32)
         entropy = -loss_info.extra.neg_entropy * mask

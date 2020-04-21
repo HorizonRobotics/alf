@@ -30,7 +30,7 @@ from alf.nest.utils import convert_device
 
 def atomic(func):
     """Make class member function atomic by checking ``class._lock``.
-    
+
     Can only be applied on class methods, whose containing class
     must have ``_lock`` set to ``None`` or a ``multiprocessing.Lock`` object.
 
@@ -266,7 +266,7 @@ class RingBuffer(nn.Module):
             nested Tensors or None when blocking dequeue gets terminated by
             stop event. The shape of the Tensors is ``[batch_size, n, ...]``.
         Raises:
-            ``AssertionError`` when not enough data is present, in non-blocking
+            AssertionError: when not enough data is present, in non-blocking
             mode.
         """
         assert n <= self._max_length
@@ -302,7 +302,7 @@ class RingBuffer(nn.Module):
         Returns:
             nested Tensors of shape ``[batch_size, n, ...]``.
         Raises:
-            ``AssertionError`` when not enough data is present.
+            AssertionError: when not enough data is present.
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
@@ -357,7 +357,7 @@ class RingBuffer(nn.Module):
 
     def stop(self):
         """Stop waiting processes from being blocked.
-        
+
         Only checked in blocking mode of dequeue and enqueue.
 
         All blocking enqueue and dequeue calls that happen afterwards will
