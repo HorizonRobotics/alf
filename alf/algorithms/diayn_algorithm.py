@@ -165,7 +165,7 @@ class DIAYNAlgorithm(Algorithm):
     def train_step(self, time_step, state):
         return self._step(time_step, state, calc_rewards=False)
 
-    def calc_loss(self, info: DIAYNInfo):
+    def calc_loss(self, experience, info: DIAYNInfo):
         loss = torch.mean(info.loss)
         return LossInfo(
             scalar_loss=loss, extra=dict(skill_discriminate_loss=info.loss))

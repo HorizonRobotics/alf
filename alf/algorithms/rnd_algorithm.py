@@ -116,7 +116,7 @@ class RNDAlgorithm(Algorithm):
     def _step(self, time_step: TimeStep, state, calc_rewards=True):
         """
         Args:
-            time_step (ActionTimeStep): input time_step data
+            time_step (TimeStep): input time_step data
             state (tuple):  empty tuple ()
             calc_rewards (bool): whether calculate rewards
 
@@ -164,5 +164,5 @@ class RNDAlgorithm(Algorithm):
     def train_step(self, time_step: TimeStep, state):
         return self._step(time_step, state, calc_rewards=False)
 
-    def calc_loss(self, info: ICMInfo):
+    def calc_loss(self, experience, info: ICMInfo):
         return LossInfo(scalar_loss=torch.mean(info.loss.loss))

@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.data_structures import TrainingInfo, LossInfo
+from alf.data_structures import LossInfo
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, dist_utils, value_ops
 
@@ -51,7 +51,7 @@ class ActorCriticLoss(nn.Module):
                  td_loss_weight=1.0,
                  debug_summaries=False,
                  name="ActorCriticLoss"):
-        """Create a ActorCriticLoss object. The overall loss equals to
+        """An actor-critic loss equals to
 
         .. code-block:: python
 
@@ -94,23 +94,24 @@ class ActorCriticLoss(nn.Module):
         self._entropy_regularization = entropy_regularization
         self._debug_summaries = debug_summaries
 
-    def forward(self, training_info: TrainingInfo, value):
+    def forward(self, experience, train_info):
         """Cacluate actor critic loss. The first dimension of all the tensors is
         time dimension and the second dimesion is the batch dimension.
 
         Args:
-            training_info (TrainingInfo): training information collected by
-                ``OnPolicyAlgorithm`` or ``OffPolicyAlgorithm``. All tensors in
-                ``training_info`` are time-major.
-            value (torch.Tensor): the time-major tensor for the value at each time
-                step.
+            experience (nest): experience used for training. All tensors are
+                time-major.
+            train_info (nest): information collected for training. It is batched
+                from each ``AlgStep.info`` returned by ``rollout_step()``
+                (on-policy training) or ``train_step()`` (off-policy training).
+                All tensors in ``train_info`` are time-major.
         Returns:
-            loss_info (LossInfo): with ``loss_info.extra`` being
-                ``ActorCriticLossInfo``.
+            LossInfo: with ``extra`` being ``ActorCriticLossInfo``.
         """
 
+        value = train_info.value
         returns, advantages = self._calc_returns_and_advantages(
-            training_info, value)
+            experience, value)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -129,7 +130,7 @@ class ActorCriticLoss(nn.Module):
             advantages = torch.clamp(advantages, -self._advantage_clip,
                                      self._advantage_clip)
 
-        pg_loss = self._pg_loss(training_info, advantages.detach())
+        pg_loss = self._pg_loss(experience, train_info, advantages.detach())
 
         td_loss = self._td_error_loss_fn(returns.detach(), value)
 
@@ -138,7 +139,7 @@ class ActorCriticLoss(nn.Module):
         entropy_loss = ()
         if self._entropy_regularization is not None:
             entropy, entropy_for_gradient = dist_utils.entropy_with_fallback(
-                training_info.info.action_distribution)
+                train_info.action_distribution)
             entropy_loss = -entropy
             loss -= self._entropy_regularization * entropy_for_gradient
 
@@ -147,27 +148,27 @@ class ActorCriticLoss(nn.Module):
             extra=ActorCriticLossInfo(
                 td_loss=td_loss, pg_loss=pg_loss, neg_entropy=entropy_loss))
 
-    def _pg_loss(self, training_info, advantages):
+    def _pg_loss(self, experience, train_info, advantages):
         action_log_prob = dist_utils.compute_log_probability(
-            training_info.info.action_distribution, training_info.action)
+            train_info.action_distribution, experience.action)
         return -advantages * action_log_prob
 
-    def _calc_returns_and_advantages(self, training_info, value):
+    def _calc_returns_and_advantages(self, experience, value):
         returns = value_ops.discounted_return(
-            rewards=training_info.reward,
+            rewards=experience.reward,
             values=value,
-            step_types=training_info.step_type,
-            discounts=training_info.discount * self._gamma)
+            step_types=experience.step_type,
+            discounts=experience.discount * self._gamma)
         returns = tensor_utils.tensor_extend(returns, value[-1])
 
         if not self._use_gae:
             advantages = returns - value
         else:
             advantages = value_ops.generalized_advantage_estimation(
-                rewards=training_info.reward,
+                rewards=experience.reward,
                 values=value,
-                step_types=training_info.step_type,
-                discounts=training_info.discount * self._gamma,
+                step_types=experience.step_type,
+                discounts=experience.discount * self._gamma,
                 td_lambda=self._lambda)
             advantages = tensor_utils.tensor_extend_zero(advantages)
             if self._use_td_lambda_return:

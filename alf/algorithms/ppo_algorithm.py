@@ -19,7 +19,7 @@ import torch
 
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
-from alf.data_structures import Experience, TimeStep, TrainingInfo
+from alf.data_structures import Experience, TimeStep
 from alf.utils import common, value_ops
 
 PPOInfo = namedtuple("PPOInfo",
@@ -32,8 +32,8 @@ class PPOAlgorithm(ActorCriticAlgorithm):
     Implement the simplified surrogate loss in equation (9) of "Proximal
     Policy Optimization Algorithms" https://arxiv.org/abs/1707.06347
 
-    It works with ppo_loss.PPOLoss. It should have same behavior as
-    baselines.ppo2.
+    It works with ``ppo_loss.PPOLoss``. It should have same behavior as
+    `baselines.ppo2`.
     """
 
     def is_on_policy(self):

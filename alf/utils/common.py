@@ -33,7 +33,6 @@ import torch.nn as nn
 from typing import Callable
 
 import alf
-from alf.data_structures import LossInfo
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
@@ -41,8 +40,11 @@ from . import dist_utils, gin_utils
 
 
 def add_method(cls):
-    """A decorator for adding a method to a class (cls)
+    """A decorator for adding a method to a class (cls).
     Example usage:
+
+    .. code-block:: python
+
         class A:
             pass
         @add_method(A)
@@ -65,17 +67,21 @@ def add_method(cls):
 
 
 def as_list(x):
-    """Convert x to a list.
+    """Convert ``x`` to a list.
 
     It performs the following conversion:
+
+    .. code-block:: python
+
         None => []
         list => x
         tuple => list(x)
         other => [x]
+
     Args:
         x (any): the object to be converted
     Returns:
-        a list.
+        list:
     """
     if x is None:
         return []
@@ -116,22 +122,25 @@ class Periodically(nn.Module):
 
 
 def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
-    """Performs a soft update of the target model parameters.
+    r"""Performs a soft update of the target model parameters.
 
-    For each weight w_s in the model, and its corresponding
-    weight w_t in the target_model, a soft update is:
-    w_t = (1 - tau) * w_t + tau * w_s.
+    For each weight :math:`w_s` in the model, and its corresponding
+    weight :math:`w_t` in the target_model, a soft update is:
+
+    .. math::
+
+        w_t = (1 - \tau) * w_t + \tau * w_s.
 
     Args:
         models (Network | list[Network]): the current model.
         target_models (Network | list[Network]): the model to be updated.
-        tau (float): A float scalar in [0, 1]. Default `tau=1.0` means hard
-            update.
+        tau (float): A float scalar in :math:`[0, 1]`. Default :math:`\tau=1.0`
+            means hard update.
         period (int): Step interval at which the target model is updated.
-        copy (bool): If True, also copy `models` to `target_models` in the
+        copy (bool): If True, also copy ``models`` to ``target_models`` in the
             beginning.
     Returns:
-        A callable that performs a soft update of the target model parameters.
+        Callable: a callable that performs a soft update of the target model parameters.
     """
     models = as_list(models)
     target_models = as_list(target_models)
@@ -165,14 +174,15 @@ def concat_shape(shape1, shape2):
 
 
 def expand_dims_as(x, y):
-    """Expand the shape of `x` with extra singular dimensions.
+    """Expand the shape of ``x`` with extra singular dimensions.
 
-    The result is broadcastable to the shape of `y`
+    The result is broadcastable to the shape of ``y``.
+
     Args:
         x (Tensor): source tensor
         y (Tensor): target tensor. Only its shape will be used.
     Returns:
-        x with extra singular dimensions.
+        ``x`` with extra singular dimensions.
     """
     assert len(x.shape) <= len(y.shape)
     assert x.shape == y.shape[:len(x.shape)]
@@ -184,12 +194,12 @@ def expand_dims_as(x, y):
 
 
 def reset_state_if_necessary(state, initial_state, reset_mask):
-    """Reset state to initial state according to reset_mask
+    """Reset state to initial state according to ``reset_mask``.
 
     Args:
         state (nested Tensor): the current batched states
         initial_state (nested Tensor): batched intitial states
-        reset_mask (nested Tensor): with shape=(batch_size,), dtype=tf.bool
+        reset_mask (nested Tensor): with ``shape=(batch_size,), dtype=tf.bool``
     Returns:
         nested Tensor
     """
@@ -203,17 +213,17 @@ def run_under_record_context(func,
                              summary_interval,
                              flush_secs,
                              summary_max_queue=10):
-    """Run `func` under summary record context.
+    """Run ``func`` under summary record context.
 
     Args:
         func (Callable): the function to be executed.
         summary_dir (str): directory to store summary. A directory starting with
-            "~/" will be expanded to "$HOME/"
+            ``~/`` will be expanded to ``$HOME/``.
         summary_interval (int): how often to generate summary based on the
             global counter
         flush_secs (int): flush summary to disk every so many seconds
-        summary_max_queue (int): the largest number of summaries to keep in a queue; will
-          flush once the queue gets bigger than this. Defaults to 10.
+        summary_max_queue (int): the largest number of summaries to keep in a queue;
+            will flush once the queue gets bigger than this. Defaults to 10.
     """
     summary_dir = os.path.expanduser(summary_dir)
     summary_writer = alf.summary.create_summary_writer(
@@ -255,14 +265,14 @@ def cast_transformer(observation, dtype=torch.float32):
 
 @gin.configurable
 def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
-    """Scale image to min and max (0->min, 255->max)
+    """Scale image to min and max (0->min, 255->max).
 
     Args:
         observation (nested Tensor): If observation is a nested structure, only
-            namedtuple and dict are supported for now.
+            ``namedtuple`` and ``dict`` are supported for now.
         fields (list[str]): the fields to be applied with the transformation. If
-            None, then `observation` must be a tf.Tensor with dtype uint8. A
-            field str can be a multi-step path denoted by "A.B.C".
+            None, then ``observation`` must be a ``Tensor`` with dtype ``uint8``.
+            A field str can be a multi-step path denoted by "A.B.C".
         min (float): normalize minimum to this value
         max (float): normalize maximum to this value
     Returns:
@@ -309,10 +319,10 @@ def scale_transformer(observation, scale, dtype=torch.float32, fields=None):
 @gin.configurable
 def reward_clipping(r, minmax=(-1, 1)):
     """
-    Clamp immediate rewards to the range [`min`, `max`].
+    Clamp immediate rewards to the range :math:`[min, max]`.
 
     Can be used as a reward shaping function passed to an algorithm
-    (e.g. ActorCriticAlgorithm).
+    (e.g. ``ActorCriticAlgorithm``).
     """
     assert minmax[0] <= minmax[1], "range error"
     return torch.clamp(r, minmax[0], minmax[1])
@@ -321,10 +331,10 @@ def reward_clipping(r, minmax=(-1, 1)):
 @gin.configurable
 def reward_scaling(r, scale=1):
     """
-    Scale immediate rewards by a factor of `scale`.
+    Scale immediate rewards by a factor of ``scale``.
 
     Can be used as a reward shaping function passed to an algorithm
-    (e.g. ActorCriticAlgorithm).
+    (e.g. ``ActorCriticAlgorithm``).
     """
     return r * scale
 
@@ -333,10 +343,10 @@ def _markdownify_gin_config_str(string, description=''):
     """Convert an gin config string to markdown format.
 
     Args:
-        string (str): the string from gin.operative_config_str()
-        description (str): Optional long-form description for this config_str
+        string (str): the string from ``gin.operative_config_str()``.
+        description (str): Optional long-form description for this config str.
     Returns:
-        The string of the markdown version of the config string.
+        string: the markdown version of the config string.
     """
 
     # This function is from gin.tf.utils.GinConfigSaverHook
@@ -375,12 +385,14 @@ def get_gin_confg_strs():
     The operative configuration consists of all parameter values used by
     configurable functions that are actually called during execution of the
     current program, and inoperative configuration consists of all parameter
-    configured but not used by configurable functions. See `gin.operative_config_str()`
-    and `gin_utils.inoperative_config_str` for more detail on how the config is generated.
+    configured but not used by configurable functions. See
+    ``gin.operative_config_str()`` and ``gin_utils.inoperative_config_str`` for
+    more detail on how the config is generated.
 
     Returns:
-        md_operative_config_str (str): a markdown-formatted operative str
-        md_inoperative_config_str (str): a markdown-formatted inoperative str
+        tuple:
+        - md_operative_config_str (str): a markdown-formatted operative str
+        - md_inoperative_config_str (str): a markdown-formatted inoperative str
     """
     operative_config_str = gin.operative_config_str()
     md_operative_config_str = _markdownify_gin_config_str(
@@ -422,8 +434,9 @@ def copy_gin_configs(root_dir, gin_files):
 def get_gin_file():
     """Get the gin configuration file.
 
-    If FLAGS.gin_file is not set, find gin files under FLAGS.root_dir and
+    If ``FLAGS.gin_file`` is not set, find gin files under ``FLAGS.root_dir`` and
     returns them. If there is no 'gin_file' flag defined, return ''.
+
     Returns:
         the gin file(s)
     """
@@ -447,45 +460,31 @@ def get_initial_policy_state(batch_size, policy_state_spec):
             a state
     Returns:
         state (nested structure): each item is a tensor with the first dim equal
-            to `batch_size`. The remaining dims are consistent with
-            the corresponding state spec of `policy_state_spec`.
+            to ``batch_size``. The remaining dims are consistent with
+            the corresponding state spec of ``policy_state_spec``.
     """
     return zero_tensor_from_nested_spec(policy_state_spec, batch_size)
 
 
 def get_initial_time_step(env, first_env_id=0):
-    """
-    Return the initial time step
+    """Return the initial time step.
     Args:
-        env (TFPyEnvironment):
+        env (TorchEnvironment):
         first_env_id (int): the environment ID for the first sample in this
             batch.
     Returns:
-        time_step (ActionTimeStep): the init time step with actions as zero
-            tensors
+        TimeStep: the init time step with actions as zero tensors.
     """
     time_step = env.current_time_step()
     return time_step._replace(env_id=time_step.env_id + first_env_id)
 
 
 def transpose2(x, dim1, dim2):
-    """Transpose two axes `dim1` and `dim2` of a tensor."""
+    """Transpose two axes ``dim1`` and ``dim2`` of a tensor."""
     perm = list(range(len(x.shape)))
     perm[dim1] = dim2
     perm[dim2] = dim1
     return tf.transpose(x, perm)
-
-
-def sample_policy_action(policy_step):
-    """Sample an action for a policy step and replace the old distribution."""
-    action = sample_action_distribution(policy_step.action)
-    policy_step = policy_step._replace(action=action)
-    return policy_step
-
-
-def flatten_once(t):
-    """Flatten a tensor along axis=0 and axis=1."""
-    return tf.reshape(t, [-1] + list(t.shape[2:]))
 
 
 _env = None
@@ -499,19 +498,18 @@ def set_global_env(env):
 
 @gin.configurable
 def get_observation_spec(field=None):
-    """Get the `TensorSpec` of observations provided by the global environment.
+    """Get the ``TensorSpec`` of observations provided by the global environment.
 
-    This spec is used for creating models only! All uint8 dtype will be converted
-    to tf.float32 as a temporary solution, to be consistent with
-    `image_scale_transformer()`. See
+    This spec is used for creating models only! All ``uint8`` dtype will be converted
+    to torch.float32 as a temporary solution, to be consistent with
+    ``image_scale_transformer()``. See
 
     https://github.com/HorizonRobotics/alf/pull/239#issuecomment-544644558
 
     Args:
         field (str): a multi-step path denoted by "A.B.C".
     Returns:
-        A `TensorSpec`, or a nested dict, list or tuple of
-        `TensorSpec` objects, which describe the observation.
+        nested TensorSpec: a spec that describes the observation.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
@@ -528,13 +526,12 @@ def get_observation_spec(field=None):
 @gin.configurable
 def get_states_shape():
     """Get the tensor shape of internal states of the agent provided by
-      the global environment
+      the global environment.
 
-    Returns:
-        list of ints.
-        Returns 0 if internal states is not part of observation.
-        We don't raise error so this code can serve to check whether
-        env has states input
+      Returns:
+        0 if internal states is not part of observation; otherwise a
+        ``torch.Size``. We don't raise error so this code can serve to check
+        whether ``env`` has states input.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     if isinstance(_env.observation_spec(),
@@ -546,12 +543,12 @@ def get_states_shape():
 
 @gin.configurable
 def get_action_spec():
-    """Get the specs of the Tensors expected by `step(action)` of the global environment.
+    """Get the specs of the tensors expected by ``step(action)`` of the global
+    environment.
 
     Returns:
-      An single `TensorSpec`, or a nested dict, list or tuple of
-      `TensorSpec` objects, which describe the shape and
-      dtype of each Tensor expected by `step()`.
+        nested TensorSpec: a spec that describes the shape and dtype of each tensor
+        expected by ``step()``.
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     return _env.action_spec()
@@ -567,10 +564,9 @@ def get_vocab_size():
     """Get the vocabulary size of observations provided by the global environment.
 
     Returns:
-        vocab_size (int): size of the environment's/teacher's vocabulary.
-        Returns 0 if language is not part of observation.
-        We don't raise error so this code can serve to check whether
-        env has language input
+        int: size of the environment's/teacher's vocabulary. Returns 0 if
+        language is not part of observation. We don't raise error so this code
+        can serve to check whether the env has language input
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     if isinstance(_env.observation_spec(),
@@ -587,22 +583,23 @@ def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
     """Automatically compute target entropy given the action spec. Currently
     support discrete actions only.
 
-    The general idea is that we assume N*k actions having uniform probs for a good
-    policy. Thus the target entropy should be log(N*k), where N is the total
-    number of discrete actions and k is the active action portion.
+    The general idea is that we assume :math:`Nk` actions having uniform probs
+    for a good policy. Thus the target entropy should be :math:`log(Nk)`, where
+    :math:`N` is the total number of discrete actions and k is the active action
+    portion.
 
-    TODO: incorporate this function into EntropyTargetAlgorithm if it proves
+    TODO: incorporate this function into ``EntropyTargetAlgorithm`` if it proves
     to be effective.
 
     Args:
-        active_action_portion (float): a number in (0, 1]. Ideally, this value
-            should be greater than `1/num_actions`. If it's not, it will be
-            ignored.
+        active_action_portion (float): a number in :math:`(0, 1]`. Ideally, this
+            value should be greater than ``1/num_actions``. If it's not, it will
+            be ignored.
         min_entropy (float): the minimum possible entropy. If the auto-computed
             entropy is smaller than this value, then it will be replaced.
 
     Returns:
-        target_entropy (float): the target entropy for EntropyTargetAlgorithm
+        float: the target entropy for ``EntropyTargetAlgorithm``.
     """
     assert active_action_portion <= 1.0 and active_action_portion > 0
     action_spec = get_action_spec()
@@ -617,7 +614,7 @@ def write_gin_configs(root_dir, gin_file):
     Write a gin configration to a file. Because the user can
     1) manually change the gin confs after loading a conf file into the code, or
     2) include a gin file in another gin file while only the latter might be
-       copied to `root_dir`.
+       copied to ``root_dir``.
     So here we just dump the actual used gin conf string to a file.
 
     Args:
@@ -638,167 +635,13 @@ def write_gin_configs(root_dir, gin_file):
 
 
 def warning_once(msg, *args):
-    """Generate warning message once
+    """Generate warning message once.
 
     Args:
         msg: str, the message to be logged.
         *args: The args to be substitued into the msg.
     """
     logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
-
-
-def create_tensor_array(spec, num_steps, batch_size, clear_after_read=None):
-    """Create nested TensorArray based spec.
-
-    Args:
-        spec (nested TensorSpec): spec for each step (without batch dimension)
-        num_steps (int): size (length) of the TensorArray to be created
-        batch_size (int): batch size of each element
-        clear_after_read (bool): If True, clear TensorArray values after reading
-            them. This disables read-many semantics, but allows early release of
-            memory.
-    Returns:
-        nested TensorArray with the same structure as spec
-
-    """
-
-    def _create_ta(s):
-        return tf.TensorArray(
-            dtype=s.dtype,
-            size=num_steps,
-            clear_after_read=clear_after_read,
-            element_shape=tf.TensorShape([batch_size]).concatenate(s.shape))
-
-    return nest.map_structure(_create_ta, spec)
-
-
-def create_and_unstack_tensor_array(tensors, clear_after_read=True):
-    """Create tensor array from nested tensors.
-
-    Args:
-        tensors (nestd Tensor): nested Tensors
-        clear_after_read (bool): If True, clear TensorArray values after reading
-            them. This disables read-many semantics, but allows early release of
-            memory.
-    Returns:
-        nested TensorArray with the same structure as tensors
-    """
-    flattened = tf.nest.flatten(tensors)
-    if len(flattened) == 0:
-        return nest.map_structure(lambda a: a, tensors)
-    spec = extract_spec(tensors, from_dim=2)
-    # element_shape of TensorArray must be explicit shape (i.e., known)
-    batch_size = flattened[0].shape[1]
-    # size of TensorArray cannot be None, though it can be a Tensor
-    num_steps = tf.shape(flattened[0])[0]
-    ta = create_tensor_array(
-        spec, num_steps, batch_size, clear_after_read=clear_after_read)
-    ta = nest.map_structure(lambda elem, ta: ta.unstack(elem), tensors, ta)
-    return ta
-
-
-class FunctionInstance(object):
-    """
-    This is not a public API. It is for internal use.
-    """
-
-    def __init__(self, tf_func, instance, owner):
-        """Create a FunctionInstance object.
-
-        FunctionInstance is created for each instance the wrapped function is
-        bound to.
-        Args:
-            tf_func (tensorflow.python.eager.def_function.Function): a function
-                wrapped by tf.function which accept `instance` and `scope_name`
-                as its first two arguments
-            instance (object): the instance which the original function is bound
-                to.
-            owner (type): the class type of `instance`
-        """
-        self._tf_func = tf_func
-        self._instance = instance
-        self._owner = owner
-
-    def __call__(self, *args, **kwargs):
-        """Call the wrapped function.
-
-        Tensorflow creates a different instance of Function object for each
-        instance to handle instance specific processing. We need to explicitly
-        call tf_Function.__get__ to handle class methods correctly.
-
-        Reference: tensorflow.python.eager.def_function.Function.__get__().
-        """
-        tf_func_instance = self._tf_func.__get__(self._instance, self._owner)
-        return tf_func_instance(get_current_scope(), *args, **kwargs)
-
-
-class Function(object):
-    """
-    This is not a public API. It is for internal use.
-    """
-
-    def __init__(self, func, **kwargs):
-        def _bound_tf_func(instance, scope_name, *args, **kwargs):
-            with tf.name_scope(scope_name):
-                return func(instance, *args, **kwargs)
-
-        def _tf_func(scope_name, *args, **kwargs):
-            with tf.name_scope(scope_name):
-                return func(*args, **kwargs)
-
-        self._bound_tf_func = tf.function(**kwargs)(_bound_tf_func)
-        self._tf_func = tf.function(**kwargs)(_tf_func)
-
-    def __call__(self, *args, **kwargs):
-        return self._tf_func(get_current_scope(), *args, **kwargs)
-
-    def __get__(self, instance, owner):
-        """Get the instance specific function (FunctionInstance).
-
-        References:
-        1. tensorflow.python.eager.def_function.Function.__get__().
-        2. Python descriptor (https://docs.python.org/3/howto/descriptor.html)
-        """
-        return FunctionInstance(self._bound_tf_func, instance, owner)
-
-
-def function(func=None, **kwargs):
-    """Wrapper for tf.function with ALF-specific customizations.
-
-    Functions decorated using tf.function lose the original name scope of the
-    caller. This decorator fixes that.
-
-    Example:
-    ```python
-    @common.function
-    def my_eager_code(x, y):
-        ...
-    ```
-
-    Args:
-        func (Callable): function to be compiled.  If `func` is None, returns a
-            decorator that can be invoked with a single argument - `func`. The
-            end result is equivalent to providing all the arguments up front.
-            In other words, `common.function(input_signature=...)(func)` is
-            equivalent to `common.function(func, input_signature=...)`. The
-            former can be used to decorate Python functions, for example:
-                @tf.function(input_signature=...)
-                def foo(...): ...
-        args (list): Args for tf.function.
-        kwargs (dict): Keyword args for tf.function.
-    Returns:
-        If `func` is not None, returns a callable that will execute the compiled
-        function (and return zero or more `tf.Tensor` objects).
-        If `func` is None, returns a decorator that, when invoked with a single
-        `func` argument, returns a callable equivalent to the case above.
-    """
-
-    def decorate(f):
-        return functools.wraps(f)(Function(f, **kwargs))
-
-    if func is not None:
-        return decorate(func)
-    return decorate
 
 
 def set_random_seed(seed):
@@ -815,7 +658,7 @@ def set_random_seed(seed):
         seed (int|None): seed to be used. If None, a default seed based on
             pid and time will be used.
     Returns:
-        The seed being used if `seed` is None.
+        The seed being used if ``seed`` is None.
     """
     if seed is None:
         seed = os.getpid() + int(time.time())
@@ -844,18 +687,21 @@ def create_ou_process(action_spec, ou_stddev, ou_damping):
     """Create nested zero-mean Ornstein-Uhlenbeck processes.
 
     The temporal update equation is:
-    `x_next = (1 - damping) * x + N(0, std_dev)`
 
-    Note: if action_spec is nested, the returned nested OUProcess will not bec
+    .. code-block:: python
+
+        x_next = (1 - damping) * x + N(0, std_dev)
+
+    Note: if ``action_spec`` is nested, the returned nested OUProcess will not bec
     checkpointed.
 
     Args:
         action_spec (nested BountedTensorSpec): action spec
         ou_damping (float): Damping rate in the above equation. We must have
-            0 <= damping <= 1.
+            :math:`0 <= damping <= 1`.
         ou_stddev (float): Standard deviation of the Gaussian component.
     Returns:
-        nested OUProcess with the same structure as action_spec.
+        nested ``OUProcess`` with the same structure as ``action_spec``.
     """
 
     def _create_ou_process(action_spec):
