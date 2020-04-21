@@ -13,14 +13,16 @@
 # limitations under the License.
 """Deep Deterministic Policy Gradient (DDPG)."""
 
-import numpy as np
+import functools
 import gin
+import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.distributions as td
 from typing import Callable
 
+import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
@@ -30,13 +32,13 @@ from alf.data_structures import AlgStep
 from alf.nest import nest
 from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, dist_utils, spec_utils
+from alf.utils import losses, common, dist_utils, math_ops, spec_utils
 
 DdpgCriticState = namedtuple("DdpgCriticState",
-                             ['critic', 'target_actor', 'target_critic'])
-DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_value", "target_q_value"])
-DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critic'])
-DdpgState = namedtuple("DdpgState", ['actor', 'critic'])
+                             ['critics', 'target_actor', 'target_critics'])
+DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_values", "target_q_values"])
+DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
+DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
     "DdpgInfo", ["action_distribution", "actor_loss", "critic"],
     default_value=())
@@ -57,11 +59,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  action_spec: BoundedTensorSpec,
                  actor_network: ActorNetwork,
                  critic_network: CriticNetwork,
+                 use_parallel_network=False,
                  env=None,
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
                  ou_damping=0.15,
-                 critic_loss=None,
+                 critic_loss_ctor=None,
+                 num_replicas=1,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -75,8 +79,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             actor_network (Network):  The network will be called with
                 ``call(observation)``.
             critic_network (Network): The network will be called with
-                ``call(observation, action)``.
-            env (Environment): The environment to interact with. ``env`` is a batched
+                call(observation, action).
+            use_parallel_network (bool): whether to use parallel network for
+                calculating critics.
+            env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. ``env`` only needs to be provided to the root
                 algorithm.
@@ -87,8 +93,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 (OU) noise added in the default collect policy.
             ou_damping (float): Damping factor for the OU noise added in the
                 default collect policy.
-            critic_loss (None|OneStepTDLoss): an object for calculating critic
-                loss. If None, a default ``OneStepTDLoss`` will be used.
+            critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
+                constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
+            num_replicas (int): number of critics to be used. Default is 1.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -101,14 +108,21 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+
+        if use_parallel_network:
+            critic_networks = critic_network.make_parallel(num_replicas)
+        else:
+            critic_networks = alf.networks.NaiveParallelNetwork(
+                critic_network, num_replicas)
+
         train_state_spec = DdpgState(
             actor=DdpgActorState(
                 actor=actor_network.state_spec,
-                critic=critic_network.state_spec),
-            critic=DdpgCriticState(
-                critic=critic_network.state_spec,
+                critics=critic_networks.state_spec),
+            critics=DdpgCriticState(
+                critics=critic_networks.state_spec,
                 target_actor=actor_network.state_spec,
-                target_critic=critic_network.state_spec))
+                target_critics=critic_networks.state_spec))
 
         super().__init__(
             observation_spec,
@@ -119,29 +133,39 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
-        self.add_optimizer(actor_optimizer, [actor_network])
-        self.add_optimizer(critic_optimizer, [critic_network])
+        if actor_optimizer is not None:
+            self.add_optimizer(actor_optimizer, [actor_network])
+        if critic_optimizer is not None:
+            self.add_optimizer(critic_optimizer, [critic_networks])
 
         self._actor_network = actor_network
-        self._critic_network = critic_network
+        self._num_replicas = num_replicas
+        self._critic_networks = critic_networks
 
-        self._target_actor_network = actor_network.copy()
-        self._target_critic_network = critic_network.copy()
+        self._target_actor_network = actor_network.copy(
+            name='target_actor_networks')
+        self._target_critic_networks = critic_networks.copy(
+            name='target_critic_networks')
 
         self._ou_stddev = ou_stddev
         self._ou_damping = ou_damping
 
-        if critic_loss is None:
-            critic_loss = OneStepTDLoss(debug_summaries=debug_summaries)
-        self._critic_loss = critic_loss
+        if critic_loss_ctor is None:
+            critic_loss_ctor = OneStepTDLoss
+        critic_loss_ctor = functools.partial(
+            critic_loss_ctor, debug_summaries=debug_summaries)
+        self._critic_losses = [None] * num_replicas
+        for i in range(num_replicas):
+            self._critic_losses[i] = critic_loss_ctor(
+                name=("critic_loss" + str(i)))
 
         self._ou_process = common.create_ou_process(action_spec, ou_stddev,
                                                     ou_damping)
 
         self._update_target = common.get_target_updater(
-            models=[self._actor_network, self._critic_network],
+            models=[self._actor_network, self._critic_networks],
             target_models=[
-                self._target_actor_network, self._target_critic_network
+                self._target_actor_network, self._target_critic_networks
             ],
             tau=target_update_tau,
             period=target_update_period)
@@ -154,16 +178,22 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
 
         def _sample(a, ou):
-            if torch.rand(1) < epsilon_greedy:
+            if epsilon_greedy == 0:
+                return a
+            elif epsilon_greedy > 1.0:
                 return a + ou()
             else:
+                ind_explore = torch.where(
+                    torch.rand(a.shape[:1]) < epsilon_greedy)
+                noisy_a = a + ou()
+                a[ind_explore[0], :] = noisy_a[ind_explore[0], :]
                 return a
 
         noisy_action = nest.map_structure(_sample, action, self._ou_process)
         noisy_action = nest.map_structure(spec_utils.clip_to_spec,
                                           noisy_action, self._action_spec)
         state = empty_state._replace(
-            actor=DdpgActorState(actor=state, critic=()))
+            actor=DdpgActorState(actor=state, critics=()))
         return AlgStep(
             output=noisy_action,
             state=state,
@@ -178,18 +208,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(
             exp.observation, state=state.target_actor)
-        target_q_value, target_critic_state = self._target_critic_network(
-            (exp.observation, target_action), state=state.target_critic)
+        target_q_values, target_critic_states = self._target_critic_networks(
+            (exp.observation, target_action), state=state.target_critics)
 
-        q_value, critic_state = self._critic_network(
-            (exp.observation, exp.action), state=state.critic)
+        q_values, critic_states = self._critic_networks(
+            (exp.observation, exp.action), state=state.critics)
 
         state = DdpgCriticState(
-            critic=critic_state,
+            critics=critic_states,
             target_actor=target_actor_state,
-            target_critic=target_critic_state)
+            target_critics=target_critic_states)
 
-        info = DdpgCriticInfo(q_value=q_value, target_q_value=target_q_value)
+        info = DdpgCriticInfo(
+            q_values=q_values, target_q_values=target_q_values)
 
         return state, info
 
@@ -197,8 +228,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         action, actor_state = self._actor_network(
             exp.observation, state=state.actor)
 
-        q_value, critic_state = self._critic_network((exp.observation, action),
-                                                     state=state.critic)
+        q_values, critic_states = self._critic_networks(
+            (exp.observation, action), state=state.critics)
+        q_value = q_values.min(dim=1)[0]
 
         dqda = nest.pack_sequence_as(
             action,
@@ -214,36 +246,40 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
-        state = DdpgActorState(actor=actor_state, critic=critic_state)
+        state = DdpgActorState(actor=actor_state, critics=critic_states)
         info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
         return AlgStep(output=action, state=state, info=info)
 
     def train_step(self, exp: Experience, state: DdpgState):
-        critic_state, critic_info = self._critic_train_step(
-            exp=exp, state=state.critic)
+        critic_states, critic_info = self._critic_train_step(
+            exp=exp, state=state.critics)
         policy_step = self._actor_train_step(exp=exp, state=state.actor)
         return policy_step._replace(
-            state=DdpgState(actor=policy_step.state, critic=critic_state),
+            state=DdpgState(actor=policy_step.state, critics=critic_states),
             info=DdpgInfo(
                 action_distribution=policy_step.output,
                 critic=critic_info,
                 actor_loss=policy_step.info))
 
     def calc_loss(self, experience, train_info: DdpgInfo):
-        critic_loss = self._critic_loss(
-            experience=experience,
-            value=train_info.critic.q_value,
-            target_value=train_info.critic.target_q_value)
+
+        critic_losses = [None] * self._num_replicas
+        for i in range(self._num_replicas):
+            critic_losses[i] = self._critic_losses[i](
+                experience=experience,
+                value=train_info.critic.q_values[..., i],
+                target_value=train_info.critic.target_q_values[..., i]).loss
+
+        critic_loss = math_ops.add_n(critic_losses)
 
         actor_loss = train_info.actor_loss
 
         return LossInfo(
-            loss=critic_loss.loss + actor_loss.loss,
-            extra=DdpgLossInfo(
-                critic=critic_loss.extra, actor=actor_loss.extra))
+            loss=critic_loss + actor_loss.loss,
+            extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
     def after_update(self, experience, train_info: DdpgInfo):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_actor_network', '_target_critic_network']
+        return ['_target_actor_network', '_target_critic_networks']

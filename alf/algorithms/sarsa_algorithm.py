@@ -80,7 +80,6 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  use_entropy_reward=False,
                  initial_alpha=1.0,
                  num_replicas=2,
-                 fast_critic_bias_speed=0.,
                  ou_stddev=0.2,
                  ou_damping=0.15,
                  actor_optimizer=None,
