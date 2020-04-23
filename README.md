@@ -45,8 +45,8 @@ You can find sample gin configuration files for different tasks under directory
 the latest pytorch version of ALF).
 * LOG_DIR is the directory when you want to store
 the training results. Note that if you want to train from scratch, a new value
-for LOG_DIR need to be specified. Othewise, it is assumed to resume the
-training from a previous checkpoint.
+for LOG_DIR need to be used. Othewise, it is assumed to resume the
+training from a previous checkpoint (if any).
 
 During training, you can use tensorboard to show the progress of training:
 ```bash
