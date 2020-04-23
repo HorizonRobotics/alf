@@ -67,10 +67,10 @@ class Checkpointer(object):
             try:
                 for k, v in self._modules.items():
                     self._modules[k].load_state_dict(checkpoint[k])
-            except:
-                raise RuntimeError(
-                    ("Checkpoint loading failed due to a mis-match between the"
-                     "checkpoint and the model."))
+            except Exception as e:
+                raise RuntimeError((
+                    "Checkpoint loading failed due to a mis-match between the "
+                    "checkpoint and the model. \n {}".format(e)))
 
         f_path_latest = os.path.join(self._ckpt_dir, "latest")
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))

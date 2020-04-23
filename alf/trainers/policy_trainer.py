@@ -215,13 +215,14 @@ class Trainer(object):
 
         try:
             recovered_global_step = checkpointer.load()
-        except:
+        except Exception as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
-                 "Typically this is caused by using a wrong checkpoint. "
-                 "Please make sure the root_dir is set corretly. "
+                 "Typically this is caused by using a wrong checkpoint. \n"
+                 "Please make sure the root_dir is set correctly. "
                  "Use a new value for it if "
-                 "planning to train from scratch.").format(self._root_dir))
+                 "planning to train from scratch. \n"
+                 "Detailed error message: {}").format(self._root_dir, e))
         if recovered_global_step != -1:
             alf.summary.get_global_counter().fill_(int(recovered_global_step))
 
