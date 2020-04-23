@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from absl.testing import parameterized
 import functools
 import torch
 import torch.distributions as td
@@ -32,8 +33,9 @@ from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
 
 
-class SACAlgorithmTest(alf.test.TestCase):
-    def test_sac_algorithm(self):
+class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((True, ), (False, ))
+    def test_sac_algorithm(self, use_parallel_network):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -78,6 +80,7 @@ class SACAlgorithmTest(alf.test.TestCase):
             action_spec=action_spec,
             actor_network=actor_network,
             critic_network=critic_network,
+            use_parallel_network=use_parallel_network,
             env=env,
             config=config,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
@@ -100,8 +103,9 @@ class SACAlgorithmTest(alf.test.TestCase):
             1.0, float(eval_time_step.reward.mean()), delta=0.3)
 
 
-class SACAlgorithmTestDiscrete(alf.test.TestCase):
-    def test_sac_algorithm_discrete(self):
+class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((True, ), (False, ))
+    def test_sac_algorithm_discrete(self, use_parallel_network):
         num_env = 1
         config = TrainerConfig(
             root_dir="dummy",
@@ -138,6 +142,7 @@ class SACAlgorithmTestDiscrete(alf.test.TestCase):
             action_spec=action_spec,
             actor_network=actor_network,
             critic_network=critic_network,
+            use_parallel_network=use_parallel_network,
             env=env,
             config=config,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),

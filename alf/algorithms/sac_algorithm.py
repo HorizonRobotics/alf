@@ -33,22 +33,19 @@ from alf.data_structures import AlgStep
 from alf.nest import nest
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import losses, common, dist_utils
+from alf.utils import losses, common, dist_utils, math_ops
 
 SacShareState = namedtuple("SacShareState", ["actor"])
 
-SacActorState = namedtuple("SacActorState", ["critic1", "critic2"])
+SacActorState = namedtuple("SacActorState", ["critics"])
 
-SacCriticState = namedtuple(
-    "SacCriticState",
-    ["critic1", "critic2", "target_critic1", "target_critic2"])
+SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
 
 SacState = namedtuple("SacState", ["share", "actor", "critic"])
 
 SacActorInfo = namedtuple("SacActorInfo", ["loss"])
 
-SacCriticInfo = namedtuple("SacCriticInfo",
-                           ["critic1", "critic2", "target_critic"])
+SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
 SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss"])
 
@@ -116,6 +113,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  action_spec: BoundedTensorSpec,
                  actor_network: ActorDistributionNetwork,
                  critic_network: CriticNetwork,
+                 use_parallel_network=False,
+                 num_critic_replicas=2,
                  env=None,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
@@ -135,8 +134,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network (Network): The network will be called with
                 ``call(observation)``.
-            critic_network (Network): The network will be called with
-                ``call(observation, action)``.
+            critic_network (Network): This network can be either a ``CriticNetwork``
+                or a ``QNetwork``.
+            use_parallel_network (bool): whether to use parallel network for
+                calculating critics.
+            num_critic_replicas (int): number of critics to be used. Default is 2.
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -166,8 +168,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
-        critic_network1 = critic_network.copy()
-        critic_network2 = critic_network.copy()
+        if use_parallel_network:
+            critic_networks = critic_network.make_parallel(num_critic_replicas)
+        else:
+            critic_networks = alf.networks.NaiveParallelNetwork(
+                critic_network, num_critic_replicas)
 
         log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
 
@@ -176,14 +181,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_spec,
             train_state_spec=SacState(
                 share=SacShareState(actor=actor_network.state_spec),
-                actor=SacActorState(
-                    critic1=critic_network.state_spec,
-                    critic2=critic_network.state_spec),
+                actor=SacActorState(critics=critic_networks.state_spec),
                 critic=SacCriticState(
-                    critic1=critic_network.state_spec,
-                    critic2=critic_network.state_spec,
-                    target_critic1=critic_network.state_spec,
-                    target_critic2=critic_network.state_spec)),
+                    critics=critic_networks.state_spec,
+                    target_critics=critic_networks.state_spec)),
             env=env,
             config=config,
             debug_summaries=debug_summaries,
@@ -192,25 +193,26 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if actor_optimizer is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None:
-            self.add_optimizer(critic_optimizer,
-                               [critic_network1, critic_network2])
+            self.add_optimizer(critic_optimizer, [critic_networks])
         if alpha_optimizer is not None:
             self.add_optimizer(alpha_optimizer, [log_alpha])
 
         self._log_alpha = log_alpha
         self._actor_network = actor_network
-        self._critic_network1 = critic_network1
-        self._critic_network2 = critic_network2
-        self._target_critic_network1 = self._critic_network1.copy()
-        self._target_critic_network2 = self._critic_network2.copy()
+        self._critic_networks = critic_networks
+        self._num_critic_replicas = num_critic_replicas
+        self._target_critic_networks = self._critic_networks.copy(
+            name='target_critic_networks')
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
         critic_loss_ctor = functools.partial(
             critic_loss_ctor, debug_summaries=debug_summaries)
         # Have different names to separate their summary curves
-        self._critic_loss1 = critic_loss_ctor(name="critic_loss1")
-        self._critic_loss2 = critic_loss_ctor(name="critic_loss2")
+        self._critic_losses = []
+        for i in range(num_critic_replicas):
+            self._critic_losses.append(
+                critic_loss_ctor(name="critic_loss%d" % (i + 1)))
 
         flat_action_spec = nest.flatten(self._action_spec)
         self._flat_action_spec = flat_action_spec
@@ -221,10 +223,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._dqda_clipping = dqda_clipping
 
         self._update_target = common.get_target_updater(
-            models=[self._critic_network1, self._critic_network2],
-            target_models=[
-                self._target_critic_network1, self._target_critic_network2
-            ],
+            models=[self._critic_networks],
+            target_models=[self._target_critic_networks],
             tau=target_update_tau,
             period=target_update_period)
 
@@ -254,12 +254,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._is_continuous:
             critic_input = (exp.observation, action)
 
-            critic1, critic1_state = self._critic_network1(
-                critic_input, state=state.critic1)
-            critic2, critic2_state = self._critic_network2(
-                critic_input, state=state.critic2)
+            critics, critics_state = self._critic_networks(
+                critic_input, state=state.critics)
 
-            target_q_value = torch.min(critic1, critic2)
+            target_q_value = critics.min(dim=1)[0]
             dqda = nest.pack_sequence_as(
                 action,
                 list(
@@ -281,11 +279,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             alpha = torch.exp(self._log_alpha).detach()
             actor_loss += alpha * log_pi
         else:
-            critic1, critic1_state = self._critic_network1(
-                exp.observation, state=state.critic1)
-
-            critic2, critic2_state = self._critic_network2(
-                exp.observation, state=state.critic2)
+            critics, critics_state = self._critic_networks(
+                exp.observation, state=state.critics)
 
             base_action_dist = dist_utils.get_base_dist(action_distribution)
             assert isinstance(base_action_dist, td.categorical.Categorical),  \
@@ -294,13 +289,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
             log_action_probs = base_action_dist.logits.squeeze(1)
 
-            target_q_value = torch.min(critic1, critic2).detach()
+            target_q_value = critics.min(dim=1)[0].detach()
             alpha = torch.exp(self._log_alpha)
             actor_loss = torch.exp(log_action_probs) * (
                 alpha.detach() * log_action_probs - target_q_value)
             actor_loss = actor_loss.mean(list(range(1, actor_loss.ndim)))
 
-        state = SacActorState(critic1=critic1_state, critic2=critic2_state)
+        state = SacActorState(critics=critics_state)
         info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
 
         return state, info
@@ -314,42 +309,32 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_input = exp.observation
             target_critic_input = exp.observation
 
-        critic1, critic1_state = self._critic_network1(
-            critic_input, state=state.critic1)
+        critics, critics_state = self._critic_networks(
+            critic_input, state=state.critics)
 
-        critic2, critic2_state = self._critic_network2(
-            critic_input, state=state.critic2)
-
-        target_critic1, target_critic1_state = self._target_critic_network1(
-            target_critic_input, state=state.target_critic1)
-
-        target_critic2, target_critic2_state = self._target_critic_network2(
-            target_critic_input, state=state.target_critic2)
+        target_critics, target_critics_state = self._target_critic_networks(
+            target_critic_input, state=state.target_critics)
 
         if not self._is_continuous:
-            exp_action = exp.action.view(critic1.shape[0], -1).long()
-            critic1 = critic1.gather(-1, exp_action)
-            critic2 = critic2.gather(-1, exp_action)
-            sampled_action = action.view(critic1.shape[0], -1).long()
-            target_critic1 = target_critic1.gather(-1, sampled_action)
-            target_critic2 = target_critic2.gather(-1, sampled_action)
+            # action shape: [batch_size] -> [batch_size, n, 1]
+            exp_action = exp.action.view(critics.shape[0], 1, -1).expand(
+                -1, critics.shape[1], -1).long()
+            critics = critics.gather(-1, exp_action)
 
-        target_critic = torch.min(target_critic1, \
-                                  target_critic2).reshape(log_pi.shape) - \
-                         (torch.exp(self._log_alpha) * log_pi).detach()
+            sampled_action = action.view(critics.shape[0], 1, -1).expand(
+                -1, critics.shape[1], -1).long()
+            target_critics = target_critics.gather(-1, sampled_action)
 
-        critic1 = critic1.squeeze(-1)
-        critic2 = critic2.squeeze(-1)
+        target_critic = target_critics.min(dim=1)[0].reshape(log_pi.shape) - \
+                         (torch.exp(self._log_alpha) * log_pi)
+
+        critics = critics.squeeze(-1)
         target_critic = target_critic.squeeze(-1).detach()
 
         state = SacCriticState(
-            critic1=critic1_state,
-            critic2=critic2_state,
-            target_critic1=target_critic1_state,
-            target_critic2=target_critic2_state)
+            critics=critics_state, target_critics=target_critics_state)
 
-        info = SacCriticInfo(
-            critic1=critic1, critic2=critic2, target_critic=target_critic)
+        info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
 
@@ -409,20 +394,17 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _calc_critic_loss(self, experience, train_info: SacInfo):
         critic_info = train_info.critic
 
-        target_critic = critic_info.target_critic
+        critic_losses = []
+        for i, l in enumerate(self._critic_losses):
+            critic_losses.append(
+                l(experience=experience,
+                  value=critic_info.critics[..., i],
+                  target_value=critic_info.target_critic).loss)
 
-        critic_loss1 = self._critic_loss1(
-            experience=experience,
-            value=critic_info.critic1,
-            target_value=target_critic)
-
-        critic_loss2 = self._critic_loss2(
-            experience=experience,
-            value=critic_info.critic2,
-            target_value=target_critic)
-
-        critic_loss = critic_loss1.loss + critic_loss2.loss
-        return LossInfo(loss=critic_loss, extra=critic_loss / 2.)
+        critic_loss = math_ops.add_n(critic_losses)
+        return LossInfo(
+            loss=critic_loss,
+            extra=critic_loss / float(self._num_critic_replicas))
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_critic_network1', '_target_critic_network2']
+        return ['_target_critic_networks']
