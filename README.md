@@ -39,11 +39,14 @@ You can train model of the examples using the following command:
 ```bash
 python -m alf.bin.train --gin_file=GIN_FILE --root_dir=LOG_DIR
 ```
-GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
+* GIN_FILE is the file of [gin configuration](https://github.com/google/gin-config).
 You can find sample gin configuration files for different tasks under directory
 [alf/examples](alf/examples) (note that some of the examples have not been converted to use
-the latest pytorch version of ALF). LOG_DIR is the directory when you want to store
-the training results.
+the latest pytorch version of ALF).
+* LOG_DIR is the directory when you want to store
+the training results. Note that if you want to train from scratch, a new value
+for LOG_DIR need to be specified. Othewise, it is assumed to resume the
+training from a previous checkpoint.
 
 During training, you can use tensorboard to show the progress of training:
 ```bash
