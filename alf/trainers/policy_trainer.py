@@ -213,7 +213,16 @@ class Trainer(object):
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()))
 
-        recovered_global_step = checkpointer.load()
+        try:
+            recovered_global_step = checkpointer.load()
+        except Exception as e:
+            raise RuntimeError(
+                ("Checkpoint loading failed from the provided root_dir={}. "
+                 "Typically this is caused by using a wrong checkpoint. \n"
+                 "Please make sure the root_dir is set correctly. "
+                 "Use a new value for it if "
+                 "planning to train from scratch. \n"
+                 "Detailed error message: {}").format(self._root_dir, e))
         if recovered_global_step != -1:
             alf.summary.get_global_counter().fill_(int(recovered_global_step))
 
