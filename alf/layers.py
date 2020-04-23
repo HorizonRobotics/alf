@@ -14,6 +14,7 @@
 """Some basic layers."""
 
 import gin
+import copy
 
 import torch
 import torch.nn as nn
@@ -125,11 +126,12 @@ class FC(nn.Module):
                 `kernel_initializer` is not None.
             bias_init_value (float): a constant
         """
-        super(FC, self).__init__()
         # get the argument list with vals
-        self._kwargs = locals()
+        self._kwargs = copy.deepcopy(locals())
         self._kwargs.pop('self')
         self._kwargs.pop('__class__')
+
+        super(FC, self).__init__()
 
         self._activation = activation
         self._linear = nn.Linear(input_size, output_size, bias=use_bias)
