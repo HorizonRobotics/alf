@@ -1089,18 +1089,26 @@ class Algorithm(nn.Module):
         ``self._config`` that will affect how the training is performed:
 
         - ``initial_collect_steps``: only start replaying and training after so
-            many time steps have been stored in the replay buffer
+          many time steps have been stored in the replay buffer
         - ``mini_batch_size``: the batch size of a minibatch
         - ``mini_batch_length``: the temporal extension of a minibatch. An
-            algorithm can sample temporally correlated experiences for training
-            stateful models by setting this value greater than 1.
-        - ``num_updates_per_train_step``: how many repeated updates to perform on
-            this same minibatch. Normally set to 1.
+          algorithm can sample temporally correlated experiences for training
+          stateful models by setting this value greater than 1.
+        - ``num_updates_per_train_step``: how many updates to perform in each
+          training iteration. Its behavior might be different depending on the
+          value of ``config.whole_replay_buffer_training``:
+
+          - If ``True``, each update will scan over the entire buffer to get
+            chopped minibatches and a random experience shuffling is performed
+            before each update;
+          - If ``False``, each update will sample a new minibatch from the replay
+            buffer.
+
         - ``whole_replay_buffer_training``: a very special case where all data in
-            the replay buffer will be used for training (e.g., PPO). In this case,
-            for every update in ``num_updates_per_train_step``, the data will
-            be shuffled and divided into
-            ``buffer_size//(mini_batch_size * mini_batch_length)`` "mini-updates".
+          the replay buffer will be used for training (e.g., PPO). In this case,
+          for every update in ``num_updates_per_train_step``, the data will
+          be shuffled and divided into
+          ``buffer_size//(mini_batch_size * mini_batch_length)`` "mini-updates".
 
         Args:
             update_global_counter (bool): controls whether this function changes
@@ -1124,17 +1132,20 @@ class Algorithm(nn.Module):
                 experience = self._exp_replayer.replay_all()
                 if config.clear_replay_buffer:
                     self._exp_replayer.clear()
+                num_updates = config.num_updates_per_train_step
             else:
                 experience = self._exp_replayer.replay(
-                    sample_batch_size=mini_batch_size,
+                    sample_batch_size=(
+                        mini_batch_size * config.num_updates_per_train_step),
                     mini_batch_length=config.mini_batch_length)
+                num_updates = 1
 
         with record_time("time/train"):
             return self._train_experience(
-                experience, config.num_updates_per_train_step, mini_batch_size,
+                experience, num_updates, mini_batch_size,
                 config.mini_batch_length,
-                config.update_counter_every_mini_batch
-                and update_global_counter)
+                (config.update_counter_every_mini_batch
+                 and update_global_counter))
 
     def _train_experience(self, experience, num_updates, mini_batch_size,
                           mini_batch_length, update_counter_every_mini_batch):
@@ -1182,7 +1193,6 @@ class Algorithm(nn.Module):
             experience)
 
         batch_size = alf.nest.get_nest_batch_size(experience)
-        mini_batch_size = (mini_batch_size or batch_size)
 
         def _make_time_major(nest):
             """Put the time dim to axis=0."""
