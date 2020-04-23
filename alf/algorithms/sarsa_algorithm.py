@@ -73,13 +73,13 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  actor_network: Network,
                  critic_network: Network,
                  use_parallel_network=False,
+                 num_critic_replicas=2,
                  env=None,
                  config=None,
                  critic_loss_cls=OneStepTDLoss,
                  target_entropy=None,
                  use_entropy_reward=False,
                  initial_alpha=1.0,
-                 num_replicas=2,
                  ou_stddev=0.2,
                  ou_damping=0.15,
                  actor_optimizer=None,
@@ -106,6 +106,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 is True)  or ``mini_batch_size``  (when ``temporally_independent_train_step``
                 is False) is not very large. You have to test to see which way
                 is faster for your particular situation.
+            num_critic_replicas (int): number of critics to be used. Default is 2.
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple
                 simulations simultaneously. Running multiple environments in
@@ -156,10 +157,10 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             " action_spec: %s" % action_spec)
 
         if use_parallel_network:
-            critic_networks = critic_network.make_parallel(num_replicas)
+            critic_networks = critic_network.make_parallel(num_critic_replicas)
         else:
             critic_networks = alf.networks.NaiveParallelNetwork(
-                critic_network, num_replicas)
+                critic_network, num_critic_replicas)
 
         self._on_policy = on_policy
 
@@ -192,7 +193,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
         self._actor_network = actor_network
-        self._num_replicas = num_replicas
+        self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
         self._target_critic_networks = critic_networks.copy(
             name='target_critic_networks')
@@ -241,7 +242,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         self._noise_process = noise_process
         self._critic_losses = []
-        for i in range(num_replicas):
+        for i in range(num_critic_replicas):
             self._critic_losses.append(
                 critic_loss_cls(debug_summaries=debug_summaries and i == 0))
 
@@ -421,7 +422,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             step_type=tensor_utils.tensor_prepend(experience.step_type,
                                                   step_type0))
         critic_losses = []
-        for i in range(self._num_replicas):
+        for i in range(self._num_critic_replicas):
             critic = tensor_utils.tensor_extend_zero(info.critics[..., i])
             target_critic = tensor_utils.tensor_prepend_zero(
                 info.target_critics[..., i])

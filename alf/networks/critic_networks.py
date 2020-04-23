@@ -162,6 +162,9 @@ class CriticNetwork(Network):
         return torch.squeeze(action_value, -1), state
 
     def make_parallel(self, n):
+        """Create a ``ParallelCriticNetwork`` using ``n`` replicas of ``self``.
+        The initialized network parameters will be different.
+        """
         return ParallelCriticNetwork(self, n, "parallel_" + self._name)
 
 
@@ -171,7 +174,7 @@ class ParallelCriticNetwork(Network):
     def __init__(self,
                  critic_network: CriticNetwork,
                  n: int,
-                 name='ParallelCriticNetwork'):
+                 name="ParallelCriticNetwork"):
         """
         It create a parallelized version of ``critic_network``.
 
@@ -179,11 +182,10 @@ class ParallelCriticNetwork(Network):
             critic_network (CriticNetwork): non-parallelized critic network
             n (int): make ``n`` replicas from ``critic_network`` with different
                 initialization.
-            name (str): name of this network
+            name (str):
         """
         super().__init__(
-            input_tensor_spec=critic_network.input_tensor_spec,
-            name="parallel_" + critic_network.name)
+            input_tensor_spec=critic_network.input_tensor_spec, name=name)
         self._obs_encoder = critic_network._obs_encoder.make_parallel(n)
         self._action_encoder = critic_network._action_encoder.make_parallel(n)
         self._joint_encoder = critic_network._joint_encoder.make_parallel(n)
@@ -198,8 +200,8 @@ class ParallelCriticNetwork(Network):
 
         Returns:
             tuple:
-            - action_value (torch.Tensor): a tensor of shape ``(B, n)``, where
-                ``B`` is the batch size.
+            - action_value (torch.Tensor): a tensor of shape :math:`[B,n]`, where
+                :math:`B` is the batch size.
             - state: empty
         """
         observations, actions = inputs

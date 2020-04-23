@@ -20,7 +20,7 @@ critic/Adam.lr=1e-3
 
 # uncomment to use parallel critics
 #DdpgAlgorithm.use_parallel_network=1
-#DdpgAlgorithm.num_replicas=2
+#DdpgAlgorithm.num_critic_replicas=2
 DdpgAlgorithm.actor_network=@actor/ActorNetwork()
 DdpgAlgorithm.critic_network=@critic/CriticNetwork()
 DdpgAlgorithm.actor_optimizer=@actor/Adam()

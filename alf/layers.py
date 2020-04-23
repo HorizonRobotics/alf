@@ -126,6 +126,11 @@ class FC(nn.Module):
             bias_init_value (float): a constant
         """
         super(FC, self).__init__()
+        # get the argument list with vals
+        self._kwargs = locals()
+        self._kwargs.pop('self')
+        self._kwargs.pop('__class__')
+
         self._activation = activation
         self._linear = nn.Linear(input_size, output_size, bias=use_bias)
 
@@ -151,6 +156,12 @@ class FC(nn.Module):
     def bias(self):
         return self._linear.bias
 
+    def make_parallel(self, n):
+        """Create a ``ParallelFC`` using ``n`` replicas of ``self``.
+        The initialized layer parameters will be different.
+        """
+        return ParallelFC(n=n, **self._kwargs)
+
 
 @gin.configurable
 class ParallelFC(nn.Module):
@@ -164,7 +175,7 @@ class ParallelFC(nn.Module):
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """Parallel FC layer.
-        
+
         It is equivalent to ``n`` separate FC layers with the same
         ``input_size`` and ``output_size``.
 
@@ -437,8 +448,8 @@ class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.
 
     We allow two slightly different architectures:
-    * v1: Placing the stride at the first 1x1 convolution as described in the 
-      original ResNet paper `Deep residual learning for image recognition 
+    * v1: Placing the stride at the first 1x1 convolution as described in the
+      original ResNet paper `Deep residual learning for image recognition
       <https://arxiv.org/abs/1512.03385>`_.
     * v1.5: Placing the stride for downsampling at 3x3 convolution. This variant
       is also known as ResNet V1.5 and improves accuracy according to
@@ -460,7 +471,7 @@ class BottleneckBlock(nn.Module):
             stride (int): stride for this block.
             transpose (bool): a bool indicate using ``Conv2D`` or ``Conv2DTranspose``.
                 If two BottleneckBlock layers ``L`` and ``LT`` are constructed
-                with the same arguments except ``transpose``, it is gauranteed that 
+                with the same arguments except ``transpose``, it is gauranteed that
                 ``LT(L(x)).shape == x.shape`` if ``x.shape[-2:]`` can be divided
                 by ``stride``.
             v1_5 (bool): whether to use the ResNet V1.5 structure

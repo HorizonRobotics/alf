@@ -65,7 +65,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  ou_stddev=0.2,
                  ou_damping=0.15,
                  critic_loss_ctor=None,
-                 num_replicas=1,
+                 num_critic_replicas=1,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -82,6 +82,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 call(observation, action).
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
+            num_critic_replicas (int): number of critics to be used. Default is 1.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. ``env`` only needs to be provided to the root
@@ -95,7 +96,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 default collect policy.
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
                 constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
-            num_replicas (int): number of critics to be used. Default is 1.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -110,10 +110,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         """
 
         if use_parallel_network:
-            critic_networks = critic_network.make_parallel(num_replicas)
+            critic_networks = critic_network.make_parallel(num_critic_replicas)
         else:
             critic_networks = alf.networks.NaiveParallelNetwork(
-                critic_network, num_replicas)
+                critic_network, num_critic_replicas)
 
         train_state_spec = DdpgState(
             actor=DdpgActorState(
@@ -139,7 +139,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(critic_optimizer, [critic_networks])
 
         self._actor_network = actor_network
-        self._num_replicas = num_replicas
+        self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
 
         self._target_actor_network = actor_network.copy(
@@ -154,8 +154,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_loss_ctor = OneStepTDLoss
         critic_loss_ctor = functools.partial(
             critic_loss_ctor, debug_summaries=debug_summaries)
-        self._critic_losses = [None] * num_replicas
-        for i in range(num_replicas):
+        self._critic_losses = [None] * num_critic_replicas
+        for i in range(num_critic_replicas):
             self._critic_losses[i] = critic_loss_ctor(
                 name=("critic_loss" + str(i)))
 
@@ -263,8 +263,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
     def calc_loss(self, experience, train_info: DdpgInfo):
 
-        critic_losses = [None] * self._num_replicas
-        for i in range(self._num_replicas):
+        critic_losses = [None] * self._num_critic_replicas
+        for i in range(self._num_critic_replicas):
             critic_losses[i] = self._critic_losses[i](
                 experience=experience,
                 value=train_info.critic.q_values[..., i],

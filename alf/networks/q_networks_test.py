@@ -28,6 +28,9 @@ from alf.nest.utils import NestSum
 
 class TestQNetworks(parameterized.TestCase, unittest.TestCase):
     def _init(self, lstm_hidden_size):
+        self._action_spec = BoundedTensorSpec((), torch.int64, 0, 2)
+        self._num_actions = self._action_spec.maximum - self._action_spec.minimum + 1
+
         if lstm_hidden_size is not None:
             network_ctor = functools.partial(
                 QRNNNetwork, lstm_hidden_size=lstm_hidden_size)
@@ -45,27 +48,38 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
         return network_ctor, state
 
     @parameterized.parameters((100, ), (None, ), ((200, 100), ))
-    def test_q_value_distribution(self, lstm_hidden_size):
+    def test_q_value_network(self, lstm_hidden_size):
         input_spec = [TensorSpec((3, 20, 20), torch.float32)]
-        action_spec = BoundedTensorSpec((1, ), torch.int64, 0, 2)
-        num_actions = action_spec.maximum - action_spec.minimum + 1
-
         conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
-
         image = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
 
         network_ctor, state = self._init(lstm_hidden_size)
 
         q_net = network_ctor(
             input_spec,
-            action_spec,
+            self._action_spec,
             input_preprocessors=[torch.relu],
             preprocessing_combiner=NestSum(),
             conv_layer_params=conv_layer_params)
         q_value, state = q_net(image, state)
 
         # (batch_size, num_actions)
-        self.assertEqual(q_value.shape, (1, num_actions))
+        self.assertEqual(q_value.shape, (1, self._num_actions))
+
+    def test_parallel_q_network(self):
+        input_spec = TensorSpec([10])
+        inputs = input_spec.zeros(outer_dims=(1, ))
+
+        network_ctor, state = self._init(None)
+
+        q_net = network_ctor(input_spec, self._action_spec)
+        n = 5
+        parallel_q_net = q_net.make_parallel(n)
+
+        q_value, _ = parallel_q_net(inputs, state)
+
+        # (batch_size, n, num_actions)
+        self.assertEqual(q_value.shape, (1, n, self._num_actions))
 
 
 if __name__ == "__main__":
