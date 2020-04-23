@@ -1193,7 +1193,6 @@ class Algorithm(nn.Module):
             experience)
 
         batch_size = alf.nest.get_nest_batch_size(experience)
-        mini_batch_size = (mini_batch_size or batch_size)
 
         def _make_time_major(nest):
             """Put the time dim to axis=0."""
