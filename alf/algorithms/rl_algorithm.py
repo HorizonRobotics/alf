@@ -153,7 +153,9 @@ class RLAlgorithm(Algorithm):
                 alf.metrics.AverageEpisodeLengthMetric(
                     batch_size=env.batch_size, buffer_size=metric_buf_size),
                 alf.metrics.AverageEnvInfoMetric(
-                    batch_size=env.batch_size, buffer_size=metric_buf_size)
+                    example_env_info=env.reset().env_info,
+                    batch_size=env.batch_size,
+                    buffer_size=metric_buf_size)
             ]
 
         self._original_rollout_step = self.rollout_step

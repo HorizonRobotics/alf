@@ -125,7 +125,7 @@ class NumberOfEpisodes(metric.StepMetric):
 
 class AverageEpisodicSumMetric(metric.StepMetric):
     """A base metric to sum up quantities over an episode. It supports accumulating
-    a nest of values.
+    a nest of scalar values.
     """
 
     def __init__(self,
@@ -133,19 +133,33 @@ class AverageEpisodicSumMetric(metric.StepMetric):
                  prefix='Metrics',
                  dtype=torch.float32,
                  batch_size=1,
-                 buffer_size=10):
+                 buffer_size=10,
+                 example_metric_value=None):
+        """
+        Args:
+            name (str):
+            prefix (str): a prefix indicating the category of the metric
+            dtype (torch.dtype): dtype of metric values. Should be floating types
+                in order to be averaged.
+            batch_size (int): the number of metric values generated in parallel
+            buffer_size (int): number of episodes the metric value will be averaged
+                across
+            example_metric_value (nest): an example of metric value to be summarized;
+                if ``None``, a zero scalar is used.
+        """
         super(AverageEpisodicSumMetric, self).__init__(
             name=name, dtype=dtype, prefix=prefix)
+        if example_metric_value is None:
+            example_metric_value = torch.zeros(())
         self._batch_size = batch_size
         self._buffer_size = buffer_size
-        self._buffer = None
-        self._accumulator = None
+        self._initialize(example_metric_value)
 
     def _extract_metric_values(self, time_step):
         """Extract metrics from the time step. The return can be a nest."""
         raise NotImplementedError()
 
-    def _initialize(self, first_values):
+    def _initialize(self, example_metric_value):
         counter = [0]
 
         def _init_buf(val):
@@ -157,8 +171,9 @@ class AverageEpisodicSumMetric(metric.StepMetric):
             counter[0] += 1
             return accumulator
 
-        self._buffer = alf.nest.map_structure(_init_buf, first_values)
-        self._accumulator = alf.nest.map_structure(_init_acc, first_values)
+        self._buffer = alf.nest.map_structure(_init_buf, example_metric_value)
+        self._accumulator = alf.nest.map_structure(_init_acc,
+                                                   example_metric_value)
 
     def call(self, time_step):
         """Accumulate values from the time step. The values are defined by
@@ -172,8 +187,13 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         """
 
         values = self._extract_metric_values(time_step)
-        if self._accumulator is None:
-            self._initialize(values)
+
+        assert all(
+            alf.nest.flatten(
+                alf.nest.map_structure(
+                    lambda val: list(val.shape) == [self._batch_size],
+                    values))), ("Value shape is not correct "
+                                "(only scalar values are supported).")
 
         def _update_accumulator_(acc, val):
             """In-place update of the accumulators."""
@@ -251,9 +271,14 @@ class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):
 
 
 class AverageEnvInfoMetric(AverageEpisodicSumMetric):
-    """Metric for computing average quantities contained in the environment info."""
+    """Metric for computing average quantities contained in the environment info.
+    An example of env info (which can be a nest) has to be provided when constructing
+    an instance in order to initialize the accumulator and buffer with the same
+    nested structure.
+    """
 
     def __init__(self,
+                 example_env_info,
                  name="AverageEnvInfoMetric",
                  prefix="Metrics",
                  dtype=torch.float32,
@@ -264,7 +289,8 @@ class AverageEnvInfoMetric(AverageEpisodicSumMetric):
             dtype=dtype,
             prefix=prefix,
             batch_size=batch_size,
-            buffer_size=buffer_size)
+            buffer_size=buffer_size,
+            example_metric_value=example_env_info)
 
     def _extract_metric_values(self, time_step):
         return time_step.env_info

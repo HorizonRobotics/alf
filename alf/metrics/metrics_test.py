@@ -73,11 +73,11 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
           dict(x=torch.as_tensor(5.), y=torch.as_tensor(1.5)))])
     def testMetric(self, metric_class, num_trajectories, expected_result):
         trajectories = self._create_trajectories()
-        if metric_class in [
-                AverageReturnMetric, AverageEpisodeLengthMetric,
-                AverageEnvInfoMetric
-        ]:
+        if metric_class in [AverageReturnMetric, AverageEpisodeLengthMetric]:
             metric = metric_class(batch_size=2)
+        elif metric_class == AverageEnvInfoMetric:
+            metric = metric_class(
+                batch_size=2, example_env_info=dict(x=0, y=0))
         else:
             metric = metric_class()
 
