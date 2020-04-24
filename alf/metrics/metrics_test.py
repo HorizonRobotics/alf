@@ -12,91 +12,71 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch
+
 import alf
-from alf.data_structures import AlgStep, timestep_first, timestep_mid, timestep_last, make_experience
-from alf.metrics import EnvironmentSteps, NumberOfEpisodes, AverageReturnMetric, AverageEpisodeLengthMetric
-import torch as tc
+from alf.metrics import (EnvironmentSteps, NumberOfEpisodes,
+                         AverageReturnMetric, AverageEpisodeLengthMetric,
+                         AverageEnvInfoMetric)
+from alf.utils.tensor_utils import to_tensor
+from alf.data_structures import TimeStep, StepType
 
 import unittest
 from absl.testing import parameterized
 
 
+def _create_timestep(reward, env_id, step_type, env_info):
+    return TimeStep(
+        step_type=to_tensor(step_type),
+        reward=to_tensor(reward),
+        env_info=env_info,
+        env_id=to_tensor(env_id))
+
+
+def timestep_first(reward, env_id, env_info):
+    return _create_timestep(reward, env_id, [StepType.FIRST] * 2, env_info)
+
+
+def timestep_mid(reward, env_id, env_info):
+    return _create_timestep(reward, env_id, [StepType.MID] * 2, env_info)
+
+
+def timestep_last(reward, env_id, env_info):
+    return _create_timestep(reward, env_id, [StepType.LAST] * 2, env_info)
+
+
 class THMetricsTest(parameterized.TestCase, unittest.TestCase):
     def _create_trajectories(self):
-        def _concat_nested_tensors(nest1, nest2):
-            return alf.nest.map_structure(
-                lambda t1, t2: tc.cat([t1, t2], dim=0), nest1, nest2)
-
         # Order of args for timestep_* methods:
-        # observation, prev_action, reward, discount, env_id
-        ts0 = _concat_nested_tensors(
-            make_experience(
-                timestep_first((), tc.tensor([1]),
-                               tc.tensor([0.], dtype=tc.float32), [1.], [1]),
-                AlgStep(), ()),
-            make_experience(
-                timestep_first((), tc.tensor([2]),
-                               tc.tensor([0.], dtype=tc.float32), [1.], [2]),
-                AlgStep(), ()))
-        ts1 = _concat_nested_tensors(
-            make_experience(
-                timestep_mid((), tc.tensor([2]),
-                             tc.tensor([1.], dtype=tc.float32), [1.], [1]),
-                AlgStep(), ()),
-            make_experience(
-                timestep_mid((), tc.tensor([1]),
-                             tc.tensor([2.], dtype=tc.float32), [1.], [2]),
-                AlgStep(), ()))
-        ts2 = _concat_nested_tensors(
-            make_experience(
-                timestep_last((), tc.tensor([1]),
-                              tc.tensor([3.], dtype=tc.float32), [1.], [1]),
-                AlgStep(), ()),
-            make_experience(
-                timestep_last((), tc.tensor([1]),
-                              tc.tensor([4.], dtype=tc.float32), [1.], [2]),
-                AlgStep(), ()))
-        ts3 = _concat_nested_tensors(
-            make_experience(
-                timestep_first((), tc.tensor([2]),
-                               tc.tensor([0.], dtype=tc.float32), [1.], [1]),
-                AlgStep(), ()),
-            make_experience(
-                timestep_first((), tc.tensor([0]),
-                               tc.tensor([0.], dtype=tc.float32), [1.], [2]),
-                AlgStep(), ()))
-        ts4 = _concat_nested_tensors(
-            make_experience(
-                timestep_mid((), tc.tensor([1]),
-                             tc.tensor([5.], dtype=tc.float32), [1.], [1]),
-                AlgStep(), ()),
-            make_experience(
-                timestep_mid((), tc.tensor([1]),
-                             tc.tensor([6.], dtype=tc.float32), [1.], [2]),
-                AlgStep(), ()))
-        ts5 = _concat_nested_tensors(
-            make_experience(
-                timestep_last((), tc.tensor([1]),
-                              tc.tensor([7.], dtype=tc.float32), [1.], [1]),
-                AlgStep(), ()),
-            make_experience(
-                timestep_last((), tc.tensor([1]),
-                              tc.tensor([8.], dtype=tc.float32), [1.], [2]),
-                AlgStep(), ()))
+        # reward, env_id, env_info
+        ts0 = timestep_first([0, 0], [1, 2],
+                             dict(x=to_tensor([1, 0]), y=to_tensor([1, 1])))
+        ts1 = timestep_mid([1, 2], [1, 2],
+                           dict(x=to_tensor([1, 2]), y=to_tensor([0, 3])))
+        ts2 = timestep_last([3, 4], [1, 2],
+                            dict(x=to_tensor([-1, -2]), y=to_tensor([1, -1])))
+        ts3 = timestep_first([0, 0], [1, 2],
+                             dict(x=to_tensor([1, 1]), y=to_tensor([1, 1])))
+        ts4 = timestep_mid([5, 6], [1, 2],
+                           dict(x=to_tensor([2, -2]), y=to_tensor([-1, -6])))
+        ts5 = timestep_last([7, 8], [1, 2],
+                            dict(x=to_tensor([10, 10]), y=to_tensor([5, 5])))
 
         return [ts0, ts1, ts2, ts3, ts4, ts5]
 
-    @parameterized.named_parameters([
-        ('testEnvironmentStepsGraph', EnvironmentSteps, 5, 6, 1),
-        ('testNumberOfEpisodesGraph', NumberOfEpisodes, 4, 2, 1),
-        ('testAverageReturnGraph', AverageReturnMetric, 6, 9.0, 4),
-        ('testAverageEpisodeLengthGraph', AverageEpisodeLengthMetric, 6, 2.0,
-         4),
-    ])
-    def testMetric(self, metric_class, num_trajectories, expected_result,
-                   state_dict_length):
+    @parameterized.named_parameters(
+        [('testEnvironmentStepsGraph', EnvironmentSteps, 5, 6),
+         ('testNumberOfEpisodesGraph', NumberOfEpisodes, 4, 2),
+         ('testAverageReturnGraph', AverageReturnMetric, 6, 9.0),
+         ('testAverageEpisodeLengthGraph', AverageEpisodeLengthMetric, 6, 2.0),
+         ('testAverageEnvInfoMetric', AverageEnvInfoMetric, 6,
+          dict(x=torch.as_tensor(5.), y=torch.as_tensor(1.5)))])
+    def testMetric(self, metric_class, num_trajectories, expected_result):
         trajectories = self._create_trajectories()
-        if metric_class in [AverageReturnMetric, AverageEpisodeLengthMetric]:
+        if metric_class in [
+                AverageReturnMetric, AverageEpisodeLengthMetric,
+                AverageEnvInfoMetric
+        ]:
             metric = metric_class(batch_size=2)
         else:
             metric = metric_class()
@@ -106,10 +86,14 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
 
         self.assertEqual(expected_result, metric.result())
 
-        self.assertEqual(state_dict_length, len(metric.state_dict()))
-
         metric.reset()
-        self.assertEqual(0.0, metric.result())
+
+        if metric_class == AverageEnvInfoMetric:
+            self.assertEqual(
+                dict(x=torch.as_tensor(0.), y=torch.as_tensor(0.)),
+                metric.result())
+        else:
+            self.assertEqual(0.0, metric.result())
 
 
 if __name__ == "__main__":

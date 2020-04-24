@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Wrapper providing a TorchEnvironment adapter for GYM environments.
-    
+
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/suite_gym.py
 """
@@ -31,8 +31,8 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
     """
-    Mostly adapted from `spec_from_gym_space` in
-    `tf_agents.environments.gym_wrapper`. Instead of using a `dtype_map`
+    Mostly adapted from ``spec_from_gym_space`` in
+    ``tf_agents.environments.gym_wrapper``. Instead of using a ``dtype_map``
     as default data types, it always uses dtypes of gym spaces since gym is now
     updated to support this.
     """
@@ -93,7 +93,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
     """Base wrapper implementing TorchEnvironmentBaseWrapper interface for Gym envs.
 
     Action and observation specs are automatically generated from the action and
-    observation spaces. See base class for TorchEnvironment details.
+    observation spaces. See base class for ``TorchEnvironment`` details.
     """
 
     def __init__(self,
@@ -102,7 +102,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
                  discount=1.0,
                  auto_reset=True,
                  simplify_box_bounds=True):
-        """Create a TorchEnvironment.
+        """
 
         Args:
             gym_env (gym.Env): An instance of OpenAI gym environment.
@@ -129,16 +129,27 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
             self._gym_env.observation_space, simplify_box_bounds)
         self._action_spec = tensor_spec_from_gym_space(
             self._gym_env.action_space, simplify_box_bounds)
-        self._flat_obs_spec = nest.flatten(self._observation_spec)
         self._time_step_spec = ds.time_step_spec(self._observation_spec,
                                                  self._action_spec)
         self._info = None
         self._done = True
+        self._zero_info = self._obtain_zero_info()
 
     @property
     def gym(self):
         """Return the gym environment. """
         return self._gym_env
+
+    def _obtain_zero_info(self):
+        """Get an env info of zeros only once when the env is created.
+        This info will be filled in each ``FIRST`` time step as a placeholder.
+        """
+        self._gym_env.reset()
+        action = nest.map_structure(lambda spec: spec.zeros(),
+                                    self._action_spec)
+        _, _, _, info = self._gym_env.step(self._convert_action(action))
+        return nest.map_structure(lambda i: torch.as_tensor(np.zeros_like(i)),
+                                  info)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
@@ -164,7 +175,8 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         return ds.restart(
             observation=observation,
             action_spec=self._action_spec,
-            env_id=self._env_id)
+            env_id=self._env_id,
+            env_info=self._zero_info)
 
     @property
     def done(self):
@@ -182,12 +194,19 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         observation, reward, self._done, self._info = self._gym_env.step(
             py_action)
         observation = self._to_tensor_observation(observation)
+        info = nest.map_structure(torch.as_tensor, self._info)
 
         if self._done:
-            return ds.termination(observation, action, reward, self._env_id)
+            return ds.termination(
+                observation, action, reward, self._env_id, env_info=info)
         else:
-            return ds.transition(observation, action, reward, self._discount,
-                                 self._env_id)
+            return ds.transition(
+                observation,
+                action,
+                reward,
+                self._discount,
+                self._env_id,
+                env_info=info)
 
     def _to_tensor_observation(self, observation):
         """Make sure observation from env is converted to (nested) torch tensor.
@@ -198,13 +217,9 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         Returns:
             A (nested) tensors of observation
         """
-        flat_obs = nest.flatten(observation)
-        tensor_observations = [
-            torch.as_tensor(obs, dtype=spec.dtype)
-            for spec, obs in zip(self._flat_obs_spec, flat_obs)
-        ]
-        return nest.pack_sequence_as(self._observation_spec,
-                                     tensor_observations)
+        return nest.map_structure(
+            lambda spec, obs: torch.as_tensor(obs, dtype=spec.dtype),
+            self._observation_spec, observation)
 
     def time_step_spec(self):
         return self._time_step_spec

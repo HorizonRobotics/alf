@@ -50,13 +50,13 @@ def histogram_discrete(name, data, bucket_min, bucket_max, step=None):
 
     Args:
         name (str): name for this summary
-        data (Tensor): A `Tensor` integers of any shape.
+        data (Tensor): A ``Tensor`` integers of any shape.
         bucket_min (int): represent bucket min value
         bucket_max (int): represent bucket max value
-            bucket count is calculate as `bucket_max - bucket_min + 1`
+            bucket count is calculate as ``bucket_max - bucket_min + 1``
             and output will have this many buckets.
         step (None|Tensor): step value for this summary. this defaults to
-            `alf.summary.get_global_counter()`
+            ``alf.summary.get_global_counter()``
     """
     alf.summary.histogram(
         name,
@@ -72,18 +72,18 @@ def histogram_continuous(name,
                          bucket_max=None,
                          bucket_count=DEFAULT_BUCKET_COUNT,
                          step=None):
-    """histogram for continuous data .
+    """histogram for continuous data.
 
     Args:
         name (str): name for this summary
-        data (Tensor): A `Tensor` of any shape.
+        data (Tensor): A ``Tensor`` of any shape.
         bucket_min (float|None): represent bucket min value,
-            if None value of tf.reduce_min(data) will be used
+            if None value, ``data.min()`` will be used
         bucket_max (float|None): represent bucket max value,
-            if None value tf.reduce_max(data) will be used
-        bucket_count (int):  positive `int`. The output will have this many buckets.
+            if None value, ``data.max()`` will be used
+        bucket_count (int):  positive ``int``. The output will have this many buckets.
         step (None|Tensor): step value for this summary. this defaults to
-            `alf.summary.get_global_counter()`
+            ``alf.summary.get_global_counter()``
     """
     data = data.to(torch.float64)
     if bucket_min is None:
@@ -108,7 +108,7 @@ def summarize_variables(name_and_params, with_histogram=True):
     """Add summaries for variables.
 
     Args:
-        name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
+        name_and_params (list[(str, Parameter)]): A list of ``(name, Parameter)``
             tuples.
         with_histogram (bool): If True, generate histogram.
     """
@@ -128,7 +128,7 @@ def summarize_gradients(name_and_params, with_histogram=True):
     """Add summaries for gradients.
 
     Args:
-        name_and_params (list[(str, Parameter)]): A list of (name, Parameter)
+        name_and_params (list[(str, Parameter)]): A list of ``(name, Parameter)``
             tuples.
         with_histogram (bool): If True, generate histogram.
     """
@@ -149,15 +149,13 @@ alf.summary.histogram = _summary_wrapper(alf.summary.histogram)
 
 
 def add_nested_summaries(prefix, data):
-    """Add summary about loss_info
+    """Add summary of a nest of data.
 
     Args:
         prefix (str): the prefix of the names of the summaries
         data (dict or namedtuple): data to be summarized
     """
-    fields = data.keys() if isinstance(data, dict) else data._fields
-    for field in fields:
-        elem = data[field] if isinstance(data, dict) else getattr(data, field)
+    for field, elem in alf.nest.extract_fields_from_nest(data):
         name = prefix + '/' + field
         if isinstance(elem, dict) or is_namedtuple(elem):
             add_nested_summaries(name, elem)
@@ -166,10 +164,10 @@ def add_nested_summaries(prefix, data):
 
 
 def summarize_loss(loss_info: LossInfo):
-    """Add summary about loss_info
+    """Add summary about ``loss_info``
 
     Args:
-        loss_info (LossInfo): loss_info.extra must be a namedtuple
+        loss_info (LossInfo): ``loss_info.extra`` must be a namedtuple
     """
     alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
@@ -253,30 +251,26 @@ def summarize_action_dist(action_distributions,
 
 
 def add_mean_hist_summary(name, value):
-    """Generate mean and histogram summary of `value`.
+    """Generate mean and histogram summary of ``value``.
 
     Args:
         name (str): name of the summary
         value (Tensor): tensor to be summarized
-    Returns:
-        None
     """
     alf.summary.histogram(name + "/value", value)
     add_mean_summary(name + "/mean", value)
 
 
 def safe_mean_hist_summary(name, value, mask):
-    """Generate mean and histogram summary of `value`.
+    """Generate mean and histogram summary of ``value``.
 
-    It skips the summary if `value` is empty.
+    It skips the summary if ``value`` is empty.
 
     Args:
         name (str): name of the summary
         value (Tensor): tensor to be summarized
         mask (bool Tensor): optional mask to indicate which element of value
-            to use. Its shape needs to be same as that of `value`
-    Returns:
-        None
+            to use. Its shape needs to be same as that of ``value``
     """
     if mask is not None:
         value = value[mask]
@@ -285,13 +279,11 @@ def safe_mean_hist_summary(name, value, mask):
 
 
 def add_mean_summary(name, value):
-    """Generate mean summary of `value`.
+    """Generate mean summary of ``value``.
 
     Args:
         name (str): name of the summary
         value (Tensor): tensor to be summarized
-    Returns:
-        None
     """
     if not value.dtype.is_floating_point:
         value = value.to(torch.float32)
@@ -299,15 +291,13 @@ def add_mean_summary(name, value):
 
 
 def safe_mean_summary(name, value):
-    """Generate mean summary of `value`.
+    """Generate mean summary of ``value``.
 
-    It skips the summary if `value` is empty.
+    It skips the summary if ``value`` is empty.
 
     Args:
         name (str): name of the summary
         value (Tensor): tensor to be summarized
-    Returns:
-        None
     """
     if np.prod(value.shape) > 0:
         add_mean_summary(name, value)
@@ -323,10 +313,11 @@ class record_time(object):
     two summaries.
 
     Example:
-    ```python
-    with record_time("time/calc"):
-        long_function()
-    ```
+
+    .. code-block:: python
+
+        with record_time("time/calc"):
+            long_function()
     """
 
     def __init__(self, tag):

@@ -23,7 +23,7 @@ import torch.nn as nn
 
 import alf
 import alf.layers as layers
-from alf.networks.initializers import variance_scaling_init
+from alf.initializers import variance_scaling_init
 from alf.networks.network import Network, PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
@@ -57,11 +57,11 @@ class ImageEncodingNetwork(Network):
         If necessary, extend the argument list to support it in the future.
 
         How to calculate the output size:
-        https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d
+        `<https://pytorch.org/docs/stable/nn.html#torch.nn.Conv2d>`_::
 
             H = (H1 - HF + 2P) // strides + 1
 
-        where H = output size, H1 = input size, HF = size of kernel, P = padding
+        where H = output size, H1 = input size, HF = size of kernel, P = padding.
 
         Regarding padding: in the previous TF version, we have two padding modes:
         ``valid`` and ``same``. For the former, we always have no padding (P=0); for
@@ -150,7 +150,7 @@ class ImageDecodingNetwork(Network):
         If necessary, extend the argument list to support it in the future.
 
         How to calculate the output size:
-        https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
+        `<https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d>`_::
 
             H = (H1-1) * strides + HF - 2P + OP
 
@@ -248,7 +248,7 @@ class ImageDecodingNetwork(Network):
             in_channels = filters
 
     def forward(self, inputs, state=()):
-        """Returns an image of shape (B,C,H,W). The empty state just keeps the
+        """Returns an image of shape ``(B,C,H,W)``. The empty state just keeps the
         interface same with other networks.
         """
         z = inputs
@@ -407,7 +407,7 @@ class EncodingNetwork(PreprocessorNetwork):
 
     def make_parallel(self, n):
         """Make a parllelized version of this network.
-        
+
         A parallel network has ``n`` copies of network with the same structure but
         different independently initialized parameters.
 
@@ -416,7 +416,7 @@ class EncodingNetwork(PreprocessorNetwork):
         create a ``NaiveParallelNetwork`` (NPN). However, PCN is not always
         faster than NPN. Especially for small ``n`` and large batch_size. See
         ``test_make_parallel()`` in critic_networks_test.py for detail.
-        
+
         Returns:
             Network: A paralle network
         """
@@ -578,7 +578,7 @@ class LSTMEncodingNetwork(Network):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then `preprocessing_combiner` must not be
+                the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             input_preprocessors (nested InputPreprocessor): a nest of
                 ``InputPreprocessor``, each of which will be applied to the
@@ -677,10 +677,8 @@ class LSTMEncodingNetwork(Network):
             self._output_spec = self._post_encoding_net.output_spec
 
     def _create_lstm_cell_state_spec(self, hidden_size, dtype=torch.float32):
-        """Create LSTMCell state specs given the hidden size and dtype. According to
-        PyTorch LSTMCell doc:
-
-        https://pytorch.org/docs/stable/nn.html#torch.nn.LSTMCell
+        """Create LSTMCell state specs given the hidden size and dtype, according to
+        PyTorch `LSTMCell doc <https://pytorch.org/docs/stable/nn.html#torch.nn.LSTMCell>`_.
 
         Each LSTMCell has two states: h and c with the same shape.
 
@@ -702,8 +700,9 @@ class LSTMEncodingNetwork(Network):
                 of ``h_state`` and ``c_state``.
 
         Returns:
-            output (torch.Tensor): output of the network
-            new_state (list[tuple]): the updated states
+            tuple:
+            - output (torch.Tensor): output of the network
+            - new_state (list[tuple]): the updated states
         """
         assert isinstance(state, list)
         for s in state:

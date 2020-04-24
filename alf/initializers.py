@@ -24,20 +24,23 @@ import alf.utils.math_ops as math_ops
 
 @gin.configurable
 def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
-    """Compute the gain in a numerical way by integration. Assume y is the output,
-    w is the weight (mean=0, std=1), and x is the input, then
+    """Compute the gain in a numerical way by integration. Assume :math:`y` is
+    the output, :math:`w` is the weight (mean=0, std=1), and :math:`x` is the
+    input, then
 
-    Var(y) = Var(w) * E(x^2)
+    .. math::
 
-    So we need to approximate E(x^2) numerically.
+        Var(y) = Var(w) * E(x^2)
+
+    So we need to approximate :math:`E(x^2)` numerically.
 
     Args:
         nonlinearity (Callable): any callable activation function
-        dz (float): `dz` in the integration
-        r (float): `z` range will be `[-r, r]`
+        dz (float): :math:`dz` in the integration
+        r (float): :math:`z` range will be :math:`[-r, r]`
 
     Returns:
-        gain (float): a gain factor that will be applied to the init weights
+        float: a gain factor that will be applied to the init weights.
     """
     dist = torch.distributions.normal.Normal(0, 1)
     z = torch.arange(-r, r, dz)
@@ -50,12 +53,12 @@ def _numerical_calculate_gain(nonlinearity, dz=0.01, r=5.0):
 
 
 def _calculate_gain(nonlinearity, nonlinearity_param=0.01):
-    """Deprecated: now use _numerical_calculate_gain instead.
+    """Deprecated: now use ``_numerical_calculate_gain`` instead.
 
     Args:
         nonlinearity (str): the name of the activation function
         nonlinearity_param (float): additional parameter of the nonlinearity;
-            currently only used by 'leaky_relu' as the negative slope (pytorch
+            currently only used by ``leaky_relu`` as the negative slope (pytorch
             default 0.01)
     """
     if nonlinearity == "elu":
@@ -80,10 +83,11 @@ def variance_scaling_init(tensor,
                           nonlinearity=math_ops.identity,
                           transposed=False):
     """Implements TensorFlow's `VarianceScaling` initializer.
-    https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/ops/init_ops.py#L437
+
+    `<https://github.com/tensorflow/tensorflow/blob/e5bf8de410005de06a7ff5393fafdf832ef1d4ad/tensorflow/python/ops/init_ops.py#L437>`_
 
     A potential benefit of this intializer is that we can sample from a truncated
-    normal distribution: `scipy.stats.truncnorm(a=-2, b=2, loc=0., scale=1.)`
+    normal distribution: ``scipy.stats.truncnorm(a=-2, b=2, loc=0., scale=1.)``.
 
     Also incorporates PyTorch's calculation of the recommended gains that taking
     nonlinear activations into account, so that after N layers, the final output
@@ -92,6 +96,9 @@ def variance_scaling_init(tensor,
     network is shallow, as in most RL cases.
 
     Example usage:
+
+    .. code-block:: python
+
         from alf.networks.initializers import variance_scaling_init
         layer = nn.Linear(2, 2)
         variance_scaling_init(layer.weight.data,
@@ -101,24 +108,24 @@ def variance_scaling_init(tensor,
     Args:
         tensor (torch.Tensor): the weights to be initialized
         gain (float): a positive scaling factor for weight std. Different from
-            tf's implementation, this number is applied outside of `math.sqrt`.
-            Note that if `calc_gain_after_activation=True`, this number will be
+            tf's implementation, this number is applied outside of ``math.sqrt``.
+            Note that if ``calc_gain_after_activation=True``, this number will be
             an additional gain factor on top of that.
         mode (str): one of "fan_in", "fan_out", and "fan_avg"
         distribution (str): one of "uniform", "untruncated_normal" and
             "truncated_normal". If the latter, the weights will be sampled
-            from a normal distribution truncated at (-2, 2).
+            from a normal distribution truncated at ``(-2, 2)``.
         calc_gain_after_activation (bool): whether automatically calculate the
             std gain of applying nonlinearity after this layer. A nonlinear
             activation (e.g., relu) might change std after the transformation,
             so we need to compensate for that. Only used when mode=="fan_in".
         nonlinearity (Callable): any callable activation function
         transposed (bool): a flag indicating if the weight tensor has been
-            tranposed (e.g., nn.ConvTranspose2d). In that case, `fan_in` and
+            tranposed (e.g., ``nn.ConvTranspose2d``). In that case, `fan_in` and
             `fan_out` should be swapped.
 
     Returns:
-        tensor (torch.Tensor): a randomly initialized weight tensor
+        torch.Tensor: a randomly initialized weight tensor
     """
 
     fan_in, fan_out = nn.init._calculate_fan_in_and_fan_out(tensor)

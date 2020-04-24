@@ -22,7 +22,7 @@ import torch.nn as nn
 
 import alf.utils.math_ops as math_ops
 import alf.nest as nest
-from alf.networks.initializers import variance_scaling_init
+from alf.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec
 
 from .network import Network
