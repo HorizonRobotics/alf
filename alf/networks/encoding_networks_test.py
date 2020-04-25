@@ -253,7 +253,16 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         pnet = network.make_parallel(replicas)
         nnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
 
+        # the case with shared inputs
         embedding = input_spec.randn(outer_dims=(batch_size, ))
+        p_output, _ = pnet(embedding)
+        n_output, _ = nnet(embedding)
+
+        self.assertTrue(p_output.shape == n_output.shape)
+        self.assertTrue(p_output.shape[1:] == pnet._output_spec.shape)
+
+        # the case with non-shared inputs
+        embedding = input_spec.randn(outer_dims=(batch_size, replicas))
         p_output, _ = pnet(embedding)
         n_output, _ = nnet(embedding)
 
