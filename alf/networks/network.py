@@ -184,7 +184,7 @@ class Network(nn.Module):
 
     def make_parallel(self, n):
         """Make a parllelized version of this network.
-        
+
         A parallel network has ``n`` copies of network with the same structure but
         different indepently initialized parameters.
 
@@ -192,7 +192,7 @@ class Network(nn.Module):
         ``n`` copies of this network and use a loop to call them in ``forward()``.
         If possible, the subclass should override this to generate an optimized
         parallel implementation.
-        
+
         Returns:
             Network: A paralle network
         """
@@ -226,7 +226,7 @@ class NaiveParallelNetwork(Network):
 
     def forward(self, inputs, state=()):
         """Compute the output and the next state.
-        
+
         Args:
             inputs (nested torch.Tensor): its shape can be ``[B, n, ...]``, or
                 ``[B, ...]``
@@ -280,13 +280,13 @@ class PreprocessorNetwork(Network):
                 None.
             input_preprocessors (nested InputPreprocessor): a nest of
                 `InputPreprocessor`, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
+                corresponding input. If not None, then it must have the same
+                structure with `input_tensor_spec`. If any element is None, then
+                it will be treated as math_ops.identity. This arg is helpful if
+                you want to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 `input_tensor_spec` as the input to compute the processed
@@ -312,8 +312,6 @@ class PreprocessorNetwork(Network):
 
         self._input_preprocessors = None
         if input_preprocessors is not None:
-            input_preprocessors = alf.nest.pack_sequence_as(
-                input_tensor_spec, alf.nest.flatten(input_preprocessors))
             input_tensor_spec = alf.nest.map_structure(
                 _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
             # allow None as a placeholder in the nest
@@ -338,7 +336,7 @@ class PreprocessorNetwork(Network):
 
     def forward(self, inputs, state=(), min_outer_rank=1, max_outer_rank=1):
         """Preprocessing nested inputs.
-        
+
         Args:
             inputs (nested Tensor): inputs to the network
             state (nested Tensor): RNN state of the network

@@ -24,6 +24,7 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks import CriticNetwork, CriticRNNNetwork, ParallelCriticNetwork
 from alf.networks.network import NaiveParallelNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
+from alf.nest.utils import NestConcat
 
 
 class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
@@ -147,6 +148,26 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         net_ctor((obs_spec, action_spec),
                  action_input_processors=EmbeddingPreprocessor(
                      action_spec, embedding_dim=10))
+
+    @parameterized.parameters((CriticNetwork, ), (CriticRNNNetwork, ))
+    def test_mixed_actions(self, net_ctor):
+        obs_spec = TensorSpec((20, ))
+        action_spec = dict(
+            x=BoundedTensorSpec((), dtype='int64'), y=BoundedTensorSpec((3, )))
+
+        input_preprocessors = dict(
+            x=EmbeddingPreprocessor(action_spec['x'], embedding_dim=10),
+            y=None)
+
+        net_ctor = functools.partial(
+            net_ctor, action_input_processors=input_preprocessors)
+
+        # doesn't support mixed actions
+        self.assertRaises(AssertionError, net_ctor, (obs_spec, action_spec))
+
+        # ... unless a combiner is specified
+        net_ctor((obs_spec, action_spec),
+                 action_preprocessing_combiner=NestConcat())
 
 
 if __name__ == "__main__":
