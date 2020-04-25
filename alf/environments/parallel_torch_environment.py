@@ -152,6 +152,9 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
     def _stack_time_steps(self, time_steps):
         """Given a list of TimeStep, combine to one with a batch dimension."""
         if self._flatten:
+            assert False, (
+                "Fix self._time_step_spec first so that it has the same"
+                " fields with TimeStep!")
             return nest.fast_map_structure_flatten(
                 # TODO: right now ``self._time_step_spec`` is independenty defined
                 #       with ``TimeStep```. It's nontrivial to make it consistent with

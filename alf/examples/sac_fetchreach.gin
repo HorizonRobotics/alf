@@ -1,7 +1,6 @@
 
 include 'sac.gin'
 
-import alf.environments.suite_socialbot
 import alf.utils.dist_utils
 
 import alf.environments.suite_robotics

@@ -87,6 +87,7 @@ def load(environment_name,
          env_id=None,
          discount=1.0,
          max_episode_steps=None,
+         sparse_reward=False,
          gym_env_wrappers=(),
          torch_env_wrappers=(),
          wrap_with_process=False):
@@ -101,6 +102,8 @@ def load(environment_name,
         max_episode_steps: If None the ``max_episode_steps`` will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
             to 0 or if there is no ``timestep_limit`` set in the environment's spec.
+        sparse_reward (bool): If True, the game ends once the goal is achieved.
+            Rewards will be added by 1, changed from -1/0 to 0/1.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
         torch_env_wrappers: Iterable with references to wrapper classes to use on
@@ -132,7 +135,8 @@ def load(environment_name,
     # concat robot's observation and the goal location
     env = FlattenDictWrapper(env, ["observation", "desired_goal"])
     env = SuccessWrapper(env)
-    #env = SparseReward(env)
+    if sparse_reward:
+        env = SparseReward(env)
 
     if wrap_with_process:
         process_env = process_environment.ProcessEnvironment(
