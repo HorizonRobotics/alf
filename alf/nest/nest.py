@@ -114,6 +114,37 @@ def flatten(nest):
     return flattened
 
 
+def flatten_up_to(shallow_nest, nest):
+    """Flatten ``nests`` up to the depths of ``shallow_nest``. Every sub-nest of
+    each of ``nests`` beyond the depth of the corresponding sub-nest in
+    ``shallow_nest`` will be treated as a leaf that stops flattening downwards.
+    """
+    if not is_nested(shallow_nest):
+        return [nest]
+
+    try:
+        assert_same_type(shallow_nest, nest)
+        assert_same_length(shallow_nest, nest)
+    except AssertionError as e:
+        logging.error(str(e))
+        raise AssertionError(
+            "Different types or lengths between {} and {}".format(
+                shallow_nest, nest))
+
+    flattened = []
+    if isinstance(shallow_nest, list) or is_unnamedtuple(shallow_nest):
+        for sn, n in zip(shallow_nest, nest):
+            flattened.extend(flatten_up_to(sn, n))
+    else:
+        for fv1, fv2 in zip(
+                extract_fields_from_nest(shallow_nest),
+                extract_fields_from_nest(nest)):
+            assert fv1[0] == fv2[0], \
+                "Keys are different !{} <-> {}".format(fv1[0], fv2[0])
+            flattened.extend(flatten_up_to(fv1[1], fv2[1]))
+    return flattened
+
+
 def assert_same_structure(nest1, nest2):
     """Asserts that two structures are nested in the same way."""
     # When neither is nested, the assertion won't fail

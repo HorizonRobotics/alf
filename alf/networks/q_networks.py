@@ -19,6 +19,7 @@ import functools
 import torch
 import torch.nn as nn
 
+import alf.nest as nest
 import alf.layers as layers
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork
 from alf.networks import Network
@@ -76,6 +77,10 @@ class QNetwork(Network):
                 will be used.
         """
         super(QNetwork, self).__init__(input_tensor_spec, name=name)
+
+        assert len(nest.flatten(action_spec)) == 1, (
+            "Currently only support a single discrete action! Use "
+            "CriticNetwork instead for multiple actions.")
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
         self._output_spec = TensorSpec((num_actions, ))
@@ -216,6 +221,10 @@ class QRNNNetwork(Network):
                 variance_scaling_initializer will be used.
         """
         super().__init__(input_tensor_spec, name=name)
+
+        assert len(nest.flatten(action_spec)) == 1, (
+            "Currently only support a single discrete action! Use "
+            "CriticNetwork instead for multiple actions.")
 
         num_actions = action_spec.maximum - action_spec.minimum + 1
         self._output_spec = TensorSpec((num_actions, ))
