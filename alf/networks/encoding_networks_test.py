@@ -242,6 +242,31 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         pnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
         _benchmark(pnet, "NaiveParallelNetwork")
 
+    @parameterized.parameters((1, ), (3, ))
+    def test_parallel_network_output_size(self, replicas):
+        batch_size = 128
+        input_spec = TensorSpec((100, ), torch.float32)
+
+        # a dummy encoding network which ouputs the input
+        network = EncodingNetwork(input_tensor_spec=input_spec)
+
+        pnet = network.make_parallel(replicas)
+        nnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
+
+        def _check_output_size(embedding):
+            p_output, _ = pnet(embedding)
+            n_output, _ = nnet(embedding)
+            self.assertTrue(p_output.shape == n_output.shape)
+            self.assertTrue(p_output.shape[1:] == pnet._output_spec.shape)
+
+        # the case with shared inputs
+        embedding = input_spec.randn(outer_dims=(batch_size, ))
+        _check_output_size(embedding)
+
+        # the case with non-shared inputs
+        embedding = input_spec.randn(outer_dims=(batch_size, replicas))
+        _check_output_size(embedding)
+
 
 class EncodingNetworkSideEffectsTest(alf.test.TestCase):
     def test_encoding_network_side_effects(self):

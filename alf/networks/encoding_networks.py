@@ -407,7 +407,7 @@ class EncodingNetwork(PreprocessorNetwork):
 
     def make_parallel(self, n):
         """Make a parllelized version of this network.
-        
+
         A parallel network has ``n`` copies of network with the same structure but
         different independently initialized parameters.
 
@@ -416,7 +416,7 @@ class EncodingNetwork(PreprocessorNetwork):
         create a ``NaiveParallelNetwork`` (NPN). However, PCN is not always
         faster than NPN. Especially for small ``n`` and large batch_size. See
         ``test_make_parallel()`` in critic_networks_test.py for detail.
-        
+
         Returns:
             Network: A paralle network
         """
@@ -543,6 +543,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
             input_size = last_layer_size
         self._output_spec = TensorSpec(
             (n, input_size), dtype=self._processed_input_tensor_spec.dtype)
+        self._n = n
 
     def forward(self, inputs, state=()):
         """
@@ -551,8 +552,12 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         """
         # call super to preprocess inputs
         z, state = super().forward(inputs, state, max_outer_rank=2)
-        for fc in self._fc_layers:
-            z = fc(z)
+        if len(self._fc_layers) == 0:
+            if inputs.ndim == 2:
+                z = z.unsqueeze(1).expand(-1, self._n, *z.shape[1:])
+        else:
+            for fc in self._fc_layers:
+                z = fc(z)
         return z, state
 
 
