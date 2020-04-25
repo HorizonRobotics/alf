@@ -554,8 +554,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         z, state = super().forward(inputs, state, max_outer_rank=2)
         if len(self._fc_layers) == 0:
             if inputs.ndim == 2:
-                z = z.unsqueeze(0).expand(self._n, *z.shape)
-                z = z.transpose(0, 1)
+                z = z.unsqueeze(1).expand(-1, self._n, *z.shape[1:])
         else:
             for fc in self._fc_layers:
                 z = fc(z)
