@@ -147,8 +147,8 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
 
     if copy:
         for model, target_model in zip(models, target_models):
-            for ws, wt in zip(model.parameters(), target_model.parameters()):
-                wt.data.copy_(ws)
+            state_dict = model.state_dict()
+            target_model.load_state_dict(state_dict)
 
     def update():
         for model, target_model in zip(models, target_models):

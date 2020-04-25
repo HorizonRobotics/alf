@@ -641,6 +641,7 @@ class Algorithm(nn.Module):
 
         return destination
 
+    @common.add_method(nn.Module)
     def load_state_dict(self, state_dict, strict=True):
         """Load state dictionary for the algorithm.
 
