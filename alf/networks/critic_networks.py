@@ -162,7 +162,6 @@ class CriticNetwork(Network):
             - state: empty
         """
         observations, actions = inputs
-        actions = actions.to(torch.float32)
 
         encoded_obs, _ = self._obs_encoder(observations)
         encoded_action, _ = self._action_encoder(actions)
@@ -214,7 +213,6 @@ class ParallelCriticNetwork(Network):
             - state: empty
         """
         observations, actions = inputs
-        actions = actions.to(torch.float32)
 
         encoded_obs, _ = self._obs_encoder(observations)
         encoded_action, _ = self._action_encoder(actions)
@@ -350,7 +348,6 @@ class CriticRNNNetwork(Network):
             - new_state (nest[tuple]): the updated states
         """
         observations, actions = inputs
-        actions = actions.to(torch.float32)
 
         encoded_obs, _ = self._obs_encoder(observations)
         encoded_action, _ = self._action_encoder(actions)
