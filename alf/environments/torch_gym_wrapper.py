@@ -148,6 +148,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         action = nest.map_structure(lambda spec: spec.zeros(),
                                     self._action_spec)
         _, _, _, info = self._gym_env.step(self._convert_action(action))
+        self._gym_env.reset()
         return nest.map_structure(lambda i: torch.as_tensor(np.zeros_like(i)),
                                   info)
 
