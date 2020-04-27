@@ -30,7 +30,6 @@ from alf.data_structures import LossInfo
 from alf.algorithms.algorithm import Algorithm
 import alf.utils.checkpoint_utils as ckpt_utils
 
-from alf.networks import Network
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
@@ -552,7 +551,7 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
             _check_parallel_param(n_net)
 
         # 2) test parameter number, excluding the duplicated parameters
-        p_net_w0_preprocessor = alf.networks.network.NaiveParallelNetwork(
+        p_net_wo_preprocessor = alf.networks.network.NaiveParallelNetwork(
             network_wo_preprocessor, replicas)
         p_net_w_preprocessor = network_w_preprocessor.make_parallel(replicas)
 
@@ -561,7 +560,7 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
         # input processor + the number of parameters of input processor
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),
-            len(p_net_w0_preprocessor.state_dict()) + len(
+            len(p_net_wo_preprocessor.state_dict()) + len(
                 input_preprocessors.state_dict()))
 
         self.assertEqual(
