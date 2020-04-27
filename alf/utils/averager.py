@@ -54,7 +54,10 @@ class WindowAverager(nn.Module):
         super().__init__()
         self._name = name
         self._buf = alf.nest.map_structure(
-            lambda spec: DataBuffer(spec, window_size), tensor_spec)
+            # Should put data on the default device instead of "cpu"
+            lambda spec: DataBuffer(spec, window_size, alf.get_default_device(
+            )),
+            tensor_spec)
         self._tensor_spec = tensor_spec
 
     def update(self, tensor):

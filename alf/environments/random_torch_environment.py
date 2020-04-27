@@ -47,7 +47,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         """Initializes the environment.
 
         Args:
-            observation_spec (nested TensorSpec): tensor spec for observations 
+            observation_spec (nested TensorSpec): tensor spec for observations
             action_spec (nested TensorSpec): tensor spec for actions.
             env_id (int): (optional) ID of the environment.
             episode_end_probability (float): Probability an episode will end when the
@@ -60,7 +60,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
                 have an additional major axis of size `batch_size`, and all outputs
                 will have an additional major axis of size `batch_size`.
             seed (int): Seed to use for rng used in observation generation.
-            render_size (tuple of ints): Size of the random render image to return when calling 
+            render_size (tuple of ints): Size of the random render image to return when calling
                 render.
             min_duration (int): Number of steps at the beginning of the
                 episode during which the episode can not terminate.
@@ -133,8 +133,11 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
     def _reset(self):
         self._done = False
         batched = self._batch_size is not None
-        return ds.restart(self._get_observation(), self._action_spec,
-                          self._env_id, batched)
+        return ds.restart(
+            self._get_observation(),
+            self._action_spec,
+            self._env_id,
+            batched=batched)
 
     def _sample_spec(self, spec, outer_dims):
         """Sample the given TensorSpec."""

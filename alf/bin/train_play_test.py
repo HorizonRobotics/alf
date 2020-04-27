@@ -196,8 +196,9 @@ class TrainPlayTest(alf.test.TestCase):
             self.skipTest("SuperMario is not available.")
 
     def _skip_if_mujoco_unavailable(self):
-        from tf_agents.environments import suite_mujoco
-        if not suite_mujoco.is_available():
+        from alf.environments import suite_robotics
+        # import other mujoco suites here
+        if not suite_robotics.is_available():
             self.skipTest("Mujoco env is not available.")
 
     def _skip_if_dmlab_unavailable(self):
@@ -438,7 +439,12 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='sac_bipedal_walker.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_sac_fetchreach(self):
+        self._test(
+            gin_file="sac_fetchreach.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_sac_cart_pole(self):
         self._test(
             gin_file='sac_cart_pole.gin',

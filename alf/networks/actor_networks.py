@@ -23,7 +23,7 @@ import torch.nn as nn
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 import alf.layers as layers
 import alf.nest as nest
-from alf.networks.initializers import variance_scaling_init
+from alf.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import math_ops, spec_utils
 from .network import PreprocessorNetwork
@@ -31,8 +31,6 @@ from .network import PreprocessorNetwork
 
 @gin.configurable
 class ActorNetwork(PreprocessorNetwork):
-    """Create an instance of ActorNetwork."""
-
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
@@ -44,38 +42,38 @@ class ActorNetwork(PreprocessorNetwork):
                  squashing_func=torch.tanh,
                  kernel_initializer=None,
                  name="ActorNetwork"):
-        """Creates an instance of `ActorNetwork`, which maps the inputs to
+        """Creates an instance of ``ActorNetwork``, which maps the inputs to
         actions (single or nested) through a sequence of deterministic layers.
 
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input.
             action_spec (BoundedTensorSpec): the tensor spec of the action.
             input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must
-                have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as ``math_ops.identity``.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
                 it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             squashing_func (Callable): the activation function used to squashing
-                the output to the range (-1, 1). Default to `tanh`.
+                the output to the range :math:`(-1, 1)`. Default to ``tanh``.
             kernel_initializer (Callable): initializer for all the layers but
-                the last layer. If none is provided a variance_scaling_initializer
+                the last layer. If none is provided a ``variance_scaling_initializer``
                 with uniform distribution will be used.
             name (str): name of the network
         """
@@ -125,12 +123,13 @@ class ActorNetwork(PreprocessorNetwork):
         """Computes action given an observation.
 
         Args:
-            inputs:  A tensor consistent with `input_tensor_spec`
-            state: empty for API consistent with ActorRNNNetwork
+            inputs:  A tensor consistent with ``input_tensor_spec``
+            state: empty for API consistent with ``ActorRNNNetwork``
 
         Returns:
-            action (torch.Tensor): a tensor consistent with `action_spec`
-            state: empty
+            tuple:
+            - action (torch.Tensor): a tensor consistent with ``action_spec``
+            - state: empty
         """
 
         observation, state = super().forward(observation, state)
@@ -148,8 +147,6 @@ class ActorNetwork(PreprocessorNetwork):
 
 @gin.configurable
 class ActorRNNNetwork(PreprocessorNetwork):
-    """Create an instance of ActorNetwork with RNN."""
-
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
@@ -171,23 +168,23 @@ class ActorRNNNetwork(PreprocessorNetwork):
             input_tensor_spec (TensorSpec): the tensor spec of the input.
             action_spec (BoundedTensorSpec): the tensor spec of the action.
             input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must
-                have the same structure with `input_tensor_spec` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as ``math_ops.identity``.
                 This arg is helpful if you want to have separate preprocessings
                 for different inputs by configuring a gin file without changing
                 the code. For example, embedding a discrete input before concatenating
                 it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
+                ``input_tensor_spec`` as the input to compute the processed
+                tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format `(filters, kernel_size, strides, padding)`,
-                where `padding` is optional.
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers representing hidden
                 FC layer sizes.
             lstm_hidden_size (int or tuple[int]): the hidden size(s)
@@ -198,7 +195,7 @@ class ActorRNNNetwork(PreprocessorNetwork):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             squashing_func (Callable): the activation function used to squashing
-                the output to the range (-1, 1). Default to `tanh`.
+                the output to the range :math:`(-1, 1)`. Default to ``tanh``.
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If none is provided a variance_scaling_initializer
                 with uniform distribution will be used.
@@ -253,12 +250,13 @@ class ActorRNNNetwork(PreprocessorNetwork):
         """Computes action given an observation.
 
         Args:
-            inputs:  A tensor consistent with `input_tensor_spec`
-            state (nest[tuple]): a nest structure of state tuples (h, c)
+            inputs:  A tensor consistent with ``input_tensor_spec``
+            state (nest[tuple]): a nest structure of state tuples ``(h, c)``
 
         Returns:
-            action (torch.Tensor): a tensor consistent with `action_spec`
-            new_state (nest[tuple]): the updated states
+            tuple:
+            - action (torch.Tensor): a tensor consistent with ``action_spec``
+            - new_state (nest[tuple]): the updated states
         """
         observation, state = super().forward(observation, state)
         encoded_obs, state = self._lstm_encoding_net(observation, state)

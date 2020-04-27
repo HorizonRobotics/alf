@@ -26,9 +26,10 @@ from torch import nn
 class StepMetric(nn.Module):
     """Defines the interface for metrics."""
 
-    def __init__(self, name, prefix='Metrics'):
+    def __init__(self, name, dtype, prefix='Metrics'):
         super().__init__()
         self.name = name
+        self._dtype = dtype
         self._prefix = prefix
 
     def __call__(self, *args, **kwargs):
@@ -67,16 +68,29 @@ class StepMetric(nn.Module):
                 against.
         """
         prefix = self._prefix
-        tag = os.path.join(prefix, self.name)
         result = self.result()
-        if train_step is not None:
-            alf.summary.scalar(name=tag, data=result, step=train_step)
-        for step_metric in step_metrics:
-            # Skip plotting the metrics against itself.
-            if self.name == step_metric.name:
-                continue
-            step_tag = '{}_vs_{}/{}'.format(prefix, step_metric.name,
-                                            self.name)
-            # Summaries expect the step value to be an int64.
-            step = step_metric.result().to(torch.int64)
-            alf.summary.scalar(name=step_tag, data=result, step=step)
+
+        if not (isinstance(result, dict) or alf.nest.is_namedtuple(result)):
+            result = {self.name: result}
+
+        def _gen_summary(name, res):
+            tag = os.path.join(prefix, name)
+            if train_step is not None:
+                alf.summary.scalar(name=tag, data=res, step=train_step)
+            for step_metric in step_metrics:
+                # Skip plotting the metrics against itself.
+                if self.name == step_metric.name:
+                    continue
+                step_tag = '{}_vs_{}/{}'.format(prefix, step_metric.name, name)
+                # Summaries expect the step value to be an int64.
+                step = step_metric.result().to(torch.int64)
+                alf.summary.scalar(name=step_tag, data=res, step=step)
+
+        def _gen_nested(res):
+            for field, elem in alf.nest.extract_fields_from_nest(res):
+                if isinstance(elem, dict) or alf.nest.is_namedtuple(elem):
+                    _gen_nested(elem)
+                elif isinstance(elem, torch.Tensor):
+                    _gen_summary(field, elem)
+
+        _gen_nested(result)

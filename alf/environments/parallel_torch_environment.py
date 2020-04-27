@@ -32,8 +32,10 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
 
     The environments are created in external processes by calling the provided
     callables. This can be an environment class, or a function creating the
-    environment and potentially wrapping it. The returned environment should not
-    access global variables.
+    environment and potentially wrapping it. The environments can be different
+    but must use the same action and observation specs.
+
+    The returned environment should not access global variables.
     """
 
     def __init__(self,
@@ -41,11 +43,7 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
                  start_serially=True,
                  blocking=False,
                  flatten=False):
-        """Batch together environments and simulate them in external processes.
-
-        The environments can be different but must use the same action and
-        observation specs.
-
+        """
         Args:
             env_constructors (list[Callable]): a list of callable environment creators.
             start_serially (bool): whether to start environments serially or in parallel.
@@ -154,8 +152,18 @@ class ParallelTorchEnvironment(torch_environment.TorchEnvironment):
     def _stack_time_steps(self, time_steps):
         """Given a list of TimeStep, combine to one with a batch dimension."""
         if self._flatten:
+            assert False, (
+                "Fix self._time_step_spec first so that it has the same"
+                " fields with TimeStep!")
             return nest.fast_map_structure_flatten(
-                lambda *arrays: torch.stack(arrays), self._time_step_spec,
+                # TODO: right now ``self._time_step_spec`` is independenty defined
+                #       with ``TimeStep```. It's nontrivial to make it consistent with
+                #       the actual spec of ``TimeStep``` after a field is added. There
+                #       will be an inconsistency problem here if ``_flatten=True``.
+                #       For now, this flag is disabled. The speedup benefit by
+                #       turning it on is still to be verified.
+                lambda *arrays: torch.stack(arrays),
+                self._time_step_spec,
                 *time_steps)
         else:
             return nest.fast_map_structure(lambda *arrays: torch.stack(arrays),

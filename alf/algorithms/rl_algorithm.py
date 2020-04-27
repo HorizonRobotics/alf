@@ -142,20 +142,21 @@ class RLAlgorithm(Algorithm):
             self.set_exp_replayer(replayer, self._env.batch_size,
                                   config.replay_buffer_length)
 
-        self._metrics = []
         env = self._env
         if env is not None:
             metric_buf_size = max(10, self._env.batch_size)
-            standard_metrics = [
+            self._metrics = [
                 alf.metrics.NumberOfEpisodes(),
                 alf.metrics.EnvironmentSteps(),
                 alf.metrics.AverageReturnMetric(
                     batch_size=env.batch_size, buffer_size=metric_buf_size),
                 alf.metrics.AverageEpisodeLengthMetric(
                     batch_size=env.batch_size, buffer_size=metric_buf_size),
+                alf.metrics.AverageEnvInfoMetric(
+                    example_env_info=env.reset().env_info,
+                    batch_size=env.batch_size,
+                    buffer_size=metric_buf_size)
             ]
-            self._metrics = standard_metrics
-            self._observers.extend(self._metrics)
 
         self._original_rollout_step = self.rollout_step
         self.rollout_step = self._rollout_step
@@ -186,17 +187,6 @@ class RLAlgorithm(Algorithm):
             "rollout_step() has not "
             " been used. rollout_info_spec is not available.")
         return self._rollout_info_spec
-
-    @property
-    def time_step_spec(self):
-        """Return spec for TimeStep."""
-        return TimeStep(
-            step_type=alf.TensorSpec((), 'int32'),
-            reward=alf.TensorSpec((), 'float32'),
-            discount=alf.TensorSpec((), 'float32'),
-            observation=self.observation_spec,
-            prev_action=self.action_spec,
-            env_id=alf.TensorSpec((), 'int32'))
 
     @property
     def action_spec(self):
@@ -454,12 +444,12 @@ class RLAlgorithm(Algorithm):
             # save the untransformed time step in case that sub-algorithms need
             # to store it in replay buffers
             transformed_time_step = transformed_time_step._replace(
-                untransformed_time_step=time_step)
+                untransformed=time_step)
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
             # release the reference to ``time_step``
             transformed_time_step = transformed_time_step._replace(
-                untransformed_time_step=())
+                untransformed=())
 
             action = common.detach(policy_step.output)
 
@@ -467,8 +457,10 @@ class RLAlgorithm(Algorithm):
             next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
+            self.observe_for_metrics(time_step)
+
             exp = make_experience(time_step, policy_step, policy_state)
-            self.observe(exp)
+            self.observe_for_replay(exp)
 
             exp_for_training = Experience(
                 action=action,

@@ -20,8 +20,8 @@ import torch.nn as nn
 
 import alf
 from alf.tensor_specs import TensorSpec
-from alf.networks.initializers import _numerical_calculate_gain
-from alf.networks.initializers import _calculate_gain
+from alf.initializers import _numerical_calculate_gain
+from alf.initializers import _calculate_gain
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks.network import NaiveParallelNetwork
 
