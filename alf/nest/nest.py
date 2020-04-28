@@ -268,7 +268,8 @@ def map_structure_up_to(shallow_nest, func, *nests):
 
 
 def fast_map_structure_flatten(func, structure, *flat_structure):
-    """Applies func to each entry in structure and returns a flattened structure."""
+    """Applies func to entries of ``flat_structure`` and returns a packed
+    structure according to ``structure``."""
     entries = zip(*flat_structure)
     return pack_sequence_as(structure, [func(*x) for x in entries])
 

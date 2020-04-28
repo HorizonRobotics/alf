@@ -29,7 +29,7 @@ class UnwrappedEnvChecker(object):
     process. For some games, if the check is True, then we should stop creating
     more envs (multiple envs cannot coexist in a process).
 
-    See suite_socialbot.py for an example usage of this class.
+    See ``suite_socialbot.py`` for an example usage of this class.
     """
 
     def __init__(self):
@@ -63,7 +63,7 @@ def create_environment(env_name='CartPole-v0',
                        num_parallel_environments=30,
                        nonparallel=False,
                        seed=None):
-    """Create environment.
+    """Create a batched environment.
 
     Args:
         env_name (str): env name
@@ -73,7 +73,7 @@ def create_environment(env_name='CartPole-v0',
             process. Used for correctly exposing game gin confs to tensorboard.
 
     Returns:
-        TFPyEnvironment
+        TorchEnvironment:
     """
     if nonparallel:
         # Each time we can only create one unwrapped env at most
@@ -93,7 +93,7 @@ def create_environment(env_name='CartPole-v0',
         torch_env = parallel_torch_environment.ParallelTorchEnvironment(
             [functools.partial(env_load_fn, env_name)] *
             num_parallel_environments,
-            flatten=True)
+            flatten=False)
 
         if seed is None:
             torch_env.seed([
@@ -116,7 +116,8 @@ def load_with_random_max_episode_steps(env_name,
                                        env_load_fn=suite_gym.load,
                                        min_steps=200,
                                        max_steps=250):
-    """Create environment with random max_episode_steps in range [min_steps, max_steps]
+    """Create environment with random max_episode_steps in range
+    ``[min_steps, max_steps]``.
 
     Args:
         env_name (str): env name
@@ -124,7 +125,7 @@ def load_with_random_max_episode_steps(env_name,
         min_steps (int): represent min value of the random range
         max_steps (int): represent max value of the random range
     Returns:
-        TFPyEnvironment
+        TorchEnvironment:
     """
     return env_load_fn(
         env_name, max_episode_steps=random.randint(min_steps, max_steps))

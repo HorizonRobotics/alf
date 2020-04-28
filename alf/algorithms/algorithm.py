@@ -164,6 +164,7 @@ class Algorithm(nn.Module):
         self._observation_transformers = observation_transformers
 
         self._observers = []
+        self._metrics = []
         self._exp_replayer = None
         self._exp_replayer_type = None
 
@@ -265,14 +266,13 @@ class Algorithm(nn.Module):
             raise ValueError("invalid experience replayer name")
         self._observers.append(self._exp_replayer.observe)
 
-    def observe(self, exp):
-        r"""An algorithm can override to record experience.
+    def observe_for_replay(self, exp):
+        r"""Record an experience in a replay buffer.
 
         Args:
-            exp (nested Tensor): The shapes can be either :math:`[Q, T, B, \ldots]` or
-                :math:`[B, \ldots]`, where :math:`Q` is ``learn_queue_cap`` in
-                ``AsyncOffPolicyAlgorithm``, :math:`T` is the sequence length,
-                and :math:`B` is the batch size of the batched environment.
+            exp (nested Tensor): exp (nested Tensor): The shape is
+                :math:`[B, \ldots]`, where :math:`B` is the batch size of the
+                batched environment.
         """
         if not self._use_rollout_state:
             exp = exp._replace(state=())
@@ -288,6 +288,15 @@ class Algorithm(nn.Module):
         exp = dist_utils.distributions_to_params(exp)
         for observer in self._observers:
             observer(exp)
+
+    def observe_for_metrics(self, time_step):
+        r"""Observe a time step for recording environment metrics.
+
+        Args:
+            time_step (TimeStep): the current time step during ``unroll()``.
+        """
+        for metric in self._metrics:
+            metric(time_step)
 
     def transform_timestep(self, time_step):
         """Transform time_step.

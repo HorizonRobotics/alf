@@ -20,20 +20,20 @@ import torch
 import torch.nn as nn
 
 from alf.nest.utils import get_outer_rank
-from alf.networks.initializers import variance_scaling_init
+from alf.initializers import variance_scaling_init
 from alf.utils.math_ops import identity
 from alf.tensor_specs import TensorSpec
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
-    """Normalizes a tensor by `mean` and `variance`, which are expected to have
-    the same tensor spec with the inner dims of `x`.
+    """Normalizes a tensor by ``mean`` and ``variance``, which are expected to have
+    the same tensor spec with the inner dims of ``x``.
 
     Args:
-        x (Tensor): a tensor of ([D1, D2, ..] + `shape`), where D1, D2, .. are
-            arbitrary leading batch dims (can be empty).
-        mean (Tensor): a tensor of `shape`
-        variance (Tensor): a tensor of `shape`
+        x (Tensor): a tensor of (``[D1, D2, ..] + shape``), where ``D1``, ``D2``, ..
+            are arbitrary leading batch dims (can be empty).
+        mean (Tensor): a tensor of ``shape``
+        variance (Tensor): a tensor of ``shape``
         variance_epsilon (float): A small float number to avoid dividing by 0.
     Returns:
         Normalized tensor.
@@ -55,7 +55,7 @@ def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
 
 class BatchSquash(object):
     """Facilitates flattening and unflattening batch dims of a tensor. Copied
-    from tf_agents.
+    from `tf_agents`.
 
     Exposes a pair of matched flatten and unflatten methods. After flattening
     only 1 batch dimension will be left. This facilitates evaluating networks
@@ -111,7 +111,7 @@ class FC(nn.Module):
         """A fully connected layer that's also responsible for activation and
         customized weights initialization. An auto gain calculation might depend
         on the activation following the linear layer. Suggest using this wrapper
-        module instead of nn.Linear if you really care about weight std after
+        module instead of ``nn.Linear`` if you really care about weight std after
         init.
         Args:
             input_size (int): input size
@@ -119,11 +119,11 @@ class FC(nn.Module):
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
-                If none is provided a variance_scaling_initializer with gain as
-                `kernel_init_gain` will be used.
+                If none is provided a ``variance_scaling_initializer`` with gain as
+                ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution. It will be ignored if
-                `kernel_initializer` is not None.
+                ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
         """
         # get the argument list with vals
@@ -189,10 +189,10 @@ class ParallelFC(nn.Module):
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a variance_scaling_initializer with gain as
-                `kernel_init_gain` will be used.
+                ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution. It will be ignored if
-                `kernel_initializer` is not None.
+                ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
         """
         super().__init__()
@@ -285,7 +285,7 @@ class Conv2D(nn.Module):
         """A 2D Conv layer that's also responsible for activation and customized
         weights initialization. An auto gain calculation might depend on the
         activation following the conv layer. Suggest using this wrapper module
-        instead of nn.Conv2d if you really care about weight std after init.
+        instead of ``nn.Conv2d`` if you really care about weight std after init.
 
         Args:
             in_channels (int): channels of the input image
@@ -297,10 +297,10 @@ class Conv2D(nn.Module):
             use_bias (bool):
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
-                `kernel_init_gain` will be used.
+                ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution. It will be ignored if
-                `kernel_initializer` is not None.
+                ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
         """
         super(Conv2D, self).__init__()
@@ -352,7 +352,7 @@ class ConvTranspose2D(nn.Module):
         """A 2D ConvTranspose layer that's also responsible for activation and
         customized weights initialization. An auto gain calculation might depend
         on the activation following the conv layer. Suggest using this wrapper
-        module instead of nn.ConvTranspose2d if you really care about weight std
+        module instead of ``nn.ConvTranspose2d`` if you really care about weight std
         after init.
 
         Args:
@@ -365,10 +365,10 @@ class ConvTranspose2D(nn.Module):
             use_bias (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a variance_scaling_initializer with gain as
-                `kernel_init_gain` will be used.
+                ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution. It will be ignored if
-                `kernel_initializer` is not None.
+                ``kernel_initializer`` is not None.
             bias_init_value (float): a constant
         """
         super(ConvTranspose2D, self).__init__()
