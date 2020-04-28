@@ -184,7 +184,7 @@ class Network(nn.Module):
 
     def make_parallel(self, n):
         """Make a parllelized version of this network.
-        
+
         A parallel network has ``n`` copies of network with the same structure but
         different indepently initialized parameters.
 
@@ -192,17 +192,17 @@ class Network(nn.Module):
         ``n`` copies of this network and use a loop to call them in ``forward()``.
         If possible, the subclass should override this to generate an optimized
         parallel implementation.
-        
+
         Returns:
-            Network: A paralle network
+            Network: A parallel network
         """
-        return NaiveParallelNetwork(self, n, "naive_parall_" + self.name)
+        return NaiveParallelNetwork(self, n)
 
 
 class NaiveParallelNetwork(Network):
     """Naive implementation of parallel network."""
 
-    def __init__(self, network, n, name="NaiveParallelNetwork"):
+    def __init__(self, network, n, name_prefix="naive_parallel_"):
         """
         A parallel network has ``n`` copies of network with the same structure but
         different indepently initialized parameters.
@@ -215,10 +215,12 @@ class NaiveParallelNetwork(Network):
             network (Network): the parallel network will have ``n`` copies of
                 ``network``.
             n (int): ``n`` copies of ``network``
+            name_prefix (str): a string that will be added as a prefix to the
+                name of the ``network`` as the name of the NaiveParallelNetwork
         """
-        super().__init__(network.input_tensor_spec, name)
+        super().__init__(network.input_tensor_spec, name_prefix + network.name)
         self._networks = nn.ModuleList(
-            [network.copy(name=name + '_%d' % i) for i in range(n)])
+            [network.copy(name=self.name + '_%d' % i) for i in range(n)])
         self._n = n
         self._state_spec = alf.nest.map_structure(
             lambda spec: alf.TensorSpec((n, ) + spec.shape, spec.dtype),
@@ -226,7 +228,7 @@ class NaiveParallelNetwork(Network):
 
     def forward(self, inputs, state=()):
         """Compute the output and the next state.
-        
+
         Args:
             inputs (nested torch.Tensor): its shape can be ``[B, n, ...]``, or
                 ``[B, ...]``
@@ -338,7 +340,7 @@ class PreprocessorNetwork(Network):
 
     def forward(self, inputs, state=(), min_outer_rank=1, max_outer_rank=1):
         """Preprocessing nested inputs.
-        
+
         Args:
             inputs (nested Tensor): inputs to the network
             state (nested Tensor): RNN state of the network
