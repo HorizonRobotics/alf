@@ -547,7 +547,8 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
         for network in [network_wo_preprocessor, network_w_preprocessor]:
             p_net = network.make_parallel(replicas)
             _check_parallel_param(p_net)
-            n_net = network.make_parallel(replicas)
+            n_net = alf.networks.network.NaiveParallelNetwork(
+                network, replicas)
             _check_parallel_param(n_net)
 
         # 2) test parameter number, excluding the duplicated parameters
