@@ -277,7 +277,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         alpha = torch.exp(self._log_alpha).detach()
 
         if self._use_q_network:
-            # Make the entire Categorial dist shape close to the target Q value
+            # Make the entire Categorical dist shape close to the target Q value
             # output by a QNetwork
             base_action_dist = dist_utils.get_base_dist(action_distribution)
             assert isinstance(base_action_dist, td.categorical.Categorical),  \

@@ -154,11 +154,11 @@ where :math:`\alpha` is the entropy coefficient. Take derivative `w.r.t.` to
         p_{\theta}(k|s)}{\partial \theta}\right]\\
         &=\sum_k
         \left[p_{\theta}(k|s)\frac{ \partial \log p_{\theta}(k|s)}{\partial
-        \theta}(\alpha\log p_{\theta}(k|s) - Q(s,k))\right] + \underbrace{\alpha\sum_k\left[
-        p_{\theta}(k|s)\frac{\partial \log p_{\theta}(k|s)}{\partial
-        \theta}\right]}_{=0}\\
-        &=E_{p_{\theta}}\left[\frac{\partial\log p_{\theta}(k|s)}{\partial\theta}
-        (\alpha \log p_{\theta}(k|s) - Q(s,k))\right]\\
+        \theta}(\alpha\log p_{\theta}(k|s) - Q(s,k))\right] +
+        \underbrace{\alpha\frac{\partial\sum_k p_{\theta}(k|s)}{\partial
+        \theta}}_{=0}\\ &=E_{p_{\theta}}\left[\frac{\partial\log
+        p_{\theta}(k|s)}{\partial\theta} (\alpha \log p_{\theta}(k|s) -
+        Q(s,k))\right]\\
     \end{array}
 
 which means that :math:`\frac{\partial\log
