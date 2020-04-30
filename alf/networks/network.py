@@ -183,7 +183,7 @@ class Network(nn.Module):
         return self._is_distribution
 
     def make_parallel(self, n):
-        """Make a parllelized version of this network.
+        """Make a parallelized version of this network.
 
         A parallel network has ``n`` copies of network with the same structure but
         different indepently initialized parameters.
