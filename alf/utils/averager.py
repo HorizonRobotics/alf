@@ -238,7 +238,7 @@ class ScalarEMAverager(EMAverager):
 
 @gin.configurable
 class AdaptiveAverager(EMAverager):
-    """Averager with adaptive update_rate.
+    r"""Averager with adaptive update_rate.
 
     This averager gives higher weight to more recent samples for calculating the
     average. Roughly speaking, the weight for each sample at time :math:`t` is

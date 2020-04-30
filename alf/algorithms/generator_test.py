@@ -72,9 +72,9 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
                                      mi_weight=None):
         """
         The generator is trained to match(STEIN)/maximize(ML) the likelihood
-        of a Gaussian distribution with zero mean and diagonal variance (1, 4).
-        After training, w^T w is the variance of the distribution implied by the
-        generator. So it should be diag(1,4) for STEIN and 0 for 'ML'.
+        of a Gaussian distribution with zero mean and diagonal variance :math:`(1, 4)`.
+        After training, :math:`w^T w` is the variance of the distribution implied by the
+        generator. So it should be :math:`diag(1,4)` for STEIN and 0 for 'ML'.
         """
         logging.info("entropy_regularization: %s mi_weight: %s" %
                      (entropy_regularization, mi_weight))
@@ -125,7 +125,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
     def test_generator_conditional(self,
                                    entropy_regularization=0.0,
                                    mi_weight=None):
-        """
+        r"""
         The target conditional distribution is :math:`N(\mu; diag(1, 4))`. After training
         net._u should be u for both STEIN and ML. And :math:`w^T w` should be :math:`diag(1, 4)`
         for STEIN and 0 for ML.

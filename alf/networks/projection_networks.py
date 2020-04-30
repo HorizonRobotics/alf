@@ -99,14 +99,14 @@ class NormalProjectionNetwork(Network):
             input_size (int): input vector dimension
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
-            activation (torch.nn.Functional): activation function to use in
+            activation (``torch.nn.Functional``): activation function to use in
                 dense layers.
             projection_output_init_gain (float): Output gain for initializing
                 action means and std weights.
             std_bias_initializer_value (float): Initial value for the bias of the
-                `std_projection_layer`.
+                ``std_projection_layer``.
             squash_mean (bool): If True, squash the output mean to fit the
-                action spec. If `scale_distribution` is also True, this value
+                action spec. If ``scale_distribution`` is also True, this value
                 will be ignored.
             state_dependent_std (bool): If True, std will be generated depending
                 on the current state; otherwise a global std will be generated
@@ -117,8 +117,8 @@ class NormalProjectionNetwork(Network):
                 distribution to ensure that the output aciton fits within the
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
-            dist_squashing_transform (td.Transform):  A distribution Transform
-                which transforms values into :math:`(-1, 1)`. Default to `dist_utils.StableTanh()`
+            dist_squashing_transform (``td.Transform``):  A distribution Transform
+                which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
             name (str): name of this network.
         """
         super(NormalProjectionNetwork, self).__init__(
@@ -202,7 +202,7 @@ class NormalProjectionNetwork(Network):
 
 @gin.configurable
 class StableNormalProjectionNetwork(NormalProjectionNetwork):
-    """Generates a Multi-variate normal by predicting a mean and std.
+    r"""Generates a Multi-variate normal by predicting a mean and std.
 
     It parameterizes the normal distributions as :math:`\sigma=c_0+\frac{1}{c_1+softplus(b)}`
     and :math:`\mu=a\cdot\sigma` where a and b are outputs from means_projection_layer and
@@ -210,7 +210,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
     :math:`\sigma_{min} <= \sigma <= \sigma_{max}`. The advantage of this parameterization is that
     its second order derivatives with respect to a and b are bounded even when
     the standard deviations become very small so that the optimization is
-    more stable. See docs/stable_gradient_descent_for_gaussian_distribution.py
+    more stable. See ``docs/stable_gradient_descent_for_gaussian_distribution.py``
     for detail.
     """
 
@@ -237,7 +237,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             input_size (int): input vector dimension
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
-            activation (torch.nn.Functional): activation function to use in
+            activation (``torch.nn.Functional``): activation function to use in
                 dense layers.
             projection_output_init_gain (float): Output gain for initializing
                 action means and std weights.
@@ -247,20 +247,20 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             state_dependent_std (bool): If True, std will be generated depending
                 on the current state; otherwise a global std will be generated
                 regardless of the current state.
-            inverse_std_transform (torch.nn.functional): Currently supports
+            inverse_std_transform (``torch.nn.functional``): Currently supports
                 "exp" and "softplus". Transformation to obtain inverse std. The
                 transformed values are further transformed according to min_std
                 and max_std.
             scale_distribution (bool): Whether or not to scale the output
                 distribution to ensure that the output aciton fits within the
-                `action_spec`. Note that this is different from `mean_transform`
+                `action_spec`. Note that this is different from 'mean_transform'
                 which merely squashes the mean to fit within the spec.
             init_std (float): Initial value for standard deviation.
             min_std (float): Minimum value for standard deviation.
             max_std (float): Maximum value for standard deviation. If None, no
                 maximum is enforced.
-            dist_squashing_transform (td.Transform):  A distribution Transform
-                which transforms values into :math:`(-1, 1)`. Default to `dist_utils.StableTanh()`
+            dist_squashing_transform (``td.Transform``):  A distribution Transform
+                which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
             name (str): name of this network.
         """
         self._min_std = min_std

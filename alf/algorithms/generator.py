@@ -85,7 +85,7 @@ class Generator(Algorithm):
                  mi_estimator_cls=MIEstimator,
                  optimizer=None,
                  name="Generator"):
-        """Create a Generator.
+        r"""Create a Generator.
 
         Args:
             output_dim (int): dimension of output
