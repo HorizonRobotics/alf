@@ -243,7 +243,14 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         pnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
         _benchmark(pnet, "NaiveParallelNetwork")
+
+        # test on default network name
         self.assertEqual(pnet.name, "naive_parallel_" + network.name)
+
+        # test on user-defined network name
+        pnet = alf.networks.network.NaiveParallelNetwork(
+            network, replicas, name="pnet")
+        self.assertEqual(pnet.name, "pnet")
 
     @parameterized.parameters((1, ), (3, ))
     def test_parallel_network_output_size(self, replicas):

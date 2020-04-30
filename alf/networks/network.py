@@ -202,7 +202,7 @@ class Network(nn.Module):
 class NaiveParallelNetwork(Network):
     """Naive implementation of parallel network."""
 
-    def __init__(self, network, n, name="naive_parallel"):
+    def __init__(self, network, n, name=None):
         """
         A parallel network has ``n`` copies of network with the same structure but
         different indepently initialized parameters.
@@ -215,11 +215,12 @@ class NaiveParallelNetwork(Network):
             network (Network): the parallel network will have ``n`` copies of
                 ``network``.
             n (int): ``n`` copies of ``network``
-            name(str): a string that will be added as a prefix to the name of
-                the ``network`` as the name of the NaiveParallelNetwork
+            name(str): a string that will be used as the name of the created
+                NaiveParallelNetwork instance. If ``None``, ``naive_parallel_``
+                followed by the ``network.name`` will be used by default.
         """
         super().__init__(network.input_tensor_spec,
-                         name + '_%s' % network.name)
+                         name if name else 'naive_parallel_%s' % network.name)
         self._networks = nn.ModuleList(
             [network.copy(name=self.name + '_%d' % i) for i in range(n)])
         self._n = n
