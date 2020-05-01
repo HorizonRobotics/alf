@@ -30,17 +30,17 @@ from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEnc
 
 
 def _check_action_specs_for_critic_networks(action_spec,
-                                            action_input_processors):
+                                            action_input_preprocessor_ctors):
     if len(nest.flatten(action_spec)) > 1:
         raise ValueError('Only a single action is supported by this network')
 
     if action_spec.is_discrete:
-        assert action_input_processors is not None, (
+        assert action_input_preprocessor_ctors is not None, (
             'CriticNetwork only supports continuous actions. The given ' +
             'action spec {} is discrete. Use QNetwork instead. '.format(
                 action_spec) +
-            'Alternatively, specify `action_input_processors` to transform ' +
-            'discrete actions to continuous action embeddings first.')
+            'Alternatively, specify `action_input_preprocessor_ctors` to transform '
+            + 'discrete actions to continuous action embeddings first.')
 
 
 @gin.configurable
@@ -54,11 +54,11 @@ class CriticNetwork(Network):
 
     def __init__(self,
                  input_tensor_spec,
-                 observation_input_processors=None,
+                 observation_input_preprocessor_ctors=None,
                  observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
-                 action_input_processors=None,
+                 action_input_preprocessor_ctors=None,
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  activation=torch.relu_,
@@ -69,9 +69,11 @@ class CriticNetwork(Network):
         Args:
             input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
-            observation_input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
-                corresponding observation input.
+            observation_input_preprocessor_ctors (nested ``InputPreprocessor``
+                constructors): a nest of ``InputPreprocessor`` constructors.
+                They are used to create the corresponding ``InputPreprocessor``
+                instances,  each of which will be applied to the corresponding
+                observation input.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
             observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
@@ -79,9 +81,11 @@ class CriticNetwork(Network):
                 where ``padding`` is optional.
             observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
-            action_input_processors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
-                corresponding action input.
+            action_input_preprocessor_ctors  (nested ``InputPreprocessor``
+                constructors): a nest of ``InputPreprocessor`` constructors.
+                They are used to create the corresponding ``InputPreprocessor``
+                instances,  each of which will be applied to the corresponding
+                action input.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for actions.
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
@@ -105,13 +109,13 @@ class CriticNetwork(Network):
 
         observation_spec, action_spec = input_tensor_spec
 
-        _check_action_specs_for_critic_networks(action_spec,
-                                                action_input_processors)
+        _check_action_specs_for_critic_networks(
+            action_spec, action_input_preprocessor_ctors)
 
         self._single_action_spec = action_spec
         self._obs_encoder = EncodingNetwork(
             observation_spec,
-            input_preprocessors=observation_input_processors,
+            input_preprocessor_ctors=observation_input_preprocessor_ctors,
             preprocessing_combiner=observation_preprocessing_combiner,
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
@@ -120,7 +124,7 @@ class CriticNetwork(Network):
 
         self._action_encoder = EncodingNetwork(
             action_spec,
-            input_preprocessors=action_input_processors,
+            input_preprocessor_ctors=action_input_preprocessor_ctors,
             fc_layer_params=action_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)
@@ -225,11 +229,11 @@ class CriticRNNNetwork(Network):
 
     def __init__(self,
                  input_tensor_spec,
-                 observation_input_processors=None,
+                 observation_input_preprocessor_ctors=None,
                  observation_preprocessing_combiner=None,
                  observation_conv_layer_params=None,
                  observation_fc_layer_params=None,
-                 action_input_processors=None,
+                 action_input_preprocessor_ctors=None,
                  action_fc_layer_params=None,
                  joint_fc_layer_params=None,
                  lstm_hidden_size=100,
@@ -242,9 +246,11 @@ class CriticRNNNetwork(Network):
         Args:
             input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
-            observation_input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
-                corresponding observation input.
+            observation_input_preprocessor_ctors (nested ``InputPreprocessor``
+                constructors): a nest of ``InputPreprocessor`` constructors.
+                They are used to create the corresponding ``InputPreprocessor``
+                instances,  each of which will be applied to the corresponding
+                observation input.
             observation_preprocessing_combiner (NestCombiner): preprocessing called
                 on complex observation inputs.
             observation_conv_layer_params (tuple[tuple]): a tuple of tuples where each
@@ -252,9 +258,11 @@ class CriticRNNNetwork(Network):
                 where ``padding`` is optional.
             observation_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for observations.
-            action_input_processors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
-                corresponding action input.
+            action_input_preprocessor_ctors  (nested ``InputPreprocessor``
+                constructors): a nest of ``InputPreprocessor`` constructors.
+                They are used to create the corresponding ``InputPreprocessor``
+                instances,  each of which will be applied to the corresponding
+                action input.
             action_fc_layer_params (tuple[int]): a tuple of integers representing
                 hidden FC layer sizes for actions.
             joint_fc_layer_params (tuple[int]): a tuple of integers representing
@@ -283,13 +291,13 @@ class CriticRNNNetwork(Network):
 
         observation_spec, action_spec = input_tensor_spec
 
-        _check_action_specs_for_critic_networks(action_spec,
-                                                action_input_processors)
+        _check_action_specs_for_critic_networks(
+            action_spec, action_input_preprocessor_ctors)
 
         self._single_action_spec = action_spec
         self._obs_encoder = EncodingNetwork(
             observation_spec,
-            input_preprocessors=observation_input_processors,
+            input_preprocessor_ctors=observation_input_preprocessor_ctors,
             preprocessing_combiner=observation_preprocessing_combiner,
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
@@ -298,7 +306,7 @@ class CriticRNNNetwork(Network):
 
         self._action_encoder = EncodingNetwork(
             action_spec,
-            input_preprocessors=action_input_processors,
+            input_preprocessor_ctors=action_input_preprocessor_ctors,
             fc_layer_params=action_fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer)

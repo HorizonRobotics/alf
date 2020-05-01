@@ -20,8 +20,8 @@ import torch.nn as nn
 
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
+from .preprocessors import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
-from alf.networks.network import PreprocessorNetwork, Network
 
 
 @gin.configurable
@@ -31,7 +31,7 @@ class ActorDistributionNetwork(PreprocessorNetwork):
     def __init__(self,
                  input_tensor_spec,
                  action_spec,
-                 input_preprocessors=None,
+                 input_preprocessor_ctors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -45,15 +45,18 @@ class ActorDistributionNetwork(PreprocessorNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with ``input_tensor_spec`` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
+            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
+                a nest of ``InputPreprocessor`` constructors. They are used to
+                create the corresponding ``InputPreprocessor`` instances,  each
+                of which will be applied to the corresponding input. If not
+                None, then it must have the same structure with
+                ``input_tensor_spec`` (after reshaping). If any element is None,
+                then ``math_ops.identity`` will be used as its corresponding
+                operation applied to the input. This arg is helpful if you want
+                to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 `input_tensor_spec` as the input to compute the processed
@@ -79,7 +82,7 @@ class ActorDistributionNetwork(PreprocessorNetwork):
         """
         super().__init__(
             input_tensor_spec,
-            input_preprocessors,
+            input_preprocessor_ctors,
             preprocessing_combiner,
             name=name)
 
@@ -130,7 +133,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
     def __init__(self,
                  input_tensor_spec,
                  action_spec,
-                 input_preprocessors=None,
+                 input_preprocessor_ctors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -146,15 +149,18 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
-                corresponding input. If not None, then it must
-                have the same structure with ``input_tensor_spec`` (after reshaping).
-                If any element is None, then it will be treated as math_ops.identity.
-                This arg is helpful if you want to have separate preprocessings
-                for different inputs by configuring a gin file without changing
-                the code. For example, embedding a discrete input before concatenating
-                it to another continuous vector.
+            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
+                a nest of ``InputPreprocessor`` constructors. They are used to
+                create the corresponding ``InputPreprocessor`` instances,  each
+                of which will be applied to the corresponding input. If not
+                None, then it must have the same structure with
+                ``input_tensor_spec`` (after reshaping). If any element is None,
+                then ``math_ops.identity`` will be used as its corresponding
+                operation applied to the input. This arg is helpful if you want
+                to have separate preprocessings for different inputs by
+                configuring a gin file without changing the code. For example,
+                embedding a discrete input before concatenating it to another
+                continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 ``input_tensor_spec`` as the input to compute the processed
@@ -186,7 +192,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             action_spec=action_spec,
-            input_preprocessors=input_preprocessors,
+            input_preprocessor_ctors=input_preprocessor_ctors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,

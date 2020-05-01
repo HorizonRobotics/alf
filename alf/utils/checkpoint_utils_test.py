@@ -516,10 +516,11 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
     @parameterized.parameters((False, ), (True, ))
     def test_parallel_network_state_dict_and_params(self, lstm):
         input_spec = TensorSpec((10, ))
-        inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
 
-        input_preprocessors = EmbeddingPreprocessor(
-            input_spec, embedding_dim=10)
+        input_preprocessor_ctors = functools.partial(
+            EmbeddingPreprocessor,
+            input_tensor_spec=input_spec,
+            embedding_dim=10)
 
         if lstm:
             network_ctor = functools.partial(
@@ -533,7 +534,7 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
         network_wo_preprocessor = network_ctor(input_tensor_spec=input_spec)
         network_w_preprocessor = network_ctor(
             input_tensor_spec=input_spec,
-            input_preprocessors=input_preprocessors)
+            input_preprocessor_ctors=input_preprocessor_ctors)
 
         # 1) test parameter copy for the corresponding parallel net
         def _check_parallel_param(p_net_source):
@@ -558,11 +559,11 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
 
         # the number of parallel network with input_preprocessor should be equal
         # to the number of parameters of the naive parallel network without
-        # input processor + the number of parameters of input processor
+        # input processor + the number of parameters of input processor * replicas
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),
-            len(p_net_wo_preprocessor.state_dict()) + len(
-                input_preprocessors.state_dict()))
+            len(p_net_wo_preprocessor.state_dict()) +
+            replicas * len(input_preprocessor_ctors().state_dict()))
 
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),

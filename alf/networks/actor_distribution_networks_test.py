@@ -38,7 +38,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
             self._input_spec, batch_size=1)
         self._conv_layer_params = ((8, 3, 1), (16, 3, 2, 1))
         self._fc_layer_params = (100, )
-        self._input_preprocessors = [torch.tanh, None]
+        self._input_preprocessor_ctors = [torch.nn.Tanh, None]
         self._preprocessing_combiner = NestConcat(dim=1)
 
     def _init(self, lstm_hidden_size):
@@ -77,7 +77,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         actor_dist_net = network_ctor(
             self._input_spec,
             action_spec,
-            input_preprocessors=self._input_preprocessors,
+            input_preprocessor_ctors=self._input_preprocessor_ctors,
             preprocessing_combiner=self._preprocessing_combiner,
             conv_layer_params=self._conv_layer_params)
 
@@ -104,7 +104,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
         actor_dist_net = network_ctor(
             self._input_spec,
             action_spec,
-            input_preprocessors=self._input_preprocessors,
+            input_preprocessor_ctors=self._input_preprocessor_ctors,
             preprocessing_combiner=self._preprocessing_combiner,
             conv_layer_params=self._conv_layer_params,
             continuous_projection_net_ctor=functools.partial(

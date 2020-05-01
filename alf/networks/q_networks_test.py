@@ -58,7 +58,7 @@ class TestQNetworks(parameterized.TestCase, unittest.TestCase):
         q_net = network_ctor(
             input_spec,
             self._action_spec,
-            input_preprocessors=[torch.relu],
+            input_preprocessor_ctors=[torch.nn.ReLU],
             preprocessing_combiner=NestSum(),
             conv_layer_params=conv_layer_params)
         q_value, state = q_net(image, state)

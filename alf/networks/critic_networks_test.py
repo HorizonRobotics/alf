@@ -144,9 +144,13 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         self.assertRaises(AssertionError, net_ctor, (obs_spec, action_spec))
 
         # ... unless an preprocessor is specified
-        net_ctor((obs_spec, action_spec),
-                 action_input_processors=EmbeddingPreprocessor(
-                     action_spec, embedding_dim=10))
+        action_input_preprocessor_ctors = functools.partial(
+            EmbeddingPreprocessor,
+            input_tensor_spec=action_spec,
+            embedding_dim=10)
+        net_ctor(
+            (obs_spec, action_spec),
+            action_input_preprocessor_ctors=action_input_preprocessor_ctors)
 
 
 if __name__ == "__main__":
