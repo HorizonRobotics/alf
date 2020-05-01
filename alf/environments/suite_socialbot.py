@@ -127,6 +127,7 @@ def _get_unused_port(start, end=65536, n=1):
                 for process_lock in process_locks:
                     process_lock.release()
                 process_locks = []
+                continue
             try:
                 with contextlib.closing(socket.socket()) as sock:
                     sock.bind(('', port))
