@@ -65,7 +65,6 @@ class SuiteCarlaTest(parameterized.TestCase, alf.test.TestCase):
 
 
 def play(env):
-    logging.info("aaaaaa")
     logging.info(
         "observation_spec: %s" % pprint.pformat(env.observation_spec()))
     logging.info(
@@ -77,6 +76,7 @@ def play(env):
     S/DOWN       : brake
     A/LEFT       : steer left
     D/RIGHT      : steer right
+    SPACE        : steer ahead
     Q            : toggle reverse
     ESC          : quit
     """)
@@ -158,7 +158,5 @@ def main():
 
 
 if __name__ == '__main__':
-    if torch.cuda.is_available():
-        torch.set_default_tensor_type(torch.cuda.FloatTensor)
     if not main():
         alf.test.main()

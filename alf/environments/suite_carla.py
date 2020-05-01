@@ -124,9 +124,9 @@ class SensorBase(abc.ABC):
 
 
 class CollisionSensor(SensorBase):
-    """Collision sensor.
+    """CollisionSensor for getting collision signal.
 
-    It get the impulses from collision during the last tick.
+    It get the impulses from the collisions during the last tick.
     """
 
     def __init__(self, parent_actor, max_num_collisions=4):
@@ -196,9 +196,19 @@ class CollisionSensor(SensorBase):
 # -- LaneInvasionSensor --------------------------------------------------------
 # ==============================================================================
 class LaneInvasionSensor(SensorBase):
-    """TODO: not completed."""
+    """LaneInvasionSensor for detecting lane invasion.
+
+    Lane invasion cannot be directly observed by raw sensors used by real cars.
+    So main purpose of this is to provide training signla (e.g. reward).
+
+    TODO: not completed.
+    """
 
     def __init__(self, parent_actor):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+        """
         super().__init__(parent_actor)
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.lane_invasion')
@@ -233,7 +243,13 @@ class LaneInvasionSensor(SensorBase):
 # -- GnssSensor ----------------------------------------------------------------
 # ==============================================================================
 class GnssSensor(SensorBase):
+    """GnssSensor for sensing GPS location."""
+
     def __init__(self, parent_actor):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+        """
         super().__init__(parent_actor)
         world = self._parent.get_world()
         bp = world.get_blueprint_library().find('sensor.other.gnss')
@@ -273,7 +289,13 @@ class GnssSensor(SensorBase):
 # -- IMUSensor -----------------------------------------------------------------
 # ==============================================================================
 class IMUSensor(SensorBase):
+    """IMUSensor for sensing accelaration and rotation."""
+
     def __init__(self, parent_actor):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+        """
         super().__init__(parent_actor)
         self._compass = 0.0
         world = self._parent.get_world()
@@ -321,7 +343,14 @@ class IMUSensor(SensorBase):
 # -- RadarSensor ---------------------------------------------------------------
 # ==============================================================================
 class RadarSensor(SensorBase):
+    """RadarSensor for detecting obstacles."""
+
     def __init__(self, parent_actor, max_num_detections=200):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor.
+            max_num_detections (int): maximal number of detection points.
+        """
         super().__init__(parent_actor)
         self._velocity_range = 7.5  # m/s
         self._max_num_detections = max_num_detections
@@ -412,6 +441,8 @@ def geo_distance(loc1, loc2):
 # -- CameraSensor -------------------------------------------------------------
 # ==============================================================================
 class CameraSensor(SensorBase):
+    """CameraSensor."""
+
     def __init__(
             self,
             parent_actor,
@@ -428,9 +459,18 @@ class CameraSensor(SensorBase):
     ):
         """
         Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
             sensor_type (str): 'sensor.camera.rgb', 'sensor.camera.depth', 'sensor.camera.semantic_segmentation'
-            attachment_type (str): one of ['rigid', 'spring_arm']
-            gamma (float):
+            attachment_type (str): There are two types of attachement. 'rigid':
+                the object follow its parent position strictly. 'spring_arm':
+                the object expands or retracts depending on camera situation.
+            xyz (tuple[float]): the attachment positition (x, y, z) relative to the parent_actor.
+            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll).
+            fov (str): horizontal field of view in degrees.
+            image_size_x (int): image width in pixels.
+            image_size_t (int): image height in pixels.
+            gamma (float): target gamma value of the camera.
+            iso (float): the camera sensor sensitivity.
         """
         super().__init__(parent_actor)
         attachment_type_map = {
@@ -609,11 +649,10 @@ class Player(object):
         # UE4 coordinate system is right handed:
         # https://forums.unrealengine.com/development-discussion/c-gameplay-programming/103787-ue4-coordinate-system-not-right-handed
         self._observation_desc['goal'] = (
-            "Target location relative to the "
-            "vehicle coordinate system in meters. X axis: front, Y axis: right, "
-            "Z axis: up. Pitch and the rotation around Z axis is taken into account "
-            "when calculating the vehicle's coordinate system. when calculating "
-            "the relative goal position.")
+            "Target location relative to the vehicle coordinate system in "
+            "meters. X axis: front, Y axis: right, Z axis: up. Only the "
+            "rotation around Z axis is taken into account when calculating the "
+            "vehicle's coordinate system.")
         self._observation_desc['speed'] = "Speed in m/s"
         self._control = carla.VehicleControl()
         self.reset()
@@ -636,7 +675,7 @@ class Player(object):
             self.action_spec().shape, dtype=np.float32)
 
     def destroy(self):
-        """Get the commands for destroy the player.
+        """Get the commands for destroying the player.
 
         Use carla.Client.apply_batch_sync() to actually destroy the sensor.
 
@@ -657,7 +696,7 @@ class Player(object):
         return commands
 
     def observation_spec(self):
-        """Get the observation spec
+        """Get the observation spec.
 
         Returns:
             nested TensorSpec:
@@ -846,6 +885,8 @@ def _exec(command):
 
 
 class CarlaServer(object):
+    """CarlaServer for doing the simulation."""
+
     def __init__(self,
                  rpc_port=2000,
                  streaming_port=2001,
