@@ -61,9 +61,9 @@ def load(environment_name,
         max_episode_steps (int): If None the max_episode_steps will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
             to 0 or if there is no timestep_limit set in the environment's spec.
-        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers, 
+        gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers 
+        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
             classes to use on the torch environment.
 
     Returns:
@@ -105,34 +105,45 @@ def load(environment_name,
 
 
 @contextlib.contextmanager
-def _get_unused_port(start, end=65536):
+def _get_unused_port(start, end=65536, n=1):
     """Get an unused port in the range [start, end) .
 
     Args:
         start (int) : port range start
         end (int): port range end
+        n (int): get ``n`` consecutive unused ports
+    Raises:
+        socket.error: if no unused port is available
     """
-    process_lock = None
-    unused_port = None
+    process_locks = []
+    unused_ports = []
     try:
         for port in range(start, end):
-            process_lock = InterProcessLock(
-                path='/tmp/socialbot/{}.lock'.format(port))
-            if not process_lock.acquire(blocking=False):
-                process_lock.lockfile.close()
-                process_lock = None
-                continue
+            process_locks.append(
+                InterProcessLock(path='/tmp/socialbot/{}.lock'.format(port)))
+            if not process_locks[-1].acquire(blocking=False):
+                process_locks[-1].lockfile.close()
+                process_locks.pop()
+                for process_lock in process_locks:
+                    process_lock.release()
+                process_locks = []
             try:
                 with contextlib.closing(socket.socket()) as sock:
                     sock.bind(('', port))
-                    unused_port = port
-                    break
+                    unused_ports.append(port)
+                    if len(unused_ports) == 2:
+                        break
             except socket.error:
-                process_lock.release()
-                process_lock = None
-        if unused_port is None:
+                for process_lock in process_locks:
+                    process_lock.release()
+                process_locks = []
+        if len(unused_ports) < n:
             raise socket.error("No unused port in [{}, {})".format(start, end))
-        yield unused_port
+        if n == 1:
+            yield unused_ports[0]
+        else:
+            yield unused_ports
     finally:
-        if process_lock is not None:
-            process_lock.release()
+        if process_locks:
+            for process_lock in process_locks:
+                process_lock.release()
