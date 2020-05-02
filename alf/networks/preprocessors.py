@@ -136,26 +136,23 @@ class PreprocessorNetwork(Network):
 
     def __init__(self,
                  input_tensor_spec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  name="PreprocessorNetwork"):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then ``preprocessing_combiner`` must not
-                be None.
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
-                configuring a gin file without changing the code. For example,
-                embedding a discrete input before concatenating it to another
-                continuous vector.
+                the input. If nested, then `preprocessing_combiner` must not be
+                None.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with `input_tensor_spec` (after reshaping).
+                If any element is None, then it will be treated as math_ops.identity.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 `input_tensor_spec` as the input to compute the processed
@@ -180,18 +177,15 @@ class PreprocessorNetwork(Network):
             return preproc(spec)
 
         self._input_preprocessors = None
-        if input_preprocessor_ctors is not None:
-            input_preprocessor_ctors = alf.nest.pack_sequence_as(
-                input_tensor_spec, alf.nest.flatten(input_preprocessor_ctors))
-
+        if input_preprocessors is not None:
+            input_preprocessors = alf.nest.pack_sequence_as(
+                input_tensor_spec, alf.nest.flatten(input_preprocessors))
+            input_tensor_spec = alf.nest.map_structure(
+                _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
             # allow None as a placeholder in the nest
             self._input_preprocessors = alf.nest.map_structure(
                 lambda preproc: math_ops.identity
-                if preproc is None else preproc(), input_preprocessor_ctors)
-
-            input_tensor_spec = alf.nest.map_structure(
-                _get_preprocessed_spec, self._input_preprocessors,
-                input_tensor_spec)
+                if preproc is None else preproc, input_preprocessors)
 
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):
