@@ -425,8 +425,9 @@ class EncodingNetwork(PreprocessorNetwork):
             (self._preprocessing_combiner == math_ops.identity or isinstance(
                 self._preprocessing_combiner,
                 (alf.nest.utils.NestSum, alf.nest.utils.NestConcat)))):
-            return ParallelEncodingNetwork(
-                **self.saved_args, n=n, **dict(name="parallel_" + self.name))
+            parallel_enc_net_args = dict(**self.saved_args)
+            parallel_enc_net_args.update(n=n, name="parallel_" + self.name)
+            return ParallelEncodingNetwork(**parallel_enc_net_args)
         else:
             return super().make_parallel(n)
 

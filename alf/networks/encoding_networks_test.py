@@ -218,7 +218,8 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             fc_layer_params=(256, 256),
             activation=torch.relu_,
             last_layer_size=1,
-            last_activation=math_ops.identity)
+            last_activation=math_ops.identity,
+            name='base_encoding_network')
         replicas = 2
         num_layers = 3
 
@@ -239,9 +240,18 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue(isinstance(pnet, ParallelEncodingNetwork))
         self.assertEqual(len(list(pnet.parameters())), num_layers * 2)
         _benchmark(pnet, "ParallelENcodingNetwork")
+        self.assertEqual(pnet.name, "parallel_" + network.name)
 
         pnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
         _benchmark(pnet, "NaiveParallelNetwork")
+
+        # test on default network name
+        self.assertEqual(pnet.name, "naive_parallel_" + network.name)
+
+        # test on user-defined network name
+        pnet = alf.networks.network.NaiveParallelNetwork(
+            network, replicas, name="pnet")
+        self.assertEqual(pnet.name, "pnet")
 
     @parameterized.parameters((1, ), (3, ))
     def test_parallel_network_output_size(self, replicas):

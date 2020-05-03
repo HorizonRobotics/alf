@@ -12,21 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
+from collections import OrderedDict
+import numpy as np
+import functools
 import json
-import warnings
+import os
 import shutil
 import tempfile
-import os
-import numpy as np
-from collections import OrderedDict
+import warnings
 
-import alf
 import torch
 import torch.nn as nn
 
+import alf
 from alf.data_structures import LossInfo
 from alf.algorithms.algorithm import Algorithm
 import alf.utils.checkpoint_utils as ckpt_utils
+
+from alf.networks.encoding_networks import EncodingNetwork
+from alf.networks.encoding_networks import LSTMEncodingNetwork
+from alf.networks.encoding_networks import ParallelEncodingNetwork
+from alf.networks.preprocessors import EmbeddingPreprocessor
+from alf.tensor_specs import TensorSpec
+from alf.utils import common
 
 
 class Net(nn.Module):
@@ -500,6 +509,64 @@ class TestOptMismatch(alf.test.TestCase):
             ckpt_mngr.save(step_num)
             ckpt_mngr = ckpt_utils.Checkpointer(ckpt_dir, alg=alg_root_1_no_op)
             self.assertRaises(RuntimeError, ckpt_mngr.load, step_num)
+
+
+class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
+                                          alf.test.TestCase):
+    @parameterized.parameters((False, ), (True, ))
+    def test_parallel_network_state_dict_and_params(self, lstm):
+        input_spec = TensorSpec((10, ))
+        inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
+
+        input_preprocessors = EmbeddingPreprocessor(
+            input_spec, embedding_dim=10)
+
+        if lstm:
+            network_ctor = functools.partial(
+                LSTMEncodingNetwork,
+                hidden_size=(1, ),
+                post_fc_layer_params=(2, 2))
+        else:
+            network_ctor = functools.partial(
+                EncodingNetwork, fc_layer_params=(10, 10))
+
+        network_wo_preprocessor = network_ctor(input_tensor_spec=input_spec)
+        network_w_preprocessor = network_ctor(
+            input_tensor_spec=input_spec,
+            input_preprocessors=input_preprocessors)
+
+        # 1) test parameter copy for the corresponding parallel net
+        def _check_parallel_param(p_net_source):
+            p_net_target = p_net_source.copy()
+            p_net_target.load_state_dict(p_net_source.state_dict())
+            for ws, wt in zip(p_net_source.parameters(),
+                              p_net_target.parameters()):
+                self.assertTensorEqual(ws, wt)
+
+        replicas = 2
+        for network in [network_wo_preprocessor, network_w_preprocessor]:
+            p_net = network.make_parallel(replicas)
+            _check_parallel_param(p_net)
+            n_net = alf.networks.network.NaiveParallelNetwork(
+                network, replicas)
+            _check_parallel_param(n_net)
+
+        # 2) test parameter number, excluding the duplicated parameters
+        p_net_wo_preprocessor = alf.networks.network.NaiveParallelNetwork(
+            network_wo_preprocessor, replicas)
+        p_net_w_preprocessor = network_w_preprocessor.make_parallel(replicas)
+
+        # the number of parallel network with input_preprocessor should be equal
+        # to the number of parameters of the naive parallel network without
+        # input processor + the number of parameters of input processor
+        self.assertEqual(
+            len(p_net_w_preprocessor.state_dict()),
+            len(p_net_wo_preprocessor.state_dict()) + len(
+                input_preprocessors.state_dict()))
+
+        self.assertEqual(
+            len(p_net_w_preprocessor.state_dict()),
+            len(list(p_net_w_preprocessor.parameters())))
 
 
 if __name__ == '__main__':
