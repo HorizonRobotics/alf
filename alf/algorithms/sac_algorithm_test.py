@@ -264,7 +264,7 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
         obs_spec = env._observation_spec
         action_spec = env._action_spec
 
-        fc_layer_params = (10, 10)
+        fc_layer_params = (10, 10, 10)
 
         continuous_projection_net_ctor = functools.partial(
             alf.networks.NormalProjectionNetwork,

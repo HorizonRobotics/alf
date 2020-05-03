@@ -450,11 +450,6 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='sac_cart_pole.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_discrete_critic_cart_pole(self):
-        self._test(
-            gin_file='sac_discrete_critic_cart_pole.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_humanoid(self):
         self._test(

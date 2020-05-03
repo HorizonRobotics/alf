@@ -406,7 +406,7 @@ class ObservationNormalizer(object):
         """
         self._clipping = float(clipping)
         if mode == "adaptive":
-            self._normalize = AdaptiveNormalizer(
+            self._normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec, speed=float(speed))
         elif mode == "window":
             self._normalzier = WindowNormalizer(
