@@ -23,17 +23,92 @@ import alf
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.algorithms.sac_algorithm import SacAlgorithm
+from alf.algorithms.sac_algorithm import ActionType as SacActionType
 from alf.algorithms.rl_algorithm_test import MyEnv
 from alf.data_structures import StepType, TimeStep
 from alf.environments.suite_unittest import (PolicyUnittestEnv, ActionType,
                                              MixedPolicyUnittestEnv)
-from alf.networks import (ActorDistributionNetwork, CriticNetwork,
-                          ValueNetwork, QNetwork)
+from alf.networks import ActorDistributionNetwork, CriticNetwork, QNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.nest.utils import NestConcat
 from alf.algorithms.ppo_algorithm_test import unroll
 from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
+from alf.tensor_specs import BoundedTensorSpec
+
+
+class SACAlgorithmTestInit(alf.test.TestCase):
+    def test_sac_algorithm_init(self):
+        observation_spec = BoundedTensorSpec((10, ))
+        discrete_action_spec = BoundedTensorSpec((), dtype='int64')
+        continuous_action_spec = [
+            BoundedTensorSpec((3, )),
+            BoundedTensorSpec((10, ))
+        ]
+
+        actor_network = ActorDistributionNetwork(observation_spec,
+                                                 continuous_action_spec)
+        q_network = QNetwork(observation_spec, discrete_action_spec)
+        universal_q_network = QNetwork(
+            (observation_spec, continuous_action_spec),
+            discrete_action_spec,
+            preprocessing_combiner=NestConcat())
+        critic_network = CriticNetwork(
+            (observation_spec, continuous_action_spec),
+            action_preprocessing_combiner=NestConcat())
+
+        # q_network instead of critic_network is needed
+        self.assertRaises(
+            AssertionError,
+            SacAlgorithm,
+            observation_spec=observation_spec,
+            action_spec=discrete_action_spec,
+            critic_network=critic_network)
+
+        sac = SacAlgorithm(
+            observation_spec=observation_spec,
+            action_spec=discrete_action_spec,
+            q_network=q_network)
+        self.assertEqual(sac._act_type, SacActionType.Discrete)
+
+        # critic_network instead of q_network is needed
+        self.assertRaises(
+            AssertionError,
+            SacAlgorithm,
+            observation_spec=observation_spec,
+            action_spec=continuous_action_spec,
+            q_network=q_network)
+
+        sac = SacAlgorithm(
+            observation_spec=observation_spec,
+            action_spec=continuous_action_spec,
+            actor_network=actor_network,
+            critic_network=critic_network)
+        self.assertEqual(sac._act_type, SacActionType.Continuous)
+
+        # action_spec order is incorrect
+        self.assertRaises(
+            AssertionError,
+            SacAlgorithm,
+            observation_spec=observation_spec,
+            action_spec=(continuous_action_spec, discrete_action_spec),
+            actor_network=actor_network,
+            q_network=universal_q_network)
+        # q_network should be universal_q_network
+        self.assertRaises(
+            AssertionError,
+            SacAlgorithm,
+            observation_spec=observation_spec,
+            action_spec=(discrete_action_spec, continuous_action_spec),
+            actor_network=actor_network,
+            q_network=q_network)
+
+        sac = SacAlgorithm(
+            observation_spec=observation_spec,
+            action_spec=(discrete_action_spec, continuous_action_spec),
+            actor_network=actor_network,
+            q_network=universal_q_network)
+        self.assertEqual(sac._act_type, SacActionType.Mixed)
 
 
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
@@ -134,17 +209,13 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
 
         fc_layer_params = (10, 10)
 
-        actor_network = ActorDistributionNetwork(
+        q_network = QNetwork(
             obs_spec, action_spec, fc_layer_params=fc_layer_params)
-
-        critic_network = QNetwork(obs_spec, action_spec, \
-            fc_layer_params=fc_layer_params)
 
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
-            actor_network=actor_network,
-            critic_network=critic_network,
+            q_network=q_network,
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,
@@ -195,22 +266,28 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
 
         fc_layer_params = (10, 10)
 
-        actor_network = ActorDistributionNetwork(
-            obs_spec, action_spec, fc_layer_params=fc_layer_params)
+        continuous_projection_net_ctor = functools.partial(
+            alf.networks.NormalProjectionNetwork,
+            state_dependent_std=True,
+            scale_distribution=True,
+            std_transform=clipped_exp)
 
-        critic_network = CriticNetwork(
-            input_tensor_spec=(obs_spec, action_spec),
-            action_input_processors=[
-                EmbeddingPreprocessor(action_spec[0], embedding_dim=4), None
-            ],
-            action_preprocessing_combiner=NestConcat(),
-            joint_fc_layer_params=fc_layer_params)
+        actor_network = ActorDistributionNetwork(
+            obs_spec,
+            action_spec[1],
+            fc_layer_params=fc_layer_params,
+            continuous_projection_net_ctor=continuous_projection_net_ctor)
+
+        q_network = QNetwork((obs_spec, action_spec[1]),
+                             action_spec[0],
+                             preprocessing_combiner=NestConcat(),
+                             fc_layer_params=fc_layer_params)
 
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
             actor_network=actor_network,
-            critic_network=critic_network,
+            q_network=q_network,
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,

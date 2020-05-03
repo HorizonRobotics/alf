@@ -114,20 +114,14 @@ unbiased estimator of :math:`\frac{\partial H(p)}{\partial\theta}` if
 Scenario 2: SAC discrete actor training with a ``CriticNetwork``
 ----------------------------------------------------------------
 
-Usually if we have a discrete action in SAC, we would choose ``QNetwork`` as its
-critic network. Suppose that there are a total number of :math:`K` actions, then
+Usually if we have a discrete action in SAC, we would choose ``QNetwork`` to
+estimate Q values. Suppose that there are a total number of :math:`K` actions, then
 the ``QNetwork`` will output :math:`K` heads given an observation :math:`s`,
 each of which represents the Q-value :math:`Q(s,k)`.
 
-However, there are at least two scenarios that a ``QNetwork`` might not be a good
-choice:
-
-- If :math:`K` is really large.
-- If SAC has a mixed policy of both continuous and discrete actions.
-
-In either case, we can use ``CriticNetwork`` instead, which takes both the
-observation :math:`s` and actions :math:`(a_1,a_2,\ldots)` (after proper
-encodings) and outputs a single value representing :math:`Q(s,(a_1,a_2,\ldots))`.
+Theoretically, we can also use ``CriticNetwork``, which takes both an
+observation :math:`s` and an action :math:`k` (after proper encoding) and
+outputs a single value representing :math:`Q(s,k)`.
 
 With a ``CriticNetwork`` in the actor training stage, for continuous actions,
 the original `SAC paper <https://arxiv.org/abs/1801.01290>`_ already derives the
@@ -165,3 +159,16 @@ which means that :math:`\frac{\partial\log
 p_{\theta}(k|s)}{\partial\theta}(\alpha \log p_{\theta}(k|s) - Q(s,k))` is an
 unbiased estimator of the actor training gradient :math:`\frac{\partial
 L_{\theta}}{\partial \theta}`.
+
+.. note::
+
+    Although the above is theoretically sound, in practice fitting an actor
+    :math:`p_{\theta}(k|s)` to Q values :math:`Q(s,k)` is inefficient. Actually in
+    the discrete case, we can directly sample actions given Q values:
+
+    .. math::
+
+        p(k|s) \propto \exp(\frac{Q(s,k)}{\alpha})
+
+    So usually we will still choose ``QNetwork`` because it enables the above
+    sampling while ``CriticNetwork`` doesn't.

@@ -118,6 +118,7 @@ def add_n(inputs):
     Returns:
         the elementwise sum of all the tensors in `inputs`
     """
+    assert isinstance(inputs, list)
     ret = inputs[0]
     inputs = inputs[1:]
     for x in inputs:
@@ -204,7 +205,7 @@ class Softsign_(torch.autograd.Function):
     r"""Inplace version of softsign function.
 
     Applies element-wise inplace, the function :math:`\text{SoftSign}(x) = \frac{x}{1 + |x|}`
-    
+
     The `current pytorch implementation of softsign
     <https://pytorch.org/docs/stable/_modules/torch/nn/functional.html#softsign>`_
     is inefficient for backward because it relies on automatic differentiation
@@ -235,7 +236,7 @@ class Softsign(torch.autograd.Function):
     r"""Softsign function.
 
     Applies element-wise, the function :math:`\text{SoftSign}(x) = \frac{x}{1 + |x|}`
-    
+
     Compared to ``Softsign_``, this uses more memory but is faster and has higher precision
     for backward.
     """

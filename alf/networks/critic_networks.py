@@ -46,6 +46,10 @@ def _check_action_specs_for_critic_networks(
                 'Alternatively, specify `action_input_processors` to transform '
                 + 'discrete actions to continuous action embeddings first.')
 
+    if action_input_processors is None:
+        action_input_processors = nest.map_structure(lambda _: None,
+                                                     action_spec)
+
     nest.map_structure(_check_individual, action_spec, action_input_processors)
 
 
