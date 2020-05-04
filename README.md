@@ -23,6 +23,10 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 
 ## Installation
 
+Install python3.6 or above.
+sudo apt-get update
+sudo apt-get install xvfb
+
 You can run the following commands to install ALF
 ```
 git clone https://github.com/HorizonRobotics/alf
@@ -109,3 +113,14 @@ python -m alf.bin.play --root_dir=LOG_DIR
 * [Playground with a red ball](alf/examples/misc_playground.gin) and [with two balls, a red ball and a blue ball](alf/examples/misc_playground_two_balls.gin).  The agent learns to interact with the objects via the MI-based internal drive.
 
   <img src="alf/examples/misc_playground.gif" width = "300" alt="Playground with a red ball"/> <img src="alf/examples/misc_playground_two_balls.gif" width = "300" alt="Playground with two balls"/>
+
+
+## Common Problems:
+If you see
+```bash
+pyglet.canvas.xlib.NoSuchDisplayException: Cannot connect to "None"
+```
+run
+```bash
+export DISPLAY=:0
+```

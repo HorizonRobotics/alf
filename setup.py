@@ -20,6 +20,7 @@ setup(
     install_requires=[
         'atari_py == 0.1.7',
         'fasteners',
+        'gin-config',
         'gym == 0.12.5',
         'matplotlib',
         'numpy',
