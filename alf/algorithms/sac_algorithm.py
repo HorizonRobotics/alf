@@ -202,7 +202,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._use_parallel_network = use_parallel_network
 
-        critic_networks = self._make_parallel_critic_networks(
+        critic_networks, self._act_type = self._make_critic_networks(
             observation_spec, action_spec, actor_network, critic_network,
             q_network)
 
@@ -217,7 +217,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                    else actor_network.state_spec),
                     critic=(() if self._act_type == ActionType.Continuous else
                             critic_networks.state_spec)),
-                actor=(() if self._act_type == ActionType.Discrete else
+                actor=(() if self._act_type != ActionType.Continuous else
                        critic_networks.state_spec),
                 critic=SacCriticState(
                     critics=critic_networks.state_spec,
@@ -261,9 +261,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
-    def _make_parallel_critic_networks(self, observation_spec, action_spec,
-                                       continuous_actor_network,
-                                       critic_network, q_network):
+    def _make_critic_networks(self, observation_spec, action_spec,
+                              continuous_actor_network, critic_network,
+                              q_network):
         def _make_parallel(net):
             if self._use_parallel_network:
                 nets = net.make_parallel(self._num_critic_replicas)
@@ -300,7 +300,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             _check_spec_equal(continuous_action_spec,
                               continuous_actor_network._action_spec)
             if not discrete_action_spec:
-                self._act_type = ActionType.Continuous
+                act_type = ActionType.Continuous
                 assert critic_network is not None, (
                     "If only continuous actions exist, then a CriticNetwork must"
                     " be provided!")
@@ -312,7 +312,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic_networks = _make_parallel(critic_network)
 
         if discrete_action_spec:
-            self._act_type = ActionType.Discrete
+            act_type = ActionType.Discrete
             assert len(discrete_action_spec) == 1, (
                 "Only support at most one discrete action currently! "
                 "Discrete action spec: {}".format(discrete_action_spec))
@@ -323,7 +323,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 common.warning_once(
                     "The provided CriticNetwork will be ignored.")
             if continuous_action_spec:
-                self._act_type = ActionType.Mixed
+                act_type = ActionType.Mixed
                 assert (
                     isinstance(q_network.input_tensor_spec, tuple)
                     and len(q_network.input_tensor_spec) == 2
@@ -335,7 +335,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                                   continuous_action_spec)
             critic_networks = _make_parallel(q_network)
 
-        return critic_networks
+        return critic_networks, act_type
 
     def _predict_action(self,
                         observation,
@@ -364,12 +364,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type == ActionType.Mixed:
             critic_network_inputs = (observation, continuous_action)
 
+        q_values = None
         if self._act_type != ActionType.Continuous:
             q_values, critic_state = self._critic_networks(
                 critic_network_inputs, state=state.critic)
             new_state._replace(critic=critic_state)
             alpha = torch.exp(self._log_alpha)
-            # p(a|s) = exp(Q(s,a)/alpha) / Z
+            # p(a|s) = exp(Q(s,a)/alpha) / Z;
+            # the discrete distribution will never be trained, so we detach the
+            # logits here.
             logits = (q_values.min(dim=1)[0] / alpha[0]).detach()
             discrete_action_dist = td.Categorical(logits=logits)
             if eps_greedy_sampling:
@@ -380,9 +383,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     discrete_action_dist)
 
         if self._act_type == ActionType.Mixed:
+            # Note that in this case ``action_dist`` is not the valid joint
+            # action distribution because ``discrete_action_dist`` is conditioned
+            # on a particular continuous action sampled above. So DO NOT use this
+            # ``action_dist`` to directly sample an action pair anywhere else!
+            # However, for computing the log probability of *this* sampled
+            # ``action``, it's still valid. It can also be used for summary
+            # purpose because of the expectation taken over the continuous action
+            # when summarizing.
             action_dist = type(self._action_spec)((discrete_action_dist,
                                                    continuous_action_dist))
-            action = type(action_dist)((discrete_action, continuous_action))
+            action = type(self._action_spec)((discrete_action,
+                                              continuous_action))
         elif self._act_type == ActionType.Discrete:
             action_dist = discrete_action_dist
             action = discrete_action
@@ -390,13 +402,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_dist = continuous_action_dist
             action = continuous_action
 
-        return action_dist, action, new_state
+        return action_dist, action, q_values, new_state
 
     def predict_step(self,
                      time_step: TimeStep,
                      state: SacState,
                      epsilon_greedy=1.0):
-        action_dist, action, action_state = self._predict_action(
+        action_dist, action, _, action_state = self._predict_action(
             time_step.observation,
             state=state.action,
             epsilon_greedy=epsilon_greedy,
@@ -424,13 +436,18 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critics, critics_state = critic_net(observation, state=critics_state)
         return critics, critics_state
 
-    def _actor_train_step(self, exp: Experience, state, action, log_pi_sum):
+    def _actor_train_step(self, exp: Experience, state, action, critics,
+                          log_pi):
         if self._act_type == ActionType.Discrete:
-            # Pure discrete case doesn't need learn an actor network
+            # Pure discrete case doesn't need to learn an actor network
             return (), ()
 
-        critics, critics_state = self._compute_critics(
-            self._critic_networks, exp.observation, action, state)
+        if self._act_type == ActionType.Continuous:
+            critics, critics_state = self._compute_critics(
+                self._critic_networks, exp.observation, action, state)
+        else:
+            # use the provided critics for discrete/mixed
+            critics_state = ()
 
         if self._act_type == ActionType.Mixed:
             # pick values according to discrete actions
@@ -458,7 +475,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         alpha = torch.exp(self._log_alpha).detach()
         actor_loss = (
-            math_ops.add_n(nest.flatten(actor_loss)) + alpha * log_pi_sum)
+            math_ops.add_n(nest.flatten(actor_loss)) + alpha * log_pi)
 
         return critics_state, actor_loss
 
@@ -476,7 +493,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return q_values.gather(-1, action)
 
     def _critic_train_step(self, exp: Experience, state: SacCriticState,
-                           action, log_pi_sum):
+                           action, log_pi):
         critics, critics_state = self._compute_critics(
             self._critic_networks, exp.observation, exp.action, state.critics)
 
@@ -491,8 +508,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critics = self._select_q_value(exp.action[0], critics)
             target_critics = self._select_q_value(action[0], target_critics)
 
-        target_critic = target_critics.min(dim=1)[0].reshape(log_pi_sum.shape) - \
-                         (torch.exp(self._log_alpha) * log_pi_sum)
+        target_critic = target_critics.min(dim=1)[0].reshape(log_pi.shape) - \
+                         (torch.exp(self._log_alpha) * log_pi)
 
         critics = critics.squeeze(-1)
         target_critic = target_critic.squeeze(-1).detach()
@@ -503,24 +520,24 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         return state, info
 
-    def _alpha_train_step(self, log_pi_sum):
+    def _alpha_train_step(self, log_pi):
         alpha_loss = self._log_alpha * (
-            -log_pi_sum - self._target_entropy).detach()
+            -log_pi - self._target_entropy).detach()
         return alpha_loss
 
     def train_step(self, exp: Experience, state: SacState):
-        (action_distribution, action, action_state) = self._predict_action(
-            exp.observation, state=state.action)
+        (action_distribution, action, critics,
+         action_state) = self._predict_action(
+             exp.observation, state=state.action)
 
-        log_pi = nest.map_structure(dist_utils.compute_log_probability,
-                                    action_distribution, action)
-        log_pi_sum = math_ops.add_n(nest.flatten(log_pi))
+        log_pi = dist_utils.compute_log_probability(action_distribution,
+                                                    action)
 
         actor_state, actor_loss = self._actor_train_step(
-            exp, state.actor, action, log_pi_sum)
+            exp, state.actor, action, critics, log_pi)
         critic_state, critic_info = self._critic_train_step(
-            exp, state.critic, action, log_pi_sum)
-        alpha_loss = self._alpha_train_step(log_pi_sum)
+            exp, state.critic, action, log_pi)
+        alpha_loss = self._alpha_train_step(log_pi)
 
         state = SacState(
             action=action_state, actor=actor_state, critic=critic_state)

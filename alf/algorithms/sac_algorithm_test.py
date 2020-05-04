@@ -70,6 +70,8 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             action_spec=discrete_action_spec,
             q_network=q_network)
         self.assertEqual(sac._act_type, SacActionType.Discrete)
+        self.assertEqual(sac.train_state_spec.actor, ())
+        self.assertEqual(sac.train_state_spec.action.actor_network, ())
 
         # critic_network instead of q_network is needed
         self.assertRaises(
@@ -85,6 +87,7 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             actor_network=actor_network,
             critic_network=critic_network)
         self.assertEqual(sac._act_type, SacActionType.Continuous)
+        self.assertEqual(sac.train_state_spec.action.critic, ())
 
         # action_spec order is incorrect
         self.assertRaises(
@@ -109,6 +112,7 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             actor_network=actor_network,
             q_network=universal_q_network)
         self.assertEqual(sac._act_type, SacActionType.Mixed)
+        self.assertEqual(sac.train_state_spec.actor, ())
 
 
 class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
