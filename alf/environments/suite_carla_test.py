@@ -14,22 +14,19 @@
 
 from absl import flags
 from absl import logging
-from absl.testing import parameterized
-import functools
 import gin
 import pprint
 import sys
 import torch
 
 import alf
-from alf.environments import gym_wrappers, suite_carla, torch_environment
-from alf.environments import parallel_torch_environment, thread_torch_environment
+from alf.environments import suite_carla
 
 flags.DEFINE_bool('manual', False, "Manual control")
 FLAGS = flags.FLAGS
 
 
-class SuiteCarlaTest(parameterized.TestCase, alf.test.TestCase):
+class SuiteCarlaTest(alf.test.TestCase):
     def setUp(self):
         super().setUp()
         if not suite_carla.is_available():
@@ -48,8 +45,7 @@ class SuiteCarlaTest(parameterized.TestCase, alf.test.TestCase):
         action_spec = env.action_spec()
 
         try:
-            manual_action = None
-            for i in range(10):
+            for _ in range(10):
                 action = action_spec.sample([env.batch_size])
                 logging.info("action: %s" % action)
                 action[:, 2] = 0
@@ -138,7 +134,7 @@ def play(env):
                 steer += steer_increment
         steer = min(0.7, max(-0.7, steer))
         action[:, STEER] = steer
-        time_step = env.step(action)
+        env.step(action)
         env.render("human")
 
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 """CarlaEnvironment suite.
 
-To use this, there two ways:
+To use this, there are two ways:
 
 1. Run the code within docker image horizonrobotics/alf:0.0.3-carla
    Both `Docker <https://docs.docker.com/engine/install/ubuntu/>`_ and
@@ -79,9 +79,9 @@ class SensorBase(abc.ABC):
         self._parent = parent_actor
 
     def destroy(self):
-        """The the commands for destroying this sensor..
+        """Return the the commands for destroying this sensor.
 
-        Use carla.Client.apply_batch_sync() to actually destroy the sensor.
+        Use ``carla.Client.apply_batch_sync()`` to actually destroy the sensor.
 
         Returns:
             list[carla.command]: the commands used to destroy the sensor.
@@ -99,8 +99,8 @@ class SensorBase(abc.ABC):
         Args:
             current_frame (int): current frame no. For some sensors, they may
                 not receive any data in the most recent tick. ``current_frame``
-                will be compared against the frame no of the last received data
-                to make sure no data is correctly interpretted.
+                will be compared against the frame no. of the last received data
+                to make sure that the data is correctly interpretted.
         Returns:
             nested np.ndarray: sensor data received in the last tick.
         """
@@ -123,10 +123,13 @@ class SensorBase(abc.ABC):
         """
 
 
+@gin.configurable
 class CollisionSensor(SensorBase):
     """CollisionSensor for getting collision signal.
 
     It get the impulses from the collisions during the last tick.
+
+    TODO: include event.other_actor in the sensor result.
     """
 
     def __init__(self, parent_actor, max_num_collisions=4):
@@ -176,6 +179,20 @@ class CollisionSensor(SensorBase):
             (self._max_num_collisions, self._max_num_collisions))
 
     def get_current_observation(self, current_frame):
+        """Get the current observation.
+
+        Args:
+            current_frame (int): current frame no. CollisionSensor may not
+                not receive any data in the most recent tick. ``current_frame``
+                will be compared against the frame no. of the last received data
+                to make sure that the data is correctly interpretted.
+        Returns:
+            np.ndarray: Impulses from collision during the last tick. Each
+                impulse is a 3-D vector. At most ``max_num_collisions``
+                collisions are used. The result is padded with zeros if there
+                are less than ``max_num_collisions`` collisions
+
+        """
         if current_frame == self._frame:
             impulses = np.array(self._collisions, dtype=np.float32)
             n = len(self._collisions)
@@ -199,7 +216,7 @@ class LaneInvasionSensor(SensorBase):
     """LaneInvasionSensor for detecting lane invasion.
 
     Lane invasion cannot be directly observed by raw sensors used by real cars.
-    So main purpose of this is to provide training signla (e.g. reward).
+    So main purpose of this is to provide training signal (e.g. reward).
 
     TODO: not completed.
     """
@@ -282,6 +299,13 @@ class GnssSensor(SensorBase):
         return "A vector of [latitude (degrees), longitude (degrees), altitude (meters to be confirmed)]"
 
     def get_current_observation(self, current_frame):
+        """
+        Args:
+            current_frame (int): not used
+        Returns:
+            np.ndarray: A vector of [latitude (degrees), longitude (degrees),
+                altitude (meters to be confirmed)]
+        """
         return self._gps_location
 
 
@@ -342,10 +366,15 @@ class IMUSensor(SensorBase):
 # ==============================================================================
 # -- RadarSensor ---------------------------------------------------------------
 # ==============================================================================
+@gin.configurable
 class RadarSensor(SensorBase):
     """RadarSensor for detecting obstacles."""
 
-    def __init__(self, parent_actor, max_num_detections=200):
+    def __init__(self,
+                 parent_actor,
+                 xyz=(2.8, 0., 1.0),
+                 pyr=(5., 0., 0.),
+                 max_num_detections=200):
         """
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor.
@@ -361,8 +390,7 @@ class RadarSensor(SensorBase):
         bp.set_attribute('vertical_fov', str(20))
         self._sensor = world.spawn_actor(
             bp,
-            carla.Transform(
-                carla.Location(x=2.8, z=1.0), carla.Rotation(pitch=5)),
+            carla.Transform(carla.Location(*xyz), carla.Rotation(*pyr)),
             attach_to=self._parent)
         # We need a weak reference to self to avoid circular reference.
         weak_self = weakref.ref(self)
@@ -405,8 +433,21 @@ class RadarSensor(SensorBase):
             "angle of the detection in radians, and depth id the distance from "
             "the sensor to the detection in meters.")
 
-    @property
     def get_current_observation(self, current_frame):
+        """
+        Args:
+            current_frame (int): current frame no. RadarSensor may not receive
+                any data in the most recent tick. ``current_frame`` will be
+                compared against the frame no. of the last received data to make
+                sure that the data is correctly interpretted.
+        Returns:
+            np.ndarray: A set of detected points. Each detected point is a 4-D
+                vector of [vel, altitude, azimuth, depth], where vel is the
+                velocity of the detected object towards the sensor in m/s,
+                altitude is the altitude angle of the detection in radians,
+                azimuth is the azimuth angle of the detection in radians, and
+                depth id the distance from the sensor to the detection in meters.
+        """
         if current_frame == self._frame:
             return self._detected_points
         else:
@@ -440,6 +481,7 @@ def geo_distance(loc1, loc2):
 # ==============================================================================
 # -- CameraSensor -------------------------------------------------------------
 # ==============================================================================
+@gin.configurable
 class CameraSensor(SensorBase):
     """CameraSensor."""
 
@@ -465,7 +507,7 @@ class CameraSensor(SensorBase):
                 the object follow its parent position strictly. 'spring_arm':
                 the object expands or retracts depending on camera situation.
             xyz (tuple[float]): the attachment positition (x, y, z) relative to the parent_actor.
-            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll).
+            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in degrees.
             fov (str): horizontal field of view in degrees.
             image_size_x (int): image width in pixels.
             image_size_t (int): image height in pixels.
@@ -526,6 +568,11 @@ class CameraSensor(SensorBase):
                                dtype=np.uint8)
 
     def render(self, display):
+        """Render the camera image to a pygame display.
+
+        Args:
+            display (pygame.Surface): the display surface to draw the image
+        """
         if self._image is not None:
             import pygame
             surface = pygame.surfarray.make_surface(
@@ -564,6 +611,13 @@ class CameraSensor(SensorBase):
         return self._observation_spec
 
     def get_current_observation(self, current_frame):
+        """
+        Args:
+            current_frame (int): not used.
+        Returns:
+            np.ndarray: The shape is [num_channels, image_size_y, image_size_x],
+                where num_channels is 3 for rgb sensor, and 1 for other sensors.
+        """
         return self._image
 
 
@@ -597,10 +651,7 @@ class World(object):
 
 
 class Player(object):
-    """Player.
-
-    Player is a vehicle with some sensors.
-    """
+    """Player is a vehicle with some sensors."""
 
     def __init__(self,
                  actor,
@@ -625,6 +676,7 @@ class Player(object):
         self._imu_sensor = IMUSensor(actor)
         self._camera_sensor = CameraSensor(actor)
         self._lane_invasion_sensor = LaneInvasionSensor(actor)
+        self._radar_sensor = RadarSensor(actor)
         self._success_reward = success_reward
         self._success_distance_thresh = success_distance_thresh
         self._min_speed = min_speed
@@ -635,7 +687,8 @@ class Player(object):
             'collision': self._collision_sensor,
             'gnss': self._gnss_sensor,
             'imu': self._imu_sensor,
-            'camera': self._camera_sensor
+            'camera': self._camera_sensor,
+            'radar': self._radar_sensor,
         }
 
         self._observation_spec = OrderedDict()
@@ -715,6 +768,11 @@ class Player(object):
     def action_spec(self):
         """Get the action spec.
 
+        The action is 4-D vector of [throttle, steer, brake, reverse], where
+        throttle is in [0.0, 1.0], steer is in [-1.0, 1.0], brake is in
+        [0.0, 1.0], and reverse is interpreted as a boolean value
+        with values greater than 0.5 corrsponding to True.
+
         Returns:
             nested BoundedTensorSpec:
         """
@@ -751,7 +809,7 @@ class Player(object):
         Args:
             current_frame (int): current simulation frame no.
         Returns:
-            TimeStep: all elements are nd.ndarray or np.number.
+            TimeStep: all elements are ``np.ndarray`` or ``np.number``.
         """
         obs = OrderedDict()
         for sensor_name, sensor in self._observation_sensors.items():
@@ -762,17 +820,19 @@ class Player(object):
             np.float32(v.x * v.x + v.y * v.y + v.z * v.z))
         self._current_distance = np.linalg.norm(obs['goal'])
         reward = 0.
+        discount = 1.0
         if self._fail_frame is None:
             step_type = ds.StepType.FIRST
             max_frames = math.ceil(
                 self._current_distance / self._min_speed / self._delta_seconds)
             self._fail_frame = current_frame + max_frames
         elif (self._current_distance < self._success_distance_thresh
-              and self._actor.get_velocity() == carla.Location()):
+              and self._actor.get_velocity() == carla.Location(0., 0., 0.)):
             # TODO: include waypoint orientation as success critiria
             self._done = True
             step_type = ds.StepType.LAST
             reward += self._success_reward
+            discount = 0.0
         elif current_frame >= self._fail_frame:
             self._done = True
             step_type = ds.StepType.LAST
@@ -784,7 +844,7 @@ class Player(object):
         self._current_time_step = ds.TimeStep(
             step_type=step_type,
             reward=np.float32(reward),
-            discount=np.float32(1.0),
+            discount=np.float32(discount),
             observation=obs,
             prev_action=self._prev_action)
         return self._current_time_step
@@ -792,7 +852,7 @@ class Player(object):
     def act(self, action):
         """Generate the carla command for taking the given action.
 
-        Use carla.Client.apply_batch_sync() to actually destroy the sensor.
+        Use ``carla.Client.apply_batch_sync()`` to actually destroy the sensor.
 
         Args:
             action (nested np.ndarray):
@@ -815,10 +875,11 @@ class Player(object):
 
         Args:
             mode (str): one of ['rgb', 'human']
-        Returns
-            None: if mode is 'human'
-            np.ndarray: the image of shape [height, width, channeles] if mode is
-                'rgb'
+        Returns:
+            one of the following:
+                - None: if mode is 'human'
+                - np.ndarray: the image of shape [height, width, channeles] if
+                    mode is 'rgb'
         """
         if mode == 'human':
             import pygame
@@ -893,7 +954,7 @@ class CarlaServer(object):
                  docker_image="horizonrobotics/alf:0.0.3-carla",
                  quality_level="Low",
                  carla_root="/home/carla"):
-        """Start a Carla server.
+        """
 
         Args:
             rpc_port (int): port for RPC
@@ -907,7 +968,7 @@ class CarlaServer(object):
                 value is correct for using docker image. If not using docker
                 image, make sure you provide the correct path. This is the directory
                 where you unzipped the file you downloaded from
-                https://github.com/carla-simulator/carla/releases/tag/0.9.9.
+                `<https://github.com/carla-simulator/carla/releases/tag/0.9.9>`_.
         """
         assert quality_level in ['Low', 'Epic'], "Unknown quality level"
         if docker_image:
@@ -1120,6 +1181,11 @@ class CarlaEnvironment(TorchEnvironment):
 
     @property
     def players(self):
+        """Get all the players in the environment.
+
+        Returns:
+             list[Player]:
+        """
         return self._players
 
     def render(self, mode):
@@ -1151,13 +1217,17 @@ class CarlaEnvironment(TorchEnvironment):
         return self._get_current_time_step()
 
 
-def load(map_name, num_vehicles):
+@gin.configurable(whitelist=[])
+def load(map_name, batch_size):
     """Load CaraEnvironment
 
     Args:
         map_name (str): name of the map. Currently available maps are:
             'Town01, Town02', 'Town03', 'Town04', 'Town05', 'Town06', 'Town07',
             and 'Town10HD'
-        num_vehicles (int): the number of vehicles in the simulation.
+        batch_size (int): the number of vehicles in the simulation.
     """
-    return CarlaEnvironment(num_vehicles, map_name)
+    return CarlaEnvironment(batch_size, map_name)
+
+
+load.batched = True
