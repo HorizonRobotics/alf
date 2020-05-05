@@ -44,20 +44,17 @@ class SuiteCarlaTest(alf.test.TestCase):
         logging.info("action_desc: %s" % pprint.pformat(env.action_desc()))
         action_spec = env.action_spec()
 
-        try:
+        for _ in range(10):
+            action = action_spec.sample([env.batch_size])
+            logging.info("action: %s" % action)
+            action[:, 2] = 0
             for _ in range(10):
-                action = action_spec.sample([env.batch_size])
-                logging.info("action: %s" % action)
-                action[:, 2] = 0
-                for _ in range(10):
-                    time_step = env.step(action)
-                    logging.debug("goal: %s, gnss: %s reward=%s" %
-                                  (time_step.observation['goal'][0],
-                                   time_step.observation['gnss'][0],
-                                   float(time_step.reward[0])))
-
-        finally:
-            env.close()
+                time_step = env.step(action)
+                logging.debug("goal: %s, gnss: %s reward=%s" %
+                              (time_step.observation['goal'][0],
+                               time_step.observation['gnss'][0],
+                               float(time_step.reward[0])))
+        env.close()
 
 
 def play(env):
@@ -142,14 +139,11 @@ def main():
     FLAGS(sys.argv)
     if not FLAGS.manual:
         return False
-    env = None
-    try:
-        logging.set_verbosity(logging.INFO)
-        env = suite_carla.CarlaEnvironment(1, 'Town01')
-        play(env)
-    finally:
-        if env is not None:
-            env.close()
+
+    logging.set_verbosity(logging.INFO)
+    env = suite_carla.CarlaEnvironment(1, 'Town01')
+    play(env)
+    env.close()
     return True
 
 

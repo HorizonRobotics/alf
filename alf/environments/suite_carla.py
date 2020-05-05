@@ -79,7 +79,7 @@ class SensorBase(abc.ABC):
         self._parent = parent_actor
 
     def destroy(self):
-        """Return the the commands for destroying this sensor.
+        """Return the commands for destroying this sensor.
 
         Use ``carla.Client.apply_batch_sync()`` to actually destroy the sensor.
 
@@ -378,6 +378,10 @@ class RadarSensor(SensorBase):
         """
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor.
+            xyz (tuple[float]): the attachment positition (x, y, z) relative to
+                the parent_actor.
+            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
+                degrees.
             max_num_detections (int): maximal number of detection points.
         """
         super().__init__(parent_actor)
@@ -502,12 +506,15 @@ class CameraSensor(SensorBase):
         """
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor
-            sensor_type (str): 'sensor.camera.rgb', 'sensor.camera.depth', 'sensor.camera.semantic_segmentation'
+            sensor_type (str): 'sensor.camera.rgb', 'sensor.camera.depth',
+                'sensor.camera.semantic_segmentation'
             attachment_type (str): There are two types of attachement. 'rigid':
                 the object follow its parent position strictly. 'spring_arm':
                 the object expands or retracts depending on camera situation.
-            xyz (tuple[float]): the attachment positition (x, y, z) relative to the parent_actor.
-            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in degrees.
+            xyz (tuple[float]): the attachment positition (x, y, z) relative to
+                the parent_actor.
+            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
+                degrees.
             fov (str): horizontal field of view in degrees.
             image_size_x (int): image width in pixels.
             image_size_t (int): image height in pixels.
@@ -741,6 +748,7 @@ class Player(object):
         commands.extend(self._imu_sensor.destroy())
         commands.extend(self._camera_sensor.destroy())
         commands.extend(self._lane_invasion_sensor.destroy())
+        commands.extend(self._radar_sensor.destroy())
         commands.append(carla.command.DestroyActor(self._actor))
         if self._display is not None:
             import pygame
@@ -768,7 +776,7 @@ class Player(object):
     def action_spec(self):
         """Get the action spec.
 
-        The action is 4-D vector of [throttle, steer, brake, reverse], where
+        The action is a 4-D vector of [throttle, steer, brake, reverse], where
         throttle is in [0.0, 1.0], steer is in [-1.0, 1.0], brake is in
         [0.0, 1.0], and reverse is interpreted as a boolean value
         with values greater than 0.5 corrsponding to True.
@@ -945,6 +953,7 @@ def _exec(command):
     return ret
 
 
+@gin.configurable
 class CarlaServer(object):
     """CarlaServer for doing the simulation."""
 
@@ -984,7 +993,7 @@ class CarlaServer(object):
             assert os.path.exists(carla_root + "/CarlaUE4.sh"), (
                 "%s/CarlaUE4.sh "
                 "does not exist. Please provide correct value for `carla_root`"
-            )
+                % carla_root)
             # We do not use CarlaUE4.sh here in order to get the actual Carla
             # server processs that we can kill it.
             command = (
@@ -1022,8 +1031,14 @@ class CarlaServer(object):
             command = "docker kill %s" % self._container_id
             logging.info("Stopping Carla server: %s" % command)
             _exec(command)
+            self._container_id = None
         if self._process:
             self._process.kill()
+            self._process.communicate()
+            self._process = None
+
+    def __del__(self):
+        self.stop()
 
 
 @gin.configurable
@@ -1148,12 +1163,14 @@ class CarlaEnvironment(TorchEnvironment):
     def _clear(self):
         if self._world is None:
             return
-        commands = []
-        for player in self._players:
-            commands.extend(player.destroy())
-        for response in self._client.apply_batch_sync(commands, True):
-            if response.error:
-                logging.error(response.error)
+        if self._players:
+            commands = []
+            for player in self._players:
+                commands.extend(player.destroy())
+            for response in self._client.apply_batch_sync(commands, True):
+                if response.error:
+                    logging.error(response.error)
+            self._players.clear()
 
     @property
     def batched(self):
@@ -1178,6 +1195,9 @@ class CarlaEnvironment(TorchEnvironment):
     def close(self):
         self._clear()
         self._server.stop()
+
+    def __del__(self):
+        self.close()
 
     @property
     def players(self):
