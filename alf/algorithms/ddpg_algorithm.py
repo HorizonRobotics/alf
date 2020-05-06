@@ -30,6 +30,7 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep
 from alf.nest import nest
+import alf.nest.utils as nest_utils
 from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, spec_utils
@@ -232,9 +233,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             (exp.observation, action), state=state.critics)
         q_value = q_values.min(dim=1)[0]
 
-        dqda = nest.pack_sequence_as(
-            action,
-            list(torch.autograd.grad(q_value.sum(), nest.flatten(action))))
+        dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:

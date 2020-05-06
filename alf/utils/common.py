@@ -381,7 +381,7 @@ def _markdownify_gin_config_str(string, description=''):
 
 
 @gin.configurable
-class ObservationNormalizer(object):
+class ObservationNormalizer(nn.Module):
     def __init__(self,
                  observation_spec,
                  clipping=0.,
@@ -404,6 +404,7 @@ class ObservationNormalizer(object):
             mode (str): a value in ["adaptive", "window", "em"] indicates which
                 normalizer to use.
         """
+        super().__init__()
         self._clipping = float(clipping)
         if mode == "adaptive":
             self._normalizer = AdaptiveNormalizer(
@@ -417,7 +418,7 @@ class ObservationNormalizer(object):
         else:
             raise ValueError("Unsupported mode: " + mode)
 
-    def __call__(self, observation):
+    def forward(self, observation):
         return self._normalizer.normalize(observation, self._clipping)
 
 

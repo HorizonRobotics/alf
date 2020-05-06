@@ -32,6 +32,7 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep
 from alf.nest import nest
+import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
 from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
@@ -47,6 +48,8 @@ SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
 SacState = namedtuple("SacState", ["action", "actor", "critic"])
 
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
+
+SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss", "entropy"])
 
 SacInfo = namedtuple(
     "SacInfo", ["action_distribution", "actor", "critic", "alpha"],
@@ -456,13 +459,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         target_q_value = critics.min(dim=1)[0]
 
-        dqda = nest.pack_sequence_as(
-            action,
-            list(
-                torch.autograd.grad(
-                    target_q_value.sum(),
-                    nest.flatten(action),
-                )))
+        dqda = nest_utils.grad(action, target_q_value.sum())
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
@@ -523,7 +520,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _alpha_train_step(self, log_pi):
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
-        return alpha_loss
+        return SacAlphaInfo(loss=alpha_loss, entropy=-log_pi)
 
     def train_step(self, exp: Experience, state: SacState):
         (action_distribution, action, critics,
@@ -537,7 +534,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             exp, state.actor, action, critics, log_pi)
         critic_state, critic_info = self._critic_train_step(
             exp, state.critic, action, log_pi)
-        alpha_loss = self._alpha_train_step(log_pi)
+        alpha_info = self._alpha_train_step(log_pi)
 
         state = SacState(
             action=action_state, actor=actor_state, critic=critic_state)
@@ -545,7 +542,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_distribution=action_distribution,
             actor=actor_loss,
             critic=critic_info,
-            alpha=alpha_loss)
+            alpha=alpha_info)
         return AlgStep(action, state, info)
 
     def after_update(self, experience, train_info: SacInfo):
@@ -553,7 +550,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def calc_loss(self, experience, train_info: SacInfo):
         critic_loss = self._calc_critic_loss(experience, train_info)
-        alpha_loss = train_info.alpha
+        alpha_info = train_info.alpha
         actor_loss = train_info.actor
 
         if self._debug_summaries and alf.summary.should_record_summaries():
@@ -562,9 +559,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         return LossInfo(
             loss=math_ops.add_ignore_empty(actor_loss,
-                                           critic_loss.loss + alpha_loss),
+                                           critic_loss.loss + alpha_info.loss),
             extra=SacLossInfo(
-                actor=actor_loss, critic=critic_loss.extra, alpha=alpha_loss))
+                actor=actor_loss, critic=critic_loss.extra, alpha=alpha_info))
 
     def _calc_critic_loss(self, experience, train_info: SacInfo):
         critic_info = train_info.critic
