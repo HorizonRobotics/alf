@@ -1,5 +1,6 @@
 absl-py
 atari_py == 0.1.7
+carla
 fasteners
 gin-config
 gym==0.12.5
