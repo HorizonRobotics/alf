@@ -49,7 +49,8 @@ SacState = namedtuple("SacState", ["action", "actor", "critic"])
 
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
-SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss", "entropy"])
+SacActorInfo = namedtuple(
+    "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
     "SacInfo", ["action_distribution", "actor", "critic", "alpha"],
@@ -443,7 +444,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                           log_pi):
         if self._act_type == ActionType.Discrete:
             # Pure discrete case doesn't need to learn an actor network
-            return (), ()
+            return (), LossInfo(extra=SacActorInfo(neg_entropy=log_pi))
 
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
@@ -470,11 +471,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             return loss.sum(list(range(1, loss.ndim)))
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+        actor_loss = math_ops.add_n(nest.flatten(actor_loss))
         alpha = torch.exp(self._log_alpha).detach()
-        actor_loss = (
-            math_ops.add_n(nest.flatten(actor_loss)) + alpha * log_pi)
-
-        return critics_state, actor_loss
+        actor_info = LossInfo(
+            loss=actor_loss + alpha * log_pi,
+            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=log_pi))
+        return critics_state, actor_info
 
     def _select_q_value(self, action, q_values):
         """Use ``action`` to index and select Q values.
@@ -520,7 +522,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _alpha_train_step(self, log_pi):
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
-        return SacAlphaInfo(loss=alpha_loss, entropy=-log_pi)
+        return alpha_loss
 
     def train_step(self, exp: Experience, state: SacState):
         (action_distribution, action, critics,
@@ -534,7 +536,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             exp, state.actor, action, critics, log_pi)
         critic_state, critic_info = self._critic_train_step(
             exp, state.critic, action, log_pi)
-        alpha_info = self._alpha_train_step(log_pi)
+        alpha_loss = self._alpha_train_step(log_pi)
 
         state = SacState(
             action=action_state, actor=actor_state, critic=critic_state)
@@ -542,7 +544,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action_distribution=action_distribution,
             actor=actor_loss,
             critic=critic_info,
-            alpha=alpha_info)
+            alpha=alpha_loss)
         return AlgStep(action, state, info)
 
     def after_update(self, experience, train_info: SacInfo):
@@ -550,7 +552,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def calc_loss(self, experience, train_info: SacInfo):
         critic_loss = self._calc_critic_loss(experience, train_info)
-        alpha_info = train_info.alpha
+        alpha_loss = train_info.alpha
         actor_loss = train_info.actor
 
         if self._debug_summaries and alf.summary.should_record_summaries():
@@ -558,10 +560,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 alf.summary.scalar("alpha", self._log_alpha.exp())
 
         return LossInfo(
-            loss=math_ops.add_ignore_empty(actor_loss,
-                                           critic_loss.loss + alpha_info.loss),
+            loss=math_ops.add_ignore_empty(actor_loss.loss,
+                                           critic_loss.loss + alpha_loss),
             extra=SacLossInfo(
-                actor=actor_loss, critic=critic_loss.extra, alpha=alpha_info))
+                actor=actor_loss.extra,
+                critic=critic_loss.extra,
+                alpha=alpha_loss))
 
     def _calc_critic_loss(self, experience, train_info: SacInfo):
         critic_info = train_info.critic
