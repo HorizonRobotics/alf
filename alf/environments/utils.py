@@ -68,6 +68,10 @@ def create_environment(env_name='CartPole-v0',
     Args:
         env_name (str): env name
         env_load_fn (Callable) : callable that create an environment
+            If env_load_fn has attribute ``batched`` and it is True,
+            ``evn_load_fn(env_name, batch_size=num_parallel_environments)``
+            will be used to create the batched environment. Otherwise, a
+            ``ParallTorchEnvironment`` will be created.
         num_parallel_environments (int): num of parallel environments
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
@@ -75,6 +79,13 @@ def create_environment(env_name='CartPole-v0',
     Returns:
         TorchEnvironment:
     """
+
+    if hasattr(env_load_fn, 'batched') and env_load_fn.batched:
+        if nonparallel:
+            return env_load_fn(env_name, batch_size=1)
+        else:
+            return env_load_fn(env_name, batch_size=num_parallel_environments)
+
     if nonparallel:
         # Each time we can only create one unwrapped env at most
 
