@@ -20,13 +20,13 @@ import math
 import torch
 import torch.nn as nn
 
-from alf.networks import EncodingNetwork, LSTMEncodingNetwork
+from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
+from .preprocessors import PreprocessorNetwork
 import alf.layers as layers
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import math_ops, spec_utils
-from .network import PreprocessorNetwork
 
 
 @gin.configurable
