@@ -22,7 +22,7 @@ import torch.nn as nn
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.nest.utils import get_outer_rank
-from alf.networks.network import Network
+from alf.networks.network import Network, SingletonInstanceNetwork
 import alf.utils.math_ops as math_ops
 
 
@@ -131,28 +131,77 @@ class EmbeddingPreprocessor(InputPreprocessor):
         return (ret if self._input_tensor_spec.is_discrete else ret[0])
 
 
+@gin.configurable
+class SharedEmbeddingPreprocessor(InputPreprocessor, SingletonInstanceNetwork):
+    """An embedding preprocessor that can be shared by multiple networks.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 embedding_dim,
+                 conv_layer_params=None,
+                 fc_layer_params=None,
+                 activation=torch.relu_,
+                 last_activation=math_ops.identity,
+                 name="EmbeddingPreproc"):
+        """
+        Args:
+            input_tensor_spec (TensorSpec): the input spec
+            embedding_dim (int): output embedding size
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
+            fc_layer_params (tuple[int]): a tuple of integers representing FC
+                layer sizes.
+            activation (torch.nn.functional): activation applied to the embedding
+            last_activation (nn.functional): activation function of the
+                last layer specified by embedding_dim. ``math_ops.identity`` is
+                used by default.
+            name (str):
+        """
+        super().__init__(input_tensor_spec, name)
+        if input_tensor_spec.is_discrete:
+            assert isinstance(input_tensor_spec, BoundedTensorSpec)
+            N = input_tensor_spec.maximum - input_tensor_spec.minimum + 1
+            # use nn.Embedding to support a large dictionary
+            self._embedding_net = nn.Embedding(N, embedding_dim)
+        else:
+            # Only use an MLP for embedding a continuous input
+            self._embedding_net = alf.networks.EncodingNetwork(
+                input_tensor_spec=input_tensor_spec,
+                conv_layer_params=conv_layer_params,
+                fc_layer_params=fc_layer_params,
+                activation=activation,
+                last_layer_size=embedding_dim,
+                last_activation=last_activation)
+
+    def _preprocess(self, tensor):
+        assert get_outer_rank(tensor, self._input_tensor_spec) == 1, \
+            "Only supports one outer rank (batch dim)!"
+        ret = self._embedding_net(tensor)
+        # EncodingNetwork returns a pair
+        return (ret if self._input_tensor_spec.is_discrete else ret[0])
+
+
 class PreprocessorNetwork(Network):
     """A base class for networks with input processing need."""
 
     def __init__(self,
                  input_tensor_spec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  name="PreprocessorNetwork"):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then ``preprocessing_combiner`` must not
-                be None.
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
+                the input. If nested, then `preprocessing_combiner` must not be
+                None.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with `input_tensor_spec`. If any element is None, then
+                it will be treated as math_ops.identity. This arg is helpful if
+                you want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
@@ -176,22 +225,24 @@ class PreprocessorNetwork(Network):
                 # preprocessing. If it does change, then you should consider
                 # defining an `InputPreprocessor` instead.
                 return spec
-            self._input_preprocessor_modules.append(preproc)
             return preproc(spec)
 
         self._input_preprocessors = None
-        if input_preprocessor_ctors is not None:
-            input_preprocessor_ctors = alf.nest.pack_sequence_as(
-                input_tensor_spec, alf.nest.flatten(input_preprocessor_ctors))
-
-            # allow None as a placeholder in the nest
-            self._input_preprocessors = alf.nest.map_structure(
-                lambda preproc: math_ops.identity
-                if preproc is None else preproc(), input_preprocessor_ctors)
-
+        if input_preprocessors is not None:
             input_tensor_spec = alf.nest.map_structure(
-                _get_preprocessed_spec, self._input_preprocessors,
-                input_tensor_spec)
+                _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
+
+            def _return_or_copy_preprocessor(preproc):
+                if preproc is None:
+                    # allow None as a placeholder in the nest
+                    preproc = math_ops.identity
+                elif isinstance(preproc, InputPreprocessor):
+                    preproc = preproc.copy()
+                    self._input_preprocessor_modules.append(preproc)
+                return preproc
+
+            self._input_preprocessors = alf.nest.map_structure(
+                _return_or_copy_preprocessor, input_preprocessors)
 
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):

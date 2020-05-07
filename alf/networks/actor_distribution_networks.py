@@ -22,6 +22,7 @@ from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from .preprocessors import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
+from alf.networks.network import Network
 
 
 @gin.configurable
