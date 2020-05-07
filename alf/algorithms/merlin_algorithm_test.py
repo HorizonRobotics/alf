@@ -76,9 +76,9 @@ class MerlinAlgorithmTest(alf.test.TestCase):
         eval_env = RNNPolicyUnittestEnv(100, steps_per_episode, gap, obs_dim=3)
 
         algorithm = _create_merlin_algorithm(
-            env, learning_rate=1e-3, debug_summaries=False)
+            env, learning_rate=3e-3, debug_summaries=False)
 
-        for i in range(2000):
+        for i in range(500):
             algorithm.train_iter()
             if (i + 1) % 100 == 0:
                 eval_env.reset()
