@@ -15,8 +15,6 @@
 
 import torch
 
-import unittest
-
 import alf
 import alf.nest as nest
 from alf.data_structures import namedtuple
@@ -26,7 +24,7 @@ from alf.nest.utils import NestConcat, NestSum, transform_nest
 NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 
 
-class TestIsNested(unittest.TestCase):
+class TestIsNested(alf.test.TestCase):
     def test_is_nested(self):
         self.assertFalse(nest.is_nested(1))
         self.assertFalse(nest.is_nested(None))
@@ -36,7 +34,7 @@ class TestIsNested(unittest.TestCase):
         self.assertTrue(nest.is_nested(ntuple))
 
 
-class TestFlatten(unittest.TestCase):
+class TestFlatten(alf.test.TestCase):
     def test_flatten(self):
         ntuple = NTuple(a=1, b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=2)))
         expected_flat_seq = [1, 2, 3, 2]
@@ -44,7 +42,28 @@ class TestFlatten(unittest.TestCase):
         self.assertEqual(nest.flatten(1), [1])
 
 
-class TestAssertSameStructure(unittest.TestCase):
+class TestFlattenUpTo(alf.test.TestCase):
+    def test_flatten_up_to(self):
+        ntuple = NTuple(a=1, b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=2)))
+
+        shallow_nest = 1
+        self.assertEqual(nest.flatten_up_to(shallow_nest, ntuple), [ntuple])
+        shallow_nest = NTuple(a=1, b=2)
+        self.assertEqual(
+            nest.flatten_up_to(shallow_nest, ntuple), [1, ntuple.b])
+        shallow_nest = NTuple(a=1, b=NTuple(a=1, b=dict(x=3)))
+        self.assertEqual(
+            nest.flatten_up_to(shallow_nest, ntuple), [1, ntuple.b.a, 2])
+
+        shallow_nest = NTuple(a=dict(x=1), b=1)
+        self.assertRaises(AssertionError, nest.flatten_up_to, shallow_nest,
+                          ntuple)
+        shallow_nest = NTuple(a=1, b=NTuple(a=1, b=dict(y=3)))
+        self.assertRaises(AssertionError, nest.flatten_up_to, shallow_nest,
+                          ntuple)
+
+
+class TestAssertSameStructure(alf.test.TestCase):
     def test_assert_same_structure(self):
         nest.assert_same_structure(1.0, 10)
         nest1 = NTuple(
@@ -75,7 +94,7 @@ class TestAssertSameStructure(unittest.TestCase):
                           dict(x=1, y=dict(x=2)), dict(x=1, y=dict(x=3, y=1)))
 
 
-class TestMapStructure(unittest.TestCase):
+class TestMapStructure(alf.test.TestCase):
     def test_map_structure(self):
         nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
         nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
@@ -89,7 +108,7 @@ class TestMapStructure(unittest.TestCase):
         self.assertEqual(nest.map_structure(lambda a, b: a * b, 1, 3), 3)
 
 
-class TestFastMapStructure(unittest.TestCase):
+class TestFastMapStructure(alf.test.TestCase):
     def test_fast_map_structure(self):
         nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
         nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
@@ -104,7 +123,7 @@ class TestFastMapStructure(unittest.TestCase):
         self.assertEqual(nest.fast_map_structure(lambda a, b: a * b, 1, 3), 3)
 
 
-class TestMapStructureUpTo(unittest.TestCase):
+class TestMapStructureUpTo(alf.test.TestCase):
     def test_different_keys(self):
         self.assertRaises(AssertionError, nest.map_structure_up_to,
                           dict(x=1, z=2), lambda a, b: a * b, dict(x=1, y=2),
@@ -151,7 +170,7 @@ class TestMapStructureUpTo(unittest.TestCase):
         self.assertEqual(out, ab_tuple(a=6, b=15))
 
 
-class TestPackSequenceAs(unittest.TestCase):
+class TestPackSequenceAs(alf.test.TestCase):
     def test_pack_sequence_as(self):
         ntuple = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
         flat_seq = [30, 20, -1, 4]
@@ -161,7 +180,7 @@ class TestPackSequenceAs(unittest.TestCase):
         self.assertEqual(nest.pack_sequence_as(1, [1]), 1)
 
 
-class TestFindField(unittest.TestCase):
+class TestFindField(alf.test.TestCase):
     def test_find_field(self):
         ntuple = NTuple(a=1, b=NTuple(a=NTuple(a=2, b=3), b=2))
         ret = nest.find_field(ntuple, 'a')

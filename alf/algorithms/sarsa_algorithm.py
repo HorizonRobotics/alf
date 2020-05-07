@@ -31,6 +31,7 @@ from alf.data_structures import (AlgStep, Experience, experience_to_time_step,
 from alf.networks import Network
 from alf.utils import common, dist_utils, losses, math_ops, spec_utils, tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
+import alf.nest.utils as nest_utils
 
 SarsaState = namedtuple(
     'SarsaState', [
@@ -353,9 +354,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         critics, _ = self._critic_networks((time_step.observation, action),
                                            critic_states)
         critic = critics.min(dim=1)[0]
-        dqda = alf.nest.pack_sequence_as(
-            action, torch.autograd.grad(critic.sum(),
-                                        alf.nest.flatten(action)))
+        dqda = nest_utils.grad(action, critic.sum())
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:

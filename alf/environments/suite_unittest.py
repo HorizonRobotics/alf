@@ -45,19 +45,23 @@ class UnittestEnv(object):
             batch_size (int): The batch size expected for the actions and
                 observations.
             episode_length (int): length of each episode
-            action_type: ActionType
+            action_type (nest): ActionType
         """
         self._steps = 0
         self._episode_length = episode_length
         super(UnittestEnv, self).__init__()
         self._action_type = action_type
-        if action_type == ActionType.Discrete:
-            self._action_spec = BoundedTensorSpec(
-                shape=(1, ), dtype=torch.int64, minimum=0, maximum=1)
-        else:
-            self._action_spec = BoundedTensorSpec(
-                shape=(1, ), dtype=torch.float32, minimum=[0], maximum=[1])
 
+        def _create_action_spec(act_type):
+            if act_type == ActionType.Discrete:
+                return BoundedTensorSpec(
+                    shape=(), dtype=torch.int64, minimum=0, maximum=1)
+            else:
+                return BoundedTensorSpec(
+                    shape=(1, ), dtype=torch.float32, minimum=[0], maximum=[1])
+
+        self._action_spec = alf.nest.map_structure(_create_action_spec,
+                                                   action_type)
         self._observation_spec = TensorSpec(
             shape=(obs_dim, ), dtype=torch.float32)
         self._batch_size = batch_size
@@ -81,7 +85,8 @@ class UnittestEnv(object):
         self._steps = 0
         time_step = self._gen_time_step(0, None)
         self._current_time_step = time_step._replace(
-            prev_action=self._action_spec.zeros([self.batch_size]),
+            prev_action=alf.nest.map_structure(
+                lambda spec: spec.zeros([self.batch_size]), self._action_spec),
             env_id=torch.arange(self.batch_size, dtype=torch.int32))
         return self._current_time_step
 
@@ -161,11 +166,61 @@ class PolicyUnittestEnv(UnittestEnv):
             reward = torch.zeros(self.batch_size)
         else:
             prev_observation = self._current_time_step.observation
-            reward = 1.0 - torch.abs(prev_observation - action)
+            reward = 1.0 - torch.abs(prev_observation -
+                                     action.reshape(prev_observation.shape))
             reward = reward.reshape(self.batch_size)
 
         observation = torch.randint(
             0, 2, size=(self.batch_size, 1), dtype=torch.float32)
+
+        return TimeStep(
+            step_type=torch.full([self.batch_size],
+                                 step_type,
+                                 dtype=torch.int32),
+            reward=reward,
+            discount=torch.full([self.batch_size], discount),
+            observation=observation)
+
+
+class MixedPolicyUnittestEnv(UnittestEnv):
+    """Environment for testing a mixed policy.
+
+    Given the agent's `(discrete, continuous)` action pair ``(a_d, a_c)``, if
+    ``'a_d == (a_c > 0.5)``, the agent receives a reward of 1; otherwise it
+    receives 0.
+    """
+
+    def __init__(self, batch_size, episode_length, obs_dim=1):
+        """Initializes the environment.
+
+        Args:
+            batch_size (int): The batch size expected for the actions and
+                observations.
+            episode_length (int): length of each episode
+        """
+        super().__init__(
+            batch_size=batch_size,
+            episode_length=episode_length,
+            obs_dim=obs_dim,
+            action_type=[ActionType.Discrete, ActionType.Continuous])
+
+    def _gen_time_step(self, s, action):
+        step_type = StepType.MID
+        discount = 1.0
+        reward = torch.zeros(self.batch_size)
+
+        if s == 0:
+            step_type = StepType.FIRST
+        elif s == self._episode_length - 1:
+            step_type = StepType.LAST
+            discount = 0.0
+
+        if s > 0:
+            reward = (action[0] == (action[1].squeeze(-1) > 0.5).to(
+                torch.int64)).to(torch.float32)
+
+        observation = self._observation_spec.randn(
+            outer_dims=(self.batch_size, ))
 
         return TimeStep(
             step_type=torch.full([self.batch_size],
@@ -220,7 +275,8 @@ class RNNPolicyUnittestEnv(UnittestEnv):
             reward = torch.zeros(self.batch_size)
         else:
             obs0 = self._observation0[:, 0].reshape(self.batch_size, 1)
-            reward = 1.0 - 0.5 * torch.abs(2 * action - 1 - obs0)
+            reward = 1.0 - 0.5 * torch.abs(2 * action.reshape(obs0.shape) - 1 -
+                                           obs0)
             reward = reward.reshape(self.batch_size)
 
         if s == 0:

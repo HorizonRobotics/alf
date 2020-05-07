@@ -17,6 +17,7 @@ from absl import logging
 import numpy as np
 import gin
 import functools
+from enum import Enum
 
 import torch
 import torch.nn as nn
@@ -31,23 +32,25 @@ from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
 from alf.data_structures import AlgStep
 from alf.nest import nest
+import alf.nest.utils as nest_utils
 from alf.networks import ActorDistributionNetwork, CriticNetwork
+from alf.networks import QNetwork, QRNNNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops
 
-SacShareState = namedtuple("SacShareState", ["actor"])
+ActionType = Enum('ActionType', ('Discrete', 'Continuous', 'Mixed'))
 
-SacActorState = namedtuple("SacActorState", ["critics"])
+SacActionState = namedtuple(
+    "SacActionState", ["actor_network", "critic"], default_value=())
 
 SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
 
-SacState = namedtuple("SacState", ["share", "actor", "critic"])
-
-SacActorInfo = namedtuple("SacActorInfo", ["loss"])
+SacState = namedtuple("SacState", ["action", "actor", "critic"])
 
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
-SacAlphaInfo = namedtuple("SacAlphaInfo", ["loss"])
+SacActorInfo = namedtuple(
+    "SacActorInfo", ["actor_loss", "neg_entropy"], default_value=())
 
 SacInfo = namedtuple(
     "SacInfo", ["action_distribution", "actor", "critic", "alpha"],
@@ -82,7 +85,7 @@ def _set_target_entropy(name, target_entropy, flat_action_spec):
 
 @gin.configurable
 class SacAlgorithm(OffPolicyAlgorithm):
-    """Soft Actor Critic algorithm, described in:
+    r"""Soft Actor Critic algorithm, described in:
 
     ::
 
@@ -106,13 +109,35 @@ class SacAlgorithm(OffPolicyAlgorithm):
     ``tf_agents.agents.sac.sac_agent`` does not. We believe the correct
     implementation should mask out ``LAST`` steps. And this may make different
     performance on same tasks.
+
+    In addition to continuous actions addressed by the original paper, this
+    algorithm also supports discrete actions and a mixture of discrete and
+    continuous actions. The networks for computing Q values :math:`Q(s,a)` and
+    sampling acitons can be divided into 3 cases according to action types:
+
+    1. Discrete only: a ``QNetwork`` is used for estimating Q values. There will
+       be no actor network to learn because actions can be directly sampled from
+       the Q values: :math:`p(a|s) \propto \exp(\frac{Q(s,a)}{\alpha})`.
+    2. Continuous only: a ``CriticNetwork`` is used for estimating Q values. An
+       ``ActorDistributionNetwork`` for sampling actions will be learned according
+       to Q values.
+    3. Mixed: a ``QNetwork`` is used for estimating Q values. The input of this
+       particular ``QNetwork`` (dubbed as "Universal Q Network") is augmented
+       with all continuous actions as ``(observation, continuous_action)``,
+       while the output heads correspond to discrete actions. So a Q value
+       :math:`Q(s, a_{cont}, a_{disc}=k)` is estimated by the :math:`k`-th output
+       head of the network given :math:`a_{cont}` as the augmented input to
+       :math:`s`. Still only an ``ActorDistributionNetwork`` is needed for first
+       sampling continuous actions, and then a discrete action is sampled from Q
+       values conditioned on the continuous actions.
     """
 
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 actor_network: ActorDistributionNetwork,
-                 critic_network: CriticNetwork,
+                 actor_network: ActorDistributionNetwork = None,
+                 critic_network: CriticNetwork = None,
+                 q_network: QNetwork = None,
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
@@ -131,11 +156,21 @@ class SacAlgorithm(OffPolicyAlgorithm):
         """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
-            action_spec (nested BoundedTensorSpec): representing the actions.
-            actor_network (Network): The network will be called with
-                ``call(observation)``.
-            critic_network (Network): This network can be either a ``CriticNetwork``
-                or a ``QNetwork``.
+            action_spec (nested BoundedTensorSpec): representing the actions; can
+                be a mixture of discrete and continuous actions. The number of
+                continuous actions can be arbitrary while only one discrete
+                action is allowed currently. If it's a mixture, then it must be
+                a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
+            actor_network (ActorDistributionNetwork): The network will be called
+                to sample continuous actions. All of its output specs must be
+                continuous. Note that we don't need a discrete actor network
+                because a discrete action can simply be sampled from the Q values.
+            critic_network (CriticNetwork): used for estimating ``Q(s,a)`` given
+                that the action is continuous. Its input action spec must be
+                consistent with the continuous actions in ``action_spec``.
+            q_network (QNetwork): used for estimating ``Q(s,a)`` given that the
+                action is discrete. Its output spec must be consistent with
+                the discrete action in ``action_spec``.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             num_critic_replicas (int): number of critics to be used. Default is 2.
@@ -168,11 +203,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
-        if use_parallel_network:
-            critic_networks = critic_network.make_parallel(num_critic_replicas)
-        else:
-            critic_networks = alf.networks.NaiveParallelNetwork(
-                critic_network, num_critic_replicas)
+        self._num_critic_replicas = num_critic_replicas
+        self._use_parallel_network = use_parallel_network
+
+        critic_networks, self._act_type = self._make_critic_networks(
+            observation_spec, action_spec, actor_network, critic_network,
+            q_network)
 
         log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
 
@@ -180,8 +216,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation_spec,
             action_spec,
             train_state_spec=SacState(
-                share=SacShareState(actor=actor_network.state_spec),
-                actor=SacActorState(critics=critic_networks.state_spec),
+                action=SacActionState(
+                    actor_network=(() if self._act_type == ActionType.Discrete
+                                   else actor_network.state_spec),
+                    critic=(() if self._act_type == ActionType.Continuous else
+                            critic_networks.state_spec)),
+                actor=(() if self._act_type != ActionType.Continuous else
+                       critic_networks.state_spec),
                 critic=SacCriticState(
                     critics=critic_networks.state_spec,
                     target_critics=critic_networks.state_spec)),
@@ -200,7 +241,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._log_alpha = log_alpha
         self._actor_network = actor_network
         self._critic_networks = critic_networks
-        self._num_critic_replicas = num_critic_replicas
         self._target_critic_networks = self._critic_networks.copy(
             name='target_critic_networks')
 
@@ -214,12 +254,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._critic_losses.append(
                 critic_loss_ctor(name="critic_loss%d" % (i + 1)))
 
-        flat_action_spec = nest.flatten(self._action_spec)
-        self._flat_action_spec = flat_action_spec
+        self._target_entropy = _set_target_entropy(
+            self.name, target_entropy, nest.flatten(self._action_spec))
 
-        self._is_continuous = flat_action_spec[0].is_continuous
-        self._target_entropy = _set_target_entropy(self.name, target_entropy,
-                                                   flat_action_spec)
         self._dqda_clipping = dqda_clipping
 
         self._update_target = common.get_target_updater(
@@ -228,102 +265,247 @@ class SacAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
-    def _predict(self, time_step: TimeStep, state=None, epsilon_greedy=1.):
-        action_dist, state = self._actor_network(
-            time_step.observation, state=state.share.actor)
+    def _make_critic_networks(self, observation_spec, action_spec,
+                              continuous_actor_network, critic_network,
+                              q_network):
+        def _make_parallel(net):
+            if self._use_parallel_network:
+                nets = net.make_parallel(self._num_critic_replicas)
+            else:
+                nets = alf.networks.NaiveParallelNetwork(
+                    net, self._num_critic_replicas)
+            return nets
+
+        def _check_spec_equal(spec1, spec2):
+            assert nest.flatten(spec1) == nest.flatten(spec2), (
+                "Unmatched action specs: {} vs. {}".format(spec1, spec2))
+
+        discrete_action_spec = [
+            spec for spec in nest.flatten(action_spec) if spec.is_discrete
+        ]
+        continuous_action_spec = [
+            spec for spec in nest.flatten(action_spec) if spec.is_continuous
+        ]
+
+        if discrete_action_spec and continuous_action_spec:
+            # When there are both continuous and discrete actions, we require
+            # that acition_spec is a tuple/list ``(discrete, continuous)``.
+            assert (isinstance(
+                action_spec, (tuple, list)) and len(action_spec) == 2), (
+                    "In the mixed case, the action spec must be a tuple/list"
+                    " (discrete_action_spec, continuous_action_spec)!")
+            _check_spec_equal(action_spec[0], discrete_action_spec)
+            _check_spec_equal(action_spec[1], continuous_action_spec)
+
+        if continuous_action_spec:
+            assert continuous_actor_network is not None, (
+                "If there are continuous actions, then a ActorDistributionNetwork "
+                "must be provided for sampling continuous actions!")
+            _check_spec_equal(continuous_action_spec,
+                              continuous_actor_network._action_spec)
+            if not discrete_action_spec:
+                act_type = ActionType.Continuous
+                assert critic_network is not None, (
+                    "If only continuous actions exist, then a CriticNetwork must"
+                    " be provided!")
+                if q_network is not None:
+                    common.warning_once(
+                        "The provided QNetwork will be ignored.")
+                _check_spec_equal(continuous_action_spec,
+                                  critic_network.input_tensor_spec[1])
+                critic_networks = _make_parallel(critic_network)
+
+        if discrete_action_spec:
+            act_type = ActionType.Discrete
+            assert len(discrete_action_spec) == 1, (
+                "Only support at most one discrete action currently! "
+                "Discrete action spec: {}".format(discrete_action_spec))
+            assert q_network is not None, (
+                "If there exists a discrete action, then QNetwork must "
+                "be provided!")
+            if critic_network is not None:
+                common.warning_once(
+                    "The provided CriticNetwork will be ignored.")
+            if continuous_action_spec:
+                act_type = ActionType.Mixed
+                assert (
+                    isinstance(q_network.input_tensor_spec, tuple)
+                    and len(q_network.input_tensor_spec) == 2
+                ), ("In the mixed case, the input spec of QNetwork must be "
+                    "a tuple (observation_spec, continuous_action_spec)!")
+                _check_spec_equal(q_network.input_tensor_spec[0],
+                                  observation_spec)
+                _check_spec_equal(q_network.input_tensor_spec[1],
+                                  continuous_action_spec)
+            critic_networks = _make_parallel(q_network)
+
+        return critic_networks, act_type
+
+    def _predict_action(self,
+                        observation,
+                        state: SacActionState,
+                        epsilon_greedy=None,
+                        eps_greedy_sampling=False):
+        """The reason why we want to do action sampling inside this function
+        instead of outside is that for the mixed case, once a continuous action
+        is sampled here, we should pair it with the discrete action sampled from
+        the Q value. If we just return two distributions and sample outside, then
+        the actions will not match.
+        """
+        new_state = SacActionState()
+        if self._act_type != ActionType.Discrete:
+            continuous_action_dist, actor_network_state = self._actor_network(
+                observation, state=state.actor_network)
+            new_state._replace(actor_network=actor_network_state)
+            if eps_greedy_sampling:
+                continuous_action = dist_utils.epsilon_greedy_sample(
+                    continuous_action_dist, epsilon_greedy)
+            else:
+                continuous_action = dist_utils.rsample_action_distribution(
+                    continuous_action_dist)
+
+        critic_network_inputs = observation
+        if self._act_type == ActionType.Mixed:
+            critic_network_inputs = (observation, continuous_action)
+
+        q_values = None
+        if self._act_type != ActionType.Continuous:
+            q_values, critic_state = self._critic_networks(
+                critic_network_inputs, state=state.critic)
+            new_state._replace(critic=critic_state)
+            alpha = torch.exp(self._log_alpha)
+            # p(a|s) = exp(Q(s,a)/alpha) / Z;
+            # the discrete distribution will never be trained, so we detach the
+            # logits here.
+            logits = (q_values.min(dim=1)[0] / alpha[0]).detach()
+            discrete_action_dist = td.Categorical(logits=logits)
+            if eps_greedy_sampling:
+                discrete_action = dist_utils.epsilon_greedy_sample(
+                    discrete_action_dist, epsilon_greedy)
+            else:
+                discrete_action = dist_utils.sample_action_distribution(
+                    discrete_action_dist)
+
+        if self._act_type == ActionType.Mixed:
+            # Note that in this case ``action_dist`` is not the valid joint
+            # action distribution because ``discrete_action_dist`` is conditioned
+            # on a particular continuous action sampled above. So DO NOT use this
+            # ``action_dist`` to directly sample an action pair anywhere else!
+            # However, for computing the log probability of *this* sampled
+            # ``action``, it's still valid. It can also be used for summary
+            # purpose because of the expectation taken over the continuous action
+            # when summarizing.
+            action_dist = type(self._action_spec)((discrete_action_dist,
+                                                   continuous_action_dist))
+            action = type(self._action_spec)((discrete_action,
+                                              continuous_action))
+        elif self._act_type == ActionType.Discrete:
+            action_dist = discrete_action_dist
+            action = discrete_action
+        else:
+            action_dist = continuous_action_dist
+            action = continuous_action
+
+        return action_dist, action, q_values, new_state
+
+    def predict_step(self,
+                     time_step: TimeStep,
+                     state: SacState,
+                     epsilon_greedy=1.0):
+        action_dist, action, _, action_state = self._predict_action(
+            time_step.observation,
+            state=state.action,
+            epsilon_greedy=epsilon_greedy,
+            eps_greedy_sampling=True)
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
-        state = empty_state._replace(share=SacShareState(actor=state))
-        action = dist_utils.epsilon_greedy_sample(action_dist, epsilon_greedy)
+        new_state = empty_state._replace(action=action_state)
         return AlgStep(
             output=action,
-            state=state,
+            state=new_state,
             info=SacInfo(action_distribution=action_dist))
 
-    def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
-        return self._predict(time_step, state, epsilon_greedy)
-
-    def rollout_step(self, time_step: TimeStep, state):
+    def rollout_step(self, time_step: TimeStep, state: SacState):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by SacAlgorithm")
-        return self._predict(time_step, state, epsilon_greedy=1.0)
+        return self.predict_step(time_step, state, epsilon_greedy=1.0)
 
-    def _actor_train_step(self, exp: Experience, state: SacActorState,
-                          action_distribution, action, log_pi):
+    def _compute_critics(self, critic_net, observation, action, critics_state):
+        if self._act_type == ActionType.Continuous:
+            observation = (observation, action)
+        elif self._act_type == ActionType.Mixed:
+            observation = (observation, action[1])  # continuous action
+        # discrete/mixed: critics shape [B, replicas, num_actions]
+        # continuous: critics shape [B, replicas]
+        critics, critics_state = critic_net(observation, state=critics_state)
+        return critics, critics_state
 
-        if self._is_continuous:
-            critic_input = (exp.observation, action)
+    def _actor_train_step(self, exp: Experience, state, action, critics,
+                          log_pi):
+        if self._act_type == ActionType.Discrete:
+            # Pure discrete case doesn't need to learn an actor network
+            return (), LossInfo(extra=SacActorInfo(neg_entropy=log_pi))
 
-            critics, critics_state = self._critic_networks(
-                critic_input, state=state.critics)
-
-            target_q_value = critics.min(dim=1)[0]
-            dqda = nest.pack_sequence_as(
-                action,
-                list(
-                    torch.autograd.grad(
-                        target_q_value.sum(),
-                        nest.flatten(action),
-                    )))
-
-            def actor_loss_fn(dqda, action):
-                if self._dqda_clipping:
-                    dqda = torch.clamp(dqda, -self._dqda_clipping,
-                                       self._dqda_clipping)
-                loss = 0.5 * losses.element_wise_squared_loss(
-                    (dqda + action).detach(), action)
-                loss = loss.sum(list(range(1, loss.ndim)))
-                return loss
-
-            actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
-            alpha = torch.exp(self._log_alpha).detach()
-            actor_loss += alpha * log_pi
+        if self._act_type == ActionType.Continuous:
+            critics, critics_state = self._compute_critics(
+                self._critic_networks, exp.observation, action, state)
         else:
-            critics, critics_state = self._critic_networks(
-                exp.observation, state=state.critics)
+            # use the provided critics for discrete/mixed
+            critics_state = ()
 
-            base_action_dist = dist_utils.get_base_dist(action_distribution)
-            assert isinstance(base_action_dist, td.categorical.Categorical),  \
-                 ("Only `Categorical` " + "was supported, received:" + str(
-                        type(base_action_dist)))
+        if self._act_type == ActionType.Mixed:
+            # pick values according to discrete actions
+            critics = self._select_q_value(action[0], critics).squeeze(-1)
+            action = action[1]
 
-            log_action_probs = base_action_dist.logits.squeeze(1)
+        target_q_value = critics.min(dim=1)[0]
 
-            target_q_value = critics.min(dim=1)[0].detach()
-            alpha = torch.exp(self._log_alpha)
-            actor_loss = torch.exp(log_action_probs) * (
-                alpha.detach() * log_action_probs - target_q_value)
-            actor_loss = actor_loss.mean(list(range(1, actor_loss.ndim)))
+        dqda = nest_utils.grad(action, target_q_value.sum())
 
-        state = SacActorState(critics=critics_state)
-        info = SacActorInfo(loss=LossInfo(loss=actor_loss, extra=actor_loss))
+        def actor_loss_fn(dqda, action):
+            if self._dqda_clipping:
+                dqda = torch.clamp(dqda, -self._dqda_clipping,
+                                   self._dqda_clipping)
+            loss = 0.5 * losses.element_wise_squared_loss(
+                (dqda + action).detach(), action)
+            return loss.sum(list(range(1, loss.ndim)))
 
-        return state, info
+        actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+        actor_loss = math_ops.add_n(nest.flatten(actor_loss))
+        alpha = torch.exp(self._log_alpha).detach()
+        actor_info = LossInfo(
+            loss=actor_loss + alpha * log_pi,
+            extra=SacActorInfo(actor_loss=actor_loss, neg_entropy=log_pi))
+        return critics_state, actor_info
+
+    def _select_q_value(self, action, q_values):
+        """Use ``action`` to index and select Q values.
+        Args:
+            action: discrete actions with shape ``[batch_size]``.
+            critics: Q values with shape ``[batch_size, replicas, num_actions]``.
+        Returns:
+            selected Q values with shape ``[batch_size, replicas, 1]``.
+        """
+        # action shape: [batch_size] -> [batch_size, n, 1]
+        action = action.view(q_values.shape[0], 1, -1).expand(
+            -1, q_values.shape[1], -1).long()
+        return q_values.gather(-1, action)
 
     def _critic_train_step(self, exp: Experience, state: SacCriticState,
                            action, log_pi):
-        if self._is_continuous:
-            critic_input = (exp.observation, exp.action)
-            target_critic_input = (exp.observation, action)
-        else:
-            critic_input = exp.observation
-            target_critic_input = exp.observation
+        critics, critics_state = self._compute_critics(
+            self._critic_networks, exp.observation, exp.action, state.critics)
 
-        critics, critics_state = self._critic_networks(
-            critic_input, state=state.critics)
+        target_critics, target_critics_state = self._compute_critics(
+            self._target_critic_networks, exp.observation, action,
+            state.target_critics)
 
-        target_critics, target_critics_state = self._target_critic_networks(
-            target_critic_input, state=state.target_critics)
-
-        if not self._is_continuous:
-            # action shape: [batch_size] -> [batch_size, n, 1]
-            exp_action = exp.action.view(critics.shape[0], 1, -1).expand(
-                -1, critics.shape[1], -1).long()
-            critics = critics.gather(-1, exp_action)
-
-            sampled_action = action.view(critics.shape[0], 1, -1).expand(
-                -1, critics.shape[1], -1).long()
-            target_critics = target_critics.gather(-1, sampled_action)
+        if self._act_type == ActionType.Discrete:
+            critics = self._select_q_value(exp.action, critics)
+            target_critics = self._select_q_value(action, target_critics)
+        elif self._act_type == ActionType.Mixed:
+            critics = self._select_q_value(exp.action[0], critics)
+            target_critics = self._select_q_value(action[0], target_critics)
 
         target_critic = target_critics.min(dim=1)[0].reshape(log_pi.shape) - \
                          (torch.exp(self._log_alpha) * log_pi)
@@ -333,7 +515,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         state = SacCriticState(
             critics=critics_state, target_critics=target_critics_state)
-
         info = SacCriticInfo(critics=critics, target_critic=target_critic)
 
         return state, info
@@ -341,35 +522,29 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def _alpha_train_step(self, log_pi):
         alpha_loss = self._log_alpha * (
             -log_pi - self._target_entropy).detach()
-        info = SacAlphaInfo(loss=LossInfo(loss=alpha_loss, extra=alpha_loss))
-        return info
+        return alpha_loss
 
     def train_step(self, exp: Experience, state: SacState):
-        action_distribution, share_actor_state = self._actor_network(
-            exp.observation, state=state.share.actor)
-        if self._is_continuous:
-            action = dist_utils.rsample_action_distribution(
-                action_distribution)
-        else:
-            action = dist_utils.sample_action_distribution(action_distribution)
+        (action_distribution, action, critics,
+         action_state) = self._predict_action(
+             exp.observation, state=state.action)
 
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
-        actor_state, actor_info = self._actor_train_step(
-            exp, state.actor, action_distribution, action, log_pi)
+
+        actor_state, actor_loss = self._actor_train_step(
+            exp, state.actor, action, critics, log_pi)
         critic_state, critic_info = self._critic_train_step(
             exp, state.critic, action, log_pi)
-        alpha_info = self._alpha_train_step(log_pi)
+        alpha_loss = self._alpha_train_step(log_pi)
 
         state = SacState(
-            share=SacShareState(actor=share_actor_state),
-            actor=actor_state,
-            critic=critic_state)
+            action=action_state, actor=actor_state, critic=critic_state)
         info = SacInfo(
             action_distribution=action_distribution,
-            actor=actor_info,
+            actor=actor_loss,
             critic=critic_info,
-            alpha=alpha_info)
+            alpha=alpha_loss)
         return AlgStep(action, state, info)
 
     def after_update(self, experience, train_info: SacInfo):
@@ -377,19 +552,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def calc_loss(self, experience, train_info: SacInfo):
         critic_loss = self._calc_critic_loss(experience, train_info)
-        alpha_loss = train_info.alpha.loss
-        actor_loss = train_info.actor.loss
+        alpha_loss = train_info.alpha
+        actor_loss = train_info.actor
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 alf.summary.scalar("alpha", self._log_alpha.exp())
 
         return LossInfo(
-            loss=actor_loss.loss + critic_loss.loss + alpha_loss.loss,
+            loss=math_ops.add_ignore_empty(actor_loss.loss,
+                                           critic_loss.loss + alpha_loss),
             extra=SacLossInfo(
                 actor=actor_loss.extra,
                 critic=critic_loss.extra,
-                alpha=alpha_loss.extra))
+                alpha=alpha_loss))
 
     def _calc_critic_loss(self, experience, train_info: SacInfo):
         critic_info = train_info.critic

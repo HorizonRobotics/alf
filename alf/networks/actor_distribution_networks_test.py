@@ -17,12 +17,13 @@ from absl.testing import parameterized
 import functools
 
 import torch
+import torch.distributions as td
 
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks import ActorDistributionNetwork
 from alf.networks import ActorDistributionRNNNetwork
-from alf.networks import NormalProjectionNetwork
+from alf.networks import NormalProjectionNetwork, CategoricalProjectionNetwork
 from alf.utils.common import zero_tensor_from_nested_spec
 from alf.nest.utils import NestConcat
 from alf.utils.dist_utils import DistributionSpec
@@ -122,6 +123,40 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
             torch.all(actions >= torch.as_tensor(action_spec.minimum)))
         self.assertTrue(
             torch.all(actions <= torch.as_tensor(action_spec.maximum)))
+
+    @parameterized.parameters(((200, 100), ), (None, ))
+    def test_mixed_actor_distributions(self, lstm_hidden_size):
+        action_spec = dict(
+            discrete=BoundedTensorSpec((), dtype="int64"),
+            continuous=BoundedTensorSpec((3, )))
+
+        network_ctor, state = self._init(lstm_hidden_size)
+
+        actor_dist_net = network_ctor(
+            self._input_spec,
+            action_spec,
+            input_preprocessors=self._input_preprocessors,
+            preprocessing_combiner=self._preprocessing_combiner,
+            conv_layer_params=self._conv_layer_params)
+
+        act_dist, state = actor_dist_net(self._image, state)
+
+        self.assertTrue(
+            isinstance(actor_dist_net.output_spec["discrete"],
+                       DistributionSpec))
+        self.assertTrue(
+            isinstance(actor_dist_net.output_spec["continuous"],
+                       DistributionSpec))
+
+        self.assertTrue(
+            isinstance(act_dist["discrete"].base_dist, td.Categorical))
+        self.assertTrue(
+            isinstance(act_dist["continuous"].base_dist, td.Normal))
+
+        if lstm_hidden_size is None:
+            self.assertEqual(state, ())
+        else:
+            self.assertEqual(len(state), len(lstm_hidden_size))
 
 
 if __name__ == "__main__":

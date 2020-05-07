@@ -178,15 +178,16 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                 dict(x=TensorSpec((100, )), y=TensorSpec((200, )))
             ])
         imgs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
-        input_preprocessors = [
-            EmbeddingPreprocessor(
+        input_preprocessors = dict(
+            a=EmbeddingPreprocessor(
                 input_spec["a"],
                 conv_layer_params=((1, 2, 2, 0), ),
                 embedding_dim=100),
-            EmbeddingPreprocessor(input_spec["b"][0], embedding_dim=50),
-            EmbeddingPreprocessor(input_spec["b"][1], embedding_dim=50), None,
-            torch.relu
-        ]
+            b=[
+                EmbeddingPreprocessor(input_spec["b"][0], embedding_dim=50),
+                EmbeddingPreprocessor(input_spec["b"][1], embedding_dim=50),
+                dict(x=None, y=torch.relu)
+            ])
 
         if lstm:
             network_ctor = functools.partial(
