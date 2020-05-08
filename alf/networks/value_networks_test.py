@@ -56,17 +56,14 @@ class TestValueNetworks(parameterized.TestCase, alf.test.TestCase):
 
         network_ctor, state = self._init(lstm_hidden_size)
 
-        input_preprocessor_ctors = [
-            functools.partial(
-                EmbeddingPreprocessor,
-                input_tensor_spec=input_spec1,
-                embedding_dim=embedding_dim,
-                conv_layer_params=conv_layer_params), None
-        ]
-
         value_net = network_ctor(
             input_tensor_spec=[input_spec1, input_spec2],
-            input_preprocessor_ctors=input_preprocessor_ctors,
+            input_preprocessors=[
+                EmbeddingPreprocessor(
+                    input_spec1,
+                    embedding_dim=embedding_dim,
+                    conv_layer_params=conv_layer_params), None
+            ],
             preprocessing_combiner=NestConcat())
 
         value, state = value_net([image, vector], state)

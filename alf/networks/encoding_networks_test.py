@@ -164,8 +164,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         input_spec = TensorSpec((1, ))
         inputs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
         network = EncodingNetwork(
-            input_tensor_spec=input_spec,
-            input_preprocessor_ctors=torch.nn.Tanh)
+            input_tensor_spec=input_spec, input_preprocessors=torch.tanh)
         output, _ = network(inputs)
         self.assertEqual(output.size()[1], 1)
 
@@ -179,18 +178,16 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                 dict(x=TensorSpec((100, )), y=TensorSpec((200, )))
             ])
         imgs = common.zero_tensor_from_nested_spec(input_spec, batch_size=1)
-        input_preprocessor_ctors = [
-            functools.partial(
-                EmbeddingPreprocessor,
-                input_tensor_spec=input_spec["a"],
+        input_preprocessors = dict(
+            a=EmbeddingPreprocessor(
+                input_spec["a"],
                 conv_layer_params=((1, 2, 2, 0), ),
                 embedding_dim=100),
-            functools.partial(
-                EmbeddingPreprocessor, input_spec["b"][0], embedding_dim=50),
-            functools.partial(
-                EmbeddingPreprocessor, input_spec["b"][1], embedding_dim=50),
-            None, torch.nn.ReLU
-        ]
+            b=[
+                EmbeddingPreprocessor(input_spec["b"][0], embedding_dim=50),
+                EmbeddingPreprocessor(input_spec["b"][1], embedding_dim=50),
+                dict(x=None, y=torch.relu)
+            ])
 
         if lstm:
             network_ctor = functools.partial(
@@ -200,7 +197,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         network = network_ctor(
             input_tensor_spec=input_spec,
-            input_preprocessor_ctors=input_preprocessor_ctors,
+            input_preprocessors=input_preprocessors,
             preprocessing_combiner=NestConcat())
         output, _ = network(imgs, state=[(torch.zeros((1, 100)), ) * 2])
 

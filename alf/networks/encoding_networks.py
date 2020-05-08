@@ -21,11 +21,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from .network import Network
-from .preprocessors import PreprocessorNetwork
 import alf
 import alf.layers as layers
 from alf.initializers import variance_scaling_init
+from alf.networks.network import Network, PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 
@@ -269,7 +268,7 @@ class EncodingNetwork(PreprocessorNetwork):
 
     def __init__(self,
                  input_tensor_spec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -284,15 +283,11 @@ class EncodingNetwork(PreprocessorNetwork):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
+            input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with ``input_tensor_spec``. This arg is helpful if you
+                want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
@@ -328,7 +323,7 @@ class EncodingNetwork(PreprocessorNetwork):
         """
         super().__init__(
             input_tensor_spec,
-            input_preprocessor_ctors,
+            input_preprocessors,
             preprocessing_combiner,
             name=name)
 
@@ -426,7 +421,7 @@ class EncodingNetwork(PreprocessorNetwork):
             Network: A paralle network
         """
         if (self.saved_args.get('conv_layer_params') is None
-                and self.saved_args.get('input_preprocessor_ctors') is None and
+                and self.saved_args.get('input_preprocessors') is None and
             (self._preprocessing_combiner == math_ops.identity or isinstance(
                 self._preprocessing_combiner,
                 (alf.nest.utils.NestSum, alf.nest.utils.NestConcat)))):
@@ -446,7 +441,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
     def __init__(self,
                  input_tensor_spec,
                  n,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -462,7 +457,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             n (int): number of parallel networks
-            input_preprocessor_ctors (None): must be ``None``.
+            input_preprocessors (None): must be ``None``.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 ``input_tensor_spec`` as the input to compute the processed
@@ -493,12 +488,12 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         """
         super().__init__(
             input_tensor_spec,
-            input_preprocessor_ctors=None,
+            input_preprocessors=None,
             preprocessing_combiner=preprocessing_combiner,
             name=name)
 
         # TODO: handle input_preprocessors and conv_layer_params
-        assert input_preprocessor_ctors is None and conv_layer_params is None
+        assert input_preprocessors is None and conv_layer_params is None
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
@@ -573,7 +568,7 @@ class LSTMEncodingNetwork(Network):
 
     def __init__(self,
                  input_tensor_spec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  pre_fc_layer_params=None,
@@ -591,15 +586,11 @@ class LSTMEncodingNetwork(Network):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
+            input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding input. If not None, then it must have the same
+                structure with ``input_tensor_spec``. This arg is helpful if you
+                want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
@@ -641,11 +632,11 @@ class LSTMEncodingNetwork(Network):
         """
         super().__init__(input_tensor_spec, name=name)
 
-        if (input_preprocessor_ctors or preprocessing_combiner
-                or conv_layer_params or pre_fc_layer_params):
+        if (input_preprocessors or preprocessing_combiner or conv_layer_params
+                or pre_fc_layer_params):
             self._pre_encoding_net = EncodingNetwork(
                 input_tensor_spec=input_tensor_spec,
-                input_preprocessor_ctors=input_preprocessor_ctors,
+                input_preprocessors=input_preprocessors,
                 preprocessing_combiner=preprocessing_combiner,
                 conv_layer_params=conv_layer_params,
                 fc_layer_params=pre_fc_layer_params,

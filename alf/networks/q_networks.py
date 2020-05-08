@@ -19,6 +19,7 @@ import functools
 import torch
 import torch.nn as nn
 
+import alf.nest as nest
 import alf.layers as layers
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork, ParallelEncodingNetwork
 from alf.networks import Network
@@ -33,7 +34,7 @@ class QNetwork(Network):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -49,18 +50,15 @@ class QNetwork(Network):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
-                configuring a gin file without changing the code. For example,
-                embedding a discrete input before concatenating it to another
-                continuous vector.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as ``math_ops.identity``.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 ``input_tensor_spec`` as the input to compute the processed
@@ -80,12 +78,16 @@ class QNetwork(Network):
         """
         super(QNetwork, self).__init__(input_tensor_spec, name=name)
 
+        assert len(nest.flatten(action_spec)) == 1, (
+            "Currently only support a single discrete action! Use "
+            "CriticNetwork instead for multiple actions.")
+
         num_actions = action_spec.maximum - action_spec.minimum + 1
         self._output_spec = TensorSpec((num_actions, ))
 
         self._encoding_net = EncodingNetwork(
             input_tensor_spec=input_tensor_spec,
-            input_preprocessor_ctors=input_preprocessor_ctors,
+            input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
@@ -170,7 +172,7 @@ class QRNNNetwork(Network):
     def __init__(self,
                  input_tensor_spec: TensorSpec,
                  action_spec: BoundedTensorSpec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -187,18 +189,15 @@ class QRNNNetwork(Network):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the tensor spec of the action
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
-                configuring a gin file without changing the code. For example,
-                embedding a discrete input before concatenating it to another
-                continuous vector.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with `input_tensor_spec` (after reshaping).
+                If any element is None, then it will be treated as math_ops.identity.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 `input_tensor_spec` as the input to compute the processed
@@ -223,12 +222,16 @@ class QRNNNetwork(Network):
         """
         super().__init__(input_tensor_spec, name=name)
 
+        assert len(nest.flatten(action_spec)) == 1, (
+            "Currently only support a single discrete action! Use "
+            "CriticNetwork instead for multiple actions.")
+
         num_actions = action_spec.maximum - action_spec.minimum + 1
         self._output_spec = TensorSpec((num_actions, ))
 
         self._encoding_net = LSTMEncodingNetwork(
             input_tensor_spec=input_tensor_spec,
-            input_preprocessor_ctors=input_preprocessor_ctors,
+            input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             pre_fc_layer_params=fc_layer_params,

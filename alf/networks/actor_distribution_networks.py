@@ -18,21 +18,21 @@ import gin
 import torch
 import torch.nn as nn
 
+import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
-from .preprocessors import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
-from alf.networks.network import Network
+from alf.networks.network import PreprocessorNetwork, Network
 
 
 @gin.configurable
-class ActorDistributionNetwork(PreprocessorNetwork):
+class ActorDistributionNetwork(Network):
     """Network which outputs temporally uncorrelated action distributions."""
 
     def __init__(self,
                  input_tensor_spec,
                  action_spec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -46,18 +46,15 @@ class ActorDistributionNetwork(PreprocessorNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
-                configuring a gin file without changing the code. For example,
-                embedding a discrete input before concatenating it to another
-                continuous vector.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                `InputPreprocessor`, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as math_ops.identity.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 `input_tensor_spec` as the input to compute the processed
@@ -81,18 +78,16 @@ class ActorDistributionNetwork(PreprocessorNetwork):
                 continuous actions.
             name (str):
         """
-        super().__init__(
-            input_tensor_spec,
-            input_preprocessor_ctors,
-            preprocessing_combiner,
-            name=name)
+        super().__init__(input_tensor_spec, name=name)
 
         if kernel_initializer is None:
             kernel_initializer = torch.nn.init.xavier_uniform_
 
         self._action_spec = action_spec
         self._encoding_net = EncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
+            input_tensor_spec=input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
@@ -102,14 +97,22 @@ class ActorDistributionNetwork(PreprocessorNetwork):
 
     def _create_projection_net(self, discrete_projection_net_ctor,
                                continuous_projection_net_ctor):
-        if self._action_spec.is_discrete:
-            self._projection_net = discrete_projection_net_ctor(
-                input_size=self._encoding_net.output_spec.shape[0],
-                action_spec=self._action_spec)
-        else:
-            self._projection_net = continuous_projection_net_ctor(
-                input_size=self._encoding_net.output_spec.shape[0],
-                action_spec=self._action_spec)
+        """If there are :math:`N` action specs, then create :math:`N` projection
+        networks which can be a mixture of categoricals and normals.
+        """
+
+        def _create(spec):
+            if spec.is_discrete:
+                net = discrete_projection_net_ctor(
+                    input_size=self._encoding_net.output_spec.shape[0],
+                    action_spec=spec)
+            else:
+                net = continuous_projection_net_ctor(
+                    input_size=self._encoding_net.output_spec.shape[0],
+                    action_spec=spec)
+            return net
+
+        self._projection_net = nest.map_structure(_create, self._action_spec)
 
     def forward(self, observation, state=()):
         """Computes an action distribution given an observation.
@@ -122,8 +125,9 @@ class ActorDistributionNetwork(PreprocessorNetwork):
             act_dist (torch.distributions): action distribution
             state: empty
         """
-        observation, state = super().forward(observation, state)
-        act_dist, _ = self._projection_net(self._encoding_net(observation)[0])
+        encoding, state = self._encoding_net(observation, state)
+        act_dist = nest.map_structure(lambda proj: proj(encoding)[0],
+                                      self._projection_net)
         return act_dist, state
 
 
@@ -134,7 +138,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
     def __init__(self,
                  input_tensor_spec,
                  action_spec,
-                 input_preprocessor_ctors=None,
+                 input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
                  fc_layer_params=None,
@@ -150,18 +154,15 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         Args:
             input_tensor_spec (TensorSpec): the tensor spec of the input
             action_spec (TensorSpec): the action spec
-            input_preprocessor_ctors (nested ``InputPreprocessor`` constructors):
-                a nest of ``InputPreprocessor`` constructors. They are used to
-                create the corresponding ``InputPreprocessor`` instances,  each
-                of which will be applied to the corresponding input. If not
-                None, then it must have the same structure with
-                ``input_tensor_spec`` (after reshaping). If any element is None,
-                then ``math_ops.identity`` will be used as its corresponding
-                operation applied to the input. This arg is helpful if you want
-                to have separate preprocessings for different inputs by
-                configuring a gin file without changing the code. For example,
-                embedding a discrete input before concatenating it to another
-                continuous vector.
+            input_preprocessors (nested InputPreprocessor): a nest of
+                ``InputPreprocessor``, each of which will be applied to the
+                corresponding input. If not None, then it must
+                have the same structure with ``input_tensor_spec`` (after reshaping).
+                If any element is None, then it will be treated as math_ops.identity.
+                This arg is helpful if you want to have separate preprocessings
+                for different inputs by configuring a gin file without changing
+                the code. For example, embedding a discrete input before concatenating
+                it to another continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
                 ``input_tensor_spec`` as the input to compute the processed
@@ -193,7 +194,7 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
         super().__init__(
             input_tensor_spec=input_tensor_spec,
             action_spec=action_spec,
-            input_preprocessor_ctors=input_preprocessor_ctors,
+            input_preprocessors=input_preprocessors,
             preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
@@ -203,7 +204,9 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             kernel_initializer = torch.nn.init.xavier_uniform_
 
         self._encoding_net = LSTMEncodingNetwork(
-            input_tensor_spec=self._processed_input_tensor_spec,
+            input_tensor_spec=input_tensor_spec,
+            input_preprocessors=input_preprocessors,
+            preprocessing_combiner=preprocessing_combiner,
             conv_layer_params=conv_layer_params,
             pre_fc_layer_params=fc_layer_params,
             hidden_size=lstm_hidden_size,
@@ -212,23 +215,6 @@ class ActorDistributionRNNNetwork(ActorDistributionNetwork):
             kernel_initializer=kernel_initializer)
         self._create_projection_net(discrete_projection_net_ctor,
                                     continuous_projection_net_ctor)
-
-    def forward(self, observation, state):
-        """Computes an action distribution given an observation.
-
-        Args:
-            observation (torch.Tensor): consistent with ``input_tensor_spec``
-            state (nest[tuple]): a nest structure of state tuples (h, c)
-
-        Returns:
-            act_dist (torch.distributions): action distribution
-            new_state (nest[tuple]): the updated states
-        """
-        observation, state = PreprocessorNetwork.forward(
-            self, observation, state)
-        encoding, state = self._encoding_net(observation, state)
-        act_dist, _ = self._projection_net(encoding)
-        return act_dist, state
 
     @property
     def state_spec(self):
