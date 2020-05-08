@@ -33,7 +33,8 @@ import alf.utils.checkpoint_utils as ckpt_utils
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
-from alf.networks.preprocessors import EmbeddingPreprocessor
+from alf.networks.preprocessors import (EmbeddingPreprocessor,
+                                        SharedEmbeddingPreprocessor)
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
@@ -517,10 +518,8 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
     def test_parallel_network_state_dict_and_params(self, lstm):
         input_spec = TensorSpec((10, ))
 
-        input_preprocessor_ctors = functools.partial(
-            EmbeddingPreprocessor,
-            input_tensor_spec=input_spec,
-            embedding_dim=10)
+        input_preprocessors = EmbeddingPreprocessor(
+            input_spec, embedding_dim=10)
 
         if lstm:
             network_ctor = functools.partial(
@@ -534,7 +533,7 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
         network_wo_preprocessor = network_ctor(input_tensor_spec=input_spec)
         network_w_preprocessor = network_ctor(
             input_tensor_spec=input_spec,
-            input_preprocessor_ctors=input_preprocessor_ctors)
+            input_preprocessors=input_preprocessors)
 
         # 1) test parameter copy for the corresponding parallel net
         def _check_parallel_param(p_net_source):
@@ -552,22 +551,45 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
                 network, replicas)
             _check_parallel_param(n_net)
 
-        # 2) test parameter number, excluding the duplicated parameters
+        # 2) test parameter number for the case of using non-shared preprocessor
         p_net_wo_preprocessor = alf.networks.network.NaiveParallelNetwork(
             network_wo_preprocessor, replicas)
         p_net_w_preprocessor = network_w_preprocessor.make_parallel(replicas)
 
-        # the number of parallel network with input_preprocessor should be equal
-        # to the number of parameters of the naive parallel network without
+        # the number of parameters of parallel network with input_preprocessor
+        # should be equal to that of the naive parallel network without
         # input processor + the number of parameters of input processor * replicas
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),
             len(p_net_wo_preprocessor.state_dict()) +
-            replicas * len(input_preprocessor_ctors().state_dict()))
+            replicas * len(input_preprocessors.state_dict()))
 
         self.assertEqual(
             len(p_net_w_preprocessor.state_dict()),
             len(list(p_net_w_preprocessor.parameters())))
+
+        # 3) test parameter number when using shared preprocessor
+
+        network_w_shared_preprocessor = network_ctor(
+            input_tensor_spec=input_spec,
+            input_preprocessors=SharedEmbeddingPreprocessor(
+                input_spec, embedding_dim=10))
+
+        p_net_w_shared_preprocessor = network_w_shared_preprocessor.make_parallel(
+            replicas)
+
+        # the number of parameters of parallel network with a shared
+        # input_preprocessor should be equal to that of the naive parallel
+        # network without input processor + the number of parameters of input processor
+
+        self.assertEqual(
+            len(p_net_w_shared_preprocessor.state_dict()),
+            len(p_net_wo_preprocessor.state_dict()) + len(
+                input_preprocessors.state_dict()))
+
+        self.assertEqual(
+            len(p_net_w_shared_preprocessor.state_dict()),
+            len(list(p_net_w_shared_preprocessor.parameters())))
 
 
 if __name__ == '__main__':
