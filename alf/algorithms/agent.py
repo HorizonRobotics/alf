@@ -29,7 +29,7 @@ from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import AlgStep, Experience
 from alf.data_structures import TimeStep, namedtuple
-from alf.utils.common import cast_transformer
+from alf.utils import math_ops
 
 AgentState = namedtuple(
     "AgentState", ["rl", "irm", "goal_generator"], default_value=())
@@ -58,7 +58,7 @@ class Agent(OnPolicyAlgorithm):
                  entropy_target_cls=None,
                  optimizer=None,
                  reward_shaping_fn: Callable = None,
-                 observation_transformer=cast_transformer,
+                 observation_transformer=math_ops.identity,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
         """

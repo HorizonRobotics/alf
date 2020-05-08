@@ -23,7 +23,7 @@ critic/Adam.lr=1e-3
 alpha/Adam.lr=1e-3
 
 SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-SacAlgorithm.critic_network=@critic/QNetwork()
+SacAlgorithm.q_network=@critic/QNetwork()
 SacAlgorithm.actor_optimizer=@actor/Adam()
 SacAlgorithm.critic_optimizer=@critic/Adam()
 SacAlgorithm.alpha_optimizer=@alpha/Adam()

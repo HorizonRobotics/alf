@@ -36,6 +36,7 @@ import alf
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
+from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
 from . import dist_utils, gin_utils
 
 
@@ -147,7 +148,8 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
 
     if copy:
         for model, target_model in zip(models, target_models):
-            target_model.load_state_dict(model.state_dict())
+            for ws, wt in zip(model.parameters(), target_model.parameters()):
+                wt.data.copy_(ws)
 
     def update():
         for model, target_model in zip(models, target_models):
@@ -376,6 +378,48 @@ def _markdownify_gin_config_str(string, description=''):
             output_lines.append(procd_line)
 
     return '\n'.join(output_lines)
+
+
+@gin.configurable
+class ObservationNormalizer(nn.Module):
+    def __init__(self,
+                 observation_spec,
+                 clipping=0.,
+                 window_size=10000,
+                 update_rate=1e-4,
+                 speed=8.0,
+                 mode="adaptive"):
+        """Create an observation normalizer with optional value clipping to be
+        used as the ``observation_transformer`` of an algorithm. It will be called
+        before both ``rollout_step()`` and ``train_step()``.
+
+        Args:
+            observation_spec (TensorSpec): the observation spec
+            clipping (float): a floating value for clipping the normalized
+                observation into ``[-clipping, clipping]``. Only valid if it's
+                greater than 0.
+            window_size (int): the window size of ``WindowNormalizer``.
+            update_rate (float): the update rate of ``EMNormalizer``.
+            speed (float): the speed of updating for ``AdaptiveNormalizer``.
+            mode (str): a value in ["adaptive", "window", "em"] indicates which
+                normalizer to use.
+        """
+        super().__init__()
+        self._clipping = float(clipping)
+        if mode == "adaptive":
+            self._normalizer = AdaptiveNormalizer(
+                tensor_spec=observation_spec, speed=float(speed))
+        elif mode == "window":
+            self._normalzier = WindowNormalizer(
+                tensor_spec=observation_spec, window_size=int(window_size))
+        elif mode == "em":
+            self._normalizer = EMNormalizer(
+                tensor_spec=observation_spec, update_rate=float(update_rate))
+        else:
+            raise ValueError("Unsupported mode: " + mode)
+
+    def forward(self, observation):
+        return self._normalizer.normalize(observation, self._clipping)
 
 
 def get_gin_confg_strs():

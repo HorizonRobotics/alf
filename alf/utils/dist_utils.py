@@ -421,7 +421,7 @@ def compute_log_probability(distributions, actions):
         actions: A possibly batched action tuple.
 
     Returns:
-        Tensor: the log probability of each action in the batch.
+        Tensor: the log probability summed over actions in the batch.
     """
 
     def _compute_log_prob(single_distribution, single_action):
