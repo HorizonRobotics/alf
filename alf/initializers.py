@@ -14,7 +14,6 @@
 
 import gin
 import math
-from scipy.stats import truncnorm
 
 import torch
 import torch.nn as nn
@@ -209,9 +208,9 @@ def variance_scaling_init(tensor,
 
     std = gain / math.sqrt(size)
     if distribution == "truncated_normal":
-        threshold = 2.0  # truncate within 2 std
-        std /= truncnorm.std(-threshold, threshold)
-        trunc_normal_(tensor, a=-threshold, b=threshold)
+        scale = 0.87962566  # scipy.stats.truncnorm.std(-2.0, 2.0)
+        std /= scale
+        trunc_normal_(tensor, a=-2.0, b=2.0)  # truncate within 2 std
         return tensor.mul_(std)
     elif distribution == "uniform":
         limit = math.sqrt(3.0) * std
