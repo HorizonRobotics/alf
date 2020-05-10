@@ -64,20 +64,6 @@ class Trainer(object):
         self._evaluate = config.evaluate
         self._eval_interval = config.eval_interval
         self._num_eval_episodes = config.num_eval_episodes
-        eval_metrics = None
-        eval_summary_writer = None
-        if self._evaluate:
-            eval_metrics = [
-                alf.metrics.AverageReturnMetric(
-                    buffer_size=self._num_eval_episodes),
-                alf.metrics.AverageEpisodeLengthMetric(
-                    buffer_size=self._num_eval_episodes)
-            ]
-            eval_summary_writer = alf.summary.create_summary_writer(
-                self._eval_dir, flush_secs=config.summaries_flush_secs)
-        self._eval_env = None
-        self._eval_summary_writer = eval_summary_writer
-        self._eval_metrics = eval_metrics
 
         self._summary_interval = config.summary_interval
         self._summaries_flush_secs = config.summaries_flush_secs
@@ -107,8 +93,23 @@ class Trainer(object):
         # will use all self._envs to init AsyncOffPolicyDriver!
         self._unwrapped_env = self._create_environment(
             nonparallel=True, random_seed=self._random_seed, register=False)
+        self._eval_env = None
+        self._eval_metrics = None
+        self._eval_summary_writer = None
         if self._evaluate:
             self._eval_env = self._unwrapped_env
+            self._eval_metrics = [
+                alf.metrics.AverageReturnMetric(
+                    buffer_size=self._num_eval_episodes),
+                alf.metrics.AverageEpisodeLengthMetric(
+                    buffer_size=self._num_eval_episodes),
+                alf.metrics.AverageEnvInfoMetric(
+                    example_env_info=self._eval_env.reset().env_info,
+                    batch_size=self._eval_env.batch_size,
+                    buffer_size=self._num_eval_episodes)
+            ]
+            self._eval_summary_writer = alf.summary.create_summary_writer(
+                self._eval_dir, flush_secs=config.summaries_flush_secs)
 
     @gin.configurable('alf.trainers.Trainer._create_environment')
     def _create_environment(self,
@@ -266,11 +267,8 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
     next_time_step = env.step(policy_step.output)
-
-    exp = alf.data_structures.make_experience(time_step, policy_step,
-                                              policy_state)
     for metric in metrics:
-        metric(exp)
+        metric(time_step)
     return next_time_step, policy_step.state
 
 
