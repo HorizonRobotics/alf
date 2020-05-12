@@ -130,9 +130,9 @@ class Network(nn.Module):
         argument ``singleton_instance``.
         Args:
             singleton_instance (bool): a flag indicating whether to turn
-            the ``singleton_instance`` property on or off.
-            If ``singleton_instance`` is True, calling ``copy()`` return
-            ``self``; otherwise a re-created ``Network`` instance will be
+            the ``self._singleton_instance`` property on or off.
+            If ``self._singleton_instance`` is True, calling ``copy()`` will
+            return ``self``; otherwise a re-created ``Network`` instance will be
             returned.
         Returns:
             ``self``, which facilitates cascaded calling.
@@ -141,11 +141,13 @@ class Network(nn.Module):
         return self
 
     def copy(self, **kwargs):
-        """Create a shallow copy of this network.
+        """Create a shallow copy of this network or return the current instance.
 
-        **NOTE** Network layer weights are *never* copied.  This method recreates
-        the ``Network`` instance with the same arguments it was initialized with
-        (excepting any new kwargs).
+        If ``self._singleton_instance`` is True, calling ``copy()`` will return
+        ``self``; otherwise a re-created ``Network`` instance will be returned.
+        **NOTE** When re-creating ``Network``, Network layer weights are *never*
+        copied. This method recreates the ``Network`` instance with the same
+        arguments it was initialized with (excepting any new kwargs).
 
         Args:
             **kwargs: Args to override when recreating this network.  Commonly
