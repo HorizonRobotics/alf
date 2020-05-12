@@ -21,10 +21,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from .network import Network
+from .preprocessor_networks import PreprocessorNetwork
 import alf
 import alf.layers as layers
 from alf.initializers import variance_scaling_init
-from alf.networks.network import Network, PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 

@@ -25,7 +25,6 @@ import torch.nn as nn
 
 import alf
 from alf.tensor_specs import TensorSpec
-from alf.networks.preprocessors import InputPreprocessor
 from alf.nest.utils import get_outer_rank
 from alf.utils.dist_utils import DistributionSpec, extract_spec
 import alf.utils.math_ops as math_ops
@@ -110,6 +109,11 @@ class Network(nn.Module):
         self._input_tensor_spec = input_tensor_spec
         self._output_spec = None
         self._is_distribution = None
+        # if ``singleton_instance`` is True, calling ``copy()`` return ``self``;
+        # otherwise a re-created ``Network`` instance will be returned.
+        # Default value is ``False`` and can be changed by calling the
+        # ``singleton`` method
+        self._singleton_instance = False
 
     def _test_forward(self):
         """Generate a dummy input according to `nested_input_tensor_spec` and
@@ -121,12 +125,29 @@ class Network(nn.Module):
             self.state_spec, batch_size=1)
         return self.forward(inputs, states)
 
-    def copy(self, **kwargs):
-        """Create a shallow copy of this network.
+    def singleton(self, singleton_instance=True):
+        """Change the singleton property to the value given by the input
+        argument ``singleton_instance``.
+        Args:
+            singleton_instance (bool): a flag indicating whether to turn
+            the ``self._singleton_instance`` property on or off.
+            If ``self._singleton_instance`` is True, calling ``copy()`` will
+            return ``self``; otherwise a re-created ``Network`` instance will be
+            returned.
+        Returns:
+            ``self``, which facilitates cascaded calling.
+        """
+        self._singleton_instance = singleton_instance
+        return self
 
-        **NOTE** Network layer weights are *never* copied.  This method recreates
-        the `Network` instance with the same arguments it was initialized with
-        (excepting any new kwargs).
+    def copy(self, **kwargs):
+        """Create a shallow copy of this network or return the current instance.
+
+        If ``self._singleton_instance`` is True, calling ``copy()`` will return
+        ``self``; otherwise a re-created ``Network`` instance will be returned.
+        **NOTE** When re-creating ``Network``, Network layer weights are *never*
+        copied. This method recreates the ``Network`` instance with the same
+        arguments it was initialized with (excepting any new kwargs).
 
         Args:
             **kwargs: Args to override when recreating this network.  Commonly
@@ -135,7 +156,10 @@ class Network(nn.Module):
         Returns:
             A shallow copy of this network.
         """
-        return type(self)(**dict(self._saved_kwargs, **kwargs))
+        if self._singleton_instance:
+            return self
+        else:
+            return type(self)(**dict(self._saved_kwargs, **kwargs))
 
     @property
     def saved_args(self):
@@ -267,102 +291,3 @@ class NaiveParallelNetwork(Network):
     @property
     def state_spec(self):
         return self._state_spec
-
-
-class PreprocessorNetwork(Network):
-    """A base class for networks with input processing need."""
-
-    def __init__(self,
-                 input_tensor_spec,
-                 input_preprocessors=None,
-                 preprocessing_combiner=None,
-                 name="PreprocessorNetwork"):
-        """
-        Args:
-            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then `preprocessing_combiner` must not be
-                None.
-            input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
-                corresponding input. If not None, then it must have the same
-                structure with `input_tensor_spec`. If any element is None, then
-                it will be treated as math_ops.identity. This arg is helpful if
-                you want to have separate preprocessings for different inputs by
-                configuring a gin file without changing the code. For example,
-                embedding a discrete input before concatenating it to another
-                continuous vector.
-            preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
-                tensor spec. For example, see `alf.nest.utils.NestConcat`. This
-                arg is helpful if you want to combine inputs by configuring a
-                gin file without changing the code.
-            name (str): name of the network
-        """
-        super().__init__(input_tensor_spec, name)
-
-        # make sure the network holds the parameters of any trainable input
-        # preprocessor
-        self._input_preprocessor_modules = nn.ModuleList()
-
-        def _get_preprocessed_spec(preproc, spec):
-            if not isinstance(preproc, InputPreprocessor):
-                # In this case we just assume the spec won't change after the
-                # preprocessing. If it does change, then you should consider
-                # defining an `InputPreprocessor` instead.
-                return spec
-            self._input_preprocessor_modules.append(preproc)
-            return preproc(spec)
-
-        self._input_preprocessors = None
-        if input_preprocessors is not None:
-            input_tensor_spec = alf.nest.map_structure(
-                _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
-            # allow None as a placeholder in the nest
-            self._input_preprocessors = alf.nest.map_structure(
-                lambda preproc: math_ops.identity
-                if preproc is None else preproc, input_preprocessors)
-
-        self._preprocessing_combiner = preprocessing_combiner
-        if alf.nest.is_nested(input_tensor_spec):
-            assert preprocessing_combiner is not None, \
-                ("When a nested input tensor spec is provided, a input " +
-                "preprocessing combiner must also be provided!")
-            input_tensor_spec = preprocessing_combiner(input_tensor_spec)
-        else:
-            assert isinstance(input_tensor_spec, TensorSpec), \
-                "The spec must be an instance of TensorSpec!"
-            self._preprocessing_combiner = math_ops.identity
-
-        # This input spec is the final resulting spec after input preprocessors
-        # and the nest combiner.
-        self._processed_input_tensor_spec = input_tensor_spec
-
-    def forward(self, inputs, state=(), min_outer_rank=1, max_outer_rank=1):
-        """Preprocessing nested inputs.
-
-        Args:
-            inputs (nested Tensor): inputs to the network
-            state (nested Tensor): RNN state of the network
-            min_outer_rank (int): the minimal outer rank allowed
-            max_outer_rank (int): the maximal outer rank allowed
-        Returns:
-            Tensor: tensor after preprocessing.
-        """
-        if self._input_preprocessors:
-            inputs = alf.nest.map_structure(
-                lambda preproc, tensor: preproc(tensor),
-                self._input_preprocessors, inputs)
-        proc_inputs = self._preprocessing_combiner(inputs)
-        outer_rank = get_outer_rank(proc_inputs,
-                                    self._processed_input_tensor_spec)
-        assert min_outer_rank <= outer_rank <= max_outer_rank, \
-            ("Only supports {}<=outer_rank<={}! ".format(min_outer_rank, max_outer_rank)
-            + "After preprocessing: inputs size {} vs. input tensor spec {}".format(
-                proc_inputs.size(), self._processed_input_tensor_spec)
-            + "\n Make sure that you have provided the right input preprocessors"
-            + " and nest combiner!\n"
-            + "Before preprocessing: inputs size {} vs. input tensor spec {}".format(
-                alf.nest.map_structure(lambda tensor: tensor.size(), inputs),
-                self._input_tensor_spec))
-        return proc_inputs, state

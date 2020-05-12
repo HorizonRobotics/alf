@@ -21,8 +21,9 @@ import torch.nn as nn
 import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
+from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
-from alf.networks.network import PreprocessorNetwork, Network
+from alf.networks.network import Network
 
 
 @gin.configurable

@@ -22,10 +22,11 @@ import torch.nn as nn
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.nest.utils import get_outer_rank
+from alf.networks.network import Network
 import alf.utils.math_ops as math_ops
 
 
-class InputPreprocessor(nn.Module):
+class InputPreprocessor(Network):
     """A preprocessor applied to a Network's input.
 
     It's meant to be applied to either individual inputs or individual
@@ -38,10 +39,9 @@ class InputPreprocessor(nn.Module):
     input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
     """
 
-    def __init__(self, input_tensor_spec, name):
-        super().__init__()
+    def __init__(self, input_tensor_spec, name="InputPreprocessor"):
         assert isinstance(input_tensor_spec, TensorSpec)
-        self._input_tensor_spec = input_tensor_spec
+        super().__init__(input_tensor_spec, name)
 
     @abc.abstractmethod
     def _preprocess(self, tensor):
@@ -55,7 +55,7 @@ class InputPreprocessor(nn.Module):
         """
         pass
 
-    def forward(self, inputs):
+    def forward(self, inputs, state=()):
         """Preprocess either a tensor input or a TensorSpec.
 
         Args:
@@ -72,7 +72,7 @@ class InputPreprocessor(nn.Module):
         ret = self._preprocess(tensor)
         if isinstance(inputs, TensorSpec):
             return TensorSpec.from_tensor(ret, from_dim=1)
-        return ret
+        return ret, state
 
 
 @gin.configurable
@@ -107,7 +107,7 @@ class EmbeddingPreprocessor(InputPreprocessor):
                 used by default.
             name (str):
         """
-        super(EmbeddingPreprocessor, self).__init__(input_tensor_spec, name)
+        super().__init__(input_tensor_spec, name)
         if input_tensor_spec.is_discrete:
             assert isinstance(input_tensor_spec, BoundedTensorSpec)
             N = input_tensor_spec.maximum - input_tensor_spec.minimum + 1
