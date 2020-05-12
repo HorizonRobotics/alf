@@ -27,6 +27,7 @@ from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
 from alf.networks.preprocessors import InputPreprocessor
 from alf.tensor_specs import TensorSpec
+from alf.utils import common
 
 from .network import Network
 
@@ -87,6 +88,7 @@ class PreprocessorNetwork(Network):
                 elif isinstance(preproc, InputPreprocessor):
                     preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
+                    preproc = common.return_first(preproc)
                 return preproc
 
             self._input_preprocessors = alf.nest.map_structure(

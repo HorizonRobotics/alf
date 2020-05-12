@@ -65,6 +65,9 @@ class InputPreprocessor(Network):
             Tensor or TensorSpec: if ``Tensor``, the returned is the preprocessed
                 result; otherwise it's the tensor spec of the result.
         """
+        assert state == (), \
+            "InputPreprocessor is assumed to be stateless currently."
+
         if isinstance(inputs, TensorSpec):
             tensor = inputs.zeros(outer_dims=(1, ))
         else:
