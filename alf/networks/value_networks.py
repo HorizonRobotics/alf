@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
-from .preprocessors import PreprocessorNetwork
+from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 import alf.utils.math_ops as math_ops
 

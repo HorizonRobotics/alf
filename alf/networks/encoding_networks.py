@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 
 from .network import Network
-from .preprocessors import PreprocessorNetwork
+from .preprocessor_networks import PreprocessorNetwork
 import alf
 import alf.layers as layers
 from alf.initializers import variance_scaling_init
