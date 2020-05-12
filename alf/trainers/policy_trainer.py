@@ -338,6 +338,7 @@ def play(root_dir,
                 policy_state=policy_state,
                 epsilon_greedy=epsilon_greedy,
                 metrics=[])
+        episode_length += 1
         if recorder:
             recorder.capture_frame()
         else:
@@ -353,8 +354,7 @@ def play(root_dir,
             episode_length = 0.
             episodes += 1
             time_step = env.reset()
-        else:
-            episode_length += 1
+
     if recorder:
         recorder.close()
     env.reset()

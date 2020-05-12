@@ -92,8 +92,10 @@ class TimeStep(
     - prev_action: A (nested) ``Tensor`` for action from previous time step.
     - env_id: A scalar ``Tensor`` of the environment ID of the time step.
     - untransformed: a nest that represents the entire time step itself *before*
-      any transformation; used for experience replay.
-    - env_info: A dictionary containing some environment information.
+      any transformation (e.g., observation or reward transformation); used for
+      experience replay observing by subalgorithms.
+    - env_info: A dictionary containing information returned by Gym environments'
+      ``info``.
     """
 
     def is_first(self):

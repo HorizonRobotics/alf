@@ -55,6 +55,13 @@ of each environment step. It contains six fields:
   information can be used by replay buffers and metrics if there are multiple
   environments accessing them asynchronously.
 
+* :code:`untransformed`: a nest that represents the entire time step itself
+  *before* any transformation (e.g., observation or reward transformation);
+  used for experience replay observing by subalgorithms.
+
+* :code:`env_info`: A dictionary containing information returned by Gym
+  environments' ``info``.
+
 About :code:`TimeStep.discount`
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
