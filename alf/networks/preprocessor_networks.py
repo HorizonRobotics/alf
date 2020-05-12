@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""CriticNetworks"""
+"""PreprocessorNetworks"""
 
 import gin
 import functools
@@ -42,12 +42,12 @@ class PreprocessorNetwork(Network):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then `preprocessing_combiner` must not be
+                the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
-                structure with `input_tensor_spec`. If any element is None, then
+                structure with ``input_tensor_spec``. If any element is None, then
                 it will be treated as math_ops.identity. This arg is helpful if
                 you want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
@@ -55,7 +55,7 @@ class PreprocessorNetwork(Network):
                 continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
+                ``input_tensor_spec`` as the input to compute the processed
                 tensor spec. For example, see `alf.nest.utils.NestConcat`. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
@@ -73,17 +73,24 @@ class PreprocessorNetwork(Network):
                 # preprocessing. If it does change, then you should consider
                 # defining an `InputPreprocessor` instead.
                 return spec
-            self._input_preprocessor_modules.append(preproc)
             return preproc(spec)
 
         self._input_preprocessors = None
         if input_preprocessors is not None:
             input_tensor_spec = alf.nest.map_structure(
                 _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
-            # allow None as a placeholder in the nest
+
+            def _return_or_copy_preprocessor(preproc):
+                if preproc is None:
+                    # allow None as a placeholder in the nest
+                    preproc = math_ops.identity
+                elif isinstance(preproc, InputPreprocessor):
+                    preproc = preproc.copy()
+                    self._input_preprocessor_modules.append(preproc)
+                return preproc
+
             self._input_preprocessors = alf.nest.map_structure(
-                lambda preproc: math_ops.identity
-                if preproc is None else preproc, input_preprocessors)
+                _return_or_copy_preprocessor, input_preprocessors)
 
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):

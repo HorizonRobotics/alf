@@ -128,7 +128,14 @@ class Network(nn.Module):
     def singleton(self, singleton_instance=True):
         """Change the singleton property to the value given by the input
         argument ``singleton_instance``.
-        Returns: ``self``. This facilitates cascaded calling.
+        Args:
+            singleton_instance (bool): a flag indicating whether to turn
+            the ``singleton_instance`` property on or off.
+            If ``singleton_instance`` is True, calling ``copy()`` return
+            ``self``; otherwise a re-created ``Network`` instance will be
+            returned.
+        Returns:
+            ``self``, which facilitates cascaded calling.
         """
         self._singleton_instance = singleton_instance
         return self
