@@ -22,7 +22,7 @@ import torch.nn as nn
 import alf
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.nest.utils import get_outer_rank
-from alf.networks.network import Network, SingletonInstanceNetwork
+from alf.networks.network import Network
 import alf.utils.math_ops as math_ops
 
 
@@ -55,7 +55,7 @@ class InputPreprocessor(Network):
         """
         pass
 
-    def forward(self, inputs):
+    def forward(self, inputs, state=()):
         """Preprocess either a tensor input or a TensorSpec.
 
         Args:
@@ -72,7 +72,7 @@ class InputPreprocessor(Network):
         ret = self._preprocess(tensor)
         if isinstance(inputs, TensorSpec):
             return TensorSpec.from_tensor(ret, from_dim=1)
-        return ret
+        return ret, state
 
 
 @gin.configurable
@@ -82,58 +82,6 @@ class EmbeddingPreprocessor(InputPreprocessor):
     projected to a different dimension (to have the same length with other
     vectors). Different from an ``EncodingNetwork``, the input can be in the
     original format from the environment.
-    """
-
-    def __init__(self,
-                 input_tensor_spec,
-                 embedding_dim,
-                 conv_layer_params=None,
-                 fc_layer_params=None,
-                 activation=torch.relu_,
-                 last_activation=math_ops.identity,
-                 name="EmbeddingPreproc"):
-        """
-        Args:
-            input_tensor_spec (TensorSpec): the input spec
-            embedding_dim (int): output embedding size
-            conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format ``(filters, kernel_size, strides, padding)``,
-                where ``padding`` is optional.
-            fc_layer_params (tuple[int]): a tuple of integers representing FC
-                layer sizes.
-            activation (torch.nn.functional): activation applied to the embedding
-            last_activation (nn.functional): activation function of the
-                last layer specified by embedding_dim. ``math_ops.identity`` is
-                used by default.
-            name (str):
-        """
-        super().__init__(input_tensor_spec, name)
-        if input_tensor_spec.is_discrete:
-            assert isinstance(input_tensor_spec, BoundedTensorSpec)
-            N = input_tensor_spec.maximum - input_tensor_spec.minimum + 1
-            # use nn.Embedding to support a large dictionary
-            self._embedding_net = nn.Embedding(N, embedding_dim)
-        else:
-            # Only use an MLP for embedding a continuous input
-            self._embedding_net = alf.networks.EncodingNetwork(
-                input_tensor_spec=input_tensor_spec,
-                conv_layer_params=conv_layer_params,
-                fc_layer_params=fc_layer_params,
-                activation=activation,
-                last_layer_size=embedding_dim,
-                last_activation=last_activation)
-
-    def _preprocess(self, tensor):
-        assert get_outer_rank(tensor, self._input_tensor_spec) == 1, \
-            "Only supports one outer rank (batch dim)!"
-        ret = self._embedding_net(tensor)
-        # EncodingNetwork returns a pair
-        return (ret if self._input_tensor_spec.is_discrete else ret[0])
-
-
-@gin.configurable
-class SharedEmbeddingPreprocessor(InputPreprocessor, SingletonInstanceNetwork):
-    """An embedding preprocessor that can be shared by multiple networks.
     """
 
     def __init__(self,
@@ -194,12 +142,12 @@ class PreprocessorNetwork(Network):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then `preprocessing_combiner` must not be
+                the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             input_preprocessors (nested InputPreprocessor): a nest of
-                `InputPreprocessor`, each of which will be applied to the
+                ``InputPreprocessor``, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
-                structure with `input_tensor_spec`. If any element is None, then
+                structure with ``input_tensor_spec``. If any element is None, then
                 it will be treated as math_ops.identity. This arg is helpful if
                 you want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
@@ -207,7 +155,7 @@ class PreprocessorNetwork(Network):
                 continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
                 complex inputs. Note that this combiner must also accept
-                `input_tensor_spec` as the input to compute the processed
+                ``input_tensor_spec`` as the input to compute the processed
                 tensor spec. For example, see `alf.nest.utils.NestConcat`. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.

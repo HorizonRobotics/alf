@@ -33,8 +33,7 @@ import alf.utils.checkpoint_utils as ckpt_utils
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
-from alf.networks.preprocessors import (EmbeddingPreprocessor,
-                                        SharedEmbeddingPreprocessor)
+from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
@@ -572,8 +571,8 @@ class TestLoadStateDictForParallelNetwork(parameterized.TestCase,
 
         network_w_shared_preprocessor = network_ctor(
             input_tensor_spec=input_spec,
-            input_preprocessors=SharedEmbeddingPreprocessor(
-                input_spec, embedding_dim=10))
+            input_preprocessors=EmbeddingPreprocessor(
+                input_spec, embedding_dim=10).singleton())
 
         p_net_w_shared_preprocessor = network_w_shared_preprocessor.make_parallel(
             replicas)

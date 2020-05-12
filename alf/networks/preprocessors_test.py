@@ -23,8 +23,7 @@ from alf.nest.utils import NestConcat
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
-from alf.networks.preprocessors import (EmbeddingPreprocessor,
-                                        SharedEmbeddingPreprocessor)
+from alf.networks.preprocessors import EmbeddingPreprocessor
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
@@ -34,8 +33,7 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
     preproc = EmbeddingPreprocessor(
         input_tensor_spec=input_spec, embedding_dim=10)
 
-    shared_preproc = SharedEmbeddingPreprocessor(
-        input_tensor_spec=input_spec, embedding_dim=10)
+    shared_preproc = preproc.copy().singleton()
 
     @parameterized.parameters((False, preproc), (True, preproc),
                               (False, shared_preproc), (True, shared_preproc))
@@ -43,7 +41,6 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
         def _check_with_shared_param(net1, net2, shared_subnet=None):
             net1_params = set(net1.parameters())
             net2_params = set(net2.parameters())
-            print(net2_params)
             # check that net1 and net2 share paramsters with shared_subnet
             if shared_subnet is not None:
                 shared_params = set(shared_subnet.parameters())
@@ -59,10 +56,10 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
         input_preprocessor = preproc
         input_preprocessor_copy = input_preprocessor.copy()
 
-        if isinstance(preproc, EmbeddingPreprocessor):
+        if not preproc._singleton_instance:
             _check_with_shared_param(input_preprocessor,
                                      input_preprocessor_copy)
-        elif isinstance(preproc, SharedEmbeddingPreprocessor):
+        elif preproc._singleton_instance:
             _check_with_shared_param(input_preprocessor,
                                      input_preprocessor_copy,
                                      input_preprocessor)
@@ -87,18 +84,18 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
         # 2) test copied network has its own parameters, including
         # parameters from input preprocessors
         copied_net = net.copy()
-        if isinstance(preproc, EmbeddingPreprocessor):
+        if not preproc._singleton_instance:
             _check_with_shared_param(net, copied_net)
-        elif isinstance(preproc, SharedEmbeddingPreprocessor):
+        elif preproc._singleton_instance:
             _check_with_shared_param(net, copied_net, input_preprocessor)
 
         # 3) test for each replica of the NaiveParallelNetwork has its own
         # parameters, including parameters from input preprocessors
         replicas = 2
         p_net = alf.networks.network.NaiveParallelNetwork(net, replicas)
-        if isinstance(preproc, EmbeddingPreprocessor):
+        if not preproc._singleton_instance:
             _check_with_shared_param(p_net._networks[0], p_net._networks[1])
-        elif isinstance(preproc, SharedEmbeddingPreprocessor):
+        elif preproc._singleton_instance:
             _check_with_shared_param(p_net._networks[0], p_net._networks[1],
                                      input_preprocessor)
 

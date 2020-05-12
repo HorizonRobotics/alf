@@ -109,9 +109,10 @@ class Network(nn.Module):
         self._input_tensor_spec = input_tensor_spec
         self._output_spec = None
         self._is_distribution = None
-        # If True, calling ``copy()`` return ``self`` otherwise
-        # a newly recreated ``Network`` instance will be returned.
-        # For base Network, we always set it to ``False``.`
+        # if ``singleton_instance`` is True, calling ``copy()`` return ``self``;
+        # otherwise a re-created ``Network`` instance will be returned.
+        # Default value is ``False`` and can be changed by calling the
+        # ``singleton`` method
         self._singleton_instance = False
 
     def _test_forward(self):
@@ -123,6 +124,14 @@ class Network(nn.Module):
         states = common.zero_tensor_from_nested_spec(
             self.state_spec, batch_size=1)
         return self.forward(inputs, states)
+
+    def singleton(self, singleton_instance=True):
+        """Change the singleton property to the value given by the input
+        argument ``singleton_instance``.
+        Returns: ``self``. This facilitates cascaded calling.
+        """
+        self._singleton_instance = singleton_instance
+        return self
 
     def copy(self, **kwargs):
         """Create a shallow copy of this network.
@@ -203,18 +212,6 @@ class Network(nn.Module):
             Network: A parallel network
         """
         return NaiveParallelNetwork(self, n)
-
-
-class SingletonInstanceNetwork(Network):
-    """Singleton Instance Network.
-
-    Once an instance is created, calling ``.copy()`` will return the instance
-    itself instead of a newly constructed instance.
-    """
-
-    def __init__(self, input_tensor_spec, name="SingletonInstanceNetwork"):
-        super().__init__(input_tensor_spec, name)
-        self._singleton_instance = True
 
 
 class NaiveParallelNetwork(Network):
