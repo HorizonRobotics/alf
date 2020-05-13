@@ -72,6 +72,9 @@ class PreprocessorNetwork(Network):
                 # In this case we just assume the spec won't change after the
                 # preprocessing. If it does change, then you should consider
                 # defining an input preprocessor network instead.
+                assert not isinstance(
+                    preproc, nn.Module), ("To use trainable preprocessors, "
+                                          "please derive from alf.Network")
                 return spec
             return preproc.output_spec
 
