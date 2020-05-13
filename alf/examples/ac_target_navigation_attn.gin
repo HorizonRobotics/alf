@@ -1,5 +1,3 @@
 include 'ac_target_navigation.gin'
 
 target_navigation.get_ac_networks.attention=True
-
-TrainerConfig.use_tf_functions=1

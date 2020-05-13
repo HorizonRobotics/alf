@@ -13,6 +13,7 @@
 # limitations under the License.
 """Actor and Value networks for target navigation task."""
 
+from absl import logging
 import collections
 import functools
 import gin
@@ -20,8 +21,8 @@ import torch
 
 import alf
 from alf.initializers import variance_scaling_init
-from alf.networks.actor_distribution_networks import ActorDistributionRNNNetwork
-from alf.networks.value_networks import ValueRNNNetwork
+from alf.networks.actor_distribution_networks import ActorDistributionNetwork, ActorDistributionRNNNetwork
+from alf.networks.value_networks import ValueNetwork, ValueRNNNetwork
 from alf.utils import common
 
 
@@ -30,21 +31,28 @@ class StateLanguageAttentionCombiner(torch.nn.Module):
                  network_to_debug=None,
                  use_attention=False,
                  num_obj_dims=2,
+                 name="",
                  **kwargs):
+        """A combiner for modulating states input with language.
+        """
         super().__init__(**kwargs)
         self._network_to_debug = network_to_debug
         self._num_obj_dims = num_obj_dims
-        self._first_call = True
+        self._use_attention = use_attention
+        self.name = name
 
     def forward(self, inputs):
-        assert isinstance(inputs, list)
-        lang = inputs[0]
-        states = inputs[1]
+        flat = alf.nest.flatten(inputs)
+        if isinstance(flat[0], alf.TensorSpec):
+            tensors = alf.nest.map_structure(
+                lambda spec: spec.zeros(outer_dims=(1, )), inputs)
+        else:
+            tensors = inputs
+        lang = tensors["sentence"]
+        states = tensors["states"]
         (b, d) = states.shape
-        n_objs = d // (1 + self._num_obj_dims)
-        states = states.reshape(b, n_objs, (1 + self._num_obj_dims))
 
-        if self._num_obj_dims == 3:
+        if self._use_attention:
             # use transformation
             lang = lang.reshape(b, d, d)
             states = states.reshape(b, d, 1)
@@ -52,12 +60,8 @@ class StateLanguageAttentionCombiner(torch.nn.Module):
         else:
             # first object is always the goal, no need to use language
             outputs = states
-        if self._first_call:
-            if self.name == 'actor':
-                print(
-                    'attention_combiner gets lang: {}, states: {}, and outputs {} tensor'
-                    .format(inputs[0].shape, inputs[1].shape, outputs.shape))
-            self._first_call = False
+        if isinstance(flat[0], alf.TensorSpec):
+            return alf.TensorSpec.from_tensor(outputs, from_dim=1)
         return outputs
 
 
@@ -114,19 +118,23 @@ def get_ac_networks(conv_layer_params=None,
             num_embedding_dims = d * d
 
     vocab_size = common.get_vocab_size()
+    sentence_layers = None
     if vocab_size:
-        sentence_layers = torch.nn.Sequential([
+        sentence_layers = torch.nn.Sequential(
             torch.nn.Embedding(vocab_size, num_embedding_dims),
-            torch.nn.AvgPool1d()
-        ])
+            torch.nn.AdaptiveAvgPool1d(1))
 
     # image:
     if attention:
-        assert False
-    else:
-        image_layers = alf.networks.ImageEncodingNetwork(flatten_output=True)
+        image_layers = None
+    elif isinstance(observation_spec, dict) and 'image' in observation_spec:
+        image_layers = alf.networks.ImageEncodingNetwork(
+            input_channels=None,
+            input_size=None,
+            conv_layer_params=conv_layer_params,
+            flatten_output=True)
 
-    preprocessing_layers = {}
+    preprocessing_layers = collections.OrderedDict()
     obs_spec = observation_spec
     if isinstance(obs_spec, dict) and 'image' in obs_spec:
         preprocessing_layers['image'] = image_layers
@@ -141,7 +149,7 @@ def get_ac_networks(conv_layer_params=None,
     if not preprocessing_layers:
         preprocessing_layers = torch.nn.Identity()
 
-    preprocessing_combiner = torch.nn.Concat(1)
+    preprocessing_combiner = None
 
     if attention:
         num_obj_dims = 2
@@ -153,39 +161,36 @@ def get_ac_networks(conv_layer_params=None,
             use_attention=has_obj_id,
             num_obj_dims=num_obj_dims)
         preprocessing_combiner = attention_combiner
-
-    if not isinstance(preprocessing_layers, dict):
+    elif (isinstance(preprocessing_layers, dict)
+          and len(preprocessing_layers) > 1):
+        preprocessing_combiner = alf.nest.utils.NestConcat()
+    else:
         preprocessing_combiner = None
-
-    if name == 'actor':
-        print('==========================================')
-        print('observation_spec: ', observation_spec)
-        print('action_spec: ', action_spec)
 
     if rnn:
         actor = ActorDistributionRNNNetwork(
             input_tensor_spec=observation_spec,
-            output_tensor_spec=action_spec,
-            preprocessing_layers=preprocessing_layers,
+            action_spec=action_spec,
+            input_preprocessors=preprocessing_layers,
             preprocessing_combiner=preprocessing_combiner,
-            input_fc_layer_params=fc_layer_params)
+            fc_layer_params=fc_layer_params)
 
         value = ValueRNNNetwork(
             input_tensor_spec=observation_spec,
-            preprocessing_layers=preprocessing_layers,
+            input_preprocessors=preprocessing_layers,
             preprocessing_combiner=preprocessing_combiner,
-            input_fc_layer_params=fc_layer_params)
+            fc_layer_params=fc_layer_params)
     else:
         actor = ActorDistributionNetwork(
             input_tensor_spec=observation_spec,
-            output_tensor_spec=action_spec,
-            preprocessing_layers=preprocessing_layers,
+            action_spec=action_spec,
+            input_preprocessors=preprocessing_layers,
             preprocessing_combiner=preprocessing_combiner,
             fc_layer_params=fc_layer_params)
 
         value = ValueNetwork(
             input_tensor_spec=observation_spec,
-            preprocessing_layers=preprocessing_layers,
+            input_preprocessors=preprocessing_layers,
             preprocessing_combiner=preprocessing_combiner,
             fc_layer_params=fc_layer_params)
 
@@ -194,7 +199,7 @@ def get_ac_networks(conv_layer_params=None,
 
 @gin.configurable
 def get_actor_network(conv_layer_params=None,
-                      activation_fn=tf.keras.activations.softsign,
+                      activation_fn=torch.nn.functional.softsign,
                       kernel_initializer=None,
                       num_embedding_dims=None,
                       fc_layer_params=None):
@@ -213,7 +218,7 @@ def get_actor_network(conv_layer_params=None,
 
 @gin.configurable
 def get_value_network(conv_layer_params=None,
-                      activation_fn=tf.keras.activations.softsign,
+                      activation_fn=torch.nn.functional.softsign,
                       kernel_initializer=None,
                       num_embedding_dims=None,
                       fc_layer_params=None):
