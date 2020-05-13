@@ -67,25 +67,6 @@ def add_method(cls):
     return decorator
 
 
-def return_first(func):
-    """A decorator which keeps only the first output and discards
-    others if any.
-    For example, it can be used to decorate the ``forward`` function of
-    ``Network`` to return only the non-state (first) output and discard
-    the empty state (second) output in the stateless case.
-    """
-
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        rets = func(*args, **kwargs)
-        if isinstance(rets, tuple):
-            return rets[0]
-        else:
-            return rets
-
-    return wrapper
-
-
 def as_list(x):
     """Convert ``x`` to a list.
 

@@ -13,8 +13,8 @@
 # limitations under the License.
 """Some network input preprocessors.
 
-An ``InputPreprocessor`` is a stateless Network, which is used for the purposed of input
-preprocessing and making gin files more convenient to configure.
+An ``InputPreprocessor`` is a stateless Network, which is used for the purpose
+of preprocessing input and making gin files more convenient to configure.
 
 Example:
 In your gin file, below will be possible to configure:

@@ -27,7 +27,6 @@ from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
 from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
-from alf.utils import common
 
 from .network import Network
 
@@ -72,7 +71,7 @@ class PreprocessorNetwork(Network):
             if not isinstance(preproc, Network):
                 # In this case we just assume the spec won't change after the
                 # preprocessing. If it does change, then you should consider
-                # defining a input preprocessor network instead.
+                # defining an input preprocessor network instead.
                 return spec
             return preproc.output_spec
 
@@ -84,12 +83,13 @@ class PreprocessorNetwork(Network):
             def _return_or_copy_preprocessor(preproc):
                 if preproc is None:
                     # allow None as a placeholder in the nest
-                    preproc = math_ops.identity
+                    return math_ops.identity
                 elif isinstance(preproc, Network):
                     preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
-                    preproc = common.return_first(preproc)
-                return preproc
+                    return lambda x: preproc(x)[0]
+                else:
+                    return preproc
 
             self._input_preprocessors = alf.nest.map_structure(
                 _return_or_copy_preprocessor, input_preprocessors)
@@ -97,7 +97,7 @@ class PreprocessorNetwork(Network):
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):
             assert preprocessing_combiner is not None, \
-                ("When a nested input tensor spec is provided, a input " +
+                ("When a nested input tensor spec is provided, an input " +
                 "preprocessing combiner must also be provided!")
             input_tensor_spec = preprocessing_combiner(input_tensor_spec)
         else:
@@ -124,6 +124,7 @@ class PreprocessorNetwork(Network):
             inputs = alf.nest.map_structure(
                 lambda preproc, tensor: preproc(tensor),
                 self._input_preprocessors, inputs)
+
         proc_inputs = self._preprocessing_combiner(inputs)
         outer_rank = get_outer_rank(proc_inputs,
                                     self._processed_input_tensor_spec)
