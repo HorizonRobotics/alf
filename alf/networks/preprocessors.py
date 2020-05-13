@@ -11,8 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Some network input preprocessors."""
+"""Some network input preprocessors.
 
+An ``InputPreprocessor`` is a stateless Network, which is used for the purposed of input
+preprocessing and making gin files more convenient to configure.
+
+Example:
+In your gin file, below will be possible to configure:
+input1 (img) -> InputPreprocessor1 -> embed1    ----> EncodingNetwork
+input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
+
+"""
 import abc
 import gin
 
@@ -26,60 +35,8 @@ from alf.networks.network import Network
 import alf.utils.math_ops as math_ops
 
 
-class InputPreprocessor(Network):
-    """A preprocessor applied to a Network's input.
-
-    It's meant to be applied to either individual inputs or individual
-    TensorSpecs. Mainly for the purpose of input preprocessing and making gin
-    files more convenient to configure.
-
-    Example:
-    In your gin file, below will be possible to configure:
-    input1 (img) -> InputPreprocessor1 -> embed1    ----> EncodingNetwork
-    input2 (action) -> InputPreprocessor2 -> embed2   /   (with `NestCombiner`)
-    """
-
-    def __init__(self, input_tensor_spec, name="InputPreprocessor"):
-        assert isinstance(input_tensor_spec, TensorSpec)
-        super().__init__(input_tensor_spec, name)
-
-    @abc.abstractmethod
-    def _preprocess(self, tensor):
-        """Preprocess a tensor input.
-
-        Args:
-            tensor (Tensor):
-
-        Returns:
-            a preprocessed tensor
-        """
-        pass
-
-    def forward(self, inputs, state=()):
-        """Preprocess either a tensor input or a TensorSpec.
-
-        Args:
-            inputs (TensorSpec or Tensor):
-
-        Returns:
-            Tensor or TensorSpec: if ``Tensor``, the returned is the preprocessed
-                result; otherwise it's the tensor spec of the result.
-        """
-        assert state == (), \
-            "InputPreprocessor is assumed to be stateless currently."
-
-        if isinstance(inputs, TensorSpec):
-            tensor = inputs.zeros(outer_dims=(1, ))
-        else:
-            tensor = inputs
-        ret = self._preprocess(tensor)
-        if isinstance(inputs, TensorSpec):
-            return TensorSpec.from_tensor(ret, from_dim=1)
-        return ret, state
-
-
 @gin.configurable
-class EmbeddingPreprocessor(InputPreprocessor):
+class EmbeddingPreprocessor(Network):
     """A preprocessor that converts the input to an embedding vector. This can
     be used when the input is a discrete scalar, or a continuous vector to be
     projected to a different dimension (to have the same length with other
@@ -132,3 +89,19 @@ class EmbeddingPreprocessor(InputPreprocessor):
         ret = self._embedding_net(tensor)
         # EncodingNetwork returns a pair
         return (ret if self._input_tensor_spec.is_discrete else ret[0])
+
+    def forward(self, inputs, state=()):
+        """Preprocess either a tensor input or a TensorSpec.
+
+        Args:
+            inputs (TensorSpec or Tensor):
+
+        Returns:
+            Tensor or TensorSpec: if ``Tensor``, the returned is the preprocessed
+                result; otherwise it's the tensor spec of the result.
+        """
+        assert state == (), \
+            "InputPreprocessor is assumed to be stateless currently."
+
+        ret = self._preprocess(inputs)
+        return ret, state

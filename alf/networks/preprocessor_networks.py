@@ -25,7 +25,7 @@ import alf.utils.math_ops as math_ops
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
-from alf.networks.preprocessors import InputPreprocessor
+from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
@@ -45,8 +45,8 @@ class PreprocessorNetwork(Network):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            input_preprocessors (nested Network): a nest of
+                preprocessor networks, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
                 structure with ``input_tensor_spec``. If any element is None, then
                 it will be treated as math_ops.identity. This arg is helpful if
@@ -69,12 +69,12 @@ class PreprocessorNetwork(Network):
         self._input_preprocessor_modules = nn.ModuleList()
 
         def _get_preprocessed_spec(preproc, spec):
-            if not isinstance(preproc, InputPreprocessor):
+            if not isinstance(preproc, Network):
                 # In this case we just assume the spec won't change after the
                 # preprocessing. If it does change, then you should consider
-                # defining an `InputPreprocessor` instead.
+                # defining a input preprocessor network instead.
                 return spec
-            return preproc(spec)
+            return preproc.output_spec
 
         self._input_preprocessors = None
         if input_preprocessors is not None:
@@ -85,7 +85,7 @@ class PreprocessorNetwork(Network):
                 if preproc is None:
                     # allow None as a placeholder in the nest
                     preproc = math_ops.identity
-                elif isinstance(preproc, InputPreprocessor):
+                elif isinstance(preproc, Network):
                     preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
                     preproc = common.return_first(preproc)
