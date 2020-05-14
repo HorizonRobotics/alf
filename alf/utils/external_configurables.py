@@ -14,6 +14,7 @@
 """Make various external gin-configurable objects."""
 
 import gin
+import gin.torch
 import gym
 import torch
 

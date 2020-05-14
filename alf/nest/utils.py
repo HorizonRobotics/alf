@@ -88,23 +88,27 @@ class NestConcat(NestCombiner):
 
 @gin.configurable
 class NestSum(NestCombiner):
-    def __init__(self, average=False, name="NestSum"):
+    def __init__(self, average=False, activation=None, name="NestSum"):
         """Add all elements in a nest together. It assumes that all elements have
         the same tensor shape. Can be used as a preprocessing combiner in
         ``EncodingNetwork``.
 
         Args:
             average (bool): If True, the elements are averaged instead of summed.
+            activation (Callable): activation function.
             name (str):
         """
         super(NestSum, self).__init__(name)
         self._average = average
+        if activation is None:
+            activation = lambda x: x
+        self._activation = activation
 
     def _combine_flat(self, tensors):
         ret = sum(tensors)
         if self._average:
             ret *= 1 / float(len(tensors))
-        return ret
+        return self._activation(ret)
 
 
 def stack_nests(nests):

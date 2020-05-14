@@ -31,10 +31,10 @@ class MultiStepTDLoss(nn.Module):
                  td_lambda=0.95,
                  debug_summaries=False,
                  name="MultiStepTDLoss"):
-        r"""Create a ActorCriticLoss object.
+        r"""Create a MultiStepTDLoss object.
 
         Let :math:`G_{t:T}` be the bootstaped return from t to T:
-            :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_t + \gamma^{T-t} V(s_T)`
+            :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)`
         If ``td_lambda`` = 1, the target for step t is :math:`G_{t:T}`.
         If ``td_lambda`` < 1, the target for step t is the :math:`\lambda`-return:
             :math:`G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}`

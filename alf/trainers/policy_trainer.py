@@ -136,14 +136,16 @@ class Trainer(object):
         """Perform training."""
         self._restore_checkpoint()
         alf.summary.enable_summary()
-        common.run_under_record_context(
-            self._train,
-            summary_dir=self._train_dir,
-            summary_interval=self._summary_interval,
-            flush_secs=self._summaries_flush_secs,
-            summary_max_queue=self._summary_max_queue)
-        self._save_checkpoint()
-        self._close_envs()
+        try:
+            common.run_under_record_context(
+                self._train,
+                summary_dir=self._train_dir,
+                summary_interval=self._summary_interval,
+                flush_secs=self._summaries_flush_secs,
+                summary_max_queue=self._summary_max_queue)
+        finally:
+            self._save_checkpoint()
+            self._close_envs()
 
     def _train(self):
         for env in self._envs:
@@ -159,6 +161,7 @@ class Trainer(object):
         time_to_checkpoint = checkpoint_interval
 
         while True:
+            common.summarize_gin_config()
             t0 = time.time()
             with record_time("time/train_iter"):
                 train_steps = self._algorithm.train_iter()
