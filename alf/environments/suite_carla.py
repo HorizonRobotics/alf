@@ -38,8 +38,6 @@ Make sure you are using python3.7
 
 import abc
 from absl import logging
-from collections import deque, OrderedDict
-import functools
 import gin
 import math
 import numpy as np
@@ -127,7 +125,7 @@ class SensorBase(abc.ABC):
 class CollisionSensor(SensorBase):
     """CollisionSensor for getting collision signal.
 
-    It get the impulses from the collisions during the last tick.
+    It gets the impulses from the collisions during the last tick.
 
     TODO: include event.other_actor in the sensor result.
     """
@@ -245,15 +243,12 @@ class LaneInvasionSensor(SensorBase):
 
     def get_current_observation(self, current_frame):
         raise NotImplementedError()
-        return ()
 
     def observation_spec(self):
         raise NotImplementedError()
-        return ()
 
     def observation_desc(self):
         raise NotImplementedError()
-        return ()
 
 
 # ==============================================================================
@@ -634,16 +629,20 @@ class World(object):
     def __init__(self, world: carla.World):
         self._world = world
         self._map = world.get_map()
-        waypoints = self._map.generate_waypoints(2.0)
-        waypoints = map(lambda p: p.transform.location, waypoints)
-        self._waypoints = list(
-            map(lambda p: np.array([p.x, p.y, p.z]), waypoints))
+        self._waypoints = self._map.generate_waypoints(2.0)
+        self._vehicles = []
+
+    def add_vehicle(self, actor: carla.Actor):
+        self._vehicles.append(actor)
+
+    def get_vehicles(self):
+        return self._vehicles
 
     def get_waypoints(self):
         """Get the coordinates of way points
 
         Returns:
-            list[np.ndarray]: each one is a coordinate of one way point
+            list[carla.Waypoint]:
         """
         return self._waypoints
 
@@ -665,7 +664,7 @@ class Player(object):
                  alf_world,
                  success_reward=100.,
                  success_distance_thresh=5.0,
-                 min_speed=0.1):
+                 min_speed=5.):
         """
         Args:
             actor (carla.Actor): the carla actor object
@@ -698,8 +697,8 @@ class Player(object):
             'radar': self._radar_sensor,
         }
 
-        self._observation_spec = OrderedDict()
-        self._observation_desc = OrderedDict()
+        self._observation_spec = dict()
+        self._observation_desc = dict()
         for sensor_name, sensor in self._observation_sensors.items():
             self._observation_spec[sensor_name] = sensor.observation_spec()
             self._observation_desc[sensor_name] = sensor.observation_desc()
@@ -724,11 +723,41 @@ class Player(object):
 
     def reset(self):
         """Reset the goal."""
-        self._goal_location = random.choice(self._alf_world.get_waypoints())
+
+        wp = random.choice(self._alf_world.get_waypoints())
+        loc = wp.transform.location
+        self._goal_location = np.array([loc.x, loc.y, loc.z], dtype=np.float32)
+
+        forbidden_locations = []
+        for v in self._alf_world.get_vehicles():
+            if v.id == self._actor.id:
+                continue
+            forbidden_locations.append(v.get_location())
+
+        # find a waypoint far enough from other vehicles
+        ok = False
+        i = 0
+        while not ok and i < 100:
+            wp = random.choice(self._alf_world.get_waypoints())
+            loc = wp.transform.location
+            ok = True
+            for other_loc in forbidden_locations:
+                if loc.distance(other_loc) < 10.:
+                    ok = False
+                    break
+            i += 1
+        assert ok, "Fail to find new position"
+        # loc.z + 0.27531 to avoid Z-collision, see Carla documentation for
+        # carla.Map.get_spawn_points(). The value used by carla is slightly
+        # smaller: 0.27530714869499207
+        loc = carla.Location(loc.x, loc.y, loc.z + 0.3)
+        self._actor.set_transform(carla.Transform(loc, wp.transform.rotation))
+        self._actor.set_velocity(carla.Vector3D())
+        self._actor.set_angular_velocity(carla.Vector3D())
+
         self._fail_frame = None
         self._done = False
-        p = self._actor.get_location()
-        p = np.array([p.x, p.y, p.z])
+        p = np.array([loc.x, loc.y, loc.z])
         self._current_distance = np.linalg.norm(self._goal_location - p)
         self._prev_distance = self._current_distance
         self._prev_action = np.zeros(
@@ -777,15 +806,16 @@ class Player(object):
         """Get the action spec.
 
         The action is a 4-D vector of [throttle, steer, brake, reverse], where
-        throttle is in [0.0, 1.0], steer is in [-1.0, 1.0], brake is in
-        [0.0, 1.0], and reverse is interpreted as a boolean value
-        with values greater than 0.5 corrsponding to True.
+        throttle is in [-1.0, 1.0] (negative value is same as zero), steer is in
+        [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value is same as zero),
+        and reverse is interpreted as a boolean value with values greater than
+        0.5 corrsponding to True.
 
         Returns:
             nested BoundedTensorSpec:
         """
         return alf.BoundedTensorSpec([4],
-                                     minimum=[0., -1., 0., 0.],
+                                     minimum=[-1., -1., -1., 0.],
                                      maximum=[1., 1., 1., 1.])
 
     def action_desc(self):
@@ -797,8 +827,9 @@ class Player(object):
         """
         return (
             "4-D vector of [throttle, steer, brake, reverse], where "
-            "throttle is in [0.0, 1.0], steer is in [-1.0, 1.0], brake is in "
-            "[0.0, 1.0], and reverse is interpreted as a boolean value "
+            "throttle is in [-1.0, 1.0] (negative value is same as zero), "
+            "steer is in [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value "
+            "is same as zero), and reverse is interpreted as a boolean value "
             "with values greater than 0.5 corrsponding to True.")
 
     def _get_goal(self):
@@ -819,7 +850,7 @@ class Player(object):
         Returns:
             TimeStep: all elements are ``np.ndarray`` or ``np.number``.
         """
-        obs = OrderedDict()
+        obs = dict()
         for sensor_name, sensor in self._observation_sensors.items():
             obs[sensor_name] = sensor.get_current_observation(current_frame)
         obs['goal'] = self._get_goal()
@@ -870,9 +901,9 @@ class Player(object):
         self._prev_distance = self._current_distance
         if self._done:
             self.reset()
-        self._control.throttle = float(action[0])
+        self._control.throttle = max(float(action[0]), 0.0)
         self._control.steer = float(action[1])
-        self._control.brake = float(action[2])
+        self._control.brake = max(float(action[2]), 0.0)
         self._control.reverse = bool(action[3] > 0.5)
         self._prev_action = action
 
@@ -897,6 +928,8 @@ class Player(object):
                 self._clock = pygame.time.Clock()
                 height, width = self._camera_sensor.observation_spec(
                 ).shape[1:3]
+                height = max(height, 480)
+                width = max(width, 640)
                 self._display = pygame.display.set_mode(
                     (width, height), pygame.HWSURFACE | pygame.DOUBLEBUF)
 
@@ -981,10 +1014,13 @@ class CarlaServer(object):
         """
         assert quality_level in ['Low', 'Epic'], "Unknown quality level"
         if docker_image:
+            dev = os.environ.get('CUDA_VISIBLE_DEVICES')
+            if not dev:
+                dev = 'all'
             command = ("docker run -d "
                        "-p {rpc_port}:{rpc_port} "
                        "-p {streaming_port}:{streaming_port} "
-                       "--rm --gpus all " + docker_image +
+                       "--rm --gpus device=" + dev + " " + docker_image +
                        " {carla_root}/CarlaUE4.sh "
                        "--carla-rpc-port={rpc_port} "
                        "--carla-streaming-port={streaming_port} "
@@ -1149,10 +1185,9 @@ class CarlaEnvironment(TorchEnvironment):
             if response.error:
                 logging.error(response.error)
             else:
-                self._players.append(
-                    Player(
-                        self._world.get_actor(response.actor_id),
-                        self._alf_world))
+                vehicle = self._world.get_actor(response.actor_id)
+                self._players.append(Player(vehicle, self._alf_world))
+                self._alf_world.add_vehicle(vehicle)
 
         assert len(self._players) == self._batch_size, (
             "Fail to create %s vehicles" % self._batch_size)
