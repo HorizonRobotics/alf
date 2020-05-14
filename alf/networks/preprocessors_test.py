@@ -28,7 +28,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
 
-class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
+class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
     input_spec = TensorSpec((10, ))
     preproc = EmbeddingPreprocessor(
         input_tensor_spec=input_spec, embedding_dim=10)
@@ -75,10 +75,10 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
 
         net = network_ctor(
             input_tensor_spec=[
-                TestInpurpreprocessor.input_spec,
-                TestInpurpreprocessor.input_spec
+                TestInputpreprocessor.input_spec,
+                TestInputpreprocessor.input_spec
             ],
-            input_preprocessors=[input_preprocessor, torch.nn.ReLU],
+            input_preprocessors=[input_preprocessor, torch.relu],
             preprocessing_combiner=NestConcat(dim=1))
 
         # 2) test copied network has its own parameters, including
@@ -86,7 +86,7 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
         copied_net = net.copy()
         if not preproc._singleton_instance:
             _check_with_shared_param(net, copied_net)
-        elif preproc._singleton_instance:
+        else:
             _check_with_shared_param(net, copied_net, input_preprocessor)
 
         # 3) test for each replica of the NaiveParallelNetwork has its own
@@ -95,9 +95,34 @@ class TestInpurpreprocessor(parameterized.TestCase, alf.test.TestCase):
         p_net = alf.networks.network.NaiveParallelNetwork(net, replicas)
         if not preproc._singleton_instance:
             _check_with_shared_param(p_net._networks[0], p_net._networks[1])
-        elif preproc._singleton_instance:
+        else:
             _check_with_shared_param(p_net._networks[0], p_net._networks[1],
                                      input_preprocessor)
+
+        # 4) test network forward
+        batch_size = 6
+        batch = TestInputpreprocessor.input_spec.zeros(
+            outer_dims=(batch_size, ))
+
+        if lstm:
+            state = [(torch.zeros((batch_size, 1)), ) * 2]
+            p_state = [(torch.zeros((batch_size, replicas, 1)), ) * 2]
+        else:
+            state = ()
+            p_state = ()
+
+        net([batch, batch], state)
+        p_net([batch, batch], p_state)
+
+    @parameterized.parameters(preproc, shared_preproc)
+    def test_input_preprocessor_state(self, input_preprocessor):
+        batch_size = 6
+        batch = TestInputpreprocessor.input_spec.zeros(
+            outer_dims=(batch_size, ))
+
+        input_preprocessor(batch)
+        self.assertRaises(
+            AssertionError, input_preprocessor, inputs=batch, state=batch)
 
 
 if __name__ == '__main__':

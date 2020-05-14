@@ -25,7 +25,7 @@ import alf.utils.math_ops as math_ops
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
-from alf.networks.preprocessors import InputPreprocessor
+from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 
 from .network import Network
@@ -44,8 +44,8 @@ class PreprocessorNetwork(Network):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
-            input_preprocessors (nested InputPreprocessor): a nest of
-                ``InputPreprocessor``, each of which will be applied to the
+            input_preprocessors (nested Network): a nest of
+                preprocessor networks, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
                 structure with ``input_tensor_spec``. If any element is None, then
                 it will be treated as math_ops.identity. This arg is helpful if
@@ -68,12 +68,15 @@ class PreprocessorNetwork(Network):
         self._input_preprocessor_modules = nn.ModuleList()
 
         def _get_preprocessed_spec(preproc, spec):
-            if not isinstance(preproc, InputPreprocessor):
+            if not isinstance(preproc, Network):
                 # In this case we just assume the spec won't change after the
                 # preprocessing. If it does change, then you should consider
-                # defining an `InputPreprocessor` instead.
+                # defining an input preprocessor network instead.
+                assert not isinstance(
+                    preproc, nn.Module), ("To use trainable preprocessors, "
+                                          "please derive from alf.Network")
                 return spec
-            return preproc(spec)
+            return preproc.output_spec
 
         self._input_preprocessors = None
         if input_preprocessors is not None:
@@ -83,11 +86,13 @@ class PreprocessorNetwork(Network):
             def _return_or_copy_preprocessor(preproc):
                 if preproc is None:
                     # allow None as a placeholder in the nest
-                    preproc = math_ops.identity
-                elif isinstance(preproc, InputPreprocessor):
+                    return math_ops.identity
+                elif isinstance(preproc, Network):
                     preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
-                return preproc
+                    return lambda x: preproc(x)[0]
+                else:
+                    return preproc
 
             self._input_preprocessors = alf.nest.map_structure(
                 _return_or_copy_preprocessor, input_preprocessors)
@@ -95,7 +100,7 @@ class PreprocessorNetwork(Network):
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):
             assert preprocessing_combiner is not None, \
-                ("When a nested input tensor spec is provided, a input " +
+                ("When a nested input tensor spec is provided, an input " +
                 "preprocessing combiner must also be provided!")
             input_tensor_spec = preprocessing_combiner(input_tensor_spec)
         else:
@@ -122,6 +127,7 @@ class PreprocessorNetwork(Network):
             inputs = alf.nest.map_structure(
                 lambda preproc, tensor: preproc(tensor),
                 self._input_preprocessors, inputs)
+
         proc_inputs = self._preprocessing_combiner(inputs)
         outer_rank = get_outer_rank(proc_inputs,
                                     self._processed_input_tensor_spec)
