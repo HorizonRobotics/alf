@@ -11,6 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""A utility to watch the vehicles in a simulation.
+
+A typical scenario is that you have an on-going Carla training session and you
+want to see what the training vehicles are doing. You can use this utility to do
+this:
+
+.. code-block:: bash
+
+    python carla_spectator --port 2000 --host localhost
+
+If you only have one training session going on, the port is 2000 by default.
+You can use `ps aux | grep Carla` to find out `--carla-rpc-port` and use it to
+replace 2000.
+
+After carla_spectator starts, you can use TAB key to switch to different vehicles
+and ESC key to quit the program.
+"""
 
 from absl import app
 from absl import logging
