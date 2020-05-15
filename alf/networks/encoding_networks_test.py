@@ -211,17 +211,20 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_make_parallel(self):
         batch_size = 128
-        input_spec = TensorSpec((100, ), torch.float32)
+        input_spec = TensorSpec((1, 10, 10), torch.float32)
 
+        conv_layer_params = ((2, 3, 2), (5, 3, 1))
+        fc_layer_params = (256, 256)
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            fc_layer_params=(256, 256),
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
             activation=torch.relu_,
             last_layer_size=1,
             last_activation=math_ops.identity,
             name='base_encoding_network')
         replicas = 2
-        num_layers = 3
+        num_layers = len(conv_layer_params) + len(fc_layer_params) + 1
 
         def _benchmark(pnet, name):
             t0 = time.time()
