@@ -9,39 +9,35 @@ include 'ppo.gin'
 import pybullet_envs
 create_environment.env_name="HumanoidBulletEnv-v0"
 create_environment.num_parallel_environments=96
+suite_gym.wrap_env.clip_action=False
 
 # algorithm config
-Agent.gradient_clipping=0.5
-Agent.clip_by_global_norm=True
-
 PPOLoss.entropy_regularization=1e-2
 PPOLoss.gamma=0.99
 PPOLoss.normalize_advantages=True
 PPOLoss.td_lambda=0.95
 PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(32, 32, 32)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.tanh
-actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
-NormalProjectionNetwork.init_means_output_factor=1e-10
+actor/ActorDistributionNetwork.activation=@torch.tanh
+actor/ActorDistributionNetwork.continuous_projection_net_ctor=@NormalProjectionNetwork
+NormalProjectionNetwork.projection_output_init_gain=1e-5
 NormalProjectionNetwork.std_bias_initializer_value=0.0
-NormalProjectionNetwork.std_transform=@tf.math.exp
+NormalProjectionNetwork.std_transform=@torch.exp
 
-value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(32, 32, 32)
-value/ValueNetwork.activation_fn=@tf.nn.tanh
+value/ValueNetwork.activation=@torch.tanh
 
-ac/Adam.learning_rate=3e-4
+ac/AdamTF.lr=3e-4
+ac/AdamTF.gradient_clipping=0.5
+ac/AdamTF.clip_by_global_norm=True
 
-ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/Adam()
+ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
+ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
+Agent.optimizer=@ac/AdamTF()
 
 
 # training config
-TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.num_updates_per_train_iter = 20
 TrainerConfig.unroll_length = 512
 TrainerConfig.mini_batch_size = 4096
@@ -52,8 +48,3 @@ TrainerConfig.eval_interval = 100
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars = True
 TrainerConfig.summary_interval = 10
-
-ReplayBuffer.max_length = 2048
-
-
-

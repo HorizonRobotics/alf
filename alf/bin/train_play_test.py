@@ -393,7 +393,6 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='off_policy_ac_cart_pole.gin',
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_bullet_humanoid(self):
         self._test(
             gin_file='ppo_bullet_humanoid.gin',

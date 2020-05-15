@@ -78,8 +78,8 @@ class ValueNetwork(PreprocessorNetwork):
         if kernel_initializer is None:
             kernel_initializer = torch.nn.init.xavier_uniform_
 
-        last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
-                                    a=-0.03, b=0.03)
+        last_kernel_initializer = functools.partial(
+            torch.nn.init.uniform_, a=-0.03, b=0.03)
 
         self._encoding_net = EncodingNetwork(
             input_tensor_spec=self._processed_input_tensor_spec,
