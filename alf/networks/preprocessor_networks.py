@@ -87,7 +87,7 @@ class PreprocessorNetwork(Network):
                     self._input_preprocessor_modules.append(preproc)
                     return preproc
                 elif isinstance(preproc, nn.Module):
-                    preproc = SequentialNetwork(input_spec, [preproc])
+                    preproc = SequentialNetwork(input_spec, [preproc]).copy()
                     self._input_preprocessor_modules.append(preproc)
                     return preproc
                 else:

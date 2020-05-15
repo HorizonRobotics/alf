@@ -142,10 +142,12 @@ class Network(nn.Module):
         return self
 
     def copy(self, **kwargs):
-        """Create a shallow copy of this network or return the current instance.
+        """Create a  copy of this network or return the current instance.
 
         If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise a re-created ``Network`` instance will be returned.
+        ``self``; otherwise it will re-create and return a new ``Network``
+        instance using the original arguments used by the constructor.
+
         **NOTE** When re-creating ``Network``, Network layer weights are *never*
         copied. This method recreates the ``Network`` instance with the same
         arguments it was initialized with (excepting any new kwargs).
@@ -155,7 +157,7 @@ class Network(nn.Module):
                 overridden args include 'name'.
 
         Returns:
-            A shallow copy of this network.
+            Network:
         """
         if self._singleton_instance:
             return self
@@ -316,6 +318,20 @@ class SequentialNetwork(Network):
         return self._layers(input), state
 
     def copy(self, name=None):
+        """Create a  copy of this network or return the current instance.
+
+        If ``self._singleton_instance`` is True, calling ``copy()`` will return
+        ``self``; otherwise it will make a copy of all the layers and re-initialize
+        their parameters.
+
+        Args:
+            name (str): name of the new network. Only used if not self._singleton_instance.
+        Returns:
+            SequentialNetwork:
+        """
+        if self._singleton_instance:
+            return self
+
         if name is None:
             name = self.name
 
