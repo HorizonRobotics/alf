@@ -161,7 +161,6 @@ class Trainer(object):
         time_to_checkpoint = checkpoint_interval
 
         while True:
-            common.summarize_gin_config()
             t0 = time.time()
             with record_time("time/train_iter"):
                 train_steps = self._algorithm.train_iter()
