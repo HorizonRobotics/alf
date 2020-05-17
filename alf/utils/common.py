@@ -393,6 +393,14 @@ class ObservationNormalizer(nn.Module):
         used as the ``observation_transformer`` of an algorithm. It will be called
         before both ``rollout_step()`` and ``train_step()``.
 
+        The normalizer by default doesn't automatically update the mean and std.
+        Instead, it will check when ``self.forward()`` is called, whether an
+        algorithm is unrolling or training. It only updates the mean and std
+        during unroll. This is the suggested way of using an observation
+        normalizer (i.e., update the stats when encountering new data for the
+        first time). This same strategy has been used by OpenAI's baselines for
+        training their Robotics environments.
+
         Args:
             observation_spec (TensorSpec): the observation spec
             clipping (float): a floating value for clipping the normalized
@@ -408,17 +416,28 @@ class ObservationNormalizer(nn.Module):
         self._clipping = float(clipping)
         if mode == "adaptive":
             self._normalizer = AdaptiveNormalizer(
-                tensor_spec=observation_spec, speed=float(speed))
+                tensor_spec=observation_spec,
+                speed=float(speed),
+                auto_update=False)
         elif mode == "window":
             self._normalzier = WindowNormalizer(
-                tensor_spec=observation_spec, window_size=int(window_size))
+                tensor_spec=observation_spec,
+                window_size=int(window_size),
+                auto_update=False)
         elif mode == "em":
             self._normalizer = EMNormalizer(
-                tensor_spec=observation_spec, update_rate=float(update_rate))
+                tensor_spec=observation_spec,
+                update_rate=float(update_rate),
+                auto_update=False)
         else:
             raise ValueError("Unsupported mode: " + mode)
 
     def forward(self, observation):
+        """Normalize a given observation. If during unroll, then first update
+        the normalizer. The normalizer won't be updated in other circumstances.
+        """
+        if not is_training():
+            self._normalizer.update(observation)
         return self._normalizer.normalize(observation, self._clipping)
 
 
@@ -764,3 +783,41 @@ def detach(nests):
         detached Tensors with same structure as nests
     """
     return nest.map_structure(lambda t: t.detach(), nests)
+
+
+_training = False
+
+
+def set_training(training=True):
+    """Mark whether the current code belongs to unrolling or training. This flag
+    might be used to change the behavior of some functions accordingly.
+
+    Args:
+        training (bool): True for training, False for unrolling
+    """
+    global _training
+    _training = training
+
+
+def is_training():
+    """Return a bool value indicating whether the current code belongs to
+    unrolling or training.
+    """
+    return _training
+
+
+def mark_training(train_func):
+    """A decorator that will automatically mark the ``_training`` flag when
+    entering/exiting a training function.
+
+    Args:
+        train_func (Callable): a training function
+    """
+
+    def _train_func(*args, **kwargs):
+        set_training(True)
+        ret = train_func(*args, **kwargs)
+        set_training(False)
+        return ret
+
+    return _train_func

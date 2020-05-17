@@ -162,6 +162,11 @@ class Algorithm(nn.Module):
         else:
             observation_transformers = [observation_transformer]
         self._observation_transformers = observation_transformers
+        # Save nn.module transformers for checkpoints
+        self._stateful_obs_transformers = nn.ModuleList()
+        for t in observation_transformers:
+            if isinstance(t, nn.Module):
+                self._stateful_obs_transformers.append(t)
 
         self._observers = []
         self._metrics = []
@@ -1070,6 +1075,7 @@ class Algorithm(nn.Module):
             " calc_loss() to generate LossInfo from train_info")
         return train_info
 
+    @common.mark_training
     def train_from_unroll(self, experience, train_info):
         """Train given the info collected from ``unroll()``. This function can
         be called by any child algorithm that doesn't have the unroll logic but
@@ -1093,6 +1099,7 @@ class Algorithm(nn.Module):
         self.summarize_train(experience, train_info, loss_info, params)
         return torch.tensor(alf.nest.get_nest_shape(experience)).prod()
 
+    @common.mark_training
     def train_from_replay_buffer(self, update_global_counter=False):
         """This function can be called by any algorithm that has its own
         replay buffer configured. There are several parameters specified in

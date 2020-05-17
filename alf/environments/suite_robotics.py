@@ -29,6 +29,7 @@ except ImportError:
     mujoco_py = None
 
 import functools
+import numpy as np
 import gym
 from gym.wrappers import FlattenDictWrapper
 
@@ -51,6 +52,7 @@ class SparseReward(gym.Wrapper):
         gym.Wrapper.__init__(self, env)
 
     def step(self, action):
+        # openai Robotics env will always return ``done=False``
         ob, reward, done, info = self.env.step(action)
         if reward == 0:
             done = True
@@ -61,25 +63,36 @@ class SuccessWrapper(gym.Wrapper):
     """Retrieve the success info from the environment return.
     """
 
-    def __init__(self, env):
+    def __init__(self, env, max_episode_steps):
         super().__init__(env)
-        self._success = False
+        self._max_episode_steps = max_episode_steps
 
     def reset(self, **kwargs):
-        self._success = False
+        self._steps = 0
         return self.env.reset(**kwargs)
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
+        self._steps += 1
 
+        info["success"] = 0.0
         # each episode only record success once
-        if (not self._success) and info["is_success"] == 1:
-            info = dict(success=1.0)
-            self._success = True
-        else:
-            info = dict(success=0.0)
+        if self._steps == self._max_episode_steps and info["is_success"] == 1:
+            info["success"] = 1.0
 
+        info.pop("is_success")  # from gym, we remove it here
         return obs, reward, done, info
+
+
+class ObservationClipWrapper(gym.ObservationWrapper):
+    """Clip observation values according to OpenAI's baselines.
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+
+    def observation(self, observation):
+        return np.clip(observation, -200., 200.)
 
 
 @gin.configurable
@@ -134,7 +147,8 @@ def load(environment_name,
 
     # concat robot's observation and the goal location
     env = FlattenDictWrapper(env, ["observation", "desired_goal"])
-    env = SuccessWrapper(env)
+    env = SuccessWrapper(env, max_episode_steps)
+    env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
 
