@@ -32,14 +32,11 @@ DdpgAlgorithm.target_update_period=40
 OneStepTDLoss.gamma=0.98
 
 # training config
-TrainerConfig.temporally_independent_train_step=True
 TrainerConfig.initial_collect_steps=10000
 TrainerConfig.mini_batch_length=2
 TrainerConfig.mini_batch_size=5000
 TrainerConfig.unroll_length=50
 TrainerConfig.num_updates_per_train_step=40
-TrainerConfig.whole_replay_buffer_training=False
-TrainerConfig.clear_replay_buffer=False
 TrainerConfig.num_iterations=5000
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=True

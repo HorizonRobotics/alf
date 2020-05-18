@@ -40,7 +40,6 @@ OneStepTDLoss=0.98
 
 
 # training config
-TrainerConfig.temporally_independent_train_step=True
 TrainerConfig.initial_collect_steps=10000
 TrainerConfig.mini_batch_length=2
 TrainerConfig.mini_batch_size=5000
