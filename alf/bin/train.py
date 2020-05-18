@@ -13,31 +13,33 @@
 # limitations under the License.
 r"""Train model.
 
-To run actor_critic on gym CartPole:
-```bash
-cd ${PROJECT}/alf/examples;
-python -m alf.bin.train \
-  --root_dir=~/tmp/cart_pole \
-  --gin_file=ac_cart_pole.gin \
-  --gin_param='create_environment.num_parallel_environments=8' \
-  --alsologtostderr
-```
+To run actor-critic on gym `CartPole`:
+
+.. code-block:: bash
+
+    cd ${PROJECT}/alf/examples;
+    python -m alf.bin.train \
+    --root_dir=~/tmp/cart_pole \
+    --gin_file=ac_cart_pole.gin \
+    --gin_param='create_environment.num_parallel_environments=8' \
+    --alsologtostderr
 
 You can view various training curves using Tensorboard by running the follwoing
 command in a different terminal:
-```bash
-tensorboard --logdir=~/tmp/cart_pole
-```
+
+.. code-block:: bash
+
+    tensorboard --logdir=~/tmp/cart_pole
 
 You can visualize playing of the trained model by running:
-```bash
-cd ${PROJECT}/alf/examples;
-python -m alf.bin.play \
-  --root_dir=~/tmp/cart_pole \
-  --gin_file=ac_cart_pole.gin \
-  --alsologtostderr
-```
 
+.. code-block:: bash
+
+    cd ${PROJECT}/alf/examples;
+    python -m alf.bin.play \
+    --root_dir=~/tmp/cart_pole \
+    --gin_file=ac_cart_pole.gin \
+    --alsologtostderr
 """
 
 from absl import app
