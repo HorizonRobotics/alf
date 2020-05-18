@@ -2,7 +2,7 @@ absl-py
 atari_py == 0.1.7
 carla
 fasteners
-gin-config
+git+git://github.com/HorizonRobotics/gin-config@master#egg=gin-config
 gym==0.12.5
 matplotlib
 opencv-python>=3.4.1.15
