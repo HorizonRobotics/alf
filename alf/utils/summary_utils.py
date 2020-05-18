@@ -217,37 +217,34 @@ def summarize_action(actions, action_specs, name="action"):
                     bucket_max=_get_val(action_spec.maximum, a))
 
 
-def summarize_action_dist(action_distributions,
-                          action_specs,
-                          name="action_dist"):
+def summarize_action_dist(action_distributions, name="action_dist"):
     """Generate summary for action distributions.
 
     Args:
         action_distributions (nested td.distribuation.Distribution):
             distributions to be summarized
-        action_specs (nested BoundedTensorSpec): specs for the actions
         name (str): name of the summary
     """
-    action_specs = alf.nest.flatten(action_specs)
     actions = alf.nest.flatten(action_distributions)
 
-    for i, (dist, action_spec) in enumerate(zip(actions, action_specs)):
+    for i, dist in enumerate(actions):
         if isinstance(dist, torch.Tensor):
             # dist might be a Tensor
-            action_dim = action_spec.shape[-1]
+            action_dim = dist.shape[-1]
             for a in range(action_dim):
                 alf.summary.histogram(
                     name="%s_loc/%s/%s" % (name, i, a), data=dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
-            action_dim = action_spec.shape[-1]
+            loc = dist.loc
             log_scale = dist.scale.log()
+            action_dim = loc.shape[-1]
             for a in range(action_dim):
                 alf.summary.histogram(
                     name="%s_log_scale/%s/%s" % (name, i, a),
                     data=log_scale[..., a])
                 alf.summary.histogram(
-                    name="%s_loc/%s/%s" % (name, i, a), data=dist.loc[..., a])
+                    name="%s_loc/%s/%s" % (name, i, a), data=loc[..., a])
 
 
 def add_mean_hist_summary(name, value):

@@ -486,10 +486,16 @@ class ResnetEncodingNetwork(alf.networks.Network):
     2.1.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
 
-    def __init__(self, input_tensor_spec, name='ResnetEncodingNetwork'):
+    def __init__(self,
+                 input_tensor_spec,
+                 output_size=500,
+                 output_activation=torch.tanh,
+                 name='ResnetEncodingNetwork'):
         """
         Args:
             input_tensor_spec (nested TensorSpec): input observations spec.
+            output_size (int): dimension of the encoding result
+            output_activation (Callable): activation for the output
         """
         super().__init__(input_tensor_spec, name=name)
 
@@ -511,8 +517,8 @@ class ResnetEncodingNetwork(alf.networks.Network):
             nn.Flatten(),
             alf.layers.FC(
                 input_size=np.prod(shape),
-                output_size=500,
-                activation=torch.tanh)
+                output_size=output_size,
+                activation=output_activation)
         ])
 
         self._model = nn.Sequential(*enc_layers)
@@ -529,20 +535,28 @@ class ResnetDecodingNetwork(alf.networks.Network):
     2.2.1 of "Unsupervised Predictive Memory in a Goal-Directed Agent"
     """
 
-    def __init__(self, input_tensor_spec, name='ResnetDecodingNetwork'):
+    def __init__(self,
+                 input_tensor_spec,
+                 output_tensor_spec=alf.TensorSpec((3, 64, 64)),
+                 name='ResnetDecodingNetwork'):
         """
 
         Args:
              input_tensor_spec (TensorSpec): input latent spec.
+             output_tensor_spec (TensorSpec): desired output shape. Height and
+                width needs to be divisible by 8.
         """
         super().__init__(input_tensor_spec, name=name)
+        c, h, w = output_tensor_spec.shape
+        assert h % 8 == 0
+        assert w % 8 == 0
 
         dec_layers = []
         relu = torch.relu_
         dec_layers.extend([
             alf.layers.FC(input_tensor_spec.shape[0], 500, activation=relu),
-            alf.layers.FC(500, 8 * 8 * 64, activation=relu),
-            alf.layers.Reshape((64, 8, 8))
+            alf.layers.FC(500, h * w, activation=relu),
+            alf.layers.Reshape((64, h / 8, w / 8))
         ])
 
         for stride in reversed([2, 1, 2, 1, 2, 1]):

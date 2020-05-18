@@ -20,7 +20,7 @@ setup(
     install_requires=[
         'atari_py == 0.1.7',
         'fasteners',
-        'gin-config@git+https://github.com/HorizonRobotics/gin-config.git@46b4444',
+        'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',
         'matplotlib',
         'numpy',

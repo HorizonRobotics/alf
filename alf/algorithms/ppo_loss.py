@@ -57,7 +57,7 @@ class PPOLoss(ActorCriticLoss):
         This loss works with ``PPOAlgorithm``. The advantages and returns are
         pre-computed by ``PPOAlgorithm.preprocess()``. One known difference with
         `baselines.ppo2` is that value estimation is not clipped here, while
-        `baselines.ppo2` also clipped value if it is deviate from returns too
+        `baselines.ppo2` also clipped value if it deviates from returns too
         much.
 
         Args:

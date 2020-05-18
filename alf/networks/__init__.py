@@ -16,7 +16,7 @@ from .actor_distribution_networks import *
 from .actor_networks import *
 from .critic_networks import *
 from .encoding_networks import *
-from .network import Network, NaiveParallelNetwork
+from .network import Network, NaiveParallelNetwork, SequentialNetwork
 from .ou_process import OUProcess
 from .preprocessor_networks import PreprocessorNetwork
 from .projection_networks import *

@@ -135,17 +135,23 @@ class FC(nn.Module):
 
         self._activation = activation
         self._linear = nn.Linear(input_size, output_size, bias=use_bias)
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._use_bias = use_bias
+        self.reset_parameters()
 
-        if kernel_initializer is None:
+    def reset_parameters(self):
+        if self._kernel_initializer is None:
             variance_scaling_init(
                 self._linear.weight.data,
-                gain=kernel_init_gain,
+                gain=self._kernel_init_gain,
                 nonlinearity=self._activation)
         else:
-            kernel_initializer(self._linear.weight.data)
+            self._kernel_initializer(self._linear.weight.data)
 
-        if use_bias:
-            nn.init.constant_(self._linear.bias.data, bias_init_value)
+        if self._use_bias:
+            nn.init.constant_(self._linear.bias.data, self._bias_init_value)
 
     def forward(self, inputs):
         return self._activation(self._linear(inputs))

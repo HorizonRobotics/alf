@@ -458,3 +458,33 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
         raise AssertionError(
             "prune_nest_like() fails between {} and {}".format(
                 nest, slim_nest))
+
+
+def get_field(nested, field):
+    """Get the field from nested.
+
+    field is a string separated by ".". get_filed(nested, "a.b") is equivalent
+    to nested.a.b if nested is constructed using namedtuple or nests['a']['b']
+    if nested is contructed using dict.
+
+    Args:
+        nested (nest): a nested structure
+        field (str): indicate the path to the field with '.' separating the field
+            name at different level
+    Returns:
+        nest: value of the field corresponding to ``field``
+    """
+
+    def _traverse(nested, levels):
+        if not levels:
+            return nested
+        level = levels[0]
+        if is_namedtuple(nested):
+            return _traverse(nested=getattr(nested, level), levels=levels[1:])
+        elif isinstance(nested, dict):
+            return _traverse(nested=nested[level], levels=levels[1:])
+        else:
+            raise TypeError("If value is a nest, it must be either " +
+                            "a dict or namedtuple!")
+
+    return _traverse(nested=nested, levels=field.split('.'))
