@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from functools import partial
 import torch
 import torch.distributions as td
 import unittest
@@ -34,19 +35,18 @@ def create_algorithm(env):
 
     fc_layer_params = (10, 8, 6)
 
-    actor_network = ActorDistributionNetwork(
-        obs_spec,
-        action_spec,
+    actor_network = partial(
+        ActorDistributionNetwork,
         fc_layer_params=fc_layer_params,
         discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
 
-    value_network = ValueNetwork(obs_spec, fc_layer_params=(10, 8, 1))
+    value_network = partial(ValueNetwork, fc_layer_params=(10, 8, 1))
 
     alg = ActorCriticAlgorithm(
         observation_spec=obs_spec,
         action_spec=action_spec,
-        actor_network=actor_network,
-        value_network=value_network,
+        actor_network_ctor=actor_network,
+        value_network_ctor=value_network,
         env=env,
         config=config,
         optimizer=alf.optimizers.Adam(lr=1e-2),

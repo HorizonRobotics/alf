@@ -229,5 +229,5 @@ def clip_by_norms(tensors, clip_norm, in_place=False):
         the clipped tensors
     """
     return alf.nest.map_structure(
-        lambda t: clip_by_global_norm([t], clip_norm, in_place=in_place)[0],
-        tensors)
+        lambda t: clip_by_global_norm([t], clip_norm, in_place=in_place)[0]
+        if t is not None else t, tensors)

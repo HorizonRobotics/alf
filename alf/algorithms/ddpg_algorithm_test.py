@@ -59,17 +59,17 @@ class DDPGAlgorithmTest(alf.test.TestCase):
 
         fc_layer_params = (16, 16)
 
-        actor_network = ActorNetwork(
-            obs_spec, action_spec, fc_layer_params=fc_layer_params)
+        actor_network = functools.partial(
+            ActorNetwork, fc_layer_params=fc_layer_params)
 
-        critic_network = CriticNetwork((obs_spec, action_spec), \
-            joint_fc_layer_params=fc_layer_params)
+        critic_network = functools.partial(
+            CriticNetwork, joint_fc_layer_params=fc_layer_params)
 
         alg = DdpgAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
-            actor_network=actor_network,
-            critic_network=critic_network,
+            actor_network_ctor=actor_network,
+            critic_network_ctor=critic_network,
             env=env,
             config=config,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),

@@ -114,6 +114,10 @@ class ActorDistributionNetwork(Network):
             return net
 
         self._projection_net = nest.map_structure(_create, self._action_spec)
+        if nest.is_nested(self._projection_net):
+            # need this for torch to pickup the parameters of all the modules
+            self._projection_net_module_list = nn.ModuleList(
+                nest.flatten(self._projection_net))
 
     def forward(self, observation, state=()):
         """Computes an action distribution given an observation.

@@ -58,8 +58,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 actor_network: ActorNetwork,
-                 critic_network: CriticNetwork,
+                 actor_network_ctor=ActorNetwork,
+                 critic_network_ctor=CriticNetwork,
                  use_parallel_network=False,
                  env=None,
                  config: TrainerConfig = None,
@@ -77,10 +77,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
-            actor_network (Network):  The network will be called with
-                ``call(observation)``.
-            critic_network (Network): The network will be called with
-                call(observation, action).
+            actor_network_ctor (Callable): Function to construct the actor network.
+                ``actor_network_ctor`` needs to accept ``input_tensor_spec`` and
+                ``action_spec`` as its arguments and return an actor network.
+                The constructed network will be called with ``forward(observation, state)``.
+            critic_network_ctor (Callable): Function to construct the critic
+                network. ``critic_netwrok_ctor`` needs to accept ``input_tensor_spec``
+                which is a tuple of ``(observation_spec, action_spec)``. The
+                constructed network will be called with
+                ``forward((observation, action), state)``.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             num_critic_replicas (int): number of critics to be used. Default is 1.
@@ -109,7 +114,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
-
+        critic_network = critic_network_ctor(
+            input_tensor_spec=(observation_spec, action_spec))
+        actor_network = actor_network_ctor(
+            input_tensor_spec=observation_spec, action_spec=action_spec)
         if use_parallel_network:
             critic_networks = critic_network.make_parallel(num_critic_replicas)
         else:

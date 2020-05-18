@@ -21,18 +21,15 @@ actor/StableNormalProjectionNetwork.init_std=1.0
 actor/StableNormalProjectionNetwork.min_std=1e-4
 actor/StableNormalProjectionNetwork.max_std=10
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
 actor/ActorDistributionNetwork.continuous_projection_net_ctor=@actor/StableNormalProjectionNetwork
-SarsaAlgorithm.actor_network=@actor/ActorDistributionNetwork()
+SarsaAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork()
 
 actor/AdamTF.lr=3e-4
 SarsaAlgorithm.actor_optimizer=@actor/AdamTF()
 
-critic/CriticNetwork.input_tensor_spec=(%observation_spec, %action_spec)
 critic/CriticNetwork.joint_fc_layer_params=(256, 256)
-SarsaAlgorithm.critic_network=@critic/CriticNetwork()
+SarsaAlgorithm.critic_network_ctor=@critic/CriticNetwork()
 
 critic/AdamTF.lr=1.5e-4
 SarsaAlgorithm.critic_optimizer=@critic/AdamTF()

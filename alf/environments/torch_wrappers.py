@@ -379,7 +379,7 @@ class RandomFirstEpisodeLength(TorchEnvironmentBaseWrapper):
 
     Example usage:
         RandomFirstEpisodeLength.random_length_range=200
-        suite_gym.load.env_wrappers=(@RandomFirstEpisodeLength, )
+        suite_gym.load.torch_env_wrappers=(@RandomFirstEpisodeLength, )
     """
 
     def __init__(self, env, random_length_range, num_episodes=1):

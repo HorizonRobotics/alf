@@ -99,6 +99,17 @@ class BatchSquash(object):
 
 
 @gin.configurable
+class OneHot(nn.Module):
+    def __init__(self, num_classes):
+        super().__init__()
+        self._num_classes = num_classes
+
+    def forward(self, input):
+        return nn.functional.one_hot(
+            input, num_classes=self._num_classes).to(torch.float32)
+
+
+@gin.configurable
 class FC(nn.Module):
     def __init__(self,
                  input_size,
