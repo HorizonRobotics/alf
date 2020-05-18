@@ -70,7 +70,7 @@ RUN mkdir -p /opt/local \
     && pip3 install -e . \
     && rm -rf build
 
-RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git@46b4444
+RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git
 
 # build deepmind lab
 # TODO

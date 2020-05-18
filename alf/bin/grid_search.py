@@ -11,6 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+r"""Grid search.
+
+To run grid search on DDPG for training gym `Pendulum`:
+
+.. code-block:: bash
+
+    cd ${PROJECT}/alf/examples;
+    python -m alf.bin.grid_search \
+    --root_dir=~/tmp/ddpg_pendulum \
+    --search_config=ddpg_grid_search.json \
+    --gin_file=ddpg_pendulum.gin \
+    --gin_param='create_environment.num_parallel_environments=8' \
+    --alsologtostderr
+
+"""
 
 from absl import app
 from absl import flags
@@ -37,53 +52,49 @@ flags.DEFINE_string('search_config', None,
                     'Path to the grid search config file.')
 
 FLAGS = flags.FLAGS
-r"""Grid search.
-
-To run grid search on ddpg for gym Pendulum:
-```bash
-cd ${PROJECT}/alf/examples;
-python -m alf.bin.grid_search \
-  --root_dir=~/tmp/ddpg_pendulum \
-  --search_config=ddpg_grid_search.json \
-  --gin_file=ddpg_pendulum.gin \
-  --gin_param='create_environment.num_parallel_environments=8' \
-  --alsologtostderr
-```
-"""
 
 
 class GridSearchConfig(object):
-    """ Grid Search Config
+    """A grid search config file should be in the json format. For example:
 
-    Grid search config file should be json format
-    For example:
-    {
-        "desc": "desc text",
-        "use_gpu": true,
-        "gpus": [0, 1],
-        "max_worker_num": 8,
-        "repeats": 3,
-        "parameters": {
-            "ac/Adam.learning_rate": [1e-3, 8e-4],
-            "OneStepTDLoss.gamma":"(0.995, 0.99)",
-            "param3_name": param3_value,
-              ...
+    .. code-block:: javascript
+
+        {
+            "desc": "desc text",
+            "use_gpu": true,
+            "gpus": [0, 1],
+            "max_worker_num": 8,
+            "repeats": 3,
+            "parameters": {
+                "ac/Adam.learning_rate": [1e-3, 8e-4],
+                "OneStepTDLoss.gamma":"(0.995, 0.99)",
+                "param_name3": param_value3,
+                ...
+            }
+            ...
         }
-        ...
-    }
-    `max_worker_num` is max number of parallel search worker processes
-    `parameters` is a dict(param_name=param_value,) of configured search space .
-    param_name is a gin configurable argument str and param_value must be an
-    iterable python object or a str that can be evaluated to an iterable object.
-    When `parameters` is empty, the original gin conf won't be changed and it
-    will be independently run for `repeats` times.
 
-    If `use_gpu` is True, then the scheduling will only put jobs on devices
-    numbered `gpus`. `max_worker_num` jobs will be evenly divided among these
-    devices. It's the user's responsibility to make sure that each device's
-    resource is enough. If `use_gpu` is False, `gpus` will be ignored.
+    Supported keys in a json file are:
 
-    See `ddpg_grid_search.json` for an example.
+    Args:
+        desc (str): a description sentence for this json file.
+        use_gpu (bool): If True, then the scheduling will only put jobs on devices
+            numbered ``gpus``.
+        gpus (list[int]): a list of GPU device ids. If ``use_gpu`` is False,
+            this list will be ignored.
+        max_worker_num (int): the max number of parallel worker processes at
+            any moment. ``max_worker_num`` jobs will be evenly divided among the
+            devices specified by the ``gpus`` list. It's the user's responsibility
+            to make sure that each device's resource is enough.
+        repeats (int): each parameter combination will be repeated for so many
+            times, with different random seeds.
+        parameters (dict): a ``dict(param_name=param_value,)`` of the configured
+            search space. Each key ``param_name`` is a gin configurable argument
+            string and the paired ``param_value`` must be an iterable python object
+            or a ``str`` that can be evaluated to an iterable object. When
+            ``parameters`` is empty, the original gin conf won't be changed.
+
+    See ``alf/examples/ddpg_grid_search.json`` for an example.
     """
 
     _all_keys_ = [
@@ -163,7 +174,7 @@ class GridSearch(object):
     """Grid Search."""
 
     def __init__(self, conf_file):
-        """Create GridSearch instance
+        """
         Args:
             conf_file (str): Path to the config file.
         """
@@ -198,7 +209,7 @@ class GridSearch(object):
                 the OS
 
         Returns:
-            run_name (str): a string with parameters abbr encoded
+            str: a string with parameters abbr encoded
         """
 
         def _abbr_single(x):
@@ -235,7 +246,8 @@ class GridSearch(object):
         return name[:max_len]
 
     def run(self):
-        """Run trainings with all possible parameter combinations in configured space
+        """Run trainings with all possible parameter combinations in
+        the configured space.
         """
 
         # parsing gin configuration here to make all jobs have same copy

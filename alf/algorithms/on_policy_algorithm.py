@@ -41,10 +41,9 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
 
         for _ in range(unroll_length):
             policy_step = rollout_step(time_step, policy_step.state)
-            action = sample action from policy_step.action
             collect information from time_step into experience
             collect information from policy_step.info into train_info
-            time_step = env.step(action)
+            time_step = env.step(policy_step.output)
         loss = calc_loss(experience, train_info)
         update_with_gradient(loss)
     """

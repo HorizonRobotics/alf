@@ -232,9 +232,7 @@ class RLAlgorithm(Algorithm):
                                         'action_distribution')
             if len(field) == 1:
                 summary_utils.summarize_action_dist(
-                    action_distributions=field[0],
-                    action_specs=self._action_spec,
-                    name="rollout_action_dist")
+                    action_distributions=field[0], name="rollout_action_dist")
 
     def summarize_train(self, experience, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.
@@ -267,8 +265,7 @@ class RLAlgorithm(Algorithm):
         if self._config.summarize_action_distributions:
             field = alf.nest.find_field(train_info, 'action_distribution')
             if len(field) == 1:
-                summary_utils.summarize_action_dist(field[0],
-                                                    self._action_spec)
+                summary_utils.summarize_action_dist(field[0])
 
     def summarize_metrics(self):
         """Generate summaries for metrics ``AverageEpisodeLength``,
@@ -467,6 +464,9 @@ class RLAlgorithm(Algorithm):
                 reward=transformed_time_step.reward,
                 discount=transformed_time_step.discount,
                 step_type=transformed_time_step.step_type,
+                state=policy_state,
+                prev_action=transformed_time_step.prev_action,
+                observation=transformed_time_step.observation,
                 rollout_info=dist_utils.distributions_to_params(
                     policy_step.info),
                 env_id=transformed_time_step.env_id)

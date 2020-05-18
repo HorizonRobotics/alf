@@ -821,3 +821,17 @@ def mark_training(train_func):
         return ret
 
     return _train_func
+
+
+@gin.configurable
+def flattened_size(spec):
+    """Return the size of the vector if spec.shape is flattened.
+
+    It's same as np.prod(spec.shape)
+    Args:
+        spec (alf.TensorSpec): a TensorSpec object
+    Returns:
+        np.int64: the size of flattened shape
+    """
+    # np.prod(()) == 1.0, need to convert to np.int64
+    return np.int64(np.prod(spec.shape))

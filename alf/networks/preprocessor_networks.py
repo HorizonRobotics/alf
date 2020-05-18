@@ -28,7 +28,7 @@ from alf.nest.utils import get_outer_rank
 from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 
-from .network import Network
+from .network import Network, SequentialNetwork
 
 
 class PreprocessorNetwork(Network):
@@ -44,7 +44,7 @@ class PreprocessorNetwork(Network):
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
-            input_preprocessors (nested Network): a nest of
+            input_preprocessors (nested Network|nn.Module): a nest of
                 preprocessor networks, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
                 structure with ``input_tensor_spec``. If any element is None, then
@@ -72,30 +72,34 @@ class PreprocessorNetwork(Network):
                 # In this case we just assume the spec won't change after the
                 # preprocessing. If it does change, then you should consider
                 # defining an input preprocessor network instead.
-                assert not isinstance(
-                    preproc, nn.Module), ("To use trainable preprocessors, "
-                                          "please derive from alf.Network")
                 return spec
             return preproc.output_spec
 
         self._input_preprocessors = None
         if input_preprocessors is not None:
-            input_tensor_spec = alf.nest.map_structure(
-                _get_preprocessed_spec, input_preprocessors, input_tensor_spec)
 
-            def _return_or_copy_preprocessor(preproc):
+            def _return_or_copy_preprocessor(preproc, input_spec):
                 if preproc is None:
                     # allow None as a placeholder in the nest
-                    return math_ops.identity
+                    return lambda x: (x, None)
                 elif isinstance(preproc, Network):
                     preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
-                    return lambda x: preproc(x)[0]
-                else:
                     return preproc
+                elif isinstance(preproc, nn.Module):
+                    preproc = SequentialNetwork(input_spec, [preproc]).copy()
+                    self._input_preprocessor_modules.append(preproc)
+                    return preproc
+                else:
+                    return lambda x: (preproc(x), None)
 
             self._input_preprocessors = alf.nest.map_structure(
-                _return_or_copy_preprocessor, input_preprocessors)
+                _return_or_copy_preprocessor, input_preprocessors,
+                input_tensor_spec)
+
+            input_tensor_spec = alf.nest.map_structure(
+                _get_preprocessed_spec, self._input_preprocessors,
+                input_tensor_spec)
 
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):
@@ -125,7 +129,7 @@ class PreprocessorNetwork(Network):
         """
         if self._input_preprocessors:
             inputs = alf.nest.map_structure(
-                lambda preproc, tensor: preproc(tensor),
+                lambda preproc, tensor: preproc(tensor)[0],
                 self._input_preprocessors, inputs)
 
         proc_inputs = self._preprocessing_combiner(inputs)

@@ -16,7 +16,9 @@
 """
 
 import abc
+import copy
 import functools
+import gin
 import inspect
 import six
 import torch
@@ -100,8 +102,7 @@ class Network(nn.Module):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then `preprocessing_combiner` must not be
-                None.
+                the input.
             name (str):
         """
         super(Network, self).__init__()
@@ -141,10 +142,12 @@ class Network(nn.Module):
         return self
 
     def copy(self, **kwargs):
-        """Create a shallow copy of this network or return the current instance.
+        """Create a  copy of this network or return the current instance.
 
         If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise a re-created ``Network`` instance will be returned.
+        ``self``; otherwise it will re-create and return a new ``Network``
+        instance using the original arguments used by the constructor.
+
         **NOTE** When re-creating ``Network``, Network layer weights are *never*
         copied. This method recreates the ``Network`` instance with the same
         arguments it was initialized with (excepting any new kwargs).
@@ -154,7 +157,7 @@ class Network(nn.Module):
                 overridden args include 'name'.
 
         Returns:
-            A shallow copy of this network.
+            Network:
         """
         if self._singleton_instance:
             return self
@@ -291,3 +294,54 @@ class NaiveParallelNetwork(Network):
     @property
     def state_spec(self):
         return self._state_spec
+
+
+@gin.configurable
+class SequentialNetwork(Network):
+    """Network composed of a sequence of torch layers."""
+
+    def __init__(self, input_tensor_spec, layers, name="SequentialNetwork"):
+        """
+
+        Args:
+            input_tensor_spec (TensorSpec): the tensor spec of the input.
+            layers (list[nn.Module]): list of torch layers.
+            name (str):
+        """
+        super().__init__(input_tensor_spec, name)
+        if len(layers) == 1 and isinstance(layers[0], nn.Sequential):
+            self._layers = layers[0]
+        else:
+            self._layers = nn.Sequential(*layers)
+
+    def forward(self, input, state=()):
+        return self._layers(input), state
+
+    def copy(self, name=None):
+        """Create a  copy of this network or return the current instance.
+
+        If ``self._singleton_instance`` is True, calling ``copy()`` will return
+        ``self``; otherwise it will make a copy of all the layers and re-initialize
+        their parameters.
+
+        Args:
+            name (str): name of the new network. Only used if not self._singleton_instance.
+        Returns:
+            SequentialNetwork:
+        """
+        if self._singleton_instance:
+            return self
+
+        if name is None:
+            name = self.name
+
+        new_layers = [copy.deepcopy(l) for l in self._layers]
+        for layer in new_layers:
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+            elif isinstance(layer, nn.Module):
+                assert len(layer.parameters()) == 0, (
+                    "Need to implement "
+                    "reset_parameters() for %s in order to copy." %
+                    type(layer))
+        return SequentialNetwork(self._input_tensor_spec, new_layers, name)
