@@ -23,13 +23,13 @@ actor/StableNormalProjectionNetwork.max_std=10
 
 actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
 actor/ActorDistributionNetwork.continuous_projection_net_ctor=@actor/StableNormalProjectionNetwork
-SarsaAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork()
+SarsaAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
 
 actor/AdamTF.lr=3e-4
 SarsaAlgorithm.actor_optimizer=@actor/AdamTF()
 
 critic/CriticNetwork.joint_fc_layer_params=(256, 256)
-SarsaAlgorithm.critic_network_ctor=@critic/CriticNetwork()
+SarsaAlgorithm.critic_network_ctor=@critic/CriticNetwork
 
 critic/AdamTF.lr=1.5e-4
 SarsaAlgorithm.critic_optimizer=@critic/AdamTF()

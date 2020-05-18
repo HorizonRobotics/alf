@@ -10,19 +10,16 @@ observation_spec = @get_observation_spec()
 action_spec = @get_action_spec()
 
 # actor/ActorDistributionNetwork
-actor/ActorDistributionNetwork.input_tensor_spec = %observation_spec
-actor/ActorDistributionNetwork.action_spec = %action_spec
 actor/ActorDistributionNetwork.conv_layer_params = %CONV_LAYER_PARAMS
 actor/ActorDistributionNetwork.fc_layer_params = %FC_LAYER_PARAMS
 actor/ActorDistributionNetwork.discrete_projection_net_ctor = @actor/CategoricalProjectionNetwork
 actor/CategoricalProjectionNetwork.logits_init_output_factor = 1e-10
 
 # value/ValueNetwork
-value/ValueNetwork.input_tensor_spec = %observation_spec
 value/ValueNetwork.conv_layer_params = %CONV_LAYER_PARAMS
 value/ValueNetwork.fc_layer_params = %FC_LAYER_PARAMS
 
 # config ac algorithm
 Agent.action_spec = %action_spec
-ActorCriticAlgorithm.actor_network = @actor/ActorDistributionNetwork()
-ActorCriticAlgorithm.value_network = @value/ValueNetwork()
+ActorCriticAlgorithm.actor_network_ctor = @actor/ActorDistributionNetwork
+ActorCriticAlgorithm.value_network_ctor = @value/ValueNetwork

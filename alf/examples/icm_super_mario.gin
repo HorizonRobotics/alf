@@ -24,15 +24,11 @@ ImageEncodingNetwork.same_padding=True
 
 CONV_LAYER_PARAMS=((32,8,4),(64,4,2),(64,3,1))
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256,)
 actor/ActorDistributionNetwork.activation=@torch.nn.functional.elu
 actor/ActorDistributionNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 CategoricalProjectionNetwork.logits_init_output_factor=1e-10
 
-
-value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256,256)
 value/ValueNetwork.conv_layer_params=%CONV_LAYER_PARAMS
 value/ValueNetwork.activation=@torch.nn.functional.elu
@@ -51,8 +47,8 @@ ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=256
 ICMAlgorithm.activation=@torch.nn.functional.elu
 
-ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
+ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
 Agent.optimizer=@ac/AdamTF()
 Agent.intrinsic_reward_module=@ICMAlgorithm()
 Agent.observation_transformer=@image_scale_transformer

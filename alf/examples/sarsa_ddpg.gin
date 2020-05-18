@@ -6,13 +6,13 @@ observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
 actor/ActorNetwork.fc_layer_params=(256, 256)
-SarsaAlgorithm.actor_network_ctor=@actor/ActorNetwork()
+SarsaAlgorithm.actor_network_ctor=@actor/ActorNetwork
 
 actor/AdamTF.lr=3e-4
 SarsaAlgorithm.actor_optimizer=@actor/AdamTF()
 
 critic/CriticNetwork.joint_fc_layer_params=(256, 256)
-SarsaAlgorithm.critic_network_ctor=@critic/CriticNetwork()
+SarsaAlgorithm.critic_network_ctor=@critic/CriticNetwork
 
 critic/AdamTF.lr=1.5e-4
 SarsaAlgorithm.critic_optimizer=@critic/AdamTF()
