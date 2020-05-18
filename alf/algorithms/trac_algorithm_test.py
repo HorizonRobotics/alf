@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from functools import partial
 import torch
 
 import alf
@@ -26,19 +26,18 @@ from alf.utils import common
 def create_ac_algorithm(observation_spec, action_spec, debug_summaries):
     fc_layer_params = (10, 8, 6)
 
-    actor_network = ActorDistributionNetwork(
-        observation_spec,
-        action_spec,
+    actor_network = partial(
+        ActorDistributionNetwork,
         fc_layer_params=fc_layer_params,
         discrete_projection_net_ctor=alf.networks.CategoricalProjectionNetwork)
 
-    value_network = ValueNetwork(observation_spec, fc_layer_params=(10, 8, 1))
+    value_network = partial(ValueNetwork, fc_layer_params=(10, 8, 1))
 
     return ActorCriticAlgorithm(
         observation_spec=observation_spec,
         action_spec=action_spec,
-        actor_network=actor_network,
-        value_network=value_network,
+        actor_network_ctor=actor_network,
+        value_network_ctor=value_network,
         optimizer=alf.optimizers.Adam(lr=0.1),
         debug_summaries=debug_summaries,
         name="MyActorCritic")
