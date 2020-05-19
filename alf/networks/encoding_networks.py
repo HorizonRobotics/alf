@@ -438,8 +438,8 @@ class ParallelImageDecodingNetwork(Network):
         self._n = n
 
     def forward(self, inputs, state=()):
-        """Returns an image of shape ``(B,C,H,W)``. The empty state just keeps the
-        interface same with other networks.
+        """Returns an image of shape ``(B,n,C,H,W)``. The empty state just keeps
+        the interface same with other networks.
         """
         z = inputs
         for fc_l in self._preprocess_fc_layers:

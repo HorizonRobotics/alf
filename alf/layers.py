@@ -379,7 +379,7 @@ class ParallelConv2D(nn.Module):
         self._n = n
         self._in_channels = in_channels
         self._out_channels = out_channels
-        self._kernel_size = kernel_size
+        self._kernel_size = common.tuplify2d(kernel_size)
         self._conv2d = nn.Conv2d(
             in_channels * n,
             out_channels * n,
@@ -403,8 +403,8 @@ class ParallelConv2D(nn.Module):
 
         # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
         self._weight = self._conv2d.weight.view(
-            self._n, self._out_channels, self._in_channels, self._kernel_size,
-            self._kernel_size)
+            self._n, self._out_channels, self._in_channels,
+            self._kernel_size[0], self._kernel_size[1])
 
         if use_bias:
             nn.init.constant_(self._conv2d.bias.data, bias_init_value)
