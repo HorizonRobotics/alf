@@ -37,7 +37,7 @@ class OffPolicyTrainer(Trainer):
         """
         super().__init__(config)
         self._initial_collect_steps = config.initial_collect_steps
-        self._num_updates_per_train_step = config.num_updates_per_train_step
+        self._num_updates_per_train_iter = config.num_updates_per_train_iter
         self._mini_batch_length = config.mini_batch_length
         if self._mini_batch_length is None:
             self._mini_batch_length = self._unroll_length
@@ -69,7 +69,7 @@ class SyncOffPolicyTrainer(OffPolicyTrainer):
         with record_time("time/train"):
             # `train_steps` might be different from `max_num_steps`!
             train_steps = self._algorithm.train(
-                num_updates=self._num_updates_per_train_step,
+                num_updates=self._num_updates_per_train_iter,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
                 clear_replay_buffer=self._clear_replay_buffer,
@@ -115,7 +115,7 @@ class AsyncOffPolicyTrainer(OffPolicyTrainer):
         with record_time("time/train"):
             # `train_steps` might be different from `steps`!
             train_steps = self._algorithm.train(
-                num_updates=self._num_updates_per_train_step,
+                num_updates=self._num_updates_per_train_iter,
                 mini_batch_size=self._mini_batch_size,
                 mini_batch_length=self._mini_batch_length,
                 clear_replay_buffer=self._clear_replay_buffer,

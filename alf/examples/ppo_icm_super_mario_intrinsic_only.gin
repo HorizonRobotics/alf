@@ -64,7 +64,7 @@ tf.keras.layers.Conv2D.padding="same"
 
 # training config
 TrainerConfig.num_iterations = 100000
-TrainerConfig.num_updates_per_train_step = 4
+TrainerConfig.num_updates_per_train_iter = 4
 TrainerConfig.unroll_length = 32
 TrainerConfig.mini_batch_length = 1
 TrainerConfig.mini_batch_size = 128
