@@ -184,12 +184,12 @@ class ParallelFC(nn.Module):
         Args:
             input_size (int): input size
             output_size (int): output size
-            n (int): n indepedent ``FC`` layer
+            n (int): n independent ``FC`` layers
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
-                If none is provided a variance_scaling_initializer with gain as
-                ``kernel_init_gain`` will be used.
+                If none is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
@@ -350,23 +350,24 @@ class ParallelConv2D(nn.Module):
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
-        """A parallel 2D Conv layer that's also responsible for activation and customized
-        weights initialization. An auto gain calculation might depend on the
-        activation following the conv layer. Suggest using this wrapper module
-        instead of ``nn.Conv2d`` if you really care about weight std after init.
+        """A parallel 2D Conv layer that can be used to perform n independent
+        2D convolutions in parallel.
+
+        It is equivalent to ``n`` separate ``Conv2D`` layers with the same
+        ``in_channels`` and ``out_channels``.
 
         Args:
             in_channels (int): channels of the input image
             out_channels (int): channels of the output image
             kernel_size (int or tuple):
-            n (int): n indepedent ``Conv2D`` layer
+            n (int): n independent ``Conv2D`` layers
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
             kernel_initializer (Callable): initializer for the conv layer kernel.
-                If None is provided a variance_scaling_initializer with gain as
-                ``kernel_init_gain`` will be used.
+                If None is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
@@ -399,8 +400,17 @@ class ParallelConv2D(nn.Module):
                     self._conv2d.weight.data[i * out_channels:(i + 1) *
                                              out_channels])
 
+        # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
+        self._weight = self._conv2d.weight.view(
+            self._n, self._out_channels, self._in_channels, self._kernel_size,
+            self._kernel_size)
+
         if use_bias:
             nn.init.constant_(self._conv2d.bias.data, bias_init_value)
+            # [n*C']->[n, C']
+            self._bias = self._conv2d.bias.view(self._n, self._out_channels)
+        else:
+            self._bias = None
 
     def forward(self, img):
         """Forward
@@ -409,12 +419,22 @@ class ParallelConv2D(nn.Module):
             img (torch.Tensor): with shape ``[B, C, H, W]``
                                         or ``[B, n, C, H, W]``
             where the meaning of the symbols are:
-            B: batch, C: number of channels, H: image height, W: image width
+                - ``B``: batch size
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+            When the shape of img is ``[B, C, H, W]``, all the n 2D Conv
+            operations will take img as the same shared input.
+            When the shape of img is ``[B, n, C, H, W]``, each 2D Conv operator
+            will have its own input data by slicing img.
+
         Returns:
             torch.Tensor with shape ``[B, n, C', H', W']``
             where the meaning of the symbols are:
-            B: batch, n: number of replica, C': number of output channels
-            H': output height, W': output width
+                - ``B``: batch
+                - ``n``: number of replica
+                - ``C'``: number of output channels
+                - ``H'``: output height, W': output width
         """
 
         if img.ndim == 4:
@@ -443,20 +463,16 @@ class ParallelConv2D(nn.Module):
 
         # reshape back: [B, n*C', H', W'] -> [B, n, C', H', W']
         res = res.reshape(res.shape[0], self._n, self._out_channels,
-                          res.shape[2], res.shape[3])
+                          *res.shape[2:])
         return res
 
     @property
     def weight(self):
-        # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
-        return self._conv2d.weight.view(self._n, self._out_channels,
-                                        self._in_channels, self._kernel_size,
-                                        self._kernel_size)
+        return self._weight
 
     @property
     def bias(self):
-        # [n*C']->[n, C']
-        return self._conv2d.bias.view(self._n, self._out_channels)
+        return self._bias
 
 
 @gin.configurable
@@ -541,24 +557,21 @@ class ParallelConvTranspose2D(nn.Module):
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
-        """A 2D ParallelConvTranspose2D layer that's also responsible for
-        activation and customized weights initialization. An auto gain
-        calculation might depend on the activation following the conv layer.
-        Suggest using this wrapper module instead of ``nn.ConvTranspose2d``
-        if you really care about weight std after init.
+        """A parallel ConvTranspose2D layer that can be used to perform n
+        independent 2D transposed convolutions in parallel.
 
         Args:
             in_channels (int): channels of the input image
             out_channels (int): channels of the output image
             kernel_size (int or tuple):
-            n (int): n indepedent ``ConvTranspose2D`` layer
+            n (int): n independent ``ConvTranspose2D`` layers
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
-                If None is provided a variance_scaling_initializer with gain as
-                ``kernel_init_gain`` will be used.
+                If None is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to the
                 std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
@@ -591,8 +604,18 @@ class ParallelConvTranspose2D(nn.Module):
                     self._conv_trans2d.weight.data[i * in_channels:(i + 1) *
                                                    in_channels])
 
+        # [n*C, C', kernel_size, kernel_size]->[n, C, C', kernel_size, kernel_size]
+        self._weight = self._conv_trans2d.weight.view(
+            self._n, self._in_channels, self._out_channels, self._kernel_size,
+            self._kernel_size)
+
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
+            # [n*C]->[n, C]
+            self._bias = self._conv_trans2d.bias.view(self._n,
+                                                      self._out_channels)
+        else:
+            self._bias = None
 
     def forward(self, img):
         """Forward
@@ -601,12 +624,22 @@ class ParallelConvTranspose2D(nn.Module):
             img (torch.Tensor): with shape ``[B, C, H, W]``
                                         or ``[B, n, C, H, W]``
             where the meaning of the symbols are:
-            B: batch, C: number of channels, H: image height, W: image width
+                - ``B``: batch size
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+            When the shape of img is ``[B, C, H, W]``, all the n transposed 2D
+            Conv operations will take img as the same shared input.
+            When the shape of img is ``[B, n, C, H, W]``, each transposed 2D
+            Conv operator will have its own input data by slicing img.
+
         Returns:
             torch.Tensor with shape ``[B, n, C', H', W']``
             where the meaning of the symbols are:
-            B: batch, n: number of replica, C': number of output channels
-            H': output height, W': output width
+                - ``B``: batch
+                - ``n``: number of replica
+                - ``C'``: number of output channels
+                - ``H'``: output height, W': output width
         """
         if img.ndim == 4:
             # the shared input case
@@ -639,15 +672,11 @@ class ParallelConvTranspose2D(nn.Module):
 
     @property
     def weight(self):
-        # [n*C, C', kernel_size, kernel_size]->[n, C, C', kernel_size, kernel_size]
-        return self._conv_trans2d.weight.view(
-            self._n, self._in_channels, self._out_channels, self._kernel_size,
-            self._kernel_size)
+        return self._weight
 
     @property
     def bias(self):
-        # [n*C]->[n, C]
-        return self._conv_trans2d.bias.view(self._n, self._out_channels)
+        return self._bias
 
 
 class Reshape(nn.Module):

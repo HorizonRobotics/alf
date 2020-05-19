@@ -131,7 +131,8 @@ class ImageEncodingNetwork(Network):
 @gin.configurable
 class ParallelImageEncodingNetwork(Network):
     """
-    Parallel Image Encoding Network using CNN.
+    A Parallel Image Encoding Network that can be used to perform n
+    independent encoding using n ImageEncodingNetworks in parallel.
     """
 
     def __init__(self,
@@ -199,7 +200,7 @@ class ParallelImageEncodingNetwork(Network):
         for conv_l in self._conv_layers:
             z = conv_l(z)
         if self._flatten_output:
-            z = torch.reshape(z, (*z.size()[0:2], -1))
+            z = torch.reshape(z, (*z.size()[:2], -1))
         return z, state
 
 
