@@ -421,6 +421,7 @@ class ParallelConv2D(nn.Module):
                                         or ``[B, n, C, H, W]``
             where the meaning of the symbols are:
                 - ``B``: batch size
+                - ``n``: number of replicas
                 - ``C``: number of channels
                 - ``H``: image height
                 - ``W``: image width.
@@ -433,9 +434,10 @@ class ParallelConv2D(nn.Module):
             torch.Tensor with shape ``[B, n, C', H', W']``
             where the meaning of the symbols are:
                 - ``B``: batch
-                - ``n``: number of replica
+                - ``n``: number of replicas
                 - ``C'``: number of output channels
-                - ``H'``: output height, W': output width
+                - ``H'``: output height
+                - ``W'``: output width
         """
 
         if img.ndim == 4:
@@ -626,6 +628,7 @@ class ParallelConvTranspose2D(nn.Module):
                                         or ``[B, n, C, H, W]``
             where the meaning of the symbols are:
                 - ``B``: batch size
+                - ``n``: number of replicas
                 - ``C``: number of channels
                 - ``H``: image height
                 - ``W``: image width.
@@ -638,9 +641,10 @@ class ParallelConvTranspose2D(nn.Module):
             torch.Tensor with shape ``[B, n, C', H', W']``
             where the meaning of the symbols are:
                 - ``B``: batch
-                - ``n``: number of replica
+                - ``n``: number of replicas
                 - ``C'``: number of output channels
-                - ``H'``: output height, W': output width
+                - ``H'``: output height
+                - ``W'``: output width
         """
         if img.ndim == 4:
             # the shared input case

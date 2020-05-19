@@ -154,8 +154,8 @@ class ParallelImageEncodingNetwork(Network):
             activation (torch.nn.functional): activation for all the layers
             kernel_initializer (Callable): initializer for all the layers.
             flatten_output (bool): If False, the output will be an image
-                structure of shape ``BxnxCxHxW``; otherwise the output will be
-                flattened into a feature of shape ``BxnxN``.
+                structure of shape ``(B, n, C, H, W)``; otherwise the output
+                will be flattened into a feature of shape ``(B, n, C*H*W)``.
         """
         input_size = common.tuplify2d(input_size)
         super().__init__(
@@ -188,7 +188,30 @@ class ParallelImageEncodingNetwork(Network):
             input_channels = filters
 
     def forward(self, inputs, state=()):
-        """The empty state just keeps the interface same with other networks."""
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, C, H, W]``
+                                        or ``[B, n, C, H, W]``
+            where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+            When the shape of inputs is ``[B, C, H, W]``, the same input is
+            shared among all the n replicas.
+            When the shape of img is ``[B, n, C, H, W]``, each replica
+            will have its own data by slicing inputs.
+
+            state: an empty state just keeps the interface same with other
+                networks.
+
+        Returns:
+            - a tensor of shape ``(B, n, C, H, W)`` if ``flatten_output=False``
+              ``(B, n, C*H*W)`` if ``flatten_output=True``
+            - the empty state just to keep the interface same with other networks
+        """
         z = inputs
         for conv_l in self._conv_layers:
             z = conv_l(z)
@@ -438,8 +461,26 @@ class ParallelImageDecodingNetwork(Network):
         self._n = n
 
     def forward(self, inputs, state=()):
-        """Returns an image of shape ``(B,n,C,H,W)``. The empty state just keeps
-        the interface same with other networks.
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, N]``
+                                        or ``[B, n, N]``
+            where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``N``: dimension of the feature vector to be decoded.
+            When the shape of inputs is ``[B, N]``, the same input is
+            shared among all the n replicas.
+            When the shape of img is ``[B, n, N]``, each replica
+            will have its own data by slicing inputs.
+
+            state: an empty state just keeps the interface same with other
+                networks.
+
+        Returns:
+            - an image of shape ``(B, n, C, H, W)``
+            - the empty state just to keep the interface same with other networks
         """
         z = inputs
         for fc_l in self._preprocess_fc_layers:
