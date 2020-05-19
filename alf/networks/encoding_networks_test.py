@@ -26,6 +26,7 @@ from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
+from alf.networks.encoding_networks import ParallelImageDecodingNetwork
 from alf.networks import Network
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
@@ -255,6 +256,33 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         pnet = alf.networks.network.NaiveParallelNetwork(
             network, replicas, name="pnet")
         self.assertEqual(pnet.name, "pnet")
+
+    @parameterized.parameters((None, True), ((100, 100), False))
+    def test_parallel_image_decoding_network(self, preprocessing_fc_layers,
+                                             same_padding):
+        input_spec = TensorSpec((100, ), torch.float32)
+        embedding = input_spec.zeros(outer_dims=(1, ))
+        replica = 2
+        network = ParallelImageDecodingNetwork(
+            input_size=input_spec.shape[0],
+            n=replica,
+            transconv_layer_params=((16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
+                                                              0)),
+            start_decoding_size=(20, 31),
+            start_decoding_channels=8,
+            same_padding=same_padding,
+            preprocess_fc_layer_params=preprocessing_fc_layers)
+
+        num_layers = 3 if preprocessing_fc_layers is None else 5
+        self.assertLen(list(network.parameters()), num_layers * 2)
+
+        output, _ = network(embedding)
+        if same_padding:
+            output_shape = (replica, 64, 21, 63)
+        else:
+            output_shape = (replica, 64, 21, 65)
+        self.assertEqual(output_shape, network.output_spec.shape)
+        self.assertEqual(output_shape, tuple(output.size()[1:]))
 
     @parameterized.parameters((1, ), (3, ))
     def test_parallel_network_output_size(self, replicas):

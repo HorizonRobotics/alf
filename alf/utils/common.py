@@ -93,6 +93,27 @@ def as_list(x):
     return [x]
 
 
+def tuplify2d(x):
+    """Convert ``x`` to a tuple of length two.
+
+    It performs the following conversion:
+
+    .. code-block:: python
+
+        x => x if isinstance(x, tuple) and len(x) == 2
+        x => (x, x) if not isinstance(x, tuple)
+
+    Args:
+        x (any): the object to be converted
+    Returns:
+        tuple:
+    """
+    if isinstance(x, tuple):
+        assert len(x) == 2
+        return x
+    return (x, x)
+
+
 class Periodically(nn.Module):
     def __init__(self, body, period, name='periodically'):
         """Periodically performs the operation defined in body.

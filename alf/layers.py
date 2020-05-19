@@ -19,10 +19,11 @@ import copy
 import torch
 import torch.nn as nn
 
-from alf.nest.utils import get_outer_rank
 from alf.initializers import variance_scaling_init
-from alf.utils.math_ops import identity
+from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
+from alf.utils import common
+from alf.utils.math_ops import identity
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -582,7 +583,7 @@ class ParallelConvTranspose2D(nn.Module):
         self._n = n
         self._in_channels = in_channels
         self._out_channels = out_channels
-        self._kernel_size = kernel_size
+        self._kernel_size = common.tuplify2d(kernel_size)
         self._conv_trans2d = nn.ConvTranspose2d(
             in_channels * n,
             out_channels * n,
@@ -606,8 +607,8 @@ class ParallelConvTranspose2D(nn.Module):
 
         # [n*C, C', kernel_size, kernel_size]->[n, C, C', kernel_size, kernel_size]
         self._weight = self._conv_trans2d.weight.view(
-            self._n, self._in_channels, self._out_channels, self._kernel_size,
-            self._kernel_size)
+            self._n, self._in_channels, self._out_channels,
+            self._kernel_size[0], self._kernel_size[1])
 
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
