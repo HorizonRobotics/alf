@@ -42,7 +42,7 @@ class TrainerConfig(object):
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
                  initial_collect_steps=0,
-                 num_updates_per_train_step=4,
+                 num_updates_per_train_iter=4,
                  mini_batch_length=None,
                  mini_batch_size=None,
                  whole_replay_buffer_training=True,
@@ -108,7 +108,7 @@ class TrainerConfig(object):
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
                 by ``OffPolicyAlgorithm``.
-            num_updates_per_train_step (int): number of optimization steps for
+            num_updates_per_train_iter (int): number of optimization steps for
                 one iteration. Only used by ``OffPolicyAlgorithm``.
             mini_batch_size (int): number of sequences for each minibatch. If None,
                 it's set to the replayer's ``batch_size``. Only used by
@@ -149,7 +149,7 @@ class TrainerConfig(object):
             summarize_grads_and_vars=summarize_grads_and_vars,
             summarize_action_distributions=summarize_action_distributions,
             initial_collect_steps=initial_collect_steps,
-            num_updates_per_train_step=num_updates_per_train_step,
+            num_updates_per_train_iter=num_updates_per_train_iter,
             mini_batch_length=mini_batch_length,
             mini_batch_size=mini_batch_size,
             whole_replay_buffer_training=whole_replay_buffer_training,

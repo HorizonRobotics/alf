@@ -1111,7 +1111,7 @@ class Algorithm(nn.Module):
         - ``mini_batch_length``: the temporal extension of a minibatch. An
           algorithm can sample temporally correlated experiences for training
           stateful models by setting this value greater than 1.
-        - ``num_updates_per_train_step``: how many updates to perform in each
+        - ``num_updates_per_train_iter``: how many updates to perform in each
           training iteration. Its behavior might be different depending on the
           value of ``config.whole_replay_buffer_training``:
 
@@ -1123,7 +1123,7 @@ class Algorithm(nn.Module):
 
         - ``whole_replay_buffer_training``: a very special case where all data in
           the replay buffer will be used for training (e.g., PPO). In this case,
-          for every update in ``num_updates_per_train_step``, the data will
+          for every update in ``num_updates_per_train_iter``, the data will
           be shuffled and divided into
           ``buffer_size//(mini_batch_size * mini_batch_length)`` "mini-updates".
 
@@ -1149,11 +1149,11 @@ class Algorithm(nn.Module):
                 experience = self._exp_replayer.replay_all()
                 if config.clear_replay_buffer:
                     self._exp_replayer.clear()
-                num_updates = config.num_updates_per_train_step
+                num_updates = config.num_updates_per_train_iter
             else:
                 experience = self._exp_replayer.replay(
                     sample_batch_size=(
-                        mini_batch_size * config.num_updates_per_train_step),
+                        mini_batch_size * config.num_updates_per_train_iter),
                     mini_batch_length=config.mini_batch_length)
                 num_updates = 1
 

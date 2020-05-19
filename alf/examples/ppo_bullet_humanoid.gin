@@ -42,7 +42,7 @@ Agent.optimizer=@ac/Adam()
 
 # training config
 TrainerConfig.trainer=@sync_off_policy_trainer
-TrainerConfig.num_updates_per_train_step = 20
+TrainerConfig.num_updates_per_train_iter = 20
 TrainerConfig.unroll_length = 512
 TrainerConfig.mini_batch_size = 4096
 TrainerConfig.mini_batch_length = 1

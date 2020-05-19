@@ -1,6 +1,6 @@
 # Although this config uses off_policy_trainer, it is essentially same as
 # on-policy training because the collected experiences are used once (
-# TrainerConfig.num_updates_per_train_step=1) for updating policy.
+# TrainerConfig.num_updates_per_train_iter=1) for updating policy.
 # It is used to validate the correctness of off_policy_trainer.
 #
 # And in order to do correct off-policy AC, the loss need to includes importance
@@ -47,7 +47,7 @@ TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.mini_batch_length=9
 TrainerConfig.unroll_length=9
 TrainerConfig.mini_batch_size=8
-TrainerConfig.num_updates_per_train_step=1
+TrainerConfig.num_updates_per_train_iter=1
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=3000
 TrainerConfig.checkpoint_interval=100000

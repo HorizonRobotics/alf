@@ -81,7 +81,7 @@ def _create_algorithm(env, sac, use_rnn, on_policy):
         use_rollout_state=True,
         mini_batch_length=1,
         mini_batch_size=256,
-        num_updates_per_train_step=1,
+        num_updates_per_train_iter=1,
         whole_replay_buffer_training=False,
         clear_replay_buffer=False,
         debug_summaries=DEBUGGING,

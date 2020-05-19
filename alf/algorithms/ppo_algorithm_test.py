@@ -59,7 +59,7 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     config = TrainerConfig(
         root_dir="dummy",
         unroll_length=13,
-        num_updates_per_train_step=4,
+        num_updates_per_train_iter=4,
         mini_batch_size=25,
         summarize_grads_and_vars=DEBUGGING)
 

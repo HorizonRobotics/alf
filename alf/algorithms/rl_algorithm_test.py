@@ -186,7 +186,7 @@ class RLAlgorithmTest(unittest.TestCase):
             root_dir=root_dir,
             unroll_length=5,
             num_envs=1,
-            num_updates_per_train_step=1,
+            num_updates_per_train_iter=1,
             mini_batch_length=5,
             mini_batch_size=3,
             use_rollout_state=True,

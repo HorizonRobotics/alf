@@ -120,7 +120,7 @@ ON_POLICY_TRAIN_PARAMS = _to_gin_params(ON_POLICY_TRAIN_CONF)
 OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.unroll_length=1',
     'TrainerConfig.initial_collect_steps=8',
-    'TrainerConfig.num_updates_per_train_step=1',
+    'TrainerConfig.num_updates_per_train_iter=1',
     'TrainerConfig.mini_batch_length=2',
     'TrainerConfig.mini_batch_size=4',
     'TrainerConfig.num_envs=2',
@@ -137,7 +137,7 @@ ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS = _to_gin_params(
 
 PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=2', 'TrainerConfig.initial_collect_steps=0',
-    'TrainerConfig.num_updates_per_train_step=2'
+    'TrainerConfig.num_updates_per_train_iter=2'
 ]
 PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
 
