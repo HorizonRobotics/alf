@@ -61,6 +61,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
                  use_parallel_network=False,
+                 observation_transformer=math_ops.identity,
                  env=None,
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
@@ -69,6 +70,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  num_critic_replicas=1,
                  target_update_tau=0.05,
                  target_update_period=1,
+                 rollout_random_action=0.,
                  dqda_clipping=None,
                  actor_optimizer=None,
                  critic_optimizer=None,
@@ -88,6 +90,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 ``forward((observation, action), state)``.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
+            observation_transformer (Callable or list[Callable]): transformation(s)
+                applied to ``time_step.observation``.
             num_critic_replicas (int): number of critics to be used. Default is 1.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
@@ -106,6 +110,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 networks.
             target_update_period (int): Period for soft update of the target
                 networks.
+            rollout_random_action (float): the probability of taking a uniform
+                random action during a ``rollout_step()``. 0 means always directly
+                taking actions added with OU noises and 1 means always sample
+                uniformly random actions. A bigger value results in more
+                exploration during rollout.
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
@@ -138,6 +147,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             action_spec,
             train_state_spec=train_state_spec,
             env=env,
+            observation_transformer=observation_transformer,
             config=config,
             debug_summaries=debug_summaries,
             name=name)
@@ -156,8 +166,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._target_critic_networks = critic_networks.copy(
             name='target_critic_networks')
 
-        self._ou_stddev = ou_stddev
-        self._ou_damping = ou_damping
+        self._rollout_random_action = float(rollout_random_action)
 
         if critic_loss_ctor is None:
             critic_loss_ctor = OneStepTDLoss
@@ -189,7 +198,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         def _sample(a, ou):
             if epsilon_greedy == 0:
                 return a
-            elif epsilon_greedy > 1.0:
+            elif epsilon_greedy >= 1.0:
                 return a + ou()
             else:
                 ind_explore = torch.where(
@@ -212,7 +221,20 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if self.need_full_rollout_state():
             raise NotImplementedError("Storing RNN state to replay buffer "
                                       "is not supported by DdpgAlgorithm")
-        return self.predict_step(time_step, state, epsilon_greedy=1.0)
+
+        def _update_random_action(spec, noisy_action):
+            random_action = spec_utils.scale_to_spec(
+                torch.rand_like(noisy_action) * 2 - 1, spec)
+            ind = torch.where(
+                torch.rand(noisy_action.shape[:1]) < self.
+                _rollout_random_action)
+            noisy_action[ind[0], :] = random_action[ind[0], :]
+
+        pred_step = self.predict_step(time_step, state, epsilon_greedy=1.0)
+        if self._rollout_random_action > 0:
+            nest.map_structure(_update_random_action, self._action_spec,
+                               pred_step.output)
+        return pred_step
 
     def _critic_train_step(self, exp: Experience, state: DdpgCriticState):
         target_action, target_actor_state = self._target_actor_network(
