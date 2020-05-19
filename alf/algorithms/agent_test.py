@@ -32,12 +32,9 @@ class AgentTest(alf.test.TestCase):
             observation=observation_spec.zeros(outer_dims=(batch_size, )),
             prev_action=action_spec.zeros(outer_dims=(batch_size, )))
 
-        actor_net = ActorDistributionNetwork(
-            input_tensor_spec=observation_spec,
-            action_spec=action_spec,
-            fc_layer_params=(100, ))
-        value_net = ValueNetwork(
-            input_tensor_spec=observation_spec, fc_layer_params=(100, ))
+        actor_net = functools.partial(
+            ActorDistributionNetwork, fc_layer_params=(100, ))
+        value_net = functools.partial(ValueNetwork, fc_layer_params=(100, ))
 
         # TODO: add a goal generator and an entropy target algorithm once they
         # are implemented.
@@ -46,8 +43,8 @@ class AgentTest(alf.test.TestCase):
             action_spec=action_spec,
             rl_algorithm_cls=functools.partial(
                 ActorCriticAlgorithm,
-                actor_network=actor_net,
-                value_network=value_net),
+                actor_network_ctor=actor_net,
+                value_network_ctor=value_net),
             intrinsic_reward_module=ICMAlgorithm(
                 action_spec=action_spec, observation_spec=observation_spec))
 

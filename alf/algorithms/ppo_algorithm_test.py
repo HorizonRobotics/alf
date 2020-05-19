@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from functools import partial
 import gin
 import torch
 
@@ -36,24 +37,22 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
     action_spec = env.action_spec()
 
     if use_rnn:
-        actor_net = ActorDistributionRNNNetwork(
-            observation_spec,
-            action_spec,
+        actor_net = partial(
+            ActorDistributionRNNNetwork,
             fc_layer_params=(),
             lstm_hidden_size=(4, ),
             actor_fc_layer_params=())
-        value_net = ValueRNNNetwork(
-            observation_spec,
+        value_net = partial(
+            ValueRNNNetwork,
             fc_layer_params=(),
             lstm_hidden_size=(4, ),
             value_fc_layer_params=())
     else:
-        actor_net = ActorDistributionNetwork(
-            observation_spec,
-            action_spec,
+        actor_net = partial(
+            ActorDistributionNetwork,
             fc_layer_params=(),
             continuous_projection_net_ctor=StableNormalProjectionNetwork)
-        value_net = ValueNetwork(observation_spec, fc_layer_params=())
+        value_net = partial(ValueNetwork, observation_spec, fc_layer_params=())
 
     optimizer = alf.optimizers.Adam(lr=learning_rate)
 
@@ -69,8 +68,8 @@ def create_algorithm(env, use_rnn=False, learning_rate=1e-1):
         action_spec=action_spec,
         env=env,
         config=config,
-        actor_network=actor_net,
-        value_network=value_net,
+        actor_network_ctor=actor_net,
+        value_network_ctor=value_net,
         loss=PPOLoss(gamma=1.0, debug_summaries=DEBUGGING),
         optimizer=optimizer,
         debug_summaries=DEBUGGING)

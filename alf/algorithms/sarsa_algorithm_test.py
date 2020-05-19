@@ -47,34 +47,32 @@ def _create_algorithm(env, sac, use_rnn, on_policy):
 
     if use_rnn:
         if sac:
-            actor_net = ActorDistributionRNNNetwork(
-                observation_spec,
-                action_spec,
+            actor_net = functools.partial(
+                ActorDistributionRNNNetwork,
                 fc_layer_params=fc_layer_params,
                 lstm_hidden_size=(4, ),
                 continuous_projection_net_ctor=continuous_projection_net_ctor)
         else:
-            actor_net = ActorRNNNetwork(
-                observation_spec,
-                action_spec,
+            actor_net = functools.partial(
+                ActorRNNNetwork,
                 fc_layer_params=fc_layer_params,
                 lstm_hidden_size=(4, ))
-        critic_net = CriticRNNNetwork((observation_spec, action_spec),
-                                      joint_fc_layer_params=fc_layer_params,
-                                      lstm_hidden_size=(4, ))
+        critic_net = functools.partial(
+            CriticRNNNetwork,
+            joint_fc_layer_params=fc_layer_params,
+            lstm_hidden_size=(4, ))
     else:
         if sac:
-            actor_net = ActorDistributionNetwork(
-                observation_spec,
-                action_spec,
+            actor_net = functools.partial(
+                ActorDistributionNetwork,
                 fc_layer_params=fc_layer_params,
                 continuous_projection_net_ctor=continuous_projection_net_ctor)
         else:
-            actor_net = ActorNetwork(
-                observation_spec, action_spec, fc_layer_params=fc_layer_params)
+            actor_net = functools.partial(
+                ActorNetwork, fc_layer_params=fc_layer_params)
 
-        critic_net = CriticNetwork((observation_spec, action_spec),
-                                   joint_fc_layer_params=fc_layer_params)
+        critic_net = functools.partial(
+            CriticNetwork, joint_fc_layer_params=fc_layer_params)
 
     config = TrainerConfig(
         root_dir="dummy",
@@ -98,8 +96,8 @@ def _create_algorithm(env, sac, use_rnn, on_policy):
         on_policy=on_policy,
         ou_stddev=0.2,
         ou_damping=0.5,
-        actor_network=actor_net,
-        critic_network=critic_net,
+        actor_network_ctor=actor_net,
+        critic_network_ctor=critic_net,
         actor_optimizer=alf.optimizers.AdamTF(lr=5e-3),
         critic_optimizer=alf.optimizers.AdamTF(lr=2e-2),
         alpha_optimizer=alf.optimizers.AdamTF(lr=2e-2),

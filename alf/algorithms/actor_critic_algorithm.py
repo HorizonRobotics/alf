@@ -36,8 +36,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 actor_network: ActorDistributionNetwork,
-                 value_network: ValueNetwork,
+                 actor_network_ctor=ActorDistributionNetwork,
+                 value_network_ctor=ValueNetwork,
                  env=None,
                  config: TrainerConfig = None,
                  loss=None,
@@ -56,11 +56,15 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             config (TrainerConfig): config for training. config only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
-            actor_network : A network that returns nested
-                tensor of action distribution for each observation given observation
-                and network state.
-            value_network: A function that returns value tensor from neural
-                net predictions for each observation given observation and network
+            actor_network_ctor (Callable): Function to construct the actor network.
+                ``actor_network_ctor`` needs to accept ``input_tensor_spec`` and
+                ``action_spec`` as its arguments and return an actor network.
+                The constructed network will be called with ``forward(observation, state)``.
+            value_network_ctor (Callable): Function to construct the value network.
+                ``value_network_ctor`` needs to accept ``input_tensor_spec`` as
+                its arguments and return a value netwrok. The contructed network
+                will be called with ``forward(observation, state)`` and returns
+                value tensor for each observation given observation and network
                 state.
             loss (None|ActorCriticLoss): an object for calculating loss. If
                 None, a default loss of class loss_class will be used.
@@ -70,6 +74,10 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
+        actor_network = actor_network_ctor(
+            input_tensor_spec=observation_spec, action_spec=action_spec)
+        value_network = value_network_ctor(input_tensor_spec=observation_spec)
+
         super(ActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,

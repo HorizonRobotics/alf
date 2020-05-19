@@ -9,20 +9,17 @@ create_environment.env_name="Pendulum-v0"
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 
 
-actor/ActorNetwork.input_tensor_spec=%observation_spec
-actor/ActorNetwork.action_spec=%action_spec
 actor/ActorNetwork.fc_layer_params=(100,100)
 actor/Adam.lr=1e-4
 
-critic/CriticNetwork.input_tensor_spec=(%observation_spec, %action_spec)
 critic/CriticNetwork.joint_fc_layer_params=(100,100)
 critic/Adam.lr=1e-3
 
 # uncomment to use parallel critics
 #DdpgAlgorithm.use_parallel_network=1
 #DdpgAlgorithm.num_critic_replicas=2
-DdpgAlgorithm.actor_network=@actor/ActorNetwork()
-DdpgAlgorithm.critic_network=@critic/CriticNetwork()
+DdpgAlgorithm.actor_network_ctor=@actor/ActorNetwork
+DdpgAlgorithm.critic_network_ctor=@critic/CriticNetwork
 DdpgAlgorithm.actor_optimizer=@actor/Adam()
 DdpgAlgorithm.critic_optimizer=@critic/Adam()
 

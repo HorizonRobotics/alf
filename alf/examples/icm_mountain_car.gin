@@ -12,11 +12,8 @@ create_environment.env_name='MountainCar-v0'
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
 
-value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256, 256)
 
 ac/Adam.lr=1e-3
@@ -31,8 +28,8 @@ ICMAlgorithm.activation=@torch.relu
 ICMAlgorithm.encoding_net=@icm/EncodingNetwork()
 ICMAlgorithm.hidden_size=(%feature_size, %feature_size)
 
-ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
+ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
 Agent.optimizer=@ac/Adam()
 Agent.intrinsic_reward_module=@ICMAlgorithm()
 ActorCriticLoss.use_gae=True

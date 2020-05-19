@@ -71,8 +71,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 actor_network: Network,
-                 critic_network: Network,
+                 actor_network_ctor,
+                 critic_network_ctor,
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
@@ -97,10 +97,15 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
             observation_spec (nested TensorSpec): spec for observation.
-            actor_network (Network):  The network will be called with observation.
-                If its output is Distribution, an action will be sampled.
-            critic_network (Network): The network will be called with
-                ``call(observation, action, step_type)``.
+            actor_network_ctor (Callable): Function to construct the actor network.
+                ``actor_network_ctor`` needs to accept ``input_tensor_spec`` and
+                ``action_spec`` as its arguments and return an actor network.
+                The constructed network will be called with ``forward(observation, state)``.
+            critic_network_ctor (Callable): Function to construct the critic
+                network. ``critic_netwrok_ctor`` needs to accept ``input_tensor_spec``
+                which is a tuple of ``(observation_spec, action_spec)``. The
+                constructed network will be called with
+                ``forward((observation, action), state)``.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics. This can be useful when
                 ``mini_batch_size * mini_batch_length`` (when ``temporally_independent_train_step``
@@ -150,6 +155,10 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             debug_summaries (bool): ``True`` if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+        critic_network = critic_network_ctor(
+            input_tensor_spec=(observation_spec, action_spec))
+        actor_network = actor_network_ctor(
+            input_tensor_spec=observation_spec, action_spec=action_spec)
         flat_action_spec = alf.nest.flatten(action_spec)
         is_continuous = min(
             map(lambda spec: spec.is_continuous, flat_action_spec))
