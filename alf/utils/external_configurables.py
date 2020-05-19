@@ -29,9 +29,9 @@ gym.envs.registration.EnvSpec.make = gin.external_configurable(
 gin.external_configurable(torch.exp, 'torch.exp')
 gin.external_configurable(torch.tanh, 'torch.tanh')
 gin.external_configurable(torch.relu, 'torch.relu')
-gin.external_configurable(torch.relu, 'torch.relu_')
+gin.external_configurable(torch.relu_, 'torch.relu_')
 gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu')
-gin.external_configurable(torch.nn.functional.elu, 'torch.nn.functional.elu_')
+gin.external_configurable(torch.nn.functional.elu_, 'torch.nn.functional.elu_')
 gin.external_configurable(alf.math.softsign, 'alf.math.softsign')
 gin.external_configurable(alf.math.softsign_, 'alf.math.softsign_')
 

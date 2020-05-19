@@ -81,10 +81,23 @@ python -m alf.bin.play --root_dir=LOG_DIR
 
   <img src="alf/examples/async_ppo_bullet_humanoid.png" width = "300" height ="200" alt="Humanoid-training-curve"/> <img src="alf/examples/async_ppo_bullet_humanoid.gif" width = "300" height ="200" alt="Humanoid-video"/>
 
+### DDPG
+* [FetchSlide (sparse rewards)](alf/examples/ddpg_fetchslide.gin). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. This example reproduces the performance of vanilla DDPG reported in the OpenAI's Robotics environment [paper](https://arxiv.org/pdf/1802.09464.pdf). Our implementation doesn't use MPI, but obtains (evaluation) performance on par with the original implementation. (*The original MPI implementation has 19 workers, each worker sampling a minibatch of size 256 from its replay buffer for computing gradients. All the workers' gradients will be summed together for a centralized optimizer step. Our implementation simply samples a minibatch of size 5000 from a common replay buffer per optimizer step.*) The training took about 1.5 hours with 20 parallel environments on a single GPU.
+
+  <img src="alf/examples/ddpg_fetchslide.png" width="300" height="200" alt="ddpg-fetchslide-training-curve"/> <img src="alf/examples/ddpg_fetchslide.gif" width="300" height="200" alf="ddpg-fetchslide-video"/>
+
 ### SAC
 * [Bipedal Walker](alf/examples/sac_bipedal_walker.gin).
 
   <img src="alf/examples/sac_bipedal_walker.png" width = "300" height ="200" alt="bipedal-walker-training-curve"/> <img src="alf/examples/sac_bipedal_walker.gif" width = "300" height ="200" alt="bipedal-walker-video"/>
+
+* [FetchReach (sparse rewards)](alf/examples/sac_fetchreach.gin). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. The training took about 20 minutes with 20 parallel environments on a single GPU.
+
+  <img src="alf/examples/sac_fetchreach.png" width="300" height="200" alt="sac-fetchreach-training-curve"/> <img src="alf/examples/sac_fetchreach.gif" width="300" height="200" alf="sac-fetchreach-video"/>
+
+* [FetchSlide (sparse rewards)](alf/examples/sac_fetchslide.gin). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. This is the same task with the DDPG example above, but with SAC as the learning algorithm. The training took about 1.5 hours with 20 parallel environments on a single GPU.
+
+  <img src="alf/examples/sac_fetchslide.png" width="300" height="200" alt="sac-fetchslide-training-curve"/> <img src="alf/examples/sac_fetchslide.gif" width="300" height="200" alf="sac-fetchslide-video"/>
 
 ### ICM
 * [Super Mario](alf/examples/icm_super_mario_intrinsic_only.gin). Playing Super Mario only using intrinsic reward.

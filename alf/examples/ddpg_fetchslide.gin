@@ -1,0 +1,45 @@
+
+include 'ddpg.gin'
+
+import alf.utils.dist_utils
+import alf.environments.suite_robotics
+
+# environment config
+create_environment.env_load_fn=@suite_robotics.load
+create_environment.num_parallel_environments=20
+create_environment.env_name='FetchSlide-v1'
+
+hidden_layers=(256, 256, 256)
+
+# override algorithm and training config
+actor/ActorNetwork.fc_layer_params=%hidden_layers
+
+AdamTF.lr=1e-3
+
+critic/CriticNetwork.joint_fc_layer_params=%hidden_layers
+
+DdpgAlgorithm.actor_network_ctor=@actor/ActorNetwork
+DdpgAlgorithm.critic_network_ctor=@critic/CriticNetwork
+DdpgAlgorithm.actor_optimizer=@AdamTF()
+DdpgAlgorithm.critic_optimizer=@AdamTF()
+DdpgAlgorithm.rollout_random_action=0.3
+DdpgAlgorithm.use_parallel_network=True
+DdpgAlgorithm.target_update_tau=0.05
+DdpgAlgorithm.target_update_period=40
+OneStepTDLoss.gamma=0.98
+
+# training config
+TrainerConfig.initial_collect_steps=10000
+TrainerConfig.mini_batch_length=2
+TrainerConfig.mini_batch_size=5000
+TrainerConfig.unroll_length=50
+TrainerConfig.num_updates_per_train_step=40
+TrainerConfig.num_iterations=5000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=True
+TrainerConfig.eval_interval=60
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=0
+TrainerConfig.summary_interval=30
+TrainerConfig.use_rollout_state=True
+TrainerConfig.replay_buffer_length=100000

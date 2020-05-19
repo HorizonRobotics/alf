@@ -141,6 +141,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
+                 observation_transformer=math_ops.identity,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
@@ -178,6 +179,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
                 algorithm.
+            observation_transformer (Callable or list[Callable]): transformation(s)
+                applied to ``time_step.observation``.
             config (TrainerConfig): config for training. It only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -226,6 +229,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic=SacCriticState(
                     critics=critic_networks.state_spec,
                     target_critics=critic_networks.state_spec)),
+            observation_transformer=observation_transformer,
             env=env,
             config=config,
             debug_summaries=debug_summaries,
@@ -455,7 +459,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Mixed:
             # pick values according to discrete actions
-            critics = self._select_q_value(action[0], critics).squeeze(-1)
+            critics = self._select_q_value(action[0], critics)
             action = action[1]
 
         target_q_value = critics.min(dim=1)[0]
@@ -484,12 +488,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
             action: discrete actions with shape ``[batch_size]``.
             critics: Q values with shape ``[batch_size, replicas, num_actions]``.
         Returns:
-            selected Q values with shape ``[batch_size, replicas, 1]``.
+            selected Q values with shape ``[batch_size, replicas]``.
         """
         # action shape: [batch_size] -> [batch_size, n, 1]
         action = action.view(q_values.shape[0], 1, -1).expand(
             -1, q_values.shape[1], -1).long()
-        return q_values.gather(-1, action)
+        return q_values.gather(-1, action).squeeze(-1)
 
     def _critic_train_step(self, exp: Experience, state: SacCriticState,
                            action, log_pi):
@@ -510,8 +514,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         target_critic = target_critics.min(dim=1)[0].reshape(log_pi.shape) - \
                          (torch.exp(self._log_alpha) * log_pi)
 
-        critics = critics.squeeze(-1)
-        target_critic = target_critic.squeeze(-1).detach()
+        target_critic = target_critic.detach()
 
         state = SacCriticState(
             critics=critics_state, target_critics=target_critics_state)

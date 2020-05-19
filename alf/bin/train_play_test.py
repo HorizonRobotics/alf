@@ -338,6 +338,12 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
 
+    def test_ddpg_fetchslide(self):
+        self._test(
+            gin_file="ddpg_fetchslide.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_diayn_pendulum(self):
         self._test(
             gin_file='diayn_pendulum.gin',
@@ -442,6 +448,12 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sac_fetchreach(self):
         self._test(
             gin_file="sac_fetchreach.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_sac_fetchslide(self):
+        self._test(
+            gin_file="sac_fetchslide.gin",
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
