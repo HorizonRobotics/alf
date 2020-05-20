@@ -30,13 +30,6 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 
 
-def _tuplify2d(x):
-    if isinstance(x, tuple):
-        assert len(x) == 2
-        return x
-    return (x, x)
-
-
 @gin.configurable
 class ImageEncodingNetwork(Network):
     """
@@ -89,7 +82,7 @@ class ImageEncodingNetwork(Network):
                 structure of shape ``BxCxHxW``; otherwise the output will be
                 flattened into a feature of shape ``BxN``.
         """
-        input_size = _tuplify2d(input_size)
+        input_size = common.tuplify2d(input_size)
         super().__init__(
             input_tensor_spec=TensorSpec((input_channels, ) + input_size),
             name=name)
@@ -104,7 +97,7 @@ class ImageEncodingNetwork(Network):
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
             if same_padding:  # overwrite paddings
-                kernel_size = _tuplify2d(kernel_size)
+                kernel_size = common.tuplify2d(kernel_size)
                 padding = ((kernel_size[0] - 1) // 2,
                            (kernel_size[1] - 1) // 2)
             self._conv_layers.append(
@@ -125,6 +118,105 @@ class ImageEncodingNetwork(Network):
             z = conv_l(z)
         if self._flatten_output:
             z = torch.reshape(z, (z.size()[0], -1))
+        return z, state
+
+
+@gin.configurable
+class ParallelImageEncodingNetwork(Network):
+    """
+    A Parallel Image Encoding Network that can be used to perform n
+    independent image encodings in parallel.
+    """
+
+    def __init__(self,
+                 input_channels,
+                 input_size,
+                 n,
+                 conv_layer_params,
+                 same_padding=False,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 flatten_output=False,
+                 name="ParallelImageEncodingNetwork"):
+        """
+        Args:
+            input_channels (int): number of channels in the input image
+            input_size (int or tuple): the input image size (height, width)
+            n (int): number of parallel networks
+            conv_layer_params (tuppe[tuple]): a non-empty tuple of
+                tuple (num_filters, kernel_size, strides, padding), where
+                padding is optional
+            same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
+                True, the user provided paddings in `conv_layer_params` will be
+                replaced by automatically calculated ones; if False, it
+                corresponds to TF's ``valid`` padding mode (the user can still
+                provide custom paddings though)
+            activation (torch.nn.functional): activation for all the layers
+            kernel_initializer (Callable): initializer for all the layers.
+            flatten_output (bool): If False, the output will be an image
+                structure of shape ``(B, n, C, H, W)``; otherwise the output
+                will be flattened into a feature of shape ``(B, n, C*H*W)``.
+        """
+        input_size = common.tuplify2d(input_size)
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_channels, ) + input_size),
+            name=name)
+
+        assert isinstance(conv_layer_params, tuple)
+        assert len(conv_layer_params) > 0
+
+        self._flatten_output = flatten_output
+        self._conv_layer_params = conv_layer_params
+        self._conv_layers = nn.ModuleList()
+        for paras in conv_layer_params:
+            filters, kernel_size, strides = paras[:3]
+            padding = paras[3] if len(paras) > 3 else 0
+            if same_padding:  # overwrite paddings
+                kernel_size = common.tuplify2d(kernel_size)
+                padding = ((kernel_size[0] - 1) // 2,
+                           (kernel_size[1] - 1) // 2)
+            self._conv_layers.append(
+                layers.ParallelConv2D(
+                    input_channels,
+                    filters,
+                    kernel_size,
+                    n,
+                    activation=activation,
+                    kernel_initializer=kernel_initializer,
+                    strides=strides,
+                    padding=padding))
+            input_channels = filters
+
+    def forward(self, inputs, state=()):
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, C, H, W]``
+                                        or ``[B, n, C, H, W]``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+                When the shape of inputs is ``[B, C, H, W]``, the same input is
+                shared among all the n replicas.
+                When the shape of img is ``[B, n, C, H, W]``, each replica
+                will have its own data by slicing inputs.
+
+            state: an empty state just keeps the interface same with other
+                networks.
+
+        Returns:
+            - a tensor of shape ``(B, n, C, H, W)`` if ``flatten_output=False``
+              ``(B, n, C*H*W)`` if ``flatten_output=True``
+            - the empty state just to keep the interface same with other networks
+        """
+        z = inputs
+        for conv_l in self._conv_layers:
+            z = conv_l(z)
+        if self._flatten_output:
+            z = torch.reshape(z, (*z.size()[:2], -1))
         return z, state
 
 
@@ -211,7 +303,7 @@ class ImageDecodingNetwork(Network):
                         kernel_initializer=kernel_initializer))
                 input_size = size
 
-        start_decoding_size = _tuplify2d(start_decoding_size)
+        start_decoding_size = common.tuplify2d(start_decoding_size)
         # pytorch assumes "channels_first" !
         self._start_decoding_shape = [
             start_decoding_channels, start_decoding_size[0],
@@ -231,7 +323,7 @@ class ImageDecodingNetwork(Network):
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
             if same_padding:  # overwrite paddings
-                kernel_size = _tuplify2d(kernel_size)
+                kernel_size = common.tuplify2d(kernel_size)
                 padding = ((kernel_size[0] - 1) // 2,
                            (kernel_size[1] - 1) // 2)
             act = activation
@@ -256,6 +348,144 @@ class ImageDecodingNetwork(Network):
         for fc_l in self._preprocess_fc_layers:
             z = fc_l(z)
         z = torch.reshape(z, [-1] + self._start_decoding_shape)
+        for deconv_l in self._transconv_layers:
+            z = deconv_l(z)
+        return z, state
+
+
+@gin.configurable
+class ParallelImageDecodingNetwork(Network):
+    """
+    A Parallel Image Decoding Network that can be used to perform n
+    independent image decodings in parallel.
+    """
+
+    def __init__(self,
+                 input_size,
+                 n,
+                 transconv_layer_params,
+                 start_decoding_size,
+                 start_decoding_channels,
+                 same_padding=False,
+                 preprocess_fc_layer_params=None,
+                 activation=torch.relu_,
+                 kernel_initializer=None,
+                 output_activation=torch.tanh,
+                 name="ImageDecodingNetwork"):
+        """
+        Args:
+            input_size (int): the size of the input latent vector
+            n (int): number of parallel networks
+            transconv_layer_params (tuple[tuple]): a non-empty
+                tuple of tuple (num_filters, kernel_size, strides, padding),
+                where ``padding`` is optional.
+            start_decoding_size (int or tuple): the initial height and width
+                we'd like to have for the feature map
+            start_decoding_channels (int): the initial number of channels we'd
+                like to have for the feature map. Note that we always first
+                project an input latent vector into a vector of an appropriate
+                length so that it can be reshaped into (``start_decoding_channels``,
+                ``start_decoding_height``, ``start_decoding_width``).
+            same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
+                True, the user provided paddings in ``transconv_layer_params`` will
+                be replaced by automatically calculated ones; if False, it
+                corresponds to TF's ``valid`` padding mode (the user can still
+                provide custom paddings though).
+            preprocess_fc_layer_params (tuple[int]): a tuple of fc
+                layer units. These fc layers are used for preprocessing the
+                latent vector before transposed convolutions.
+            activation (nn.functional): activation for hidden layers
+            kernel_initializer (Callable): initializer for all the layers.
+            output_activation (nn.functional): activation for the output layer.
+                Usually our image inputs are normalized to [0, 1] or [-1, 1],
+                so this function should be ``torch.sigmoid`` or
+                ``torch.tanh``.
+            name (str):
+        """
+        super().__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+
+        assert isinstance(transconv_layer_params, tuple)
+        assert len(transconv_layer_params) > 0
+
+        self._preprocess_fc_layers = nn.ModuleList()
+        if preprocess_fc_layer_params is not None:
+            for size in preprocess_fc_layer_params:
+                self._preprocess_fc_layers.append(
+                    layers.ParallelFC(
+                        input_size,
+                        size,
+                        n,
+                        activation=activation,
+                        kernel_initializer=kernel_initializer))
+                input_size = size
+
+        start_decoding_size = common.tuplify2d(start_decoding_size)
+        # pytorch assumes "channels_first" !
+        self._start_decoding_shape = [
+            start_decoding_channels, start_decoding_size[0],
+            start_decoding_size[1]
+        ]
+        self._preprocess_fc_layers.append(
+            layers.ParallelFC(
+                input_size,
+                np.prod(self._start_decoding_shape),
+                n,
+                activation=activation,
+                kernel_initializer=kernel_initializer))
+
+        self._transconv_layer_params = transconv_layer_params
+        self._transconv_layers = nn.ModuleList()
+        in_channels = start_decoding_channels
+        for i, paras in enumerate(transconv_layer_params):
+            filters, kernel_size, strides = paras[:3]
+            padding = paras[3] if len(paras) > 3 else 0
+            if same_padding:  # overwrite paddings
+                kernel_size = common.tuplify2d(kernel_size)
+                padding = ((kernel_size[0] - 1) // 2,
+                           (kernel_size[1] - 1) // 2)
+            act = activation
+            if i == len(transconv_layer_params) - 1:
+                act = output_activation
+            self._transconv_layers.append(
+                layers.ParallelConvTranspose2D(
+                    in_channels,
+                    filters,
+                    kernel_size,
+                    n,
+                    activation=act,
+                    kernel_initializer=kernel_initializer,
+                    strides=strides,
+                    padding=padding))
+            in_channels = filters
+        self._n = n
+
+    def forward(self, inputs, state=()):
+        """Forward
+
+        Args:
+            inputs (torch.Tensor): with shape ``[B, N]``
+                                        or ``[B, n, N]``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``N``: dimension of the feature vector to be decoded.
+                When the shape of inputs is ``[B, N]``, the same input is
+                shared among all the n replicas.
+                When the shape of img is ``[B, n, N]``, each replica
+                will have its own data by slicing inputs.
+
+            state: an empty state just keeps the interface same with other
+                networks.
+
+        Returns:
+            - an image of shape ``(B, n, C, H, W)``
+            - the empty state just to keep the interface same with other networks
+        """
+        z = inputs
+        for fc_l in self._preprocess_fc_layers:
+            z = fc_l(z)
+        z = torch.reshape(z, [-1, self._n] + self._start_decoding_shape)
         for deconv_l in self._transconv_layers:
             z = deconv_l(z)
         return z, state
@@ -421,8 +651,7 @@ class EncodingNetwork(PreprocessorNetwork):
         Returns:
             Network: A paralle network
         """
-        if (self.saved_args.get('conv_layer_params') is None
-                and self.saved_args.get('input_preprocessors') is None and
+        if (self.saved_args.get('input_preprocessors') is None and
             (self._preprocessing_combiner == math_ops.identity or isinstance(
                 self._preprocessing_combiner,
                 (alf.nest.utils.NestSum, alf.nest.utils.NestConcat)))):
@@ -465,7 +694,9 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                 tensor spec. For example, see ``alf.nest.utils.NestConcat``. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
-            conv_layer_params (None): must be ``None``
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format ``(filters, kernel_size, strides, padding)``,
+                where ``padding`` is optional.
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
             activation (nn.functional): activation used for all the layers but
@@ -493,8 +724,8 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
             preprocessing_combiner=preprocessing_combiner,
             name=name)
 
-        # TODO: handle input_preprocessors and conv_layer_params
-        assert input_preprocessors is None and conv_layer_params is None
+        # TODO: handle input_preprocessors
+        assert input_preprocessors is None
 
         if kernel_initializer is None:
             kernel_initializer = functools.partial(
@@ -503,10 +734,27 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                 distribution='truncated_normal',
                 nonlinearity=activation)
 
-        assert self._processed_input_tensor_spec.ndim == 1, \
-            "The input shape {} should be like (N,)!".format(
-                self._processed_input_tensor_spec.shape)
-        input_size = self._processed_input_tensor_spec.shape[0]
+        self._img_encoding_net = None
+        if conv_layer_params:
+            assert isinstance(conv_layer_params, tuple), \
+                "The input params {} should be tuple".format(conv_layer_params)
+            assert len(self._processed_input_tensor_spec.shape) == 3, \
+                "The input shape {} should be like (C,H,W)!".format(
+                    self._processed_input_tensor_spec.shape)
+            input_channels, height, width = self._processed_input_tensor_spec.shape
+            self._img_encoding_net = ParallelImageEncodingNetwork(
+                input_channels, (height, width),
+                n,
+                conv_layer_params,
+                activation=activation,
+                kernel_initializer=kernel_initializer,
+                flatten_output=True)
+            input_size = self._img_encoding_net.output_spec.shape[1]
+        else:
+            assert self._processed_input_tensor_spec.ndim == 1, \
+                "The input shape {} should be like (N,)!".format(
+                    self._processed_input_tensor_spec.shape)
+            input_size = self._processed_input_tensor_spec.shape[0]
 
         self._fc_layers = nn.ModuleList()
         if fc_layer_params is None:
@@ -554,10 +802,12 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         """
         # call super to preprocess inputs
         z, state = super().forward(inputs, state, max_outer_rank=2)
-        if len(self._fc_layers) == 0:
+        if self._img_encoding_net is None and len(self._fc_layers) == 0:
             if inputs.ndim == 2:
                 z = z.unsqueeze(1).expand(-1, self._n, *z.shape[1:])
         else:
+            if self._img_encoding_net is not None:
+                z, _ = self._img_encoding_net(z)
             for fc in self._fc_layers:
                 z = fc(z)
         return z, state

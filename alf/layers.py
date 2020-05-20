@@ -19,10 +19,11 @@ import copy
 import torch
 import torch.nn as nn
 
-from alf.nest.utils import get_outer_rank
 from alf.initializers import variance_scaling_init
-from alf.utils.math_ops import identity
+from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
+from alf.utils import common
+from alf.utils.math_ops import identity
 
 
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
@@ -201,12 +202,12 @@ class ParallelFC(nn.Module):
         Args:
             input_size (int): input size
             output_size (int): output size
-            n (int): n indepedent ``FC`` layer
+            n (int): n independent ``FC`` layers
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
-                If none is provided a variance_scaling_initializer with gain as
-                ``kernel_init_gain`` will be used.
+                If none is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
             kernel_init_gain (float): a scaling factor (gain) applied to
                 the std of kernel init distribution. It will be ignored if
                 ``kernel_initializer`` is not None.
@@ -354,6 +355,147 @@ class Conv2D(nn.Module):
 
 
 @gin.configurable
+class ParallelConv2D(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 n,
+                 activation=torch.relu_,
+                 strides=1,
+                 padding=0,
+                 use_bias=True,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """A parallel 2D Conv layer that can be used to perform n independent
+        2D convolutions in parallel.
+
+        It is equivalent to ``n`` separate ``Conv2D`` layers with the same
+        ``in_channels`` and ``out_channels``.
+
+        Args:
+            in_channels (int): channels of the input image
+            out_channels (int): channels of the output image
+            kernel_size (int or tuple):
+            n (int): n independent ``Conv2D`` layers
+            activation (torch.nn.functional):
+            strides (int or tuple):
+            padding (int or tuple):
+            use_bias (bool):
+            kernel_initializer (Callable): initializer for the conv layer kernel.
+                If None is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_value (float): a constant
+        """
+        super(ParallelConv2D, self).__init__()
+        self._activation = activation
+        self._n = n
+        self._in_channels = in_channels
+        self._out_channels = out_channels
+        self._kernel_size = common.tuplify2d(kernel_size)
+        self._conv2d = nn.Conv2d(
+            in_channels * n,
+            out_channels * n,
+            kernel_size,
+            groups=n,
+            stride=strides,
+            padding=padding,
+            bias=use_bias)
+
+        for i in range(n):
+            if kernel_initializer is None:
+                variance_scaling_init(
+                    self._conv2d.weight.data[i * out_channels:(i + 1) *
+                                             out_channels],
+                    gain=kernel_init_gain,
+                    nonlinearity=self._activation)
+            else:
+                kernel_initializer(
+                    self._conv2d.weight.data[i * out_channels:(i + 1) *
+                                             out_channels])
+
+        # [n*C', C, kernel_size, kernel_size]->[n, C', C, kernel_size, kernel_size]
+        self._weight = self._conv2d.weight.view(
+            self._n, self._out_channels, self._in_channels,
+            self._kernel_size[0], self._kernel_size[1])
+
+        if use_bias:
+            nn.init.constant_(self._conv2d.bias.data, bias_init_value)
+            # [n*C']->[n, C']
+            self._bias = self._conv2d.bias.view(self._n, self._out_channels)
+        else:
+            self._bias = None
+
+    def forward(self, img):
+        """Forward
+
+        Args:
+            img (torch.Tensor): with shape ``[B, C, H, W]``
+                                        or ``[B, n, C, H, W]``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+                When the shape of img is ``[B, C, H, W]``, all the n 2D Conv
+                operations will take img as the same shared input.
+                When the shape of img is ``[B, n, C, H, W]``, each 2D Conv operator
+                will have its own input data by slicing img.
+
+        Returns:
+            torch.Tensor with shape ``[B, n, C', H', W']``
+                where the meaning of the symbols are:
+                - ``B``: batch
+                - ``n``: number of replicas
+                - ``C'``: number of output channels
+                - ``H'``: output height
+                - ``W'``: output width
+        """
+
+        if img.ndim == 4:
+            # the shared input case
+            assert img.shape[1] == self._in_channels, (
+                "Input img has wrong shape %s. Expecting (B, %d, H, W)" %
+                (img.shape, self._in_channels))
+
+            img = img.unsqueeze(1).expand(img.shape[0], self._n,
+                                          *img.shape[1:])
+        elif img.ndim == 5:
+            # the non-shared case
+            assert (
+                img.shape[1] == self._n
+                and img.shape[2] == self._in_channels), (
+                    "Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
+                    % (img.shape, self._n, self._in_channels))
+        else:
+            raise ValueError("Wrong img.ndim=%d" % img.ndim)
+
+        # merge replica and channels
+        img = img.reshape(img.shape[0], img.shape[1] * img.shape[2],
+                          *img.shape[3:])
+
+        res = self._activation(self._conv2d(img))
+
+        # reshape back: [B, n*C', H', W'] -> [B, n, C', H', W']
+        res = res.reshape(res.shape[0], self._n, self._out_channels,
+                          *res.shape[2:])
+        return res
+
+    @property
+    def weight(self):
+        return self._weight
+
+    @property
+    def bias(self):
+        return self._bias
+
+
+@gin.configurable
 class ConvTranspose2D(nn.Module):
     def __init__(self,
                  in_channels,
@@ -419,6 +561,144 @@ class ConvTranspose2D(nn.Module):
     @property
     def bias(self):
         return self._conv_trans2d.bias
+
+
+@gin.configurable
+class ParallelConvTranspose2D(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 n,
+                 activation=torch.relu_,
+                 strides=1,
+                 padding=0,
+                 use_bias=True,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """A parallel ConvTranspose2D layer that can be used to perform n
+        independent 2D transposed convolutions in parallel.
+
+        Args:
+            in_channels (int): channels of the input image
+            out_channels (int): channels of the output image
+            kernel_size (int or tuple):
+            n (int): n independent ``ConvTranspose2D`` layers
+            activation (torch.nn.functional):
+            strides (int or tuple):
+            padding (int or tuple):
+            use_bias (bool):
+            kernel_initializer (Callable): initializer for the conv_trans layer.
+                If None is provided a ``variance_scaling_initializer`` with gain
+                as ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_value (float): a constant
+        """
+        super(ParallelConvTranspose2D, self).__init__()
+        self._activation = activation
+        self._n = n
+        self._in_channels = in_channels
+        self._out_channels = out_channels
+        self._kernel_size = common.tuplify2d(kernel_size)
+        self._conv_trans2d = nn.ConvTranspose2d(
+            in_channels * n,
+            out_channels * n,
+            kernel_size,
+            groups=n,
+            stride=strides,
+            padding=padding,
+            bias=use_bias)
+
+        for i in range(n):
+            if kernel_initializer is None:
+                variance_scaling_init(
+                    self._conv_trans2d.weight.data[i * in_channels:(i + 1) *
+                                                   in_channels],
+                    gain=kernel_init_gain,
+                    nonlinearity=self._activation)
+            else:
+                kernel_initializer(
+                    self._conv_trans2d.weight.data[i * in_channels:(i + 1) *
+                                                   in_channels])
+
+        # [n*C, C', kernel_size, kernel_size]->[n, C, C', kernel_size, kernel_size]
+        self._weight = self._conv_trans2d.weight.view(
+            self._n, self._in_channels, self._out_channels,
+            self._kernel_size[0], self._kernel_size[1])
+
+        if use_bias:
+            nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
+            # [n*C]->[n, C]
+            self._bias = self._conv_trans2d.bias.view(self._n,
+                                                      self._out_channels)
+        else:
+            self._bias = None
+
+    def forward(self, img):
+        """Forward
+
+        Args:
+            img (torch.Tensor): with shape ``[B, C, H, W]``
+                                        or ``[B, n, C, H, W]``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``n``: number of replicas
+                - ``C``: number of channels
+                - ``H``: image height
+                - ``W``: image width.
+                When the shape of img is ``[B, C, H, W]``, all the n transposed 2D
+                Conv operations will take img as the same shared input.
+                When the shape of img is ``[B, n, C, H, W]``, each transposed 2D
+                Conv operator will have its own input data by slicing img.
+
+        Returns:
+            torch.Tensor with shape ``[B, n, C', H', W']``
+                where the meaning of the symbols are:
+                - ``B``: batch
+                - ``n``: number of replicas
+                - ``C'``: number of output channels
+                - ``H'``: output height
+                - ``W'``: output width
+        """
+        if img.ndim == 4:
+            # the shared input case
+            assert img.shape[1] == self._in_channels, (
+                "Input img has wrong shape %s. Expecting (B, %d, H, W)" %
+                (img.shape, self._in_channels))
+
+            img = img.unsqueeze(1).expand(img.shape[0], self._n,
+                                          *img.shape[1:])
+        elif img.ndim == 5:
+            # the non-shared case
+            assert (
+                img.shape[1] == self._n
+                and img.shape[2] == self._in_channels), (
+                    "Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
+                    % (img.shape, self._n, self._in_channels))
+        else:
+            raise ValueError("Wrong img.ndim=%d" % img.ndim)
+
+        # merge replica and channels
+        img = img.reshape(img.shape[0], img.shape[1] * img.shape[2],
+                          *img.shape[3:])
+
+        res = self._activation(self._conv_trans2d(img))
+
+        # reshape back: [B, n*C', H', W'] -> [B, n, C', H', W']
+        res = res.reshape(res.shape[0], self._n, self._out_channels,
+                          res.shape[2], res.shape[3])
+        return res
+
+    @property
+    def weight(self):
+        return self._weight
+
+    @property
+    def bias(self):
+        return self._bias
 
 
 class Reshape(nn.Module):

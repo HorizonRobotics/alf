@@ -26,6 +26,8 @@ from alf.networks.encoding_networks import ImageEncodingNetwork
 from alf.networks.encoding_networks import ImageDecodingNetwork
 from alf.networks.encoding_networks import EncodingNetwork
 from alf.networks.encoding_networks import ParallelEncodingNetwork
+from alf.networks.encoding_networks import ParallelImageEncodingNetwork
+from alf.networks.encoding_networks import ParallelImageDecodingNetwork
 from alf.networks import Network
 from alf.networks.encoding_networks import LSTMEncodingNetwork
 from alf.networks.preprocessors import EmbeddingPreprocessor
@@ -211,17 +213,20 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
     def test_make_parallel(self):
         batch_size = 128
-        input_spec = TensorSpec((100, ), torch.float32)
+        input_spec = TensorSpec((1, 10, 10), torch.float32)
 
+        conv_layer_params = ((2, 3, 2), (5, 3, 1))
+        fc_layer_params = (256, 256)
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
-            fc_layer_params=(256, 256),
+            conv_layer_params=conv_layer_params,
+            fc_layer_params=fc_layer_params,
             activation=torch.relu_,
             last_layer_size=1,
             last_activation=math_ops.identity,
             name='base_encoding_network')
         replicas = 2
-        num_layers = 3
+        num_layers = len(conv_layer_params) + len(fc_layer_params) + 1
 
         def _benchmark(pnet, name):
             t0 = time.time()
@@ -252,6 +257,106 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         pnet = alf.networks.network.NaiveParallelNetwork(
             network, replicas, name="pnet")
         self.assertEqual(pnet.name, "pnet")
+
+    @parameterized.parameters((None, True), ((100, 100), False))
+    def test_parallel_image_decoding_network(self, preprocessing_fc_layers,
+                                             same_padding):
+        input_spec = TensorSpec((100, ), torch.float32)
+
+        replica = 2
+        network = ParallelImageDecodingNetwork(
+            input_size=input_spec.shape[0],
+            n=replica,
+            transconv_layer_params=((16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
+                                                              0)),
+            start_decoding_size=(20, 31),
+            start_decoding_channels=8,
+            same_padding=same_padding,
+            preprocess_fc_layer_params=preprocessing_fc_layers)
+
+        num_layers = 3 if preprocessing_fc_layers is None else 5
+        self.assertLen(list(network.parameters()), num_layers * 2)
+
+        batch_size = 3
+        # 1) shared input case
+        embedding = input_spec.zeros(outer_dims=(batch_size, ))
+        output, _ = network(embedding)
+        if same_padding:
+            output_shape = (batch_size, replica, 64, 21, 63)
+        else:
+            output_shape = (batch_size, replica, 64, 21, 65)
+        self.assertEqual(output_shape[1:], network.output_spec.shape)
+        self.assertEqual(output_shape, tuple(output.size()))
+
+        # 2) non-shared input case
+        embedding = input_spec.zeros(outer_dims=(
+            batch_size,
+            replica,
+        ))
+        output, _ = network(embedding)
+        if same_padding:
+            output_shape = (batch_size, replica, 64, 21, 63)
+        else:
+            output_shape = (batch_size, replica, 64, 21, 65)
+        self.assertEqual(output_shape[1:], network.output_spec.shape)
+        self.assertEqual(output_shape, tuple(output.size()))
+
+    @parameterized.parameters((True, True), (False, True), (True, False),
+                              (False, False))
+    def test_parallel_image_encoding_network(self, same_padding,
+                                             flatten_output):
+        input_spec = TensorSpec((3, 80, 80), torch.float32)
+
+        replica = 2
+        network = ParallelImageEncodingNetwork(
+            input_channels=input_spec.shape[0],
+            input_size=input_spec.shape[1:3],
+            n=replica,
+            conv_layer_params=((16, (5, 3), 2, (1, 1)), (15, 3, (2, 2), 0)),
+            same_padding=same_padding,
+            flatten_output=flatten_output)
+
+        self.assertLen(list(network.parameters()), 4)
+
+        batch_size = 3
+        # 1) shared input case
+        img = input_spec.zeros(outer_dims=(batch_size, ))
+        output, _ = network(img)
+
+        if same_padding:
+            output_shape = (batch_size, replica, 15, 20, 20)
+        else:
+            output_shape = (batch_size, replica, 15, 19, 19)
+
+        if flatten_output:
+            self.assertEqual((*output_shape[1:2], np.prod(output_shape[2:])),
+                             network.output_spec.shape)
+            self.assertEqual((*output_shape[0:2], np.prod(output_shape[2:])),
+                             tuple(output.size()))
+        else:
+            self.assertEqual(output_shape[1:], network.output_spec.shape)
+            self.assertEqual(output_shape, tuple(output.size()))
+
+        # 2) non-shared input case
+        img = input_spec.zeros(outer_dims=(
+            batch_size,
+            replica,
+        ))
+        output, _ = network(img)
+
+        if same_padding:
+            output_shape = (batch_size, replica, 15, 20, 20)
+        else:
+            output_shape = (batch_size, replica, 15, 19, 19)
+
+        if flatten_output:
+            self.assertEqual((*output_shape[1:2], np.prod(output_shape[2:])),
+                             network.output_spec.shape)
+            self.assertEqual((*output_shape[0:2], np.prod(output_shape[2:])),
+                             tuple(output.size()))
+        else:
+            self.assertEqual(output_shape[1:], network.output_spec.shape)
+            self.assertEqual(output_shape, tuple(output.size()))
 
     @parameterized.parameters((1, ), (3, ))
     def test_parallel_network_output_size(self, replicas):

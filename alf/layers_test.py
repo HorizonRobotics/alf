@@ -55,6 +55,102 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             y = fc(x)
             self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
 
+    @parameterized.parameters(
+        dict(n=1, act=torch.relu, use_bias=False, parallel_x=False),
+        dict(n=1, act=math_ops.identity, use_bias=False, parallel_x=False),
+        dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
+        dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
+        dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
+    )
+    def test_parallel_conv(self,
+                           n=2,
+                           act=math_ops.identity,
+                           use_bias=True,
+                           parallel_x=True):
+        batch_size = 5
+        in_channels = 4
+        out_channels = 3
+        height = 11
+        width = 11
+        pconv = alf.layers.ParallelConv2D(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            n=n,
+            activation=act,
+            use_bias=use_bias)
+
+        conv = alf.layers.Conv2D(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            activation=act,
+            use_bias=use_bias)
+        if parallel_x:
+            px = torch.randn((batch_size, n, in_channels, height, width))
+        else:
+            px = torch.randn((batch_size, in_channels, height, width))
+
+        py = pconv(px)
+        for i in range(n):
+            conv.weight.data.copy_(pconv.weight[i])
+            if use_bias:
+                conv.bias.data.copy_(pconv.bias[i])
+            if parallel_x:
+                x = px[:, i, :]
+            else:
+                x = px
+            y = conv(x)
+            self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
+
+    @parameterized.parameters(
+        dict(n=1, act=torch.relu, use_bias=False, parallel_x=False),
+        dict(n=1, act=math_ops.identity, use_bias=False, parallel_x=False),
+        dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
+        dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
+        dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
+    )
+    def test_parallel_conv_transpose(self,
+                                     n=2,
+                                     act=math_ops.identity,
+                                     use_bias=True,
+                                     parallel_x=True):
+        batch_size = 5
+        in_channels = 4
+        out_channels = 3
+        height = 11
+        width = 11
+        pconvt = alf.layers.ParallelConvTranspose2D(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            n=n,
+            activation=act,
+            use_bias=use_bias)
+
+        convt = alf.layers.ConvTranspose2D(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=3,
+            activation=act,
+            use_bias=use_bias)
+        if parallel_x:
+            px = torch.randn((batch_size, n, in_channels, height, width))
+        else:
+            px = torch.randn((batch_size, in_channels, height, width))
+
+        py = pconvt(px)
+        for i in range(n):
+            convt.weight.data.copy_(pconvt.weight[i])
+            if use_bias:
+                convt.bias.data.copy_(pconvt.bias[i])
+            if parallel_x:
+                x = px[:, i, :]
+            else:
+                x = px
+            y = convt(x)
+            self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
+
 
 if __name__ == "__main__":
     alf.test.main()
