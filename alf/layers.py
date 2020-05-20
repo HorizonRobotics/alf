@@ -419,20 +419,20 @@ class ParallelConv2D(nn.Module):
         Args:
             img (torch.Tensor): with shape ``[B, C, H, W]``
                                         or ``[B, n, C, H, W]``
-            where the meaning of the symbols are:
+                where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``n``: number of replicas
                 - ``C``: number of channels
                 - ``H``: image height
                 - ``W``: image width.
-            When the shape of img is ``[B, C, H, W]``, all the n 2D Conv
-            operations will take img as the same shared input.
-            When the shape of img is ``[B, n, C, H, W]``, each 2D Conv operator
-            will have its own input data by slicing img.
+                When the shape of img is ``[B, C, H, W]``, all the n 2D Conv
+                operations will take img as the same shared input.
+                When the shape of img is ``[B, n, C, H, W]``, each 2D Conv operator
+                will have its own input data by slicing img.
 
         Returns:
             torch.Tensor with shape ``[B, n, C', H', W']``
-            where the meaning of the symbols are:
+                where the meaning of the symbols are:
                 - ``B``: batch
                 - ``n``: number of replicas
                 - ``C'``: number of output channels
@@ -626,20 +626,20 @@ class ParallelConvTranspose2D(nn.Module):
         Args:
             img (torch.Tensor): with shape ``[B, C, H, W]``
                                         or ``[B, n, C, H, W]``
-            where the meaning of the symbols are:
+                where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``n``: number of replicas
                 - ``C``: number of channels
                 - ``H``: image height
                 - ``W``: image width.
-            When the shape of img is ``[B, C, H, W]``, all the n transposed 2D
-            Conv operations will take img as the same shared input.
-            When the shape of img is ``[B, n, C, H, W]``, each transposed 2D
-            Conv operator will have its own input data by slicing img.
+                When the shape of img is ``[B, C, H, W]``, all the n transposed 2D
+                Conv operations will take img as the same shared input.
+                When the shape of img is ``[B, n, C, H, W]``, each transposed 2D
+                Conv operator will have its own input data by slicing img.
 
         Returns:
             torch.Tensor with shape ``[B, n, C', H', W']``
-            where the meaning of the symbols are:
+                where the meaning of the symbols are:
                 - ``B``: batch
                 - ``n``: number of replicas
                 - ``C'``: number of output channels

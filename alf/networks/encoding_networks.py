@@ -193,16 +193,16 @@ class ParallelImageEncodingNetwork(Network):
         Args:
             inputs (torch.Tensor): with shape ``[B, C, H, W]``
                                         or ``[B, n, C, H, W]``
-            where the meaning of the symbols are:
+                where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``n``: number of replicas
                 - ``C``: number of channels
                 - ``H``: image height
                 - ``W``: image width.
-            When the shape of inputs is ``[B, C, H, W]``, the same input is
-            shared among all the n replicas.
-            When the shape of img is ``[B, n, C, H, W]``, each replica
-            will have its own data by slicing inputs.
+                When the shape of inputs is ``[B, C, H, W]``, the same input is
+                shared among all the n replicas.
+                When the shape of img is ``[B, n, C, H, W]``, each replica
+                will have its own data by slicing inputs.
 
             state: an empty state just keeps the interface same with other
                 networks.
@@ -466,14 +466,14 @@ class ParallelImageDecodingNetwork(Network):
         Args:
             inputs (torch.Tensor): with shape ``[B, N]``
                                         or ``[B, n, N]``
-            where the meaning of the symbols are:
+                where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``n``: number of replicas
                 - ``N``: dimension of the feature vector to be decoded.
-            When the shape of inputs is ``[B, N]``, the same input is
-            shared among all the n replicas.
-            When the shape of img is ``[B, n, N]``, each replica
-            will have its own data by slicing inputs.
+                When the shape of inputs is ``[B, N]``, the same input is
+                shared among all the n replicas.
+                When the shape of img is ``[B, n, N]``, each replica
+                will have its own data by slicing inputs.
 
             state: an empty state just keeps the interface same with other
                 networks.
