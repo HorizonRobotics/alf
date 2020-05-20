@@ -110,7 +110,7 @@ class MIEstimator(Algorithm):
                  buffer_size=65536,
                  optimizer: torch.optim.Optimizer = None,
                  estimator_type='DV',
-                 averager=ScalarAdaptiveAverager(),
+                 averager=None,
                  name="MIEstimator"):
         """
 
@@ -170,6 +170,8 @@ class MIEstimator(Algorithm):
             raise TypeError("Wrong type for sampler %s" % sampler)
 
         if estimator_type == 'DV':
+            if averager is None:
+                averager = ScalarAdaptiveAverager()
             self._mean_averager = averager
         if estimator_type == 'ML':
             assert isinstance(

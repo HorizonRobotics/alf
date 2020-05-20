@@ -160,7 +160,7 @@ class Generator(Algorithm):
             assert batch_size is not None
         else:
             nest.assert_same_structure(inputs, self._input_tensor_spec)
-            batch_size = nest.flatten(inputs)[0].shape[0]
+            batch_size = nest.get_nest_batch_size(inputs)
         noise = torch.randn(batch_size, self._noise_dim)
         gen_inputs = noise if inputs is None else [noise, inputs]
         if self._predict_net and not training:
