@@ -232,9 +232,9 @@ def generalized_advantage_estimation(rewards,
                                       s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-    weighted_discounts = discounts * td_lambda
+    weighted_discounts = discounts[1:] * td_lambda
 
-    advs = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    advs = torch.zeros_like(rewards)
     delta = rewards[1:] + discounts[1:] * values[1:] - values[:-1]
 
     with torch.no_grad():

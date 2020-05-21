@@ -42,4 +42,4 @@ def get_diff():
     Returns:
         current diff.
     """
-    return _exec("git diff")
+    return _exec("git -c core.fileMode=false diff --diff-filter=M")

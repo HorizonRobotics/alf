@@ -236,6 +236,8 @@ def summarize_action_dist(action_distributions, name="action_dist"):
                     name="%s_loc/%s/%s" % (name, i, a), data=dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
+            if not isinstance(dist, td.Normal):
+                continue
             loc = dist.loc
             log_scale = dist.scale.log()
             action_dim = loc.shape[-1]
@@ -258,7 +260,7 @@ def add_mean_hist_summary(name, value):
     add_mean_summary(name + "/mean", value)
 
 
-def safe_mean_hist_summary(name, value, mask):
+def safe_mean_hist_summary(name, value, mask=None):
     """Generate mean and histogram summary of ``value``.
 
     It skips the summary if ``value`` is empty.

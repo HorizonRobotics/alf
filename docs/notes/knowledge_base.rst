@@ -1,6 +1,29 @@
 ALF Knowlege Base
 =================
 
+Reading the source code of ALF
+-------------------------------------------
+
+The whole training process in ALF can be understood as a loop of calling
+``RLAlgorithm.train_iter()``.
+
+.. code-block:: python
+
+  while not end:
+    algorithm.train_iter()
+
+This loop is in `PolicyTrainer._train() <../api/alf.trainers.html#alf.trainers.policy_trainer>`_.
+Besides calling ``RLAlgorithm.train_iter()``, it also takes care of things like
+checkpointing, etc.
+
+So if you want to get a good understanding of ALF, you can go directly to
+read the source code of `train_iter() <../api/alf.algorithms.html#alf.algorithms.rl_algorithm>`_.
+Depending on whether the algorithm is on-policy or off-policy, ``train_iter()``
+calls ``_train_iter_on_policy()`` or ``_train_iter_off_policy()`` respectively. Each of these
+is implemented in `OnPolicyAlgorithm <../api/alf.algorithms.html#alf.algorithms.on_policy_algorithm>`_
+and `OffPolicyAlgorithm <../api/alf.algorithms.html#alf.algorithms.off_policy_algorithm>`_.
+
+
 Debugging using VScode
 ----------------------
 
@@ -108,7 +131,7 @@ of each environment step. It contains six fields:
   environments' ``info``.
 
 About :code:`TimeStep.discount`
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 When a `gym <https://https://gym.openai.com/>`_ environment is registered, there
 is an optional parameter named :code:`max_episode_steps` which has default value
@@ -166,3 +189,40 @@ Step type      Discount | Value used          | Value          Note
 :code:`LAST`    0           No                  No             Last step because of a normal game end
 :code:`LAST`    1           Yes                 No             Last step because of time limit
 ============== ======== ===================== ================ ===================================================
+
+
+Differences with the Tensorflow version of ALF
+----------------------------------------------
+
+The Pytorch version of ALF has several subtle differences with the Tensorflow version.
+Knowing these differences may help reproducing some of the experiments.
+
+1. ``alf.initializers.variance_scaling_init()``. It functions similarly as
+``tf.compat.v1.keras.initializers.VarianceScaling``.
+However, there is one key difference: its gain parameter corresponds to the squared
+root of ``scale`` parameter of ``VarianceScaling``. Because of this, the following
+parameters also have different meaning as their corresponding parameters used in
+ALF-tf:
+
+* ``logits_init_output_factor`` of ``alf.networks.CategoricalProjectionNetwork``.
+  corresponds to ``logits_init_output_factor`` of tf_agents ``CategoricalProjectionNetwork``
+  used by ALF-tf.  ``logits_init_output_factor`` of ALF-pytorch should be set to
+  the squared root of ``logits_init_output_factor`` of tf_agents.
+
+* ``projection_output_init_gain`` of ``alf.networks.NormalProjectionNetwork``
+  corresponds to ``init_means_output_factor`` of tf_agents ``NormalProjectionNetwork``
+  used by ALF-tf.  ``projection_output_init_gain`` should be set to the squared
+  root of ``init_means_output_factor``.
+
+2. ``gym_wrappers.ContinuousActionClip``. In ALF-pytorch, by default, we add this
+wrapper to clip the out-of-bound continuous actions for all gym environments
+(Note that most environments supported by ALF are gym environments, even they
+may not be named so). ``ContinuousActionClip`` can often help the algorithm to
+obtain higher rewards at the beginning of training because the evironment may
+calculate reward using an out-of-bound action without clipping. But sometimes,
+using this wrapper can hurt the final performance. You can disable it by setting
+the following in gin-config:
+
+.. code-block:: python
+
+  suite_gym.wrap_env.clip_action=False

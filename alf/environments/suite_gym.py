@@ -76,6 +76,7 @@ def wrap_env(gym_env,
              max_episode_steps=0,
              gym_env_wrappers=(),
              time_limit_wrapper=torch_wrappers.TimeLimit,
+             clip_action=True,
              torch_env_wrappers=(),
              image_channel_first=True,
              auto_reset=True):
@@ -104,6 +105,8 @@ def wrap_env(gym_env,
         time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts
             (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this
             should be left as the default, torch_wrappers.TimeLimit.
+        clip_action (bool): If True, will clip continuous action to its bound specified
+            by action_spec.
         torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
             classes to use on the torch environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
@@ -122,8 +125,9 @@ def wrap_env(gym_env,
     if image_channel_first:
         gym_env = gym_wrappers.ImageChannelFirst(gym_env)
 
-    # clip continuous actions according to gym_env.action_space
-    gym_env = gym_wrappers.ContinuousActionClip(gym_env)
+    if clip_action:
+        # clip continuous actions according to gym_env.action_space
+        gym_env = gym_wrappers.ContinuousActionClip(gym_env)
 
     env = torch_gym_wrapper.TorchGymWrapper(
         gym_env=gym_env,

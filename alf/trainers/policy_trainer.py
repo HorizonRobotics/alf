@@ -75,12 +75,16 @@ class _TrainerProgress(nn.Module):
 
 
 class Trainer(object):
-    """Abstract base class for on-policy and off-policy trainer."""
+    """Trainer.
+
+    Trainer is responsible for creating algorithm and environment, setting up
+    summary, checkpointing, running training iterations, and evaluating periodically.
+    """
 
     _trainer_progress = _TrainerProgress()
 
     def __init__(self, config: TrainerConfig):
-        """Create a Trainer instance.
+        """
 
         Args:
             config (TrainerConfig): configuration used to construct this trainer
@@ -346,12 +350,13 @@ def play(root_dir,
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
-    ```bash
-    python -m alf.bin.play \
-    --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
-    --num_episodes=1 \
-    --record_file=ppo_bullet_humanoid.mp4
-    ```
+    .. code-block:: bash
+
+        python -m alf.bin.play \
+        --root_dir=~/tmp/bullet_humanoid/ppo2/ppo2-11 \
+        --num_episodes=1 \
+        --record_file=ppo_bullet_humanoid.mp4
+
     Args:
         root_dir (str): same as the root_dir used for `train()`
         env (TorchEnvironment): the environment
