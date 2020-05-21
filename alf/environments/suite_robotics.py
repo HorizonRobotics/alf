@@ -76,7 +76,7 @@ class SuccessWrapper(gym.Wrapper):
         self._steps += 1
 
         info["success"] = 0.0
-        # each episode only record success once
+        # only count success at the episode end
         if self._steps == self._max_episode_steps and info["is_success"] == 1:
             info["success"] = 1.0
 

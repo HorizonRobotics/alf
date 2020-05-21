@@ -6,7 +6,7 @@ import alf.environments.suite_robotics
 
 # environment config
 create_environment.env_load_fn=@suite_robotics.load
-create_environment.num_parallel_environments=20
+create_environment.num_parallel_environments=38
 create_environment.env_name='FetchSlide-v1'
 
 hidden_layers=(256, 256, 256)
@@ -34,12 +34,14 @@ TrainerConfig.mini_batch_length=2
 TrainerConfig.mini_batch_size=5000
 TrainerConfig.unroll_length=50
 TrainerConfig.num_updates_per_train_iter=40
-TrainerConfig.num_iterations=5000
+TrainerConfig.num_iterations=0
+TrainerConfig.num_env_steps=5000000
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=True
-TrainerConfig.eval_interval=60
+TrainerConfig.eval_interval=200
+TrainerConfig.num_eval_episodes=200
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=0
-TrainerConfig.summary_interval=30
+TrainerConfig.summary_interval=20
 TrainerConfig.use_rollout_state=True
 TrainerConfig.replay_buffer_length=100000
