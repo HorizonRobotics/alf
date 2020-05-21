@@ -34,8 +34,37 @@ from alf.utils.checkpoint_utils import Checkpointer
 from alf.utils.summary_utils import record_time
 
 
+class TrainerProgress(nn.Module):
+    def __init__(self):
+        super(TrainerProgress, self).__init__()
+        self.register_buffer("_iter_num", torch.zeros((), dtype=torch.int64))
+        self.register_buffer("_env_steps", torch.zeros((), dtype=torch.int64))
+        self._num_iterations = None
+        self._num_env_steps = None
+
+    def set_termination_criterion(self, num_iterations, num_env_steps):
+        self._num_iterations = float(num_iterations)
+        self._num_env_steps = float(num_env_steps)
+
+    def progress(self):
+        assert not (self._num_iterations is None
+                    and self._num_env_steps is None), (
+                        "You must first call set_terimination_criterion()!")
+        iter_progress, env_steps_progress = 0, 0
+        if self._num_iterations > 0:
+            iter_progress = float(
+                self._iter_num.to(torch.float64) / self._num_iterations)
+        if self._num_env_steps > 0:
+            env_steps_progress = float(
+                self._env_steps.to(torch.float64) / self._num_env_steps)
+        # If either criterion is met, the training ends
+        return max(iter_progress, env_steps_progress)
+
+
 class Trainer(object):
     """Abstract base class for on-policy and off-policy trainer."""
+
+    _trainer_progress = TrainerProgress()
 
     def __init__(self, config: TrainerConfig):
         """Create a Trainer instance.
@@ -57,6 +86,8 @@ class Trainer(object):
         self._num_env_steps = config.num_env_steps
         assert self._num_iterations + self._num_env_steps > 0, \
             "Must provide #iterations or #env_steps for training!"
+        self._trainer_progress.set_termination_criterion(
+            self._num_iterations, self._num_env_steps)
 
         self._num_checkpoints = config.num_checkpoints
         self._checkpointer = None
@@ -132,6 +163,16 @@ class Trainer(object):
             env.close()
         self._unwrapped_env.close()
 
+    @staticmethod
+    def training_progress():
+        """A static method that returns the current training progress, provided
+        that only one trainer will be used for training.
+
+        Returns:
+            float: a number in :math:`[0,1]` indicating the training progress.
+        """
+        return Trainer._trainer_progress.progress()
+
     def train(self):
         """Perform training."""
         self._restore_checkpoint()
@@ -153,7 +194,8 @@ class Trainer(object):
         if self._eval_env:
             self._eval_env.reset()
 
-        iter_num = 0
+        begin_iter_num = int(self._trainer_progress._iter_num)
+        iter_num = begin_iter_num
 
         checkpoint_interval = math.ceil(
             (self._num_iterations
@@ -175,7 +217,7 @@ class Trainer(object):
 
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
-            if iter_num == 0:
+            if iter_num == begin_iter_num:
                 # We need to wait for one iteration to get the operative args
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
@@ -200,6 +242,10 @@ class Trainer(object):
             env_steps_metric = self._algorithm.get_step_metrics()[1]
             total_time_steps = env_steps_metric.result()
             iter_num += 1
+
+            self._trainer_progress._iter_num.fill_(iter_num)
+            self._trainer_progress._env_steps.fill_(total_time_steps)
+
             if ((self._num_iterations and iter_num >= self._num_iterations)
                     or (self._num_env_steps
                         and total_time_steps >= self._num_env_steps)):
@@ -215,7 +261,8 @@ class Trainer(object):
         checkpointer = Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
             algorithm=self._algorithm,
-            metrics=nn.ModuleList(self._algorithm.get_metrics()))
+            metrics=nn.ModuleList(self._algorithm.get_metrics()),
+            trainer_progress=self._trainer_progress)
 
         try:
             recovered_global_step = checkpointer.load()
