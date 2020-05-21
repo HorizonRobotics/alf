@@ -34,19 +34,27 @@ from alf.utils.checkpoint_utils import Checkpointer
 from alf.utils.summary_utils import record_time
 
 
-class TrainerProgress(nn.Module):
+class _TrainerProgress(nn.Module):
     def __init__(self):
-        super(TrainerProgress, self).__init__()
+        super(_TrainerProgress, self).__init__()
         self.register_buffer("_iter_num", torch.zeros((), dtype=torch.int64))
         self.register_buffer("_env_steps", torch.zeros((), dtype=torch.int64))
         self._num_iterations = None
         self._num_env_steps = None
+        self._progress = None
 
     def set_termination_criterion(self, num_iterations, num_env_steps):
         self._num_iterations = float(num_iterations)
         self._num_env_steps = float(num_env_steps)
+        # might be loaded from a checkpoint, so we update first
+        self.update()
 
-    def progress(self):
+    def update(self, iter_num=None, env_steps=None):
+        if iter_num is not None:
+            self._iter_num.fill_(iter_num)
+        if env_steps is not None:
+            self._env_steps.fill_(env_steps)
+
         assert not (self._num_iterations is None
                     and self._num_env_steps is None), (
                         "You must first call set_terimination_criterion()!")
@@ -58,13 +66,18 @@ class TrainerProgress(nn.Module):
             env_steps_progress = float(
                 self._env_steps.to(torch.float64) / self._num_env_steps)
         # If either criterion is met, the training ends
-        return max(iter_progress, env_steps_progress)
+        self._progress = max(iter_progress, env_steps_progress)
+
+    @property
+    def progress(self):
+        assert self._progress is not None, "Must call update() first!"
+        return self._progress
 
 
 class Trainer(object):
     """Abstract base class for on-policy and off-policy trainer."""
 
-    _trainer_progress = TrainerProgress()
+    _trainer_progress = _TrainerProgress()
 
     def __init__(self, config: TrainerConfig):
         """Create a Trainer instance.
@@ -164,14 +177,14 @@ class Trainer(object):
         self._unwrapped_env.close()
 
     @staticmethod
-    def training_progress():
+    def progress():
         """A static method that returns the current training progress, provided
         that only one trainer will be used for training.
 
         Returns:
             float: a number in :math:`[0,1]` indicating the training progress.
         """
-        return Trainer._trainer_progress.progress()
+        return Trainer._trainer_progress.progress
 
     def train(self):
         """Perform training."""
@@ -243,8 +256,7 @@ class Trainer(object):
             total_time_steps = env_steps_metric.result()
             iter_num += 1
 
-            self._trainer_progress._iter_num.fill_(iter_num)
-            self._trainer_progress._env_steps.fill_(total_time_steps)
+            self._trainer_progress.update(iter_num, total_time_steps)
 
             if ((self._num_iterations and iter_num >= self._num_iterations)
                     or (self._num_env_steps

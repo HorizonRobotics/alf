@@ -43,9 +43,9 @@ class TrainerTest(alf.test.TestCase):
 
             # test train
             trainer = MyTrainer(conf)
-            self.assertEqual(Trainer.training_progress(), 0)
+            self.assertEqual(Trainer.progress(), 0)
             trainer.train()
-            self.assertEqual(Trainer.training_progress(), 1)
+            self.assertEqual(Trainer.progress(), 1)
 
             alg = trainer._algorithm
             env = common.get_env()
@@ -61,7 +61,7 @@ class TrainerTest(alf.test.TestCase):
             conf.num_iterations = 200
             new_trainer = MyTrainer(conf)
             new_trainer._restore_checkpoint()
-            self.assertEqual(Trainer.training_progress(), 0.5)
+            self.assertEqual(Trainer.progress(), 0.5)
             time_step = common.get_initial_time_step(env)
             state = alg.get_initial_predict_state(env.batch_size)
             policy_step = alg.rollout_step(time_step, state)
@@ -70,7 +70,7 @@ class TrainerTest(alf.test.TestCase):
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
             new_trainer.train()
-            self.assertEqual(Trainer.training_progress(), 1)
+            self.assertEqual(Trainer.progress(), 1)
 
             # TODO: test play. Need real env to test.
 
