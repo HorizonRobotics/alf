@@ -96,7 +96,7 @@ python -m alf.bin.play --root_dir=LOG_DIR
   <img src="alf/examples/sac_fetchreach.png" width="300" height="200" alt="sac-fetchreach-training-curve"/> <img src="alf/examples/sac_fetchreach.gif" width="300" height="200" alf="sac-fetchreach-video"/>
 
 * [FetchSlide (sparse rewards)](alf/examples/sac_fetchslide.gin). Need to install the [MuJoCo](https://www.roboti.us/index.html) simulator first. This is the same task with the DDPG example above, but with SAC as the learning algorithm.
-Also it has only 20 (instead of 38) parallel environments to improve sample efficiency. The training took about 2 hours with on a single GPU.
+Also it has only 20 (instead of 38) parallel environments to improve sample efficiency. The training took about 2 hours on a single GPU.
 
   <img src="alf/examples/sac_fetchslide.png" width="300" height="200" alt="sac-fetchslide-training-curve"/> <img src="alf/examples/sac_fetchslide.gif" width="300" height="200" alf="sac-fetchslide-video"/>
 
