@@ -149,7 +149,8 @@ class Generator(Algorithm):
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
             self._predict_net = net.copy(name="Genrator_average")
-            common.get_target_updater(self._net, self._predict_net, tau=1.0)
+            self._predict_net_updater = common.get_target_updater(
+                self._net, self._predict_net, tau=net_moving_average_rate)
 
     def _trainable_attributes_to_ignore(self):
         return ["_predict_net"]
@@ -249,7 +250,4 @@ class Generator(Algorithm):
 
     def after_update(self, training_info):
         if self._predict_net:
-            common.get_target_updater(
-                self._net,
-                self._predict_net,
-                tau=self._net_moving_average_rate)
+            self._predict_net_updater()

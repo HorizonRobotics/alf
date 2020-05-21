@@ -99,7 +99,7 @@ class NormalProjectionNetwork(Network):
             input_size (int): input vector dimension
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
-            activation (``torch.nn.Functional``): activation function to use in
+            activation (Callable): activation function to use in
                 dense layers.
             projection_output_init_gain (float): Output gain for initializing
                 action means and std weights.
@@ -117,7 +117,7 @@ class NormalProjectionNetwork(Network):
                 distribution to ensure that the output aciton fits within the
                 `action_spec`. Note that this is different from `mean_transform`
                 which merely squashes the mean to fit within the spec.
-            dist_squashing_transform (``td.Transform``):  A distribution Transform
+            dist_squashing_transform (td.Transform):  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
             name (str): name of this network.
         """
@@ -237,7 +237,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             input_size (int): input vector dimension
             action_spec (TensorSpec): a tensor spec containing the information
                 of the output distribution.
-            activation (``torch.nn.Functional``): activation function to use in
+            activation (Callable): activation function to use in
                 dense layers.
             projection_output_init_gain (float): Output gain for initializing
                 action means and std weights.
@@ -247,7 +247,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             state_dependent_std (bool): If True, std will be generated depending
                 on the current state; otherwise a global std will be generated
                 regardless of the current state.
-            inverse_std_transform (``torch.nn.functional``): Currently supports
+            inverse_std_transform (str): Currently supports
                 "exp" and "softplus". Transformation to obtain inverse std. The
                 transformed values are further transformed according to min_std
                 and max_std.
@@ -259,7 +259,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             min_std (float): Minimum value for standard deviation.
             max_std (float): Maximum value for standard deviation. If None, no
                 maximum is enforced.
-            dist_squashing_transform (``td.Transform``):  A distribution Transform
+            dist_squashing_transform (td.Transform):  A distribution Transform
                 which transforms values into :math:`(-1, 1)`. Default to ``dist_utils.StableTanh()``
             name (str): name of this network.
         """

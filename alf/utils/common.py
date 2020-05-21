@@ -159,22 +159,6 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     return Periodically(update, period, 'periodic_update_targets')
 
 
-def concat_shape(shape1, shape2):
-    """Concatenate two shape tensors.
-
-    Args:
-        shape1 (Tensor|list): first shape
-        shape2 (Tensor|list): second shape
-    Returns:
-        Tensor for the concatenated shape
-    """
-    if not torch.is_tensor(shape1):
-        shape1 = torch.as_tensor(shape1, dtype=torch.int32)
-    if not torch.is_tensor(shape2):
-        shape2 = torch.as_tensor(shape2, dtype=torch.int32)
-    return torch.cat((shape1, shape2), dim=0)
-
-
 def expand_dims_as(x, y):
     """Expand the shape of ``x`` with extra singular dimensions.
 
