@@ -14,13 +14,16 @@
 """Functions for handling nest."""
 
 from absl import logging
+from collections import OrderedDict
 
 import torch
 
 
 def assert_same_type(value1, value2):
-    assert type(value1) == type(value2), \
-        "Different types! {} <-> {}".format(type(value1), type(value2))
+    assert (type(value1) == type(value2)
+            or (isinstance(value1, dict) and isinstance(value2, dict))), (
+                "Different types! {} <-> {}".format(
+                    type(value1), type(value2)))
 
 
 def assert_same_length(seq1, seq2):
