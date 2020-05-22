@@ -180,22 +180,6 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     return Periodically(update, period, 'periodic_update_targets')
 
 
-def concat_shape(shape1, shape2):
-    """Concatenate two shape tensors.
-
-    Args:
-        shape1 (Tensor|list): first shape
-        shape2 (Tensor|list): second shape
-    Returns:
-        Tensor for the concatenated shape
-    """
-    if not isinstance(shape1, tf.Tensor):
-        shape1 = tf.convert_to_tensor(shape1, dtype=tf.int32)
-    if not isinstance(shape2, tf.Tensor):
-        shape2 = tf.convert_to_tensor(shape2, dtype=tf.int32)
-    return tf.concat([shape1, shape2], axis=0)
-
-
 def expand_dims_as(x, y):
     """Expand the shape of ``x`` with extra singular dimensions.
 

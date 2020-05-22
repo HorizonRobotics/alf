@@ -13,19 +13,17 @@
 # limitations under the License.
 """A generic generator."""
 
-from collections import namedtuple
-
 import gin
-import tensorflow as tf
+import torch
 
-from tf_agents.networks.network import Network
-from tf_agents.utils import common as tfa_common
-
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
+from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
-from alf.utils import common
+from alf.data_structures import AlgStep, LossInfo, namedtuple
+import alf.nest as nest
+from alf.networks import Network, EncodingNetwork
+from alf.tensor_specs import TensorSpec
+from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
-from alf.utils.encoding_network import EncodingNetwork
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
                                ["generator", "mi_estimator"])
@@ -43,14 +41,14 @@ class Generator(Algorithm):
 
     The generator is trained to minimize the following objective:
 
-        E(loss_func(net([noise, input]))) - entropy_regulariztion * H(P)
+        :math:`E(loss_func(net([noise, input]))) - entropy_regulariztion \cdot H(P)`
 
     where P is the (conditional) distribution of outputs given the inputs
     implied by `net` and H(P) is the (conditional) entropy of P.
 
     If the loss is the (unnormalized) negative log probability of some
     distribution Q and the entropy_regularization is 1, this objective is
-    equivalent to minimizing KL(P||Q).
+    equivalent to minimizing :math:`KL(P||Q)`.
 
     It uses two different ways to optimize `net` depending on
     entropy_regularization:
@@ -85,9 +83,9 @@ class Generator(Algorithm):
                  kernel_sharpness=2.,
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
-                 optimizer: tf.optimizers.Optimizer = None,
+                 optimizer=None,
                  name="Generator"):
-        """Create a Generator.
+        r"""Create a Generator.
 
         Args:
             output_dim (int): dimension of output
@@ -104,12 +102,12 @@ class Generator(Algorithm):
             entropy_regularization (float): weight of entropy regularization
             kernel_sharpness (float): Used only for entropy_regularization > 0.
                 We calcualte the kernel in SVGD as:
-                    exp(-kernel_sharpness * reduce_mean((x-y)^2/width)),
-                where width is the elementwise moving average of (x-y)^2
+                    :math:`\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))`
+                where width is the elementwise moving average of :math:`(x-y)^2`
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
-            optimizer (tf.optimizers.Optimizer): optimizer (optional)
+            optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
@@ -120,26 +118,27 @@ class Generator(Algorithm):
         else:
             self._grad_func = self._stein_grad
             self._kernel_width_averager = AdaptiveAverager(
-                tensor_spec=tf.TensorSpec(shape=(output_dim, )))
+                tensor_spec=TensorSpec(shape=(output_dim, )))
             self._kernel_sharpness = kernel_sharpness
 
-        noise_spec = tf.TensorSpec(shape=[noise_dim])
+        noise_spec = TensorSpec(shape=(noise_dim, ))
 
         if net is None:
             net_input_spec = noise_spec
             if input_tensor_spec is not None:
                 net_input_spec = [net_input_spec, input_tensor_spec]
             net = EncodingNetwork(
-                name="Generator",
                 input_tensor_spec=net_input_spec,
                 fc_layer_params=hidden_layers,
-                last_layer_size=output_dim)
+                last_layer_size=output_dim,
+                last_activation=math_ops.identity,
+                name="Generator")
 
         self._mi_estimator = None
         self._input_tensor_spec = input_tensor_spec
         if mi_weight is not None:
             x_spec = noise_spec
-            y_spec = tf.TensorSpec((output_dim, ))
+            y_spec = TensorSpec((output_dim, ))
             if input_tensor_spec is not None:
                 x_spec = [x_spec, input_tensor_spec]
             self._mi_estimator = mi_estimator_cls(
@@ -150,8 +149,8 @@ class Generator(Algorithm):
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
             self._predict_net = net.copy(name="Genrator_average")
-            tfa_common.soft_variables_update(
-                self._net.variables, self._predict_net.variables, tau=1.0)
+            self._predict_net_updater = common.get_target_updater(
+                self._net, self._predict_net, tau=net_moving_average_rate)
 
     def _trainable_attributes_to_ignore(self):
         return ["_predict_net"]
@@ -161,10 +160,9 @@ class Generator(Algorithm):
             assert self._input_tensor_spec is None
             assert batch_size is not None
         else:
-            tf.nest.assert_same_structure(inputs, self._input_tensor_spec)
-            batch_size = tf.shape(tf.nest.flatten(inputs)[0])[0]
-        shape = common.concat_shape([batch_size], [self._noise_dim])
-        noise = tf.random.normal(shape=shape)
+            nest.assert_same_structure(inputs, self._input_tensor_spec)
+            batch_size = nest.get_nest_batch_size(inputs)
+        noise = torch.randn(batch_size, self._noise_dim)
         gen_inputs = noise if inputs is None else [noise, inputs]
         if self._predict_net and not training:
             outputs = self._predict_net(gen_inputs)[0]
@@ -172,7 +170,7 @@ class Generator(Algorithm):
             outputs = self._net(gen_inputs)[0]
         return outputs, gen_inputs
 
-    def predict(self, inputs, batch_size=None, state=None):
+    def predict_step(self, inputs, batch_size=None, state=None):
         """Generate outputs given inputs.
 
         Args:
@@ -185,7 +183,7 @@ class Generator(Algorithm):
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
         outputs, _ = self._predict(inputs, batch_size, training=False)
-        return AlgorithmStep(outputs=outputs, state=(), info=())
+        return AlgStep(output=outputs, state=(), info=())
 
     def train_step(self, inputs, loss_func, batch_size=None, state=None):
         """
@@ -205,61 +203,51 @@ class Generator(Algorithm):
         """
         outputs, gen_inputs = self._predict(inputs, batch_size)
         loss, grad = self._grad_func(inputs, outputs, loss_func)
-        loss_propagated = tf.reduce_sum(
-            tf.stop_gradient(grad) * outputs, axis=-1)
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
         mi_loss = ()
         if self._mi_estimator is not None:
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
             mi_loss = mi_step.info.loss
-            loss_propagated += self._mi_weight * mi_loss
+            loss_propagated = loss_propagated + self._mi_weight * mi_loss
 
-        return AlgorithmStep(
-            outputs=outputs,
+        return AlgStep(
+            output=outputs,
             state=(),
             info=LossInfo(
                 loss=loss_propagated,
                 extra=GeneratorLossInfo(generator=loss, mi_estimator=mi_loss)))
 
     def _ml_grad(self, inputs, outputs, loss_func):
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            tape.watch(outputs)
-            loss_inputs = outputs if inputs is None else [outputs, inputs]
-            loss = loss_func(loss_inputs)
-            scalar_loss = tf.reduce_sum(loss)
-        grad = tape.gradient(scalar_loss, outputs)
+        loss_inputs = outputs if inputs is None else [outputs, inputs]
+        loss = loss_func(loss_inputs)
+
+        grad = torch.autograd.grad(loss.sum(), outputs)[0]
+
         return loss, grad
 
     def _kernel_func(self, x, y):
-        d = tf.square(x - y)
-        self._kernel_width_averager.update(tf.reduce_mean(d, axis=0))
-        d = tf.reduce_mean(d / self._kernel_width_averager.get(), axis=-1)
-        w = tf.math.exp(-self._kernel_sharpness * d)
+        d = (x - y)**2
+        self._kernel_width_averager.update(torch.mean(d, dim=0))
+        d = torch.mean(d / self._kernel_width_averager.get(), dim=-1)
+        w = torch.exp(-self._kernel_sharpness * d)
         return w
 
     def _stein_grad(self, inputs, outputs, loss_func):
-        outputs2, _ = self._predict(inputs, batch_size=tf.shape(outputs)[0])
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            tape.watch(outputs2)
-            kernel_weight = self._kernel_func(outputs, outputs2)
-            weight_sum = self._entropy_regularization * tf.reduce_sum(
-                kernel_weight)
+        outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
+        kernel_weight = self._kernel_func(outputs, outputs2)
+        weight_sum = self._entropy_regularization * kernel_weight.sum()
 
-        kernel_grad = tape.gradient(weight_sum, outputs2)
+        kernel_grad = torch.autograd.grad(weight_sum, outputs2)[0]
 
-        with tf.GradientTape(watch_accessed_variables=False) as tape:
-            tape.watch(outputs2)
-            loss_inputs = outputs2 if inputs is None else [outputs2, inputs]
-            loss = loss_func(loss_inputs)
-            weighted_loss = tf.stop_gradient(kernel_weight) * loss
-            scalar_loss = tf.reduce_sum(weighted_loss)
+        loss_inputs = outputs2 if inputs is None else [outputs2, inputs]
+        loss = loss_func(loss_inputs)
+        weighted_loss = kernel_weight.detach() * loss
 
-        loss_grad = tape.gradient(scalar_loss, outputs2)
+        loss_grad = torch.autograd.grad(weighted_loss.sum(), outputs2)[0]
+
         return loss, loss_grad - kernel_grad
 
-    def after_train(self, training_info):
+    def after_update(self, training_info):
         if self._predict_net:
-            tfa_common.soft_variables_update(
-                self._net.variables,
-                self._predict_net.variables,
-                tau=self._net_moving_average_rate)
+            self._predict_net_updater()
