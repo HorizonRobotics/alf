@@ -840,3 +840,26 @@ def flattened_size(spec):
     """
     # np.prod(()) == 1.0, need to convert to np.int64
     return np.int64(np.prod(spec.shape))
+
+
+def is_inside_docker_container():
+    """Return whether the current process is running inside a docker container.
+
+    See discussions at `<https://stackoverflow.com/questions/23513045/how-to-check-if-a-process-is-running-inside-docker-container>`_
+    """
+    return os.path.exists("/.dockerenv")
+
+
+def check_numerics(nested):
+    """Assert all the tensors in nested are finite.
+
+    Args:
+        nested (nested Tensor): nested Tensor to be checked.
+    """
+    nested_finite = alf.nest.map_structure(
+        lambda x: torch.all(torch.isfinite(x)), nested)
+    if not all(alf.nest.flatten(nested_finite)):
+        bad = alf.nest.map_structure(lambda x, finite: () if finite else x,
+                                     nested, nested_finite)
+        assert all(alf.nest.flatten(nested_finite)), (
+            "Some tensor in nested is not finite: %s" % bad)

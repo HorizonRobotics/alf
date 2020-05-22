@@ -56,6 +56,7 @@ except ImportError:
 
 import alf
 import alf.data_structures as ds
+from alf.utils import common
 from .torch_environment import TorchEnvironment
 from .process_environment import array_to_tensor, tensor_to_array
 from .suite_socialbot import _get_unused_port
@@ -334,11 +335,15 @@ class IMUSensor(SensorBase):
         self = weak_self()
         if not self:
             return
+        if not math.isnan(sensor_data.compass):
+            self._compass = sensor_data.compass
+        else:
+            logging.warning(
+                "Got nan for compass. Use the previous compass reading.")
         imu_reading = np.array([
             sensor_data.accelerometer.x, sensor_data.accelerometer.y,
             sensor_data.accelerometer.z, sensor_data.gyroscope.x,
-            sensor_data.gyroscope.y, sensor_data.gyroscope.z,
-            sensor_data.compass
+            sensor_data.gyroscope.y, sensor_data.gyroscope.z, self._compass
         ],
                                dtype=np.float32)
         self._imu_reading = np.clip(imu_reading, -99.9, 99.9)
@@ -631,12 +636,41 @@ class World(object):
         self._map = world.get_map()
         self._waypoints = self._map.generate_waypoints(2.0)
         self._vehicles = []
+        self._vehicle_dict = {}
+        self._vehicle_locations = {}
 
     def add_vehicle(self, actor: carla.Actor):
         self._vehicles.append(actor)
+        self._vehicle_dict[actor.id] = actor
 
     def get_vehicles(self):
         return self._vehicles
+
+    def update_vehicle_location(self, vid, loc):
+        """Update the next location of the vehicle.
+
+        Args:
+            vid (int): vehicle id
+            loc (carla.Location): location of the vehicle
+        """
+        self._vehicle_locations[vid] = loc
+
+    def get_vehicle_location(self, vid):
+        """Get the latest location of the vehicle.
+
+        The reason of using this instead of calling ``carla.Actor.get_location()``
+        directly is that the location of vehicle may not have been updated before
+        world.tick().
+
+        Args:
+            vid (int): vehicle id
+        Returns:
+            carla.Location:
+        """
+        loc = self._vehicle_locations.get(vid, None)
+        if loc is None:
+            loc = self._vehicle_dict[vid].get_location()
+        return loc
 
     def get_waypoints(self):
         """Get the coordinates of way points
@@ -722,7 +756,13 @@ class Player(object):
         self._clock = None
 
     def reset(self):
-        """Reset the goal."""
+        """Reset the player location and goal.
+
+        Use ``carla.Client.apply_batch_sync()`` to actually reset.
+
+        Returns:
+            list[carla.command]:
+        """
 
         wp = random.choice(self._alf_world.get_waypoints())
         loc = wp.transform.location
@@ -732,7 +772,8 @@ class Player(object):
         for v in self._alf_world.get_vehicles():
             if v.id == self._actor.id:
                 continue
-            forbidden_locations.append(v.get_location())
+            forbidden_locations.append(
+                self._alf_world.get_vehicle_location(v.id))
 
         # find a waypoint far enough from other vehicles
         ok = False
@@ -751,9 +792,13 @@ class Player(object):
         # carla.Map.get_spawn_points(). The value used by carla is slightly
         # smaller: 0.27530714869499207
         loc = carla.Location(loc.x, loc.y, loc.z + 0.3)
-        self._actor.set_transform(carla.Transform(loc, wp.transform.rotation))
-        self._actor.set_velocity(carla.Vector3D())
-        self._actor.set_angular_velocity(carla.Vector3D())
+
+        commands = [
+            carla.command.ApplyTransform(
+                self._actor, carla.Transform(loc, wp.transform.rotation)),
+            carla.command.ApplyVelocity(self._actor, carla.Vector3D()),
+            carla.command.ApplyAngularVelocity(self._actor, carla.Vector3D())
+        ]
 
         self._fail_frame = None
         self._done = False
@@ -762,6 +807,8 @@ class Player(object):
         self._prev_distance = self._current_distance
         self._prev_action = np.zeros(
             self.action_spec().shape, dtype=np.float32)
+        self._alf_world.update_vehicle_location(self._actor.id, loc)
+        return commands
 
     def destroy(self):
         """Get the commands for destroying the player.
@@ -854,6 +901,8 @@ class Player(object):
         for sensor_name, sensor in self._observation_sensors.items():
             obs[sensor_name] = sensor.get_current_observation(current_frame)
         obs['goal'] = self._get_goal()
+        self._alf_world.update_vehicle_location(self._actor.id,
+                                                self._actor.get_location())
         v = self._actor.get_velocity()
         obs['speed'] = np.float32(
             np.float32(v.x * v.x + v.y * v.y + v.z * v.z))
@@ -896,18 +945,18 @@ class Player(object):
         Args:
             action (nested np.ndarray):
         Returns:
-            carla.command:
+            list[carla.command]:
         """
         self._prev_distance = self._current_distance
         if self._done:
-            self.reset()
+            return self.reset()
         self._control.throttle = max(float(action[0]), 0.0)
         self._control.steer = float(action[1])
         self._control.brake = max(float(action[2]), 0.0)
         self._control.reverse = bool(action[3] > 0.5)
         self._prev_action = action
 
-        return carla.command.ApplyVehicleControl(self._actor, self._control)
+        return [carla.command.ApplyVehicleControl(self._actor, self._control)]
 
     def render(self, mode):
         """Render the simulation.
@@ -995,7 +1044,8 @@ class CarlaServer(object):
                  streaming_port=2001,
                  docker_image="horizonrobotics/alf:0.0.3-carla",
                  quality_level="Low",
-                 carla_root="/home/carla"):
+                 carla_root="/home/carla",
+                 use_opengl=True):
         """
 
         Args:
@@ -1011,44 +1061,53 @@ class CarlaServer(object):
                 image, make sure you provide the correct path. This is the directory
                 where you unzipped the file you downloaded from
                 `<https://github.com/carla-simulator/carla/releases/tag/0.9.9>`_.
+            use_opengl (bool): the default graphics engine of Carla is Vulkan,
+                which is supposed to be better than OpenGL. However, Vulkan is not
+                always available. It may not be installed or the nvidia driver does
+                not support vulkan.
         """
         assert quality_level in ['Low', 'Epic'], "Unknown quality level"
-        if docker_image:
+        use_docker = (not alf.utils.common.is_inside_docker_container()
+                      and docker_image)
+        opengl = "-opengl" if use_opengl else ""
+        if use_docker:
             dev = os.environ.get('CUDA_VISIBLE_DEVICES')
             if not dev:
                 dev = 'all'
             command = ("docker run -d "
                        "-p {rpc_port}:{rpc_port} "
                        "-p {streaming_port}:{streaming_port} "
+                       "-u carla "
                        "--rm --gpus device=" + dev + " " + docker_image +
                        " {carla_root}/CarlaUE4.sh "
                        "--carla-rpc-port={rpc_port} "
                        "--carla-streaming-port={streaming_port} "
-                       "--quality-level={quality_level} ")
+                       "--quality-level={quality_level} {opengl}")
         else:
             assert os.path.exists(carla_root + "/CarlaUE4.sh"), (
                 "%s/CarlaUE4.sh "
                 "does not exist. Please provide correct value for `carla_root`"
                 % carla_root)
             # We do not use CarlaUE4.sh here in order to get the actual Carla
-            # server processs that we can kill it.
+            # server processs so that we can kill it.
             command = (
                 "{carla_root}/CarlaUE4/Binaries/Linux/CarlaUE4-Linux-Shipping "
-                "CarlaUE4 -opengl "  # perhaps most system does not have vulkan support, so we use opengl
+                "CarlaUE4 "  # perhaps most system does not have vulkan support, so we use opengl
                 "-carla-rpc-port={rpc_port} "
                 "-carla-streaming-port={streaming_port} "
-                "-quality-level {quality_level} ")
+                "-quality-level={quality_level} {opengl}")
 
         command = command.format(
             rpc_port=rpc_port,
             streaming_port=streaming_port,
             quality_level=quality_level,
-            carla_root=carla_root)
+            carla_root=carla_root,
+            opengl=opengl)
 
         logging.info("Starting Carla server: %s" % command)
         self._container_id = None
         self._process = None
-        if docker_image:
+        if use_docker:
             self._container_id = _exec(command)
             assert self._container_id, "Fail to start container"
             logging.info("Starting carla in container %s" % self._container_id)
@@ -1119,6 +1178,8 @@ class CarlaEnvironment(TorchEnvironment):
                 assert self._world is not None, "Fail to start server."
 
         logging.info("Server started.")
+
+        self._client.set_timeout(10)
         self._alf_world = World(self._world)
         self._safe = safe
         self._vehicle_filter = vehicle_filter
@@ -1248,8 +1309,9 @@ class CarlaEnvironment(TorchEnvironment):
 
     def _step(self, action):
         action = tensor_to_array(action)
-        commands = list(
-            map(lambda player, act: player.act(act), self._players, action))
+        commands = []
+        for player, act in zip(self._players, action):
+            commands.extend(player.act(act))
         for response in self._client.apply_batch_sync(commands):
             if response.error:
                 logging.error(response.error)
@@ -1263,11 +1325,18 @@ class CarlaEnvironment(TorchEnvironment):
         ]
         time_step = alf.nest.map_structure(lambda *a: np.stack(a), *time_step)
         time_step = array_to_tensor(time_step)
+
+        common.check_numerics(time_step)
+
         return time_step._replace(env_id=torch.arange(self._batch_size))
 
     def _reset(self):
-        self._clear()
-        self._spawn()
+        commands = []
+        for player in self._players:
+            commands.extend(player.reset())
+        for response in self._client.apply_batch_sync(commands):
+            if response.error:
+                logging.error(response.error)
         self._current_frame = self._world.tick()
         return self._get_current_time_step()
 
