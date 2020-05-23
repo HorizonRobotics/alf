@@ -24,8 +24,6 @@ PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 PPOLoss.check_numerics=True
 estimated_entropy.check_numerics=True
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 128)
 actor/ActorDistributionNetwork.activation_fn=@torch.tanh
 actor/ActorDistributionNetwork.continuous_projection_net_ctor=@StableNormalProjectionNetwork
@@ -36,7 +34,6 @@ StableNormalProjectionNetwork.scale_distribution=True
 StableNormalProjectionNetwork.state_dependent_std=True
 StableNormalProjectionNetwork.init_std=1.0
 
-value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(256, 128)
 value/ValueNetwork.activation_fn=@torch.tanh
 
@@ -44,8 +41,8 @@ ac/AdamTF.lr=1e-4
 ac/AdamTF.gradient_clipping=0.5
 ac/AdamTF.clip_by_global_norm=True
 
-ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-ActorCriticAlgorithm.value_network=@value/ValueNetwork()
+ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
+ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
 Agent.optimizer=@ac/AdamTF()
 
 # training config
