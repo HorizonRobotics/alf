@@ -67,6 +67,9 @@ def wrap_optimizer(cls):
             for param_group in self.param_groups:
                 params.extend(param_group["params"])
             grads = alf.nest.map_structure(lambda p: p.grad, params)
+            assert alf.nest.flatten(grads), (
+                "The grads vector is empty! The optimizer " + self._name +
+                "might haven't been used for learning any parameters!")
             if self._clip_by_global_norm:
                 _, global_norm = tensor_utils.clip_by_global_norm(
                     grads, self._gradient_clipping, in_place=True)
