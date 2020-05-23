@@ -118,13 +118,15 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
 
         def _train(pnet, name):
             t0 = time.time()
-            optimizer = alf.optimizers.AdamTF(list(pnet.parameters()), lr=1e-4)
+            optimizer = alf.optimizers.AdamTF(lr=1e-4)
+            optimizer.add_param_group({'params': list(pnet.parameters())})
             for _ in range(100):
                 obs = obs_spec.randn((batch_size, ))
                 action = action_spec.randn((batch_size, ))
                 values = pnet((obs, action))[0]
                 target = torch.randn_like(values)
                 cost = ((values - target)**2).sum()
+                optimizer.zero_grad()
                 cost.backward()
                 optimizer.step()
             logging.info(
