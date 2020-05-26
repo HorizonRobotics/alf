@@ -28,7 +28,7 @@ class OptimizersTest(alf.test.TestCase):
         opt3 = Adam(lr=0.1)
         opt4 = AdamTF(lr=0.1, name="AdamTF")
         self.assertEqual(opt1._name, "Adam_%s" % i)
-        self.assertEqual(opt2._name, "AdamTFUnwrapped_%s" % j)
+        self.assertEqual(opt2._name, "AdamTF_%s" % j)
         self.assertEqual(opt3._name, "Adam_%s" % (i + 1))
         self.assertEqual(opt4._name, "AdamTF")
 
