@@ -103,8 +103,9 @@ class AlfEnvironment(object):
                 'batch_size property' % type(self))
         return 1
 
+    @abc.abstractmethod
     def env_info_spec(self):
-        return {}
+        """Defines the env_info provided by the environment."""
 
     @abc.abstractmethod
     def observation_spec(self):

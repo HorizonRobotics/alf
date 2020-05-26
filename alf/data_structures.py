@@ -168,12 +168,22 @@ def restart(observation, action_spec, env_id=None, env_info={}, batched=False):
 
     if all(map(_is_numpy_array, first_observation)):
         step_type = StepType.FIRST
-        reward = np.float32(0.0)
-        discount = np.float32(1.0)
-        prev_action = nest.map_structure(lambda spec: spec.numpy_zeros(),
-                                         action_spec)
-        if env_id is None:
-            env_id = np.int32(0)
+        if batched:
+            batch_size = first_observation[0].shape[0]
+            reward = np.zeros((batch_size, ), dtype=np.float32)
+            discount = np.ones((batch_size, ), dtype=np.float32)
+            prev_action = nest.map_structure(
+                lambda spec: spec.numpy_zeros(outer_dims=(batch_size, )),
+                action_spec)
+            if env_id is None:
+                env_id = np.arrange(batch_size, dtype=np.int32)
+        else:
+            reward = np.float32(0.0)
+            discount = np.float32(1.0)
+            prev_action = nest.map_structure(lambda spec: spec.numpy_zeros(),
+                                             action_spec)
+            if env_id is None:
+                env_id = np.int32(0)
         return TimeStep(
             step_type,
             reward,

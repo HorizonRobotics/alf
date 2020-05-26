@@ -7,6 +7,7 @@ import alf.environments.suite_socialbot
 create_environment.env_name='SocialBot-ICubWalkPID-v0'
 create_environment.env_load_fn=@suite_socialbot.load
 create_environment.num_parallel_environments=32
+suite_gym.wrap_env.clip_action=False
 
 # algorithm config
 Agent.enforce_entropy_target=True
@@ -25,17 +26,17 @@ PPOLoss.check_numerics=True
 estimated_entropy.check_numerics=True
 
 actor/ActorDistributionNetwork.fc_layer_params=(256, 128)
-actor/ActorDistributionNetwork.activation_fn=@torch.tanh
+actor/ActorDistributionNetwork.activation=@torch.tanh
 actor/ActorDistributionNetwork.continuous_projection_net_ctor=@StableNormalProjectionNetwork
 
-StableNormalProjectionNetwork.projection_output_init_gain=1e-10
+StableNormalProjectionNetwork.projection_output_init_gain=1e-5
 StableNormalProjectionNetwork.inverse_std_transform='softplus'
 StableNormalProjectionNetwork.scale_distribution=True
 StableNormalProjectionNetwork.state_dependent_std=True
 StableNormalProjectionNetwork.init_std=1.0
 
 value/ValueNetwork.fc_layer_params=(256, 128)
-value/ValueNetwork.activation_fn=@torch.tanh
+value/ValueNetwork.activation=@torch.tanh
 
 ac/AdamTF.lr=1e-4
 ac/AdamTF.gradient_clipping=0.5

@@ -73,7 +73,7 @@ function test() {
         alf.environments.suite_socialbot_test \
         alf.environments.suite_unittest_test \
         alf.environments.alf_environment_test \
-        alf.environments.torch_gym_wrapper_test \
+        alf.environments.alf_gym_wrapper_test \
         alf.environments.alf_wrappers_test \
         alf.experience_replayers.replay_buffer_test \
         alf.layers_test \

@@ -340,7 +340,7 @@ class SequentialNetwork(Network):
             if hasattr(layer, 'reset_parameters'):
                 layer.reset_parameters()
             elif isinstance(layer, nn.Module):
-                assert len(layer.parameters()) == 0, (
+                assert len(list(layer.parameters())) == 0, (
                     "Need to implement "
                     "reset_parameters() for %s in order to copy." %
                     type(layer))

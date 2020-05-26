@@ -1275,6 +1275,9 @@ class CarlaEnvironment(AlfEnvironment):
     def batch_size(self):
         return self._batch_size
 
+    def env_info_spec(self):
+        return {}
+
     def observation_spec(self):
         return self._observation_spec
 

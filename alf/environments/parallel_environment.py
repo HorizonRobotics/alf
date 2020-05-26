@@ -43,7 +43,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
                  env_constructors,
                  start_serially=True,
                  blocking=False,
-                 flatten=False):
+                 flatten=True):
         """
         Args:
             env_constructors (list[Callable]): a list of callable environment creators.
@@ -69,8 +69,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self._action_spec = self._envs[0].action_spec()
         self._observation_spec = self._envs[0].observation_spec()
         self._time_step_spec = self._envs[0].time_step_spec()
+        self._env_info_spec = self._envs[0].env_info_spec()
         self._time_step_with_env_info_spec = self._time_step_spec._replace(
-            env_info=self._envs[0].env_info_spec())
+            env_info=self._env_info_spec)
         self._parallel_execution = True
         if any(env.action_spec() != self._action_spec for env in self._envs):
             raise ValueError(
@@ -103,6 +104,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     @property
     def batch_size(self):
         return self._num_envs
+
+    def env_info_spec(self):
+        return self._env_info_spec
 
     def observation_spec(self):
         return self._observation_spec

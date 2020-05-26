@@ -79,9 +79,9 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)
         if env_id is None:
-            self._env_id = torch.as_tensor(0, dtype=torch.int32)
+            self._env_id = np.int32(0)
         else:
-            self._env_id = torch.as_tensor(env_id, dtype=torch.int32)
+            self._env_id = np.int32(env_id)
 
         if self._batch_size:
             if not discount.shape:
@@ -94,11 +94,10 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         if reward_fn is None:
             # Return a reward whose size matches the batch size
             if self._batch_size is None:
-                self._reward_fn = lambda *_: torch.tensor(
-                    0.0, dtype=torch.float32)
+                self._reward_fn = lambda *_: np.float32(0)
             else:
-                self._reward_fn = (lambda *_: torch.zeros(
-                    self._batch_size, dtype=torch.float32))
+                self._reward_fn = (
+                    lambda *_: np.zeros(self._batch_size, dtype=np.float32))
         else:
             self._reward_fn = reward_fn
 
@@ -109,6 +108,9 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         self._rng = np.random.RandomState(seed)
         self._render_size = render_size
         super(RandomAlfEnvironment, self).__init__()
+
+    def env_info_spec(self):
+        return {}
 
     def observation_spec(self):
         return self._observation_spec
@@ -127,7 +129,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
     def _get_observation(self):
         batch_size = (self._batch_size, ) if self._batch_size else ()
         return nest.map_structure(
-            lambda spec: self._sample_spec(spec, batch_size),
+            lambda spec: self._sample_spec(spec, batch_size).cpu().numpy(),
             self._observation_spec)
 
     def _reset(self):
@@ -152,7 +154,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         if reward.shape != expected_shape:
             raise ValueError(
                 '%r != %r. Size of reward must equal the batch size.' %
-                (np.asarray(reward.cpu()).shape, self._batch_size))
+                (np.asarray(reward).shape, self._batch_size))
 
     def _step(self, action):
         if self._done:

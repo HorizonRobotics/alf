@@ -50,6 +50,9 @@ class ThreadEnvironment(alf_environment.AlfEnvironment):
     def batch_size(self):
         return 1
 
+    def env_info_spec(self):
+        return self._apply('env_info_spec')
+
     def observation_spec(self):
         return self._apply('observation_spec')
 

@@ -30,18 +30,18 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
 
         action = torch.tensor(0, dtype=torch.int64)
         time_step = env.step(action)
-        self.assertTrue(torch.all(time_step.observation >= -10))
-        self.assertTrue(torch.all(time_step.observation <= 10))
+        self.assertTrue(np.all(time_step.observation >= -10))
+        self.assertTrue(np.all(time_step.observation <= 10))
         self.assertTrue(time_step.is_first())
 
         while not time_step.is_last():
             time_step = env.step(action)
-            self.assertTrue(torch.all(time_step.observation >= -10))
-            self.assertTrue(torch.all(time_step.observation <= 10))
+            self.assertTrue(np.all(time_step.observation >= -10))
+            self.assertTrue(np.all(time_step.observation <= 10))
 
         time_step = env.step(action)
-        self.assertTrue(torch.all(time_step.observation >= -10))
-        self.assertTrue(torch.all(time_step.observation <= 10))
+        self.assertTrue(np.all(time_step.observation >= -10))
+        self.assertTrue(np.all(time_step.observation <= 10))
         self.assertTrue(time_step.is_first())
 
     @parameterized.named_parameters([
@@ -101,7 +101,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         env = RandomAlfEnvironment(
             observation_spec, action_spec, reward_fn=reward_fn)
 
-        action = torch.tensor(1, dtype=torch.int64)
+        action = np.array(1, dtype=np.int64)
         time_step = env.step(action)  # No reward in first time_step
         self.assertEqual(
             torch.tensor(0.0, dtype=torch.float32), time_step.reward)
@@ -141,7 +141,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
-            reward_fn=lambda *_: torch.ones(batch_size),
+            reward_fn=lambda *_: np.ones(batch_size),
             batch_size=batch_size)
         env._done = False
         env.reset()
@@ -156,7 +156,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
-            reward_fn=lambda *_: torch.tensor([1.0]),
+            reward_fn=lambda *_: np.array([1.0]),
             batch_size=1)
         env._done = False
         env.reset()
@@ -172,7 +172,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         env = RandomAlfEnvironment(
             obs_spec,
             action_spec,
-            reward_fn=lambda *_: torch.tensor([1.0]),
+            reward_fn=lambda *_: np.array([1.0]),
             batch_size=5)
         env.reset()
         env._done = False

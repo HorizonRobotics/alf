@@ -67,6 +67,9 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
     def get_info(self):
         return self._env.get_info()
 
+    def env_info_spec(self):
+        return self._env.env_info_spec()
+
     def time_step_spec(self):
         return self._env.time_step_spec()
 

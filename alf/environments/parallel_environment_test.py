@@ -52,6 +52,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
     def _make_parallel_environment(self,
                                    constructor=None,
                                    num_envs=2,
+                                   flatten=True,
                                    start_serially=True,
                                    blocking=True):
         self._set_default_specs()
@@ -60,6 +61,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         return parallel_environment.ParallelAlfEnvironment(
             env_constructors=[constructor] * num_envs,
             blocking=blocking,
+            flatten=flatten,
             start_serially=start_serially)
 
     def test_close_no_hang_after_init(self):
@@ -142,7 +144,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
 
     def test_unstack_actions(self):
         num_envs = 2
-        env = self._make_parallel_environment(num_envs=num_envs)
+        env = self._make_parallel_environment(num_envs=num_envs, flatten=False)
         action_spec = env.action_spec()
         batched_action = torch.stack(
             [action_spec.sample() for _ in range(num_envs)])
@@ -150,12 +152,12 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
         # Test that actions are correctly unstacked when just batched in np.array.
         unstacked_actions = env._unstack_actions(batched_action)
         for action in unstacked_actions:
-            self.assertEqual(torch.Size(action_spec.shape), action.shape)
+            self.assertEqual(action_spec.shape, action.shape)
         env.close()
 
     def test_unstack_nested_actions(self):
         num_envs = 2
-        env = self._make_parallel_environment(num_envs=num_envs)
+        env = self._make_parallel_environment(num_envs=num_envs, flatten=False)
         action_spec = env.action_spec()
         batched_action = torch.stack(
             [action_spec.sample() for _ in range(num_envs)])
@@ -170,8 +172,7 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
             action=batched_action, other_var=torch.tensor([13.0] * num_envs))
         unstacked_actions = env._unstack_actions(nested_action)
         for nested_action in unstacked_actions:
-            self.assertEqual(
-                torch.Size(action_spec.shape), nested_action.action.shape)
+            self.assertEqual(action_spec.shape, nested_action.action.shape)
             self.assertEqual(13.0, nested_action.other_var)
         env.close()
 
