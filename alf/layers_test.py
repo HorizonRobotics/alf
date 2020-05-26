@@ -151,6 +151,38 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             y = convt(x)
             self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
 
+    @parameterized.parameters(
+        ("rbf", 8, 8, 0.1),
+        ("poly", 4, 8, None),
+        ("haar", 8, 8, None),
+        ("rbf", 7, 8, 0.1),
+        ("haar", 7, 7, None),
+        ("unimplemented", 3, 8, None),
+    )
+    def test_fixed_decoding_layer(self, basis_type, input_size, output_size,
+                                  sigma):
+        batch_size = 3
+
+        if (basis_type == "rbf" and input_size != output_size) or \
+           (basis_type == "haar" and (input_size & (input_size - 1)) != 0) or \
+           basis_type == "unimplemented":
+            self.assertRaises(
+                AssertionError,
+                alf.layers.FixedDecodingLayer,
+                input_size,
+                output_size,
+                basis_type=basis_type,
+                sigma=sigma)
+        else:
+            dec = alf.layers.FixedDecodingLayer(
+                input_size, output_size, basis_type=basis_type, sigma=sigma)
+
+            self.assertTrue(dec.weight.shape == (output_size, input_size))
+
+            x = torch.randn((batch_size, input_size))
+            y = dec(x)
+            self.assertTrue(y.shape == (batch_size, output_size))
+
 
 if __name__ == "__main__":
     alf.test.main()
