@@ -14,6 +14,7 @@
 
 from absl.testing import parameterized
 import torch
+import numpy as np
 
 import alf
 from alf.utils import math_ops
@@ -150,6 +151,106 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                 x = px
             y = convt(x)
             self.assertLess((y - py[:, i, :]).abs().max(), 1e-5)
+
+    @parameterized.parameters(
+        ("rbf", 8, 8, 0.1),
+        ("poly", 4, 8, None),
+        ("cheb", 4, 8, None),
+        ("haar", 8, 8, None),
+        ("rbf", 7, 8, 0.1),
+        ("haar", 7, 7, None),
+        ("unimplemented", 3, 8, None),
+    )
+    def test_fixed_decoding_layer(self, basis_type, input_size, output_size,
+                                  sigma):
+        batch_size = 3
+
+        if (basis_type == "rbf" and input_size != output_size) or \
+           (basis_type == "haar" and (input_size & (input_size - 1)) != 0) or \
+           basis_type == "unimplemented":
+            self.assertRaises(
+                AssertionError,
+                alf.layers.FixedDecodingLayer,
+                input_size,
+                output_size,
+                basis_type=basis_type,
+                sigma=sigma)
+        else:
+            basis_weight_tau = 0.5
+            dec = alf.layers.FixedDecodingLayer(
+                input_size,
+                output_size,
+                basis_type=basis_type,
+                sigma=sigma,
+                tau=basis_weight_tau)
+
+            self.assertTrue(dec.weight.shape == (output_size, input_size))
+
+            x = torch.randn((batch_size, input_size))
+            y = dec(x)
+            self.assertTrue(y.shape == (batch_size, output_size))
+
+            # test basis weighting factor
+            dec_no_basis_weighting = alf.layers.FixedDecodingLayer(
+                input_size,
+                output_size,
+                basis_type=basis_type,
+                sigma=sigma,
+                tau=1.0)
+
+            basis_weight = (dec.weight.norm(dim=0) /
+                            dec_no_basis_weighting.weight.norm(dim=0))
+            if basis_type == "poly" or basis_type == "cheb":
+                exp_factor = torch.arange(input_size).float()
+                basis_weight_expected = basis_weight_tau**exp_factor
+                self.assertTensorEqual(basis_weight, basis_weight_expected)
+            elif basis_type == "haar":
+                exp_factor = torch.ceil(
+                    torch.log2(torch.arange(input_size).float() + 1))
+                basis_weight_expected = basis_weight_tau**exp_factor
+                self.assertTensorEqual(basis_weight, basis_weight_expected)
+
+    @parameterized.parameters((2, 2), (4, 4), (8, 8), (16, 16))
+    def test_harr_basis_correctness(self, input_size, output_size):
+        basis_weight_tau = 1.0
+
+        dec = alf.layers.FixedDecodingLayer(
+            input_size, output_size, basis_type="haar", tau=basis_weight_tau)
+
+        if input_size <= 8:
+            # expected Haar matrix are constructed following the reference
+            # http://fourier.eng.hmc.edu/e161/lectures/Haar/index.html
+            st = np.sqrt(2)
+            if input_size == 2:
+                # H2^T
+                expected_haar_basis = torch.as_tensor(
+                    1. / np.sqrt(2) * np.array([[1, 1], [1, -1]]).transpose(
+                        1, 0))
+            elif input_size == 4:
+                # H4^T
+                expected_haar_basis = torch.as_tensor(1. / 2 * np.array(
+                    [[1, 1, 1, 1], [1, 1, -1, -1], [st, -st, 0, 0],
+                     [0, 0, st, -st]]).transpose(1, 0))
+            elif input_size == 8:
+                # H8^T
+                expected_haar_basis = torch.as_tensor(
+                    1. / np.sqrt(8) * np.array([
+                        [1, 1, 1, 1, 1, 1, 1, 1], [1, 1, 1, 1, -1, -1, -1, -1],
+                        [st, st, -st, -st, 0, 0, 0, 0],
+                        [0, 0, 0, 0, st, st, -st, -st],
+                        [2, -2, 0, 0, 0, 0, 0, 0], [0, 0, 2, -2, 0, 0, 0, 0],
+                        [0, 0, 0, 0, 2, -2, 0, 0], [0, 0, 0, 0, 0, 0, 2, -2]
+                    ]).transpose(1, 0))
+
+            # test constructed basis against ground-truth reference
+            self.assertTensorClose(
+                dec.weight, expected_haar_basis, epsilon=1e-6)
+
+        # test constructed basis are orthogonal
+        self.assertTensorClose(
+            torch.mm(dec.weight, dec.weight.transpose(1, 0)),
+            torch.eye(dec.weight.shape[0]),
+            epsilon=1e-6)
 
 
 if __name__ == "__main__":

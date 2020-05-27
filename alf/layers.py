@@ -16,6 +16,7 @@
 import gin
 import copy
 
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -108,6 +109,126 @@ class OneHot(nn.Module):
     def forward(self, input):
         return nn.functional.one_hot(
             input, num_classes=self._num_classes).to(torch.float32)
+
+
+@gin.configurable
+class FixedDecodingLayer(nn.Module):
+    def __init__(self,
+                 input_size,
+                 output_size,
+                 basis_type="rbf",
+                 sigma=1.,
+                 tau=0.5):
+        """A layer that uses a set of fixed basis for decoding the inputs.
+        Args:
+            input_size (int): the size of input to be decoded, representing the
+                number of representation coefficients
+            output_size (int): the size of the decoded output
+            basis_type (str): the type of basis to be used for decoding
+                - "poly": polynomial basis using Vandermonde matrix
+                - "cheb": polynomial basis using Chebyshev polynomials
+                - "rbf": radial basis functions
+                - "haar": Haar wavelet basis
+            sigma (float): the bandwidth parameter used for RBF basis.
+                If None, a default value of 1. will be used.
+            tau (float): a factor for weighting the basis exponentially
+                according to the order (``n``) of the basis, i.e., ``tau**n```
+        """
+        # get the argument list with vals
+        self._kwargs = copy.deepcopy(locals())
+        self._kwargs.pop('self')
+        self._kwargs.pop('__class__')
+
+        super(FixedDecodingLayer, self).__init__()
+
+        assert input_size > 0, "input_size should be at least one"
+        assert basis_type in {"poly", "cheb", "rbf", "haar"
+                              }, ("the specified method "
+                                  "{} is not supported".format(basis_type))
+
+        self._B = nn.Linear(input_size, output_size, bias=False)
+
+        def _polyvander_matrix(n, D, tau=tau):
+            # non-square matrix [n, D + 1]
+            x = torch.linspace(-1, 1, n)
+            B = torch.as_tensor(np.polynomial.polynomial.polyvander(x, D))
+            # weight for encoding the preference to low-frequency basis
+            exp_factor = torch.arange(D + 1).float()
+            basis_weight = tau**exp_factor
+            return B * basis_weight
+
+        def _chebvander_matrix(n, D, tau=tau):
+            # non-square matrix [n, D + 1]
+            x = np.linspace(-1, 1, n)
+            B = torch.as_tensor(np.polynomial.chebyshev.chebvander(x, D))
+            # weight for encoding the preference to low-frequency basis
+            exp_factor = torch.arange(D + 1).float()
+            basis_weight = tau**exp_factor
+            return B * basis_weight
+
+        def _rbf_matrix(n, sigma=1.0):
+            # square matrix [n, n]
+            x = torch.linspace(-1, 1, n)
+            B = torch.empty(n, n)
+            for d in range(n):
+                B[:, d] = torch.exp(-(x - x[d])**2 / sigma)
+            return B
+
+        def _haar_matrix(n, tau=tau):
+            # square matrix [n, n]
+            def _is_power_of_two(x):
+                return (x & (x - 1)) == 0
+
+            # allow only size n to be the power of 2
+            assert _is_power_of_two(n), "n is required to be the power of 2"
+
+            def _get_haar_matrix(n):
+                if n > 2:
+                    h = _get_haar_matrix(n // 2)
+                else:
+                    return torch.Tensor([[1, 1], [1, -1]])
+
+                def _kron(A, B):
+                    return torch.einsum("ab,cd->acbd", A, B).view(
+                        A.size(0) * B.size(0),
+                        A.size(1) * B.size(1))
+
+                # calculate upper haar part
+                h_n = _kron(h, torch.Tensor([[1], [1]]))
+                # calculate lower haar part
+                h_i = torch.sqrt(torch.Tensor([n / 2])) * _kron(
+                    torch.eye(len(h)), torch.Tensor([[1], [-1]]))
+                # combine both parts
+                h = torch.cat((h_n, h_i), dim=1)
+                return h
+
+            B = _get_haar_matrix(n) / torch.sqrt(torch.Tensor([n]))
+            # weight for encoding the preference to low-frequency basis
+            exp_factor = torch.ceil(torch.log2(torch.arange(n).float() + 1))
+            basis_weight = tau**exp_factor
+            return B * basis_weight
+
+        if basis_type == "poly":
+            B = _polyvander_matrix(output_size, input_size - 1)
+        elif basis_type == "cheb":
+            B = _chebvander_matrix(output_size, input_size - 1)
+        elif basis_type == "rbf":
+            assert input_size == output_size
+            B = _rbf_matrix(input_size, sigma=sigma)
+        elif basis_type == "haar":
+            assert input_size == output_size
+            B = _haar_matrix(input_size)
+
+        # assign the constructed transformation matrix and set it to be non-trainable
+        self._B.weight.requires_grad = False
+        self._B.weight.copy_(B)
+
+    def forward(self, inputs):
+        return self._B(inputs)
+
+    @property
+    def weight(self):
+        return self._B.weight
 
 
 @gin.configurable
