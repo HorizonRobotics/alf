@@ -20,7 +20,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import alf
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
@@ -129,7 +128,7 @@ class FixedDecodingLayer(nn.Module):
                 - "poly": polynomial basis using Vandermonde matrix
                 - "cheb": polynomial basis using Chebyshev polynomials
                 - "rbf": radial basis functions
-                - "haar": haar wavelet basis
+                - "haar": Haar wavelet basis
             sigma (float): the bandwidth parameter used for RBF basis.
                 If None, a default value of 1. will be used.
             tau (float): a factor for weighting the basis exponentially
@@ -152,9 +151,7 @@ class FixedDecodingLayer(nn.Module):
         def _polyvander_matrix(n, D, tau=tau):
             # non-square matrix [n, D + 1]
             x = torch.linspace(-1, 1, n)
-            B = torch.empty(n, D + 1)
-            for d in range(D + 1):
-                B[:, d] = x**d
+            B = torch.as_tensor(np.polynomial.polynomial.polyvander(x, D))
             # weight for encoding the preference to low-frequency basis
             exp_factor = torch.arange(D + 1).float()
             basis_weight = tau**exp_factor
@@ -163,8 +160,8 @@ class FixedDecodingLayer(nn.Module):
         def _chebvander_matrix(n, D, tau=tau):
             # non-square matrix [n, D + 1]
             x = np.linspace(-1, 1, n)
-            B = torch.from_numpy(np.polynomial.chebyshev.chebvander(x, D)).to(
-                alf.get_default_device())
+            B = torch.as_tensor(np.polynomial.chebyshev.chebvander(x, D))
+            # weight for encoding the preference to low-frequency basis
             exp_factor = torch.arange(D + 1).float()
             basis_weight = tau**exp_factor
             return B * basis_weight
@@ -205,7 +202,7 @@ class FixedDecodingLayer(nn.Module):
                 h = torch.cat((h_n, h_i), dim=1)
                 return h
 
-            B = _get_haar_matrix(n)
+            B = _get_haar_matrix(n) / torch.sqrt(torch.Tensor([n]))
             # weight for encoding the preference to low-frequency basis
             exp_factor = torch.ceil(torch.log2(torch.arange(n).float() + 1))
             basis_weight = tau**exp_factor
