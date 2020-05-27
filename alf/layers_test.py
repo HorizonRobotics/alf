@@ -218,7 +218,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             input_size, output_size, basis_type="haar", tau=basis_weight_tau)
 
         if input_size <= 8:
-            # expected Harr matrix are constructed following the reference
+            # expected Haar matrix are constructed following the reference
             # http://fourier.eng.hmc.edu/e161/lectures/Haar/index.html
             st = np.sqrt(2)
             if input_size == 2:
