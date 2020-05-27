@@ -20,6 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+import alf
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
@@ -162,7 +163,8 @@ class FixedDecodingLayer(nn.Module):
         def _chebvander_matrix(n, D, tau=tau):
             # non-square matrix [n, D + 1]
             x = np.linspace(-1, 1, n)
-            B = torch.from_numpy(np.polynomial.chebyshev.chebvander(x, D))
+            B = torch.from_numpy(np.polynomial.chebyshev.chebvander(x, D)).to(
+                alf.get_default_device())
             exp_factor = torch.arange(D + 1).float()
             basis_weight = tau**exp_factor
             return B * basis_weight
