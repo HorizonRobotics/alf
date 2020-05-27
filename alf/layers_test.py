@@ -154,6 +154,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(
         ("rbf", 8, 8, 0.1),
         ("poly", 4, 8, None),
+        ("cheb", 4, 8, None),
         ("haar", 8, 8, None),
         ("rbf", 7, 8, 0.1),
         ("haar", 7, 7, None),
@@ -174,14 +175,39 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                 basis_type=basis_type,
                 sigma=sigma)
         else:
+            basis_weight_tau = 0.5
             dec = alf.layers.FixedDecodingLayer(
-                input_size, output_size, basis_type=basis_type, sigma=sigma)
+                input_size,
+                output_size,
+                basis_type=basis_type,
+                sigma=sigma,
+                tau=basis_weight_tau)
 
             self.assertTrue(dec.weight.shape == (output_size, input_size))
 
             x = torch.randn((batch_size, input_size))
             y = dec(x)
             self.assertTrue(y.shape == (batch_size, output_size))
+
+            # test basis weighting factor
+            dec_no_basis_weighting = alf.layers.FixedDecodingLayer(
+                input_size,
+                output_size,
+                basis_type=basis_type,
+                sigma=sigma,
+                tau=1.0)
+
+            basis_weight = (dec.weight.norm(dim=0) /
+                            dec_no_basis_weighting.weight.norm(dim=0))
+            if basis_type == "poly" or basis_type == "cheb":
+                exp_factor = torch.arange(input_size).float()
+                basis_weight_expected = basis_weight_tau**exp_factor
+                self.assertTensorEqual(basis_weight, basis_weight_expected)
+            elif basis_type == "haar":
+                exp_factor = torch.ceil(
+                    torch.log2(torch.arange(input_size).float() + 1))
+                basis_weight_expected = basis_weight_tau**exp_factor
+                self.assertTensorEqual(basis_weight, basis_weight_expected)
 
 
 if __name__ == "__main__":
