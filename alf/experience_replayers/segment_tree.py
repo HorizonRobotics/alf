@@ -46,11 +46,11 @@ class SegmentTree(nn.Module):
                                  torch.zeros((2 * capacity, ), dtype=dtype))
         self._op = op
         self._capacity = capacity
-        self._leftest_leaf = 1
+        self._leftmost_leaf = 1
         self._depth = 0
-        while self._leftest_leaf < capacity:
-            self._leftest_leaf *= 2
-            if self._leftest_leaf < capacity:
+        while self._leftmost_leaf < capacity:
+            self._leftmost_leaf *= 2
+            if self._leftmost_leaf < capacity:
                 self._depth += 1
 
     def __setitem__(self, indices, values):
@@ -63,6 +63,9 @@ class SegmentTree(nn.Module):
         """
 
         def _step(indices):
+            """
+            Calculate the parent value from its children.
+            """
             indices = indices / 2
             indices = torch.unique(indices)
             left = self._values[indices * 2]
@@ -86,7 +89,7 @@ class SegmentTree(nn.Module):
             indices = self._index_to_leaf(indices)
             self._values[indices] = values
 
-            num_large = (indices >= self._leftest_leaf).to(torch.int64).sum()
+            num_large = (indices >= self._leftmost_leaf).to(torch.int64).sum()
             if num_large > 0:
                 large_indices = indices[:num_large]
                 small_indices = indices[num_large:]
@@ -116,12 +119,12 @@ class SegmentTree(nn.Module):
         """
         Make sure idx=0 is the leftest leaf.
         """
-        idx += self._leftest_leaf
+        idx += self._leftmost_leaf
         idx = torch.where(idx >= 2 * self._capacity, idx - self._capacity, idx)
         return idx
 
     def _leaf_to_index(self, leaf):
-        idx = leaf - self._leftest_leaf
+        idx = leaf - self._leftmost_leaf
         idx = torch.where(idx < 0, idx + self._capacity, idx)
         return idx
 
@@ -169,6 +172,12 @@ class SumSegmentTree(SegmentTree):
         """
 
         def _step(indices, thresholds):
+            """Choose one of the children of each index based on threshold.
+
+            If threshold is greater than or equal to the
+            left child, choose the right child and update threhsold to threhsold - left_child.
+            Otherwise choose left child and keep threshold unchanged.
+            """
             indices *= 2
             left = self._values[indices]
             greater = thresholds >= left
