@@ -223,7 +223,6 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,
-            actor_optimizer=alf.optimizers.Adam(lr=1e-2),
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             alpha_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,

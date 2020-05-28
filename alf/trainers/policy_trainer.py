@@ -101,8 +101,9 @@ class Trainer(object):
         self._random_seed = config.random_seed
         self._num_iterations = config.num_iterations
         self._num_env_steps = config.num_env_steps
-        assert self._num_iterations + self._num_env_steps > 0, \
-            "Must provide #iterations or #env_steps for training!"
+        assert (self._num_iterations + self._num_env_steps > 0
+                and self._num_iterations * self._num_env_steps == 0), \
+            "Must provide #iterations or #env_steps exclusively for training!"
         self._trainer_progress.set_termination_criterion(
             self._num_iterations, self._num_env_steps)
 

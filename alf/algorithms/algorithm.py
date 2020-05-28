@@ -527,7 +527,11 @@ class Algorithm(nn.Module):
         return opts
 
     def get_optimizer_info(self):
-        """Return the optimizer info for all the modules in a string."""
+        """Return the optimizer info for all the modules in a string.
+
+        TODO: for a subalgorithm that's an ignored attribute, its optimizer info
+        won't be obtained.
+        """
         unhandled = self._setup_optimizers()
 
         optimizer_info = []
@@ -992,6 +996,7 @@ class Algorithm(nn.Module):
         loss = weight * loss_info.loss
 
         unhandled = self._setup_optimizers()
+        unhandled = [(self._param_to_name[p], p) for p in unhandled]
         assert not unhandled, ("'%s' has some modules/parameters do not have "
                                "optimizer: %s" % (self.name, unhandled))
         optimizers = self.optimizers()
@@ -1002,8 +1007,14 @@ class Algorithm(nn.Module):
 
         all_params = []
         for optimizer in optimizers:
+            params = []
             for param_group in optimizer.param_groups:
-                all_params.extend(param_group['params'])
+                params.extend(param_group['params'])
+            assert params, (
+                "The recorded optimizer '" + optimizer.name +
+                "' haven't been used for learning any parameters! Please check."
+            )
+            all_params.extend(params)
             optimizer.step()
 
         all_params = [(self._param_to_name[p], p) for p in all_params]

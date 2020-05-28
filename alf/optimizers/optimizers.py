@@ -52,9 +52,9 @@ def wrap_optimizer(cls):
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
-        self._name = name
+        self.name = name
         if name is None:
-            self._name = NewClsName + str(NewCls.counter)
+            self.name = NewClsName + str(NewCls.counter)
             NewCls.counter += 1
 
     @common.add_method(NewCls)
@@ -71,7 +71,7 @@ def wrap_optimizer(cls):
                 _, global_norm = tensor_utils.clip_by_global_norm(
                     grads, self._gradient_clipping, in_place=True)
                 if alf.summary.should_record_summaries():
-                    alf.summary.scalar("global_grad_norm/%s" % self._name,
+                    alf.summary.scalar("global_grad_norm/%s" % self.name,
                                        global_norm)
             else:
                 tensor_utils.clip_by_norms(
