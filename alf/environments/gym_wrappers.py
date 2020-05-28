@@ -166,6 +166,9 @@ class ImageChannelFirst(BaseObservationWrapper):
             rank = np_array.ndim
             np_array = np.transpose(np_array,
                                     (rank - 1, ) + tuple(range(rank - 1)))
+        # TODO: do a generic memory contiguous check at ProcessEnvironment
+        # using np_array.flags.continuous or np_array.flags.f_continuous and copy
+        # if not contiguous
         return np_array.copy()
 
 

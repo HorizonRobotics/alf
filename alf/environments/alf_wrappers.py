@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Wrappers for torch environments.
+"""Wrappers for ALF environments.
 
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/wrappers.py
@@ -35,7 +35,7 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
     """AlfEnvironment wrapper forwards calls to the given environment."""
 
     def __init__(self, env):
-        """Create a torch environment base wrapper.
+        """Create an ALF environment base wrapper.
 
         Args:
             env (AlfEnvironment): An AlfEnvironment instance to wrap.
@@ -98,7 +98,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
     def __init__(self, env, duration):
-        """Create a TimeLimit torch environment.
+        """Create a TimeLimit ALF environment.
 
         Args:
             env (AlfEnvironment): An AlfEnvironment instance to wrap.
@@ -131,59 +131,6 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
     @property
     def duration(self):
         return self._duration
-
-
-def _spec_channel_transpose(spec):
-    """Transpose the third (channel) dimension of the spec to the first.
-    """
-    assert isinstance(spec, ts.TensorSpec)
-    if len(spec.shape) == 3:
-        if spec.is_bounded():
-            return ts.BoundedTensorSpec(spec.shape[-1:] + spec.shape[:-1],
-                                        spec.dtype, spec.minimum, spec.maximum)
-        else:
-            return ts.TensorSpec(spec.shape[-1:] + spec.shape[:-1])
-    return spec
-
-
-def _observation_channel_transpose(time_step):
-    """Transpose the third (channel) dimension of observation to the first.
-    """
-
-    def _channel_transpose(tensor):
-        if tensor.dim() == 3:
-            return tensor.permute(2, 0, 1)
-        return tensor
-
-    observation = nest.map_structure(_channel_transpose, time_step.observation)
-    return time_step._replace(observation=observation)
-
-
-@gin.configurable
-class ImageChannelFirst(AlfEnvironmentBaseWrapper):
-    """Make images in observations channel_first. """
-
-    def __init__(self, env):
-        """Create a TimeLimit torch environment.
-
-        Args:
-            env (AlfEnvironment): An AlfEnvironment instance to wrap.
-        """
-        super(ImageChannelFirst, self).__init__(env)
-
-    def time_step_spec(self):
-        time_step_spec = self._env.time_step_spec()
-        return time_step_spec._replace(observation=self.observation_spec())
-
-    def observation_spec(self):
-        return nest.map_structure(_spec_channel_transpose,
-                                  self._env.observation_spec())
-
-    def _reset(self):
-        return _observation_channel_transpose(self._env.reset())
-
-    def _step(self, action):
-        return _observation_channel_transpose(self._env.step(action))
 
 
 @gin.configurable

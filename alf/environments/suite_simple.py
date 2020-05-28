@@ -41,7 +41,7 @@ def load(game,
             game.
         frame_stack (int): stack so many latest frames as the observation input.
         gym_env_wrappers (list): list of gym env wrappers.
-        alf_env_wrappers (list): list of torch env wrappers.
+        alf_env_wrappers (list): list of ALF env wrappers.
         max_episode_steps (int): max number of steps for an episode.
 
     Returns:

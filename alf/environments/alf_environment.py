@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Pytorch RL Environment API.
+"""ALF RL Environment API.
 
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/py_environment.py
@@ -26,7 +26,7 @@ from alf.data_structures import time_step_spec
 
 @six.add_metaclass(abc.ABCMeta)
 class AlfEnvironment(object):
-    """Abstract base class for Torch RL environments.
+    """Abstract base class for ALF RL environments.
 
     Observations and valid actions are described with ``TensorSpec``s, defined in
     the ``specs`` module.

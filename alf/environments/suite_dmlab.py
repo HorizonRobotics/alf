@@ -209,7 +209,7 @@ def load(scene,
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
-            classes to use on the torch environment.
+            classes to use on the ALF environment.
         wrap_with_process (bool): Whether wrap env in a process
         max_episode_steps (int): max episode step limit
     Returns:

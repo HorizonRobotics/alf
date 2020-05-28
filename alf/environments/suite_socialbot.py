@@ -64,7 +64,7 @@ def load(environment_name,
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
-            classes to use on the torch environment.
+            classes to use on the ALF environment.
 
     Returns:
         An AlfEnvironmentBase instance.

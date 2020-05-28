@@ -16,7 +16,6 @@ import functools
 import gin
 import numpy as np
 import random
-import torch
 
 from alf.environments import suite_gym
 from alf.environments import thread_environment, parallel_environment
@@ -92,22 +91,22 @@ def create_environment(env_name='CartPole-v0',
         # Create and step the env in a separate thread. env `step` and `reset` must
         #   run in the same thread which the env is created in for some simulation
         #   environments such as social_bot(gazebo)
-        torch_env = thread_environment.ThreadEnvironment(lambda: env_load_fn(
+        alf_env = thread_environment.ThreadEnvironment(lambda: env_load_fn(
             env_name))
         if seed is None:
-            torch_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
+            alf_env.seed(np.random.randint(0, np.iinfo(np.int32).max))
         else:
-            torch_env.seed(seed)
+            alf_env.seed(seed)
     else:
         # flatten=True will use flattened action and time_step in
         #   process environments to reduce communication overhead.
-        torch_env = parallel_environment.ParallelAlfEnvironment(
+        alf_env = parallel_environment.ParallelAlfEnvironment(
             [functools.partial(env_load_fn, env_name)] *
             num_parallel_environments,
             flatten=True)
 
         if seed is None:
-            torch_env.seed([
+            alf_env.seed([
                 np.random.randint(0,
                                   np.iinfo(np.int32).max)
                 for i in range(num_parallel_environments)
@@ -116,10 +115,9 @@ def create_environment(env_name='CartPole-v0',
             # We want deterministic behaviors for each environment, but different
             # behaviors among different individual environments (to increase the
             # diversity of environment data)!
-            torch_env.seed(
-                [seed + i for i in range(num_parallel_environments)])
+            alf_env.seed([seed + i for i in range(num_parallel_environments)])
 
-    return torch_env
+    return alf_env
 
 
 @gin.configurable

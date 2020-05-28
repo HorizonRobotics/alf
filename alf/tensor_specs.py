@@ -74,8 +74,8 @@ class TensorSpec(object):
         """Create TensorSpec from numpy array.
 
         Args:
-            tensor (np.ndarray|np.number): array from which the spec is extracted
-            from_dim (int): use array.shape[from_dim:] as shape
+            array (np.ndarray|np.number): array from which the spec is extracted
+            from_dim (int): use ``array.shape[from_dim:]`` as shape
         Returns:
             TensorSpec
         """
@@ -161,15 +161,13 @@ class TensorSpec(object):
         """Create a constant np.ndarray from the spec.
 
         Args:
-            value : a scalar
+            value (Number) : a scalar
             outer_dims (tuple[int]): an optional list of integers specifying outer
                 dimensions to add to the spec shape before sampling.
 
         Returns:
-            tensor (torch.Tensor): a tensor of ``self._dtype``.
+            np.ndarray: an array of ``self._dtype``.
         """
-        #value = torch.as_tensor(value).to(self._dtype)
-        #assert len(value.size()) == 0, "The input value must be a scalar!"
         shape = self._shape
         if outer_dims is not None:
             shape = tuple(outer_dims) + shape
@@ -183,7 +181,7 @@ class TensorSpec(object):
                 dimensions to add to the spec shape before sampling.
 
         Returns:
-            tensor (torch.Tensor): a tensor of ``self._dtype``.
+            np.ndarray: an array of ``self._dtype``.
         """
         return self.numpy_constant(0, outer_dims)
 

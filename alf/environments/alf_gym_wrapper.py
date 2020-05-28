@@ -159,7 +159,8 @@ class AlfGymWrapper(AlfEnvironment):
                                     self._action_spec)
         _, _, _, info = self._gym_env.step(action)
         self._gym_env.reset()
-        return _as_array(info)
+        info = _as_array(info)
+        return nest.map_structure(lambda a: np.zeros_like(a), info)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
@@ -210,13 +211,13 @@ class AlfGymWrapper(AlfEnvironment):
                 env_info=self._info)
 
     def _to_spec_dtype_observation(self, observation):
-        """Make sure observation from env is converted to (nested) torch tensor.
+        """Make sure observation from env is converted to the correct dtype.
 
         Args:
             observation (nested arrays or tensors): observations from env.
 
         Returns:
-            A (nested) tensors of observation
+            A (nested) arrays of observation
         """
 
         def _as_spec_dtype(arr, spec):

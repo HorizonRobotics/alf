@@ -44,7 +44,7 @@ def load(environment_name,
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
-            classes to use on the torch environment.
+            classes to use on the ALF environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
 
     Returns:
@@ -87,12 +87,8 @@ def wrap_env(gym_env,
 
     Also note that all gym wrappers assume images are 'channel_last' by default,
     while PyTorch only supports 'channel_first' image inputs. To enable this
-    transpose, 'image_channel_first' is set as True by default. There are two options
-    provided in ALF to handle this transpose:
-        1. Applying the gym_wrappers.ImageChannelFirst after all gym_env_wrappers
-            and before the AlfGymWrapper.
-        2. Applying the alf_wrappers.ImageChannelFirst after all alf_gym_wrappers.
-    The first option is used in current function.
+    transpose, 'image_channel_first' is set as True by default. ``gym_wrappers.ImageChannelFirst``
+    is applied after all gym_env_wrappers and before the AlfGymWrapper.
 
     Args:
         gym_env (gym.Env): An instance of OpenAI gym environment.
@@ -108,7 +104,7 @@ def wrap_env(gym_env,
         clip_action (bool): If True, will clip continuous action to its bound specified
             by action_spec.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
-            classes to use on the torch environment.
+            classes to use on the ALF environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
             PyTorch only supports channgel_first image inputs.
         auto_reset (bool): If True (default), reset the environment automatically after a

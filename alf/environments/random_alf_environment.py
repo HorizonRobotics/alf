@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Pytorch environment implementation that generates random observations.
+"""An environment that generates random observations.
 
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/random_py_environment.py
 """
 import numpy as np
-import torch
 
 import alf.data_structures as ds
 from alf.environments import alf_environment
@@ -175,8 +174,8 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
 
         if self._batch_size:
             action = nest.map_structure(
-                lambda t: torch.cat([t.unsqueeze(0)] * self._batch_size),
-                action)
+                lambda t: np.concatenate([np.expand_dims(t, 0)] * self.
+                                         _batch_size), action)
 
         if self._done:
             reward = self._reward_fn(ds.StepType.LAST, action, observation)

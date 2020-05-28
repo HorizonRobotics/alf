@@ -89,6 +89,7 @@ Algorithm
 Algorithm is the most important concept in ALF. (TODO: more description about
 the design.)
 
+
 TimeStep
 --------
 
@@ -191,6 +192,62 @@ Step type      Discount | Value used          | Value          Note
 ============== ======== ===================== ================ ===================================================
 
 
+Environment
+-----------
+
+The training algorithms learn through the interaction with environments. The
+interface of an environment for an algorithm is defined by `AlfEnvironment <../api/alf.environments.html#alf.environments.alf_environment.AlfEnvironment>`_.
+The interface provides support for batched environment step and reset. That means
+from the perspective the algorithm, it can step and reset multiple environments
+synchronously.
+
+Typically, we have a third-party environment following `gym.Env <https://github.com/openai/gym/blob/2ec4881c22b129d1f06173d136529477c0d8d975/gym/core.py#L8>`_
+interface. It takes the following steps to obain a batched AlfEnvironment from
+the name of a gym environment.
+
+1. Create a gym environment. Typically, the gym environment is created using the
+following code:
+
+.. code-block:: python
+
+    gym_spec = gym.spec(environment_name)
+    gym_env = gym_spec.make()
+
+2. Apply a series of gym wrappers. One of the most often used gym wrapper is
+`ImageChannelFirst <../api/alf.environments.html#alf.environments.gym_wrappers.ImageChannelFirst>`_,
+which converts image with channel-last format to channel-first format. ALF
+uses channel-first format for its convolution layers.
+
+3. Wrap the gym environment as a on-batched ``AlfEnvironment`` using
+`AlfGymWrapper <../api/alf.environments.html#alf.environments.alf_gym_wrappers.AlfGymWrapper>`_.
+All of its input/output are ``numpy.ndarray``.
+
+4. Apply a series of `ALF environment wrappers <../api/alf.environments.html#alf.environments.alf_wrappers>`_.
+All of its input/output are ``numpy.ndarray``.
+
+5. Wrap the non-batched ALF environmnet with `ProcessEnvironment <../api/alf.environments.html#alf.environments.process_environment.ProcessEnvironment>`_.
+It provides an interface using CPU torch.Tensor and interacts with the underline
+``AlfEnvironment`` using ``numpy.ndarray``.
+
+6. Use `ParallelEnvironment <../api/alf.environments.html#alf.environments.parallel_environment.ParallelEnvironment>`_
+to manage a set of ``ProcessEnvironment``s and obtain a batched ``ALfEnvironmnet``.
+During ``step()``, ``ParallelEnvironment`` unstacks the action to get individual
+actions and call ``step()`` of each ``ProcessEnvironment``. After obtaining all
+the individual ``TimeStep``s from ``ProcessEnvironment``, it stacks them as a
+batched ``TimeStep`` and converts it to the default device. The inter-process
+communication takes place inside ``ProcessEnvironment``.
+
+The ``load()`` function from various envrinment suites such as `suite_gym <../api/alf.environments.html#alf.environments.suite_gym.load>`_
+or `suite_gym <../api/alf.environments.html#alf.environments.suite_socialbot.load>`_
+handles steps 1-4 for each of these environment suites. `alf.environments.utils.create_environment <../api/alf.environments.html#alf.environments.utils.create_environment>`_
+handles all the above steps by creating ``ParallelEnvironment`` using the ``load()``
+function.
+
+It is possible to directly implement a batched ``AlfEnvironment`` without following
+the above steps. `suite_carla <../api/alf.environments.html#alf.environments.suite_carla>`_
+is such an example.
+
+
 Differences with the Tensorflow version of ALF
 ----------------------------------------------
 
@@ -204,7 +261,7 @@ root of ``scale`` parameter of ``VarianceScaling``. Because of this, the followi
 parameters also have different meaning as their corresponding parameters used in
 ALF-tf:
 
-* ``logits_init_output_factor`` of ``alf.networks.CategoricalProjectionNetwork``.
+* ``logits_init_output_factor`` of ``alf.networks.CategoricalProjectionNetwork``
   corresponds to ``logits_init_output_factor`` of tf_agents ``CategoricalProjectionNetwork``
   used by ALF-tf.  ``logits_init_output_factor`` of ALF-pytorch should be set to
   the squared root of ``logits_init_output_factor`` of tf_agents.

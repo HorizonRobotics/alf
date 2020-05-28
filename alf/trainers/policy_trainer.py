@@ -192,7 +192,6 @@ class Trainer(object):
 
     def train(self):
         """Perform training."""
-        #os.system("taskset -p -c %s %d" % (','.join([str(i) for i in range(20, 32)]), os.getpid()))
         self._restore_checkpoint()
         alf.summary.enable_summary()
         try:
