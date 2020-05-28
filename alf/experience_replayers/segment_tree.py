@@ -82,8 +82,8 @@ class SegmentTree(nn.Module):
             assert indices.ndim == 1
             assert values.ndim == 1
             assert indices.shape == values.shape, (
-                "indices and values should be 1-D tensor with the length. Got "
-                "%s and %s." % (indices.shape, values.shape))
+                "indices and values should be 1-D tensor with the same length. "
+                "Got %s and %s." % (indices.shape, values.shape))
             op = self._op
             indices, order = torch.sort(indices)
             values = values[order]
@@ -119,7 +119,7 @@ class SegmentTree(nn.Module):
 
     def _index_to_leaf(self, idx):
         """
-        Make sure idx=0 is the leftest leaf.
+        Make sure idx=0 is the leftmost leaf.
         """
         idx += self._leftmost_leaf
         idx = torch.where(idx >= 2 * self._capacity, idx - self._capacity, idx)
@@ -170,7 +170,7 @@ class SumSegmentTree(SegmentTree):
             thresholds (Tensor): 1-D Tensor. All the elements in `thresholds`
                 should be smaller than self.summary()
         Returns:
-            Tensor: 1-D int64 Tensor with the same shape as ``thesholds``
+            Tensor: 1-D int64 Tensor with the same shape as ``thresholds``
         """
 
         def _step(indices, thresholds):
