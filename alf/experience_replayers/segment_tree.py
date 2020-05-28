@@ -29,7 +29,9 @@ class SegmentTree(nn.Module):
 
     In this implementation, ``values[1]`` is the root. ``values[capacity: 2*capacity]``
     are the leaves. The two children of an internal node ``values[i]`` are ``values[2*i]``
-    and ``values[2*i+1]``. And ``values[i]`` is set to ``op(values[2*i], values[2*i+1])``
+    and ``values[2*i+1]``. And ``values[i]`` is set to ``op(values[2*i], values[2*i+1])``.
+    Each leaf represent a value set through ``__setitem__``. All the nodes of
+    tree are initialized to be zeros.
     """
 
     def __init__(self,
