@@ -27,10 +27,10 @@ class OptimizersTest(alf.test.TestCase):
         opt2 = AdamTF(lr=0.1)
         opt3 = Adam(lr=0.1)
         opt4 = AdamTF(lr=0.1, name="AdamTF")
-        self.assertEqual(opt1._name, "Adam_%s" % i)
-        self.assertEqual(opt2._name, "AdamTF_%s" % j)
-        self.assertEqual(opt3._name, "Adam_%s" % (i + 1))
-        self.assertEqual(opt4._name, "AdamTF")
+        self.assertEqual(opt1.name, "Adam_%s" % i)
+        self.assertEqual(opt2.name, "AdamTF_%s" % j)
+        self.assertEqual(opt3.name, "Adam_%s" % (i + 1))
+        self.assertEqual(opt4.name, "AdamTF")
 
     def test_gradient_clipping(self):
         layer = torch.nn.Linear(5, 3)

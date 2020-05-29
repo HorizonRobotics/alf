@@ -142,6 +142,8 @@ def global_norm(tensors):
     """
     assert alf.nest.is_nested(tensors), "tensors must be a nest!"
     tensors = alf.nest.flatten(tensors)
+    if not tensors:
+        return torch.zeros((), dtype=torch.float32)
     return torch.sqrt(
         sum([
             math_ops.square(torch.norm(torch.reshape(t, [-1])))
