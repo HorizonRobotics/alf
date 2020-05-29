@@ -218,12 +218,12 @@ following code:
 which converts image with channel-last format to channel-first format. ALF
 uses channel-first format for its convolution layers.
 
-3. Wrap the gym environment as a on-batched ``AlfEnvironment`` using
+3. Wrap the gym environment as a non-batched ``AlfEnvironment`` using
 `AlfGymWrapper <../api/alf.environments.html#alf.environments.alf_gym_wrappers.AlfGymWrapper>`_.
-All of its input/output are ``numpy.ndarray``.
+All of its inputs/outputs are ``numpy.ndarray``.
 
 4. Apply a series of `ALF environment wrappers <../api/alf.environments.html#alf.environments.alf_wrappers>`_.
-All of its input/output are ``numpy.ndarray``.
+All of its inputs/outputs are ``numpy.ndarray``.
 
 5. Wrap the non-batched ALF environmnet with `ProcessEnvironment <../api/alf.environments.html#alf.environments.process_environment.ProcessEnvironment>`_.
 It provides an interface using CPU torch.Tensor and interacts with the underline
