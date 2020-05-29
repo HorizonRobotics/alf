@@ -61,6 +61,12 @@ class EntropyTargetAlgorithm(Algorithm):
        ``target_entropy`` (i.e., ``fast_stage_thresh`` in the code, which is the half
        of ``target_entropy`` if it is positive, and twice of ``target_entropy`` if
        it is negative.
+
+    ``EntropyTargetAlgorithm`` can be used to approximately reproduce the learning
+    of temperature in `Soft Actor-Critic Algorithms and Applications <https://arxiv.org/abs/1812.05905>`_.
+    To do so, you need to use the same ``target_entropy``, set ``skip_free_stage``
+    to True, and  set ``slow_update_rate`` and ``fast_update_rate`` to the 4
+    times of the learning rate for temperature.
     """
 
     def __init__(self,
@@ -210,7 +216,8 @@ class EntropyTargetAlgorithm(Algorithm):
         if not_empty:
             self.adjust_alpha(entropy)
             if self._debug_summaries and should_record_summaries():
-                alf.summary.scalar("entropy_std", entropy_std)
+                with alf.summary.scope(self.name):
+                    alf.summary.scalar("entropy_std", entropy_std)
 
         alpha = torch.exp(self._log_alpha)
         return loss_info._replace(loss=loss_info.loss * alpha)
