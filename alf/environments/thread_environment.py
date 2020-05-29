@@ -14,17 +14,30 @@
 """Runs a single environments in a separate thread. """
 
 from multiprocessing import dummy as mp_threads
+import torch
 
-from alf.environments import torch_environment
+import alf
+from alf.environments import alf_environment
 import alf.nest as nest
 
 
-class ThreadTorchEnvironment(torch_environment.TorchEnvironment):
+def _array_to_tensor(data):
+    def _array_to_tensor(obj):
+        return torch.as_tensor(obj).unsqueeze(dim=0)
+
+    return nest.map_structure(_array_to_tensor, data)
+
+
+def _tensor_to_array(data):
+    return nest.map_structure(lambda x: x.squeeze(dim=0).cpu().numpy(), data)
+
+
+class ThreadEnvironment(alf_environment.AlfEnvironment):
     """Create, Step a single env in a separate thread
     """
 
     def __init__(self, env_constructor):
-        """Create a ThreadTorchEnvironment
+        """Create a ThreadEnvironment
 
         Args:
             env_constructor (Callable): env_constructor for the OpenAI Gym environment
@@ -37,6 +50,9 @@ class ThreadTorchEnvironment(torch_environment.TorchEnvironment):
     def batch_size(self):
         return 1
 
+    def env_info_spec(self):
+        return self._apply('env_info_spec')
+
     def observation_spec(self):
         return self._apply('observation_spec')
 
@@ -44,11 +60,11 @@ class ThreadTorchEnvironment(torch_environment.TorchEnvironment):
         return self._apply('action_spec')
 
     def _step(self, action):
-        action = nest.unbatch_nested_tensor(action)
-        return nest.batch_nested_tensor(self._apply('step', (action, )))
+        action = _tensor_to_array(action)
+        return _array_to_tensor(self._apply('step', (action, )))
 
     def _reset(self):
-        return nest.batch_nested_tensor(self._apply('reset'))
+        return _array_to_tensor(self._apply('reset'))
 
     def close(self):
         self._apply('close')

@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the process_environment. 
+"""Tests for the process_environment.
 Adapted from TF-Agents' parallel_py_environment_test.py
 """
 
@@ -20,14 +20,14 @@ import torch
 
 import alf
 from alf.environments.process_environment import ProcessEnvironment
-from alf.environments.random_torch_environment import RandomTorchEnvironment
+from alf.environments.random_alf_environment import RandomAlfEnvironment
 import alf.tensor_specs as ts
 
 
 class ProcessEnvironmentTest(alf.test.TestCase):
     def test_close_no_hang_after_init(self):
         constructor = functools.partial(
-            RandomTorchEnvironment,
+            RandomAlfEnvironment,
             ts.TensorSpec((3, 3), torch.float32),
             ts.BoundedTensorSpec([1], torch.float32, minimum=-1.0,
                                  maximum=1.0),
@@ -40,7 +40,7 @@ class ProcessEnvironmentTest(alf.test.TestCase):
 
     def test_close_no_hang_after_step(self):
         constructor = functools.partial(
-            RandomTorchEnvironment,
+            RandomAlfEnvironment,
             ts.TensorSpec((3, 3), torch.float32),
             ts.BoundedTensorSpec([1], torch.float32, minimum=-1.0,
                                  maximum=1.0),
@@ -105,7 +105,7 @@ class MockEnvironmentCrashInReset(object):
         raise RuntimeError()
 
 
-class MockEnvironmentCrashInStep(RandomTorchEnvironment):
+class MockEnvironmentCrashInStep(RandomAlfEnvironment):
     """Raise an error after specified number of steps in an episode."""
 
     def __init__(self, crash_at_step, env_id=None):

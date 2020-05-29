@@ -26,7 +26,7 @@ import gin
 import gym
 import socket
 
-from alf.environments import suite_gym, torch_wrappers, process_environment
+from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
 DEFAULT_SOCIALBOT_PORT = 11345
@@ -46,7 +46,7 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
-         torch_env_wrappers=()):
+         alf_env_wrappers=()):
     """Loads the selected environment and wraps it with the specified wrappers.
 
     Note that by default a TimeLimit wrapper is used to limit episode lengths
@@ -63,17 +63,17 @@ def load(environment_name,
             to 0 or if there is no timestep_limit set in the environment's spec.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
-            classes to use on the torch environment.
+        alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
+            classes to use on the ALF environment.
 
     Returns:
-        A TorchEnvironmentBase instance.
+        An AlfEnvironmentBase instance.
     """
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
     if gym_env_wrappers is None:
         gym_env_wrappers = ()
-    if torch_env_wrappers is None:
-        torch_env_wrappers = ()
+    if alf_env_wrappers is None:
+        alf_env_wrappers = ()
 
     gym_spec = gym.spec(environment_name)
     if max_episode_steps is None:
@@ -90,7 +90,7 @@ def load(environment_name,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            torch_env_wrappers=torch_env_wrappers)
+            alf_env_wrappers=alf_env_wrappers)
 
     port_range = [port, port + 1] if port else [DEFAULT_SOCIALBOT_PORT]
     with _get_unused_port(*port_range) as port:
@@ -98,7 +98,7 @@ def load(environment_name,
             process_env = process_environment.ProcessEnvironment(
                 functools.partial(env_ctor, port))
             process_env.start()
-            torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
+            torch_env = alf_wrappers.AlfEnvironmentBaseWrapper(process_env)
         else:
             torch_env = env_ctor(port=port, env_id=env_id)
     return torch_env

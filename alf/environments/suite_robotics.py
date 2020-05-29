@@ -34,7 +34,7 @@ import gym
 from gym.wrappers import FlattenDictWrapper
 
 import gin
-from alf.environments import suite_gym, torch_wrappers, process_environment
+from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
@@ -102,7 +102,7 @@ def load(environment_name,
          max_episode_steps=None,
          sparse_reward=False,
          gym_env_wrappers=(),
-         torch_env_wrappers=(),
+         alf_env_wrappers=(),
          wrap_with_process=False):
     """Loads the selected environment and wraps it with the specified wrappers.
 
@@ -119,11 +119,11 @@ def load(environment_name,
             Rewards will be added by 1, changed from -1/0 to 0/1.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
-        torch_env_wrappers: Iterable with references to wrapper classes to use on
+        alf_env_wrappers: Iterable with references to wrapper classes to use on
             the torch environment.
 
     Returns:
-        A TorchEnvironment instance.
+        An AlfEnvironment instance.
     """
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
@@ -143,7 +143,7 @@ def load(environment_name,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            torch_env_wrappers=torch_env_wrappers)
+            alf_env_wrappers=alf_env_wrappers)
 
     # concat robot's observation and the goal location
     env = FlattenDictWrapper(env, ["observation", "desired_goal"])
@@ -156,7 +156,7 @@ def load(environment_name,
         process_env = process_environment.ProcessEnvironment(
             functools.partial(env_ctor))
         process_env.start()
-        torch_env = torch_wrappers.TorchEnvironmentBaseWrapper(process_env)
+        torch_env = alf_wrappers.AlfEnvironmentBaseWrapper(process_env)
     else:
         torch_env = env_ctor(env_id=env_id)
 

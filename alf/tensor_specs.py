@@ -70,6 +70,19 @@ class TensorSpec(object):
         return TensorSpec(tensor.shape[from_dim:], tensor.dtype)
 
     @classmethod
+    def from_array(cls, array, from_dim=0):
+        """Create TensorSpec from numpy array.
+
+        Args:
+            array (np.ndarray|np.number): array from which the spec is extracted
+            from_dim (int): use ``array.shape[from_dim:]`` as shape
+        Returns:
+            TensorSpec
+        """
+        assert isinstance(array, (np.ndarray, np.number))
+        return TensorSpec(array.shape[from_dim:], str(array.dtype))
+
+    @classmethod
     def is_bounded(cls):
         del cls
         return False
@@ -143,6 +156,34 @@ class TensorSpec(object):
             tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
         return self.constant(0, outer_dims)
+
+    def numpy_constant(self, value, outer_dims=None):
+        """Create a constant np.ndarray from the spec.
+
+        Args:
+            value (Number) : a scalar
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            np.ndarray: an array of ``self._dtype``.
+        """
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        return np.ones(shape, dtype=torch_dtype_to_str(self._dtype)) * value
+
+    def numpy_zeros(self, outer_dims=None):
+        """Create a zero numpy.ndarray from the spec.
+
+        Args:
+            outer_dims (tuple[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            np.ndarray: an array of ``self._dtype``.
+        """
+        return self.numpy_constant(0, outer_dims)
 
     def ones(self, outer_dims=None):
         """Create an all-one tensor from the spec.

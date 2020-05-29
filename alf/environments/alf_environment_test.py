@@ -17,17 +17,17 @@ import numpy as np
 import torch
 
 import alf
-from alf.environments.random_torch_environment import RandomTorchEnvironment
+from alf.environments.random_alf_environment import RandomAlfEnvironment
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
-class TorchEnvironmentTest(alf.test.TestCase):
+class AlfEnvironmentTest(alf.test.TestCase):
     def testResetSavesCurrentTimeStep(self):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
 
-        random_env = RandomTorchEnvironment(
+        random_env = RandomAlfEnvironment(
             observation_spec=obs_spec, action_spec=action_spec)
 
         time_step = random_env.reset()
@@ -38,7 +38,7 @@ class TorchEnvironmentTest(alf.test.TestCase):
         obs_spec = BoundedTensorSpec((1, ), torch.int32)
         action_spec = BoundedTensorSpec((1, ), torch.int64)
 
-        random_env = RandomTorchEnvironment(
+        random_env = RandomAlfEnvironment(
             observation_spec=obs_spec, action_spec=action_spec)
 
         random_env.reset()

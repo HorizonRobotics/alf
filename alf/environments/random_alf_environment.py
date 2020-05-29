@@ -11,21 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Pytorch environment implementation that generates random observations.
+"""An environment that generates random observations.
 
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/random_py_environment.py
 """
 import numpy as np
-import torch
 
 import alf.data_structures as ds
-from alf.environments import torch_environment
+from alf.environments import alf_environment
 from alf.nest import nest
 import alf.tensor_specs as ts
 
 
-class RandomTorchEnvironment(torch_environment.TorchEnvironment):
+class RandomAlfEnvironment(alf_environment.AlfEnvironment):
     """Randomly generates observations following the given observation_spec.
 
     If an action_spec is provided it validates that the actions used to step the
@@ -79,9 +78,9 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)
         if env_id is None:
-            self._env_id = torch.as_tensor(0, dtype=torch.int32)
+            self._env_id = np.int32(0)
         else:
-            self._env_id = torch.as_tensor(env_id, dtype=torch.int32)
+            self._env_id = np.int32(env_id)
 
         if self._batch_size:
             if not discount.shape:
@@ -94,11 +93,10 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         if reward_fn is None:
             # Return a reward whose size matches the batch size
             if self._batch_size is None:
-                self._reward_fn = lambda *_: torch.tensor(
-                    0.0, dtype=torch.float32)
+                self._reward_fn = lambda *_: np.float32(0)
             else:
-                self._reward_fn = (lambda *_: torch.zeros(
-                    self._batch_size, dtype=torch.float32))
+                self._reward_fn = (
+                    lambda *_: np.zeros(self._batch_size, dtype=np.float32))
         else:
             self._reward_fn = reward_fn
 
@@ -108,7 +106,10 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         self._max_duration = max_duration
         self._rng = np.random.RandomState(seed)
         self._render_size = render_size
-        super(RandomTorchEnvironment, self).__init__()
+        super(RandomAlfEnvironment, self).__init__()
+
+    def env_info_spec(self):
+        return {}
 
     def observation_spec(self):
         return self._observation_spec
@@ -127,7 +128,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
     def _get_observation(self):
         batch_size = (self._batch_size, ) if self._batch_size else ()
         return nest.map_structure(
-            lambda spec: self._sample_spec(spec, batch_size),
+            lambda spec: self._sample_spec(spec, batch_size).cpu().numpy(),
             self._observation_spec)
 
     def _reset(self):
@@ -152,7 +153,7 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
         if reward.shape != expected_shape:
             raise ValueError(
                 '%r != %r. Size of reward must equal the batch size.' %
-                (np.asarray(reward.cpu()).shape, self._batch_size))
+                (np.asarray(reward).shape, self._batch_size))
 
     def _step(self, action):
         if self._done:
@@ -173,8 +174,8 @@ class RandomTorchEnvironment(torch_environment.TorchEnvironment):
 
         if self._batch_size:
             action = nest.map_structure(
-                lambda t: torch.cat([t.unsqueeze(0)] * self._batch_size),
-                action)
+                lambda t: np.concatenate([np.expand_dims(t, 0)] * self.
+                                         _batch_size), action)
 
         if self._done:
             reward = self._reward_fn(ds.StepType.LAST, action, observation)

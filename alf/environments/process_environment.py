@@ -32,16 +32,11 @@ import alf.nest as nest
 
 def array_to_tensor(data):
     def _array_to_cpu_tensor(obj):
-        return torch.as_tensor(obj) if isinstance(obj, np.ndarray) else obj
+        return torch.as_tensor(
+            obj, device='cpu') if isinstance(obj,
+                                             (np.ndarray, np.number)) else obj
 
-    def _array_to_cuda_tensor(obj):
-        return torch.as_tensor(obj).cuda() if isinstance(obj,
-                                                         np.ndarray) else obj
-
-    if alf.get_default_device() == "cuda":
-        return nest.map_structure(_array_to_cuda_tensor, data)
-    else:
-        return nest.map_structure(_array_to_cpu_tensor, data)
+    return nest.map_structure(_array_to_cpu_tensor, data)
 
 
 def tensor_to_array(data):
@@ -89,6 +84,7 @@ class ProcessEnvironment(object):
         self._observation_spec = None
         self._action_spec = None
         self._time_step_spec = None
+        self._env_info_spec = None
 
     def start(self, wait_to_start=True):
         """Start the process.
@@ -113,6 +109,11 @@ class ProcessEnvironment(object):
             self._process.join(5)
             raise result
         assert result == self._READY, result
+
+    def env_info_spec(self):
+        if not self._env_info_spec:
+            self._env_info_spec = self.call('env_info_spec')()
+        return self._env_info_spec
 
     def observation_spec(self):
         if not self._observation_spec:
@@ -256,14 +257,15 @@ class ProcessEnvironment(object):
                     conn.send((self._RESULT, result))
                     continue
                 if message == self._CALL:
-                    payload = array_to_tensor(payload)
                     name, args, kwargs = payload
                     if flatten and name == 'step':
                         args = [nest.pack_sequence_as(action_spec, args[0])]
                     result = getattr(env, name)(*args, **kwargs)
-                    result = tensor_to_array(result)
                     if flatten and name in ['step', 'reset']:
                         result = nest.flatten(result)
+                        assert all([
+                            not isinstance(x, torch.Tensor) for x in result
+                        ]), ("Tensor result is not allowed: %s" % name)
                     conn.send((self._RESULT, result))
                     continue
                 if message == self._CLOSE:
@@ -281,17 +283,17 @@ class ProcessEnvironment(object):
         finally:
             conn.close()
 
-        def render(self, mode='human'):
-            """Render the environment.
+    def render(self, mode='human'):
+        """Render the environment.
 
-            Args:
-                mode (str): One of ['rgb_array', 'human']. Renders to an numpy array, or brings
-                    up a window where the environment can be visualized.
-            Returns:
-                An ndarray of shape [width, height, 3] denoting an RGB image if mode is
-                `rgb_array`. Otherwise return nothing and render directly to a display
-                window.
-            Raises:
-                NotImplementedError: If the environment does not support rendering.
-            """
-            return self.call('render', mode)()
+        Args:
+            mode (str): One of ['rgb_array', 'human']. Renders to an numpy array, or brings
+                up a window where the environment can be visualized.
+        Returns:
+            An ndarray of shape [width, height, 3] denoting an RGB image if mode is
+            `rgb_array`. Otherwise return nothing and render directly to a display
+            window.
+        Raises:
+            NotImplementedError: If the environment does not support rendering.
+        """
+        return self.call('render', mode)()

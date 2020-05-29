@@ -3,15 +3,9 @@ include 'ppo.gin'
 import alf.environments.suite_socialbot
 
 # environment config
-
-# "SocialBot-ICubWalk-v0"
 create_environment.env_name="SocialBot-Pr2Gripper-v0"
 create_environment.num_parallel_environments=60
 create_environment.env_load_fn=@suite_socialbot.load
-
-# algorithm config
-# Agent.gradient_clipping=0.5
-# Agent.clip_by_global_norm=True
 
 PPOLoss.entropy_regularization=0.0
 PPOLoss.gamma=0.99
@@ -20,35 +14,27 @@ PPOLoss.td_lambda=0.95
 PPOLoss.td_error_loss_fn=@element_wise_squared_loss
 PPOLoss.check_numerics=True
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
+NormalProjectionNetwork.std_bias_initializer_value=-1.
 actor/ActorDistributionNetwork.fc_layer_params=(100, 50, 25)
-actor/ActorDistributionNetwork.activation_fn=@tf.nn.softsign
-# actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
-# NormalProjectionNetwork.init_means_output_factor=1e-10
-# NormalProjectionNetwork.std_bias_initializer_value=0.0
-# NormalProjectionNetwork.std_transform=@tf.math.exp
+actor/ActorDistributionNetwork.activation=@alf.math.softsign
 
-value/ValueNetwork.input_tensor_spec=%observation_spec
 value/ValueNetwork.fc_layer_params=(100, 50, 25)
 
-ac/Adam.learning_rate=2e-4
+ac/AdamTF.lr=2e-4
 
-ActorCriticAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-ActorCriticAlgorithm.value_network=@value/ValueNetwork()
-Agent.optimizer=@ac/Adam()
+ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
+ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
+Agent.optimizer=@ac/AdamTF()
 
 # training config
 TrainerConfig.mini_batch_length=1
 TrainerConfig.unroll_length=100
 TrainerConfig.mini_batch_size=6000
-TrainerConfig.num_iterations=100000
+TrainerConfig.num_iterations=10000
 TrainerConfig.num_updates_per_train_iter=25
 TrainerConfig.eval_interval=1000
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=True
 TrainerConfig.summary_interval=5
-
-ReplayBuffer.max_length=2048
 
 

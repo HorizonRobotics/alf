@@ -29,7 +29,7 @@ def load(game,
          frame_skip=None,
          frame_stack=None,
          gym_env_wrappers=(),
-         torch_env_wrappers=(),
+         alf_env_wrappers=(),
          max_episode_steps=0):
     """Loads the specified simple game and wraps it.
     Args:
@@ -41,11 +41,11 @@ def load(game,
             game.
         frame_stack (int): stack so many latest frames as the observation input.
         gym_env_wrappers (list): list of gym env wrappers.
-        torch_env_wrappers (list): list of torch env wrappers.
+        alf_env_wrappers (list): list of ALF env wrappers.
         max_episode_steps (int): max number of steps for an episode.
 
     Returns:
-        A TorchEnvironment instance.
+        An AlfEnvironment instance.
     """
 
     if game == "NoisyArray":
@@ -61,5 +61,5 @@ def load(game,
         discount=discount,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
-        torch_env_wrappers=torch_env_wrappers,
+        alf_env_wrappers=alf_env_wrappers,
         auto_reset=True)

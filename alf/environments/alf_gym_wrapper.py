@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Wrapper providing a TorchEnvironment adapter for GYM environments.
+"""Wrapper providing an AlfEnvironment adapter for GYM environments.
 
 Adapted from TF-Agents Environment API as seen in:
     https://github.com/tensorflow/agents/blob/master/tf_agents/environments/suite_gym.py
@@ -20,13 +20,13 @@ Adapted from TF-Agents Environment API as seen in:
 import collections
 import gym
 import gym.spaces
+import numbers
 import numpy as np
-import torch
 
 import alf.data_structures as ds
-from alf.environments import torch_environment
+from alf.environments.alf_environment import AlfEnvironment
 import alf.nest as nest
-from alf.tensor_specs import TensorSpec, BoundedTensorSpec
+from alf.tensor_specs import TensorSpec, BoundedTensorSpec, torch_dtype_to_str
 
 
 def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
@@ -47,27 +47,24 @@ def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
         else:
             return np_array
 
-    def torch_dtype(data):
-        return getattr(torch, space.dtype.name)
-
     if isinstance(space, gym.spaces.Discrete):
         # Discrete spaces span the set {0, 1, ... , n-1} while Bounded Array specs
         # are inclusive on their bounds.
         maximum = space.n - 1
         return BoundedTensorSpec(
-            shape=(), dtype=torch_dtype(space), minimum=0, maximum=maximum)
+            shape=(), dtype=space.dtype.name, minimum=0, maximum=maximum)
     elif isinstance(space, gym.spaces.MultiDiscrete):
         maximum = try_simplify_array_to_value(
             np.asarray(space.nvec - 1, dtype=space.dtype))
         return BoundedTensorSpec(
             shape=space.shape,
-            dtype=torch_dtype(space),
+            dtype=space.dtype.name,
             minimum=0,
             maximum=maximum)
     elif isinstance(space, gym.spaces.MultiBinary):
         shape = (space.n, )
         return BoundedTensorSpec(
-            shape=shape, dtype=torch_dtype(space), minimum=0, maximum=1)
+            shape=shape, dtype=space.dtype.name, minimum=0, maximum=1)
     elif isinstance(space, gym.spaces.Box):
         minimum = np.asarray(space.low, dtype=space.dtype)
         maximum = np.asarray(space.high, dtype=space.dtype)
@@ -76,7 +73,7 @@ def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
             maximum = try_simplify_array_to_value(maximum)
         return BoundedTensorSpec(
             shape=space.shape,
-            dtype=torch_dtype(space),
+            dtype=space.dtype.name,
             minimum=minimum,
             maximum=maximum)
     elif isinstance(space, gym.spaces.Tuple):
@@ -89,11 +86,22 @@ def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
             'The gym space {} is currently not supported.'.format(space))
 
 
-class TorchGymWrapper(torch_environment.TorchEnvironment):
-    """Base wrapper implementing TorchEnvironmentBaseWrapper interface for Gym envs.
+def _as_array(nested):
+    """Convert numbers in ``nested`` to np.ndarray."""
+
+    def __as_array(x):
+        if isinstance(x, numbers.Number):
+            return np.array(x)
+        return x
+
+    return nest.map_structure(__as_array, nested)
+
+
+class AlfGymWrapper(AlfEnvironment):
+    """Base wrapper implementing AlfEnvironmentBaseWrapper interface for Gym envs.
 
     Action and observation specs are automatically generated from the action and
-    observation spaces. See base class for ``TorchEnvironment`` details.
+    observation spaces. See base class for ``AlfEnvironment`` details.
     """
 
     def __init__(self,
@@ -113,14 +121,13 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
                 arrays to values for spec bounds.
 
         """
-        super(TorchGymWrapper, self).__init__()
+        super(AlfGymWrapper, self).__init__()
 
         self._gym_env = gym_env
         self._discount = discount
         if env_id is None:
-            self._env_id = torch.as_tensor(0, dtype=torch.int32)
-        else:
-            self._env_id = torch.as_tensor(env_id, dtype=torch.int32)
+            env_id = 0
+        self._env_id = np.int32(env_id)
         self._action_is_discrete = isinstance(self._gym_env.action_space,
                                               gym.spaces.Discrete)
         # TODO: Add test for auto_reset param.
@@ -135,6 +142,9 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         self._done = True
         self._zero_info = self._obtain_zero_info()
 
+        self._env_info_spec = nest.map_structure(TensorSpec.from_array,
+                                                 self._zero_info)
+
     @property
     def gym(self):
         """Return the gym environment. """
@@ -145,12 +155,12 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         This info will be filled in each ``FIRST`` time step as a placeholder.
         """
         self._gym_env.reset()
-        action = nest.map_structure(lambda spec: spec.zeros(),
+        action = nest.map_structure(lambda spec: spec.numpy_zeros(),
                                     self._action_spec)
-        _, _, _, info = self._gym_env.step(self._convert_action(action))
+        _, _, _, info = self._gym_env.step(action)
         self._gym_env.reset()
-        return nest.map_structure(lambda i: torch.as_tensor(np.zeros_like(i)),
-                                  info)
+        info = _as_array(info)
+        return nest.map_structure(lambda a: np.zeros_like(a), info)
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
@@ -160,11 +170,6 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         """Returns the gym environment info returned on the last step."""
         return self._info
 
-    def _convert_action(self, action):
-        if isinstance(action, torch.Tensor):
-            action = action.detach().data.cpu().numpy()
-        return action
-
     def _reset(self):
         # TODO: Upcoming update on gym adds **kwargs on reset. Update this to
         # support that.
@@ -172,7 +177,7 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         self._info = None
         self._done = False
 
-        observation = self._to_tensor_observation(observation)
+        observation = self._to_spec_dtype_observation(observation)
         return ds.restart(
             observation=observation,
             action_spec=self._action_spec,
@@ -188,18 +193,14 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
         if self._auto_reset and self._done:
             return self.reset()
 
-        py_action = self._convert_action(action)
-        # TODO(oars): Figure out how tuple or dict actions will be generated by the
-        # agents and if we can pass them through directly to gym.
-
         observation, reward, self._done, self._info = self._gym_env.step(
-            py_action)
-        observation = self._to_tensor_observation(observation)
-        info = nest.map_structure(torch.as_tensor, self._info)
+            action)
+        observation = self._to_spec_dtype_observation(observation)
+        self._info = nest.map_structure(_as_array, self._info)
 
         if self._done:
             return ds.termination(
-                observation, action, reward, self._env_id, env_info=info)
+                observation, action, reward, self._env_id, env_info=self._info)
         else:
             return ds.transition(
                 observation,
@@ -207,20 +208,30 @@ class TorchGymWrapper(torch_environment.TorchEnvironment):
                 reward,
                 self._discount,
                 self._env_id,
-                env_info=info)
+                env_info=self._info)
 
-    def _to_tensor_observation(self, observation):
-        """Make sure observation from env is converted to (nested) torch tensor.
+    def _to_spec_dtype_observation(self, observation):
+        """Make sure observation from env is converted to the correct dtype.
 
         Args:
             observation (nested arrays or tensors): observations from env.
 
         Returns:
-            A (nested) tensors of observation
+            A (nested) arrays of observation
         """
-        return nest.map_structure(
-            lambda spec, obs: torch.as_tensor(obs, dtype=spec.dtype),
-            self._observation_spec, observation)
+
+        def _as_spec_dtype(arr, spec):
+            dtype = torch_dtype_to_str(spec.dtype)
+            if str(arr.dtype) == dtype:
+                return arr
+            else:
+                return arr.astype(dtype)
+
+        return nest.map_structure(_as_spec_dtype, observation,
+                                  self._observation_spec)
+
+    def env_info_spec(self):
+        return self._env_info_spec
 
     def time_step_spec(self):
         return self._time_step_spec

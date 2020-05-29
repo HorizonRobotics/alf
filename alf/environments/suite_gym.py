@@ -17,7 +17,7 @@ import gin
 import gym
 import gym.spaces
 
-from alf.environments import gym_wrappers, torch_wrappers, torch_gym_wrapper
+from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
 
 
 @gin.configurable
@@ -26,7 +26,7 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
-         torch_env_wrappers=(),
+         alf_env_wrappers=(),
          image_channel_first=True):
     """Loads the selected environment and wraps it with the specified wrappers.
 
@@ -43,12 +43,12 @@ def load(environment_name,
             spec.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
-            classes to use on the torch environment.
+        alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
+            classes to use on the ALF environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
 
     Returns:
-        A TorchEnvironment instance.
+        An AlfEnvironment instance.
     """
     gym_spec = gym.spec(environment_name)
     gym_env = gym_spec.make()
@@ -65,7 +65,7 @@ def load(environment_name,
         discount=discount,
         max_episode_steps=max_episode_steps,
         gym_env_wrappers=gym_env_wrappers,
-        torch_env_wrappers=torch_env_wrappers,
+        alf_env_wrappers=alf_env_wrappers,
         image_channel_first=image_channel_first)
 
 
@@ -75,24 +75,20 @@ def wrap_env(gym_env,
              discount=1.0,
              max_episode_steps=0,
              gym_env_wrappers=(),
-             time_limit_wrapper=torch_wrappers.TimeLimit,
+             time_limit_wrapper=alf_wrappers.TimeLimit,
              clip_action=True,
-             torch_env_wrappers=(),
+             alf_env_wrappers=(),
              image_channel_first=True,
              auto_reset=True):
-    """Wraps given gym environment with TorchGymWrapper.
+    """Wraps given gym environment with AlfGymWrapper.
 
     Note that by default a TimeLimit wrapper is used to limit episode lengths
     to the default benchmarks defined by the registered environments.
 
     Also note that all gym wrappers assume images are 'channel_last' by default,
     while PyTorch only supports 'channel_first' image inputs. To enable this
-    transpose, 'image_channel_first' is set as True by default. There are two options
-    provided in ALF to handle this transpose:
-        1. Applying the gym_wrappers.ImageChannelFirst after all gym_env_wrappers
-            and before the TorchGymWrapper.
-        2. Applying the torch_wrappers.ImageChannelFirst after all torch_gym_wrappers.
-    The first option is used in current function.
+    transpose, 'image_channel_first' is set as True by default. ``gym_wrappers.ImageChannelFirst``
+    is applied after all gym_env_wrappers and before the AlfGymWrapper.
 
     Args:
         gym_env (gym.Env): An instance of OpenAI gym environment.
@@ -102,20 +98,20 @@ def wrap_env(gym_env,
             if set to 0. Usually set to `gym_spec.max_episode_steps` as done in `load.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
-        time_limit_wrapper (TorchEnvironmentBaseWrapper): Wrapper that accepts
+        time_limit_wrapper (AlfEnvironmentBaseWrapper): Wrapper that accepts
             (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this
-            should be left as the default, torch_wrappers.TimeLimit.
+            should be left as the default, alf_wrappers.TimeLimit.
         clip_action (bool): If True, will clip continuous action to its bound specified
             by action_spec.
-        torch_env_wrappers (Iterable): Iterable with references to torch_wrappers
-            classes to use on the torch environment.
+        alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
+            classes to use on the ALF environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
             PyTorch only supports channgel_first image inputs.
         auto_reset (bool): If True (default), reset the environment automatically after a
             terminal state is reached.
 
     Returns:
-        A TorchEnvironment instance.
+        An AlfEnvironment instance.
     """
 
     for wrapper in gym_env_wrappers:
@@ -129,7 +125,7 @@ def wrap_env(gym_env,
         # clip continuous actions according to gym_env.action_space
         gym_env = gym_wrappers.ContinuousActionClip(gym_env)
 
-    env = torch_gym_wrapper.TorchGymWrapper(
+    env = alf_gym_wrapper.AlfGymWrapper(
         gym_env=gym_env,
         env_id=env_id,
         discount=discount,
@@ -139,7 +135,7 @@ def wrap_env(gym_env,
     if max_episode_steps > 0:
         env = time_limit_wrapper(env, max_episode_steps)
 
-    for wrapper in torch_env_wrappers:
+    for wrapper in alf_env_wrappers:
         env = wrapper(env)
 
     return env
