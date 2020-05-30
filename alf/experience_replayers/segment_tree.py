@@ -23,7 +23,7 @@ from alf.nest.utils import convert_device
 
 class SegmentTree(nn.Module):
     """
-    Data structure to allow efficient calculate the summary statistics over a
+    Data structure to allow efficient calculation of the summary statistics over a
     segment of elements.
     See https://en.wikipedia.org/wiki/Segment_tree for detail.
 
@@ -170,7 +170,11 @@ class SumSegmentTree(SegmentTree):
             thresholds (Tensor): 1-D Tensor. All the elements in `thresholds`
                 should be smaller than self.summary()
         Returns:
-            Tensor: 1-D int64 Tensor with the same shape as ``thresholds``
+            Tensor: 1-D int64 Tensor with the same shape as ``thresholds``.
+                Note that if thresholds[i] >= root,  result[i] will be
+                capacity - 1. This is to make sure that we still get valid index
+                if threshold[i] is slightly bigger than root due to floating point
+                precision issue.
         """
 
         def _step(indices, thresholds):
@@ -196,7 +200,7 @@ class SumSegmentTree(SegmentTree):
             is_small = indices < self._capacity
             num_small = is_small.to(torch.int64).sum()
             if num_small > 0:
-                i = torch.nonzero(is_small)
+                i = torch.where(is_small)[0]
                 small_indices = indices[i]
                 small_thresholds = thresholds[i]
                 small_indices, _ = _step(small_indices, small_thresholds)

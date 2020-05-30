@@ -63,6 +63,10 @@ class SegmentTreeTest(alf.test.TestCase):
                 v = s[i] + vals[i] * torch.rand(i.shape) * 0.999
                 self.assertEqual(tree.find_sum_bound(v), i)
 
+            thresh = tree.summary().reshape(1)
+            self.assertEqual(tree.find_sum_bound(thresh), size - 1)
+            self.assertEqual(tree.find_sum_bound(thresh + 1), size - 1)
+
 
 if __name__ == '__main__':
     alf.test.main()
