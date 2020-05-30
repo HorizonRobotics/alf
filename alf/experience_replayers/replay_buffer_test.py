@@ -151,6 +151,7 @@ class ReplayBufferTest(RingBufferTest):
         batch, batch_info = replay_buffer.get_batch(1, 1)
         self.assertEqual(batch_info.env_ids,
                          torch.tensor([1], dtype=torch.int64))
+        self.assertEqual(batch_info.importance_weights, 1.)
         self.assertEqual(batch_info.importance_weights, torch.tensor([1.]))
         self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 2)
 
@@ -161,6 +162,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(batch_info.env_ids,
                          torch.tensor([1], dtype=torch.int64))
         self.assertEqual(batch_info.importance_weights, torch.tensor([1.]))
+        self.assertEqual(batch_info.importance_weights, torch.tensor([1.] * 4))
 
         batch, batch_info = replay_buffer.get_batch(1000, 1)
         n0 = (batch_info.positions == 0).sum()
@@ -180,27 +182,45 @@ class ReplayBufferTest(RingBufferTest):
         batch2 = get_batch([0, 2], self.dim, x=0.5, t=1)
         replay_buffer.add_batch(batch2, batch2.env_id)
         batch, batch_info = replay_buffer.get_batch(1000, 1)
-        n0 = ((batch_info.env_ids == 0) * (batch_info.positions == 0)).sum()
-        n1 = ((batch_info.env_ids == 1) * (batch_info.positions == 0)).sum()
-        n2 = ((batch_info.env_ids == 1) * (batch_info.positions == 1)).sum()
-        n3 = ((batch_info.env_ids == 2) * (batch_info.positions == 0)).sum()
+
+        def _get(env_id, pos):
+            flag = (
+                (batch_info.env_ids == env_id) * (batch_info.positions == pos))
+            w = batch_info.importance_weights[torch.nonzero(
+                flag, as_tuple=True)[0]]
+            return flag.sum(), w
+
+        n0, w0 = _get(0, 0)
+        n1, w1 = _get(1, 0)
+        n2, w2 = _get(1, 1)
+        n3, w3 = _get(2, 0)
         self.assertEqual(n0, 300)
         self.assertEqual(n1, 100)
         self.assertEqual(n2, 300)
         self.assertEqual(n3, 300)
+        self.assertTrue(torch.all(w0 == 1.2))
+        self.assertTrue(torch.all(w1 == 0.4))
+        self.assertTrue(torch.all(w2 == 1.2))
+        self.assertTrue(torch.all(w3 == 1.2))
+
         replay_buffer.update_priority(
             env_ids=torch.tensor([1, 2], dtype=torch.int64),
             positions=torch.tensor([1, 0], dtype=torch.int64),
             priorities=torch.tensor([1.0, 1.0]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
-        n0 = ((batch_info.env_ids == 0) * (batch_info.positions == 0)).sum()
-        n1 = ((batch_info.env_ids == 1) * (batch_info.positions == 0)).sum()
-        n2 = ((batch_info.env_ids == 1) * (batch_info.positions == 1)).sum()
-        n3 = ((batch_info.env_ids == 2) * (batch_info.positions == 0)).sum()
+
+        n0, w0 = _get(0, 0)
+        n1, w1 = _get(1, 0)
+        n2, w2 = _get(1, 1)
+        n3, w3 = _get(2, 0)
         self.assertEqual(n0, 375)
         self.assertEqual(n1, 125)
         self.assertEqual(n2, 250)
         self.assertEqual(n3, 250)
+        self.assertTrue(torch.all(w0 == 1.5))
+        self.assertTrue(torch.all(w1 == 0.5))
+        self.assertTrue(torch.all(w2 == 1.0))
+        self.assertTrue(torch.all(w3 == 1.0))
 
 
 if __name__ == '__main__':

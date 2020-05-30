@@ -121,7 +121,7 @@ class SegmentTree(nn.Module):
         """
         Make sure idx=0 is the leftmost leaf.
         """
-        idx += self._leftmost_leaf
+        idx = idx + self._leftmost_leaf
         idx = torch.where(idx >= 2 * self._capacity, idx - self._capacity, idx)
         return idx
 
@@ -153,10 +153,20 @@ class SumSegmentTree(SegmentTree):
                  name="SumSegmentTree"):
         super().__init__(
             capacity, torch.add, dtype=dtype, device=device, name=name)
+        self._nnz = 0
 
     def __setitem__(self, indices, values):
         assert values.min() >= 0
+        leaves = self._index_to_leaf(indices)
+        nnz = (values != 0).sum() - (self._values[leaves] != 0).sum()
+        self._nnz += int(nnz.cpu().numpy())
+
         super().__setitem__(indices, values)
+
+    @property
+    def nnz(self):
+        """The number of non-zeros."""
+        return self._nnz
 
     def find_sum_bound(self, thresholds):
         """
@@ -187,7 +197,7 @@ class SumSegmentTree(SegmentTree):
             indices *= 2
             left = self._values[indices]
             right = self._values[indices + 1]
-            # The condition (thresholds >= left) * (right > 0) is only possible
+            # The condition (thresholds >= left) * (right == 0) is only possible
             # if the original threshold == summary(), we want to make sure we
             # still get an index corresponding to non-zero value.
             greater = (thresholds >= left) * (right > 0)

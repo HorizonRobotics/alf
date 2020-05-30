@@ -69,7 +69,6 @@ class ReplayBuffer(RingBuffer):
             tree_size = self._max_length * num_environments
             self._sum_tree = SumSegmentTree(tree_size)
             self._max_tree = MaxSegmentTree(tree_size)
-            self._min_tree = MinSegmentTree(tree_size)
 
     def add_batch(self, batch, env_ids=None, blocking=False):
         with alf.device(self._device):
@@ -80,7 +79,12 @@ class ReplayBuffer(RingBuffer):
 
     @property
     def initial_priority(self):
-        """The initial priority used for newly added experiences."""
+        """The initial priority used for newly added experiences.
+
+        We use a large value for initial priority so that a new experience can
+        be used for training sooner. We make it at least 1.0 so that it can never
+        be very small.
+        """
         return torch.max(self._max_tree.summary(), torch.tensor(1.0))
 
     def _initialize_priority(self, env_ids):
@@ -102,7 +106,6 @@ class ReplayBuffer(RingBuffer):
 
     def _update_segment_tree(self, indices, values):
         self._sum_tree[indices] = values
-        self._min_tree[indices] = values
         self._max_tree[indices] = values
 
     def _env_id_pos_to_index(self, env_ids, positions):
@@ -158,7 +161,11 @@ class ReplayBuffer(RingBuffer):
         Returns:
             tuple:
                 - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
-                - BatchInfo: information about the batch. Its shapes are [batch_size]
+                - BatchInfo: Information about the batch. Its shapes are [batch_size].
+                    - env_ids: environment id for each sequence
+                    - positions: starting position in the replay buffer for each sequence.
+                    - importance_weights: importance weight divided by the average of
+                        all non-zero importance weights in the buffer.
         """
         with alf.device(self._device):
             if self._prioritized_sampling:
@@ -180,8 +187,9 @@ class ReplayBuffer(RingBuffer):
             if self._prioritized_sampling:
                 indices = self._env_id_pos_to_index(info.env_ids,
                                                     info.positions)
+                avg_weight = self._sum_tree.nnz / self._sum_tree.summary()
                 info = info._replace(
-                    importance_weights=self._sum_tree[indices])
+                    importance_weights=self._sum_tree[indices] * avg_weight)
 
         return convert_device(result), convert_device(info)
 
