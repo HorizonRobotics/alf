@@ -171,10 +171,10 @@ class SumSegmentTree(SegmentTree):
                 should be smaller than self.summary()
         Returns:
             Tensor: 1-D int64 Tensor with the same shape as ``thresholds``.
-                Note that if thresholds[i] >= root,  result[i] will be
-                capacity - 1. This is to make sure that we still get valid index
-                if threshold[i] is slightly bigger than root due to floating point
-                precision issue.
+                Note that if thresholds[i] == root,  result[i] will be
+                the index of the non-zero value with the largest index.
+        Raises:
+            ValueError:  If one or more of ``thresholds`` is greather than ``summary()``.
         """
 
         def _step(indices, thresholds):
@@ -186,12 +186,20 @@ class SumSegmentTree(SegmentTree):
             """
             indices *= 2
             left = self._values[indices]
-            greater = thresholds >= left
+            right = self._values[indices + 1]
+            # The condition (thresholds >= left) * (right > 0) is only possible
+            # if the original threshold == summary(), we want to make sure we
+            # still get an index corresponding to non-zero value.
+            greater = (thresholds >= left) * (right > 0)
             indices = torch.where(greater, indices + 1, indices)
             thresholds = torch.where(greater, thresholds - left, thresholds)
             return indices, thresholds
 
         with alf.device(self._device):
+            if not torch.all(thresholds <= self.summary()):
+                raise ValueError("thresholds cannot "
+                                 "be greater than summary(): got %s vs. %s" %
+                                 (thresholds.max(), self.summary()))
             thresholds = convert_device(thresholds)
             indices = torch.ones_like(thresholds, dtype=torch.int64)
             for _ in range(self._depth):

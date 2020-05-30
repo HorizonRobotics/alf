@@ -228,8 +228,8 @@ class ReplayBuffer(RingBuffer):
             "batch_length=%s" % batch_length)
 
         r = torch.rand((batch_size, ))
-        r = r + torch.arange(batch_size, dtype=torch.float32)
-        r = r * (self._sum_tree.summary() / batch_size)
+        r = (r + torch.arange(batch_size, dtype=torch.float32)) / batch_size
+        r = r * self._sum_tree.summary()
         indices = self._sum_tree.find_sum_bound(r)
         return self._index_to_env_id_pos(indices)
 

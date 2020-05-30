@@ -65,7 +65,15 @@ class SegmentTreeTest(alf.test.TestCase):
 
             thresh = tree.summary().reshape(1)
             self.assertEqual(tree.find_sum_bound(thresh), size - 1)
-            self.assertEqual(tree.find_sum_bound(thresh + 1), size - 1)
+            self.assertRaises(ValueError, tree.find_sum_bound, thresh + 1)
+
+    def test_boundary(self):
+        tree = SumSegmentTree(10)
+        v = torch.tensor([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0])
+        i = torch.arange(10)
+        tree[i] = v
+        thresh = tree.summary().reshape(1)
+        self.assertEqual(tree.find_sum_bound(thresh), 8)
 
 
 if __name__ == '__main__':
