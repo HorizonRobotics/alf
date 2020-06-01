@@ -31,18 +31,24 @@ BatchInfo = namedtuple(
 
 
 class ReplayBuffer(RingBuffer):
-    """Replay buffer with RingBuffer as implementation.
-    """
+    """Replay buffer with RingBuffer as implementation."""
 
     def __init__(self,
                  data_spec,
                  num_environments,
                  max_length=1024,
                  prioritized_sampling=False,
+                 initial_priority=1.0,
                  device="cpu",
                  allow_multiprocess=False,
                  name="ReplayBuffer"):
         """
+        If ``prioritized_sampling`` is set to True, instead of sampling experiences
+        uniformly from the replay buffer, ``get_batch()`` samples experiences
+        with probability proportional to the priority of each experience. The
+        initial priority of a new expeirence added to the buffer is set to
+        ``initial_priority``. The priorities can be updated using ``update_priority()``.
+
         Args:
             data_spec (nested TensorSpec): spec describing a single item that
                 can be stored in this buffer.
@@ -50,6 +56,9 @@ class ReplayBuffer(RingBuffer):
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
             prioritized_sampling (bool): Use prioritized sampling if this is True.
+            initial_priority (float): initial priority used for new experiences.
+                The actual initial priority used for new experience is the maximum
+                of this value and the current maximum priority of all experiences.
             device (str): A torch device to place the Variables and ops.
             allow_multiprocess (bool): if ``True``, allows multiple processes
                 to write and read the buffer asynchronously.
@@ -67,8 +76,10 @@ class ReplayBuffer(RingBuffer):
         if prioritized_sampling:
             self._mini_batch_length = 1
             tree_size = self._max_length * num_environments
-            self._sum_tree = SumSegmentTree(tree_size)
-            self._max_tree = MaxSegmentTree(tree_size)
+            self._sum_tree = SumSegmentTree(tree_size, device=device)
+            self._max_tree = MaxSegmentTree(tree_size, device=device)
+            self._initial_priority = torch.tensor(
+                initial_priority, dtype=torch.float32, device=device)
 
     def add_batch(self, batch, env_ids=None, blocking=False):
         with alf.device(self._device):
@@ -85,7 +96,8 @@ class ReplayBuffer(RingBuffer):
         be used for training sooner. We make it at least 1.0 so that it can never
         be very small.
         """
-        return torch.max(self._max_tree.summary(), torch.tensor(1.0))
+        return convert_device(
+            torch.max(self._max_tree.summary(), self._initial_priority))
 
     def _initialize_priority(self, env_ids):
         last_pos = (self._current_pos[env_ids] -
