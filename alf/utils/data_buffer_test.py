@@ -134,10 +134,14 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
         if allow_multiprocess:
             # Test block on dequeue without enough data
             def delayed_enqueue(ring_buffer, batch):
+                alf.set_default_device("cpu")
                 sleep(0.04)
                 ring_buffer.enqueue(batch, batch.env_id)
 
-            p = mp.Process(target=delayed_enqueue, args=(ring_buffer, batch1))
+            p = mp.Process(
+                target=delayed_enqueue,
+                args=(ring_buffer,
+                      alf.nest.map_structure(lambda x: x.cpu(), batch1)))
             p.start()
             batch = ring_buffer.dequeue(env_ids=batch1.env_id, blocking=True)
             self.assertEqual(batch.t, torch.tensor([9] * 2))
@@ -149,6 +153,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 ring_buffer.enqueue(batch2)
 
             def delayed_dequeue():
+                alf.set_default_device("cpu")
                 sleep(0.04)
                 ring_buffer.dequeue()  # 6(deleted), 7, 8, 9
                 sleep(0.04)  # 10, 7, 8, 9

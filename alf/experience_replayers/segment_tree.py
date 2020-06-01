@@ -23,7 +23,7 @@ from alf.nest.utils import convert_device
 
 class SegmentTree(nn.Module):
     """
-    Data structure to allow efficient calculate the summary statistics over a
+    Data structure to allow efficient calculation of the summary statistics over a
     segment of elements.
     See https://en.wikipedia.org/wiki/Segment_tree for detail.
 
@@ -121,7 +121,7 @@ class SegmentTree(nn.Module):
         """
         Make sure idx=0 is the leftmost leaf.
         """
-        idx += self._leftmost_leaf
+        idx = idx + self._leftmost_leaf
         idx = torch.where(idx >= 2 * self._capacity, idx - self._capacity, idx)
         return idx
 
@@ -153,10 +153,20 @@ class SumSegmentTree(SegmentTree):
                  name="SumSegmentTree"):
         super().__init__(
             capacity, torch.add, dtype=dtype, device=device, name=name)
+        self._nnz = 0
 
     def __setitem__(self, indices, values):
         assert values.min() >= 0
+        leaves = self._index_to_leaf(indices)
+        nnz = (values != 0).sum() - (self._values[leaves] != 0).sum()
+        self._nnz += int(nnz.cpu().numpy())
+
         super().__setitem__(indices, values)
+
+    @property
+    def nnz(self):
+        """The number of non-zeros."""
+        return self._nnz
 
     def find_sum_bound(self, thresholds):
         """
@@ -170,7 +180,11 @@ class SumSegmentTree(SegmentTree):
             thresholds (Tensor): 1-D Tensor. All the elements in `thresholds`
                 should be smaller than self.summary()
         Returns:
-            Tensor: 1-D int64 Tensor with the same shape as ``thresholds``
+            Tensor: 1-D int64 Tensor with the same shape as ``thresholds``.
+                Note that if thresholds[i] == root,  result[i] will be
+                the index of the non-zero value with the largest index.
+        Raises:
+            ValueError:  If one or more of ``thresholds`` is greather than ``summary()``.
         """
 
         def _step(indices, thresholds):
@@ -182,12 +196,20 @@ class SumSegmentTree(SegmentTree):
             """
             indices *= 2
             left = self._values[indices]
-            greater = thresholds >= left
+            right = self._values[indices + 1]
+            # The condition (thresholds >= left) * (right == 0) is only possible
+            # if the original threshold == summary(), we want to make sure we
+            # still get an index corresponding to non-zero value.
+            greater = (thresholds >= left) * (right > 0)
             indices = torch.where(greater, indices + 1, indices)
             thresholds = torch.where(greater, thresholds - left, thresholds)
             return indices, thresholds
 
         with alf.device(self._device):
+            if not torch.all(thresholds <= self.summary()):
+                raise ValueError("thresholds cannot "
+                                 "be greater than summary(): got %s vs. %s" %
+                                 (thresholds.max(), self.summary()))
             thresholds = convert_device(thresholds)
             indices = torch.ones_like(thresholds, dtype=torch.int64)
             for _ in range(self._depth):
@@ -196,7 +218,7 @@ class SumSegmentTree(SegmentTree):
             is_small = indices < self._capacity
             num_small = is_small.to(torch.int64).sum()
             if num_small > 0:
-                i = torch.nonzero(is_small)
+                i = torch.where(is_small)[0]
                 small_indices = indices[i]
                 small_thresholds = thresholds[i]
                 small_indices, _ = _step(small_indices, small_thresholds)

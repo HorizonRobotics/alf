@@ -217,7 +217,7 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
         Returns:
             Experience: experience batch in batch major (B, T, ...)
         """
-        return self._buffer.get_batch(sample_batch_size, mini_batch_length)
+        return self._buffer.get_batch(sample_batch_size, mini_batch_length)[0]
 
     def replay_all(self):
         return self._buffer.gather_all()

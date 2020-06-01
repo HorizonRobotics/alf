@@ -24,7 +24,7 @@ class SegmentTreeTest(alf.test.TestCase):
         for size in [1, 2, 3, 4, 7, 8, 9, 15, 16, 128]:
             tree = MaxSegmentTree(size)
             vals = torch.zeros(size, dtype=torch.float32)
-            for _ in range(1000):
+            for _ in range(100):
                 n = random.randint(1, size)
                 i = torch.randint(size, size=(n, ), dtype=torch.int64)
                 i, _ = torch.sort(i)
@@ -41,7 +41,7 @@ class SegmentTreeTest(alf.test.TestCase):
         for size in [3, 1, 2, 3, 4, 7, 8, 9, 15, 16, 128]:
             tree = SumSegmentTree(size)
             vals = torch.zeros(size, dtype=torch.float32)
-            for _ in range(1000):
+            for _ in range(100):
                 n = random.randint(1, size)
                 i = torch.randint(size, size=(n, ), dtype=torch.int64)
                 i, _ = torch.sort(i)
@@ -54,7 +54,7 @@ class SegmentTreeTest(alf.test.TestCase):
 
             s = torch.cumsum(vals, 0)
             s = torch.cat([torch.tensor([0.]), s[:-1]])
-            for _ in range(1000):
+            for _ in range(100):
                 n = random.randint(1, size)
                 i = torch.randint(size, size=(n, ), dtype=torch.int64)
                 i, _ = torch.sort(i)
@@ -62,6 +62,18 @@ class SegmentTreeTest(alf.test.TestCase):
                 i = alf.math.shuffle(i)
                 v = s[i] + vals[i] * torch.rand(i.shape) * 0.999
                 self.assertEqual(tree.find_sum_bound(v), i)
+
+            thresh = tree.summary().reshape(1)
+            self.assertEqual(tree.find_sum_bound(thresh), size - 1)
+            self.assertRaises(ValueError, tree.find_sum_bound, thresh + 1)
+
+    def test_boundary(self):
+        tree = SumSegmentTree(10)
+        v = torch.tensor([0.1] * 9 + [0.0])
+        i = torch.arange(10)
+        tree[i] = v
+        thresh = tree.summary().reshape(1)
+        self.assertEqual(tree.find_sum_bound(thresh), 8)
 
 
 if __name__ == '__main__':
