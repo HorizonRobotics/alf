@@ -120,15 +120,20 @@ class Experience(
                 'env_id',
                 'action',
                 'rollout_info',  # AlgStep.info from rollout()
+                'batch_info',
                 'state'  # state passed to rollout() to generate `action`
             ],
             default_value=())):
     """An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
-    For the training purpose, it's augmented with three new attributes:
+    For the training purpose, it's augmented with several new attributes:
 
     - action: A (nested) ``Tensor`` for action taken for the current time step.
     - rollout_info: ``AlgStep.info`` from ``rollout_step()``.
     - state: State passed to ``rollout_step()`` to generate ``action``.
+    - batch_info: Its type is alf.experience_replays.replay_buffer.BatchInfo.
+        This is only used when experiece is passed as an argument for ``Algorithm.calc_loss()``.
+        Different from other members, the shape of the tensors in ``batch_info``
+        is [B], where B is the batch size.
     """
 
     def is_first(self):
@@ -437,6 +442,12 @@ LossInfo = namedtuple(
     [
         "loss",  # batch loss shape should be (T, B) or (B,)
         "scalar_loss",  # shape is ()
-        "extra"  # nested batch and/or scalar losses, for summary only
+        "extra",  # nested batch and/or scalar losses, for summary only
+
+        # Priority for each sample. This will be used to update the priority in
+        # the replay buffer so that in the future, this sample will be sampled
+        # with probability proportional to this weight powered to
+        # config.priority_replay_alpha. Its shape should be [batch_size].
+        "priority",
     ],
     default_value=())

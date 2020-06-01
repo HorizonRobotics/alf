@@ -441,11 +441,17 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         critic_loss = math_ops.add_n(critic_losses)
 
         not_first_step = (experience.step_type != StepType.FIRST)
+        critic_loss = critic_loss * not_first_step.to(torch.float32)
+        if (experience.batch_info != ()
+                and experience.batch_info.importance_weights != ()):
+            priority = critic_loss.sum(dim=0).sqrt()
+        else:
+            priority = ()
+
         # put critic_loss to scalar_loss because loss will be masked by
         # ~is_last at train_complete(). The critic_loss here should be
         # masked by ~is_first instead, which is done above
-        critic_loss = (critic_loss * not_first_step.to(torch.float32)).mean()
-        scalar_loss = critic_loss
+        scalar_loss = critic_loss.mean()
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -455,6 +461,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         return LossInfo(
             loss=loss,
             scalar_loss=scalar_loss,
+            priority=priority,
             extra=SarsaLossInfo(
                 actor=info.actor_loss,
                 critic=critic_loss,

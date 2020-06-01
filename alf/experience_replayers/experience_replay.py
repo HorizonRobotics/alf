@@ -59,8 +59,13 @@ class ExperienceReplayer(object):
             mini_batch_length (int): the temporal length of each sample
 
         Output:
-            exp (Experience): each item has the shape (`sample_batch_size`,
-                `mini_batch_length`, ...)
+            tuple:
+                - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
+                - BatchInfo: Information about the batch. Its shapes are [batch_size].
+                    - env_ids: environment id for each sequence
+                    - positions: starting position in the replay buffer for each sequence.
+                    - importance_weights: importance weight divided by the average of
+                        all non-zero importance weights in the buffer.
         """
 
     @abc.abstractmethod
@@ -174,7 +179,11 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
     Example algorithms: DDPG, SAC
     """
 
-    def __init__(self, experience_spec, batch_size, max_length):
+    def __init__(self,
+                 experience_spec,
+                 batch_size,
+                 max_length,
+                 prioritized_sampling=False):
         """Create a ReplayBuffer.
 
         Args:
@@ -183,11 +192,15 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
             batch_size (int): number of environments.
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
+            prioritized_sampling (bool): Use prioritized sampling if this is True.
         """
         super().__init__()
         self._experience_spec = experience_spec
         self._buffer = ReplayBuffer(
-            experience_spec, batch_size, max_length=max_length)
+            experience_spec,
+            batch_size,
+            max_length=max_length,
+            prioritized_sampling=prioritized_sampling)
         self._data_iter = None
 
     def observe(self, exp):
@@ -215,15 +228,33 @@ class SyncUniformExperienceReplayer(ExperienceReplayer):
             sample_batch_size (int): number of sequences
             mini_batch_length (int): the length of each sequence
         Returns:
-            Experience: experience batch in batch major (B, T, ...)
+            tuple:
+                - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
+                - BatchInfo: Information about the batch. Its shapes are [batch_size].
+                    - env_ids: environment id for each sequence
+                    - positions: starting position in the replay buffer for each sequence.
+                    - importance_weights: importance weight divided by the average of
+                        all non-zero importance weights in the buffer.
+
         """
-        return self._buffer.get_batch(sample_batch_size, mini_batch_length)[0]
+        return self._buffer.get_batch(sample_batch_size, mini_batch_length)
 
     def replay_all(self):
         return self._buffer.gather_all()
 
     def clear(self):
         self._buffer.clear()
+
+    def update_priority(self, env_ids, positions, priorities):
+        """Update the priorities for the given experiences.
+
+        Args:
+            env_ids (Tensor): 1-D int64 Tensor.
+            positions (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
+                This position should be obtained the BatchInfo returned by
+                ``get_batch()``
+        """
+        self._buffer.update_priority(env_ids, positions, priorities)
 
     @property
     def batch_size(self):
