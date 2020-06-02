@@ -130,7 +130,7 @@ class Experience(
     - action: A (nested) ``Tensor`` for action taken for the current time step.
     - rollout_info: ``AlgStep.info`` from ``rollout_step()``.
     - state: State passed to ``rollout_step()`` to generate ``action``.
-    - batch_info: Its type is alf.experience_replays.replay_buffer.BatchInfo.
+    - batch_info: Its type is ``alf.experience_replays.replay_buffer.BatchInfo``.
         This is only used when experiece is passed as an argument for ``Algorithm.calc_loss()``.
         Different from other members, the shape of the tensors in ``batch_info``
         is [B], where B is the batch size.
