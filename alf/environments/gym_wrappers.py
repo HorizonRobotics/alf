@@ -530,16 +530,19 @@ class DMAtariPreprocessing(gym.Wrapper):
         return np.expand_dims(int_image, axis=2)
 
 
+@gin.configurable
 class ContinuousActionClip(gym.ActionWrapper):
     """Clip continuous actions according to the action space."""
 
-    def __init__(self, env):
+    def __init__(self, env, min_v=-1.e9, max_v=1.e9):
         """Create an ContinuousActionClip gym wrapper.
 
         Args:
             env (gym.Env): A Gym env instance to wrap
         """
         super(ContinuousActionClip, self).__init__(env)
+        self.min_v = min_v
+        self.max_v = max_v
 
     def action(self, action):
         def _clip_action(space, action):
@@ -548,7 +551,9 @@ class ContinuousActionClip(gym.ActionWrapper):
                 raise ValueError(
                     "NAN action detected! action: {}".format(action))
             if isinstance(space, gym.spaces.Box):
-                action = np.maximum(np.minimum(action, space.high), space.low)
+                action = np.maximum(
+                    np.minimum(action, np.minimum(space.high, self.max_v)),
+                    np.maximum(space.low, self.min_v))
             return action
 
         action = alf.nest.map_structure(_clip_action, self.action_space,

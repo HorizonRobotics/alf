@@ -84,6 +84,7 @@ class SuccessWrapper(gym.Wrapper):
         return obs, reward, done, info
 
 
+@gin.configurable
 class ObservationClipWrapper(gym.ObservationWrapper):
     """Clip observation values according to OpenAI's baselines.
     """
@@ -104,7 +105,6 @@ class ObservationClipWrapper(gym.ObservationWrapper):
 def load(environment_name,
          env_id=None,
          concat_desired_goal=True,
-         clip_observation=True,
          discount=1.0,
          max_episode_steps=None,
          sparse_reward=False,
@@ -156,8 +156,6 @@ def load(environment_name,
     if concat_desired_goal:
         env = FlattenDictWrapper(env, ["observation", "desired_goal"])
     env = SuccessWrapper(env, max_episode_steps)
-    if clip_observation:
-        env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
 

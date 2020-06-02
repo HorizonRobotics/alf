@@ -1,7 +1,6 @@
 include 'ddpg_fetchpush.gin'
 
 suite_robotics.load.concat_desired_goal=False
-suite_robotics.load.clip_observation=True
 
 ReplayBuffer.her_k=0.8
 
