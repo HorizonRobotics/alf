@@ -79,10 +79,8 @@ def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
     elif isinstance(space, gym.spaces.Tuple):
         return tuple([tensor_spec_from_gym_space(s) for s in space.spaces])
     elif isinstance(space, gym.spaces.Dict):
-        return {
-            key: tensor_spec_from_gym_space(s)
-            for key, s in space.spaces.items()
-        }
+        return collections.OrderedDict([(key, tensor_spec_from_gym_space(s))
+                                        for key, s in space.spaces.items()])
     else:
         raise ValueError(
             'The gym space {} is currently not supported.'.format(space))
