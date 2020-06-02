@@ -266,8 +266,6 @@ class ReplayBuffer(RingBuffer):
                         all non-zero importance weights in the buffer.
         """
         with alf.device(self._device):
-            result, env_ids, pos = self._get_sample_batch(
-                batch_size, batch_length)
             if self._prioritized_sampling:
                 env_ids, pos = self._prioritized_sample(
                     batch_size, batch_length)
@@ -344,57 +342,6 @@ class ReplayBuffer(RingBuffer):
         r = r * self._sum_tree.summary()
         indices = self._sum_tree.find_sum_bound(r)
         return self._index_to_env_id_pos(indices)
-
-    def _get_sample_batch(self, batch_size, batch_length):
-        """Randomly get ``batch_size`` trajectories from the buffer.
-
-        The real implementation that gets and returns the samples and indices
-        for potential tinkering of the data by callers like hindsight relabel.
-
-        Args:
-            batch_size (int): get so many trajectories
-            batch_length (int): the length of each trajectory
-        Returns:
-            tuple:
-                - exp (nested tensors): of shape
-                    ``[batch_size, batch_length, ...]``
-                - env_ids (tensor): batch indices of the sample of shape
-                    ``[batch_size, batch_length]``
-                - pos (tensor): position indices of the sample of shape
-                    ``[batch_size, batch_length]``
-        """
-        min_size = self._current_size.min()
-        assert min_size >= batch_length, (
-            "Not all environments have enough data. The smallest data "
-            "size is: %s Try storing more data before calling get_batch" %
-            min_size)
-
-        # Sample data
-        batch_size_per_env = batch_size // self._num_envs
-        remaining = batch_size % self._num_envs
-        if batch_size_per_env > 0:
-            env_ids = torch.arange(self._num_envs).repeat(batch_size_per_env)
-        else:
-            env_ids = torch.zeros(0, dtype=torch.int64)
-        if remaining > 0:
-            eids = torch.randperm(self._num_envs)[:remaining]
-            env_ids = torch.cat([env_ids, eids], dim=0)
-
-        r = torch.rand(*env_ids.shape)
-
-        num_positions = self._current_size - batch_length + 1
-        num_positions = num_positions[env_ids]
-        pos = (r * num_positions).to(torch.int64)
-        pos += (self._current_pos - self._current_size)[env_ids]
-        pos = pos.reshape(-1, 1)  # [B, 1]
-        pos = pos + torch.arange(batch_length).unsqueeze(0)  # [B, T]
-        pos = self.circular(pos)
-        env_ids_pos = env_ids.reshape(-1, 1).expand(-1, batch_length)  # [B, T]
-
-        # get original exp of shape (batch_size, batch_length) from buffer
-        result = alf.nest.map_structure(lambda b: b[(env_ids_pos, pos)],
-                                        self._buffer)
-        return result, env_ids, pos
 
     def pad(self, x, env_ids):
         """Make indices in RingBuffer non-circular.
@@ -497,6 +444,7 @@ class ReplayBuffer(RingBuffer):
         (her_indices, ) = torch.where(torch.rand(batch_size) < self._her_k)
 
         batch_last_step_pos = pos[:, -1][her_indices]
+        env_ids = env_ids[:, -1]
         # Get x, y indices of LAST steps
         dist = self.distance_to_episode_end(batch_last_step_pos,
                                             env_ids[her_indices])

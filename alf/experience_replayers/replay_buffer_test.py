@@ -91,7 +91,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(list(dist), [1, 0, 1, 0])
 
         # Test HER relabeled experiences
-        res = replay_buffer.get_batch(5, 2)
+        res = replay_buffer.get_batch(5, 2)[0]
 
         self.assertEqual(list(res.o["g"].shape), [5, 2])
 
