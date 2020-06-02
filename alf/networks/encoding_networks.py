@@ -803,7 +803,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         # call super to preprocess inputs
         z, state = super().forward(inputs, state, max_outer_rank=2)
         if self._img_encoding_net is None and len(self._fc_layers) == 0:
-            if inputs.ndim == 2:
+            if len(alf.nest.get_nest_shape(inputs)) == 2:
                 z = z.unsqueeze(1).expand(-1, self._n, *z.shape[1:])
         else:
             if self._img_encoding_net is not None:

@@ -26,19 +26,31 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
 
-DataItem = namedtuple("DataItem", ["env_id", "x", "t"])
+DataItem = namedtuple("DataItem", ["env_id", "x", "t", "o", "r"])
 
 
+# Using cpu tensors are needed for running on cuda enabled devices,
+# as we are not using the spawn method to start subprocesses.
 def get_batch(env_ids, dim, t, x):
     batch_size = len(env_ids)
-    x = (x * torch.arange(batch_size, dtype=torch.float32,
-                          requires_grad=True).unsqueeze(1) * torch.arange(
-                              dim, dtype=torch.float32,
-                              requires_grad=True).unsqueeze(0))
+    x = torch.tensor(x, dtype=torch.float32, device="cpu")
+    t = torch.tensor(t, dtype=torch.int32, device="cpu")
+    ox = (x * torch.arange(
+        batch_size, dtype=torch.float32, requires_grad=True,
+        device="cpu").unsqueeze(1) * torch.arange(
+            dim, dtype=torch.float32, requires_grad=True,
+            device="cpu").unsqueeze(0))
     return DataItem(
-        env_id=torch.tensor(env_ids, dtype=torch.int64),
-        x=x,
-        t=t * torch.ones(batch_size, dtype=torch.int32))
+        env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
+        x=ox,
+        t=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
+        o=dict({
+            "a":
+                x * torch.ones(batch_size, dtype=torch.float32, device="cpu"),
+            "g":
+                torch.zeros(batch_size, dtype=torch.float32, device="cpu")
+        }),
+        r=-torch.ones(batch_size, dtype=torch.float32, device="cpu"))
 
 
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
@@ -48,10 +60,16 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
 
     def __init__(self, *args):
         super().__init__(*args)
+        alf.set_default_device("cpu")  # spawn forking is required to use cuda.
         self.data_spec = DataItem(
             env_id=alf.TensorSpec(shape=(), dtype=torch.int64),
             x=alf.TensorSpec(shape=(self.dim, ), dtype=torch.float32),
-            t=alf.TensorSpec(shape=(), dtype=torch.int32))
+            t=alf.TensorSpec(shape=(), dtype=torch.int32),
+            o=dict({
+                "a": alf.TensorSpec(shape=(), dtype=torch.float32),
+                "g": alf.TensorSpec(shape=(), dtype=torch.float32)
+            }),
+            r=alf.TensorSpec(shape=(), dtype=torch.float32))
 
     @parameterized.named_parameters([
         ('test_sync', False),
@@ -153,6 +171,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 ring_buffer.enqueue(batch2)
 
             def delayed_dequeue():
+                # cpu tensor on subprocess.  Otherwise, spawn method is needed.
                 alf.set_default_device("cpu")
                 sleep(0.04)
                 ring_buffer.dequeue()  # 6(deleted), 7, 8, 9

@@ -92,12 +92,19 @@ class ObservationClipWrapper(gym.ObservationWrapper):
         super().__init__(env)
 
     def observation(self, observation):
-        return np.clip(observation, -200., 200.)
+        if isinstance(observation, dict):
+            for k, v in observation.items():
+                observation[k] = np.clip(v, -200., 200.)
+            return observation
+        else:
+            return np.clip(observation, -200., 200.)
 
 
 @gin.configurable
 def load(environment_name,
          env_id=None,
+         concat_desired_goal=True,
+         clip_observation=True,
          discount=1.0,
          max_episode_steps=None,
          sparse_reward=False,
@@ -146,9 +153,11 @@ def load(environment_name,
             alf_env_wrappers=alf_env_wrappers)
 
     # concat robot's observation and the goal location
-    env = FlattenDictWrapper(env, ["observation", "desired_goal"])
+    if concat_desired_goal:
+        env = FlattenDictWrapper(env, ["observation", "desired_goal"])
     env = SuccessWrapper(env, max_episode_steps)
-    env = ObservationClipWrapper(env)
+    if clip_observation:
+        env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
 

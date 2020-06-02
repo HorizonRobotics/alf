@@ -36,7 +36,7 @@ sac/calc_default_target_entropy.min_prob=0.2
 SacAlgorithm.target_entropy=@sac/calc_default_target_entropy
 SacAlgorithm.target_update_tau=0.05
 SacAlgorithm.target_update_period=40
-OneStepTDLoss=0.98
+OneStepTDLoss.gamma=0.98
 
 
 # training config

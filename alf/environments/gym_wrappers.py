@@ -145,7 +145,8 @@ class ImageChannelFirst(BaseObservationWrapper):
         return observation_space
 
     def transform_observation(self, observation):
-        transpose = self._need_channel_transpose(observation.shape)
+        transpose = self._need_channel_transpose(
+            alf.nest.get_nest_shape(observation))
         return self._make_channel_first(observation, transpose)
 
     def _need_channel_transpose(self, shape):

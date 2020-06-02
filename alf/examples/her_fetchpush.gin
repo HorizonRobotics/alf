@@ -1,0 +1,11 @@
+include 'ddpg_fetchpush.gin'
+
+suite_robotics.load.concat_desired_goal=False
+suite_robotics.load.clip_observation=True
+
+ReplayBuffer.her_k=0.8
+
+import alf.nest.utils
+actor/ActorNetwork.preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()

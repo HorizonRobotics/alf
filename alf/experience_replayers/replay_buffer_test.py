@@ -12,17 +12,102 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 import torch
 
 from absl.testing import parameterized
 
 import alf
+from alf import data_structures as ds
 from alf.utils.data_buffer import RingBuffer
 from alf.utils.data_buffer_test import get_batch, DataItem, RingBufferTest
 from alf.experience_replayers.replay_buffer import ReplayBuffer
 
 
 class ReplayBufferTest(RingBufferTest):
+    def test_replay_with_hindsight_relabel(self):
+        torch.manual_seed(0)
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=2,
+            max_length=8,
+            her_k=0.8,
+            step_type_field="t",
+            achieved_goal_field="o.a",
+            desired_goal_field="o.g",
+            reward_field="r")
+
+        steps = [
+            [
+                ds.StepType.FIRST,  # will be overwritten
+                ds.StepType.MID,  # pos == 1 in buffer
+                ds.StepType.LAST,
+                ds.StepType.FIRST,
+                ds.StepType.MID,
+                ds.StepType.MID,
+                ds.StepType.LAST,
+                ds.StepType.FIRST,
+                ds.StepType.MID  # pos == 0
+            ],
+            [
+                ds.StepType.FIRST,  # will be overwritten in RingBuffer
+                ds.StepType.LAST,  # pos == 1 in RingBuffer
+                ds.StepType.FIRST,
+                ds.StepType.MID,
+                ds.StepType.MID,
+                ds.StepType.LAST,
+                ds.StepType.FIRST,
+                ds.StepType.MID,
+                ds.StepType.MID  # pos == 0
+            ]
+        ]
+        for b, t in list(itertools.product(range(2), range(9))):
+            batch = get_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
+            replay_buffer.add_batch(batch, batch.env_id)
+
+        # Verify _index is built correctly
+        self.assertTrue(
+            torch.equal(
+                replay_buffer._index,
+                torch.tensor([[7, 0, 0, 6, 3, 3, 3, 0],
+                              [6, 0, 5, 2, 2, 2, 0, 6]])))
+        self.assertTrue(
+            torch.equal(replay_buffer._recent_overwritten_first_steps,
+                        torch.tensor([2, 1])))
+
+        # Save original exp for later testing.
+        g_orig = replay_buffer._buffer.o["g"].clone()
+        r_orig = replay_buffer._buffer.r.clone()
+
+        # HER selects indices [0, 2, 3, 4] to relabel, from all 5:
+        # env_ids: [[0, 0], [1, 1], [0, 0], [1, 1], [0, 0]]
+        # pos:     [[6, 7], [1, 2], [1, 2], [3, 4], [5, 6]]
+        # selected:    x               x       x       x
+        # future:  [   7       2       2       4       6  ]
+        # g        [[.7,.7],[0, 0], [.2,.2],[1.4,1.4],[.6,.6]]  # 0.1 * t + b with default 0
+        # reward:  [[-1,0], [-1,-1],[-1,0], [-1,0], [-1,0]]  # recomputed with default -1
+        dist = replay_buffer.distance_to_episode_end(
+            torch.tensor([7, 2, 4, 6]), torch.tensor([0, 0, 1, 0]))
+        self.assertEqual(list(dist), [1, 0, 1, 0])
+
+        # Test HER relabeled experiences
+        res = replay_buffer.get_batch(5, 2)
+
+        self.assertEqual(list(res.o["g"].shape), [5, 2])
+
+        # Test relabeling doesn't change original experience
+        self.assertTrue(torch.allclose(r_orig, replay_buffer._buffer.r))
+        self.assertTrue(torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
+
+        # test relabeled goals
+        g = torch.tensor([0.7, 0., .2, 1.4, .6]).unsqueeze(1).expand(5, 2)
+        self.assertTrue(torch.allclose(res.o["g"], g))
+
+        # test relabeled rewards
+        r = torch.tensor([[-1., 0.], [-1., -1.], [-1., 0.], [-1., 0.],
+                          [-1., 0.]])
+        self.assertTrue(torch.allclose(res.r, r))
+
     @parameterized.named_parameters([
         ('test_sync', False),
         ('test_async', True),

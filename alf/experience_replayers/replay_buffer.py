@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf import data_structures as ds
 from alf.data_structures import namedtuple
 from alf.nest.utils import convert_device
 from alf.utils.common import warning_once
@@ -30,6 +31,7 @@ BatchInfo = namedtuple(
     default_value=())
 
 
+@gin.configurable
 class ReplayBuffer(RingBuffer):
     """Replay buffer with RingBuffer as implementation."""
 
@@ -41,28 +43,39 @@ class ReplayBuffer(RingBuffer):
                  initial_priority=1.0,
                  device="cpu",
                  allow_multiprocess=False,
+                 her_k=0,
+                 step_type_field="step_type",
+                 achieved_goal_field="observation.achieved_goal",
+                 desired_goal_field="observation.desired_goal",
+                 reward_field="reward",
+                 reward_fn=None,
                  name="ReplayBuffer"):
         """
-        If ``prioritized_sampling`` is set to True, instead of sampling experiences
-        uniformly from the replay buffer, ``get_batch()`` samples experiences
-        with probability proportional to the priority of each experience. The
-        initial priority of a new expeirence added to the buffer is set to
-        ``initial_priority``. The priorities can be updated using ``update_priority()``.
-
         Args:
-            data_spec (nested TensorSpec): spec describing a single item that
-                can be stored in this buffer.
-            num_environments (int): number of environments or total batch size.
-            max_length (int): The maximum number of items that can be stored
-                for a single environment.
+            data_spec (alf.TensorSpec): spec of an entry nest in the buffer.
+            num_environments (int): total number of parallel environments
+                stored in the buffer.
+            max_length (int): maximum number of time steps stored in buffer.
             prioritized_sampling (bool): Use prioritized sampling if this is True.
             initial_priority (float): initial priority used for new experiences.
                 The actual initial priority used for new experience is the maximum
                 of this value and the current maximum priority of all experiences.
-            device (str): A torch device to place the Variables and ops.
-            allow_multiprocess (bool): if ``True``, allows multiple processes
-                to write and read the buffer asynchronously.
-            name (str): name of the replay buffer.
+            device (string): "cpu" or "cuda" where tensors are created.
+            allow_multiprocess (bool): whether multiprocessing is supported.
+            her_k (float): proportion of hindsight relabeled experience.
+            step_type_field (string): path to the step_type field in exp nest.
+                This and the following fields are for hindsight relabeling.
+            achieved_goal_field (string): path to the achieved_goal field in
+                exp nest.
+            desired_goal_field (string): path to the desired_goal field in the
+                exp nest.
+            reward_field (string): path to the reward field in the exp nest.
+                are for hindsight experience replay.
+            reward_fn (callable): function to recompute reward based on
+                achieve_goal and desired_goal.  Default gives reward 0 when
+                L2 distance less than 0.05 and -1 otherwise, same as is done in
+                suite_robotics environments.
+            name (string): name of the replay buffer object.
         """
         super().__init__(
             data_spec,
@@ -71,7 +84,11 @@ class ReplayBuffer(RingBuffer):
             device=device,
             allow_multiprocess=allow_multiprocess,
             name=name)
-
+        self._step_type_field = step_type_field
+        self._achieved_goal_field = achieved_goal_field
+        self._desired_goal_field = desired_goal_field
+        self._reward_field = reward_field
+        self._her_k = her_k
         self._prioritized_sampling = prioritized_sampling
         if prioritized_sampling:
             self._mini_batch_length = 1
@@ -80,13 +97,33 @@ class ReplayBuffer(RingBuffer):
             self._max_tree = MaxSegmentTree(tree_size, device=device)
             self._initial_priority = torch.tensor(
                 initial_priority, dtype=torch.float32, device=device)
+        if self._her_k > 0:
+            self.register_buffer(
+                "_recent_overwritten_first_steps",
+                torch.zeros(self._num_envs, dtype=torch.int64, device=device))
+            # _index records for each timestep of experience in the buffer the
+            # absolute position of the first step of the episode in the buffer,
+            # or if it's a ``FIRST`` step, the absolute position of the
+            # ``LAST`` step.
+            self.register_buffer(
+                "_index",
+                torch.zeros((self._num_envs, self._max_length),
+                            dtype=torch.int64,
+                            device=device))
+        if reward_fn:
+            self._reward_fn = reward_fn
+        else:
 
-    def add_batch(self, batch, env_ids=None, blocking=False):
-        with alf.device(self._device):
-            env_ids = self.check_convert_env_ids(env_ids)
-            self.enqueue(batch, env_ids, blocking=blocking)
-            if self._prioritized_sampling:
-                self._initialize_priority(env_ids)
+            def default_reward_fn(achieved_goal, goal):
+                if goal.dim() == 2:  # when goals are 1-dimentional
+                    assert achieved_goal.dim() == goal.dim()
+                    achieved_goal = achieved_goal.unsqueeze(2)
+                    goal = goal.unsqueeze(2)
+                return torch.where(
+                    torch.norm(achieved_goal - goal, dim=2) < .05,
+                    torch.zeros(1), -torch.ones(1))
+
+            self._reward_fn = default_reward_fn
 
     @property
     def initial_priority(self):
@@ -161,8 +198,57 @@ class ReplayBuffer(RingBuffer):
         self._update_segment_tree(indices, priorities)
 
     @atomic
+    def add_batch(self, batch, env_ids=None, blocking=False):
+        """adds a batch of entries to buffer updating indices as needed.
+
+        We build an index of episode beginning indices for each element
+        in the buffer.  The beginning point stores where episode end is.
+        
+        """
+        with alf.device(self._device):
+            env_ids = self.check_convert_env_ids(env_ids)
+            if self._her_k > 0:
+                batch = convert_device(batch)
+                # 1. save episode beginning data that will be overwritten
+                overwritten_pos = self._current_pos[env_ids]
+                buffer_step_types = alf.nest.get_field(self._buffer,
+                                                       self._step_type_field)
+                first_step_idx, = torch.where(
+                    (buffer_step_types[(env_ids,
+                                        overwritten_pos)] == ds.StepType.FIRST)
+                    * (self._current_size[env_ids] == self._max_length))
+                overwritten_first_step_env_ids = env_ids[first_step_idx]
+                self._recent_overwritten_first_steps[
+                    overwritten_first_step_env_ids] = self._index[(
+                        overwritten_first_step_env_ids,
+                        overwritten_pos[first_step_idx])]
+                assert not blocking, (
+                    "HER replay buffer doesn't wait for " +
+                    "dequeue to free up space, but instead just overwrites.")
+
+            # 2. enqueue batch
+            self.enqueue(batch, env_ids, blocking=blocking)
+            if self._prioritized_sampling:
+                self._initialize_priority(env_ids)
+
+            if self._her_k > 0:
+                # 3. Update associated episode end indices
+                # 3.1. find ending steps in batch (incl. MID and LAST steps)
+                step_types = alf.nest.get_field(batch, self._step_type_field)
+                non_first, = torch.where(step_types != ds.StepType.FIRST)
+                # 3.2. update episode ending positions
+                self.store_episode_end_pos(non_first, overwritten_pos, env_ids)
+                # 3.3. initialize episode beginning positions to itself
+                epi_first, = torch.where(step_types == ds.StepType.FIRST)
+                self._index[(
+                    env_ids[epi_first],
+                    overwritten_pos[epi_first])] = overwritten_pos[epi_first]
+
+    @atomic
     def get_batch(self, batch_size, batch_length):
-        """Randomly get `batch_size` trajectories from the buffer.
+        """Randomly get ``batch_size`` trajectories from the buffer.
+
+        It hindsight relabels the experience when ReplayBuffer.her_k > 0.
 
         Note: The environments where the sampels are from are ordered in the
             returned batch.
@@ -180,6 +266,8 @@ class ReplayBuffer(RingBuffer):
                         all non-zero importance weights in the buffer.
         """
         with alf.device(self._device):
+            result, env_ids, pos = self._get_sample_batch(
+                batch_size, batch_length)
             if self._prioritized_sampling:
                 env_ids, pos = self._prioritized_sample(
                     batch_size, batch_length)
@@ -202,6 +290,10 @@ class ReplayBuffer(RingBuffer):
                 avg_weight = self._sum_tree.nnz / self._sum_tree.summary()
                 info = info._replace(
                     importance_weights=self._sum_tree[indices] * avg_weight)
+
+            if self._her_k > 0:
+                result = self._hindsight_relabel(batch_size, batch_length,
+                                                 result, env_ids, pos)
 
         return convert_device(result), convert_device(info)
 
@@ -253,6 +345,195 @@ class ReplayBuffer(RingBuffer):
         indices = self._sum_tree.find_sum_bound(r)
         return self._index_to_env_id_pos(indices)
 
+    def _get_sample_batch(self, batch_size, batch_length):
+        """Randomly get ``batch_size`` trajectories from the buffer.
+
+        The real implementation that gets and returns the samples and indices
+        for potential tinkering of the data by callers like hindsight relabel.
+
+        Args:
+            batch_size (int): get so many trajectories
+            batch_length (int): the length of each trajectory
+        Returns:
+            tuple:
+                - exp (nested tensors): of shape
+                    ``[batch_size, batch_length, ...]``
+                - env_ids (tensor): batch indices of the sample of shape
+                    ``[batch_size, batch_length]``
+                - pos (tensor): position indices of the sample of shape
+                    ``[batch_size, batch_length]``
+        """
+        min_size = self._current_size.min()
+        assert min_size >= batch_length, (
+            "Not all environments have enough data. The smallest data "
+            "size is: %s Try storing more data before calling get_batch" %
+            min_size)
+
+        # Sample data
+        batch_size_per_env = batch_size // self._num_envs
+        remaining = batch_size % self._num_envs
+        if batch_size_per_env > 0:
+            env_ids = torch.arange(self._num_envs).repeat(batch_size_per_env)
+        else:
+            env_ids = torch.zeros(0, dtype=torch.int64)
+        if remaining > 0:
+            eids = torch.randperm(self._num_envs)[:remaining]
+            env_ids = torch.cat([env_ids, eids], dim=0)
+
+        r = torch.rand(*env_ids.shape)
+
+        num_positions = self._current_size - batch_length + 1
+        num_positions = num_positions[env_ids]
+        pos = (r * num_positions).to(torch.int64)
+        pos += (self._current_pos - self._current_size)[env_ids]
+        pos = pos.reshape(-1, 1)  # [B, 1]
+        pos = pos + torch.arange(batch_length).unsqueeze(0)  # [B, T]
+        pos = self.circular(pos)
+        env_ids_pos = env_ids.reshape(-1, 1).expand(-1, batch_length)  # [B, T]
+
+        # get original exp of shape (batch_size, batch_length) from buffer
+        result = alf.nest.map_structure(lambda b: b[(env_ids_pos, pos)],
+                                        self._buffer)
+        return result, env_ids, pos
+
+    def pad(self, x, env_ids):
+        """Make indices in RingBuffer non-circular.
+
+        This is useful when trying to compute distance from one index to the
+        other, and is done by adding _max_length when index is smaller than
+        ``current_ending_pos - current_size``."""
+        return torch.where(
+            x < self.circular(self._current_pos[env_ids] -
+                              self._current_size[env_ids]),
+            x + self._max_length, x)
+
+    def store_episode_end_pos(self, non_first, pos, env_ids):
+        """Update _index and _recent_overwritten for episode ending pos.
+
+        Args:
+            non_first_idx (tensor): index of the added batch of exp, which are
+                not FIRST steps.  We need to update last step pos for all
+                these env_ids[non_first_idx].
+            pos (tensor): position of the stored batch.
+            env_ids (tensor): env_ids of the stored batch.
+        """
+        _env_ids = env_ids[non_first]
+        _pos = pos[non_first]
+        prev_pos = self.circular(_pos - 1)
+        prev_first = self._index[(_env_ids, prev_pos)]
+        padded_prev_first = self.pad(prev_first, _env_ids)
+        padded_prev_pos = self.pad(prev_pos, _env_ids)
+        # record pos of ``FIRST`` step into the current position of _index
+        self._index[(_env_ids, _pos)] = prev_first
+
+        # update episode end for the ``FIRST`` step of the episode
+        has_head_cond = padded_prev_first <= padded_prev_pos
+        has_head, = torch.where(has_head_cond)
+        self._index[(_env_ids[has_head],
+                     prev_first[has_head])] = _pos[has_head]
+        headless, = torch.where(torch.logical_not(has_head_cond))
+        self._recent_overwritten_first_steps[
+            _env_ids[headless]] = _pos[headless]
+
+    def get_episode_end_pos(self, pos, env_ids):
+        """Use _index and _recent_overwritten to get ``LAST`` step position.
+        """
+        # Look up ``FIRST`` step position, then look up the stored ``LAST`` pos
+        padded_pos = self.pad(pos, env_ids)
+        first_step_idx = self._index[(env_ids, pos)]
+        result = self._index[(env_ids, first_step_idx)].clone()
+        # If current step is FIRST, skip second lookup.
+        buffer_step_types = alf.nest.get_field(self._buffer,
+                                               self._step_type_field)
+        is_first_cond = buffer_step_types[(env_ids, pos)] == ds.StepType.FIRST
+        is_first, = torch.where(is_first_cond)
+        result[env_ids[is_first]] = first_step_idx[is_first]
+        # Special handling for ``FIRST`` steps that were overwritten
+        # in the RingBuffer.
+        padded_first_step_idx = self.pad(first_step_idx, env_ids)
+        overwritten, = torch.where((padded_first_step_idx > padded_pos) *
+                                   torch.logical_not(is_first_cond))
+        overwritten_env_ids = env_ids[overwritten]
+        result[overwritten] = self._recent_overwritten_first_steps[
+            overwritten_env_ids]
+        return result
+
+    def distance_to_episode_end(self, pos, env_ids):
+        """Get the distance to the closest episode end in future.
+
+        Args:
+            pos (tensor): shape ``L``, positions of the current timesteps in
+                the replay buffer.
+            env_ids (tensor): shape ``L``
+        Returns:
+            tensor of shape ``L``.
+        """
+        last_idx = self.get_episode_end_pos(pos, env_ids)
+        padded_ends = self.pad(last_idx, env_ids)
+        return padded_ends - self.pad(pos, env_ids)
+
+    def _hindsight_relabel(self, batch_size, batch_length, result, env_ids,
+                           pos):
+        """Randomly get `batch_size` hindsight relabeled trajectories.
+
+        Note: The environments where the sampels are from are ordered in the
+            returned batch.
+
+        Args:
+            batch_size (int): get so many trajectories
+            batch_length (int): the length of each trajectory
+            result (nest): of tensors of the sampled exp
+            env_ids (tensor): env_id indices of the sampled data, of shape
+                [batch_size, batch_length]
+            pos (tensor): position indices of the sampled data, of shape
+                [batch_size, batch_length]
+        Returns:
+            nested Tensors. The shapes are [batch_size, batch_length, ...]
+        """
+        if self._her_k == 0:
+            return result
+
+        # relabel only these sampled indices
+        (her_indices, ) = torch.where(torch.rand(batch_size) < self._her_k)
+
+        batch_last_step_pos = pos[:, -1][her_indices]
+        # Get x, y indices of LAST steps
+        dist = self.distance_to_episode_end(batch_last_step_pos,
+                                            env_ids[her_indices])
+
+        # get random future state
+        future_pos = self.circular(batch_last_step_pos + (
+            torch.rand(*dist.shape) * (dist + 1)).to(torch.int64))
+        achieved_goals = alf.nest.get_field(self._buffer,
+                                            self._achieved_goal_field)
+        future_ag = achieved_goals[(env_ids[her_indices],
+                                    future_pos)].unsqueeze(1)
+
+        # relabel desired goal
+        result_desired_goal = alf.nest.get_field(
+            result, self._desired_goal_field).clone()
+        result_desired_goal[(
+            her_indices.unsqueeze(1),
+            torch.arange(batch_length).unsqueeze(0))] = future_ag
+
+        # recompute rewards
+        result_reward = alf.nest.get_field(result, self._reward_field).clone()
+        result_ag = alf.nest.get_field(result, self._achieved_goal_field)
+        relabeled_rewards = self._reward_fn(
+            result_ag[(her_indices.unsqueeze(1),
+                       torch.arange(batch_length).unsqueeze(0))],
+            result_desired_goal[(her_indices.unsqueeze(1),
+                                 torch.arange(batch_length).unsqueeze(0))])
+        result_reward[(
+            her_indices.unsqueeze(1),
+            torch.arange(batch_length).unsqueeze(0))] = relabeled_rewards
+
+        result = alf.nest.utils.transform_nest(
+            result, self._desired_goal_field, lambda _: result_desired_goal)
+        result = alf.nest.utils.transform_nest(
+            result, self._reward_field, lambda _: result_reward)
+        return result
+
     @atomic
     def gather_all(self):
         """Returns all the items in the buffer.
@@ -291,7 +572,10 @@ class ReplayBuffer(RingBuffer):
         return convert_device(result)
 
     def dequeue(self, env_ids=None):
-        raise NotImplementedError("gather is not compatible with dequeue.")
+        raise NotImplementedError(
+            "gather needs to be modified to support" +
+            " dequeue. Also need to update episode beginning indices if any" +
+            " gets removed.")
 
     @property
     def total_size(self):
