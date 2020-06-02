@@ -440,6 +440,9 @@ class ReplayBuffer(RingBuffer):
         if self._her_k == 0:
             return result
 
+        # TODO: add support for batch_length > 2.
+        assert batch_length == 2
+
         # relabel only these sampled indices
         (her_indices, ) = torch.where(torch.rand(batch_size) < self._her_k)
 
