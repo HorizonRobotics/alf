@@ -414,7 +414,6 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_mario_unavailable(),
             extra_train_params=PPO_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_icubwalk(self):
         self._test(
             gin_file='ppo_icubwalk.gin',
