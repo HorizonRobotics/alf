@@ -729,7 +729,7 @@ def set_random_seed(seed):
         The seed being used if ``seed`` is None.
     """
     if seed is None:
-        seed = hash(str(os.getpid()) + '|' + str(time.time()))
+        seed = int(np.uint32(hash(str(os.getpid()) + '|' + str(time.time()))))
     else:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
