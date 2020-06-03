@@ -135,7 +135,10 @@ class TrainerConfig(object):
                 ``importance_weight**(-priority_replay_beta)``, where ``importance_weight``
                 is from the BatchInfo returned by ``ReplayBuffer.get_batch()``.
                 This is only useful if ``prioritized_sampling`` is enabled for
-                ``ReplayBuffer``.
+                ``ReplayBuffer``. Note that the effect of ``ReplayBuffer.initial_priority``
+                may change with different values of ``priority_replay_beta``.
+                Hence you may need to adjust ``ReplayBuffer.initial_priority``
+                accordingly.
             priority_replay_eps (float): minimum priority for priority replay.
             num_envs (int): the number of environments to run asynchronously.
         """
