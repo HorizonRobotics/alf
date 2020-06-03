@@ -140,7 +140,8 @@ class RLAlgorithm(Algorithm):
             else:
                 replayer = "uniform"
             self.set_exp_replayer(replayer, self._env.batch_size,
-                                  config.replay_buffer_length)
+                                  config.replay_buffer_length,
+                                  config.priority_replay)
 
         env = self._env
         if env is not None:

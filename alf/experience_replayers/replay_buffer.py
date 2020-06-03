@@ -81,6 +81,7 @@ class ReplayBuffer(RingBuffer):
             self._initial_priority = torch.tensor(
                 initial_priority, dtype=torch.float32, device=device)
 
+    @torch.no_grad()
     def add_batch(self, batch, env_ids=None, blocking=False):
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
@@ -148,6 +149,7 @@ class ReplayBuffer(RingBuffer):
                 self._update_segment_tree(indices, values)
         self._mini_batch_length = mini_batch_length
 
+    @torch.no_grad()
     def update_priority(self, env_ids, positions, priorities):
         """Update the priorities for the given experiences.
 
@@ -161,6 +163,7 @@ class ReplayBuffer(RingBuffer):
         self._update_segment_tree(indices, priorities)
 
     @atomic
+    @torch.no_grad()
     def get_batch(self, batch_size, batch_length):
         """Randomly get `batch_size` trajectories from the buffer.
 
@@ -176,8 +179,8 @@ class ReplayBuffer(RingBuffer):
                 - BatchInfo: Information about the batch. Its shapes are [batch_size].
                     - env_ids: environment id for each sequence
                     - positions: starting position in the replay buffer for each sequence.
-                    - importance_weights: importance weight divided by the average of
-                        all non-zero importance weights in the buffer.
+                    - importance_weights: priority divided by the average of all
+                        non-zero priorities in the buffer.
         """
         with alf.device(self._device):
             if self._prioritized_sampling:

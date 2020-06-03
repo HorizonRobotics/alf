@@ -29,7 +29,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo, StepType
 from alf.experience_replayers.experience_replay import (
-    OnetimeExperienceReplayer, SyncUniformExperienceReplayer)
+    OnetimeExperienceReplayer, SyncExperienceReplayer)
 from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
                        tensor_utils)
 from alf.utils.summary_utils import record_time
@@ -230,7 +230,11 @@ class Algorithm(nn.Module):
         self._use_rollout_state = flag
         self._set_children_property('use_rollout_state', flag)
 
-    def set_exp_replayer(self, exp_replayer: str, num_envs, max_length: int):
+    def set_exp_replayer(self,
+                         exp_replayer: str,
+                         num_envs,
+                         max_length: int,
+                         prioritized_sampling=False):
         """Set experience replayer.
 
         Args:
@@ -240,12 +244,14 @@ class Algorithm(nn.Module):
                 environments.
             max_length (int): the maximum number of steps the replay
                 buffer store for each environment.
+            prioritized_sampling (bool): Use prioritized sampling if this is True.
         """
         assert exp_replayer in ("one_time", "uniform"), (
             "Unsupported exp_replayer: %s" % exp_replayer)
         self._exp_replayer_type = exp_replayer
         self._exp_replayer_num_envs = num_envs
         self._exp_replayer_length = max_length
+        self._prioritized_sampling = prioritized_sampling
 
     def _set_exp_replayer(self, sample_exp):
         """Initialize the experience replayer for the very first time given a
@@ -264,9 +270,9 @@ class Algorithm(nn.Module):
         elif self._exp_replayer_type == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
                 self._experience_spec)
-            self._exp_replayer = SyncUniformExperienceReplayer(
+            self._exp_replayer = SyncExperienceReplayer(
                 exp_spec, self._exp_replayer_num_envs,
-                self._exp_replayer_length)
+                self._exp_replayer_length, self._prioritized_sampling)
         else:
             raise ValueError("invalid experience replayer name")
         self._observers.append(self._exp_replayer.observe)
@@ -964,7 +970,11 @@ class Algorithm(nn.Module):
         return AlgStep()
 
     # Subclass may override update_with_gradient() to allow customized training
-    def update_with_gradient(self, loss_info, valid_masks=None, weight=1.0):
+    def update_with_gradient(self,
+                             loss_info,
+                             valid_masks=None,
+                             weight=1.0,
+                             batch_info=None):
         """Complete one iteration of training.
 
         Update parameters using the gradient with respect to ``loss_info``.
@@ -976,16 +986,29 @@ class Algorithm(nn.Module):
                 (``shape=(T, B), dtype=tf.float32``)
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
-
+            batch_info (BatchInfo): information about this batch returned by
+                ``ReplayBuffer.get_batch()``
         Returns:
             tuple:
             - loss_info (LossInfo): loss information.
             - params (list[(name, Parameter)]): list of parameters being updated.
         """
+        masks = None
+        if (batch_info is not None and batch_info.importance_weights != ()
+                and self._config.priority_replay_beta != 0):
+            masks = batch_info.importance_weights.pow(
+                -self._config.priority_replay_beta).unsqueeze(0)
+
         if valid_masks is not None:
+            if masks is not None:
+                masks = masks * valid_masks
+            else:
+                masks = valid_masks
+
+        if masks is not None:
             loss_info = alf.nest.map_structure(
-                lambda l: torch.mean(l * valid_masks)
-                if len(l.shape) == 2 else l, loss_info)
+                lambda l: torch.mean(l * masks) if len(l.shape) == 2 else l,
+                loss_info)
         else:
             loss_info = alf.nest.map_structure(lambda l: torch.mean(l),
                                                loss_info)
@@ -1161,8 +1184,9 @@ class Algorithm(nn.Module):
                 if config.clear_replay_buffer:
                     self._exp_replayer.clear()
                 num_updates = config.num_updates_per_train_iter
+                batch_info = None
             else:
-                experience = self._exp_replayer.replay(
+                experience, batch_info = self._exp_replayer.replay(
                     sample_batch_size=(
                         mini_batch_size * config.num_updates_per_train_iter),
                     mini_batch_length=config.mini_batch_length)
@@ -1170,13 +1194,14 @@ class Algorithm(nn.Module):
 
         with record_time("time/train"):
             return self._train_experience(
-                experience, num_updates, mini_batch_size,
+                experience, batch_info, num_updates, mini_batch_size,
                 config.mini_batch_length,
                 (config.update_counter_every_mini_batch
                  and update_global_counter))
 
-    def _train_experience(self, experience, num_updates, mini_batch_size,
-                          mini_batch_length, update_counter_every_mini_batch):
+    def _train_experience(self, experience, batch_info, num_updates,
+                          mini_batch_size, mini_batch_length,
+                          update_counter_every_mini_batch):
         """Train using experience."""
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
@@ -1189,6 +1214,12 @@ class Algorithm(nn.Module):
 
         length = alf.nest.get_nest_size(experience, dim=1)
         mini_batch_length = (mini_batch_length or length)
+        if batch_info is not None:
+            assert mini_batch_length == length, (
+                "mini_batch_length (%s) is "
+                "different from length (%s). Not supported." %
+                (mini_batch_length, length))
+
         if mini_batch_length > length:
             common.warning_once(
                 "mini_batch_length=%s is set to a smaller length=%s" %
@@ -1231,6 +1262,9 @@ class Algorithm(nn.Module):
                 indices = torch.randperm(batch_size)
                 experience = alf.nest.map_structure(lambda x: x[indices],
                                                     experience)
+                if batch_info is not None:
+                    batch_info = alf.nest.map_structure(
+                        lambda x: x[indices], batch_info)
             for b in range(0, batch_size, mini_batch_size):
                 if update_counter_every_mini_batch:
                     alf.summary.get_global_counter().add_(1)
@@ -1242,9 +1276,16 @@ class Algorithm(nn.Module):
                 batch = alf.nest.map_structure(
                     lambda x: x[b:min(batch_size, b + mini_batch_size)],
                     experience)
+                if batch_info:
+                    binfo = alf.nest.map_structure(
+                        lambda x: x[b:min(batch_size, b + mini_batch_size)],
+                        batch_info)
+                else:
+                    binfo = None
                 batch = _make_time_major(batch)
                 exp, train_info, loss_info, params = self._update(
                     batch,
+                    binfo,
                     weight=alf.nest.get_nest_size(batch, 1) / mini_batch_size)
                 if do_summary:
                     self.summarize_train(exp, train_info, loss_info, params)
@@ -1313,7 +1354,7 @@ class Algorithm(nn.Module):
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
 
-    def _update(self, experience, weight):
+    def _update(self, experience, batch_info, weight):
         length = alf.nest.get_nest_size(experience, dim=0)
         if self._config.temporally_independent_train_step or length == 1:
             train_info = self._collect_train_info_parallelly(experience)
@@ -1323,13 +1364,22 @@ class Algorithm(nn.Module):
         experience = dist_utils.params_to_distributions(
             experience, self.processed_experience_spec)
 
+        if batch_info is not None:
+            experience = experience._replace(batch_info=batch_info)
         loss_info = self.calc_loss(experience, train_info)
+        if loss_info.priority != ():
+            priority = (loss_info.priority**self._config.priority_replay_alpha
+                        + self._config.priority_replay_eps)
+            self._exp_replayer.update_priority(batch_info.env_ids,
+                                               batch_info.positions, priority)
+
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(
                 torch.float32)
         else:
             valid_masks = None
-        loss_info, params = self.update_with_gradient(loss_info, valid_masks)
+        loss_info, params = self.update_with_gradient(loss_info, valid_masks,
+                                                      weight, batch_info)
         self.after_update(experience, train_info)
 
         return experience, train_info, loss_info, params
