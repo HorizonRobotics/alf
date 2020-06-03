@@ -172,7 +172,7 @@ class OnetimeExperienceReplayer(ExperienceReplayer):
             return self._batch_size * time_length
 
 
-class SyncUniformExperienceReplayer(ExperienceReplayer):
+class SyncExperienceReplayer(ExperienceReplayer):
     """
     For synchronous off-policy training.
 

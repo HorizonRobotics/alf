@@ -29,7 +29,7 @@ from torch.nn.modules.module import _IncompatibleKeys, _addindent
 import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo, StepType
 from alf.experience_replayers.experience_replay import (
-    OnetimeExperienceReplayer, SyncUniformExperienceReplayer)
+    OnetimeExperienceReplayer, SyncExperienceReplayer)
 from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
                        tensor_utils)
 from alf.utils.summary_utils import record_time
@@ -270,7 +270,7 @@ class Algorithm(nn.Module):
         elif self._exp_replayer_type == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
                 self._experience_spec)
-            self._exp_replayer = SyncUniformExperienceReplayer(
+            self._exp_replayer = SyncExperienceReplayer(
                 exp_spec, self._exp_replayer_num_envs,
                 self._exp_replayer_length, self._prioritized_sampling)
         else:
