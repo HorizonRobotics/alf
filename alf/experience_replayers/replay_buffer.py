@@ -210,8 +210,8 @@ class ReplayBuffer(RingBuffer):
         Args:
             env_ids (Tensor): 1-D int64 Tensor.
             positions (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
-                This idx should be obtained the BatchInfo returned by
-                ``get_batch()``
+                These positions should be obtained from the BatchInfo returned
+                by ``get_batch()``.
         """
         indices = self._env_id_idx_to_index(env_ids, self.circular(positions))
         self._update_segment_tree(indices, priorities)
