@@ -266,7 +266,10 @@ class Trainer(object):
             if ((self._num_iterations and iter_num >= self._num_iterations)
                     or (self._num_env_steps
                         and total_time_steps >= self._num_env_steps)):
-                self._eval()
+                # Evaluate before exiting so that the eval curve shown in TB
+                # will align with the final iter/env_step.
+                if self._evaluate:
+                    self._eval()
                 break
 
             if ((self._num_iterations and iter_num >= time_to_checkpoint)
