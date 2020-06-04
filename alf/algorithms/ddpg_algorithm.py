@@ -28,7 +28,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import AlgStep
+from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorNetwork, CriticNetwork
@@ -308,10 +308,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         critic_loss = math_ops.add_n(critic_losses)
 
+        if (experience.batch_info != ()
+                and experience.batch_info.importance_weights != ()):
+            valid_masks = (experience.step_type != StepType.LAST).to(
+                torch.float32)
+            priority = (critic_loss * valid_masks).sum(dim=0).sqrt()
+        else:
+            priority = ()
+
         actor_loss = train_info.actor_loss
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
+            priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
     def after_update(self, experience, train_info: DdpgInfo):

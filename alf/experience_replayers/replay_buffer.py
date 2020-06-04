@@ -202,6 +202,7 @@ class ReplayBuffer(RingBuffer):
     # This function needs to be called in the same atomic transaction as
     # ``prioritized_sample()`` for the idx sampled to be still valid
     # in multiprocessing/asynchronous cases.
+    @torch.no_grad()
     def update_priority(self, env_ids, idx, priorities):
         """Update the priorities for the given experiences.
 
@@ -215,6 +216,7 @@ class ReplayBuffer(RingBuffer):
         self._update_segment_tree(indices, priorities)
 
     @atomic
+    @torch.no_grad()
     def add_batch(self, batch, env_ids=None, blocking=False):
         """adds a batch of entries to buffer updating indices as needed.
 
@@ -261,6 +263,7 @@ class ReplayBuffer(RingBuffer):
                                    )] = overwriting_pos[epi_first]
 
     @atomic
+    @torch.no_grad()
     def get_batch(self, batch_size, batch_length):
         """Randomly get ``batch_size`` trajectories from the buffer.
 
@@ -278,8 +281,8 @@ class ReplayBuffer(RingBuffer):
                 - BatchInfo: Information about the batch. Its shapes are [batch_size].
                     - env_ids: environment id for each sequence
                     - positions: starting position in the replay buffer for each sequence.
-                    - importance_weights: importance weight divided by the average of
-                        all non-zero importance weights in the buffer.
+                    - importance_weights: priority divided by the average of all
+                        non-zero priorities in the buffer.
         """
         with alf.device(self._device):
             if self._prioritized_sampling:

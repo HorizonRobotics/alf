@@ -35,7 +35,7 @@ from alf.utils.math_ops import clipped_exp
 DEBUGGING = True
 
 
-def _create_algorithm(env, sac, use_rnn, on_policy):
+def _create_algorithm(env, sac, use_rnn, on_policy, priority_replay):
     observation_spec = env.observation_spec()
     action_spec = env.action_spec()
     fc_layer_params = (16, 16)
@@ -84,6 +84,7 @@ def _create_algorithm(env, sac, use_rnn, on_policy):
         num_updates_per_train_iter=1,
         whole_replay_buffer_training=False,
         clear_replay_buffer=False,
+        priority_replay=priority_replay,
         debug_summaries=DEBUGGING,
         summarize_grads_and_vars=DEBUGGING,
         summarize_action_distributions=DEBUGGING)
@@ -108,11 +109,13 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
     # TODO: on_policy=True is very unstable, try to figure out the possible
     # reason.
     @parameterized.parameters(
-        dict(on_policy=False, sac=False),
-        dict(on_policy=False, use_rnn=False),
-        dict(on_policy=False, use_rnn=True),
-    )
-    def test_sarsa(self, on_policy=False, sac=True, use_rnn=False):
+        dict(on_policy=False, sac=False), dict(on_policy=False, use_rnn=False),
+        dict(on_policy=False, use_rnn=True), dict(priority_replay=True))
+    def test_sarsa(self,
+                   on_policy=False,
+                   sac=True,
+                   use_rnn=False,
+                   priority_replay=False):
         logging.info(
             "sac=%d on_policy=%s use_rnn=%s" % (sac, on_policy, use_rnn))
         env_class = PolicyUnittestEnv
@@ -127,7 +130,11 @@ class SarsaTest(parameterized.TestCase, alf.test.TestCase):
             100, steps_per_episode, action_type=ActionType.Continuous)
 
         algorithm = _create_algorithm(
-            env, on_policy=on_policy, sac=sac, use_rnn=use_rnn)
+            env,
+            on_policy=on_policy,
+            sac=sac,
+            use_rnn=use_rnn,
+            priority_replay=priority_replay)
 
         env.reset()
         eval_env.reset()

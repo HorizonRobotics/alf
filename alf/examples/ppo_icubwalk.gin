@@ -15,8 +15,8 @@ Agent.enforce_entropy_target=True
 # the target entropy.
 calc_default_target_entropy.min_prob=0.01
 EntropyTargetAlgorithm.skip_free_stage=True
-EntropyTargetAlgorithm.slow_update_rate=1e-4
-EntropyTargetAlgorithm.fast_update_rate=1e-4
+EntropyTargetAlgorithm.slow_update_rate=4e-4
+EntropyTargetAlgorithm.fast_update_rate=4e-4
 EntropyTargetAlgorithm.initial_alpha=0.05
 
 PPOLoss.entropy_regularization=None

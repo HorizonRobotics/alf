@@ -23,7 +23,7 @@ import tensorflow_probability as tfp
 from tf_agents.environments.tf_environment import TFEnvironment
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.drivers.off_policy_driver import OffPolicyDriver
-from alf.experience_replayers.experience_replay import SyncUniformExperienceReplayer
+from alf.experience_replayers.experience_replay import SyncExperienceReplayer
 
 import alf.data_structures as ds
 from alf.utils import nest_utils

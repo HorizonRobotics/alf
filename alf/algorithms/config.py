@@ -47,6 +47,10 @@ class TrainerConfig(object):
                  mini_batch_size=None,
                  whole_replay_buffer_training=True,
                  replay_buffer_length=1024,
+                 priority_replay=False,
+                 priority_replay_alpha=0.7,
+                 priority_replay_beta=0.4,
+                 priority_replay_eps=1e-6,
                  clear_replay_buffer=True,
                  num_envs=1):
         """
@@ -124,8 +128,24 @@ class TrainerConfig(object):
             replay_buffer_length (int): the maximum number of steps the replay
                 buffer store for each environment. Only used by
                 ``OffPolicyAlgorithm``.
+            priority_replay (bool): Use prioritized sampling if this is True.
+            priority_replay_alpha (float): The priority from LossInfo is powered
+                to this as an argument for ``ReplayBuffer.update_priority()``.
+                Note that the effect of ``ReplayBuffer.initial_priority``
+                may change with different values of ``priority_replay_alpha``.
+                Hence you may need to adjust ``ReplayBuffer.initial_priority``
+                accordingly.
+            priority_replay_beta (float): weight the loss of each sample by
+                ``importance_weight**(-priority_replay_beta)``, where ``importance_weight``
+                is from the BatchInfo returned by ``ReplayBuffer.get_batch()``.
+                This is only useful if ``prioritized_sampling`` is enabled for
+                ``ReplayBuffer``.
+            priority_replay_eps (float): minimum priority for priority replay.
             num_envs (int): the number of environments to run asynchronously.
         """
+        assert priority_replay_beta >= 0.0, ("importance_weight_beta should "
+                                             "be non-negative be")
+
         parameters = dict(
             root_dir=root_dir,
             algorithm_ctor=algorithm_ctor,
@@ -155,6 +175,10 @@ class TrainerConfig(object):
             whole_replay_buffer_training=whole_replay_buffer_training,
             clear_replay_buffer=clear_replay_buffer,
             replay_buffer_length=replay_buffer_length,
+            priority_replay=priority_replay,
+            priority_replay_alpha=priority_replay_alpha,
+            priority_replay_beta=priority_replay_beta,
+            priority_replay_eps=priority_replay_eps,
             num_envs=num_envs)
         for k, v in parameters.items():
             self.__setattr__(k, v)
