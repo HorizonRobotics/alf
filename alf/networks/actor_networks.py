@@ -119,7 +119,7 @@ class ActorNetwork(PreprocessorNetwork):
                     activation=squashing_func,
                     kernel_initializer=last_kernel_initializer))
 
-    def forward(self, observation, state=()):
+    def forward(self, observation, state=(), info=None):
         """Computes action given an observation.
 
         Args:
@@ -134,6 +134,8 @@ class ActorNetwork(PreprocessorNetwork):
 
         observation, state = super().forward(observation, state)
         encoded_obs, _ = self._encoding_net(observation)
+        if isinstance(info, dict):
+            info["pre_activation"] = encoded_obs
 
         actions = []
         for layer, spec in zip(self._action_layers, self._flat_action_spec):

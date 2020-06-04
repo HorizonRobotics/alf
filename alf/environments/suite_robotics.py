@@ -89,16 +89,20 @@ class ObservationClipWrapper(gym.ObservationWrapper):
     """Clip observation values according to OpenAI's baselines.
     """
 
-    def __init__(self, env):
+    def __init__(self, env, min_v=-200., max_v=200.):
         super().__init__(env)
+        # NOTE: the code assumes that all spaces under the nested observation
+        # space is a Box space.
+        self.min_v = min_v
+        self.max_v = max_v
 
     def observation(self, observation):
         if isinstance(observation, dict):
             for k, v in observation.items():
-                observation[k] = np.clip(v, -200., 200.)
+                observation[k] = np.clip(v, self.min_v, self.max_v)
             return observation
         else:
-            return np.clip(observation, -200., 200.)
+            return np.clip(observation, self.min_v, self.max_v)
 
 
 @gin.configurable

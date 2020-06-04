@@ -541,21 +541,26 @@ class ContinuousActionClip(gym.ActionWrapper):
             env (gym.Env): A Gym env instance to wrap
         """
         super(ContinuousActionClip, self).__init__(env)
-        self.min_v = min_v
-        self.max_v = max_v
+
+        def _space_bounds(space):
+            if isinstance(space, gym.spaces.Box):
+                return np.maximum(space.low, min_v), np.minimum(
+                    space.high, max_v)
+            else:
+                return min_v, max_v
+
+        self.bounds = alf.nest.map_structure(_space_bounds, self.action_space)
 
     def action(self, action):
-        def _clip_action(space, action):
+        def _clip_action(space, action, bounds):
             # Check if the action is corrupted or not.
             if np.any(np.isnan(action)):
                 raise ValueError(
                     "NAN action detected! action: {}".format(action))
             if isinstance(space, gym.spaces.Box):
-                action = np.maximum(
-                    np.minimum(action, np.minimum(space.high, self.max_v)),
-                    np.maximum(space.low, self.min_v))
+                action = np.clip(action, bounds[0], bounds[1])
             return action
 
-        action = alf.nest.map_structure(_clip_action, self.action_space,
-                                        action)
+        action = alf.nest.map_structure_up_to(
+            action, _clip_action, self.action_space, action, self.bounds)
         return action

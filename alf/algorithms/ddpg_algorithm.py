@@ -72,6 +72,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  target_update_period=1,
                  rollout_random_action=0.,
                  dqda_clipping=None,
+                 action_l2=0,
                  actor_optimizer=None,
                  critic_optimizer=None,
                  debug_summaries=False,
@@ -118,6 +119,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
+            action_l2 (float): weight of action preactivation l2 on actor loss.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             debug_summaries (bool): True if debug summaries should be created.
@@ -132,6 +134,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         else:
             critic_networks = alf.networks.NaiveParallelNetwork(
                 critic_network, num_critic_replicas)
+        self.action_l2 = action_l2
 
         train_state_spec = DdpgState(
             actor=DdpgActorState(
@@ -256,8 +259,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _actor_train_step(self, exp: Experience, state: DdpgActorState):
+        info = {}
         action, actor_state = self._actor_network(
-            exp.observation, state=state.actor)
+            exp.observation, state=state.actor, info=info)
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
@@ -265,16 +269,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         dqda = nest_utils.grad(action, q_value.sum())
 
-        def actor_loss_fn(dqda, action):
+        def actor_loss_fn(dqda, action, pre_activation):
             if self._dqda_clipping:
                 dqda = torch.clamp(dqda, -self._dqda_clipping,
                                    self._dqda_clipping)
             loss = 0.5 * losses.element_wise_squared_loss(
                 (dqda + action).detach(), action)
             loss = loss.sum(list(range(1, loss.ndim)))
+            if self.action_l2 > 0:
+                loss += self.action_l2 * torch.norm(pre_activation)
             return loss
 
-        actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
+        actor_loss = nest.map_structure(actor_loss_fn, dqda, action,
+                                        info["pre_activation"])
         state = DdpgActorState(actor=actor_state, critics=critic_states)
         info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
         return AlgStep(output=action, state=state, info=info)

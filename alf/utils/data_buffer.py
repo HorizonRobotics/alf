@@ -70,6 +70,12 @@ class RingBuffer(nn.Module):
 
     Once stop event is set, all blocking ``enqueue`` and ``dequeue`` calls that
     happen afterwards will be skipped, unless the operation already started.
+
+    Terminology: we use ``pos`` as in ``_current_pos`` to refer to the always
+    increasing position of an element in the infinitly long buffer, and ``idx``
+    as the actual index of the element in the underlying store (``_buffer``).
+    That means ``idx == pos % _max_length`` is always true, and one should use
+    ``_buffer[idx]`` to retrieve the stored data.
     """
 
     def __init__(self,
@@ -124,7 +130,9 @@ class RingBuffer(nn.Module):
             self.register_buffer(
                 "_current_size",
                 torch.zeros(num_environments, dtype=torch.int64))
-            # Current *ending* position of data in the buffer
+            # Current *ending* positions of data in the buffer without modulo.
+            # These pos always increases.  To get the index in the RingBuffer,
+            # use ``circular()``, e.g. ``last_idx = self.circular(pos - 1)``.
             self.register_buffer(
                 "_current_pos", torch.zeros(
                     num_environments, dtype=torch.int64))
@@ -133,9 +141,9 @@ class RingBuffer(nn.Module):
         if allow_multiprocess:
             self.share_memory()
 
-    def circular(self, t):
-        """Mod indices by _max_length of the RingBuffer."""
-        return t % self._max_length
+    def circular(self, pos):
+        """Mod pos by _max_length to get the actual index in the _buffer."""
+        return pos % self._max_length
 
     def check_convert_env_ids(self, env_ids):
         with alf.device(self._device):
@@ -227,11 +235,11 @@ class RingBuffer(nn.Module):
 
             current_pos = self._current_pos[env_ids]
             alf.nest.map_structure(
-                lambda buf, bat: buf.__setitem__((env_ids, current_pos),
-                                                 bat.detach()), self._buffer,
-                batch)
+                lambda buf, bat: buf.__setitem__((
+                    env_ids, self.circular(current_pos)), bat.detach()),
+                self._buffer, batch)
 
-            self._current_pos[env_ids] = self.circular(current_pos + 1)
+            self._current_pos[env_ids] = current_pos + 1
             current_size = self._current_size[env_ids]
             self._current_size[env_ids] = torch.min(
                 current_size + 1, torch.tensor(self._max_length))
@@ -433,7 +441,7 @@ class DataBuffer(RingBuffer):
                 lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
                 self._derived_buffer, batch)
 
-            self.current_pos.copy_(self.circular(self.current_pos + n))
+            self.current_pos.copy_(self.current_pos + n)
             self.current_size.copy_(
                 torch.min(self.current_size + n, self._capacity))
 

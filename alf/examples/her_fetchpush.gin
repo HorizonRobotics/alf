@@ -4,6 +4,13 @@ suite_robotics.load.concat_desired_goal=False
 
 ReplayBuffer.her_k=0.8
 
+TrainerConfig.summarize_action_distributions=True
+TrainerConfig.summary_interval=1
+TrainerConfig.update_counter_every_mini_batch=True
+TrainerConfig.summarize_grads_and_vars=1
+summarize_gradients.with_histogram=False
+summarize_variables.with_histogram=False
+
 import alf.nest.utils
 actor/ActorNetwork.preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()

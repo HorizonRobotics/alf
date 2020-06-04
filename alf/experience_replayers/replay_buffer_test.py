@@ -26,11 +26,12 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer
 
 class ReplayBufferTest(RingBufferTest):
     def test_replay_with_hindsight_relabel(self):
+        self.max_length = 8
         torch.manual_seed(0)
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,
             num_environments=2,
-            max_length=8,
+            max_length=self.max_length,
             her_k=0.8,
             step_type_field="t",
             achieved_goal_field="o.a",
@@ -40,40 +41,56 @@ class ReplayBufferTest(RingBufferTest):
         steps = [
             [
                 ds.StepType.FIRST,  # will be overwritten
-                ds.StepType.MID,  # pos == 1 in buffer
+                ds.StepType.MID,  # idx == 1 in buffer
                 ds.StepType.LAST,
                 ds.StepType.FIRST,
                 ds.StepType.MID,
                 ds.StepType.MID,
                 ds.StepType.LAST,
                 ds.StepType.FIRST,
-                ds.StepType.MID  # pos == 0
+                ds.StepType.MID  # idx == 0
             ],
             [
                 ds.StepType.FIRST,  # will be overwritten in RingBuffer
-                ds.StepType.LAST,  # pos == 1 in RingBuffer
+                ds.StepType.LAST,  # idx == 1 in RingBuffer
                 ds.StepType.FIRST,
                 ds.StepType.MID,
                 ds.StepType.MID,
                 ds.StepType.LAST,
                 ds.StepType.FIRST,
                 ds.StepType.MID,
-                ds.StepType.MID  # pos == 0
+                ds.StepType.MID  # idx == 0
             ]
         ]
+        # insert data that will be overwritten later
+        for b, t in list(itertools.product(range(2), range(8))):
+            batch = get_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
+            replay_buffer.add_batch(batch, batch.env_id)
+        # insert data
         for b, t in list(itertools.product(range(2), range(9))):
             batch = get_batch([b], self.dim, t=steps[b][t], x=0.1 * t + b)
             replay_buffer.add_batch(batch, batch.env_id)
 
-        # Verify _index is built correctly
+        # Test padding
+        idx = torch.tensor([[7, 0, 0, 6, 3, 3, 3, 0], [6, 0, 5, 2, 2, 2, 0,
+                                                       6]])
+        pos = replay_buffer._pad(idx, torch.tensor([[0] * 8, [1] * 8]))
         self.assertTrue(
             torch.equal(
-                replay_buffer._index,
-                torch.tensor([[7, 0, 0, 6, 3, 3, 3, 0],
-                              [6, 0, 5, 2, 2, 2, 0, 6]])))
+                pos,
+                torch.tensor([[15, 16, 16, 14, 11, 11, 11, 16],
+                              [14, 16, 13, 10, 10, 10, 16, 14]])))
+
+        # Verify _index is built correctly.
+        # Note, the _index_pos 8 represents headless timesteps, which are
+        # outdated and not the same as the result of padding: 16.
+        pos = torch.tensor([[15, 8, 8, 14, 11, 11, 11, 16],
+                            [14, 8, 13, 10, 10, 10, 16, 14]])
+
+        self.assertTrue(torch.equal(replay_buffer._indexed_pos, pos))
         self.assertTrue(
-            torch.equal(replay_buffer._recent_overwritten_first_steps,
-                        torch.tensor([2, 1])))
+            torch.equal(replay_buffer._headless_indexed_pos,
+                        torch.tensor([10, 9])))
 
         # Save original exp for later testing.
         g_orig = replay_buffer._buffer.o["g"].clone()
@@ -81,9 +98,9 @@ class ReplayBufferTest(RingBufferTest):
 
         # HER selects indices [0, 2, 3, 4] to relabel, from all 5:
         # env_ids: [[0, 0], [1, 1], [0, 0], [1, 1], [0, 0]]
-        # pos:     [[6, 7], [1, 2], [1, 2], [3, 4], [5, 6]]
+        # pos:     [[6, 7], [1, 2], [1, 2], [3, 4], [5, 6]] + 8
         # selected:    x               x       x       x
-        # future:  [   7       2       2       4       6  ]
+        # future:  [   7       2       2       4       6  ] + 8
         # g        [[.7,.7],[0, 0], [.2,.2],[1.4,1.4],[.6,.6]]  # 0.1 * t + b with default 0
         # reward:  [[-1,0], [-1,-1],[-1,0], [-1,0], [-1,0]]  # recomputed with default -1
         dist = replay_buffer.distance_to_episode_end(
@@ -156,7 +173,7 @@ class ReplayBufferTest(RingBufferTest):
 
         for t in range(1, 10):
             batch3 = get_batch([0, 4, 7], self.dim, t=t, x=0.3)
-            j = (t + 1) % self.max_length
+            j = t + 1
             s = min(t + 1, self.max_length)
             replay_buffer.add_batch(batch3, batch3.env_id)
             self.assertEqual(replay_buffer._current_size,
@@ -250,17 +267,17 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(batch_info.importance_weights, torch.tensor([1.] * 4))
 
         batch, batch_info = replay_buffer.get_batch(1000, 1)
-        n0 = (batch_info.positions == 0).sum()
-        n1 = (batch_info.positions == 1).sum()
+        n0 = (batch_info.index == 0).sum()
+        n1 = (batch_info.index == 1).sum()
         self.assertEqual(n0, 500)
         self.assertEqual(n1, 500)
         replay_buffer.update_priority(
             env_ids=torch.tensor([1, 1], dtype=torch.int64),
-            positions=torch.tensor([0, 1], dtype=torch.int64),
+            idx=torch.tensor([0, 1], dtype=torch.int64),
             priorities=torch.tensor([0.5, 1.5]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
-        n0 = (batch_info.positions == 0).sum()
-        n1 = (batch_info.positions == 1).sum()
+        n0 = (batch_info.index == 0).sum()
+        n1 = (batch_info.index == 1).sum()
         self.assertEqual(n0, 250)
         self.assertEqual(n1, 750)
 
@@ -269,8 +286,7 @@ class ReplayBufferTest(RingBufferTest):
         batch, batch_info = replay_buffer.get_batch(1000, 1)
 
         def _get(env_id, pos):
-            flag = (
-                (batch_info.env_ids == env_id) * (batch_info.positions == pos))
+            flag = ((batch_info.env_ids == env_id) * (batch_info.index == pos))
             w = batch_info.importance_weights[torch.nonzero(
                 flag, as_tuple=True)[0]]
             return flag.sum(), w
@@ -290,7 +306,7 @@ class ReplayBufferTest(RingBufferTest):
 
         replay_buffer.update_priority(
             env_ids=torch.tensor([1, 2], dtype=torch.int64),
-            positions=torch.tensor([1, 0], dtype=torch.int64),
+            idx=torch.tensor([1, 0], dtype=torch.int64),
             priorities=torch.tensor([1.0, 1.0]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
 
