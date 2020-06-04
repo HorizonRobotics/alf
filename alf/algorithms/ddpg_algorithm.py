@@ -259,9 +259,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return state, info
 
     def _actor_train_step(self, exp: Experience, state: DdpgActorState):
-        info = {}
         action, actor_state = self._actor_network(
-            exp.observation, state=state.actor, info=info)
+            exp.observation, state=state.actor)
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
@@ -269,7 +268,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         dqda = nest_utils.grad(action, q_value.sum())
 
-        def actor_loss_fn(dqda, action, pre_activation):
+        def actor_loss_fn(dqda, action):
             if self._dqda_clipping:
                 dqda = torch.clamp(dqda, -self._dqda_clipping,
                                    self._dqda_clipping)
@@ -277,11 +276,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 (dqda + action).detach(), action)
             loss = loss.sum(list(range(1, loss.ndim)))
             if self.action_l2 > 0:
-                loss += self.action_l2 * torch.norm(pre_activation)
+                assert action.requires_grad
+                loss += self.action_l2 * torch.norm(action)
             return loss
 
-        actor_loss = nest.map_structure(actor_loss_fn, dqda, action,
-                                        info["pre_activation"])
+        actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
         state = DdpgActorState(actor=actor_state, critics=critic_states)
         info = LossInfo(loss=sum(nest.flatten(actor_loss)), extra=actor_loss)
         return AlgStep(output=action, state=state, info=info)
