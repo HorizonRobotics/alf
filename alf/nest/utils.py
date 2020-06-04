@@ -15,12 +15,12 @@
 
 import abc
 import gin
-import functools
 
 import torch
 import torch.nn as nn
 
 import alf
+from alf.utils import math_ops
 from . import nest
 from alf.tensor_specs import TensorSpec
 
@@ -130,11 +130,7 @@ class NestMultiply(NestCombiner):
         self._activation = activation
 
     def _combine_flat(self, tensors):
-        # Reduce is faster than ``torch.prod(torch.stack(tensors, dim=0), dim=0)``,
-        # and it doesn't require activation to be in-place as what ``torch.prod``
-        # does.
-        ret = functools.reduce(lambda x, y: x * y, tensors,
-                               torch.ones_like(tensors[0]))
+        ret = math_ops.mul_n(tensors)
         return self._activation(ret)
 
 
