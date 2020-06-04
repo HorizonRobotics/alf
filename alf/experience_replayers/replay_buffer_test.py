@@ -267,17 +267,17 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(batch_info.importance_weights, torch.tensor([1.] * 4))
 
         batch, batch_info = replay_buffer.get_batch(1000, 1)
-        n0 = (batch_info.index == 0).sum()
-        n1 = (batch_info.index == 1).sum()
+        n0 = (replay_buffer.circular(batch_info.positions) == 0).sum()
+        n1 = (replay_buffer.circular(batch_info.positions) == 1).sum()
         self.assertEqual(n0, 500)
         self.assertEqual(n1, 500)
         replay_buffer.update_priority(
             env_ids=torch.tensor([1, 1], dtype=torch.int64),
-            idx=torch.tensor([0, 1], dtype=torch.int64),
+            positions=torch.tensor([0, 1], dtype=torch.int64),
             priorities=torch.tensor([0.5, 1.5]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
-        n0 = (batch_info.index == 0).sum()
-        n1 = (batch_info.index == 1).sum()
+        n0 = (replay_buffer.circular(batch_info.positions) == 0).sum()
+        n1 = (replay_buffer.circular(batch_info.positions) == 1).sum()
         self.assertEqual(n0, 250)
         self.assertEqual(n1, 750)
 
@@ -286,7 +286,8 @@ class ReplayBufferTest(RingBufferTest):
         batch, batch_info = replay_buffer.get_batch(1000, 1)
 
         def _get(env_id, pos):
-            flag = ((batch_info.env_ids == env_id) * (batch_info.index == pos))
+            flag = ((batch_info.env_ids == env_id) *
+                    (batch_info.positions == replay_buffer._pad(pos, env_id)))
             w = batch_info.importance_weights[torch.nonzero(
                 flag, as_tuple=True)[0]]
             return flag.sum(), w
@@ -306,7 +307,7 @@ class ReplayBufferTest(RingBufferTest):
 
         replay_buffer.update_priority(
             env_ids=torch.tensor([1, 2], dtype=torch.int64),
-            idx=torch.tensor([1, 0], dtype=torch.int64),
+            positions=torch.tensor([1, 0], dtype=torch.int64),
             priorities=torch.tensor([1.0, 1.0]))
         batch, batch_info = replay_buffer.get_batch(1000, 1)
 

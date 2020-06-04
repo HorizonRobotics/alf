@@ -27,7 +27,8 @@ from alf.utils.data_buffer import atomic, RingBuffer
 from .segment_tree import SumSegmentTree, MaxSegmentTree, MinSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo", ["env_ids", "index", "importance_weights"], default_value=())
+    "BatchInfo", ["env_ids", "positions", "importance_weights"],
+    default_value=())
 
 
 @gin.configurable
@@ -203,16 +204,16 @@ class ReplayBuffer(RingBuffer):
     # ``prioritized_sample()`` for the idx sampled to be still valid
     # in multiprocessing/asynchronous cases.
     @torch.no_grad()
-    def update_priority(self, env_ids, idx, priorities):
+    def update_priority(self, env_ids, positions, priorities):
         """Update the priorities for the given experiences.
 
         Args:
             env_ids (Tensor): 1-D int64 Tensor.
-            idx (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
+            positions (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
                 This idx should be obtained the BatchInfo returned by
                 ``get_batch()``
         """
-        indices = self._env_id_idx_to_index(env_ids, idx)
+        indices = self._env_id_idx_to_index(env_ids, self.circular(positions))
         self._update_segment_tree(indices, priorities)
 
     @atomic
@@ -291,25 +292,27 @@ class ReplayBuffer(RingBuffer):
             else:
                 env_ids, idx = self._uniform_sample(batch_size, batch_length)
 
-            info = BatchInfo(env_ids=env_ids, index=idx)
+            start_idx = idx
+            info = BatchInfo(
+                env_ids=env_ids, positions=self._pad(idx, env_ids))
 
             idx = idx.reshape(-1, 1)  # [B, 1]
             idx = self.circular(
                 idx + torch.arange(batch_length).unsqueeze(0))  # [B, T]
-            env_ids = env_ids.reshape(-1, 1).expand(batch_size,
-                                                    batch_length)  # [B, T]
-            result = alf.nest.map_structure(lambda b: b[(env_ids, idx)],
+            out_env_ids = env_ids.reshape(-1, 1).expand(
+                batch_size, batch_length)  # [B, T]
+            result = alf.nest.map_structure(lambda b: b[(out_env_ids, idx)],
                                             self._buffer)
 
             if self._prioritized_sampling:
-                indices = self._env_id_idx_to_index(info.env_ids, info.index)
+                indices = self._env_id_idx_to_index(env_ids, start_idx)
                 avg_weight = self._sum_tree.nnz / self._sum_tree.summary()
                 info = info._replace(
                     importance_weights=self._sum_tree[indices] * avg_weight)
 
             if self._her_k > 0:
                 result = self._hindsight_relabel(batch_size, batch_length,
-                                                 result, env_ids, idx)
+                                                 result, out_env_ids, idx)
 
         return convert_device(result), convert_device(info)
 

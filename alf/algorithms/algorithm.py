@@ -1373,7 +1373,7 @@ class Algorithm(nn.Module):
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
             self._exp_replayer.update_priority(batch_info.env_ids,
-                                               batch_info.index, priority)
+                                               batch_info.positions, priority)
 
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(
