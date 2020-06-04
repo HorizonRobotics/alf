@@ -90,7 +90,7 @@ def max_n(inputs):
     Returns:
         Tensor: the element-wise maximum of all the tensors in ``inputs``.
     """
-    return functools.reduce(torch.max, inputs, inputs[0])
+    return functools.reduce(torch.max, inputs)
 
 
 def min_n(inputs):
@@ -102,7 +102,7 @@ def min_n(inputs):
     Returns:
         Tensor: the element-wise minimum of all the tensors in ``inputs``.
     """
-    return functools.reduce(torch.min, inputs, inputs[0])
+    return functools.reduce(torch.min, inputs)
 
 
 def add_n(inputs):
@@ -114,14 +114,11 @@ def add_n(inputs):
     Returns:
         Tensor: the element-wise sum of all the tensors in ``inputs``.
     """
-    return functools.reduce(torch.add, inputs, torch.zeros_like(inputs[0]))
+    return functools.reduce(torch.add, inputs)
 
 
 def mul_n(inputs):
     """Calculate the product of n tensors.
-
-    The current solution uses ``functools.reduce``, which is faster than
-    the alternative ``torch.prod(torch.stack(inputs, dim=0), dim=0)``.
 
     Args:
         inputs (iterable[Tensor]): an iterable of tensors. It requires that
@@ -129,7 +126,7 @@ def mul_n(inputs):
     Returns:
         Tensor: the element-wise multiplication of all the tensors in ``inputs``.
     """
-    return functools.reduce(torch.mul, inputs, torch.ones_like(inputs[0]))
+    return functools.reduce(torch.mul, inputs)
 
 
 def square(x):

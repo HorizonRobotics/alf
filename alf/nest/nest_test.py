@@ -19,7 +19,7 @@ import alf
 import alf.nest as nest
 from alf.data_structures import namedtuple
 from alf.tensor_specs import TensorSpec
-from alf.nest.utils import NestConcat, NestSum, transform_nest
+from alf.nest.utils import NestConcat, NestSum, NestMultiply, transform_nest
 
 NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 
@@ -229,6 +229,22 @@ class TestNestSum(alf.test.TestCase):
             a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
             b=TensorSpec((4, )))
         ret = NestSum()(ntuple)  # broadcasting
+        self.assertEqual(ret, TensorSpec((2, 4)))
+
+
+class TestNestMultiply(alf.test.TestCase):
+    def test_nest_multiply_tensors(self):
+        ntuple = NTuple(
+            a=dict(x=torch.zeros(()), y=torch.ones((2, 4))),
+            b=torch.ones((4, )))
+        ret = NestMultiply()(ntuple)  # broadcasting
+        self.assertTensorEqual(ret, torch.zeros((2, 4)))
+
+    def test_nest_multiply_specs(self):
+        ntuple = NTuple(
+            a=dict(x=TensorSpec(()), y=TensorSpec((2, 4))),
+            b=TensorSpec((4, )))
+        ret = NestMultiply()(ntuple)  # broadcasting
         self.assertEqual(ret, TensorSpec((2, 4)))
 
 

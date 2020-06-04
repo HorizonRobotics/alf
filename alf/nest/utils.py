@@ -20,7 +20,6 @@ import torch
 import torch.nn as nn
 
 import alf
-from alf.utils import math_ops
 from . import nest
 from alf.tensor_specs import TensorSpec
 
@@ -130,7 +129,7 @@ class NestMultiply(NestCombiner):
         self._activation = activation
 
     def _combine_flat(self, tensors):
-        ret = math_ops.mul_n(tensors)
+        ret = alf.utils.math_ops.mul_n(tensors)
         return self._activation(ret)
 
 
