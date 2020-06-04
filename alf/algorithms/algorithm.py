@@ -1175,6 +1175,8 @@ class Algorithm(nn.Module):
             # returns 0 if haven't started training yet; throughput will be 0
             return 0
 
+        # TODO: If this function can be called asynchronously, and using
+        # prioritized replay, then make sure replay and train below is atomic.
         with record_time("time/replay"):
             mini_batch_size = config.mini_batch_size
             if mini_batch_size is None:
@@ -1371,7 +1373,7 @@ class Algorithm(nn.Module):
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
             self._exp_replayer.update_priority(batch_info.env_ids,
-                                               batch_info.positions, priority)
+                                               batch_info.index, priority)
 
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(
