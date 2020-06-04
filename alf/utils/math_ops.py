@@ -114,7 +114,7 @@ def add_n(inputs):
     Returns:
         Tensor: the element-wise sum of all the tensors in ``inputs``.
     """
-    return functools.reduce(torch.add, inputs)
+    return sum(inputs)
 
 
 def mul_n(inputs):
