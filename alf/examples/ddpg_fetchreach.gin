@@ -1,5 +1,9 @@
 include 'ddpg.gin'
 
+import alf.algorithms.agent
+Agent.rl_algorithm_cls=@DdpgAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
+
 import alf.utils.dist_utils
 import alf.environments.suite_robotics
 

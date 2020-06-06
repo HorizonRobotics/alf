@@ -125,6 +125,120 @@ class ReplayBufferTest(RingBufferTest):
                           [-1., 0.]])
         self.assertTrue(torch.allclose(res.r, r))
 
+    # Gold standard functions to test HER.
+    def episode_end_indices(self, b):
+        """Compute episode ending indices in RingBuffer b.
+        Returns:
+            epi_ends (tensor): shape ``(2, E)``, ``epi_ends[0]`` are the
+                ``env_ids``, ``epi_ends[1]`` are the ending positions of the
+                episode ending/LAST steps.
+                We assume every possible ``env_id`` is present.
+        """
+        step_types = alf.nest.get_field(b._buffer, b._step_type_field)
+        epi_ends = torch.where(step_types == ds.StepType.LAST)
+        epi_ends = alf.nest.map_structure(lambda d: d.type(torch.int64),
+                                          epi_ends)
+        # if an env has no LAST step, populate with pos - 1
+        last_step_pos = b.circular(b._current_pos - 1)
+        all_envs = torch.arange(b._num_envs)
+        non_last_step_envs = torch.where(
+            step_types[(all_envs, last_step_pos)] != ds.StepType.LAST)[0]
+        epi_ends = (torch.cat([epi_ends[0], non_last_step_envs]),
+                    torch.cat([epi_ends[1],
+                               last_step_pos[non_last_step_envs]]))
+        return epi_ends
+
+    # Another gold standard function
+    def distance_to_episode_end(self, b, env_ids, idx):
+        """Compute the distance to the closest episode end in future.
+
+        Args:
+            b (ReplayBuffer): HER ReplayBuffer object.
+            env_ids (tensor): shape ``L``.
+            idx (tensor): shape ``L``, indexes of the current timesteps in
+                the replay buffer.
+        Returns:
+            tensor of shape ``L``.
+        """
+        epi_ends = self.episode_end_indices(b)
+        MAX_INT = 1000000000
+        pos = b._pad(idx, env_ids)
+        padded_ends = b._pad(epi_ends[1], epi_ends[0])
+        min_dist = torch.ones_like(pos)
+        # Using a loop over envs reduces memory by num_envs^3.
+        # Due to the small memory footprint, speed is also much faster.
+        for env_id in range(b._num_envs):
+            (pos_env_index, ) = torch.where(env_ids == env_id)
+            (end_env_index, ) = torch.where(epi_ends[0] == env_id)
+            _pos = torch.gather(pos, dim=0, index=pos_env_index)
+            _ends = torch.gather(padded_ends, dim=0, index=end_env_index)
+            L = _pos.shape[0]
+            E = _ends.shape[0]
+            dist = _ends.unsqueeze(0).expand(L, E) - _pos.unsqueeze(1).expand(
+                L, E)
+            positive_dist = torch.where(
+                dist < 0, torch.tensor(MAX_INT, dtype=torch.int64), dist)
+            _min_dist, _ = torch.min(positive_dist, dim=1)
+            min_dist.scatter_(dim=0, index=pos_env_index, src=_min_dist)
+        return min_dist
+
+    def test_her_relabel_episode_end_distance_computation(self):
+        num_envs = 2
+        max_length = 100
+        torch.manual_seed(0)
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=num_envs,
+            max_length=max_length,
+            her_k=0.8,
+            step_type_field="t",
+            achieved_goal_field="o.a",
+            desired_goal_field="o.g",
+            reward_field="r")
+        # insert data
+        max_steps = 1000
+        steps = torch.tensor([ds.StepType.MID] * max_steps * num_envs)
+        # start with FIRST
+        env_firsts = torch.arange(num_envs)
+        steps[env_firsts * max_steps] = torch.tensor([ds.StepType.FIRST])
+        # randomly insert episode ends (no overlapping positions)
+        # with dense episode ends
+        end_prob = .1
+        segs = int(max_steps * num_envs * end_prob)
+        ends = (torch.arange(segs) * (1. / end_prob)).type(torch.int64)
+        ends += (torch.rand(segs) * (1. / end_prob - 1) + 1).type(torch.int64)
+        steps[ends] = torch.tensor([ds.StepType.LAST]).expand(segs)
+        valid_starts, = torch.where(
+            ends +
+            1 != torch.arange(max_steps, num_envs * max_steps, max_steps))
+        steps[(ends + 1)[valid_starts]] = torch.tensor(
+            [ds.StepType.FIRST]).expand(valid_starts.shape[0])
+        for t in range(max_steps):
+            for b in range(num_envs):
+                batch = get_batch([b],
+                                  self.dim,
+                                  t=steps[b * max_steps + t],
+                                  x=1. / max_steps * t + b)
+                replay_buffer.add_batch(batch, batch.env_id)
+            if t > 1:
+                sample_steps = min(t, max_length)
+                env_ids = torch.tensor([0] * sample_steps + [1] * sample_steps)
+                idx = torch.tensor(
+                    list(range(sample_steps)) + list(range(sample_steps)))
+                gd = self.distance_to_episode_end(replay_buffer, env_ids, idx)
+                d = replay_buffer.distance_to_episode_end(idx, env_ids)
+                if not torch.equal(gd, d):
+                    outs = [
+                        "t: ", t, "\nenvids:\n", env_ids, "\nidx:\n", idx,
+                        "\n", "Not Equal: a:\n", gd, "\nb:\n", d, "\nsteps:\n",
+                        replay_buffer._buffer.t, "\nindexed_pos:\n",
+                        replay_buffer._indexed_pos,
+                        "\nheadless_indexed_pos:\n",
+                        replay_buffer._headless_indexed_pos
+                    ]
+                    outs = [str(out) for out in outs]
+                    assert False, "".join(outs)
+
     @parameterized.named_parameters([
         ('test_sync', False),
         ('test_async', True),

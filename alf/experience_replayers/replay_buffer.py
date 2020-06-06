@@ -423,7 +423,7 @@ class ReplayBuffer(RingBuffer):
                                                self._step_type_field)
         is_first_cond = buffer_step_types[(env_ids, idx)] == ds.StepType.FIRST
         is_first, = torch.where(is_first_cond)
-        result[env_ids[is_first]] = first_step_idx[is_first]
+        result[is_first] = first_step_idx[is_first]
         # Special handling for headless timesteps whose ``FIRST`` steps
         # were recently overwritten in the RingBuffer.
         new_pos = self._pad(idx, env_ids)

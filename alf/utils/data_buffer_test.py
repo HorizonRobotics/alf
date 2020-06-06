@@ -33,8 +33,8 @@ DataItem = namedtuple("DataItem", ["env_id", "x", "t", "o", "r"])
 # as we are not using the spawn method to start subprocesses.
 def get_batch(env_ids, dim, t, x):
     batch_size = len(env_ids)
-    x = torch.tensor(x, dtype=torch.float32, device="cpu")
-    t = torch.tensor(t, dtype=torch.int32, device="cpu")
+    x = torch.as_tensor(x, dtype=torch.float32, device="cpu")
+    t = torch.as_tensor(t, dtype=torch.int32, device="cpu")
     ox = (x * torch.arange(
         batch_size, dtype=torch.float32, requires_grad=True,
         device="cpu").unsqueeze(1) * torch.arange(
