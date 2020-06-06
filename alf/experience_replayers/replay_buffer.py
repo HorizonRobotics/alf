@@ -393,18 +393,24 @@ class ReplayBuffer(RingBuffer):
         """
         _env_ids = env_ids[non_first]
         _pos = pos[non_first]
+        # Because this is a non-first step, the previous step's first step
+        # is the same as this stored step's first step.  Look it up.
         prev_pos = _pos - 1
         prev_idx = self.circular(prev_pos)
         prev_first = self._indexed_pos[(_env_ids, prev_idx)]
         prev_first_idx = self.circular(prev_first)
-        # record pos of ``FIRST`` step into the current position of _index
+        # Record pos of ``FIRST`` step into the current _indexed_pos
         self._indexed_pos[(_env_ids, self.circular(_pos))] = prev_first
 
-        # update episode end for the ``FIRST`` step of the episode
-        has_head_cond = prev_first <= prev_pos
+        # Store episode end into the ``FIRST`` step of the episode.
+        has_head_cond = prev_first > _pos - self._max_length
         has_head, = torch.where(has_head_cond)
         self._indexed_pos[(_env_ids[has_head],
                            prev_first_idx[has_head])] = _pos[has_head]
+        # For a headless episode whose ``FIRST`` step was overwritten by new
+        # data, the current step has to belong to the same episode as all the
+        # other steps in the buffer, i.e. episode is longer than max_length of
+        # the buffer.  This means prev_first <= _pos - max_length.
         headless, = torch.where(torch.logical_not(has_head_cond))
         self._headless_indexed_pos[_env_ids[headless]] = _pos[headless]
 
@@ -424,12 +430,15 @@ class ReplayBuffer(RingBuffer):
         is_first_cond = buffer_step_types[(env_ids, idx)] == ds.StepType.FIRST
         is_first, = torch.where(is_first_cond)
         result[is_first] = first_step_idx[is_first]
-        # Special handling for headless timesteps whose ``FIRST`` steps
-        # were recently overwritten in the RingBuffer.
-        new_pos = self._pad(idx, env_ids)
-        new_first_step_pos = self._pad(first_step_pos, env_ids)
+        # Special handling for "headless" timesteps whose ``FIRST`` steps
+        # has been overwritten by new data added into the RingBuffer.
+        # In this case, the _current_pos will be more than _max_length over
+        # the position of the episode's first_step from _indexed_pos.
+        # The case where current step is a ``FIRST`` step can be safely
+        # ignored because the first_step_pos points to episode end which
+        # is guarranteed to be existing.
         headless, = torch.where(
-            (new_first_step_pos > new_pos) * torch.logical_not(is_first_cond))
+            self._current_pos[env_ids] > first_step_pos + self._max_length)
         headless_env_ids = env_ids[headless]
         result[headless] = self._headless_indexed_pos[headless_env_ids]
         return result

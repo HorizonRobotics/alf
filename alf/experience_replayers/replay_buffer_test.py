@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -128,6 +128,9 @@ class ReplayBufferTest(RingBufferTest):
     # Gold standard functions to test HER.
     def episode_end_indices(self, b):
         """Compute episode ending indices in RingBuffer b.
+
+        Args:
+            b (ReplayBuffer): HER ReplayBuffer object.
         Returns:
             epi_ends (tensor): shape ``(2, E)``, ``epi_ends[0]`` are the
                 ``env_ids``, ``epi_ends[1]`` are the ending positions of the
@@ -182,7 +185,28 @@ class ReplayBufferTest(RingBufferTest):
             min_dist.scatter_(dim=0, index=pos_env_index, src=_min_dist)
         return min_dist
 
-    def test_her_relabel_episode_end_distance_computation(self):
+    def generate_step_types(self, num_envs, max_steps, end_prob):
+        steps = torch.tensor([ds.StepType.MID] * max_steps * num_envs)
+        # start with FIRST
+        env_firsts = torch.arange(num_envs)
+        steps[env_firsts * max_steps] = torch.tensor([ds.StepType.FIRST])
+        # randomly insert episode ends (no overlapping positions)
+        segs = int(max_steps * num_envs * end_prob)
+        ends = (torch.arange(segs) * (1. / end_prob)).type(torch.int64)
+        ends += (torch.rand(segs) * (1. / end_prob - 1) + 1).type(torch.int64)
+        steps[ends] = torch.tensor([ds.StepType.LAST]).expand(segs)
+        valid_starts, = torch.where(
+            ends +
+            1 != torch.arange(max_steps, num_envs * max_steps, max_steps))
+        steps[(ends + 1)[valid_starts]] = torch.tensor(
+            [ds.StepType.FIRST]).expand(valid_starts.shape[0])
+        return steps
+
+    @parameterized.named_parameters([
+        ('test_dense_epi_ends', 0.1),
+        ('test_sparse_epi_ends', 0.004),
+    ])
+    def test_compute_her_future_step_distance(self, end_prob):
         num_envs = 2
         max_length = 100
         torch.manual_seed(0)
@@ -197,22 +221,9 @@ class ReplayBufferTest(RingBufferTest):
             reward_field="r")
         # insert data
         max_steps = 1000
-        steps = torch.tensor([ds.StepType.MID] * max_steps * num_envs)
-        # start with FIRST
-        env_firsts = torch.arange(num_envs)
-        steps[env_firsts * max_steps] = torch.tensor([ds.StepType.FIRST])
-        # randomly insert episode ends (no overlapping positions)
-        # with dense episode ends
-        end_prob = .1
-        segs = int(max_steps * num_envs * end_prob)
-        ends = (torch.arange(segs) * (1. / end_prob)).type(torch.int64)
-        ends += (torch.rand(segs) * (1. / end_prob - 1) + 1).type(torch.int64)
-        steps[ends] = torch.tensor([ds.StepType.LAST]).expand(segs)
-        valid_starts, = torch.where(
-            ends +
-            1 != torch.arange(max_steps, num_envs * max_steps, max_steps))
-        steps[(ends + 1)[valid_starts]] = torch.tensor(
-            [ds.StepType.FIRST]).expand(valid_starts.shape[0])
+        # generate step_types with certain density of episode ends
+        steps = self.generate_step_types(
+            num_envs, max_steps, end_prob=end_prob)
         for t in range(max_steps):
             for b in range(num_envs):
                 batch = get_batch([b],
