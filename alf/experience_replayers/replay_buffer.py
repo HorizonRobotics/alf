@@ -376,10 +376,8 @@ class ReplayBuffer(RingBuffer):
         multiples = (
             self._current_pos[env_ids] / self._max_length) * self._max_length
         idx = self.circular(x)
-        return torch.where(
-            idx < self.circular(self._current_pos[env_ids] -
-                                self._current_size[env_ids]), idx + multiples,
-            idx + multiples - self._max_length)
+        return torch.where(idx < self.circular(self._current_pos[env_ids]),
+                           idx + multiples, idx + multiples - self._max_length)
 
     def store_episode_end_pos(self, non_first, pos, env_ids):
         """Update _indexed_pos and _headless_indexed_pos for episode end pos.
@@ -429,14 +427,16 @@ class ReplayBuffer(RingBuffer):
                                                self._step_type_field)
         is_first_cond = buffer_step_types[(env_ids, idx)] == ds.StepType.FIRST
         is_first, = torch.where(is_first_cond)
-        result[is_first] = first_step_idx[is_first]
-        # Special handling for "headless" timesteps whose ``FIRST`` steps
-        # has been overwritten by new data added into the RingBuffer.
+        result[is_first] = first_step_pos[is_first]
+        # If the current timestep is "headless", i.e. whose ``FIRST`` step
+        # has been overwritten by new data added into the RingBuffer,
+        # retrieve pos from _headless_indexed_pos.
+        #
         # In this case, the _current_pos will be more than _max_length over
         # the position of the episode's first_step from _indexed_pos.
-        # The case where current step is a ``FIRST`` step can be safely
+        # (The case where current step is a ``FIRST`` step can be safely
         # ignored because the first_step_pos points to episode end which
-        # is guarranteed to be existing.
+        # is guarranteed to be existing.)
         headless, = torch.where(
             self._current_pos[env_ids] > first_step_pos + self._max_length)
         headless_env_ids = env_ids[headless]
@@ -455,12 +455,7 @@ class ReplayBuffer(RingBuffer):
         """
         pos = self._pad(idx, env_ids)
         last_pos = self.get_episode_end_pos(idx, env_ids)
-        # RingBuffer probably changed between when the data was stored and now.
-        # We need to pad the retrieved episode ending positions again, which
-        # involves making last_pos circular and then adding back multiples of
-        # _max_length.
-        current_last_pos = self._pad(last_pos, env_ids)
-        return current_last_pos - pos
+        return last_pos - pos
 
     def _hindsight_relabel(self, batch_size, batch_length, result, env_ids,
                            idx):

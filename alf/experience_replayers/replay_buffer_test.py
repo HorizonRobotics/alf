@@ -241,9 +241,10 @@ class ReplayBufferTest(RingBufferTest):
                 if not torch.equal(gd, d):
                     outs = [
                         "t: ", t, "\nenvids:\n", env_ids, "\nidx:\n", idx,
-                        "\n", "Not Equal: a:\n", gd, "\nb:\n", d, "\nsteps:\n",
-                        replay_buffer._buffer.t, "\nindexed_pos:\n",
-                        replay_buffer._indexed_pos,
+                        "\npos:\n",
+                        replay_buffer._pad(idx, env_ids), "\nNot Equal: a:\n",
+                        gd, "\nb:\n", d, "\nsteps:\n", replay_buffer._buffer.t,
+                        "\nindexed_pos:\n", replay_buffer._indexed_pos,
                         "\nheadless_indexed_pos:\n",
                         replay_buffer._headless_indexed_pos
                     ]
