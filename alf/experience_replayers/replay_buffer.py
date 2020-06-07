@@ -135,7 +135,8 @@ class ReplayBuffer(RingBuffer):
                     goal = goal.unsqueeze(2)
                 return torch.where(
                     torch.norm(achieved_goal - goal, dim=2) < .05,
-                    torch.zeros(1), -torch.ones(1))
+                    torch.zeros(1, dtype=torch.float32, device=device),
+                    -torch.ones(1, dtype=torch.float32, device=device))
 
             self._reward_fn = default_reward_fn
 
@@ -482,45 +483,48 @@ class ReplayBuffer(RingBuffer):
         assert batch_length == 2
 
         # relabel only these sampled indices
-        (her_indices, ) = torch.where(torch.rand(batch_size) < self._her_k)
+        her_cond = torch.rand(batch_size) < self._her_k
+        (her_indices, ) = torch.where(her_cond)
+        (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
 
-        batch_last_step_idx = idx[:, -1][her_indices]
-        env_ids = env_ids[:, -1]
+        last_step_idx = idx[:, -1][her_indices]
+        last_env_ids = env_ids[:, -1][her_indices]
         # Get x, y indices of LAST steps
-        dist = self.distance_to_episode_end(batch_last_step_idx,
-                                            env_ids[her_indices])
+        dist = self.distance_to_episode_end(last_step_idx, last_env_ids)
 
         # get random future state
-        future_idx = self.circular(batch_last_step_idx + (
+        future_idx = self.circular(last_step_idx + (
             torch.rand(*dist.shape) * (dist + 1)).to(torch.int64))
         achieved_goals = alf.nest.get_field(self._buffer,
                                             self._achieved_goal_field)
-        future_ag = achieved_goals[(env_ids[her_indices],
-                                    future_idx)].unsqueeze(1)
+        future_ag = achieved_goals[(last_env_ids, future_idx)].unsqueeze(1)
 
         # relabel desired goal
         result_desired_goal = alf.nest.get_field(
             result, self._desired_goal_field).clone()
-        result_desired_goal[(
-            her_indices.unsqueeze(1),
-            torch.arange(batch_length).unsqueeze(0))] = future_ag
+        her_batch_index_tuple = (her_indices.unsqueeze(1),
+                                 torch.arange(batch_length).unsqueeze(0))
+        result_desired_goal[her_batch_index_tuple] = future_ag
 
         # recompute rewards
         result_reward = alf.nest.get_field(result, self._reward_field).clone()
         result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-        relabeled_rewards = self._reward_fn(
-            result_ag[(her_indices.unsqueeze(1),
-                       torch.arange(batch_length).unsqueeze(0))],
-            result_desired_goal[(her_indices.unsqueeze(1),
-                                 torch.arange(batch_length).unsqueeze(0))])
-        result_reward[(
-            her_indices.unsqueeze(1),
-            torch.arange(batch_length).unsqueeze(0))] = relabeled_rewards
+        result_dg = alf.nest.get_field(result, self._desired_goal_field)
+        relabeled_rewards = self._reward_fn(result_ag, result_desired_goal)
+        # assert reward function is the same as used by the environment.
+        assert torch.allclose(
+            relabeled_rewards[non_her_indices],
+            result_reward[non_her_indices]), (
+                "{}\n!=\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nidx:\n{}".format(
+                    relabeled_rewards[non_her_indices],
+                    result_reward[non_her_indices], result_ag[non_her_indices],
+                    result_dg[non_her_indices], env_ids[non_her_indices],
+                    idx[non_her_indices]))
 
         result = alf.nest.utils.transform_nest(
             result, self._desired_goal_field, lambda _: result_desired_goal)
         result = alf.nest.utils.transform_nest(
-            result, self._reward_field, lambda _: result_reward)
+            result, self._reward_field, lambda _: relabeled_rewards)
         return result
 
     @atomic

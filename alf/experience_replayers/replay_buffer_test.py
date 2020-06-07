@@ -238,6 +238,7 @@ class ReplayBufferTest(RingBufferTest):
                     list(range(sample_steps)) + list(range(sample_steps)))
                 gd = self.distance_to_episode_end(replay_buffer, env_ids, idx)
                 d = replay_buffer.distance_to_episode_end(idx, env_ids)
+                # Test distance to end computation
                 if not torch.equal(gd, d):
                     outs = [
                         "t: ", t, "\nenvids:\n", env_ids, "\nidx:\n", idx,
@@ -250,6 +251,21 @@ class ReplayBufferTest(RingBufferTest):
                     ]
                     outs = [str(out) for out in outs]
                     assert False, "".join(outs)
+
+                # Save original exp for later testing.
+                g_orig = replay_buffer._buffer.o["g"].clone()
+                r_orig = replay_buffer._buffer.r.clone()
+
+                # HER relabel experience
+                res = replay_buffer.get_batch(sample_steps, 2)[0]
+
+                self.assertEqual(list(res.o["g"].shape), [sample_steps, 2])
+
+                # Test relabeling doesn't change original experience
+                self.assertTrue(
+                    torch.allclose(r_orig, replay_buffer._buffer.r))
+                self.assertTrue(
+                    torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
 
     @parameterized.named_parameters([
         ('test_sync', False),

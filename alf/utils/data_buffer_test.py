@@ -40,17 +40,22 @@ def get_batch(env_ids, dim, t, x):
         device="cpu").unsqueeze(1) * torch.arange(
             dim, dtype=torch.float32, requires_grad=True,
             device="cpu").unsqueeze(0))
+    a = x * torch.ones(batch_size, dtype=torch.float32, device="cpu")
+    g = torch.zeros(batch_size, dtype=torch.float32, device="cpu")
+    # reward function adapted from ReplayBuffer: default_reward_fn
+    r = torch.where(
+        torch.abs(a - g) < .05,
+        torch.zeros(batch_size, dtype=torch.float32, device="cpu"),
+        -torch.ones(batch_size, dtype=torch.float32, device="cpu"))
     return DataItem(
         env_id=torch.tensor(env_ids, dtype=torch.int64, device="cpu"),
         x=ox,
         t=t * torch.ones(batch_size, dtype=torch.int32, device="cpu"),
         o=dict({
-            "a":
-                x * torch.ones(batch_size, dtype=torch.float32, device="cpu"),
-            "g":
-                torch.zeros(batch_size, dtype=torch.float32, device="cpu")
+            "a": a,
+            "g": g
         }),
-        r=-torch.ones(batch_size, dtype=torch.float32, device="cpu"))
+        r=r)
 
 
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
