@@ -500,29 +500,34 @@ class ReplayBuffer(RingBuffer):
         future_ag = achieved_goals[(last_env_ids, future_idx)].unsqueeze(1)
 
         # relabel desired goal
-        result_desired_goal = alf.nest.get_field(
-            result, self._desired_goal_field).clone()
+        result_desired_goal = alf.nest.get_field(result,
+                                                 self._desired_goal_field)
+        result_relabed_goal = result_desired_goal.clone()
         her_batch_index_tuple = (her_indices.unsqueeze(1),
                                  torch.arange(batch_length).unsqueeze(0))
-        result_desired_goal[her_batch_index_tuple] = future_ag
+        result_relabed_goal[her_batch_index_tuple] = future_ag
 
         # recompute rewards
-        result_reward = alf.nest.get_field(result, self._reward_field).clone()
+        result_rewards = alf.nest.get_field(result, self._reward_field).clone()
         result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-        result_dg = alf.nest.get_field(result, self._desired_goal_field)
-        relabeled_rewards = self._reward_fn(result_ag, result_desired_goal)
+        relabeled_rewards = self._reward_fn(result_ag, result_relabed_goal)
+        alf.summary.scalar("replayer/reward_mean_before_relabel",
+                           torch.mean(result_rewards[her_indices][:-1]))
+        alf.summary.scalar("replayer/reward_mean_after_relabel",
+                           torch.mean(relabeled_rewards[her_indices][:-1]))
         # assert reward function is the same as used by the environment.
         assert torch.allclose(
             relabeled_rewards[non_her_indices],
-            result_reward[non_her_indices]), (
+            result_rewards[non_her_indices]), (
                 "{}\n!=\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nidx:\n{}".format(
                     relabeled_rewards[non_her_indices],
-                    result_reward[non_her_indices], result_ag[non_her_indices],
-                    result_dg[non_her_indices], env_ids[non_her_indices],
-                    idx[non_her_indices]))
+                    result_rewards[non_her_indices],
+                    result_ag[non_her_indices],
+                    result_desired_goal[non_her_indices],
+                    env_ids[non_her_indices], idx[non_her_indices]))
 
         result = alf.nest.utils.transform_nest(
-            result, self._desired_goal_field, lambda _: result_desired_goal)
+            result, self._desired_goal_field, lambda _: result_relabed_goal)
         result = alf.nest.utils.transform_nest(
             result, self._reward_field, lambda _: relabeled_rewards)
         return result
