@@ -13,6 +13,7 @@
 # limitations under the License.
 """Replay buffer."""
 
+from absl import logging
 import gin
 import torch
 import torch.nn as nn
@@ -491,6 +492,8 @@ class ReplayBuffer(RingBuffer):
         last_env_ids = env_ids[:, -1][her_indices]
         # Get x, y indices of LAST steps
         dist = self.distance_to_episode_end(last_step_idx, last_env_ids)
+        alf.summary.scalar("replayer/mean_steps_to_episode_end",
+                           torch.mean(dist.type(torch.float32)))
 
         # get random future state
         future_idx = self.circular(last_step_idx + (
@@ -502,32 +505,41 @@ class ReplayBuffer(RingBuffer):
         # relabel desired goal
         result_desired_goal = alf.nest.get_field(result,
                                                  self._desired_goal_field)
-        result_relabed_goal = result_desired_goal.clone()
+        relabed_goal = result_desired_goal.clone()
         her_batch_index_tuple = (her_indices.unsqueeze(1),
                                  torch.arange(batch_length).unsqueeze(0))
-        result_relabed_goal[her_batch_index_tuple] = future_ag
+        relabed_goal[her_batch_index_tuple] = future_ag
 
         # recompute rewards
-        result_rewards = alf.nest.get_field(result, self._reward_field).clone()
+        result_rewards = alf.nest.get_field(result, self._reward_field)
         result_ag = alf.nest.get_field(result, self._achieved_goal_field)
-        relabeled_rewards = self._reward_fn(result_ag, result_relabed_goal)
+        relabeled_rewards = self._reward_fn(result_ag, relabed_goal)
         alf.summary.scalar("replayer/reward_mean_before_relabel",
                            torch.mean(result_rewards[her_indices][:-1]))
         alf.summary.scalar("replayer/reward_mean_after_relabel",
                            torch.mean(relabeled_rewards[her_indices][:-1]))
         # assert reward function is the same as used by the environment.
-        assert torch.allclose(
-            relabeled_rewards[non_her_indices],
-            result_rewards[non_her_indices]), (
-                "{}\n!=\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nidx:\n{}".format(
-                    relabeled_rewards[non_her_indices],
-                    result_rewards[non_her_indices],
-                    result_ag[non_her_indices],
-                    result_desired_goal[non_her_indices],
-                    env_ids[non_her_indices], idx[non_her_indices]))
+        if not torch.allclose(relabeled_rewards[non_her_indices],
+                              result_rewards[non_her_indices]):
+            msg = (
+                "ReplayBuffer._hindsight_relabel:\nrelabeled_reward\n{}\n!=" +
+                "\nenv_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nidx:\n{}"
+            ).format(relabeled_rewards[non_her_indices],
+                     result_rewards[non_her_indices],
+                     result_ag[non_her_indices],
+                     result_desired_goal[non_her_indices],
+                     env_ids[non_her_indices], idx[non_her_indices])
+            logging.warning(msg)
+            # assert False, msg
+
+        if alf.summary.get_global_counter() == 64:
+            step_types = alf.nest.get_field(self._buffer,
+                                            self._step_type_field)
+            logging.info("step_types:\n", step_types)
+            logging.info("achieved goals:\n", achieved_goals)
 
         result = alf.nest.utils.transform_nest(
-            result, self._desired_goal_field, lambda _: result_relabed_goal)
+            result, self._desired_goal_field, lambda _: relabed_goal)
         result = alf.nest.utils.transform_nest(
             result, self._reward_field, lambda _: relabeled_rewards)
         return result
