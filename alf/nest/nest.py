@@ -287,7 +287,6 @@ def fast_map_structure(func, *structure):
 def pack_sequence_as(nest, flat_seq):
     """Returns a given flattened sequence packed into a given structure."""
     assert_same_length(flatten(nest), flat_seq)
-    flat_seq = list(flat_seq)
 
     def _pack(nest, flat_seq):
         if not is_nested(nest):
@@ -301,8 +300,7 @@ def pack_sequence_as(nest, flat_seq):
             ret = type(nest)(**ret)
         return ret
 
-    flat_seq = list(flat_seq)
-    return _pack(nest, flat_seq)
+    return _pack(nest, list(flat_seq))
 
 
 def batch_nested_tensor(nested_tensor):

@@ -19,6 +19,8 @@ setup(
     version='0.0.1',
     install_requires=[
         'atari_py == 0.1.7',
+        'cpplint',
+        'clang-format == 9.0',
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',

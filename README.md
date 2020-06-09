@@ -27,7 +27,7 @@ You can run the following commands to install ALF
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
-pip install -e .
+pip install -e . ./alf/cnest
 ```
 ## [Documentation](https://alf.readthedocs.io/)
 
