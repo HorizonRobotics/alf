@@ -39,7 +39,7 @@ class ReplayBuffer(RingBuffer):
                  max_length=1024,
                  prioritized_sampling=False,
                  initial_priority=1.0,
-                 device="cpu",
+                 device="cuda",
                  allow_multiprocess=False,
                  name="ReplayBuffer"):
         """
