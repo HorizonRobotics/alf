@@ -13,6 +13,8 @@
 # limitations under the License.
 """Trainer for training an Algorithm on given environments."""
 
+import cProfile
+
 import abc
 from absl import logging
 import gin
@@ -90,6 +92,9 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
         """
         root_dir = os.path.expanduser(config.root_dir)
+        os.makedirs(root_dir, exist_ok=True)
+        logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
+
         self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
@@ -196,12 +201,27 @@ class Trainer(object):
         self._restore_checkpoint()
         alf.summary.enable_summary()
         try:
+            import cProfile, pstats, io
+            from pstats import SortKey
+            pr = cProfile.Profile()
+            pr.enable()
+
             common.run_under_record_context(
                 self._train,
                 summary_dir=self._train_dir,
                 summary_interval=self._summary_interval,
                 flush_secs=self._summaries_flush_secs,
                 summary_max_queue=self._summary_max_queue)
+
+            pr.disable()
+            s = io.StringIO()
+            sortby = SortKey.CUMULATIVE
+            ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+            ps.print_stats()
+            #ps.print_callers()
+            ps.print_callees()
+            logging.info(s.getvalue())
+
         finally:
             self._save_checkpoint()
             self._close_envs()
