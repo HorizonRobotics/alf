@@ -15,7 +15,154 @@
 
 from absl import logging
 
+import sys
+sys.path.append("./cnest")
+import cnest
+
 import torch
+
+
+def flatten(nest):
+    """(C++) Returns a flat list from a given nested structure."""
+    try:
+        return cnest.flatten(nest)
+    except Exception as e:
+        logging.error("flatten() fails for {}. Error message: '{}'".format(
+            nest, str(e)))
+
+
+def assert_same_structure(nest1, nest2):
+    """(C++) Asserts that two structures are nested in the same way."""
+    try:
+        cnest.assert_same_structure(nest1, nest2)
+    except Exception as e:
+        logging.error(
+            "assert_same_structure() fails for {} and {}. Error message: '{}'".
+            format(nest1, nest2, str(e)))
+
+
+def map_structure(func, *nests):
+    """(C++) Applies func to each entry in structure and returns a new structure."""
+    try:
+        return cnest.map_structure(func, *nests)
+    except Exception as e:
+        logging.error(
+            "map_structure() fails for {}. Error message: '{}'".format(
+                nests, str(e)))
+
+
+def pack_sequence_as(nest, flat_seq):
+    """(C++) Returns a given flattened sequence packed into a given structure."""
+    try:
+        return cnest.pack_sequence_as(nest, flat_seq)
+    except Exception as e:
+        logging.error(
+            "pack_sequence_as() fails for {} and {}. Error message: '{}'".
+            format(nest, flat_seq, str(e)))
+
+
+def flatten_up_to(shallow_nest, nest):
+    """(C++) Flatten ``nests`` up to the depths of ``shallow_nest``. Every
+    sub-nest of each of ``nests`` beyond the depth of the corresponding sub-nest
+    in ``shallow_nest`` will be treated as a leaf that stops flattening downwards.
+    """
+    try:
+        return cnest.flatten_up_to(shallow_nest, nest)
+    except Exception as e:
+        logging.error(
+            "flatten_up_to() fails for {} and {}. Error message: '{}'".format(
+                shallow_nest, nest, str(e)))
+
+
+def map_structure_up_to(shallow_nest, func, *nests):
+    """(C++)
+    Applies a function to ``nests`` up to the depths of ``shallow_nest``. Every
+    sub-nest of each of ``nests`` beyond the depth of the corresponding sub-nest
+    in ``shallow_nest`` will be treated as a leaf and input to ``func``.
+
+    Examples (taken from ``tensorflow.nest.map_structure_up_to``):
+
+        .. code-block:: python
+
+            shallow_nest = [None, None]
+            inp_val = [[1], 2]
+            out = map_structure_up_to(shallow_nest, lambda x: 2 * x, inp_val)
+            # Output is: [[1, 1], 4]
+
+            ab_tuple = collections.namedtuple("ab_tuple", "a, b")
+            op_tuple = collections.namedtuple("op_tuple", "add, mul")
+            inp_val = ab_tuple(a=2, b=3)
+            inp_ops = ab_tuple(a=op_tuple(add=1, mul=2), b=op_tuple(add=2, mul=3))
+            out = map_structure_up_to(inp_val, lambda val, ops: (val + ops.add) * ops.mul,
+                                        inp_val, inp_ops)
+            # Output is: ab_tuple(a=6, b=15)
+
+            data_list = [[2, 4, 6, 8], [[1, 3, 5, 7, 9], [3, 5, 7]]]
+            name_list = ['evens', ['odds', 'primes']]
+            out = map_structure_up_to(
+                name_list,
+                lambda name, sec: "first_{}_{}".format(len(sec), name),
+                name_list, data_list)
+            # Output is: ['first_4_evens', ['first_5_odds', 'first_3_primes']]
+
+    Args:
+        shallow_nest (nest): a shallow nested structure.
+        func (Callable): callable which will be applied to ``nests``.
+        *nests (nest): a variable length of nested structures.
+
+    Returns:
+        nest: a result nested structure that has the same depths with
+        ``shallow_nest``.
+    """
+    try:
+        return cnest.map_structure_up_to(shallow_nest, func, *nests)
+    except Exception as e:
+        logging.error(
+            ("map_structure_up_to() fails for a shallow_nest {} with nests {}."
+             " Error message: '{}'").format(shallow_nest, nests, str(e)))
+
+
+def prune_nest_like(nest, slim_nest, value_to_match=None):
+    """(C++)
+    Prune a nested structure referring to another slim nest. Generally, for
+    every corrsponding node, we only keep the fields that're contained in
+    ``slim_nest``. In addition, if a field of ``slim_nest`` contains a value of
+    ``value_to_match``, then the corresponding field of ``nest`` will also be
+    updated to this value.
+
+    .. note::
+
+        If a node is a ``list`` or ``unnamedtuple``, then we require their
+        lengths are equal.
+
+    Examples:
+
+        .. code-block:: python
+
+            x = dict(a=1, b=2)
+            y = dict(a=TensorSpec(()))
+            z = prune_nest_like(x, y) # z is dict(a=1)
+
+            y2 = dict(a=TensorSpec(()), b=())
+            z2 = prune_nest_like(x, y2, value_to_match=()) # z2 is dict(a=1, b=())
+
+    Args:
+        nest (nest): a nested structure
+        slim_nest (nest): a slim nested structure. It's required that at every
+            node, its fields is a subset of those of ``nest``.
+        value_to_match (nest): a value that indicates the paired field of
+            ``slim_nest`` should be updated in ``nest``. Can be set to the default
+            value of a ``namedtuple``.
+
+    Returns:
+        nest: the pruned nest that has the same set of fields with ``slim_nest``.
+    """
+    try:
+        return cnest.prune_nest_like(nest, slim_nest, value_to_match)
+    except Exception as e:
+        logging.error(
+            "prune_nest_like() fails between {} and {}. Error message: '{}'".
+            format(nest, slim_nest, str(e)))
 
 
 def assert_same_type(value1, value2):
@@ -101,7 +248,7 @@ def is_nested(value):
     return isinstance(value, (list, tuple, dict))
 
 
-def flatten(nest):
+def py_flatten(nest):
     """Returns a flat list from a given nested structure."""
     if not is_nested(nest):
         # any other data type will be returned as it is
@@ -109,14 +256,14 @@ def flatten(nest):
     flattened = []
     if isinstance(nest, list) or is_unnamedtuple(nest):
         for value in nest:
-            flattened.extend(flatten(value))
+            flattened.extend(py_flatten(value))
     else:
         for _, value in extract_fields_from_nest(nest):
-            flattened.extend(flatten(value))
+            flattened.extend(py_flatten(value))
     return flattened
 
 
-def flatten_up_to(shallow_nest, nest):
+def py_flatten_up_to(shallow_nest, nest):
     """Flatten ``nests`` up to the depths of ``shallow_nest``. Every sub-nest of
     each of ``nests`` beyond the depth of the corresponding sub-nest in
     ``shallow_nest`` will be treated as a leaf that stops flattening downwards.
@@ -136,18 +283,18 @@ def flatten_up_to(shallow_nest, nest):
     flattened = []
     if isinstance(shallow_nest, list) or is_unnamedtuple(shallow_nest):
         for sn, n in zip(shallow_nest, nest):
-            flattened.extend(flatten_up_to(sn, n))
+            flattened.extend(py_flatten_up_to(sn, n))
     else:
         for fv1, fv2 in zip(
                 extract_fields_from_nest(shallow_nest),
                 extract_fields_from_nest(nest)):
             assert fv1[0] == fv2[0], \
                 "Keys are different !{} <-> {}".format(fv1[0], fv2[0])
-            flattened.extend(flatten_up_to(fv1[1], fv2[1]))
+            flattened.extend(py_flatten_up_to(fv1[1], fv2[1]))
     return flattened
 
 
-def assert_same_structure(nest1, nest2):
+def py_assert_same_structure(nest1, nest2):
     """Asserts that two structures are nested in the same way."""
     # When neither is nested, the assertion won't fail
     if is_nested(nest1) or is_nested(nest2):
@@ -162,21 +309,21 @@ def assert_same_structure(nest1, nest2):
 
         if isinstance(nest1, list) or is_unnamedtuple(nest1):
             for value1, value2 in zip(nest1, nest2):
-                assert_same_structure(value1, value2)
+                py_assert_same_structure(value1, value2)
         else:
             for fv1, fv2 in zip(
                     extract_fields_from_nest(nest1),
                     extract_fields_from_nest(nest2)):
                 assert fv1[0] == fv2[0], \
                     "Keys are different !{} <-> {}".format(fv1[0], fv2[0])
-                assert_same_structure(fv1[1], fv2[1])
+                py_assert_same_structure(fv1[1], fv2[1])
 
 
-def map_structure(func, *nests):
+def py_map_structure(func, *nests):
     """Applies func to each entry in structure and returns a new structure."""
     assert nests, "There should be at least one input nest!"
     for nest in nests[1:]:
-        assert_same_structure(nests[0], nest)
+        py_assert_same_structure(nests[0], nest)
 
     def _map(*nests):
         if not is_nested(nests[0]):
@@ -196,7 +343,7 @@ def map_structure(func, *nests):
     return _map(*nests)
 
 
-def map_structure_up_to(shallow_nest, func, *nests):
+def py_map_structure_up_to(shallow_nest, func, *nests):
     """
     Applies a function to ``nests`` up to the depths of ``shallow_nest``. Every
     sub-nest of each of ``nests`` beyond the depth of the corresponding sub-nest
@@ -284,13 +431,17 @@ def fast_map_structure(func, *structure):
     return pack_sequence_as(structure[0], [func(*x) for x in entries])
 
 
-def pack_sequence_as(nest, flat_seq):
+def py_pack_sequence_as(nest, flat_seq):
     """Returns a given flattened sequence packed into a given structure."""
-    assert_same_length(flatten(nest), flat_seq)
+    assert_same_length(py_flatten(nest), flat_seq)
+    counter = [0]
 
     def _pack(nest, flat_seq):
         if not is_nested(nest):
-            return flat_seq.pop(0)
+            ret = flat_seq[counter[0]]
+            counter[0] += 1
+            return ret
+
         if isinstance(nest, list) or is_unnamedtuple(nest):
             ret = type(nest)([_pack(value, flat_seq) for value in nest])
         else:
@@ -387,7 +538,7 @@ def find_field(nest, name, ignore_empty=True):
     return ret
 
 
-def prune_nest_like(nest, slim_nest, value_to_match=None):
+def py_prune_nest_like(nest, slim_nest, value_to_match=None):
     """Prune a nested structure referring to another slim nest. Generally, for
     every corrsponding node, we only keep the fields that're contained in
     ``slim_nest``. In addition, if a field of ``slim_nest`` contains a value of
