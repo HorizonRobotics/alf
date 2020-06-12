@@ -15,7 +15,7 @@ ALF source root, ALF_VERSION to represent the name of the new version (e.g. 0.1.
    cd $ALF_ROOT
    python -m unittest discover -s alf -p "*_test.py" -v
    ```
-2. Modify [setup.py](../setup.py), [.ci-cd/requirements.txt](../.ci-cd/requirements.txt) and [.ci-cd/Dockerfile.cpu](../.ci-cd/Dockerfile.cpu). If you are updating tensorflow, you need update Dockerfile.cpu to use the appropriate
+2. Modify [setup.py](../../setup.py), [.ci-cd/requirements.txt](../../.ci-cd/requirements.txt) and [.ci-cd/Dockerfile.cpu](../../.ci-cd/Dockerfile.cpu). If you are updating tensorflow, you need update Dockerfile.cpu to use the appropriate
    tensorflow docker image.
 3. Build the new docker image:
    ```bash
@@ -34,6 +34,6 @@ ALF source root, ALF_VERSION to represent the name of the new version (e.g. 0.1.
    docker push horizonrobotics/alf:$ALF_VERSION
    docker logout
    ```
-6. Update [.github/workflows/test.yml](../.github/workflows/test.yml). Change `horizonrobotics/alf:xxx` to the new docker image
+6. Update [.github/workflows/test.yml](../../.github/workflows/test.yml). Change `horizonrobotics/alf:xxx` to the new docker image
 version `horizonrobotics/alf:ALF_VERSION`
 7. Send your change to github for code review.
