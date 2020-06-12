@@ -41,7 +41,7 @@ function check_style() {
 
 function test() {
     cd alf
-    pip3 install -e ./alf/nest/cnest
+    pip3 install -e ./nest/cnest
     python3 -m unittest -v \
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
