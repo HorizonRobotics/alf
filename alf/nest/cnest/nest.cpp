@@ -31,20 +31,20 @@ std::string py_format(const std::string& format, Args... args) {
   return py::cast<py::str>(py_format(format, args...));
 }
 
-bool IsNested(py::object value) {
+bool IsNested(const py::object& value) {
   return (py::isinstance<py::list>(value) || py::isinstance<py::tuple>(value) ||
           py::isinstance<py::dict>(value));
 }
 
-bool IsNamedtuple(py::object value) {
+bool IsNamedtuple(const py::object& value) {
   return (py::isinstance<py::tuple>(value) && py::hasattr(value, "_fields"));
 }
 
-bool IsUnnamedtuple(py::object value) {
+bool IsUnnamedtuple(const py::object& value) {
   return (py::isinstance<py::tuple>(value) && !py::hasattr(value, "_fields"));
 }
 
-void AssertSameType(py::object value1, py::object value2) {
+void AssertSameType(const py::object& value1, const py::object& value2) {
   bool type_equal = value1.get_type().equal(value2.get_type());
   bool both_dict =
       (py::isinstance<py::dict>(value1) && py::isinstance<py::dict>(value2));
@@ -54,7 +54,7 @@ void AssertSameType(py::object value1, py::object value2) {
   }
 }
 
-void AssertSameLength(py::object seq1, py::object seq2) {
+void AssertSameLength(const py::object& seq1, const py::object& seq2) {
   bool both_iterable = (py::isinstance<py::iterable>(seq1) &&
                         py::isinstance<py::iterable>(seq2));
   if (!both_iterable) {
@@ -67,7 +67,7 @@ void AssertSameLength(py::object seq1, py::object seq2) {
   }
 }
 
-py::list ExtractFieldsFromNest(py::object nest) {
+py::list ExtractFieldsFromNest(const py::object& nest) {
   bool is_dict = py::isinstance<py::dict>(nest);
   if (!(is_dict || IsNamedtuple(nest))) {
     throw std::runtime_error(
@@ -104,7 +104,7 @@ py::list ExtractFieldsFromNest(py::object nest) {
   return ret;
 }
 
-std::vector<py::object> _Flatten(py::object nest) {
+std::vector<py::object> _Flatten(const py::object& nest) {
   std::vector<py::object> flat;
   if (!IsNested(nest)) {
     flat.push_back(nest);
@@ -112,12 +112,12 @@ std::vector<py::object> _Flatten(py::object nest) {
   }
 
   if (py::isinstance<py::list>(nest) || IsUnnamedtuple(nest)) {
-    for (auto value : nest) {
+    for (const auto& value : nest) {
       auto sub_flat = _Flatten(py::cast<py::object>(value));
       flat.insert(flat.end(), sub_flat.begin(), sub_flat.end());
     }
   } else {
-    for (auto item : ExtractFieldsFromNest(nest)) {
+    for (const auto& item : ExtractFieldsFromNest(nest)) {
       auto sub_flat = _Flatten(item[py::int_(1)]);
       flat.insert(flat.end(), sub_flat.begin(), sub_flat.end());
     }
@@ -125,16 +125,17 @@ std::vector<py::object> _Flatten(py::object nest) {
   return flat;
 }
 
-py::list Flatten(py::object nest) {
+py::list Flatten(const py::object& nest) {
   auto flat = _Flatten(nest);
   py::list ret;
-  for (auto x : flat) {
+  for (const auto& x : flat) {
     ret.append(x);
   }
   return ret;
 }
 
-std::vector<py::object> _FlattenUpTo(py::object shallow_nest, py::object nest) {
+std::vector<py::object> _FlattenUpTo(const py::object& shallow_nest,
+                                     const py::object& nest) {
   std::vector<py::object> ret;
   if (!IsNested(shallow_nest)) {
     ret.push_back(nest);
@@ -167,23 +168,23 @@ std::vector<py::object> _FlattenUpTo(py::object shallow_nest, py::object nest) {
   return ret;
 }
 
-py::list FlattenUpTo(py::object shallow_nest, py::object nest) {
+py::list FlattenUpTo(const py::object& shallow_nest, const py::object& nest) {
   auto flat = _FlattenUpTo(shallow_nest, nest);
   py::list ret;
-  for (auto x : flat) {
+  for (const auto& x : flat) {
     ret.append(x);
   }
   return ret;
 }
 
-void AssertSameStructure(py::object nest1, py::object nest2) {
+void AssertSameStructure(const py::object& nest1, const py::object& nest2) {
   if (IsNested(nest1) || IsNested(nest2)) {
     AssertSameType(nest1, nest2);
     AssertSameLength(nest1, nest2);
 
     if (py::isinstance<py::list>(nest1) || IsUnnamedtuple(nest1)) {
       int i = 0;
-      for (auto value1 : nest1) {
+      for (const auto& value1 : nest1) {
         auto value2 = nest2[py::int_(i)];
         AssertSameStructure(py::cast<py::object>(value1),
                             py::cast<py::object>(value2));
@@ -193,7 +194,7 @@ void AssertSameStructure(py::object nest1, py::object nest2) {
       auto fields_values1 = ExtractFieldsFromNest(nest1);
       auto fields_values2 = ExtractFieldsFromNest(nest2);
       int i = 0;
-      for (auto fv1 : fields_values1) {
+      for (const auto& fv1 : fields_values1) {
         auto fv2 = fields_values2[i];
         if (!fv1[py::int_(0)].equal(fv2[py::int_(0)])) {
           throw std::runtime_error(
@@ -207,7 +208,7 @@ void AssertSameStructure(py::object nest1, py::object nest2) {
   }
 }
 
-py::object _MapStructure(py::function func, py::args nests) {
+py::object _MapStructure(const py::function& func, const py::args& nests) {
   auto first_nest = py::cast<py::object>(nests[py::int_(0)]);
   if (!IsNested(first_nest)) {
     return func(*nests);
@@ -218,7 +219,7 @@ py::object _MapStructure(py::function func, py::args nests) {
     py::list results;
     for (unsigned int i = 0; i < py::len(first_nest); i++) {
       py::list args;
-      for (auto nest : nests) {
+      for (const auto& nest : nests) {
         args.append(py::cast<py::object>(nest[py::int_(i)]));
       }
       results.append(_MapStructure(func, args));
@@ -227,14 +228,14 @@ py::object _MapStructure(py::function func, py::args nests) {
   } else {
     py::dict results;
     std::vector<py::list> fields_and_values;
-    for (auto nest : nests) {
+    for (const auto& nest : nests) {
       fields_and_values.push_back(
           ExtractFieldsFromNest(py::cast<py::object>(nest)));
     }
     for (unsigned int i = 0; i < py::len(first_nest); i++) {
       auto field = fields_and_values[0][i][py::int_(0)];
       py::list values;
-      for (auto fv : fields_and_values) {
+      for (const auto& fv : fields_and_values) {
         values.append(py::cast<py::object>(fv[i][py::int_(1)]));
       }
       results[field] = _MapStructure(func, values);
@@ -244,7 +245,7 @@ py::object _MapStructure(py::function func, py::args nests) {
   return ret;
 }
 
-py::object MapStructure(py::function func, py::args nests) {
+py::object MapStructure(const py::function& func, const py::args& nests) {
   if (py::len(nests) == 0) {
     throw std::runtime_error("There should be at least one input nest!");
   }
@@ -255,19 +256,27 @@ py::object MapStructure(py::function func, py::args nests) {
   return _MapStructure(func, nests);
 }
 
-py::object _MapStructureUpTo(py::object shallow_nest,
-                             py::function func,
-                             py::args nests) {
+py::object MapStructureWithoutCheck(const py::function& func,
+                                    const py::args& nests) {
+  if (py::len(nests) == 0) {
+    throw std::runtime_error("There should be at least one input nest!");
+  }
+  return _MapStructure(func, nests);
+}
+
+py::object _MapStructureUpTo(const py::object& shallow_nest,
+                             const py::function& func,
+                             const py::args& nests) {
   if (!IsNested(shallow_nest)) {
     return func(*nests);
   }
 
   std::vector<py::object> nests_;
-  for (auto nest : nests) {
+  for (const auto& nest : nests) {
     nests_.push_back(py::cast<py::object>(nest));
   }
 
-  for (auto nest : nests_) {
+  for (const auto& nest : nests_) {
     AssertSameType(shallow_nest, nest);
     AssertSameLength(shallow_nest, nest);
   }
@@ -277,7 +286,7 @@ py::object _MapStructureUpTo(py::object shallow_nest,
     py::list results;
     for (unsigned int i = 0; i < py::len(shallow_nest); i++) {
       py::list args;
-      for (auto nest : nests_) {
+      for (const auto& nest : nests_) {
         args.append(py::cast<py::object>(nest[py::int_(i)]));
       }
       results.append(_MapStructureUpTo(
@@ -288,7 +297,7 @@ py::object _MapStructureUpTo(py::object shallow_nest,
     py::dict results;
     auto shallow_fields_and_values = ExtractFieldsFromNest(shallow_nest);
     std::vector<py::list> fields_and_values;
-    for (auto nest : nests_) {
+    for (const auto& nest : nests_) {
       fields_and_values.push_back(ExtractFieldsFromNest(nest));
     }
     for (unsigned int i = 0; i < shallow_fields_and_values.size(); i++) {
@@ -296,7 +305,7 @@ py::object _MapStructureUpTo(py::object shallow_nest,
       auto shallow_field = shallow_fv[py::int_(0)];
       auto shallow_value = py::cast<py::object>(shallow_fv[py::int_(1)]);
       py::list values;
-      for (auto fvs : fields_and_values) {
+      for (const auto& fvs : fields_and_values) {
         auto fv = fvs[py::int_(i)];
         if (!shallow_field.equal(fv[py::int_(0)])) {
           throw std::runtime_error(
@@ -313,16 +322,18 @@ py::object _MapStructureUpTo(py::object shallow_nest,
   return ret;
 }
 
-py::object MapStructureUpTo(py::object shallow_nest,
-                            py::function func,
-                            py::args nests) {
+py::object MapStructureUpTo(const py::object& shallow_nest,
+                            const py::function& func,
+                            const py::args& nests) {
   if (py::len(nests) == 0) {
     throw std::runtime_error("There should be at least one input nest!");
   }
   return _MapStructureUpTo(shallow_nest, func, nests);
 }
 
-py::object _PackSequenceAs(py::object nest, py::list flat_seq, int* i) {
+py::object _PackSequenceAs(const py::object& nest,
+                           const py::list& flat_seq,
+                           int* i) {
   if (!IsNested(nest)) {
     auto ret = flat_seq[py::int_(*i)];
     (*i)++;
@@ -331,13 +342,13 @@ py::object _PackSequenceAs(py::object nest, py::list flat_seq, int* i) {
   py::object ret;
   if (py::isinstance<py::list>(nest) || IsUnnamedtuple(nest)) {
     py::list results;
-    for (auto value : nest) {
+    for (const auto& value : nest) {
       results.append(_PackSequenceAs(py::cast<py::object>(value), flat_seq, i));
     }
     ret = (nest.get_type())(results);
   } else {
     py::dict results;
-    for (auto fv : ExtractFieldsFromNest(nest)) {
+    for (const auto& fv : ExtractFieldsFromNest(nest)) {
       auto field = fv[py::int_(0)];
       auto value = py::cast<py::object>(fv[py::int_(1)]);
       results[field] = _PackSequenceAs(value, flat_seq, i);
@@ -347,15 +358,15 @@ py::object _PackSequenceAs(py::object nest, py::list flat_seq, int* i) {
   return ret;
 }
 
-py::object PackSequenceAs(py::object nest, py::object flat_seq) {
+py::object PackSequenceAs(const py::object& nest, const py::object& flat_seq) {
   AssertSameLength(Flatten(nest), flat_seq);
   int i = 0;
   return _PackSequenceAs(nest, py::cast<py::list>(flat_seq), &i);
 }
 
-py::object PruneNestLike(py::object nest,
-                         py::object slim_nest,
-                         py::object value_to_match = py::none()) {
+py::object PruneNestLike(const py::object& nest,
+                         const py::object& slim_nest,
+                         const py::object& value_to_match = py::none()) {
   if (IsNested(nest) || IsNested(slim_nest)) {
     AssertSameType(nest, slim_nest);
     py::object ret;
@@ -375,7 +386,7 @@ py::object PruneNestLike(py::object nest,
     } else {
       py::dict results;
       auto fields_and_values = py::dict(ExtractFieldsFromNest(nest));
-      for (auto slim_fv : ExtractFieldsFromNest(slim_nest)) {
+      for (const auto& slim_fv : ExtractFieldsFromNest(slim_nest)) {
         auto field = slim_fv[py::int_(0)];
         auto slim_nest_value = py::cast<py::object>(slim_fv[py::int_(1)]);
         if (!fields_and_values.contains(field)) {
@@ -427,6 +438,13 @@ PYBIND11_MODULE(cnest, m) {
         &MapStructure,
         R"pbdoc(
             Applies func to each entry in structure and returns a new structure.
+          )pbdoc",
+        py::arg("func"));
+  m.def("map_structure_without_check",
+        &MapStructureWithoutCheck,
+        R"pbdoc(
+            Applies func to each entry in structure and returns a new structure
+            (without check to save time).
           )pbdoc",
         py::arg("func"));
   m.def("pack_sequence_as",

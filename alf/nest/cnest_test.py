@@ -30,6 +30,13 @@ def _generate_deep_nest(depth=10, keys=['a', 'b']):
     return dict(zip(keys, [x] * len(keys)))
 
 
+def _time(func, msg, *args):
+    t0 = time.time()
+    ret = func(*args)
+    print("%s: %s" % (msg, time.time() - t0))
+    return ret
+
+
 class TestIsNamedtuple(alf.test.TestCase):
     def test_is_namedtupe(self):
         x = dict(a=1)
@@ -103,67 +110,31 @@ class TestExtractFieldsFromNest(alf.test.TestCase):
 class TestFlatten(alf.test.TestCase):
     def test_flatten_time(self):
         nested = _generate_deep_nest(depth=6, keys=list(map(str, range(10))))
-
-        t0 = time.time()
-        flat2 = cnest.flatten(nested)
-        print("cnest flatten: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        flat1 = alf.nest.py_flatten(nested)
-        print("nest flatten: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        flat1 = alf.nest.py_flatten(nested)
-        print("nest flatten: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        flat2 = cnest.flatten(nested)
-        print("cnest flatten: %s" % (time.time() - t0))
-
+        flat1 = _time(cnest.flatten, "cnest flatten", nested)
+        flat2 = _time(alf.nest.py_flatten, "nest flatten", nested)
         self.assertEqual(flat1, flat2)
 
 
 class TestAssertSameStructure(alf.test.TestCase):
     def test_assert_same_structure_time(self):
         nested = _generate_deep_nest(depth=6, keys=list(map(str, range(10))))
-
-        t0 = time.time()
-        cnest.assert_same_structure(nested, nested)
-        print("cnest assert_same_structure: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        alf.nest.py_assert_same_structure(nested, nested)
-        print("nest assert_same_structure: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        alf.nest.py_assert_same_structure(nested, nested)
-        print("nest assert_same_structure: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        cnest.assert_same_structure(nested, nested)
-        print("cnest assert_same_structure: %s" % (time.time() - t0))
+        _time(cnest.assert_same_structure, "cnest assert_same_structure",
+              nested, nested)
+        _time(alf.nest.py_assert_same_structure, "nest assert_same_structure",
+              nested, nested)
 
 
 class TestMapStructure(alf.test.TestCase):
     def test_map_structure_time(self):
         nested = _generate_deep_nest(depth=6, keys=list(map(str, range(10))))
 
-        t0 = time.time()
-        ret1 = cnest.map_structure(lambda x, y: x + y, nested, nested)
-        print("cnest map_structure: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        ret2 = alf.nest.py_map_structure(lambda x, y: x + y, nested, nested)
-        print("nest map_structure: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        ret2 = alf.nest.py_map_structure(lambda x, y: x + y, nested, nested)
-        print("nest map_structure: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        ret1 = cnest.map_structure(lambda x, y: x + y, nested, nested)
-        print("cnest map_structure: %s" % (time.time() - t0))
-
+        ret1 = _time(cnest.map_structure,
+                     "cnest map_structure", lambda x, y: x + y, nested, nested)
+        _time(cnest.map_structure_without_check,
+              "cnest map_structure_without_check", lambda x, y: x + y, nested,
+              nested)
+        ret2 = _time(alf.nest.py_map_structure,
+                     "nest map_structure", lambda x, y: x + y, nested, nested)
         self.assertEqual(cnest.flatten(ret1), cnest.flatten(ret2))
 
 
@@ -172,22 +143,10 @@ class TestPackSequenceAs(alf.test.TestCase):
         nested = _generate_deep_nest(depth=5, keys=list(map(str, range(10))))
         flat = cnest.flatten(nested)
 
-        t0 = time.time()
-        nest1 = cnest.pack_sequence_as(nest=nested, flat_seq=flat)
-        print("cnest pack_sequence_as: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        nest2 = alf.nest.py_pack_sequence_as(nest=nested, flat_seq=flat)
-        print("nest pack_sequence_as: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        nest2 = alf.nest.py_pack_sequence_as(nest=nested, flat_seq=flat)
-        print("nest pack_sequence_as: %s" % (time.time() - t0))
-
-        t0 = time.time()
-        nest1 = cnest.pack_sequence_as(nest=nested, flat_seq=flat)
-        print("cnest pack_sequence_as: %s" % (time.time() - t0))
-
+        nest1 = _time(cnest.pack_sequence_as, "cnest pack_sequence_as", nested,
+                      flat)
+        nest2 = _time(alf.nest.py_pack_sequence_as, "nest pack_sequence_as",
+                      nested, flat)
         cnest.assert_same_structure(nest1, nest2)
 
 

@@ -29,6 +29,7 @@ def flatten(nest):
     except Exception as e:
         logging.error("flatten() fails for {}. Error message: '{}'".format(
             nest, str(e)))
+        raise e
 
 
 def assert_same_structure(nest1, nest2):
@@ -39,6 +40,7 @@ def assert_same_structure(nest1, nest2):
         logging.error(
             "assert_same_structure() fails for {} and {}. Error message: '{}'".
             format(nest1, nest2, str(e)))
+        raise e
 
 
 def map_structure(func, *nests):
@@ -49,6 +51,20 @@ def map_structure(func, *nests):
         logging.error(
             "map_structure() fails for {}. Error message: '{}'".format(
                 nests, str(e)))
+        raise e
+
+
+def map_structure_without_check(func, *nests):
+    """(C++) Applies func to each entry in structure and returns a new structure.
+    This function doesn't do any check for efficiency.
+    """
+    try:
+        return cnest.map_structure_without_check(func, *nests)
+    except Exception as e:
+        logging.error(
+            "map_structure_without_check() fails for {}. Error message: '{}'".
+            format(nests, str(e)))
+        raise e
 
 
 def pack_sequence_as(nest, flat_seq):
@@ -59,6 +75,7 @@ def pack_sequence_as(nest, flat_seq):
         logging.error(
             "pack_sequence_as() fails for {} and {}. Error message: '{}'".
             format(nest, flat_seq, str(e)))
+        raise e
 
 
 def flatten_up_to(shallow_nest, nest):
@@ -72,6 +89,7 @@ def flatten_up_to(shallow_nest, nest):
         logging.error(
             "flatten_up_to() fails for {} and {}. Error message: '{}'".format(
                 shallow_nest, nest, str(e)))
+        raise e
 
 
 def map_structure_up_to(shallow_nest, func, *nests):
@@ -120,6 +138,7 @@ def map_structure_up_to(shallow_nest, func, *nests):
         logging.error(
             ("map_structure_up_to() fails for a shallow_nest {} with nests {}."
              " Error message: '{}'").format(shallow_nest, nests, str(e)))
+        raise e
 
 
 def prune_nest_like(nest, slim_nest, value_to_match=None):
@@ -163,6 +182,7 @@ def prune_nest_like(nest, slim_nest, value_to_match=None):
         logging.error(
             "prune_nest_like() fails between {} and {}. Error message: '{}'".
             format(nest, slim_nest, str(e)))
+        raise e
 
 
 def assert_same_type(value1, value2):

@@ -53,6 +53,7 @@ class TestFlatten(parameterized.TestCase, alf.test.TestCase):
 
 class TestFlattenUpTo(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((nest.py_flatten_up_to, AssertionError),
+                              (nest.flatten_up_to, RuntimeError),
                               (cnest.flatten_up_to, RuntimeError))
     def test_flatten_up_to(self, flatten_up_to, error):
         ntuple = NTuple(a=1, b=NTuple(a=NTuple(a=(2, ), b=[3]), b=dict(x=2)))
@@ -73,6 +74,7 @@ class TestFlattenUpTo(parameterized.TestCase, alf.test.TestCase):
 
 class TestAssertSameStructure(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((nest.py_assert_same_structure, AssertionError),
+                              (nest.assert_same_structure, RuntimeError),
                               (cnest.assert_same_structure, RuntimeError))
     def test_assert_same_structure(self, assert_same_structure, error):
         assert_same_structure(1.0, 10)
@@ -133,6 +135,7 @@ class TestFastMapStructure(alf.test.TestCase):
 
 class TestMapStructureUpTo(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((nest.py_map_structure_up_to, AssertionError),
+                              (nest.map_structure_up_to, RuntimeError),
                               (cnest.map_structure_up_to, RuntimeError))
     def test_different_keys(self, map_structure_up_to, error):
         self.assertRaises(error, map_structure_up_to,
@@ -143,6 +146,7 @@ class TestMapStructureUpTo(parameterized.TestCase, alf.test.TestCase):
                           dict(y=1, z=2))
 
     @parameterized.parameters((nest.py_map_structure_up_to, AssertionError),
+                              (nest.map_structure_up_to, RuntimeError),
                               (cnest.map_structure_up_to, RuntimeError))
     def test_different_lengths(self, map_structure_up_to, error):
         self.assertRaises(error, map_structure_up_to,
@@ -265,6 +269,7 @@ class TestNestMultiply(alf.test.TestCase):
 
 class TestPruneNestLike(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((nest.py_prune_nest_like, ValueError),
+                              (nest.prune_nest_like, RuntimeError),
                               (cnest.prune_nest_like, RuntimeError))
     def test_prune_nest_like(self, prune_nest_like, error):
         ntuple = NTuple(
