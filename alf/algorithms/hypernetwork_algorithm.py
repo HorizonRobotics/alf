@@ -207,14 +207,13 @@ class HyperNetwork(Generator):
 
         return loss, loss_grad + logq_grad
 
-    def _score_func(self, x, h_min=1e-3, alpha=1e-3):
+    def _score_func(self, x, alpha=1e-3):
         r"""Compute the stein estimator of the score function 
             :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`
 
         Args:
             x (Tensor): set of N particles, shape (N x D), where D is the 
                 dimenseion of each particle
-            h_min (float): Minimum bandwidth.
             alpha (float): weight of regularization for inverse kernel
 
         Returns:
@@ -222,7 +221,6 @@ class HyperNetwork(Generator):
             
         """
         N, D = x.shape
-        # h = torch.max(self._kernel_width(x), torch.tensor([h_min]).cuda())
         h = self._kernel_width()
 
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
@@ -235,4 +233,5 @@ class HyperNetwork(Generator):
         return kappa_inv @ kappa_grad
 
     def _kernel_width(self):
+        # TODO: implement the kernel bandwidth selection via Heat equation.
         return self._kernel_sharpness

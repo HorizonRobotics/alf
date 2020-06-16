@@ -119,41 +119,7 @@ def create_dataset(dataset_name='mnist',
     return trainset, testset
 
 
-# class TrainProgress(nn.Module):
-#     def __init__(self):
-#         super(TrainProgress, self).__init__()
-#         self.register_buffer("_iter_num", torch.zeros((), dtype=torch.int64))
-#         self._num_iterations = None
-#         self._progress = None
-
-#     def set_termination_criterion(self, num_iterations):
-#         self._num_iterations = float(num_iterations)
-#         # might be loaded from a checkpoint, so we update first
-#         self.update()
-
-#     def update(self, iter_num=None):
-#         if iter_num is not None:
-#             self._iter_num.fill_(iter_num)
-
-#         assert not (self._num_iterations is None
-#                     and self._num_env_steps is None), (
-#                         "You must first call set_terimination_criterion()!")
-#         iter_progress = 0
-#         if self._num_iterations > 0:
-#             iter_progress = float(
-#                 self._iter_num.to(torch.float64) / self._num_iterations)
-#         self._progress = iter_progress
-
-#     @property
-#     def progress(self):
-#         assert self._progress is not None, "Must call update() first!"
-#         return self._progress
-
-
 def train(config: Config):
-
-    # train_progress = TrainProgress()
-
     root_dir = os.path.expanduser(config.root_dir)
     train_dir = os.path.join(root_dir, 'train')
     eval_dir = os.path.join(root_dir, 'eval')
@@ -161,7 +127,6 @@ def train(config: Config):
     random_seed = common.set_random_seed(config.random_seed)
     assert config.epochs > 0, \
         "Must provide #epochs for training!"
-    # train_progress.set_termination_criterion(config.epochs)
 
     trainset, testset = create_dataset()
     input_tensor_spec = TensorSpec(shape=testset.dataset[0][0].shape)
@@ -192,8 +157,6 @@ def train(config: Config):
 
     with alf.summary.push_summary_writer(summary_writer):
         with alf.summary.record_if(_cond):
-            # begin_epoch_num = int(train_progress._iter_num)
-            # epoch_num = begin_epoch_num
             epoch_num = 0
             while True:
                 t0 = time.time()
@@ -231,7 +194,6 @@ def train(config: Config):
                         alf.summary.text('seed', str(random_seed))
 
                 epoch_num += 1
-                # train_progress.update(epoch_num)
                 if (config.epochs and epoch_num >= config.epochs):
                     break
 
@@ -243,7 +205,6 @@ def main(_):
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     train_config = Config(FLAGS.root_dir)
     train(train_config)
-    # train_eval(FLAGS.root_dir)
 
 
 if __name__ == '__main__':
