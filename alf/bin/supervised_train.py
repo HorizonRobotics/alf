@@ -13,15 +13,14 @@
 # limitations under the License.
 r"""Train a supervised learning model.
 
-To run actor-critic on gym `CartPole`:
+To train hypernetwork_algorithm on `mnist`:
 
 .. code-block:: bash
 
     cd ${PROJECT}/alf/examples;
-    python -m alf.bin.train \
-    --root_dir=~/tmp/cart_pole \
-    --gin_file=ac_cart_pole.gin \
-    --gin_param='create_environment.num_parallel_environments=8' \
+    python -m alf.bin.supervised_train \
+    --root_dir=~/tmp/mnist \
+    --gin_file=hypernet_mnist.gin \
     --alsologtostderr
 
 You can view various training curves using Tensorboard by running the follwoing
@@ -29,17 +28,7 @@ command in a different terminal:
 
 .. code-block:: bash
 
-    tensorboard --logdir=~/tmp/cart_pole
-
-You can visualize playing of the trained model by running:
-
-.. code-block:: bash
-
-    cd ${PROJECT}/alf/examples;
-    python -m alf.bin.play \
-    --root_dir=~/tmp/cart_pole \
-    --gin_file=ac_cart_pole.gin \
-    --alsologtostderr
+    tensorboard --logdir=~/tmp/mnist
 """
 
 from absl import app

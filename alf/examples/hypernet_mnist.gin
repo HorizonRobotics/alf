@@ -1,0 +1,33 @@
+import alf.algorithms.hypernetwork_algorithm
+
+# dataset config
+create_dataset.dataset_name='mnist'
+create_dataset.train_batch_size=50
+create_dataset.test_batch_size=100
+
+CONV_LAYER_PARAMS=((32, 5, 1), (32, 5, 1))
+hypernet/Adam.lr=1e-4
+hypernet/Adam.weight_decay=5e-4
+
+# algorithm config
+HyperNetwork.conv_layer_params=%CONV_LAYER_PARAMS
+HyperNetwork.fc_layer_params=(128, )
+HyperNetwork.hidden_layers=(128, 128)
+HyperNetwork.particles=32
+HyperNetwork.optimizer=@hypernet/Adam()
+
+import alf.algorithms.hypernetwork_networks
+ParamConvNet.use_bias=True
+ParamConvNet.pooling_kernel=2
+
+# training config
+Config.algorithm_ctor=@HyperNetwork
+Config.epochs=200000
+Config.summarize_grads_and_vars=True
+Config.evaluate=True
+
+
+
+
+
+
