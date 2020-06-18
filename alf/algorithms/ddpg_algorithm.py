@@ -119,7 +119,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
-            action_l2 (float): weight of action preactivation l2 on actor loss.
+            action_l2 (float): weight of squared action l2-norm on actor loss.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             debug_summaries (bool): True if debug summaries should be created.
@@ -194,8 +194,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
+        self._actor_network.eval = True
         action, state = self._actor_network(
             time_step.observation, state=state.actor.actor)
+        self._actor_network.eval = False
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
 
         def _sample(a, ou):
@@ -277,7 +279,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             loss = loss.sum(list(range(1, loss.ndim)))
             if self.action_l2 > 0:
                 assert action.requires_grad
-                loss += self.action_l2 * torch.norm(action)
+                loss += self.action_l2 * (torch.mean(
+                    torch.norm(action, dim=-1)**2))
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)

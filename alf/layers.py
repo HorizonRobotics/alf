@@ -286,8 +286,11 @@ class FC(nn.Module):
         if self._use_bias:
             nn.init.constant_(self._linear.bias.data, self._bias_init_value)
 
-    def forward(self, inputs):
-        return self._activation(self._linear(inputs))
+    def forward(self, inputs, info=None):
+        pre_activation = self._linear(inputs)
+        if isinstance(info, dict):
+            info["pre_activation"] = pre_activation
+        return self._activation(pre_activation)
 
     @property
     def weight(self):

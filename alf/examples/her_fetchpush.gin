@@ -2,11 +2,13 @@ include 'ddpg_fetchpush.gin'
 
 suite_robotics.load.concat_desired_goal=False
 
-ReplayBuffer.her_k=0.8
+ReplayBuffer.keep_episodic_info=True
+ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn
 
-TrainerConfig.summarize_action_distributions=True
-TrainerConfig.summary_interval=1
-TrainerConfig.update_counter_every_mini_batch=True
+# Finer grain tensorboard summaries plus local action distribution
+#TrainerConfig.summarize_action_distributions=True
+#TrainerConfig.summary_interval=1
+#TrainerConfig.update_counter_every_mini_batch=True
 TrainerConfig.summarize_grads_and_vars=1
 summarize_gradients.with_histogram=False
 summarize_variables.with_histogram=False

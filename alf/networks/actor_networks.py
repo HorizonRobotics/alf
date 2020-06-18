@@ -20,6 +20,7 @@ import math
 import torch
 import torch.nn as nn
 
+import alf
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .preprocessor_networks import PreprocessorNetwork
 import alf.layers as layers
@@ -90,6 +91,8 @@ class ActorNetwork(PreprocessorNetwork):
                 mode='fan_in',
                 distribution='uniform')
 
+        self.eval = False
+
         self._action_spec = action_spec
         flat_action_spec = nest.flatten(action_spec)
         self._flat_action_spec = flat_action_spec
@@ -106,7 +109,8 @@ class ActorNetwork(PreprocessorNetwork):
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
-            kernel_initializer=kernel_initializer)
+            kernel_initializer=kernel_initializer,
+            name=self.name + ".encoding_net")
 
         last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
                                     a=-0.003, b=0.003)
@@ -133,13 +137,31 @@ class ActorNetwork(PreprocessorNetwork):
         """
 
         observation, state = super().forward(observation, state)
+        self._encoding_net.eval = self.eval
         encoded_obs, _ = self._encoding_net(observation)
 
         actions = []
+        i = 0
         for layer, spec in zip(self._action_layers, self._flat_action_spec):
-            action = layer(encoded_obs)
+            _info = {}
+            action = layer(encoded_obs, info=_info)
+
+            name = ('summarize_output/' + self.name + '.action_layer.' + str(i)
+                    + '.pre_activation.output_norm')
+            if self.eval:
+                name += ".eval"
+            alf.summary.scalar(name=name, data=_info["pre_activation"].norm())
+
             action = spec_utils.scale_to_spec(action, spec)
+
+            a_name = ('summarize_output/' + self.name + '.action_layer.' +
+                      str(i) + '.action.output_norm')
+            if self.eval:
+                a_name += ".eval"
+            alf.summary.scalar(name=a_name, data=action.norm())
+
             actions.append(action)
+            i += 1
 
         output_actions = nest.pack_sequence_as(self._action_spec, actions)
         return output_actions, state

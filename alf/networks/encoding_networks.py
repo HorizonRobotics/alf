@@ -620,6 +620,8 @@ class EncodingNetwork(PreprocessorNetwork):
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
+        self.eval = False
+
         self._output_spec = TensorSpec(
             (input_size, ), dtype=self._processed_input_tensor_spec.dtype)
 
@@ -632,8 +634,15 @@ class EncodingNetwork(PreprocessorNetwork):
         z, state = super().forward(inputs, state)
         if self._img_encoding_net is not None:
             z, _ = self._img_encoding_net(z)
+        i = 0
         for fc in self._fc_layers:
             z = fc(z)
+            name = ('summarize_output/' + self.name + '.fc.' + str(i) +
+                    '.output_norm')
+            if self.eval:
+                name += ".eval"
+            alf.summary.scalar(name=name, data=z.norm())
+            i += 1
         return z, state
 
     def make_parallel(self, n):

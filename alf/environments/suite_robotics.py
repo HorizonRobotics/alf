@@ -31,7 +31,6 @@ except ImportError:
 import functools
 import numpy as np
 import gym
-from gym.wrappers import FlattenDictWrapper
 
 import gin
 from alf.environments import suite_gym, alf_wrappers, process_environment
@@ -158,7 +157,13 @@ def load(environment_name,
 
     # concat robot's observation and the goal location
     if concat_desired_goal:
-        env = FlattenDictWrapper(env, ["observation", "desired_goal"])
+        keys = ["observation", "desired_goal"]
+        try:  # for modern Gym (>=0.15.4)
+            from gym.wrappers import FilterObservation, FlattenObservation
+            env = FlattenObservation(FilterObservation(env, keys))
+        except ImportError:  # for older gym (<=0.15.3)
+            from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
+            env = FlattenDictWrapper(env, keys)
     env = SuccessWrapper(env, max_episode_steps)
     if sparse_reward:
         env = SparseReward(env)
