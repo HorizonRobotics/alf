@@ -2,3 +2,18 @@ include 'sarsa_sac_mujoco.gin'
 
 create_environment.env_name="Ant-v2"
 TrainerConfig.num_iterations=3000000
+
+import alf.algorithms.multi_step_td_loss
+MultiStepTDLoss.td_lambda=0.95
+SarsaAlgorithm.critic_loss_cls=@MultiStepTDLoss
+
+TrainerConfig.mini_batch_length=4
+TrainerConfig.mini_batch_size=64
+TrainerConfig.summaries_flush_secs=10
+
+#TrainerConfig.summary_interval=1
+#import alf.utils.summary_utils
+#summarize_variables.with_histogram=False
+#summarize_gradients.with_histogram=False
+
+#Agent.rl_algorithm_cls=@TracAlgorithm
