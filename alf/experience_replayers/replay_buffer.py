@@ -260,16 +260,14 @@ class ReplayBuffer(RingBuffer):
         """
         with alf.device(self._device):
             if self._prioritized_sampling:
-                env_ids, idx = self._prioritized_sample(
-                    batch_size, batch_length)
+                info = self._prioritized_sample(batch_size, batch_length)
             else:
-                env_ids, idx = self._uniform_sample(batch_size, batch_length)
+                info = self._uniform_sample(batch_size, batch_length)
 
-            start_idx = idx
-            info = BatchInfo(
-                env_ids=env_ids, positions=self._pad(start_idx, env_ids))
+            start_pos = info.positions
+            env_ids = info.env_ids
 
-            idx = idx.reshape(-1, 1)  # [B, 1]
+            idx = start_pos.reshape(-1, 1)  # [B, 1]
             idx = self.circular(
                 idx + torch.arange(batch_length).unsqueeze(0))  # [B, T]
             out_env_ids = env_ids.reshape(-1, 1).expand(
@@ -278,7 +276,8 @@ class ReplayBuffer(RingBuffer):
                                             self._buffer)
 
             if self._prioritized_sampling:
-                indices = self._env_id_idx_to_index(env_ids, start_idx)
+                indices = self._env_id_idx_to_index(env_ids,
+                                                    self.circular(start_pos))
                 avg_weight = self._sum_tree.nnz / self._sum_tree.summary()
                 info = info._replace(
                     importance_weights=self._sum_tree[indices] * avg_weight)
@@ -312,7 +311,8 @@ class ReplayBuffer(RingBuffer):
         num_positions = num_positions[env_ids]
         pos = (r * num_positions).to(torch.int64)
         pos += (self._current_pos - self._current_size)[env_ids]
-        return env_ids, self.circular(pos)
+        info = BatchInfo(env_ids=env_ids, positions=pos)
+        return info
 
     def _prioritized_sample(self, batch_size, batch_length):
         if batch_length != self._mini_batch_length:
@@ -334,7 +334,8 @@ class ReplayBuffer(RingBuffer):
         r = r * self._sum_tree.summary()
         indices = self._sum_tree.find_sum_bound(r)
         env_ids, idx = self._index_to_env_id_idx(indices)
-        return env_ids, idx
+        info = BatchInfo(env_ids=env_ids, positions=self._pad(idx, env_ids))
+        return info
 
     def _pad(self, x, env_ids):
         """Make ``x`` (any index) absolute positions in the RingBuffer.

@@ -477,8 +477,8 @@ class DataBuffer(RingBuffer):
         """
         with alf.device(self._device):
             indices = convert_device(indices)
-            indices.copy_(
-                self.circular(indices + self.current_pos - self.current_size))
+            indices = self.circular(indices + self.current_pos -
+                                    self.current_size)
             result = alf.nest.map_structure(lambda buf: buf[indices],
                                             self._derived_buffer)
         return convert_device(result)

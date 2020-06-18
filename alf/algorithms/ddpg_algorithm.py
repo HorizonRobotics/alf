@@ -134,7 +134,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         else:
             critic_networks = alf.networks.NaiveParallelNetwork(
                 critic_network, num_critic_replicas)
-        self.action_l2 = action_l2
+        self._action_l2 = action_l2
 
         train_state_spec = DdpgState(
             actor=DdpgActorState(
@@ -277,9 +277,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             loss = 0.5 * losses.element_wise_squared_loss(
                 (dqda + action).detach(), action)
             loss = loss.sum(list(range(1, loss.ndim)))
-            if self.action_l2 > 0:
+            if self._action_l2 > 0:
                 assert action.requires_grad
-                loss += self.action_l2 * (torch.mean(
+                loss += self._action_l2 * (torch.mean(
                     torch.norm(action, dim=-1)**2))
             return loss
 
