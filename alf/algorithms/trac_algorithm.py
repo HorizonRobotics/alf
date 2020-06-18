@@ -30,9 +30,7 @@ TracExperience = namedtuple(
     "TracExperience",
     ["observation", "step_type", "state", "action_param", "prev_action"])
 
-TracInfo = namedtuple(
-    "TracInfo",
-    ["action_distribution", "observation", "state", "ac", "prev_action"])
+TracInfo = namedtuple("TracInfo", ["action_distribution", "state", "ac"])
 
 
 @gin.configurable
@@ -130,8 +128,6 @@ class TracAlgorithm(OnPolicyAlgorithm):
         return policy_step._replace(
             info=TracInfo(
                 action_distribution=action_distribution,
-                observation=time_step.observation,
-                prev_action=time_step.prev_action,
                 state=self._ac_algorithm.convert_train_state_to_predict_state(
                     state),
                 ac=ac_info))
@@ -167,10 +163,10 @@ class TracAlgorithm(OnPolicyAlgorithm):
         action_param = dist_utils.distributions_to_params(
             train_info.action_distribution)
         exp_array = TracExperience(
-            observation=train_info.observation,
+            observation=experience.observation,
             step_type=experience.step_type,
             action_param=action_param,
-            prev_action=train_info.prev_action,
+            prev_action=experience.prev_action,
             state=train_info.state)
         dists, steps = self._trusted_updater.adjust_step(
             lambda: self._calc_change(exp_array), self._action_dist_clips)
