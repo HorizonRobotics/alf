@@ -130,9 +130,6 @@ class TestMapStructure(alf.test.TestCase):
 
         ret1 = _time(cnest.map_structure,
                      "cnest map_structure", lambda x, y: x + y, nested, nested)
-        _time(cnest.map_structure_without_check,
-              "cnest map_structure_without_check", lambda x, y: x + y, nested,
-              nested)
         ret2 = _time(alf.nest.py_map_structure,
                      "nest map_structure", lambda x, y: x + y, nested, nested)
         self.assertEqual(cnest.flatten(ret1), cnest.flatten(ret2))

@@ -104,8 +104,9 @@ class TestAssertSameStructure(parameterized.TestCase, alf.test.TestCase):
 
 
 class TestMapStructure(parameterized.TestCase, alf.test.TestCase):
-    @parameterized.parameters(nest.py_map_structure, cnest.map_structure)
-    def test_map_structure(self, map_structure):
+    @parameterized.parameters((nest.py_map_structure, AssertionError),
+                              (cnest.map_structure, RuntimeError))
+    def test_map_structure(self, map_structure, error):
         nest1 = NTuple(a=dict(x=3, y=2), b=[100.0, (5, )])
         nest2 = NTuple(a=dict(x=1, y=-2), b=[100.0, (10, )])
         nest3 = NTuple(a=dict(x=1, y=-2), b=[50.0, (6, )])
@@ -116,6 +117,14 @@ class TestMapStructure(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(
             map_structure(lambda a, b: a + b, [1, 3], [4, 5]), [5, 8])
         self.assertEqual(map_structure(lambda a, b: a * b, 1, 3), 3)
+
+        add = lambda a, b: a + b
+        self.assertRaises(error, map_structure, add, [1], 2)
+        self.assertRaises(error, map_structure, add, [1], (2, ))
+        self.assertRaises(error, map_structure, add, [1, 2, 3],
+                          [1, dict(x=1), 3])
+        self.assertRaises(error, map_structure, add, dict(a=0, x=1),
+                          dict(y=1, a=0))
 
 
 class TestFastMapStructure(alf.test.TestCase):

@@ -13,6 +13,9 @@
 # limitations under the License.
 
 from setuptools import setup, find_packages
+import os
+
+os.system("pip install -e ./alf/nest/cnest")
 
 setup(
     name='alf',
