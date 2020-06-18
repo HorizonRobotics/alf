@@ -305,7 +305,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 and experience.batch_info.importance_weights != ()):
             valid_masks = (experience.step_type != StepType.LAST).to(
                 torch.float32)
-            priority = (critic_loss * valid_masks).sum(dim=0).sqrt()
+            valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
+            priority = (
+                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
         else:
             priority = ()
 

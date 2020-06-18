@@ -440,11 +440,13 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
 
         critic_loss = math_ops.add_n(critic_losses)
 
-        not_first_step = (experience.step_type != StepType.FIRST)
-        critic_loss = critic_loss * not_first_step.to(torch.float32)
+        not_first_step = (experience.step_type != StepType.FIRST).to(
+            torch.float32)
+        critic_loss = critic_loss * not_first_step
         if (experience.batch_info != ()
                 and experience.batch_info.importance_weights != ()):
-            priority = critic_loss.sum(dim=0).sqrt()
+            valid_n = torch.clamp(not_first_step.sum(dim=0), min=1.0)
+            priority = (critic_loss.sum(dim=0) / valid_n).sqrt()
         else:
             priority = ()
 
