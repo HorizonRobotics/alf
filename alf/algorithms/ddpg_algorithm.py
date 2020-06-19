@@ -194,10 +194,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
-        self._actor_network.eval()
         action, state = self._actor_network(
             time_step.observation, state=state.actor.actor)
-        self._actor_network.train(True)
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
 
         def _sample(a, ou):
@@ -282,8 +280,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 assert action.ndim < 3, (
                     "Action has ndim: {}.  Tensor.norm ".format(action.ndim) +
                     "will incorrectly take the norm of the last dim.")
-                loss += self._action_l2 * (torch.mean(
-                    action.norm(dim=list(range(1, action.ndim)))**2))
+                loss += self._action_l2 * (action**2).sum(
+                    list(range(1, action.ndim)))
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)

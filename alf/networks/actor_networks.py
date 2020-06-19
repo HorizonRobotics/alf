@@ -135,7 +135,6 @@ class ActorNetwork(PreprocessorNetwork):
         """
 
         observation, state = super().forward(observation, state)
-        self._encoding_net.train(self.training)
         encoded_obs, _ = self._encoding_net(observation)
 
         actions = []
@@ -148,8 +147,10 @@ class ActorNetwork(PreprocessorNetwork):
                         str(i) + '.pre_activation.output_norm')
                 if not self.training:
                     name += ".eval"
+                t = _info["pre_activation"]
                 alf.summary.scalar(
-                    name=name, data=_info["pre_activation"].norm())
+                    name=name,
+                    data=torch.mean(t.norm(dim=list(range(1, t.ndim)))))
 
             action = spec_utils.scale_to_spec(action, spec)
 
@@ -158,7 +159,10 @@ class ActorNetwork(PreprocessorNetwork):
                           str(i) + '.action.output_norm')
                 if not self.training:
                     a_name += ".eval"
-                alf.summary.scalar(name=a_name, data=action.norm())
+                a = action
+                alf.summary.scalar(
+                    name=a_name,
+                    data=torch.mean(a.norm(dim=list(range(1, a.ndim)))))
 
             actions.append(action)
             i += 1

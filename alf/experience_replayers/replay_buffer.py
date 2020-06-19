@@ -71,6 +71,15 @@ class ReplayBuffer(RingBuffer):
             step_type_field (string): path to the step_type field in exp nest.
                 This and the following fields are for hindsight relabeling.
             postprocess_exp_fn (callable): function to postprocess experience.
+                Args:
+                    ``buffer`` (``ReplayBuffer``): the replay buffer object.
+                    ``batch`` (nest): nested sampled experience of shape
+                        ``[batch_size, batch_length, ...]``.
+                    ``batch_info`` (BatchInfo): sample information for the batch.
+                These three arguments are required.  Other optional arguments
+                    could be populated by gin.
+                Returns:
+                    updated ``(batch, batch_info)``.
             name (string): name of the replay buffer object.
         """
         super().__init__(
@@ -285,8 +294,7 @@ class ReplayBuffer(RingBuffer):
                     importance_weights=self._sum_tree[indices] * avg_weight)
 
             if self._postprocess_exp_fn:
-                result, info = self._postprocess_exp_fn(
-                    self, result, info, device=self._device)
+                result, info = self._postprocess_exp_fn(self, result, info)
 
         return convert_device(result), convert_device(info)
 
@@ -500,8 +508,7 @@ def hindsight_relabel_fn(buffer,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
                          reward_field="reward",
-                         reward_fn=l2_dist_close_reward_fn,
-                         device="cpu"):
+                         reward_fn=l2_dist_close_reward_fn):
     """Randomly get `batch_size` hindsight relabeled trajectories.
 
     Note: The environments where the sampels are from are ordered in the
@@ -522,7 +529,6 @@ def hindsight_relabel_fn(buffer,
             achieve_goal and desired_goal.  Default gives reward 0 when
             L2 distance less than 0.05 and -1 otherwise, same as is done in
             suite_robotics environments.
-        device (str): device create tensors on.
     Returns:
         tuple:
             - nested Tensors: The samples. Its shapes are [batch_size, batch_length, ...]
@@ -570,7 +576,8 @@ def hindsight_relabel_fn(buffer,
     # recompute rewards
     result_rewards = alf.nest.get_field(result, reward_field)
     result_ag = alf.nest.get_field(result, achieved_goal_field)
-    relabeled_rewards = reward_fn(result_ag, relabed_goal, device=device)
+    relabeled_rewards = reward_fn(
+        result_ag, relabed_goal, device=buffer._device)
     alf.summary.scalar("replayer/reward_mean_before_relabel",
                        torch.mean(result_rewards[her_indices][:-1]))
     alf.summary.scalar("replayer/reward_mean_after_relabel",
