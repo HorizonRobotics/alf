@@ -36,12 +36,13 @@ from absl import flags
 from absl import logging
 import gin
 import os
+import sys
 import time
 import torch
 import torch.nn as nn
 
 from alf.tensor_specs import TensorSpec
-from alf.utils import common, math_ops
+from alf.utils import common, git_utils, math_ops
 import alf.utils.datagen as datagen
 import alf.utils.external_configurables
 from alf.utils.summary_utils import record_time
@@ -126,7 +127,7 @@ def train(config: Config):
         last_layer_size=output_dim,
         last_activation=math_ops.identity)
 
-    algorithm.set_train_loader(trainset)
+    algorithm.set_data_loader(trainset, testset)
 
     ## Perform training
     alf.summary.enable_summary()
@@ -147,20 +148,14 @@ def train(config: Config):
     with alf.summary.push_summary_writer(summary_writer):
         with alf.summary.record_if(_cond):
             epoch_num = 0
+            print("==> Begin Training")
             while True:
-                t0 = time.time()
-                with record_time("time/train_epoch"):
+                print("-" * 68)
+                print("Epoch: {}".format(epoch_num + 1))
+                with record_time("time/train_iter"):
                     train_steps = algorithm.train_iter()
-                t = time.time() - t0
-                logging.log_every_n_seconds(
-                    logging.INFO,
-                    '%s -> %s: %s time=%.3f throughput=%0.2f' %
-                    (common.get_gin_file(), [
-                        os.path.basename(root_dir.strip('/'))
-                    ], epoch_num, t, int(train_steps) / t),
-                    n_seconds=1)
 
-                if epoch_num == begin_epoch_num:
+                if epoch_num == 0:
                     # We need to wait for one iteration to get the operative args
                     # Right just give a fixed gin file name to store operative args
                     common.write_gin_configs(root_dir, "configured.gin")
@@ -181,6 +176,10 @@ def train(config: Config):
                         alf.summary.text('diff',
                                          _markdownify(git_utils.get_diff()))
                         alf.summary.text('seed', str(random_seed))
+
+                if config.evaluate:
+                    print("==> Begin testing")
+                    algorithm.evaluate()
 
                 epoch_num += 1
                 if (config.epochs and epoch_num >= config.epochs):

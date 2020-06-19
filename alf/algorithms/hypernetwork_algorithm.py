@@ -13,19 +13,24 @@
 # limitations under the License.
 """HyperNetwork algorithm."""
 
+from absl import logging
 import gin
 import torch
 import torch.nn.functional as F
+from tqdm import tqdm
 from typing import Callable
 
 import alf
-from alf.data_structures import AlgStep, LossInfo
+from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.algorithms.generator import Generator
 from alf.algorithms.hypernetwork_networks import ParamNetwork
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 from alf.utils.summary_utils import record_time
+
+HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo",
+                                  ["loss", "acc", "avg_acc"])
 
 
 @gin.configurable
@@ -48,7 +53,6 @@ class HyperNetwork(Generator):
             particles=32,
             entropy_regularization=1.,
             kernel_sharpness=2.,
-            train_loader=None,
             loss_func: Callable = None,
             optimizer=None,
             regenerate_for_each_batch=True,
@@ -90,7 +94,6 @@ class HyperNetwork(Generator):
 
             Args for training
             ====================================================================
-            train_loader (torch.utils.data.Dataloader): dataloader for training.
             loss_func (Callable): loss_func(outputs, targets)   
             optimizer (torch.optim.Optimizer): The optimizer for training.
             regenerate_for_each_batch (bool): If True, particles will be regenerated 
@@ -125,7 +128,8 @@ class HyperNetwork(Generator):
 
         self._param_net = param_net
         self._particles = particles
-        self._train_loader = train_loader
+        self._train_loader = None
+        self._test_loader = None
         self._regenerate_for_each_batch = regenerate_for_each_batch
         self._loss_func = loss_func
         if self._loss_func is None:
@@ -133,8 +137,9 @@ class HyperNetwork(Generator):
         # self._noise_sampler = NoiseSampler(
         #     noise_type, noise_dim, particles=particles)
 
-    def set_train_loader(self, train_loader):
+    def set_data_loader(self, train_loader, test_loader=None):
         self._train_loader = train_loader
+        self._test_loader = test_loader
 
     def set_particles(self, particles):
         self._particles = particles
@@ -144,16 +149,22 @@ class HyperNetwork(Generator):
         return self._particles
 
     def sample_parameters(self, particles=None):
-        if particles is not None:
-            self._particles = particles
-        params, _ = self._predict(inputs=None, batch_size=self._particles)
+        if particles is None:
+            particles = self.particles
+        params, _ = self._predict(inputs=None, batch_size=particles)
         return params
 
     def train_iter(self, particles=None, state=None):
         """Perform one epoch (iteration) of training."""
 
+        assert self._train_loader is not None, "Must set data_loader first."
+        if particles is None:
+            particles = self.particles
         with record_time("time/train"):
-            for batch_idx, (data, target) in enumerate(self._train_loader):
+            avg_acc = []
+            loss = 0.
+            for batch_idx, (data, target) in enumerate(
+                    tqdm(self._train_loader)):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 if not self._regenerate_for_each_batch:
@@ -163,6 +174,13 @@ class HyperNetwork(Generator):
                                            particles=particles,
                                            state=state)
                 self.update_with_gradient(alg_step.info)
+                avg_acc.append(alg_step.info.extra.avg_acc)
+                loss += alg_step.info.extra.loss
+        acc = torch.as_tensor(avg_acc)
+        logging.info("Avg acc: {}".format(acc.mean() * 100))
+        logging.info("Cum loss: {}".format(loss))
+
+        return batch_idx + 1
 
     def train_step(self, inputs, loss_func=None, particles=None, state=None):
         """Perform one batch of training computation.
@@ -182,30 +200,35 @@ class HyperNetwork(Generator):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-
+        if particles is None:
+            particles = self.particles
         if self._regenerate_for_each_batch:
             params = self.sample_parameters(particles=particles)
             self._param_net.set_parameters(params)
         if loss_func is None:
             loss_func = self._loss_func
-        loss, grad = self._grad_func(inputs, params, loss_func)
+        train_info, grad = self._grad_func(inputs, params, loss_func)
         loss_propagated = torch.sum(grad.detach() * params, dim=-1)
 
         return AlgStep(
             output=params,
             state=(),
-            info=LossInfo(loss=loss_propagated, extra=loss))
+            info=LossInfo(loss=loss_propagated, extra=train_info))
 
     def _stein_grad(self, inputs, outputs, loss_func):
         data, target = inputs
-        pred, _ = self._param_net(data)
+        logit, _ = self._param_net(data)  # [B, N, D]
+        pred = logit.max(-1)[1]
         target = target.unsqueeze(1).expand(*target.shape, self.particles)
-        loss = loss_func(pred.transpose(1, 2), target)
+        acc = pred.eq(target).float().mean(0)
+        avg_acc = acc.mean()
+        loss = loss_func(logit.transpose(1, 2), target)
         loss_grad = torch.autograd.grad(loss.sum(), outputs)[0]
-
         logq_grad = self._score_func(outputs)
 
-        return loss, loss_grad + logq_grad
+        train_info = HyperNetworkLossInfo(loss=loss, acc=acc, avg_acc=avg_acc)
+
+        return train_info, loss_grad + logq_grad
 
     def _score_func(self, x, alpha=1e-3):
         r"""Compute the stein estimator of the score function 
@@ -235,3 +258,28 @@ class HyperNetwork(Generator):
     def _kernel_width(self):
         # TODO: implement the kernel bandwidth selection via Heat equation.
         return self._kernel_sharpness
+
+    def evaluate(self, loss_func=None):
+        """Evaluate on a randomly drawn network. """
+
+        assert self._test_loader is not None, "Must set test_loader first."
+        if loss_func is None:
+            loss_func = self._loss_func
+        params = self.sample_parameters(particles=1)
+        self._param_net.set_parameters(params)
+        with record_time("time/test"):
+            test_acc = 0.
+            test_loss = 0.
+            for i, (data, target) in enumerate(self._test_loader):
+                data = data.to(alf.get_default_device())
+                target = target.to(alf.get_default_device())
+                logit, _ = self._param_net(data)  # [B, 1, D]
+                pred = logit.max(-1)[1]
+                correct = pred.eq(target.view_as(pred)).long().sum()
+                loss = loss_func(logit, target)
+                test_acc += correct.item()
+                test_loss += loss.item()
+
+        test_acc /= len(self._test_loader.dataset)
+        logging.info("Test acc: {}".format(test_acc * 100))
+        logging.info("Test loss: {}".format(test_loss))

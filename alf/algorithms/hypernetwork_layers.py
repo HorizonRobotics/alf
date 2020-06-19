@@ -67,12 +67,11 @@ class ParamFC(nn.Module):
         if weight.shape[0] == 1:
             # non-parallel weight
             self._groups = 1
-            self._weight = weight.view(self._output_size, self._input_size)
         elif weight.ndim == 2:
             # parallel weight
             self._groups = weight.shape[0]
-            self._weight = weight.view(self._groups, self._output_size,
-                                       self._input_size)
+        self._weight = weight.view(self._groups, self._output_size,
+                                   self._input_size)
 
     def set_bias(self, bias):
         assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
@@ -145,6 +144,7 @@ class ParamFC(nn.Module):
         else:
             res = torch.bmm(inputs, self._weight.transpose(1, 2))
         res = res.transpose(0, 1)  # [B, n, D]
+        res = res.squeeze()
 
         return self._activation(res)
 
