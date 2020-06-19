@@ -620,8 +620,6 @@ class EncodingNetwork(PreprocessorNetwork):
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
-        self.eval = False
-
         self._output_spec = TensorSpec(
             (input_size, ), dtype=self._processed_input_tensor_spec.dtype)
 
@@ -637,11 +635,12 @@ class EncodingNetwork(PreprocessorNetwork):
         i = 0
         for fc in self._fc_layers:
             z = fc(z)
-            name = ('summarize_output/' + self.name + '.fc.' + str(i) +
-                    '.output_norm')
-            if self.eval:
-                name += ".eval"
-            alf.summary.scalar(name=name, data=z.norm())
+            if alf.summary.should_summarize_output():
+                name = ('summarize_output/' + self.name + '.fc.' + str(i) +
+                        '.output_norm')
+                if not self.training:
+                    name += ".eval"
+                alf.summary.scalar(name=name, data=z.norm())
             i += 1
         return z, state
 

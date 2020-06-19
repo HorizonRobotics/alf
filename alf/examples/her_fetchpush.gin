@@ -10,6 +10,7 @@ ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn
 #TrainerConfig.summary_interval=1
 #TrainerConfig.update_counter_every_mini_batch=True
 TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summarize_output=True
 summarize_gradients.with_histogram=False
 summarize_variables.with_histogram=False
 

@@ -119,6 +119,7 @@ class Trainer(object):
         self._summary_max_queue = config.summary_max_queue
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
+        alf.summary.should_summarize_output(config.summarize_output)
         self._config = config
 
         self._random_seed = common.set_random_seed(self._random_seed)

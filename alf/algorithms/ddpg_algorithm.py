@@ -194,10 +194,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
-        self._actor_network.eval = True
+        self._actor_network.eval()
         action, state = self._actor_network(
             time_step.observation, state=state.actor.actor)
-        self._actor_network.eval = False
+        self._actor_network.train(True)
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
 
         def _sample(a, ou):

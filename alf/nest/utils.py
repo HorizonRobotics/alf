@@ -194,9 +194,7 @@ def transform_nest(nested, field, func):
     """
 
     def _traverse_transform(nested, levels):
-        if levels is None:
-            return nested
-        if levels == []:
+        if not levels:
             return func(nested)
         level = levels[0]
         if nest.is_namedtuple(nested):
@@ -213,7 +211,7 @@ def transform_nest(nested, field, func):
                             "a dict or namedtuple!")
 
     return _traverse_transform(
-        nested=nested, levels=field.split('.') if field else None)
+        nested=nested, levels=field.split('.') if field else [])
 
 
 def convert_device(nests):

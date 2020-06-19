@@ -153,7 +153,8 @@ def load(environment_name,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            alf_env_wrappers=alf_env_wrappers)
+            alf_env_wrappers=alf_env_wrappers,
+            image_channel_first=False)
 
     # concat robot's observation and the goal location
     if concat_desired_goal:

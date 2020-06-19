@@ -20,6 +20,8 @@ from typing import Callable
 
 _summary_enabled = False
 
+_summarize_output = False
+
 _default_writer: SummaryWriter = None
 
 _global_counter = torch.tensor(0, dtype=torch.int64)
@@ -231,6 +233,14 @@ def disable_summary():
 def is_summary_enabled():
     """Return whether summary is enabled."""
     return _summary_enabled
+
+
+def should_summarize_output(flag=None):
+    global _summarize_output
+    if flag is None:
+        return _summarize_output
+    else:
+        _summarize_output = bool(flag)
 
 
 class push_summary_writer(object):

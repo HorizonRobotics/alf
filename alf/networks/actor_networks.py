@@ -91,8 +91,6 @@ class ActorNetwork(PreprocessorNetwork):
                 mode='fan_in',
                 distribution='uniform')
 
-        self.eval = False
-
         self._action_spec = action_spec
         flat_action_spec = nest.flatten(action_spec)
         self._flat_action_spec = flat_action_spec
@@ -137,28 +135,30 @@ class ActorNetwork(PreprocessorNetwork):
         """
 
         observation, state = super().forward(observation, state)
-        self._encoding_net.eval = self.eval
+        self._encoding_net.train(self.training)
         encoded_obs, _ = self._encoding_net(observation)
 
         actions = []
         i = 0
         for layer, spec in zip(self._action_layers, self._flat_action_spec):
-            _info = {}
+            _info = {} if alf.summary.should_summarize_output() else None
             action = layer(encoded_obs, info=_info)
-
-            name = ('summarize_output/' + self.name + '.action_layer.' + str(i)
-                    + '.pre_activation.output_norm')
-            if self.eval:
-                name += ".eval"
-            alf.summary.scalar(name=name, data=_info["pre_activation"].norm())
+            if alf.summary.should_summarize_output():
+                name = ('summarize_output/' + self.name + '.action_layer.' +
+                        str(i) + '.pre_activation.output_norm')
+                if not self.training:
+                    name += ".eval"
+                alf.summary.scalar(
+                    name=name, data=_info["pre_activation"].norm())
 
             action = spec_utils.scale_to_spec(action, spec)
 
-            a_name = ('summarize_output/' + self.name + '.action_layer.' +
-                      str(i) + '.action.output_norm')
-            if self.eval:
-                a_name += ".eval"
-            alf.summary.scalar(name=a_name, data=action.norm())
+            if alf.summary.should_summarize_output():
+                a_name = ('summarize_output/' + self.name + '.action_layer.' +
+                          str(i) + '.action.output_norm')
+                if not self.training:
+                    a_name += ".eval"
+                alf.summary.scalar(name=a_name, data=action.norm())
 
             actions.append(action)
             i += 1
