@@ -74,7 +74,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         input_spec = TensorSpec((100, ), torch.float32)
         embedding = input_spec.zeros(outer_dims=(1, ))
         network = ImageDecodingNetwork(
-            input_size=input_spec.shape[0],
+            input_tensor_spec=input_spec,
             transconv_layer_params=((16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
                                                               0)),
             start_decoding_size=(20, 31),
@@ -265,7 +265,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         replica = 2
         network = ParallelImageDecodingNetwork(
-            input_size=input_spec.shape[0],
+            input_tensor_spec=input_spec,
             n=replica,
             transconv_layer_params=((16, (2, 2), 1, (1, 0)), (64, 3, (1, 2),
                                                               0)),

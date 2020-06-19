@@ -55,6 +55,7 @@ function test() {
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
         alf.algorithms.ppo_algorithm_test \
+        alf.algorithms.repr_agent_test \
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.sarsa_algorithm_test \
         alf.algorithms.sac_algorithm_test \

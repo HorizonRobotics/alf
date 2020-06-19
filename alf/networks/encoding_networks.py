@@ -227,7 +227,7 @@ class ImageDecodingNetwork(Network):
     """
 
     def __init__(self,
-                 input_size,
+                 input_tensor_spec,
                  transconv_layer_params,
                  start_decoding_size,
                  start_decoding_channels,
@@ -259,7 +259,8 @@ class ImageDecodingNetwork(Network):
         increaseby 1 when strides=1).
 
         Args:
-            input_size (int): the size of the input latent vector
+            input_tensor_spec (TensorSpec): the tensor spec of the input. Should
+                be a single 1D tensor spec.
             transconv_layer_params (tuple[tuple]): a non-empty
                 tuple of tuple (num_filters, kernel_size, strides, padding),
                 where ``padding`` is optional.
@@ -286,13 +287,14 @@ class ImageDecodingNetwork(Network):
                 ``torch.tanh``.
             name (str):
         """
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super().__init__(input_tensor_spec=input_tensor_spec, name=name)
 
         assert isinstance(transconv_layer_params, tuple)
         assert len(transconv_layer_params) > 0
 
         self._preprocess_fc_layers = nn.ModuleList()
+        assert len(input_tensor_spec.shape) == 1
+        input_size = input_tensor_spec.shape[0]
         if preprocess_fc_layer_params is not None:
             for size in preprocess_fc_layer_params:
                 self._preprocess_fc_layers.append(
@@ -361,7 +363,7 @@ class ParallelImageDecodingNetwork(Network):
     """
 
     def __init__(self,
-                 input_size,
+                 input_tensor_spec,
                  n,
                  transconv_layer_params,
                  start_decoding_size,
@@ -374,7 +376,8 @@ class ParallelImageDecodingNetwork(Network):
                  name="ImageDecodingNetwork"):
         """
         Args:
-            input_size (int): the size of the input latent vector
+            input_tensor_spec (TensorSpec): the tensor spec of the input. Should
+                be a single 1D tensor spec.
             n (int): number of parallel networks
             transconv_layer_params (tuple[tuple]): a non-empty
                 tuple of tuple (num_filters, kernel_size, strides, padding),
@@ -402,13 +405,14 @@ class ParallelImageDecodingNetwork(Network):
                 ``torch.tanh``.
             name (str):
         """
-        super().__init__(
-            input_tensor_spec=TensorSpec((input_size, )), name=name)
+        super().__init__(input_tensor_spec=input_tensor_spec, name=name)
 
         assert isinstance(transconv_layer_params, tuple)
         assert len(transconv_layer_params) > 0
 
         self._preprocess_fc_layers = nn.ModuleList()
+        assert len(input_tensor_spec.shape) == 1
+        input_size = input_tensor_spec.shape[0]
         if preprocess_fc_layer_params is not None:
             for size in preprocess_fc_layer_params:
                 self._preprocess_fc_layers.append(

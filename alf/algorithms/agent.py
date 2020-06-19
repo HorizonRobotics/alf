@@ -90,14 +90,14 @@ class Agent(OnPolicyAlgorithm):
                 needs to contain ``action_distribution``.
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
-            optimizer (tf.optimizers.Optimizer): The optimizer for training
+            optimizer (Optimizer): The optimizer for training
             reward_shaping_fn (Callable): a function that transforms extrinsic
                 immediate rewards
             observation_transformer (Callable | list[Callable]): transformation(s)
                 applied to ``time_step.observation``.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
-            """
+        """
         agent_helper = AgentHelper(AgentState)
 
         ## 1. goal generator
