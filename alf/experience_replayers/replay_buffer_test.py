@@ -34,7 +34,7 @@ class ReplayBufferTest(RingBufferTest):
         self.max_length = 8
         torch.manual_seed(0)
         configs = [
-            "hindsight_relabel_fn.her_k=0.8",
+            "hindsight_relabel_fn.her_proportion=0.8",
             'hindsight_relabel_fn.achieved_goal_field="o.a"',
             'hindsight_relabel_fn.desired_goal_field="o.g"',
             'hindsight_relabel_fn.reward_field="r"',
@@ -115,7 +115,7 @@ class ReplayBufferTest(RingBufferTest):
         # g        [[.7,.7],[0, 0], [.2,.2],[1.4,1.4],[.6,.6]]  # 0.1 * t + b with default 0
         # reward:  [[-1,0], [-1,-1],[-1,0], [-1,0], [-1,0]]  # recomputed with default -1
         env_ids = torch.tensor([0, 0, 1, 0])
-        dist = replay_buffer.distance_to_episode_end(
+        dist = replay_buffer.steps_to_episode_end(
             replay_buffer._pad(torch.tensor([7, 2, 4, 6]), env_ids), env_ids)
         self.assertEqual(list(dist), [1, 0, 1, 0])
 
@@ -164,7 +164,7 @@ class ReplayBufferTest(RingBufferTest):
         return epi_ends
 
     # Another gold standard function
-    def distance_to_episode_end(self, b, env_ids, idx):
+    def steps_to_episode_end(self, b, env_ids, idx):
         """Compute the distance to the closest episode end in future.
 
         Args:
@@ -223,7 +223,7 @@ class ReplayBufferTest(RingBufferTest):
         max_length = 100
         torch.manual_seed(0)
         configs = [
-            "hindsight_relabel_fn.her_k=0.8",
+            "hindsight_relabel_fn.her_proportion=0.8",
             'hindsight_relabel_fn.achieved_goal_field="o.a"',
             'hindsight_relabel_fn.desired_goal_field="o.g"',
             'hindsight_relabel_fn.reward_field="r"',
@@ -254,8 +254,10 @@ class ReplayBufferTest(RingBufferTest):
                 env_ids = torch.tensor([0] * sample_steps + [1] * sample_steps)
                 idx = torch.tensor(
                     list(range(sample_steps)) + list(range(sample_steps)))
-                gd = self.distance_to_episode_end(replay_buffer, env_ids, idx)
-                d = replay_buffer.distance_to_episode_end(
+                gd = self.steps_to_episode_end(replay_buffer, env_ids, idx)
+                idx_orig = replay_buffer._indexed_pos.clone()
+                idx_headless_orig = replay_buffer._headless_indexed_pos.clone()
+                d = replay_buffer.steps_to_episode_end(
                     replay_buffer._pad(idx, env_ids), env_ids)
                 # Test distance to end computation
                 if not torch.equal(gd, d):
@@ -285,6 +287,11 @@ class ReplayBufferTest(RingBufferTest):
                     torch.allclose(r_orig, replay_buffer._buffer.r))
                 self.assertTrue(
                     torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
+                self.assertTrue(
+                    torch.all(idx_orig == replay_buffer._indexed_pos))
+                self.assertTrue(
+                    torch.all(idx_headless_orig == replay_buffer.
+                              _headless_indexed_pos))
 
     @parameterized.named_parameters([
         ('test_sync', False),

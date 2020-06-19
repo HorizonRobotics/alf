@@ -173,9 +173,6 @@ class ReplayBuffer(RingBuffer):
                 self._update_segment_tree(indices, values)
         self._mini_batch_length = mini_batch_length
 
-    # This function needs to be called in the same atomic transaction as
-    # ``prioritized_sample()`` for the idx sampled to be still valid
-    # in multiprocessing/asynchronous cases.
     @torch.no_grad()
     def update_priority(self, env_ids, positions, priorities):
         """Update the priorities for the given experiences.
@@ -186,8 +183,12 @@ class ReplayBuffer(RingBuffer):
                 These positions should be obtained from the BatchInfo returned
                 by ``get_batch()``.
         """
-        indices = self._env_id_idx_to_index(env_ids, self.circular(positions))
-        self._update_segment_tree(indices, priorities)
+        # If positions are outdated, we don't update their priorities.
+        valid, = torch.where(positions >= self._current_pos[env_ids] -
+                             self._current_size[env_ids])
+        indices = self._env_id_idx_to_index(env_ids[valid],
+                                            self.circular(positions[valid]))
+        self._update_segment_tree(indices, priorities[valid])
 
     @atomic
     @torch.no_grad()
@@ -229,7 +230,8 @@ class ReplayBuffer(RingBuffer):
                 step_types = alf.nest.get_field(batch, self._step_type_field)
                 non_first, = torch.where(step_types != ds.StepType.FIRST)
                 # 3.2. update episode ending positions
-                self.store_episode_end_pos(non_first, overwriting_pos, env_ids)
+                self._store_episode_end_pos(non_first, overwriting_pos,
+                                            env_ids)
                 # 3.3. initialize episode beginning positions to itself
                 epi_first, = torch.where(step_types == ds.StepType.FIRST)
                 self._indexed_pos[(env_ids[epi_first],
@@ -241,7 +243,7 @@ class ReplayBuffer(RingBuffer):
     def get_batch(self, batch_size, batch_length):
         """Randomly get ``batch_size`` trajectories from the buffer.
 
-        It hindsight relabels the experience when ReplayBuffer.her_k > 0.
+        It hindsight relabels the experience when ReplayBuffer.her_proportion > 0.
 
         Note: The environments where the sampels are from are ordered in the
             returned batch.
@@ -346,14 +348,16 @@ class ReplayBuffer(RingBuffer):
 
         NOTE, this operation depends on the _current_pos of the RingBuffer,
         and can generate different results if new data are added to the buffer.
-        """
-        multiples = (
-            self._current_pos[env_ids] / self._max_length) * self._max_length
-        idx = self.circular(x)
-        return torch.where(idx < self.circular(self._current_pos[env_ids]),
-                           idx + multiples, idx + multiples - self._max_length)
 
-    def store_episode_end_pos(self, non_first, pos, env_ids):
+        position = idx + n L
+        current_pos - L <= idx + n L < current_pos
+        current_pos - idx - 1 - L < n L <= current_pos - idx - 1
+        n = (current_pos - idx - 1) / L
+        """
+        return ((self._current_pos[env_ids] - x - 1) /
+                self._max_length) * self._max_length + x
+
+    def _store_episode_end_pos(self, non_first, pos, env_ids):
         """Update _indexed_pos and _headless_indexed_pos for episode end pos.
 
         Args:
@@ -386,16 +390,13 @@ class ReplayBuffer(RingBuffer):
         headless, = torch.where(torch.logical_not(has_head_cond))
         self._headless_indexed_pos[_env_ids[headless]] = _pos[headless]
 
-    def get_episode_end_pos(self, idx, env_ids):
+    def _get_episode_end_pos(self, idx, env_ids):
         """Use _indexed_pos and _headless_indexed_pos to get last step pos.
-
-        NOTE, the positions returned are the stored positions, are
-        possibly outdated, and need to be padded with self._pad().
         """
         # Look up ``FIRST`` step position, then look up the stored last pos
         first_step_pos = self._indexed_pos[(env_ids, idx)]
         first_step_idx = self.circular(first_step_pos)
-        result = self._indexed_pos[(env_ids, first_step_idx)].clone()
+        result = self._indexed_pos[(env_ids, first_step_idx)]
         # If current step is FIRST, skip second lookup.
         buffer_step_types = alf.nest.get_field(self._buffer,
                                                self._step_type_field)
@@ -417,7 +418,7 @@ class ReplayBuffer(RingBuffer):
         result[headless] = self._headless_indexed_pos[headless_env_ids]
         return result
 
-    def distance_to_episode_end(self, pos, env_ids):
+    def steps_to_episode_end(self, pos, env_ids):
         """Get the distance to the closest episode end in future.
 
         Args:
@@ -427,7 +428,7 @@ class ReplayBuffer(RingBuffer):
         Returns:
             tensor of shape ``L``.
         """
-        last_pos = self.get_episode_end_pos(self.circular(pos), env_ids)
+        last_pos = self._get_episode_end_pos(self.circular(pos), env_ids)
         return last_pos - pos
 
     @atomic
@@ -495,7 +496,7 @@ def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
 def hindsight_relabel_fn(buffer,
                          result,
                          info,
-                         her_k=0.8,
+                         her_proportion=0.8,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
                          reward_field="reward",
@@ -510,14 +511,14 @@ def hindsight_relabel_fn(buffer,
         buffer (ReplayBuffer): for access to future achieved goals.
         result (nest): of tensors of the sampled exp
         info (BatchInfo): of the sampled result
-        her_k (float): proportion of hindsight relabeled experience.
-        achieved_goal_field (string): path to the achieved_goal field in
+        her_proportion (float): proportion of hindsight relabeled experience.
+        achieved_goal_field (str): path to the achieved_goal field in
             exp nest.
-        desired_goal_field (string): path to the desired_goal field in the
+        desired_goal_field (str): path to the desired_goal field in the
             exp nest.
-        reward_field (string): path to the reward field in the exp nest.
+        reward_field (str): path to the reward field in the exp nest.
             are for hindsight experience replay.
-        reward_fn (callable): function to recompute reward based on
+        reward_fn (Callable): function to recompute reward based on
             achieve_goal and desired_goal.  Default gives reward 0 when
             L2 distance less than 0.05 and -1 otherwise, same as is done in
             suite_robotics environments.
@@ -531,7 +532,7 @@ def hindsight_relabel_fn(buffer,
                 - importance_weights: priority divided by the average of all
                     non-zero priorities in the buffer.
     """
-    if her_k == 0:
+    if her_proportion == 0:
         return result
 
     env_ids = info.env_ids
@@ -542,14 +543,14 @@ def hindsight_relabel_fn(buffer,
     assert batch_length == 2, shape
 
     # relabel only these sampled indices
-    her_cond = torch.rand(batch_size) < her_k
+    her_cond = torch.rand(batch_size) < her_proportion
     (her_indices, ) = torch.where(her_cond)
     (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
 
     last_step_pos = start_pos[her_indices] + batch_length - 1
     last_env_ids = env_ids[her_indices]
     # Get x, y indices of LAST steps
-    dist = buffer.distance_to_episode_end(last_step_pos, last_env_ids)
+    dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
     alf.summary.scalar("replayer/mean_steps_to_episode_end",
                        torch.mean(dist.type(torch.float32)))
 

@@ -279,8 +279,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             loss = loss.sum(list(range(1, loss.ndim)))
             if self._action_l2 > 0:
                 assert action.requires_grad
+                assert action.ndim < 3, (
+                    "Action has ndim: {}.  Tensor.norm ".format(action.ndim) +
+                    "will incorrectly take the norm of the last dim.")
                 loss += self._action_l2 * (torch.mean(
-                    torch.norm(action, dim=-1)**2))
+                    action.norm(dim=list(range(1, action.ndim)))**2))
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
