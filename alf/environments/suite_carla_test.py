@@ -77,7 +77,6 @@ def play(env):
     """)
 
     action = env.action_spec().zeros([env.batch_size])
-    stop = False
     THROTTLE = 0
     STEER = 1
     BRAKE = 2
