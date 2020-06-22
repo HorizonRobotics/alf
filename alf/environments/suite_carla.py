@@ -734,7 +734,7 @@ class World(object):
 class NavigationSensor(SensorBase):
     """Generating future waypoints on the route.
 
-    Note that the route is fixed (not change based on current vehicale location)
+    Note that the route is fixed (not change based on current vehicle location)
     """
 
     WINDOW = 5
@@ -796,7 +796,15 @@ def _to_numpy_loc(loc: carla.Location):
 
 
 class Player(object):
-    """Player is a vehicle with some sensors."""
+    """Player is a vehicle with some sensors.
+
+    An episode terminates if the vehicle arrives at the goal or the time exceeds
+    `initial_distance / min_speed `.
+
+    At each step, the reward is given based on the following components:
+    1. Arriving goal:  `success_reward`
+    2. Moving in the navigation direction: the number of meters moved
+    """
 
     def __init__(self,
                  actor,
