@@ -74,14 +74,25 @@ class EmbeddingPreprocessor(Network):
             # use nn.Embedding to support a large dictionary
             self._embedding_net = nn.Embedding(N, embedding_dim)
         else:
-            # Only use an MLP for embedding a continuous input
-            self._embedding_net = alf.networks.EncodingNetwork(
-                input_tensor_spec=input_tensor_spec,
-                conv_layer_params=conv_layer_params,
-                fc_layer_params=fc_layer_params,
-                activation=activation,
-                last_layer_size=embedding_dim,
-                last_activation=last_activation)
+            # Create a new gin config scope here to avoid the following infinite
+            # recursion in a gin file:
+            #
+            #   a/EmbeddingPreprocessor.x=y
+            #   a/EncodingNetwork.input_preprocessors=@a/EmbeddingPreprocessor()
+            #
+            # Witout creating the scope, the EncodingNetwork below will inherit
+            # the current EmbeddingPreprocessor's scope and create another
+            # EmbeddingPreprocessor.
+            with gin.config_scope(gin.current_scope_str() +
+                                  "/EmbeddingPreprocessor_"):
+                # Only use an MLP for embedding a continuous input
+                self._embedding_net = alf.networks.EncodingNetwork(
+                    input_tensor_spec=input_tensor_spec,
+                    conv_layer_params=conv_layer_params,
+                    fc_layer_params=fc_layer_params,
+                    activation=activation,
+                    last_layer_size=embedding_dim,
+                    last_activation=last_activation)
 
     def _preprocess(self, tensor):
         assert get_outer_rank(tensor, self._input_tensor_spec) == 1, \
