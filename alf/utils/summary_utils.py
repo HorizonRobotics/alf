@@ -185,6 +185,7 @@ def summarize_action(actions, action_specs, name="action"):
     Args:
         actions (nested Tensor): actions to be summarized
         action_specs (nested TensorSpec): spec for the actions
+        name (str): name of the summary
     """
     action_specs = alf.nest.flatten(action_specs)
     actions = alf.nest.flatten(actions)
@@ -211,10 +212,12 @@ def summarize_action(actions, action_specs, name="action"):
 
             for a in range(action_dim):
                 histogram_continuous(
-                    name="%s/%s/%s" % (name, i, a),
+                    name="%s/%s/%s/value" % (name, i, a),
                     data=action[:, a],
                     bucket_min=_get_val(action_spec.minimum, a),
                     bucket_max=_get_val(action_spec.maximum, a))
+                alf.summary.scalar("%s/%s/%s/mean" % (name, i, a),
+                                   action[:, a].mean())
 
 
 def summarize_action_dist(action_distributions, name="action_dist"):
@@ -232,8 +235,8 @@ def summarize_action_dist(action_distributions, name="action_dist"):
             # dist might be a Tensor
             action_dim = dist.shape[-1]
             for a in range(action_dim):
-                alf.summary.histogram(
-                    name="%s_loc/%s/%s" % (name, i, a), data=dist[..., a])
+                add_mean_hist_summary("%s_loc/%s/%s" % (name, i, a),
+                                      dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
             if not isinstance(dist, td.Normal):
@@ -242,11 +245,10 @@ def summarize_action_dist(action_distributions, name="action_dist"):
             log_scale = dist.scale.log()
             action_dim = loc.shape[-1]
             for a in range(action_dim):
-                alf.summary.histogram(
-                    name="%s_log_scale/%s/%s" % (name, i, a),
-                    data=log_scale[..., a])
-                alf.summary.histogram(
-                    name="%s_loc/%s/%s" % (name, i, a), data=loc[..., a])
+                add_mean_hist_summary("%s_log_scale/%s/%s" % (name, i, a),
+                                      log_scale[..., a])
+                add_mean_hist_summary("%s_loc/%s/%s" % (name, i, a),
+                                      loc[..., a])
 
 
 def add_mean_hist_summary(name, value):
