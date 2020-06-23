@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import gin
+import alf
 
 
 @gin.configurable
@@ -41,6 +42,7 @@ class TrainerConfig(object):
                  debug_summaries=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
+                 summarize_output=False,
                  initial_collect_steps=0,
                  num_updates_per_train_iter=4,
                  mini_batch_length=None,
@@ -109,6 +111,7 @@ class TrainerConfig(object):
             debug_summaries (bool): A bool to gather debug summaries.
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
+            summarize_output (bool): If True, summarize output of certain networks.
             initial_collect_steps (int): if positive, number of steps each single
                 environment steps before perform first update. Only used
                 by ``OffPolicyAlgorithm``.
@@ -168,6 +171,7 @@ class TrainerConfig(object):
             debug_summaries=debug_summaries,
             summarize_grads_and_vars=summarize_grads_and_vars,
             summarize_action_distributions=summarize_action_distributions,
+            summarize_output=summarize_output,
             initial_collect_steps=initial_collect_steps,
             num_updates_per_train_iter=num_updates_per_train_iter,
             mini_batch_length=mini_batch_length,

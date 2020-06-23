@@ -119,6 +119,7 @@ class Trainer(object):
         self._summary_max_queue = config.summary_max_queue
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
+        alf.summary.should_summarize_output(config.summarize_output)
         self._config = config
 
         self._random_seed = common.set_random_seed(self._random_seed)
@@ -336,8 +337,10 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
     transformed_time_step = algorithm.transform_timestep(time_step)
+    algorithm.eval()
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
+    algorithm.train(True)
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step)

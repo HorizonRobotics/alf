@@ -435,6 +435,7 @@ class RLAlgorithm(Algorithm):
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
 
         env_step_time = 0.
+        store_exp_time = 0.
         for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
@@ -458,7 +459,10 @@ class RLAlgorithm(Algorithm):
             self.observe_for_metrics(time_step)
 
             exp = make_experience(time_step, policy_step, policy_state)
+
+            t0 = time.time()
             self.observe_for_replay(exp)
+            store_exp_time += time.time() - t0
 
             exp_for_training = Experience(
                 action=action,
@@ -476,7 +480,8 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
-        alf.summary.scalar("time/env_step", env_step_time)
+        alf.summary.scalar("time/unroll_env_step", env_step_time)
+        alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         experience = alf.nest.utils.stack_nests(experience_list)
         experience = experience._replace(
             rollout_info=dist_utils.params_to_distributions(

@@ -1175,6 +1175,8 @@ class Algorithm(nn.Module):
             # returns 0 if haven't started training yet; throughput will be 0
             return 0
 
+        # TODO: If this function can be called asynchronously, and using
+        # prioritized replay, then make sure replay and train below is atomic.
         with record_time("time/replay"):
             mini_batch_size = config.mini_batch_size
             if mini_batch_size is None:

@@ -1,12 +1,7 @@
 # default ddpg config
 
+import alf
 import alf.algorithms.ddpg_algorithm
-
-create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
-
-# algorithm config
-observation_spec=@get_observation_spec()
-action_spec=@get_action_spec()
 
 TrainerConfig.whole_replay_buffer_training=False
 TrainerConfig.clear_replay_buffer=False

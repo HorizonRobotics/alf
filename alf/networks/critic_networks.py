@@ -125,7 +125,8 @@ class CriticNetwork(Network):
             conv_layer_params=observation_conv_layer_params,
             fc_layer_params=observation_fc_layer_params,
             activation=activation,
-            kernel_initializer=kernel_initializer)
+            kernel_initializer=kernel_initializer,
+            name=self.name + ".obs_encoder")
 
         _check_action_specs_for_critic_networks(action_spec,
                                                 action_input_processors,
@@ -136,7 +137,8 @@ class CriticNetwork(Network):
             preprocessing_combiner=action_preprocessing_combiner,
             fc_layer_params=action_fc_layer_params,
             activation=activation,
-            kernel_initializer=kernel_initializer)
+            kernel_initializer=kernel_initializer,
+            name=self.name + ".action_encoder")
 
         last_kernel_initializer = functools.partial(
             torch.nn.init.uniform_, a=-0.003, b=0.003)
@@ -149,7 +151,8 @@ class CriticNetwork(Network):
             kernel_initializer=kernel_initializer,
             last_layer_size=1,
             last_activation=math_ops.identity,
-            last_kernel_initializer=last_kernel_initializer)
+            last_kernel_initializer=last_kernel_initializer,
+            name=self.name + ".joint_encoder")
 
         self._output_spec = TensorSpec(())
 
