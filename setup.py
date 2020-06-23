@@ -13,12 +13,17 @@
 # limitations under the License.
 
 from setuptools import setup, find_packages
+import os
+
+os.system("pip install -e ./alf/nest/cnest")
 
 setup(
     name='alf',
     version='0.0.1',
     install_requires=[
         'atari_py == 0.1.7',
+        'cpplint',
+        'clang-format == 9.0',
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',

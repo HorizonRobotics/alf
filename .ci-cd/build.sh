@@ -41,6 +41,7 @@ function check_style() {
 
 function test() {
     cd alf
+    pip3 install -e ./nest/cnest
     python3 -m unittest -v \
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
@@ -79,6 +80,7 @@ function test() {
         alf.experience_replayers.segment_tree_test \
         alf.layers_test \
         alf.metrics.metrics_test \
+        alf.nest.cnest_test \
         alf.nest.nest_test \
         alf.networks.network_test \
         alf.networks.action_encoder_test \

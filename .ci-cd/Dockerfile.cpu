@@ -21,12 +21,13 @@ RUN apt install -y python3.6 python3-pip
 # install code style tools
 RUN pip3 install  pre-commit==1.17.0 \
     cpplint==1.4.4 \
+    clang-format==9.0 \
     pydocstyle==4.0.0 \
     pylint==2.3.1 \
     yapf==0.28.0
 
 
-RUN apt update && apt install -y  git clang-format
+RUN apt update && apt install -y git
 
 RUN apt install -y \
         libsm6  \
