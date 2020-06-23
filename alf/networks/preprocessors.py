@@ -75,13 +75,20 @@ class EmbeddingPreprocessor(Network):
             self._embedding_net = nn.Embedding(N, embedding_dim)
         else:
             # Only use an MLP for embedding a continuous input
+            # Manually specify all arguments to avoid being overwritten by gin
+            # configuration accidentally
             self._embedding_net = alf.networks.EncodingNetwork(
                 input_tensor_spec=input_tensor_spec,
+                input_preprocessors=None,
+                preprocessing_combiner=None,
                 conv_layer_params=conv_layer_params,
                 fc_layer_params=fc_layer_params,
                 activation=activation,
+                kernel_initializer=None,
                 last_layer_size=embedding_dim,
-                last_activation=last_activation)
+                last_activation=last_activation,
+                last_kernel_initializer=None,
+                name="preprocessor_embedding_net")
 
     def _preprocess(self, tensor):
         assert get_outer_rank(tensor, self._input_tensor_spec) == 1, \
