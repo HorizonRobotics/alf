@@ -11,9 +11,15 @@ SarsaAlgorithm.critic_loss_cls=@MultiStepTDLoss
 #TrainerConfig.mini_batch_size=64
 
 TrainerConfig.summaries_flush_secs=10
-TrainerConfig.summary_interval=1
-import alf.utils.summary_utils
-summarize_variables.with_histogram=False
-summarize_gradients.with_histogram=False
 
-Agent.rl_algorithm_cls=@TracAlgorithm
+#TrainerConfig.summary_interval=1
+#import alf.utils.summary_utils
+#summarize_variables.with_histogram=False
+#summarize_gradients.with_histogram=False
+
+#Agent.rl_algorithm_cls=@TracAlgorithm
+
+import alf.experience_replayers.replay_buffer
+ReplayBuffer.recent_data_steps=2000
+ReplayBuffer.recent_data_ratio=0.5
+#TrainerConfig.mini_batch_size=512
