@@ -671,7 +671,8 @@ class World(object):
         self._global_route_planner.setup()
 
     def trace_route(self, origin, destination):
-        """
+        """Find the route from ``origin`` to ``destination``.
+
         Args:
             origin (carla.Location):
             destination (carla.Location):
@@ -775,6 +776,9 @@ class NavigationSensor(SensorBase):
     def get_current_observation(self, current_frame):
         """Get the current observation.
 
+        The observation is an 8x3 array consists of the posistions of 8 future
+        locations on the routes.
+
         Args:
             current_frame (int): not used.
         Returns:
@@ -799,10 +803,10 @@ class Player(object):
     """Player is a vehicle with some sensors.
 
     An episode terminates if the vehicle arrives at the goal or the time exceeds
-    `initial_distance / min_speed `.
+    ``initial_distance / min_speed``.
 
     At each step, the reward is given based on the following components:
-    1. Arriving goal:  `success_reward`
+    1. Arriving goal:  ``success_reward``
     2. Moving in the navigation direction: the number of meters moved
     """
 
