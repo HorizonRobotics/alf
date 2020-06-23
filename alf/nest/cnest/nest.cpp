@@ -34,9 +34,11 @@ std::string py_format(const std::string& format, Args... args) {
 
 py::int_ GetPyInt(unsigned int i) {
   // cache py::int_ to avoid creating new objects for repeating i
-  static std::map<unsigned int, py::int_> table;
-  if (table.find(i) == table.end()) {
-    table.insert({i, py::int_(i)});
+  static std::vector<py::int_> table;
+  if (table.size() <= i) {
+    for (unsigned int j = table.size(); j <= i; j++) {
+      table.push_back(py::int_(j));
+    }
   }
   return table[i];
 }
@@ -231,6 +233,7 @@ py::object _MapStructure(const py::function& func, const py::args& nests) {
   } else {
     py::dict results;
     std::vector<field_list> fields_and_values;
+    fields_and_values.reserve(nests_.size());
     for (const auto& nest : nests_) {
       fields_and_values.push_back(ExtractFieldsFromNest(nest));
     }
@@ -266,6 +269,7 @@ py::object _MapStructureUpTo(const py::object& shallow_nest,
   }
 
   std::vector<py::object> nests_;
+  nests_.reserve(nests.size());
   for (const auto& nest : nests) {
     nests_.push_back(py::cast<py::object>(nest));
   }
@@ -291,6 +295,7 @@ py::object _MapStructureUpTo(const py::object& shallow_nest,
     py::dict results;
     auto shallow_fields_and_values = ExtractFieldsFromNest(shallow_nest);
     std::vector<field_list> fields_and_values;
+    fields_and_values.reserve(nests_.size());
     for (const auto& nest : nests_) {
       fields_and_values.push_back(ExtractFieldsFromNest(nest));
     }

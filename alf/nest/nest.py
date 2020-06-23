@@ -15,8 +15,6 @@
 
 from absl import logging
 
-import sys
-sys.path.append("./cnest")
 import cnest
 
 import torch

@@ -15,8 +15,6 @@
 
 import time
 from collections import OrderedDict
-import sys
-sys.path.append("./cnest")
 
 import alf
 import cnest

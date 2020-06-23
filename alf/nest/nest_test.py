@@ -16,8 +16,6 @@
 import torch
 
 from absl.testing import parameterized
-import sys
-sys.path.append("./cnest")
 
 import alf
 import alf.nest as nest
