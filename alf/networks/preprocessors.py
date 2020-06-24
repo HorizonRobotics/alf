@@ -84,10 +84,8 @@ class EmbeddingPreprocessor(Network):
                 conv_layer_params=conv_layer_params,
                 fc_layer_params=fc_layer_params,
                 activation=activation,
-                kernel_initializer=None,
                 last_layer_size=embedding_dim,
                 last_activation=last_activation,
-                last_kernel_initializer=None,
                 name="preprocessor_embedding_net")
 
     def _preprocess(self, tensor):
