@@ -1305,7 +1305,7 @@ class CarlaEnvironment(AlfEnvironment):
 
         logging.info("Server started.")
 
-        self._client.set_timeout(10)
+        self._client.set_timeout(20)
         self._alf_world = World(self._world)
         self._safe = safe
         self._vehicle_filter = vehicle_filter
