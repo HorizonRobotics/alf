@@ -20,6 +20,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+import alf
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
@@ -100,8 +101,41 @@ class BatchSquash(object):
                      tuple(tensor.shape[1:])))
 
 
+class Module(nn.Module):
+    """Alf's nn.Module wrapper"""
+
+    def __init__(self):
+        super().__init__()
+        self.rollingout = False
+        self.summary_name = ""
+
+    def rollout(self, mode=True):
+        self.rollingout = mode
+        for module in self.children():
+            if isinstance(module, Module):
+                module.rollout(mode)
+
+    def exe_mode_str(self):
+        """Return execution mode according to training and rollingout flags.
+
+        Possible modes include 1) "eval": evaluation, and for training:
+        2) "rollout" and 3) "replay".
+
+        Caller needs to make sure proper inheritance from this Module class,
+        and to set train(mode) and rollout(mode) flags in the proper places.
+        Currently, train(False) is set in policy_trainer._step(), and rollout()
+        is set in rl_algorithm.unroll().  All other places are assumed to
+        be "replay".
+        """
+        if not self.training:
+            mode = "eval"
+        else:
+            mode = ("rollout" if self.rollingout else "replay")
+        return mode
+
+
 @gin.configurable
-class OneHot(nn.Module):
+class OneHot(Module):
     def __init__(self, num_classes):
         super().__init__()
         self._num_classes = num_classes
@@ -112,7 +146,7 @@ class OneHot(nn.Module):
 
 
 @gin.configurable
-class FixedDecodingLayer(nn.Module):
+class FixedDecodingLayer(Module):
     def __init__(self,
                  input_size,
                  output_size,
@@ -232,7 +266,7 @@ class FixedDecodingLayer(nn.Module):
 
 
 @gin.configurable
-class FC(nn.Module):
+class FC(Module):
     def __init__(self,
                  input_size,
                  output_size,
@@ -287,7 +321,16 @@ class FC(nn.Module):
             nn.init.constant_(self._linear.bias.data, self._bias_init_value)
 
     def forward(self, inputs):
-        return self._activation(self._linear(inputs))
+        pre_activation = self._linear(inputs)
+        if self.summary_name and alf.summary.should_summarize_output():
+            alf.summary.scalar(
+                name=self.summary_name + '.pre_activation.output_norm.' +
+                self.exe_mode_str(),
+                data=torch.mean(
+                    pre_activation.norm(
+                        dim=list(range(1, pre_activation.ndim)))))
+
+        return self._activation(pre_activation)
 
     @property
     def weight(self):
@@ -305,7 +348,7 @@ class FC(nn.Module):
 
 
 @gin.configurable
-class ParallelFC(nn.Module):
+class ParallelFC(Module):
     def __init__(self,
                  input_size,
                  output_size,

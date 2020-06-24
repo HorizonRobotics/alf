@@ -140,18 +140,20 @@ class ActorNetwork(PreprocessorNetwork):
         actions = []
         i = 0
         for layer, spec in zip(self._action_layers, self._flat_action_spec):
+            layer.summary_name = (
+                'summarize_output/' + self.name + '.action_layer.' + str(i))
             action = layer(encoded_obs)
+            layer.summary_name = ""
             action = spec_utils.scale_to_spec(action, spec)
 
             if alf.summary.should_summarize_output():
-                a_name = ('summarize_output/' + self.name + '.action_layer.' +
-                          str(i) + '.action.output_norm')
-                if not self.training:
-                    a_name += ".eval"
-                a = action
+                a_name = (
+                    'summarize_output/' + self.name + '.action_layer.' + str(i)
+                    + '.action.output_norm.' + self.exe_mode_str())
                 alf.summary.scalar(
                     name=a_name,
-                    data=torch.mean(a.norm(dim=list(range(1, a.ndim)))))
+                    data=torch.mean(
+                        action.norm(dim=list(range(1, action.ndim)))))
 
             actions.append(action)
             i += 1

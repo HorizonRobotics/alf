@@ -64,13 +64,16 @@ def main(_):
     seed = common.set_random_seed(FLAGS.random_seed)
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
+    trainer_conf = policy_trainer.TrainerConfig(root_dir=FLAGS.root_dir)
     algorithm_ctor = gin.query_parameter(
         'TrainerConfig.algorithm_ctor').scoped_configurable_fn
     env = create_environment(nonparallel=True, seed=seed)
     env.reset()
     common.set_global_env(env)
     algorithm = algorithm_ctor(
-        observation_spec=env.observation_spec(), action_spec=env.action_spec())
+        observation_spec=env.observation_spec(),
+        action_spec=env.action_spec(),
+        config=trainer_conf)
     policy_trainer.play(
         FLAGS.root_dir,
         env,

@@ -586,7 +586,7 @@ def hindsight_relabel_fn(buffer,
     if not torch.allclose(relabeled_rewards[non_her_indices],
                           result_rewards[non_her_indices]):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
-               "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\start_pos:\n{}"
+               "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
                ).format(relabeled_rewards[non_her_indices],
                         result_rewards[non_her_indices],
                         result_ag[non_her_indices],

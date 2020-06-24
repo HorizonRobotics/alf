@@ -55,7 +55,7 @@ def _flatten_module(module):
         return [module]
 
 
-class Algorithm(nn.Module):
+class Algorithm(alf.layers.Module):
     """Algorithm base class. ``Algorithm`` is a generic interface for supervised
     training algorithms. The key interface functions are:
 

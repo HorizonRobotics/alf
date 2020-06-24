@@ -34,6 +34,7 @@ import alf.nest.utils as nest_utils
 from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, spec_utils
+from alf.utils.normalizers import WindowNormalizer
 
 DdpgCriticState = namedtuple("DdpgCriticState",
                              ['critics', 'target_actor', 'target_critics'])
@@ -55,28 +56,35 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     https://arxiv.org/abs/1509.02971
     """
 
-    def __init__(self,
-                 observation_spec,
-                 action_spec: BoundedTensorSpec,
-                 actor_network_ctor=ActorNetwork,
-                 critic_network_ctor=CriticNetwork,
-                 use_parallel_network=False,
-                 observation_transformer=math_ops.identity,
-                 env=None,
-                 config: TrainerConfig = None,
-                 ou_stddev=0.2,
-                 ou_damping=0.15,
-                 critic_loss_ctor=None,
-                 num_critic_replicas=1,
-                 target_update_tau=0.05,
-                 target_update_period=1,
-                 rollout_random_action=0.,
-                 dqda_clipping=None,
-                 action_l2=0,
-                 actor_optimizer=None,
-                 critic_optimizer=None,
-                 debug_summaries=False,
-                 name="DdpgAlgorithm"):
+    def __init__(
+            self,
+            observation_spec,
+            action_spec: BoundedTensorSpec,
+            actor_network_ctor=ActorNetwork,
+            critic_network_ctor=CriticNetwork,
+            use_parallel_network=False,
+            observation_transformer=math_ops.identity,
+            env=None,
+            config: TrainerConfig = None,
+            ou_stddev=0.2,
+            ou_damping=0.15,
+            critic_loss_ctor=None,
+            num_critic_replicas=1,
+            target_update_tau=0.05,
+            target_update_period=1,
+            rollout_random_action=0.,
+            dqda_clipping=None,
+            action_l2=0,
+            remove_field_for_training="",  # e.g. achieved_goal
+            normalize_observations=False,
+            norm_eps=0.01,
+            norm_clip=5.,
+            observation_field="observation",
+            desired_goal_field="desired_goal",
+            actor_optimizer=None,
+            critic_optimizer=None,
+            debug_summaries=False,
+            name="DdpgAlgorithm"):
         """
         Args:
             action_spec (nested BoundedTensorSpec): representing the actions.
@@ -120,11 +128,22 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
             action_l2 (float): weight of squared action l2-norm on actor loss.
+            remove_field_for_training (str): If not empty, removes the field for training.
+            norm_eps (float): epsilon used for observation normalization.
+            norm_clip (float): normalized observations are clipped to this value.
+            observation_field (str): path to the observation field in TimeStep.
+            desired_goal_field (str): path to the desired goal in TimeStep.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this algorithm.
         """
+        self._remove_field_for_training = remove_field_for_training
+        if self._remove_field_for_training:
+            observation_spec = alf.nest.utils.transform_nest(
+                observation_spec,
+                self._remove_field_for_training, lambda _: None)
+
         critic_network = critic_network_ctor(
             input_tensor_spec=(observation_spec, action_spec))
         actor_network = actor_network_ctor(
@@ -145,6 +164,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_actor=actor_network.state_spec,
                 target_critics=critic_networks.state_spec))
 
+        # This has to happen before parent's __init__.
+        self._normalize_observations = normalize_observations
+
         super().__init__(
             observation_spec,
             action_spec,
@@ -155,6 +177,21 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             debug_summaries=debug_summaries,
             name=name)
 
+        # Module assignments has to happen after parent's __init__.
+        if self._normalize_observations:
+            self._norm_clip = norm_clip
+            self._observation_field = observation_field
+            self._desired_goal_field = desired_goal_field
+            self._observation_normalizer = WindowNormalizer(
+                alf.nest.get_field(self._observation_spec, observation_field),
+                variance_epsilon=norm_eps,
+                window_size=config.replay_buffer_length * config.num_envs,
+                auto_update=False)
+            self._goal_normalizer = WindowNormalizer(
+                alf.nest.get_field(self._observation_spec, desired_goal_field),
+                variance_epsilon=norm_eps,
+                window_size=config.replay_buffer_length * config.num_envs,
+                auto_update=False)
         if actor_optimizer is not None:
             self.add_optimizer(actor_optimizer, [actor_network])
         if critic_optimizer is not None:
@@ -194,6 +231,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._dqda_clipping = dqda_clipping
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=1.):
+        if self._remove_field_for_training:
+            observation = alf.nest.utils.transform_nest(
+                time_step.observation,
+                self._remove_field_for_training, lambda _: None)
+            time_step = time_step._replace(observation=observation)
+
         action, state = self._actor_network(
             time_step.observation, state=state.actor.actor)
         empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
@@ -219,6 +262,27 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             output=noisy_action,
             state=state,
             info=DdpgInfo(action_distribution=action))
+
+    def unroll(self, unroll_length):
+        r"""Unroll ``unroll_length`` steps using the current policy.
+
+        Because the ``self._env`` is a batched environment. The total number of
+        environment steps is ``self._env.batch_size * unroll_length``.
+
+        Args:
+            unroll_length (int): number of steps to unroll.
+        Returns:
+            Experience: The stacked experience with shape :math:`[T, B, \ldots]`
+            for each of its members.
+        """
+        exp = super().unroll(unroll_length)
+        if self._normalize_observations:
+            # Summarize stats:
+            self._goal_normalizer.update(
+                alf.nest.get_field(exp.observation, self._desired_goal_field))
+            self._observation_normalizer.update(
+                alf.nest.get_field(exp.observation, self._observation_field))
+        return exp
 
     def rollout_step(self, time_step: TimeStep, state=None):
         if self.need_full_rollout_state():
@@ -290,6 +354,21 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         return AlgStep(output=action, state=state, info=info)
 
     def train_step(self, exp: Experience, state: DdpgState):
+        if self._remove_field_for_training or self._normalize_observations:
+            observation = exp.observation
+            if self._remove_field_for_training:
+                observation = alf.nest.utils.transform_nest(
+                    observation,
+                    self._remove_field_for_training, lambda _: None)
+            if self._normalize_observations:
+                observation = alf.nest.utils.transform_nest(
+                    observation, self._desired_goal_field, lambda g: self.
+                    _goal_normalizer.normalize(g, clip_value=self._norm_clip))
+                observation = alf.nest.utils.transform_nest(
+                    observation, self._observation_field, lambda g: self.
+                    _observation_normalizer.normalize(
+                        g, clip_value=self._norm_clip))
+            exp = exp._replace(observation=observation)
         critic_states, critic_info = self._critic_train_step(
             exp=exp, state=state.critics)
         policy_step = self._actor_train_step(exp=exp, state=state.actor)
