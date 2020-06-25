@@ -54,6 +54,16 @@ try:
 except ImportError:
     carla = None
 
+if carla is not None:
+    try:
+        from agents.navigation.global_route_planner import GlobalRoutePlanner
+        from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
+        from agents.navigation.local_planner import RoadOption
+    except ImportError:
+        logging.fatal("Cannot import carla agents package. Please add "
+                      "$CARLA_ROOT/PythonAPI/carla to your PYTHONPATH")
+        carla = None
+
 import alf
 import alf.data_structures as ds
 from alf.utils import common
@@ -627,6 +637,24 @@ class CameraSensor(SensorBase):
         return self._image
 
 
+def _calculate_relative_position(self_transform, location):
+    """
+    Args:
+        self_transform (carla.Transform): transform of self actor
+        location (np.ndarray): shape is [3] or [N, 3]
+    Returns:
+        np.ndarray: shape is same as location
+    """
+    trans = self_transform
+    self_loc = trans.location
+    yaw = math.radians(trans.rotation.yaw)
+
+    self_loc = np.array([self_loc.x, self_loc.y, self_loc.z])
+    cos, sin = np.cos(yaw), np.sin(yaw)
+    rot = np.array([[cos, -sin, 0.], [sin, cos, 0.], [0., 0., 1.]])
+    return np.matmul(location - self_loc, rot).astype(np.float32)
+
+
 class World(object):
     """Keeping data for the world."""
 
@@ -637,6 +665,21 @@ class World(object):
         self._vehicles = []
         self._vehicle_dict = {}
         self._vehicle_locations = {}
+
+        dao = GlobalRoutePlannerDAO(world.get_map(), sampling_resolution=1.0)
+        self._global_route_planner = GlobalRoutePlanner(dao)
+        self._global_route_planner.setup()
+
+    def trace_route(self, origin, destination):
+        """Find the route from ``origin`` to ``destination``.
+
+        Args:
+            origin (carla.Location):
+            destination (carla.Location):
+        Returns:
+            list[tuple(carla.Waypoint, RoadOption)]
+        """
+        return self._global_route_planner.trace_route(origin, destination)
 
     def add_vehicle(self, actor: carla.Actor):
         self._vehicles.append(actor)
@@ -689,8 +732,83 @@ class World(object):
         return np.array([loc.latitude, loc.longitude, loc.altitude])
 
 
+class NavigationSensor(SensorBase):
+    """Generating future waypoints on the route.
+
+    Note that the route is fixed (not change based on current vehicle location)
+    """
+
+    WINDOW = 5
+
+    def __init__(self, parent_actor, alf_world: World):
+        """
+        Args:
+            parent_actor (carla.Actor): the parent actor of this sensor
+            alf_world (World):
+        """
+        super().__init__(parent_actor)
+        self._alf_world = alf_world
+        self._future_indices = np.array([1, 3, 10, 30, 100, 300, 1000, 3000])
+
+    def set_destination(self, destination):
+        """Set the navigation destination.
+
+        Args:
+            destination (carla.Location):
+        """
+        start = self._alf_world.get_vehicle_location(self._parent.id)
+        self._route = self._alf_world.trace_route(start, destination)
+        self._waypoints = np.array([[
+            wp.transform.location.x, wp.transform.location.y,
+            wp.transform.location.z
+        ] for wp, _ in self._route])
+        self._road_option = np.array(
+            [road_option for _, road_option in self._route])
+        self._nearest_index = 0
+
+    def observation_spec(self):
+        return alf.TensorSpec([len(self._future_indices), 3])
+
+    def observation_desc(self):
+        return ("Positions of the %s future locations in the route." % len(
+            self._future_indices))
+
+    def get_current_observation(self, current_frame):
+        """Get the current observation.
+
+        The observation is an 8x3 array consists of the posistions of 8 future
+        locations on the routes.
+
+        Args:
+            current_frame (int): not used.
+        Returns:
+            np.ndarray: positions of future waypoints on the route.
+        """
+        loc = self._alf_world.get_vehicle_location(self._parent.id)
+        loc = np.array([loc.x, loc.y, loc.y])
+        nearby_waypoints = self._waypoints[self._nearest_index:self.
+                                           _nearest_index + self.WINDOW]
+        dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
+        self._nearest_index = self._nearest_index + np.argmin(dist)
+        indices = np.minimum(self._nearest_index + self._future_indices,
+                             self._waypoints.shape[0] - 1)
+        return self._waypoints[indices]
+
+
+def _to_numpy_loc(loc: carla.Location):
+    return np.array([loc.x, loc.y, loc.z])
+
+
 class Player(object):
-    """Player is a vehicle with some sensors."""
+    """Player is a vehicle with some sensors.
+
+    An episode terminates if the vehicle arrives at the goal or the time exceeds
+    ``initial_distance / min_speed``.
+
+    At each step, the reward is given based on the following components:
+    1. Arriving goal:  ``success_reward``
+    2. Moving in the navigation direction: the number of meters moved
+    """
 
     def __init__(self,
                  actor,
@@ -716,6 +834,7 @@ class Player(object):
         self._camera_sensor = CameraSensor(actor)
         self._lane_invasion_sensor = LaneInvasionSensor(actor)
         self._radar_sensor = RadarSensor(actor)
+        self._navigation = NavigationSensor(actor, alf_world)
         self._success_reward = success_reward
         self._success_distance_thresh = success_distance_thresh
         self._min_speed = min_speed
@@ -728,6 +847,7 @@ class Player(object):
             'imu': self._imu_sensor,
             'camera': self._camera_sensor,
             'radar': self._radar_sensor,
+            'navigation': self._navigation,
         }
 
         self._observation_spec = dict()
@@ -745,6 +865,8 @@ class Player(object):
             "meters. X axis: front, Y axis: right, Z axis: up. Only the "
             "rotation around Z axis is taken into account when calculating the "
             "vehicle's coordinate system.")
+        self._observation_desc['navigation'] = (
+            'Relative positions of the future waypoints in the route')
         self._observation_desc['speed'] = "Speed in m/s"
         self._control = carla.VehicleControl()
         self.reset()
@@ -764,8 +886,9 @@ class Player(object):
         """
 
         wp = random.choice(self._alf_world.get_waypoints())
-        loc = wp.transform.location
-        self._goal_location = np.array([loc.x, loc.y, loc.z], dtype=np.float32)
+        goal_loc = wp.transform.location
+        self._goal_location = np.array([goal_loc.x, goal_loc.y, goal_loc.z],
+                                       dtype=np.float32)
 
         forbidden_locations = []
         for v in self._alf_world.get_vehicles():
@@ -802,11 +925,13 @@ class Player(object):
         self._fail_frame = None
         self._done = False
         p = np.array([loc.x, loc.y, loc.z])
-        self._current_distance = np.linalg.norm(self._goal_location - p)
-        self._prev_distance = self._current_distance
+        self._prev_location = loc
         self._prev_action = np.zeros(
             self.action_spec().shape, dtype=np.float32)
         self._alf_world.update_vehicle_location(self._actor.id, loc)
+
+        self._navigation.set_destination(goal_loc)
+
         return commands
 
     def destroy(self):
@@ -879,14 +1004,8 @@ class Player(object):
             "with values greater than 0.5 corrsponding to True.")
 
     def _get_goal(self):
-        trans = self._actor.get_transform()
-        loc = trans.location
-        yaw = math.radians(trans.rotation.yaw)
-
-        loc = np.array([loc.x, loc.y, loc.z])
-        cos, sin = np.cos(yaw), np.sin(yaw)
-        rot = np.array([[cos, sin, 0.], [-sin, cos, 0.], [0., 0., 1.]])
-        return np.matmul(rot, self._goal_location - loc).astype(np.float32)
+        return _calculate_relative_position(self._actor.get_transform(),
+                                            self._goal_location)
 
     def get_current_time_step(self, current_frame):
         """Get the current time step for the player.
@@ -926,7 +1045,13 @@ class Player(object):
         else:
             step_type = ds.StepType.MID
 
-        reward += self._prev_distance - self._current_distance
+        prev_loc = _to_numpy_loc(self._prev_location)
+        curr_loc = _to_numpy_loc(self._actor.get_location())
+        goal0 = obs['navigation'][2]  # This is about 10m ahead in the route
+        reward += (np.linalg.norm(prev_loc - goal0) -
+                   np.linalg.norm(curr_loc - goal0))
+        obs['navigation'] = _calculate_relative_position(
+            self._actor.get_transform(), obs['navigation'])
 
         self._current_time_step = ds.TimeStep(
             step_type=step_type,
@@ -946,7 +1071,7 @@ class Player(object):
         Returns:
             list[carla.command]:
         """
-        self._prev_distance = self._current_distance
+        self._prev_location = self._actor.get_location()
         if self._done:
             return self.reset()
         self._control.throttle = max(float(action[0]), 0.0)
@@ -988,6 +1113,8 @@ class Player(object):
                 'FPS: %6.2f' % self._clock.get_fps(),
                 'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
                 'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()),
+                'Ahead: (%7.1f, %8.1f, %5.1f)' % tuple(
+                    obs['navigation'][2].tolist()),
                 'Distance: %7.2f' % np.linalg.norm(obs['goal']),
                 'Speed: %5.1f km/h' % (3.6 * obs['speed']),
                 'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
@@ -1178,7 +1305,7 @@ class CarlaEnvironment(AlfEnvironment):
 
         logging.info("Server started.")
 
-        self._client.set_timeout(10)
+        self._client.set_timeout(20)
         self._alf_world = World(self._world)
         self._safe = safe
         self._vehicle_filter = vehicle_filter
