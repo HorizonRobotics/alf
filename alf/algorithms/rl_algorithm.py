@@ -456,9 +456,9 @@ class RLAlgorithm(Algorithm):
             next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
-            self.observe_for_metrics(time_step)
+            self.observe_for_metrics(time_step.cpu())
 
-            exp = make_experience(time_step, policy_step, policy_state)
+            exp = make_experience(time_step.cpu(), policy_step, policy_state)
 
             t0 = time.time()
             self.observe_for_replay(exp)

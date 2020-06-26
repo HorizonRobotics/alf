@@ -145,7 +145,11 @@ def stack_nests(nests):
     Returns:
         a nest with same structure as ``nests[0]``.
     """
-    return nest.map_structure(lambda *tensors: torch.stack(tensors), *nests)
+    if len(nests) == 1:
+        return nest.map_structure(lambda tensor: tensor.unsqueeze(0), nests[0])
+    else:
+        return nest.map_structure(lambda *tensors: torch.stack(tensors),
+                                  *nests)
 
 
 def get_outer_rank(tensors, specs):
@@ -169,14 +173,15 @@ def get_outer_rank(tensors, specs):
             are batched but have an incorrect number of outer dims.
     """
 
+    outer_ranks = []
+
     def _get_outer_rank(tensor, spec):
         outer_rank = len(tensor.shape) - len(spec.shape)
         assert outer_rank >= 0
-        assert list(tensor.shape[outer_rank:]) == list(spec.shape)
-        return outer_rank
+        assert tensor.shape[outer_rank:] == spec.shape
+        outer_ranks.append(outer_rank)
 
-    outer_ranks = nest.map_structure(_get_outer_rank, tensors, specs)
-    outer_ranks = nest.flatten(outer_ranks)
+    nest.map_structure(_get_outer_rank, tensors, specs)
     outer_rank = outer_ranks[0]
     assert all([r == outer_rank
                 for r in outer_ranks]), ("Tensors have different "

@@ -153,6 +153,10 @@ class Algorithm(nn.Module):
         else:
             self._predict_state_spec = self._rollout_state_spec
 
+        self._initial_train_states = {}
+        self._initial_rollout_states = {}
+        self._initial_predict_states = {}
+
         self._experience_spec = None
         self._train_info_spec = None
         self._processed_experience_spec = None
@@ -608,13 +612,27 @@ class Algorithm(nn.Module):
         return state
 
     def get_initial_predict_state(self, batch_size):
-        return spec_utils.zeros_from_spec(self._predict_state_spec, batch_size)
+        r = self._initial_predict_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._predict_state_spec,
+                                           batch_size)
+            self._initial_predict_states[batch_size] = r
+        return r
 
     def get_initial_rollout_state(self, batch_size):
-        return spec_utils.zeros_from_spec(self._rollout_state_spec, batch_size)
+        r = self._initial_rollout_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._rollout_state_spec,
+                                           batch_size)
+            self._initial_rollout_states[batch_size] = r
+        return r
 
     def get_initial_train_state(self, batch_size):
-        return spec_utils.zeros_from_spec(self._train_state_spec, batch_size)
+        r = self._initial_train_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._train_state_spec, batch_size)
+            self._initial_train_state = r
+        return r
 
     @common.add_method(nn.Module)
     def state_dict(self, destination=None, prefix='', visited=None):

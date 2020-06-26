@@ -206,7 +206,7 @@ class ReplayBuffer(RingBuffer):
 
         We build an index of episode beginning indices for each element
         in the buffer.  The beginning point stores where episode end is.
-        
+
         """
         with alf.device(self._device):
             env_ids = self.check_convert_env_ids(env_ids)
@@ -296,7 +296,10 @@ class ReplayBuffer(RingBuffer):
             if self._postprocess_exp_fn:
                 result, info = self._postprocess_exp_fn(self, result, info)
 
-        return convert_device(result), convert_device(info)
+        if alf.get_default_device() == self._device:
+            return result, info
+        else:
+            return convert_device(result), convert_device(info)
 
     def _uniform_sample(self, batch_size, batch_length):
         min_size = self._current_size.min()

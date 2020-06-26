@@ -127,6 +127,12 @@ class TensorSpec(object):
     def __reduce__(self):
         return TensorSpec, (self._shape, self._dtype)
 
+    def _calc_shape(self, outer_dims):
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+        return shape
+
     def constant(self, value, outer_dims=None):
         """Create a constant tensor from the spec.
 
@@ -138,12 +144,7 @@ class TensorSpec(object):
         Returns:
             tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
-        value = torch.as_tensor(value).to(self._dtype)
-        assert len(value.size()) == 0, "The input value must be a scalar!"
-        shape = self._shape
-        if outer_dims is not None:
-            shape = tuple(outer_dims) + shape
-        return torch.ones(size=shape, dtype=self._dtype) * value
+        return self.ones(outer_dims) * value
 
     def zeros(self, outer_dims=None):
         """Create a zero tensor from the spec.
@@ -155,7 +156,7 @@ class TensorSpec(object):
         Returns:
             tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
-        return self.constant(0, outer_dims)
+        return torch.zeros(self._calc_shape(outer_dims), dtype=self._dtype)
 
     def numpy_constant(self, value, outer_dims=None):
         """Create a constant np.ndarray from the spec.
@@ -195,7 +196,7 @@ class TensorSpec(object):
         Returns:
             tensor (torch.Tensor): a tensor of ``self._dtype``.
         """
-        return self.constant(1, outer_dims)
+        return torch.ones(self._calc_shape(outer_dims), dtype=self._dtype)
 
     def randn(self, outer_dims=None):
         """Create a tensor filled with random numbers from a std normal dist.

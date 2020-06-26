@@ -137,6 +137,8 @@ class RingBuffer(nn.Module):
                 "_current_pos", torch.zeros(
                     num_environments, dtype=torch.int64))
             self._buffer = alf.nest.map_structure(_create_buffer, data_spec)
+            self._flattened_buffer = alf.nest.map_structure(
+                lambda x: x.view(-1, *x.shape[2:]), self._buffer)
 
         if allow_multiprocess:
             self.share_memory()
@@ -229,20 +231,21 @@ class RingBuffer(nn.Module):
                 (batch_size, env_ids.shape[0]))
 
             # Make sure that there is no duplicate in `env_id`
-            _, env_id_count = torch.unique(env_ids, return_counts=True)
-            assert torch.max(env_id_count) == 1, (
-                "There are duplicated ids in env_ids %s" % env_ids)
+            # torch.unique(env_ids, return_counts=True)[1] is the counts for each unique item
+            assert torch.unique(
+                env_ids, return_counts=True)[1].max() == 1, (
+                    "There are duplicated ids in env_ids %s" % env_ids)
 
             current_pos = self._current_pos[env_ids]
+            indices = env_ids * self._max_length + self.circular(current_pos)
             alf.nest.map_structure(
-                lambda buf, bat: buf.__setitem__((
-                    env_ids, self.circular(current_pos)), bat.detach()),
-                self._buffer, batch)
+                lambda buf, bat: buf.__setitem__(indices, bat.detach()),
+                self._flattened_buffer, batch)
 
             self._current_pos[env_ids] = current_pos + 1
             current_size = self._current_size[env_ids]
-            self._current_size[env_ids] = torch.min(
-                current_size + 1, torch.tensor(self._max_length))
+            self._current_size[env_ids] = torch.clamp(
+                current_size + 1, max=self._max_length)
             # set flags if they exist to unblock potential consumers
             if self._enqueued:
                 self._enqueued.set()
@@ -434,16 +437,16 @@ class DataBuffer(RingBuffer):
         batch_size = alf.nest.get_nest_batch_size(batch)
         with alf.device(self._device):
             batch = convert_device(batch)
-            n = torch.min(self._capacity, torch.as_tensor(batch_size))
-            indices = self.circular(
-                torch.arange(self.current_pos, self.current_pos + n))
+            n = torch.clamp(self._capacity, max=batch_size)
+            current_pos = self.current_pos
+            current_size = self.current_size
+            indices = self.circular(torch.arange(current_pos, current_pos + n))
             alf.nest.map_structure(
                 lambda buf, bat: buf.__setitem__(indices, bat[-n:].detach()),
                 self._derived_buffer, batch)
 
-            self.current_pos.copy_(self.current_pos + n)
-            self.current_size.copy_(
-                torch.min(self.current_size + n, self._capacity))
+            current_pos.copy_(current_pos + n)
+            current_size.copy_(torch.min(current_size + n, self._capacity))
 
     def get_batch(self, batch_size):
         r"""Get batsh_size random samples in the buffer.

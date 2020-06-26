@@ -107,6 +107,22 @@ class TimeStep(
     def is_last(self):
         return self.step_type == StepType.LAST
 
+    def cuda(self):
+        """Get the cuda version of this data structure."""
+        r = getattr(self, "_cuda", None)
+        if r is None:
+            r = nest.map_structure(lambda x: x.cuda(), self)
+            self._cuda = r
+        return r
+
+    def cpu(self):
+        """Get the cpu version of this data structure."""
+        r = getattr(self, "_cpu", None)
+        if r is None:
+            r = nest.map_structure(lambda x: x.cpu(), self)
+            self._cpu = r
+        return r
+
 
 class Experience(
         namedtuple(
@@ -447,7 +463,7 @@ LossInfo = namedtuple(
         # Priority for each sample. This will be used to update the priority in
         # the replay buffer so that in the future, this sample will be sampled
         # with probability proportional to this weight powered to
-        # config.priority_replay_alpha. If not empty, its shape should be (B,).
+        # config.priority_replay_alpha. Its shape should be [batch_size].
         "priority",
     ],
     default_value=())

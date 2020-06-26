@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from . import metrics
+from . import module
 from . import networks
 from . import nest
 from . import optimizers
