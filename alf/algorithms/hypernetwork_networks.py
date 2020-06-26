@@ -32,7 +32,6 @@ class ParamConvNet(Network):
                  input_size,
                  conv_layer_params,
                  same_padding=False,
-                 pooling_kernel=None,
                  activation=torch.relu_,
                  use_bias=True,
                  flatten_output=False,
@@ -53,6 +52,7 @@ class ParamConvNet(Network):
         for paras in conv_layer_params:
             filters, kernel_size, strides = paras[:3]
             padding = paras[3] if len(paras) > 3 else 0
+            pooling_kernel = paras[4] if len(paras) > 4 else None
             if same_padding:  # overwrite paddings
                 kernel_size = common.tuplify2d(kernel_size)
                 padding = ((kernel_size[0] - 1) // 2,

@@ -5,24 +5,29 @@ create_dataset.dataset_name='mnist'
 create_dataset.train_batch_size=50
 create_dataset.test_batch_size=100
 
-CONV_LAYER_PARAMS=((32, 5, 1), (32, 5, 1))
+# Lenet for MNIST
+CONV_LAYER_PARAMS=((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
+FC_LAYER_PARAMS = (84, )
+HIDDEN_LAYERS = (128, 256)
+
 hypernet/Adam.lr=1e-4
-hypernet/Adam.weight_decay=5e-4
+hypernet/Adam.weight_decay=1e-4
 
 # algorithm config
 HyperNetwork.conv_layer_params=%CONV_LAYER_PARAMS
-HyperNetwork.fc_layer_params=(128, )
-HyperNetwork.hidden_layers=(128, 128)
-HyperNetwork.particles=32
+HyperNetwork.fc_layer_params=%FC_LAYER_PARAMS
+HyperNetwork.hidden_layers=%HIDDEN_LAYERS
+HyperNetwork.particles=10
+HyperNetwork.noise_dim=256
+# HyperNetwork.use_fc_bn=True
 HyperNetwork.optimizer=@hypernet/Adam()
 
 import alf.algorithms.hypernetwork_networks
 ParamConvNet.use_bias=True
-ParamConvNet.pooling_kernel=2
 
 # training config
 Config.algorithm_ctor=@HyperNetwork
-Config.epochs=200000
+Config.epochs=200
 Config.summarize_grads_and_vars=True
 Config.evaluate=True
 

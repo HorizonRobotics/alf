@@ -50,6 +50,7 @@ class HyperNetwork(Generator):
             noise_dim=32,
             # noise_type='normal',
             hidden_layers=(64, 64),
+            use_fc_bn=False,
             particles=32,
             entropy_regularization=1.,
             kernel_sharpness=2.,
@@ -65,8 +66,9 @@ class HyperNetwork(Generator):
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format ``(filters, kernel_size, strides, padding)``,
-                where ``padding`` is optional.
+                tuple takes a format 
+                ``(filters, kernel_size, strides, padding, pooling_kernel)``,
+                where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[int]): a tuple of integers
                 representing FC layer sizes.
             activation (nn.functional): activation used for all the layers but
@@ -85,6 +87,7 @@ class HyperNetwork(Generator):
             noise_type (str): distribution type of noise input to the generator, 
                 types are [``uniform``, ``normal``, ``categorical``, ``softmax``] 
             hidden_layers (tuple): size of hidden layers.
+            use_fc_bn (bool): whether use batnch normalization for fc layers.
             particles (int): number of sampling particles
             entropy_regularization (float): weight of entropy regularization
             kernel_sharpness (float): Used only for entropy_regularization > 0.
@@ -108,14 +111,19 @@ class HyperNetwork(Generator):
             last_layer_size=last_layer_size,
             last_activation=last_activation)
 
+        print(param_net)
+
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
         net = EncodingNetwork(
             noise_spec,
             fc_layer_params=hidden_layers,
+            use_fc_bn=use_fc_bn,
             last_layer_size=gen_output_dim,
             last_activation=math_ops.identity,
             name="Generator")
+
+        print(net)
 
         super().__init__(
             gen_output_dim,
@@ -265,7 +273,9 @@ class HyperNetwork(Generator):
         assert self._test_loader is not None, "Must set test_loader first."
         if loss_func is None:
             loss_func = self._loss_func
+        # self._net.eval()
         params = self.sample_parameters(particles=1)
+        # self._net.train()
         self._param_net.set_parameters(params)
         with record_time("time/test"):
             test_acc = 0.

@@ -238,6 +238,7 @@ class FC(nn.Module):
                  output_size,
                  activation=identity,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -251,6 +252,7 @@ class FC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
+            use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -272,6 +274,9 @@ class FC(nn.Module):
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
         self._use_bias = use_bias
+        self._use_bn = use_bn
+        if use_bn:
+            self._bn = nn.BatchNorm1d(output_size)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -287,7 +292,13 @@ class FC(nn.Module):
             nn.init.constant_(self._linear.bias.data, self._bias_init_value)
 
     def forward(self, inputs):
-        return self._activation(self._linear(inputs))
+        outs = self._linear(inputs)
+        if self._use_bn:
+            if not self._use_bias:
+                self._bn.bias.data.zero_()
+            outs = self._bn(outs)
+        return self._activation(outs)
+        # return self._activation(self._linear(inputs))
 
     @property
     def weight(self):
