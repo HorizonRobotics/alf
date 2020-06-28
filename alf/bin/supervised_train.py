@@ -122,6 +122,10 @@ def train(config: Config):
     input_tensor_spec = TensorSpec(shape=testset.dataset[0][0].shape)
     output_dim = len(testset.dataset.classes)
 
+    # print algorithm related gin parameters
+    _, inopt_configs = common.get_gin_confg_strs()
+    print(inopt_configs)
+
     algorithm = config.algorithm_ctor(
         input_tensor_spec=input_tensor_spec,
         last_layer_size=output_dim,

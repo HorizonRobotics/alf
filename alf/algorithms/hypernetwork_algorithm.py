@@ -15,6 +15,7 @@
 
 from absl import logging
 import gin
+import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -53,8 +54,9 @@ class HyperNetwork(Generator):
             use_fc_bn=False,
             particles=32,
             entropy_regularization=1.,
-            kernel_sharpness=2.,
+            kernel_sharpness=1.,
             loss_func: Callable = None,
+            par_vi="gfsf",
             optimizer=None,
             regenerate_for_each_batch=True,
             name="HyperNetwork"):
@@ -111,7 +113,9 @@ class HyperNetwork(Generator):
             last_layer_size=last_layer_size,
             last_activation=last_activation)
 
-        print(param_net)
+        # print("Generated network")
+        # print("-" * 68)
+        # print(param_net)
 
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
@@ -123,7 +127,9 @@ class HyperNetwork(Generator):
             last_activation=math_ops.identity,
             name="Generator")
 
-        print(net)
+        # print("Generator network")
+        # print("-" * 68)
+        # print(net)
 
         super().__init__(
             gen_output_dim,
@@ -140,8 +146,16 @@ class HyperNetwork(Generator):
         self._test_loader = None
         self._regenerate_for_each_batch = regenerate_for_each_batch
         self._loss_func = loss_func
+        self._par_vi = par_vi
         if self._loss_func is None:
             self._loss_func = F.cross_entropy
+        if par_vi == 'gfsf':
+            self._grad_func = self._stein_grad
+        elif par_vi == 'svgd':
+            self._grad_func = self._svgd_grad
+        else:
+            assert ValueError("par_vi only supports \"gfsf\" and \"svgd\"")
+
         # self._noise_sampler = NoiseSampler(
         #     noise_type, noise_dim, particles=particles)
 
@@ -210,35 +224,96 @@ class HyperNetwork(Generator):
         """
         if particles is None:
             particles = self.particles
-        if self._regenerate_for_each_batch:
-            params = self.sample_parameters(particles=particles)
-            self._param_net.set_parameters(params)
         if loss_func is None:
             loss_func = self._loss_func
-        train_info, grad = self._grad_func(inputs, params, loss_func)
-        loss_propagated = torch.sum(grad.detach() * params, dim=-1)
+        if self._regenerate_for_each_batch:
+            params = self.sample_parameters(particles=particles)
+
+        train_info, loss_propagated = self._grad_func(inputs, params,
+                                                      loss_func)
 
         return AlgStep(
             output=params,
             state=(),
             info=LossInfo(loss=loss_propagated, extra=train_info))
 
-    def _stein_grad(self, inputs, outputs, loss_func):
+    def _stein_grad(self, inputs, params, loss_func):
+        """Compute particle gradients via gfsf (stein estimator). """
         data, target = inputs
+        particles = self.particles
+        self._param_net.set_parameters(param_j)
         logit, _ = self._param_net(data)  # [B, N, D]
         pred = logit.max(-1)[1]
         target = target.unsqueeze(1).expand(*target.shape, self.particles)
         acc = pred.eq(target).float().mean(0)
         avg_acc = acc.mean()
         loss = loss_func(logit.transpose(1, 2), target)
-        loss_grad = torch.autograd.grad(loss.sum(), outputs)[0]
-        logq_grad = self._score_func(outputs)
+        loss_grad = torch.autograd.grad(loss.sum(), params)[0]
+        logq_grad = self._score_func(params)
+        grad = loss_grad + logq_grad
 
         train_info = HyperNetworkLossInfo(loss=loss, acc=acc, avg_acc=avg_acc)
+        loss_propagated = torch.sum(grad.detach() * params, dim=-1)
 
-        return train_info, loss_grad + logq_grad
+        return train_info, loss_propagated
 
-    def _score_func(self, x, alpha=1e-3):
+    def _svgd_grad(self, inputs, params, loss_func):
+        """Compute particle gradients via svgd. """
+        data, target = inputs
+        particles = self.particles // 2
+        params_i, params_j = torch.split(params, particles, dim=0)
+        self._param_net.set_parameters(params_j)
+        logit, _ = self._param_net(data)  # [B, N/2, D]
+        pred = logit.max(-1)[1]
+        target = target.unsqueeze(1).expand(*target.shape, particles)
+        acc = pred.eq(target).float().mean(0)
+        avg_acc = acc.mean()
+
+        loss = loss_func(logit.transpose(1, 2), target)
+        loss_grad = torch.autograd.grad(loss.sum(), params_j)[0]  # [Nj, W]
+        q_i = params_i + torch.rand_like(params_i) * 1e-8
+        q_j = params_j + torch.rand_like(params_j) * 1e-8
+        kappa, kappa_grad = self._rbf_func(q_j, q_i)  # [Nj, Ni], [Nj, Ni, W]
+        Nj = kappa.shape[0]
+        kernel_logp = torch.einsum('ji, jw->iw', kappa, loss_grad) / Nj
+        grad = (kernel_logp + kappa_grad.mean(0))  # [Ni, W]
+
+        train_info = HyperNetworkLossInfo(loss=loss, acc=acc, avg_acc=avg_acc)
+        loss_propagated = torch.sum(grad.detach() * params_i, dim=-1)
+
+        return train_info, loss_propagated
+
+    def _rbf_func(self, x, y, h_min=1e-3):
+        r"""Compute the rbf kernel and its gradient w.r.t. first entry 
+            :math:`K(x, y), \nabla_x K(x, y)`
+
+        Args:
+            x (Tensor): set of N particles, shape (Nx x W), where W is the 
+                dimenseion of each particle
+            y (Tensor): set of N particles, shape (Ny x W), where W is the 
+                dimenseion of each particle
+            h_min (float): minimum kernel bandwidth
+
+        Returns:
+            :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
+            :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
+            
+        """
+        Nx, Dx = x.shape
+        Ny, Dy = y.shape
+        assert Dx == Dy
+        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
+        dist_sq = torch.sum(diff**2, -1)  # [Nx, Ny]
+        h = self._median_width(dist_sq)
+        h = torch.max(h, torch.as_tensor([h_min]))
+
+        kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
+        kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
+                                  -2 * diff / h)  # [Nx, Ny, W]
+
+        return kappa, kappa_grad
+
+    def _score_func(self, x, alpha=1e-6, h_min=1e-3):
         r"""Compute the stein estimator of the score function 
             :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`
 
@@ -252,16 +327,27 @@ class HyperNetwork(Generator):
             
         """
         N, D = x.shape
-        h = self._kernel_width()
-
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
         dist_sq = torch.sum(diff**2, -1)  # [N, N]
+
+        # compute the kernel width
+        h = self._median_width(dist_sq)
+        # h = self._kernel_width()
+        h = torch.max(h, torch.as_tensor([h_min]))
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
         kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
 
         return kappa_inv @ kappa_grad
+
+    def _median_width(self, mat_dist):
+        """Compute the kernel width from median of the distance matrix."""
+
+        values, _ = torch.topk(
+            mat_dist.view(-1), k=mat_dist.nelement() // 2 + 1)
+        median = values[-1]
+        return median / np.log(mat_dist.shape[0])
 
     def _kernel_width(self):
         # TODO: implement the kernel bandwidth selection via Heat equation.
