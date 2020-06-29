@@ -65,7 +65,7 @@ class OnPolicyAlgorithm(OffPolicyAlgorithm):
 
     def _train_iter_on_policy(self):
         """User may override this for their own training procedure."""
-        alf.summary.get_global_counter().add_(1)
+        alf.summary.increment_global_counter()
 
         with record_time("time/unroll"):
             experience = self.unroll(self._config.unroll_length)
