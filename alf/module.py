@@ -11,7 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Patch torch.nn.Module for better performance."""
+"""Patch torch.nn.Module for better performance.
+
+``torch.nn.Module.__getattr__`` is freqently used by all class derived from
+``nn.Module``. It can inrtroduce too much unnecessary overhead. So we patch
+``nn.Module`` class to remove it.
+"""
 
 import torch
 from torch.nn import Module, Parameter

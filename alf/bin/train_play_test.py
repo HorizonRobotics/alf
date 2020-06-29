@@ -537,5 +537,4 @@ class TrainPlayTest(alf.test.TestCase):
 
 
 if __name__ == '__main__':
-    TrainPlayTest().test_icm_super_mario()
-    #alf.test.main()
+    alf.test.main()

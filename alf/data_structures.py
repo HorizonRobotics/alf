@@ -463,7 +463,7 @@ LossInfo = namedtuple(
         # Priority for each sample. This will be used to update the priority in
         # the replay buffer so that in the future, this sample will be sampled
         # with probability proportional to this weight powered to
-        # config.priority_replay_alpha. Its shape should be [batch_size].
+        # config.priority_replay_alpha.  If not empty, its shape should be (B,).
         "priority",
     ],
     default_value=())
