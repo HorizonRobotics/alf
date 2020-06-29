@@ -631,7 +631,7 @@ class Algorithm(nn.Module):
         r = self._initial_train_states.get(batch_size)
         if r is None:
             r = spec_utils.zeros_from_spec(self._train_state_spec, batch_size)
-            self._initial_train_state = r
+            self._initial_train_states[batch_size] = r
         return r
 
     @common.add_method(nn.Module)
@@ -1287,7 +1287,7 @@ class Algorithm(nn.Module):
                         lambda x: x[indices], batch_info)
             for b in range(0, batch_size, mini_batch_size):
                 if update_counter_every_mini_batch:
-                    alf.summary.get_global_counter().add_(1)
+                    alf.summary.increment_global_counter()
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
                 do_summary = (is_last_mini_batch
