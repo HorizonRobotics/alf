@@ -14,6 +14,7 @@
 """Summary related functions."""
 
 import functools
+import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing import Callable
@@ -24,7 +25,7 @@ _summarize_output = False
 
 _default_writer: SummaryWriter = None
 
-_global_counter = torch.tensor(0, dtype=torch.int64)
+_global_counter = np.array(0, dtype=np.int64)
 
 _scope_stack = ['']
 
@@ -170,7 +171,17 @@ def get_global_counter():
 def reset_global_counter():
     """Reset the global counter to zero
     """
-    _global_counter.data.fill_(0)
+    _global_counter.fill(0)
+
+
+def increment_global_counter():
+    global _global_counter
+    _global_counter += 1
+
+
+def set_global_counter(counter):
+    global _global_counter
+    _global_counter.fill(counter)
 
 
 class record_if(object):
