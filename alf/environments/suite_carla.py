@@ -37,6 +37,7 @@ Make sure you are using python3.7
 """
 
 import abc
+from collections import OrderedDict
 from absl import logging
 import gin
 import math
@@ -112,7 +113,9 @@ class SensorBase(abc.ABC):
             current_frame (int): current frame no. For some sensors, they may
                 not receive any data in the most recent tick. ``current_frame``
                 will be compared against the frame no. of the last received data
-                to make sure that the data is correctly interpretted.
+                to make sure that the data is correctly interpretted. Note that
+                if the sensor receives event in the most recent frame,
+                event.frame should be equal to current_frame - 1.
         Returns:
             nested np.ndarray: sensor data received in the last tick.
         """
@@ -205,7 +208,7 @@ class CollisionSensor(SensorBase):
                 are less than ``max_num_collisions`` collisions
 
         """
-        if current_frame == self._frame:
+        if current_frame - 1 == self._frame:
             impulses = np.array(self._collisions, dtype=np.float32)
             n = len(self._collisions)
             if n < self._max_num_collisions:
@@ -767,6 +770,8 @@ class NavigationSensor(SensorBase):
 
         Args:
             destination (carla.Location):
+        Returns:
+            The total length of the route in meters
         """
         start = self._alf_world.get_actor_location(self._parent.id)
         self._route = self._alf_world.trace_route(start, destination)
@@ -777,6 +782,9 @@ class NavigationSensor(SensorBase):
         self._road_option = np.array(
             [road_option for _, road_option in self._route])
         self._nearest_index = 0
+        d = self._waypoints[:-1] - self._waypoints[1:]
+        self._num_waypoints = self._waypoints.shape[0]
+        return np.sum(np.sqrt(d * d))
 
     def observation_spec(self):
         return alf.TensorSpec([len(self._future_indices), 3])
@@ -803,14 +811,40 @@ class NavigationSensor(SensorBase):
         dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
         self._nearest_index = self._nearest_index + np.argmin(dist)
         indices = np.minimum(self._nearest_index + self._future_indices,
-                             self._waypoints.shape[0] - 1)
+                             self._num_waypoints - 1)
         return self._waypoints[indices]
+
+    @property
+    def num_waypoints(self):
+        """The number of waypoints in the route."""
+        return self._num_waypoints
+
+    def get_waypoint(self, i):
+        """Get the coordinate of waypoint ``i``.
+
+        Args:
+            i (int): waypoint index
+        Returns:
+            numpy.ndarray: 3-D vector of location
+        """
+        return self._waypoints[i]
+
+    def get_next_waypoint_index(self):
+        """Get the index next waypoint.
+
+        The next waypoint is the waypoint after the nearest waypoint to the car.
+
+        Returns:
+            int: index of the next waypoint
+        """
+        return min(self._nearest_index + 1, self._num_waypoints - 1)
 
 
 def _to_numpy_loc(loc: carla.Location):
     return np.array([loc.x, loc.y, loc.z])
 
 
+@gin.configurable(blacklist=['actor', 'alf_world'])
 class Player(object):
     """Player is a vehicle with some sensors.
 
@@ -827,6 +861,11 @@ class Player(object):
                  alf_world,
                  success_reward=100.,
                  success_distance_thresh=5.0,
+                 collision_reward=-100.,
+                 max_stuck_at_collision_seconds=5.0,
+                 stuck_at_collision_distance=1.0,
+                 sparse_reward=False,
+                 sparse_reward_distance=10,
                  min_speed=5.):
         """
         Args:
@@ -835,6 +874,19 @@ class Player(object):
             success_reward (float): the reward for arriving the goal location.
             success_distance_thresh (float): success is achieved if the current
                 location is with such distance of the goal
+            collision_reward (float): the reward for collision. Note that this
+                reward is only given once at the first step of contiguous collisions.
+            max_stuck_at_collision_seconds (float): the episode will end and is
+                considerred as failure if the car is stuck at the collision for
+                so many seconds,
+            stuck_at_collision_distance (float): the car is considerred as being
+                stuck at the collision if it is within such distance of the first
+                collision location.
+            sparse_reward (bool): If False, the distance reward is given at every
+                step based on how much it moves along the navigation route. If
+                True, the distance reward is only given after moving ``sparse_reward_distance``.
+            sparse_reward_distance (float): the sparse reward is given after every
+                such distance along the route has been driven.
             min_speed (float): unit is m/s. Failure if initial_distance / min_speed
                 seconds passed
         """
@@ -852,6 +904,11 @@ class Player(object):
         self._min_speed = min_speed
         self._delta_seconds = actor.get_world().get_settings(
         ).fixed_delta_seconds
+        self._collision_reward = collision_reward
+        self._max_stuck_at_collision_frames = max_stuck_at_collision_seconds / self._delta_seconds
+        self._stuck_at_collision_distance = stuck_at_collision_distance
+        self._sparse_reward = sparse_reward
+        self._sparse_reward_distance = sparse_reward_distance
 
         self._observation_sensors = {
             'collision': self._collision_sensor,
@@ -880,6 +937,9 @@ class Player(object):
         self._observation_desc['navigation'] = (
             'Relative positions of the future waypoints in the route')
         self._observation_desc['speed'] = "Speed in m/s"
+        self._info_spec = OrderedDict(
+            success=alf.TensorSpec(()), collision=alf.TensorSpec(()))
+
         self._control = carla.VehicleControl()
         self.reset()
 
@@ -936,13 +996,25 @@ class Player(object):
 
         self._fail_frame = None
         self._done = False
-        p = np.array([loc.x, loc.y, loc.z])
         self._prev_location = loc
         self._prev_action = np.zeros(
             self.action_spec().shape, dtype=np.float32)
         self._alf_world.update_actor_location(self._actor.id, loc)
 
-        self._navigation.set_destination(goal_loc)
+        self._route_length = self._navigation.set_destination(goal_loc)
+
+        self._prev_collision = False  # whether there is collision in the previous frame
+        self._collision = False  # whether there is colliion in the current frame
+        self._collision_loc = None  # the location of the car when it starts to have collition
+
+        # The intermediate goal for sparse reward
+        self._intermediate_goal_index = min(self._sparse_reward_distance,
+                                            self._navigation.num_waypoints - 1)
+
+        # The location of the car when the intermediate goal is set
+        self._intermediate_start = _to_numpy_loc(loc)
+
+        self._episode_reward = 0.
 
         return commands
 
@@ -1001,6 +1073,10 @@ class Player(object):
                                      minimum=[-1., -1., -1., 0.],
                                      maximum=[1., 1., 1., 1.])
 
+    def info_spec(self):
+        """Get the info spec."""
+        return self._info_spec
+
     def action_desc(self):
         """Get the description about the action.
 
@@ -1037,37 +1113,88 @@ class Player(object):
         obs['speed'] = np.float32(
             np.sqrt(np.float32(v.x * v.x + v.y * v.y + v.z * v.z)))
         self._current_distance = np.linalg.norm(obs['goal'])
+
+        prev_loc = _to_numpy_loc(self._prev_location)
+        curr_loc = _to_numpy_loc(self._actor.get_location())
+
         reward = 0.
         discount = 1.0
-        info = {}
-        info['success'] = np.float32(0.0)
+        info = OrderedDict(success=np.float32(0.0), collision=np.float32(0.0))
+
+        self._collision = not np.all(obs['collision'] == 0)
+        if self._collision and not self._prev_collision:
+            # We only report the first collision event among contiguous collision
+            # events.
+            info['collision'] = np.float32(1.0)
+            logging.info("actor=%d frame=%d COLLISION" % (self._actor.id,
+                                                          current_frame))
+            self._collision_loc = curr_loc
+            self._collision_frame = current_frame
+            # We don't want the collision penalty to be too large if the player
+            # cannot even get enough positive moving reward. So we cap the penalty
+            # at ``max(0., self._episode_reward)``
+            reward += max(self._collision_reward,
+                          -max(0., self._episode_reward))
 
         if self._fail_frame is None:
             step_type = ds.StepType.FIRST
             max_frames = math.ceil(
-                self._current_distance / self._min_speed / self._delta_seconds)
+                self._route_length / self._min_speed / self._delta_seconds)
             self._fail_frame = current_frame + max_frames
         elif (self._current_distance < self._success_distance_thresh
               and self._actor.get_velocity() == carla.Location(0., 0., 0.)):
             # TODO: include waypoint orientation as success critiria
-            self._done = True
             step_type = ds.StepType.LAST
             reward += self._success_reward
             discount = 0.0
             info['success'] = np.float32(1.0)
+            logging.info(
+                "actor=%d frame=%d SUCCESS" % (self._actor.id, current_frame))
         elif current_frame >= self._fail_frame:
-            self._done = True
+            logging.info("actor=%d frame=%d FAILURE: out of time" %
+                         (self._actor.id, current_frame))
+            step_type = ds.StepType.LAST
+        elif (self._collision_loc is not None
+              and current_frame - self._collision_frame >
+              self._max_stuck_at_collision_frames
+              and np.linalg.norm(curr_loc - self._collision_loc) <
+              self._stuck_at_collision_distance):
+            logging.info("actor=%d frame=%d FAILURE: stuck at collision" %
+                         (self._actor.id, current_frame))
             step_type = ds.StepType.LAST
         else:
             step_type = ds.StepType.MID
 
-        prev_loc = _to_numpy_loc(self._prev_location)
-        curr_loc = _to_numpy_loc(self._actor.get_location())
-        goal0 = obs['navigation'][2]  # This is about 10m ahead in the route
-        reward += (np.linalg.norm(prev_loc - goal0) -
-                   np.linalg.norm(curr_loc - goal0))
+        if self._sparse_reward:
+            current_index = self._navigation.get_next_waypoint_index()
+            if step_type == ds.StepType.LAST and info['success'] == 1.0:
+                # Since the episode is finished, we need to incorporate the final
+                # progress towards the goal as reward to encourage stopping near the goal.
+                reward += (np.linalg.norm(self._intermediate_start -
+                                          self._goal_location) -
+                           np.linalg.norm(curr_loc - self._goal_location))
+            elif self._intermediate_goal_index < current_index:
+                # This means that the car has passed the intermediate goal.
+                # And we give it a reward which is equal to the distance it
+                # travels.
+                intermediate_goal = self._navigation.get_waypoint(
+                    self._intermediate_goal_index)
+                reward += np.linalg.norm(intermediate_goal -
+                                         self._intermediate_start)
+                self._intermediate_start = intermediate_goal
+                self._intermediate_goal_index = min(
+                    self._intermediate_goal_index +
+                    self._sparse_reward_distance,
+                    self._navigation.num_waypoints - 1)
+        else:
+            goal0 = obs['navigation'][2]  # This is about 10m ahead
+            reward += (np.linalg.norm(prev_loc - goal0) -
+                       np.linalg.norm(curr_loc - goal0))
         obs['navigation'] = _calculate_relative_position(
             self._actor.get_transform(), obs['navigation'])
+
+        self._done = step_type == ds.StepType.LAST
+        self._episode_reward += reward
 
         self._current_time_step = ds.TimeStep(
             step_type=step_type,
@@ -1088,6 +1215,7 @@ class Player(object):
         Returns:
             list[carla.command]:
         """
+        self._prev_collision = self._collision
         self._prev_location = self._actor.get_location()
         if self._done:
             return self.reset()
@@ -1331,7 +1459,7 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._world = None
         try:
-            for i in range(10):
+            for i in range(20):
                 try:
                     logging.info(
                         "Waiting for server to start. Try %d" % (i + 1))
@@ -1375,6 +1503,7 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._observation_spec = self._players[0].observation_spec()
         self._action_spec = self._players[0].action_spec()
+        self._env_info_spec = self._players[0].info_spec()
 
     def _spawn_vehicles(self):
         blueprints = self._world.get_blueprint_library().filter(
@@ -1572,7 +1701,7 @@ class CarlaEnvironment(AlfEnvironment):
         return self._batch_size
 
     def env_info_spec(self):
-        return {}
+        return self._env_info_spec
 
     def observation_spec(self):
         return self._observation_spec

@@ -1,0 +1,65 @@
+include 'sac.gin'
+include 'carla.gin'
+
+import alf.algorithms.td_loss
+import alf.algorithms.encoding_algorithm
+
+encoding_dim = 256
+fc_layers_params = (256,)
+activation = torch.relu_
+
+actor/StableNormalProjectionNetwork.state_dependent_std=True
+actor/StableNormalProjectionNetwork.squash_mean=False
+actor/StableNormalProjectionNetwork.scale_distribution=True
+actor/StableNormalProjectionNetwork.min_std=1e-3
+actor/StableNormalProjectionNetwork.max_std=10.
+actor/ActorDistributionNetwork.continuous_projection_net_ctor=@actor/StableNormalProjectionNetwork
+
+critic/CriticNetwork.observation_preprocessing_combiner=@NestSum(activation=%activation, average=True)
+critic/CriticNetwork.joint_fc_layer_params=%fc_layers_params
+critic/CriticNetwork.activation=%activation
+
+calc_default_target_entropy.min_prob=0.5
+Adam.lr=2e-4
+SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
+SacAlgorithm.critic_network_cls=@critic/CriticNetwork
+SacAlgorithm.actor_optimizer=@Adam()
+SacAlgorithm.critic_optimizer=@Adam()
+SacAlgorithm.alpha_optimizer=@Adam()
+sac/calc_default_target_entropy.min_prob=0.1
+SacAlgorithm.target_entropy=@sac/calc_default_target_entropy
+SacAlgorithm.target_update_tau=0.005
+SacAlgorithm.critic_loss_ctor=@TDLoss
+SacAlgorithm.use_parallel_network=True
+
+encoder/EncodingNetwork.input_preprocessors=%input_preprocessors
+encoder/EncodingNetwork.preprocessing_combiner=@NestSum(activation=%activation, average=True)
+encoder/EncodingNetwork.activation=%activation
+encoder/EncodingNetwork.fc_layer_params=%fc_layers_params
+encoder/EncodingAlgorithm.encoder_cls=@encoder/EncodingNetwork
+Agent.observation_transformer=@agent/image_scale_transformer
+Agent.representation_learner_cls=@encoder/EncodingAlgorithm
+Agent.optimizer=@Adam()
+agent/image_scale_transformer.min=0.0
+agent/image_scale_transformer.fields=['camera']
+
+#create_environment.num_parallel_environments=16
+suite_carla.Player.sparse_reward=False
+suite_carla.Player.collision_reward=-1.
+
+# training config
+TrainerConfig.initial_collect_steps=3000
+TrainerConfig.mini_batch_length=4
+TrainerConfig.unroll_length=10
+TrainerConfig.mini_batch_size=64
+TrainerConfig.num_updates_per_train_iter=1
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=1000000
+TrainerConfig.num_checkpoints=20
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.summary_interval=10
+TrainerConfig.replay_buffer_length=100000
+TrainerConfig.summarize_action_distributions=True

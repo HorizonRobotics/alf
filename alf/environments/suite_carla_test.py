@@ -132,7 +132,12 @@ def play(env):
                 steer += steer_increment
         steer = min(0.7, max(-0.7, steer))
         action[:, STEER] = steer
-        env.step(action)
+
+        time_step = env.step(action)
+        if time_step.step_type[0] == alf.data_structures.StepType.LAST:
+            action = env.action_spec().zeros([env.batch_size])
+            steer = 0.
+
         env.render("human")
 
 
