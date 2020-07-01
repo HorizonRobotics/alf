@@ -154,6 +154,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  prior_actor_ctor=None,
                  target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
+                 max_log_alpha=None,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -193,6 +194,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
                 constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
             initial_log_alpha (float): initial value for variable ``log_alpha``.
+            max_log_alpha (float|None): if not None, ``log_alpha`` will be
+                capped at this value.
             target_entropy (float|Callable|None): If a floating value, it's the
                 target average policy entropy, for updating ``alpha``. If a
                 callable function, then it will be called on the action spec to
@@ -227,7 +230,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation_spec, action_spec, actor_network_cls,
             critic_network_cls, q_network_cls)
 
-        log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
+        log_alpha = nn.Parameter(torch.tensor(float(initial_log_alpha)))
 
         action_state_spec = SacActionState(
             actor_network=(() if self._act_type == ActionType.Discrete else
@@ -258,6 +261,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(alpha_optimizer, [log_alpha])
 
         self._log_alpha = log_alpha
+        if max_log_alpha is not None:
+            self._max_log_alpha = torch.tensor(float(max_log_alpha))
+        else:
+            self._max_log_alpha = None
+
         self._actor_network = actor_network
         self._critic_networks = critic_networks
         self._target_critic_networks = self._critic_networks.copy(
@@ -622,6 +630,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def after_update(self, experience, train_info: SacInfo):
         self._update_target()
+        if self._max_log_alpha is not None:
+            self._log_alpha.data.copy_(
+                torch.min(self._log_alpha, self._max_log_alpha))
 
     def calc_loss(self, experience, train_info: SacInfo):
         critic_loss = self._calc_critic_loss(experience, train_info)
