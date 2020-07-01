@@ -75,6 +75,10 @@ def is_available():
     return carla is not None
 
 
+MINIMUM_RENDER_WIDTH = 640
+MINIMUM_RENDER_HEIGHT = 240
+
+
 class SensorBase(abc.ABC):
     """Base class for sersors."""
 
@@ -590,9 +594,17 @@ class CameraSensor(SensorBase):
             display (pygame.Surface): the display surface to draw the image
         """
         if self._image is not None:
+            import cv2
             import pygame
-            surface = pygame.surfarray.make_surface(
-                np.transpose(self._image, (2, 1, 0)))
+            height, width = self._image.shape[1:3]
+            image = np.transpose(self._image, (2, 1, 0))
+            if width < MINIMUM_RENDER_WIDTH:
+                height = height * MINIMUM_RENDER_WIDTH // width
+                image = cv2.resize(
+                    image,
+                    dsize=(height, MINIMUM_RENDER_WIDTH),
+                    interpolation=cv2.INTER_NEAREST)
+            surface = pygame.surfarray.make_surface(image)
             display.blit(surface, (0, 0))
 
     @staticmethod
@@ -1023,10 +1035,13 @@ class Player(object):
                                                 self._actor.get_location())
         v = self._actor.get_velocity()
         obs['speed'] = np.float32(
-            np.float32(v.x * v.x + v.y * v.y + v.z * v.z))
+            np.sqrt(np.float32(v.x * v.x + v.y * v.y + v.z * v.z)))
         self._current_distance = np.linalg.norm(obs['goal'])
         reward = 0.
         discount = 1.0
+        info = {}
+        info['success'] = np.float32(0.0)
+
         if self._fail_frame is None:
             step_type = ds.StepType.FIRST
             max_frames = math.ceil(
@@ -1039,6 +1054,7 @@ class Player(object):
             step_type = ds.StepType.LAST
             reward += self._success_reward
             discount = 0.0
+            info['success'] = np.float32(1.0)
         elif current_frame >= self._fail_frame:
             self._done = True
             step_type = ds.StepType.LAST
@@ -1058,7 +1074,8 @@ class Player(object):
             reward=np.float32(reward),
             discount=np.float32(discount),
             observation=obs,
-            prev_action=self._prev_action)
+            prev_action=self._prev_action,
+            env_info=info)
         return self._current_time_step
 
     def act(self, action):
@@ -1101,8 +1118,8 @@ class Player(object):
                 self._clock = pygame.time.Clock()
                 height, width = self._camera_sensor.observation_spec(
                 ).shape[1:3]
-                height = max(height, 480)
-                width = max(width, 640)
+                height = max(height, MINIMUM_RENDER_HEIGHT)
+                width = max(width, MINIMUM_RENDER_WIDTH)
                 self._display = pygame.display.set_mode(
                     (width, height), pygame.HWSURFACE | pygame.DOUBLEBUF)
 
@@ -1144,7 +1161,7 @@ class Player(object):
             mono = default_font if default_font in fonts else fonts[0]
             mono = pygame.font.match_font(mono)
             self._font = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
-        info_surface = pygame.Surface((240, 220))
+        info_surface = pygame.Surface((240, 240))
         info_surface.set_alpha(100)
         self._display.blit(info_surface, (0, 0))
         v_offset = 4
