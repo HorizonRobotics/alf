@@ -458,7 +458,11 @@ class RLAlgorithm(Algorithm):
 
             self.observe_for_metrics(time_step.cpu())
 
-            exp = make_experience(time_step.cpu(), policy_step, policy_state)
+            if self._exp_replayer_type == "one_time":
+                exp = make_experience(time_step, policy_step, policy_state)
+            else:
+                exp = make_experience(time_step.cpu(), policy_step,
+                                      policy_state)
 
             t0 = time.time()
             self.observe_for_replay(exp)
