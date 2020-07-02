@@ -52,9 +52,13 @@ def load_mnist(train_bs=100, test_bs=100, num_workers=0):
     return train_loader, test_loader
 
 
-def load_notmnist(train_bs=32, test_bs=100):
+def load_notmnist(train_bs=100, test_bs=100, num_workers=0):
     torch.cuda.manual_seed(1)
-    kwargs = {'num_workers': 1, 'pin_memory': True, 'drop_last': False}
+    kwargs = {
+        'num_workers': num_workers,
+        'pin_memory': True,
+        'drop_last': False
+    }
     path = 'data_nm/'
     train_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
