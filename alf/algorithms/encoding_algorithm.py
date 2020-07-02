@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Decoding algorithm."""
+"""Encoding algorithm."""
 
 import gin
-import torch
 
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep

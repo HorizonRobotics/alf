@@ -79,7 +79,7 @@ class Agent(OnPolicyAlgorithm):
             representation_learner_cls (type): The algorithm class for learning
                 the representation. If provided, the constructed learner will
                 calculate the representation from the original observation as
-                the observation for down-\stream algorithms such as rl_algorithm.
+                the observation for downstream algorithms such as ``rl_algorithm``.
             intrinsic_reward_module (Algorithm): an algorithm whose outputs
                 is a scalar intrinsic reward.
             goal_generator (Algorithm): an algorithm with output a goal vector
