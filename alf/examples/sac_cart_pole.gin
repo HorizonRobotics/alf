@@ -7,23 +7,16 @@ create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 
 # algorithm config
-observation_spec=@get_observation_spec()
-action_spec=@get_action_spec()
-
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.action_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(100,)
 actor/Adam.lr=1e-3
 
-critic/QNetwork.input_tensor_spec=%observation_spec
-critic/QNetwork.action_spec=%action_spec
 critic/QNetwork.fc_layer_params=(100,)
 critic/Adam.lr=1e-3
 
 alpha/Adam.lr=1e-3
 
-SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-SacAlgorithm.q_network=@critic/QNetwork()
+SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
+SacAlgorithm.q_network_cls=@critic/QNetwork
 SacAlgorithm.actor_optimizer=@actor/Adam()
 SacAlgorithm.critic_optimizer=@critic/Adam()
 SacAlgorithm.alpha_optimizer=@alpha/Adam()
