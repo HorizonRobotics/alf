@@ -105,7 +105,7 @@ class Agent(OnPolicyAlgorithm):
             """
         agent_helper = AgentHelper(AgentState)
 
-        # 0. representation learner
+        ## 0. representation learner
         rl_observation_spec = observation_spec
         representation_learner = None
         if representation_learner_cls is not None:
