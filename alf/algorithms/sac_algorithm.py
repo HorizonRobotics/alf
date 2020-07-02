@@ -162,7 +162,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 continuous actions can be arbitrary while only one discrete
                 action is allowed currently. If it's a mixture, then it must be
                 a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
-            actor_network_cls (Callable): is used to constructore the actor network.
+            actor_network_cls (Callable): is used to construct the actor network.
                 The constructed actor network will be called
                 to sample continuous actions. All of its output specs must be
                 continuous. Note that we don't need a discrete actor network
