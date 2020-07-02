@@ -1037,7 +1037,7 @@ class Algorithm(nn.Module):
         loss = weight * loss_info.loss
 
         unhandled = self._setup_optimizers()
-        unhandled = [(self._param_to_name[p], p) for p in unhandled]
+        unhandled = [self._param_to_name[p] for p in unhandled]
         assert not unhandled, ("'%s' has some modules/parameters do not have "
                                "optimizer: %s" % (self.name, unhandled))
         optimizers = self.optimizers()
