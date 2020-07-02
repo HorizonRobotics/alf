@@ -16,6 +16,7 @@
 import torch
 
 from absl.testing import parameterized
+import collections
 
 import alf
 import alf.nest as nest
@@ -335,6 +336,13 @@ class TestExtractAnyLeaf(alf.test.TestCase):
             isinstance(nest.extract_any_leaf_from_nest(nested), int))
         self.assertEqual(nest.extract_any_leaf_from_nest([]), None)
         self.assertEqual(nest.extract_any_leaf_from_nest(2), 2)
+
+    def test_extract_all_leaves(self):
+        tuples = [("a", 12), ("b", 13)]
+        nested = collections.OrderedDict(tuples)
+        res = [(y, x)
+               for (x, y) in nest.all_leaves_with_path_from_nest(nested)]
+        self.assertEqual(res, tuples)
 
 
 if __name__ == '__main__':

@@ -258,6 +258,37 @@ def extract_any_leaf_from_nest(nest):
                 return ret
 
 
+def all_leaves_with_path_from_nest(nest, path=""):
+    """Generates all leaf nodes from a nest, with their paths.
+
+    Args:
+        nest (nest): a nested structure
+        path (str): path to current nest element
+
+    Yields:
+        - ret (Tensor): for the leaf
+        - path (str): path to the leaf in the nest
+    """
+    if not is_nested(nest):
+        if nest is not None:
+            yield nest, path
+    elif isinstance(nest, list) or is_unnamedtuple(nest):
+        i = -1
+        for value in nest:
+            i += 1
+            if path:
+                path += "."
+            name = path + str(i)
+            for x, y in all_leaves_with_path_from_nest(value, name):
+                yield x, y
+    else:
+        for name, value in extract_fields_from_nest(nest):
+            if path:
+                path += "."
+            for x, y in all_leaves_with_path_from_nest(value, path + name):
+                yield x, y
+
+
 def is_nested(value):
     """Returns true if the input is one of: ``list``, ``unnamedtuple``, ``dict``,
     or ``namedtuple``. Note that this definition is different from tf's is_nested

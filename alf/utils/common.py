@@ -423,7 +423,8 @@ class ObservationNormalizer(nn.Module):
             self._normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec,
                 speed=float(speed),
-                auto_update=False)
+                auto_update=False,
+                name="observations/adaptive_normalizer")
         elif mode == "window":
             self._normalzier = WindowNormalizer(
                 tensor_spec=observation_spec,
@@ -441,7 +442,7 @@ class ObservationNormalizer(nn.Module):
         """Normalize a given observation. If during unroll, then first update
         the normalizer. The normalizer won't be updated in other circumstances.
         """
-        if not is_training():
+        if is_training():
             self._normalizer.update(observation)
         return self._normalizer.normalize(observation, self._clipping)
 

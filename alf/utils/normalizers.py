@@ -14,6 +14,7 @@
 
 from abc import abstractmethod
 
+import gin
 import torch
 import torch.nn as nn
 
@@ -24,7 +25,7 @@ from alf.utils import math_ops
 from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 
-class Normalizer(nn.Module):
+class Normalizer(alf.layers.Module):
     def __init__(self,
                  tensor_spec,
                  auto_update=True,
@@ -81,6 +82,38 @@ class Normalizer(nn.Module):
         self._mean_averager.update(tensor)
         sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
+        if alf.summary.should_summarize_output():
+            suffix = self.exe_mode_str()
+
+            def _summary(name, val):
+                if val.shape[0] < 30:
+                    for i in range(val.shape[0]):
+                        alf.summary.scalar(
+                            self._name + "." + name + "_" + str(i) + "." +
+                            suffix, val[i])
+                else:
+                    alf.summary.scalar(
+                        self._name + "." + name + ".min." + suffix, val.min())
+                    alf.summary.scalar(
+                        self._name + "." + name + ".max." + suffix, val.max())
+
+            for (t, t_path), (m, m_path), (m2, m2_path) in zip(
+                    alf.nest.all_leaves_with_path_from_nest(tensor),
+                    alf.nest.all_leaves_with_path_from_nest(
+                        self._mean_averager.get()),
+                    alf.nest.all_leaves_with_path_from_nest(
+                        self._m2_averager.get())):
+                path = t_path
+                assert path == m_path
+                assert path == m2_path
+                if path:
+                    path += "."
+                _summary(path + "tensor.batch_min",
+                         alf.layers.reduce_along_batch_dims(t, m, torch.min))
+                _summary(path + "tensor.batch_max",
+                         alf.layers.reduce_along_batch_dims(t, m, torch.max))
+                _summary(path + "mean", m)
+                _summary(path + "var", m2 - math_ops.square(m))
 
     def normalize(self, tensor, clip_value=-1.0):
         """
@@ -112,6 +145,7 @@ class Normalizer(nn.Module):
                                       self._m2_averager.get(), tensor)
 
 
+@gin.configurable
 class WindowNormalizer(Normalizer):
     """Normalization according to a recent window of samples.
     """
@@ -208,6 +242,7 @@ class ScalarEMNormalizer(EMNormalizer):
             name=name)
 
 
+@gin.configurable
 class AdaptiveNormalizer(Normalizer):
     def __init__(self,
                  tensor_spec,

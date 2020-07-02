@@ -28,6 +28,14 @@ from alf.utils import common
 from alf.utils.math_ops import identity
 
 
+def reduce_along_batch_dims(x, mean, op):
+    spec = TensorSpec.from_tensor(mean)
+    bs = BatchSquash(get_outer_rank(x, spec))
+    x = bs.flatten(x)
+    x = op(x, dim=0)[0]
+    return x
+
+
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
     """Normalizes a tensor by ``mean`` and ``variance``, which are expected to have
     the same tensor spec with the inner dims of ``x``.

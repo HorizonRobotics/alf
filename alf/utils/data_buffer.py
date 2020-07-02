@@ -152,7 +152,9 @@ class RingBuffer(nn.Module):
             else:
                 env_ids = env_ids.to(torch.int64)
             env_ids = convert_device(env_ids)
-            assert len(env_ids.shape) == 1, "env_ids should be a 1D tensor"
+            assert len(env_ids.
+                       shape) == 1, "env_ids {}, should be a 1D tensor".format(
+                           env_ids.shape)
             return env_ids
 
     def has_space(self, env_ids):
