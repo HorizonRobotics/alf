@@ -37,7 +37,6 @@ class ReplayBufferTest(RingBufferTest):
             "hindsight_relabel_fn.her_proportion=0.8",
             'hindsight_relabel_fn.achieved_goal_field="o.a"',
             'hindsight_relabel_fn.desired_goal_field="o.g"',
-            'hindsight_relabel_fn.reward_field="r"',
             "ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn",
         ]
         gin.parse_config_files_and_bindings("", configs)
@@ -105,7 +104,7 @@ class ReplayBufferTest(RingBufferTest):
 
         # Save original exp for later testing.
         g_orig = replay_buffer._buffer.o["g"].clone()
-        r_orig = replay_buffer._buffer.r.clone()
+        r_orig = replay_buffer._buffer.reward.clone()
 
         # HER selects indices [0, 2, 3, 4] to relabel, from all 5:
         # env_ids: [[0, 0], [1, 1], [0, 0], [1, 1], [0, 0]]
@@ -125,7 +124,7 @@ class ReplayBufferTest(RingBufferTest):
         self.assertEqual(list(res.o["g"].shape), [5, 2])
 
         # Test relabeling doesn't change original experience
-        self.assertTrue(torch.allclose(r_orig, replay_buffer._buffer.r))
+        self.assertTrue(torch.allclose(r_orig, replay_buffer._buffer.reward))
         self.assertTrue(torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
 
         # test relabeled goals
@@ -135,7 +134,7 @@ class ReplayBufferTest(RingBufferTest):
         # test relabeled rewards
         r = torch.tensor([[-1., 0.], [-1., -1.], [-1., 0.], [-1., 0.],
                           [-1., 0.]])
-        self.assertTrue(torch.allclose(res.r, r))
+        self.assertTrue(torch.allclose(res.reward, r))
 
     # Gold standard functions to test HER.
     def episode_end_indices(self, b):
@@ -226,7 +225,6 @@ class ReplayBufferTest(RingBufferTest):
             "hindsight_relabel_fn.her_proportion=0.8",
             'hindsight_relabel_fn.achieved_goal_field="o.a"',
             'hindsight_relabel_fn.desired_goal_field="o.g"',
-            'hindsight_relabel_fn.reward_field="r"',
             "ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn",
         ]
         gin.parse_config_files_and_bindings("", configs)
@@ -275,7 +273,7 @@ class ReplayBufferTest(RingBufferTest):
 
                 # Save original exp for later testing.
                 g_orig = replay_buffer._buffer.o["g"].clone()
-                r_orig = replay_buffer._buffer.r.clone()
+                r_orig = replay_buffer._buffer.reward.clone()
 
                 # HER relabel experience
                 res = replay_buffer.get_batch(sample_steps, 2)[0]
@@ -284,7 +282,7 @@ class ReplayBufferTest(RingBufferTest):
 
                 # Test relabeling doesn't change original experience
                 self.assertTrue(
-                    torch.allclose(r_orig, replay_buffer._buffer.r))
+                    torch.allclose(r_orig, replay_buffer._buffer.reward))
                 self.assertTrue(
                     torch.allclose(g_orig, replay_buffer._buffer.o["g"]))
                 self.assertTrue(
