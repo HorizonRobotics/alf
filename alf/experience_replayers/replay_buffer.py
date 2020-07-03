@@ -73,11 +73,13 @@ class ReplayBuffer(RingBuffer):
                 The actual initial priority used for new experience is the maximum
                 of this value and the current maximum priority of all experiences.
             recent_data_steps (int): the most recent so many steps of data is
-                considered as recent data for ``get_batch()``.
+                considered as recent data for ``get_batch()``. Note that this
+                quantity is per environment.
             recent_data_ratio (float): ``recent_data_ratio * batch_size`` samples
                 in the batch are sampled from recent data for ``get_batch()``.
-            with_replacement (bool): If True, sample without replacement whenever
-                poissible for ``get_batch()``.
+            with_replacement (bool): If False, sample without replacement whenever
+                poissible for ``get_batch()``. If True, a batch may contains
+                duplicated samples.
             device (string): "cpu" or "cuda" where tensors are created.
             allow_multiprocess (bool): whether multiprocessing is supported.
             keep_episodic_info (bool): index episode start and ending positions.
@@ -304,6 +306,10 @@ class ReplayBuffer(RingBuffer):
                     self._num_envs) - batch_length + 1
                 if (avg_size * self._recent_data_ratio >
                         self._recent_data_steps):
+                    # If this condition is False, regular sampling without considering
+                    # recent data will get enough samples from recent data. So
+                    # we don't need to have a separate step just for sampling from
+                    # the recent data.
                     recent_batch_size = math.ceil(
                         batch_size * self._recent_data_ratio)
 
@@ -315,6 +321,8 @@ class ReplayBuffer(RingBuffer):
                 info = self._uniform_sample(normal_batch_size, batch_length)
 
             if recent_batch_size > 0:
+                # Note that _uniform_sample() get samples duplicated with those
+                # from _recent_sample()
                 recent_info = self._recent_sample(recent_batch_size,
                                                   batch_length)
                 info = alf.nest.map_structure(lambda *x: torch.cat(x),
@@ -347,7 +355,10 @@ class ReplayBuffer(RingBuffer):
             min_size)
         return self._sample(batch_size, batch_length)
 
-    def _sample(self, batch_size, batch_length, recent_data_steps=None):
+    def _sample(self,
+                batch_size,
+                batch_length,
+                sample_from_recent_n_data_steps=None):
         batch_size_per_env = batch_size // self._num_envs
         remaining = batch_size % self._num_envs
         env_ids = torch.arange(self._num_envs).repeat(batch_size_per_env)
@@ -378,8 +389,9 @@ class ReplayBuffer(RingBuffer):
 
         d = batch_length - 1
         num_positions = self._current_size - d
-        if recent_data_steps is not None:
-            num_positions = torch.clamp(num_positions, max=recent_data_steps)
+        if sample_from_recent_n_data_steps is not None:
+            num_positions = torch.clamp(
+                num_positions, max=sample_from_recent_n_data_steps)
         pos = (r * num_positions[env_ids]).to(torch.int64)
         pos += (self._current_pos - num_positions - d)[env_ids]
         info = BatchInfo(env_ids=env_ids, positions=pos)

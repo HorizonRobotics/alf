@@ -409,7 +409,7 @@ class ReplayBufferTest(RingBufferTest):
         replay_buffer.clear()
         self.assertEqual(replay_buffer.total_size, 0)
 
-    def test_without_replacement(self):
+    def test_recent_data_and_without_replacement(self):
         num_envs = 4
         max_length = 100
         replay_buffer = ReplayBuffer(
@@ -427,11 +427,16 @@ class ReplayBufferTest(RingBufferTest):
         batch, info = replay_buffer.get_batch(8, 1)
         self.assertEqual(info.env_ids, torch.tensor([0, 1, 2, 3] * 2))
 
-        for t in range(2, 16):
+        for t in range(2, 32):
             replay_buffer.add_batch(
                 get_batch([0, 1, 2, 3], self.dim, t=t, x=t))
         batch, info = replay_buffer.get_batch(32, 1)
         self.assertEqual(info.env_ids[16:], torch.tensor([0, 1, 2, 3] * 4))
+        # The first half is from recent data
+        self.assertEqual(info.env_ids[:16], torch.tensor([0, 1, 2, 3] * 4))
+        self.assertEqual(
+            info.positions[:16],
+            torch.tensor([28] * 4 + [29] * 4 + [30] * 4 + [31] * 4))
 
     def test_prioritized_replay(self):
         replay_buffer = ReplayBuffer(
