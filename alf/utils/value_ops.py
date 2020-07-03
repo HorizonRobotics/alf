@@ -16,7 +16,7 @@ import torch
 
 import alf
 from alf.data_structures import StepType
-from alf.utils import dist_utils
+from alf.utils import common, dist_utils
 
 
 def action_importance_ratio(action_distribution, collect_action_distribution,
@@ -142,8 +142,12 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
                                       s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    if is_lasts.ndim < values.ndim:
+        is_lasts = common.expand_dims_as(is_lasts, values)
+    if discounts.ndim < values.ndim:
+        discounts = common.expand_dims_as(discounts, values)
 
-    rets = torch.zeros(rewards.shape, dtype=rewards.dtype)
+    rets = torch.zeros_like(values)
     rets[-1] = values[-1]
 
     with torch.no_grad():
@@ -180,6 +184,11 @@ def one_step_discounted_return(rewards, values, step_types, discounts):
                                       s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    if is_lasts.ndim < values.ndim:
+        is_lasts = common.expand_dims_as(is_lasts, values)
+    if discounts.ndim < values.ndim:
+        discounts = common.expand_dims_as(discounts, values)
+
     discounted_values = discounts * values
     rets = (1 - is_lasts[:-1]) * (rewards[1:] + discounted_values[1:]) + \
                  is_lasts[:-1] * discounted_values[:-1]
@@ -232,9 +241,14 @@ def generalized_advantage_estimation(rewards,
                                       s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    if is_lasts.ndim < values.ndim:
+        is_lasts = common.expand_dims_as(is_lasts, values)
+    if discounts.ndim < values.ndim:
+        discounts = common.expand_dims_as(discounts, values)
+
     weighted_discounts = discounts[1:] * td_lambda
 
-    advs = torch.zeros_like(rewards)
+    advs = torch.zeros_like(values)
     delta = rewards[1:] + discounts[1:] * values[1:] - values[:-1]
 
     with torch.no_grad():

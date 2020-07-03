@@ -73,8 +73,8 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         self._batch_size = batch_size
         self._observation_spec = observation_spec
         self._action_spec = action_spec
-        self._time_step_spec = ds.time_step_spec(self._observation_spec,
-                                                 action_spec)
+        self._time_step_spec = ds.time_step_spec(
+            self._observation_spec, action_spec, ts.TensorSpec(()))
         self._episode_end_probability = episode_end_probability
         discount = np.asarray(discount, dtype=np.float32)
         if env_id is None:

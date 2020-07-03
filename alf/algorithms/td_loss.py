@@ -24,7 +24,7 @@ from alf.utils.summary_utils import safe_mean_hist_summary
 
 
 @gin.configurable
-class MultiStepTDLoss(nn.Module):
+class TDLoss(nn.Module):
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
@@ -36,7 +36,8 @@ class MultiStepTDLoss(nn.Module):
         Let :math:`G_{t:T}` be the bootstaped return from t to T:
             :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)`
         If ``td_lambda`` = 1, the target for step t is :math:`G_{t:T}`.
-        If ``td_lambda`` < 1, the target for step t is the :math:`\lambda`-return:
+        If ``td_lambda`` = 0, the target for step t is :math:`G_{t:t+1}`
+        If 0 < ``td_lambda`` < 1, the target for step t is the :math:`\lambda`-return:
             :math:`G_t^\lambda = (1 - \lambda) \sum_{i=t+1}^{T-1} \lambda^{i-t}G_{t:i} + \lambda^{T-t-1} G_{t:T}`
         There is a simple relationship between :math:`\lambda`-return and
         the generalized advantage estimation :math:`\hat{A}^{GAE}_t`:
@@ -92,6 +93,12 @@ class MultiStepTDLoss(nn.Module):
                 values=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma)
+        elif self._lambda == 0.0:
+            returns = value_ops.one_step_discounted_return(
+                rewards=experience.reward,
+                values=target_value,
+                step_types=experience.step_type,
+                discounts=experience.discount * self._gamma)
         else:
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=experience.reward,
@@ -106,14 +113,29 @@ class MultiStepTDLoss(nn.Module):
         if self._debug_summaries and alf.summary.should_record_summaries():
             mask = experience.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
-                alf.summary.scalar(
-                    "explained_variance_of_return_by_value",
-                    tensor_utils.explained_variance(value, returns, mask))
-                safe_mean_hist_summary('values', value, mask)
-                safe_mean_hist_summary('returns', returns, mask)
-                safe_mean_hist_summary("td_error", returns - value, mask)
+
+                def _summarize(v, r, td, suffix):
+                    alf.summary.scalar(
+                        "explained_variance_of_return_by_value" + suffix,
+                        tensor_utils.explained_variance(v, r, mask))
+                    safe_mean_hist_summary('values' + suffix, v, mask)
+                    safe_mean_hist_summary('returns' + suffix, r, mask)
+                    safe_mean_hist_summary("td_error" + suffix, td, mask)
+
+                if value.ndim == 2:
+                    _summarize(value, returns, returns - value, '')
+                else:
+                    td = returns - value
+                    for i in range(value.shape[2]):
+                        suffix = '/' + str(i)
+                        _summarize(value[..., i], returns[..., i], td[..., i],
+                                   suffix)
 
         loss = self._td_error_loss_fn(returns.detach(), value)
+
+        if loss.ndim == 3:
+            # Multidimensional reward. Average over the critic loss for all dimensions
+            loss = loss.mean(dim=2)
 
         # The shape of the loss expected by Algorith.update_with_gradient is
         # [T, B], so we need to augment it with additional zeros.

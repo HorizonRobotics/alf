@@ -22,10 +22,12 @@ import alf
 from alf.data_structures import StepType, TimeStep
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
+from .alf_environment import AlfEnvironment
+
 ActionType = Enum('ActionType', ('Discrete', 'Continuous'))
 
 
-class UnittestEnv(object):
+class UnittestEnv(AlfEnvironment):
     """Abstract base for unittest environment.
 
     Every episode ends in `episode_length` steps (including LAST step).
@@ -38,7 +40,8 @@ class UnittestEnv(object):
                  batch_size,
                  episode_length,
                  obs_dim=1,
-                 action_type=ActionType.Discrete):
+                 action_type=ActionType.Discrete,
+                 reward_dim=1):
         """Initializes the environment.
 
         Args:
@@ -65,6 +68,12 @@ class UnittestEnv(object):
         self._observation_spec = TensorSpec(
             shape=(obs_dim, ), dtype=torch.float32)
         self._batch_size = batch_size
+        self._reward_dim = reward_dim
+        if reward_dim == 1:
+            self._reward_spec = TensorSpec(())
+        else:
+            self._reward_spec = TensorSpec((reward_dim, ))
+
         self.reset()
 
     @property
@@ -81,7 +90,13 @@ class UnittestEnv(object):
     def observation_spec(self):
         return self._observation_spec
 
-    def reset(self):
+    def reward_spec(self):
+        return self._reward_spec
+
+    def env_info_spec(self):
+        return {}
+
+    def _reset(self):
         self._steps = 0
         time_step = self._gen_time_step(0, None)
         self._current_time_step = time_step._replace(
@@ -90,16 +105,13 @@ class UnittestEnv(object):
             env_id=torch.arange(self.batch_size, dtype=torch.int32))
         return self._current_time_step
 
-    def step(self, action):
+    def _step(self, action):
         self._steps += 1
         time_step = self._gen_time_step(self._steps % self._episode_length,
                                         action)
         self._current_time_step = time_step._replace(
             prev_action=action,
             env_id=torch.arange(self.batch_size, dtype=torch.int32))
-        return self._current_time_step
-
-    def current_time_step(self):
         return self._current_time_step
 
     @abstractmethod
@@ -169,6 +181,10 @@ class PolicyUnittestEnv(UnittestEnv):
             reward = 1.0 - torch.abs(prev_observation -
                                      action.reshape(prev_observation.shape))
             reward = reward.reshape(self.batch_size)
+
+        if self._reward_dim != 1:
+            reward = reward.unsqueeze(-1).expand((self.batch_size,
+                                                  self._reward_dim))
 
         observation = torch.randint(
             0, 2, size=(self.batch_size, 1), dtype=torch.float32)

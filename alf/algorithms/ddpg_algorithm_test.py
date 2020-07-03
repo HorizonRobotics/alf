@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+from absl.testing import parameterized
 import functools
 import torch
 import torch.distributions as td
@@ -31,8 +32,9 @@ from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
 
 
-class DDPGAlgorithmTest(alf.test.TestCase):
-    def test_ddpg_algorithm(self):
+class DDPGAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
+    @parameterized.parameters((1, 1), (2, 3))
+    def test_ddpg_algorithm(self, num_critic_replicas, reward_dim):
         num_env = 128
         num_eval_env = 100
         steps_per_episode = 13
@@ -49,10 +51,16 @@ class DDPGAlgorithmTest(alf.test.TestCase):
         env_class = PolicyUnittestEnv
 
         env = env_class(
-            num_env, steps_per_episode, action_type=ActionType.Continuous)
+            num_env,
+            steps_per_episode,
+            action_type=ActionType.Continuous,
+            reward_dim=reward_dim)
 
         eval_env = env_class(
-            num_eval_env, steps_per_episode, action_type=ActionType.Continuous)
+            num_eval_env,
+            steps_per_episode,
+            action_type=ActionType.Continuous,
+            reward_dim=reward_dim)
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
@@ -63,7 +71,9 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             ActorNetwork, fc_layer_params=fc_layer_params)
 
         critic_network = functools.partial(
-            CriticNetwork, joint_fc_layer_params=fc_layer_params)
+            CriticNetwork,
+            output_tensor_spec=env.reward_spec(),
+            joint_fc_layer_params=fc_layer_params)
 
         alg = DdpgAlgorithm(
             observation_spec=obs_spec,
@@ -72,6 +82,8 @@ class DDPGAlgorithmTest(alf.test.TestCase):
             critic_network_ctor=critic_network,
             env=env,
             config=config,
+            num_critic_replicas=num_critic_replicas,
+            use_parallel_network=num_critic_replicas > 1,
             actor_optimizer=alf.optimizers.Adam(lr=1e-2),
             critic_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,

@@ -79,6 +79,9 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
     def action_spec(self):
         return self._env.action_spec()
 
+    def reward_spec(self):
+        return self._env.reward_spec()
+
     def close(self):
         return self._env.close()
 
