@@ -93,6 +93,7 @@ class ParamConvNet(Network):
                 bias_length = conv_l.bias_length
                 conv_l.set_bias(theta[:, pos:pos + bias_length])
                 pos = pos + bias_length
+        self._output_spec = None
 
     def forward(self, inputs, state=()):
         """The empty state just keeps the interface same with other networks."""
@@ -197,6 +198,7 @@ class ParamNetwork(Network):
                 bias_length = fc_l.bias_length
                 fc_l.set_bias(fc_theta[:, pos:pos + bias_length])
                 pos = pos + bias_length
+        self._output_spec = None
 
     def forward(self, inputs, state=()):
         """The empty state just keeps the interface same with other networks."""

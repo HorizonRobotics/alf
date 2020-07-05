@@ -147,6 +147,7 @@ class HyperNetwork(Generator):
         self._regenerate_for_each_batch = regenerate_for_each_batch
         self._loss_func = loss_func
         self._par_vi = par_vi
+        self._use_fc_bn = use_fc_bn
         if self._loss_func is None:
             self._loss_func = F.cross_entropy
         if par_vi == 'gfsf':
@@ -353,16 +354,27 @@ class HyperNetwork(Generator):
         # TODO: implement the kernel bandwidth selection via Heat equation.
         return self._kernel_sharpness
 
+    def predict(self, inputs, particles=None):
+        """Predict ensemble outputs for inputs using the hypernetwork model."""
+        if particles is None:
+            particles = self.particles
+        params = self.sample_parameters(particles=particles)
+        self._param_net.set_parameters(params)
+        outputs, _ = self._param_net(inputs)
+        return outputs
+
     def evaluate(self, loss_func=None):
         """Evaluate on a randomly drawn network. """
 
         assert self._test_loader is not None, "Must set test_loader first."
         if loss_func is None:
             loss_func = self._loss_func
-        # self._net.eval()
+        if self._use_fc_bn:
+            self._net.eval()
         params = self.sample_parameters(particles=1)
-        # self._net.train()
         self._param_net.set_parameters(params)
+        if self._use_fc_bn:
+            self._net.train()
         with record_time("time/test"):
             test_acc = 0.
             test_loss = 0.

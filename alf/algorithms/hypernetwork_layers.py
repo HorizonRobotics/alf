@@ -105,7 +105,7 @@ class ParamFC(nn.Module):
                 will have its own input data by slicing inputs.
 
         Returns:
-            torch.Tensor with shape ``[B, n, D']``
+            torch.Tensor with shape ``[B, n, D]`` or ``[B, D]``
                 where the meaning of the symbols are:
                 - ``B``: batch
                 - ``n``: number of replicas
@@ -144,7 +144,7 @@ class ParamFC(nn.Module):
         else:
             res = torch.bmm(inputs, self._weight.transpose(1, 2))
         res = res.transpose(0, 1)  # [B, n, D]
-        res = res.squeeze()
+        res = res.squeeze(1)  # [B, D] if n=1
 
         return self._activation(res)
 
