@@ -53,4 +53,4 @@ TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=20
 TrainerConfig.use_rollout_state=True
-TrainerConfig.replay_buffer_length=100000
+TrainerConfig.replay_buffer_length=50000
