@@ -17,7 +17,6 @@ import gin
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
 from typing import Callable
 
 import alf
@@ -241,8 +240,7 @@ class HyperNetwork(Generator):
             loss = 0.
             if self._loss_type == 'classification':
                 avg_acc = []
-            for batch_idx, (data, target) in enumerate(
-                    tqdm(self._train_loader)):
+            for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 params = None

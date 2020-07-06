@@ -131,7 +131,7 @@ class ParamLayersTest(parameterized.TestCase, alf.test.TestCase):
             if use_bias:
                 conv.bias.data.copy_(bias[i])
             outs = conv(image)
-            self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(), 1e-6)
+            self.assertLess((outs - p_outs[:, i, :, :, :]).abs().max(), 1e-5)
 
 
 if __name__ == "__main__":
