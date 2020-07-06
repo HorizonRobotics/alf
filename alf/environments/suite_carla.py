@@ -674,7 +674,7 @@ class World(object):
         self._world = world
         self._map = world.get_map()
         self._waypoints = self._map.generate_waypoints(2.0)
-        self._actors = []
+        self._actors = []  # including vehicles and walkers
         self._actor_dict = {}
         self._actor_locations = {}
 
@@ -1309,10 +1309,10 @@ class CarlaEnvironment(AlfEnvironment):
             num_other_vehicles (int): the number of autopilot vehicles
             num_walkers (int): the number of walkers
             global_distance_to_leading_vehicle (str): the autopiloted vehicles
-                will try to keep such distance from other vehicle.s
-            percentage_pedestrians_running (float): percent of running walkers
-            percentage_pedestrians_crossing (float): percent of walkers walking
-                through the road
+                will try to keep such distance from other vehicles.
+            percentage_walkers_running (float): percent of running walkers
+            percentage_walkers_crossing (float): percent of walkers walking
+                across the road.
             use_hybrid_physics_mode (bool): If true, the autopiloted vehicle will
                 not use physics for simulation if it is far from other vehicles.
             safe (bool): avoid spawning vehicles prone to accidents.
@@ -1456,7 +1456,6 @@ class CarlaEnvironment(AlfEnvironment):
     def _spawn_walkers(self):
         walker_blueprints = self._world.get_blueprint_library().filter(
             self._walker_filter)
-        commands = []
 
         # 1. take all the random locations to spawn
         spawn_points = []
