@@ -75,9 +75,11 @@ class Config(object):
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             random_seed (None|int): random seed, a random seed is used if None
-            dataset (str): the dataset for training and evaluation
             epochs (int): number of training epoches
+            evaluate (bool): whether to evluate after training
             summary_interval (int): write summary every so many training steps
+            summaries_flush_secs (int): flush summary to disk every so many seconds
+            summary_max_queue (int): flush to disk every so mary summaries
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
         """
@@ -100,6 +102,19 @@ def create_dataset(dataset_name='mnist',
                    dataset_loader=datagen,
                    train_batch_size=100,
                    test_batch_size=100):
+    """Create a pytorch data loaders.
+
+    Args:
+        dataset_name (str): dataset_name
+        dataset_loader (Callable) : callable that create pytorch data
+            loaders for both training and testing.
+        train_batch_size (int): batch_size for training.
+        test_batch_size (int): batch_size for testing.
+
+    Returns:
+        trainset (torch.utils.data.DataLoaderr):
+        testset (torch.utils.data.DataLoaderr):
+    """
 
     trainset, testset = getattr(dataset_loader,
                                 'load_{}'.format(dataset_name))(

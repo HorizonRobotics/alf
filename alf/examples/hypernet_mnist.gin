@@ -20,8 +20,8 @@ HyperNetwork.hidden_layers=%HIDDEN_LAYERS
 HyperNetwork.particles=10
 HyperNetwork.noise_dim=256
 HyperNetwork.kernel_sharpness=.1
-HyperNetwork.par_vi = 'svgd'
-# HyperNetwork.use_fc_bn=True
+HyperNetwork.par_vi = 'gfsf'
+HyperNetwork.loss_type = 'classification'
 HyperNetwork.optimizer=@hypernet/Adam()
 
 import alf.algorithms.hypernetwork_networks

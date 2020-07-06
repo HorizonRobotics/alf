@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""HyperNetwork algorithm."""
 
 from absl import logging
 import gin
@@ -30,36 +29,63 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 from alf.utils.summary_utils import record_time
 
-HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo",
-                                  ["loss", "acc", "avg_acc"])
+HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo", ["loss", "extra"])
 
 
 @gin.configurable
 class HyperNetwork(Generator):
-    """HyperNetwork
+    """HyperNetwork 
+
+    HyperrNetwork is a generator that generates a set of parameters for a predefined
+    neural network from a random noise input. It is based on the following work:
+
+    https://github.com/neale/HyperGAN
+
+    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, 
+    Performant Neural Networks." International Conference on Machine Learning. 2019.
+
+    Major differences versus the original paper are:
+
+        * A single genrator that generates parameters for all network layers.
+
+        * Remove the mixer and the distriminator.
+
+        * Amortized particle-based variational inference (ParVI) to train the hypernetwork,
+          in particular, two ParVI methods are implemented:
+
+            1. amortized Stein Variational Gradient Descent (SVGD):
+
+            Feng et al "Learning to Draw Samples with Amortized Stein Variational
+            Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+
+            2. amortized Wasserstein ParVI with Smooth Functions (GFSF):
+
+            Liu, Chang, et al. "Understanding and accelerating particle-based 
+            variational inference." International Conference on Machine Learning. 2019.
 
     """
 
-    def __init__(
-            self,
-            input_tensor_spec,
-            conv_layer_params=None,
-            fc_layer_params=None,
-            activation=torch.relu_,
-            last_layer_size=None,
-            last_activation=None,
-            noise_dim=32,
-            # noise_type='normal',
-            hidden_layers=(64, 64),
-            use_fc_bn=False,
-            particles=32,
-            entropy_regularization=1.,
-            kernel_sharpness=1.,
-            loss_func: Callable = None,
-            par_vi="gfsf",
-            optimizer=None,
-            regenerate_for_each_batch=True,
-            name="HyperNetwork"):
+    def __init__(self,
+                 input_tensor_spec,
+                 conv_layer_params=None,
+                 fc_layer_params=None,
+                 activation=torch.relu_,
+                 last_layer_size=None,
+                 last_activation=None,
+                 noise_dim=32,
+                 hidden_layers=(64, 64),
+                 use_fc_bn=False,
+                 particles=32,
+                 entropy_regularization=1.,
+                 kernel_sharpness=1.,
+                 loss_type="classification",
+                 loss_func: Callable = None,
+                 voting="soft",
+                 par_vi="gfsf",
+                 optimizer=None,
+                 regenerate_for_each_batch=True,
+                 print_network=False,
+                 name="HyperNetwork"):
         """
         Args:
             Args for the generated parametric network
@@ -86,8 +112,6 @@ class HyperNetwork(Generator):
             Args for the generator
             ====================================================================
             noise_dim (int): dimension of noise
-            noise_type (str): distribution type of noise input to the generator, 
-                types are [``uniform``, ``normal``, ``categorical``, ``softmax``] 
             hidden_layers (tuple): size of hidden layers.
             use_fc_bn (bool): whether use batnch normalization for fc layers.
             particles (int): number of sampling particles
@@ -97,12 +121,17 @@ class HyperNetwork(Generator):
                     :math:`\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))`
                 where width is the elementwise moving average of :math:`(x-y)^2`
 
-            Args for training
+            Args for training and testing
             ====================================================================
+            loss_type (str): loglikelihood type for the generated functions,
+                types are [``classification``, ``regression``]
             loss_func (Callable): loss_func(outputs, targets)   
+            voting (str): types of voting results from sampled functions,
+                types are [``soft``, ``hard``]
             optimizer (torch.optim.Optimizer): The optimizer for training.
             regenerate_for_each_batch (bool): If True, particles will be regenerated 
                 for every training batch.
+            print_network (bool): whether print out the archetectures of networks.
             name (str):
         """
         param_net = ParamNetwork(
@@ -112,10 +141,6 @@ class HyperNetwork(Generator):
             activation=activation,
             last_layer_size=last_layer_size,
             last_activation=last_activation)
-
-        # print("Generated network")
-        # print("-" * 68)
-        # print(param_net)
 
         gen_output_dim = param_net.param_length
         noise_spec = TensorSpec(shape=(noise_dim, ))
@@ -127,9 +152,14 @@ class HyperNetwork(Generator):
             last_activation=math_ops.identity,
             name="Generator")
 
-        # print("Generator network")
-        # print("-" * 68)
-        # print(net)
+        if print_network:
+            print("Generated network")
+            print("-" * 68)
+            print(param_net)
+
+            print("Generator network")
+            print("-" * 68)
+            print(net)
 
         super().__init__(
             gen_output_dim,
@@ -148,8 +178,24 @@ class HyperNetwork(Generator):
         self._loss_func = loss_func
         self._par_vi = par_vi
         self._use_fc_bn = use_fc_bn
-        if self._loss_func is None:
-            self._loss_func = F.cross_entropy
+        self._loss_type = loss_type
+        assert (voting in ['soft', 'hard'
+                           ]), ("voting only supports \"soft\" and \"hard\"")
+        self._voting = voting
+        if loss_type == 'classification':
+            self._compute_loss = self._classification_loss
+            self._vote = self._classification_vote
+            if self._loss_func is None:
+                self._loss_func = F.cross_entropy
+        elif loss_type == 'regression':
+            self._compute_loss = self._regression_loss
+            self._vote = self._regression_vote
+            if self._loss_func is None:
+                self._loss_func = F.mse_loss
+        else:
+            assert ValueError(
+                "loss_type only supports \"classification\" and \"regression\""
+            )
         if par_vi == 'gfsf':
             self._grad_func = self._stein_grad
         elif par_vi == 'svgd':
@@ -157,65 +203,82 @@ class HyperNetwork(Generator):
         else:
             assert ValueError("par_vi only supports \"gfsf\" and \"svgd\"")
 
-        # self._noise_sampler = NoiseSampler(
-        #     noise_type, noise_dim, particles=particles)
-
     def set_data_loader(self, train_loader, test_loader=None):
+        """Set data loadder for training and testing."""
         self._train_loader = train_loader
         self._test_loader = test_loader
 
     def set_particles(self, particles):
+        """Set the number of particles to sample through one forward
+        pass of the hypernetwork. """
         self._particles = particles
 
     @property
     def particles(self):
         return self._particles
 
-    def sample_parameters(self, particles=None):
-        if particles is None:
+    def sample_parameters(self, noise=None, particles=None, training=True):
+        "Sample parameters for an ensemble of networks." ""
+        if noise is None and particles is None:
             particles = self.particles
-        params, _ = self._predict(inputs=None, batch_size=particles)
+        params, _ = self._predict(
+            inputs=None, noise=noise, batch_size=particles, training=training)
         return params
+
+    def predict(self, inputs, particles=None):
+        """Predict ensemble outputs for inputs using the hypernetwork model."""
+
+        params = self.sample_parameters(particles=particles)
+        self._param_net.set_parameters(params)
+        outputs, _ = self._param_net(inputs)
+        return outputs
 
     def train_iter(self, particles=None, state=None):
         """Perform one epoch (iteration) of training."""
 
         assert self._train_loader is not None, "Must set data_loader first."
-        if particles is None:
-            particles = self.particles
         with record_time("time/train"):
-            avg_acc = []
             loss = 0.
+            if self._loss_type == 'classification':
+                avg_acc = []
             for batch_idx, (data, target) in enumerate(
                     tqdm(self._train_loader)):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
+                params = None
                 if not self._regenerate_for_each_batch:
                     params = self.sample_parameters(particles=particles)
-                    self._param_net.set_parameters(params)
                 alg_step = self.train_step((data, target),
+                                           params=params,
                                            particles=particles,
                                            state=state)
                 self.update_with_gradient(alg_step.info)
-                avg_acc.append(alg_step.info.extra.avg_acc)
                 loss += alg_step.info.extra.loss
-        acc = torch.as_tensor(avg_acc)
-        logging.info("Avg acc: {}".format(acc.mean() * 100))
+                if self._loss_type == 'classification':
+                    avg_acc.append(alg_step.info.extra.extra)
+        if self._loss_type == 'classification':
+            acc = torch.as_tensor(avg_acc)
+            logging.info("Avg acc: {}".format(acc.mean() * 100))
         logging.info("Cum loss: {}".format(loss))
 
         return batch_idx + 1
 
-    def train_step(self, inputs, loss_func=None, particles=None, state=None):
+    def train_step(self,
+                   inputs,
+                   params=None,
+                   loss_func=None,
+                   particles=None,
+                   state=None):
         """Perform one batch of training computation.
 
         Args:
-            inputs (nested Tensor): if None, the outputs is generated only from
-                noise.
+            inputs (nested Tensor): input training data. 
+            params (Tensor): sampled parameter for param_net, if None,
+                will re-sample.
             loss_func (Callable): loss_func([outputs, inputs])
                 (loss_func(outputs) if inputs is None) returns a Tensor with
                 shape [batch_size] as a loss for optimizing the generator
-            batch_size (int): batch_size. Must be provided if inputs is None.
-                Its is ignored if inputs is not None
+            particles (int): number of sampled particles. 
             state: not used
 
         Returns:
@@ -223,12 +286,12 @@ class HyperNetwork(Generator):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        if particles is None:
-            particles = self.particles
         if loss_func is None:
             loss_func = self._loss_func
         if self._regenerate_for_each_batch:
             params = self.sample_parameters(particles=particles)
+        else:
+            assert params is not None, "Need sample params first."
 
         train_info, loss_propagated = self._grad_func(inputs, params,
                                                       loss_func)
@@ -241,19 +304,18 @@ class HyperNetwork(Generator):
     def _stein_grad(self, inputs, params, loss_func):
         """Compute particle gradients via gfsf (stein estimator). """
         data, target = inputs
-        particles = self.particles
-        self._param_net.set_parameters(param_j)
-        logit, _ = self._param_net(data)  # [B, N, D]
-        pred = logit.max(-1)[1]
-        target = target.unsqueeze(1).expand(*target.shape, self.particles)
-        acc = pred.eq(target).float().mean(0)
-        avg_acc = acc.mean()
-        loss = loss_func(logit.transpose(1, 2), target)
+        particles = params.shape[0]
+        self._param_net.set_parameters(params)
+        output, _ = self._param_net(data)  # [B, N, D]
+        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+                                            *target.shape[1:])
+        loss, extra = self._compute_loss(output, target, loss_func)
+
         loss_grad = torch.autograd.grad(loss.sum(), params)[0]
         logq_grad = self._score_func(params)
         grad = loss_grad + logq_grad
 
-        train_info = HyperNetworkLossInfo(loss=loss, acc=acc, avg_acc=avg_acc)
+        train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
         loss_propagated = torch.sum(grad.detach() * params, dim=-1)
 
         return train_info, loss_propagated
@@ -261,16 +323,14 @@ class HyperNetwork(Generator):
     def _svgd_grad(self, inputs, params, loss_func):
         """Compute particle gradients via svgd. """
         data, target = inputs
-        particles = self.particles // 2
+        particles = params.shape[0] // 2
         params_i, params_j = torch.split(params, particles, dim=0)
         self._param_net.set_parameters(params_j)
-        logit, _ = self._param_net(data)  # [B, N/2, D]
-        pred = logit.max(-1)[1]
-        target = target.unsqueeze(1).expand(*target.shape, particles)
-        acc = pred.eq(target).float().mean(0)
-        avg_acc = acc.mean()
+        output, _ = self._param_net(data)  # [B, N/2, D]
+        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+                                            *target.shape[1:])
+        loss, extra = self._compute_loss(output, target, loss_func)
 
-        loss = loss_func(logit.transpose(1, 2), target)
         loss_grad = torch.autograd.grad(loss.sum(), params_j)[0]  # [Nj, W]
         q_i = params_i + torch.rand_like(params_i) * 1e-8
         q_j = params_j + torch.rand_like(params_j) * 1e-8
@@ -279,10 +339,21 @@ class HyperNetwork(Generator):
         kernel_logp = torch.einsum('ji, jw->iw', kappa, loss_grad) / Nj
         grad = (kernel_logp + kappa_grad.mean(0))  # [Ni, W]
 
-        train_info = HyperNetworkLossInfo(loss=loss, acc=acc, avg_acc=avg_acc)
+        train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
         loss_propagated = torch.sum(grad.detach() * params_i, dim=-1)
 
         return train_info, loss_propagated
+
+    def _classification_loss(self, output, target, loss_func):
+        pred = output.max(-1)[1]
+        acc = pred.eq(target).float().mean(0)
+        avg_acc = acc.mean()
+        loss = loss_func(output.transpose(1, 2), target)
+        return loss, avg_acc
+
+    def _regression_loss(self, output, target, loss_func):
+        loss = loss_func(output, target)
+        return loss, ()
 
     def _rbf_func(self, x, y, h_min=1e-3):
         r"""Compute the rbf kernel and its gradient w.r.t. first entry 
@@ -354,16 +425,7 @@ class HyperNetwork(Generator):
         # TODO: implement the kernel bandwidth selection via Heat equation.
         return self._kernel_sharpness
 
-    def predict(self, inputs, particles=None):
-        """Predict ensemble outputs for inputs using the hypernetwork model."""
-        if particles is None:
-            particles = self.particles
-        params = self.sample_parameters(particles=particles)
-        self._param_net.set_parameters(params)
-        outputs, _ = self._param_net(inputs)
-        return outputs
-
-    def evaluate(self, loss_func=None):
+    def evaluate(self, loss_func=None, particles=None):
         """Evaluate on a randomly drawn network. """
 
         assert self._test_loader is not None, "Must set test_loader first."
@@ -371,23 +433,50 @@ class HyperNetwork(Generator):
             loss_func = self._loss_func
         if self._use_fc_bn:
             self._net.eval()
-        params = self.sample_parameters(particles=1)
+        params = self.sample_parameters(particles=particles)
         self._param_net.set_parameters(params)
         if self._use_fc_bn:
             self._net.train()
         with record_time("time/test"):
-            test_acc = 0.
+            if self._loss_type == 'classification':
+                test_acc = 0.
             test_loss = 0.
             for i, (data, target) in enumerate(self._test_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
-                logit, _ = self._param_net(data)  # [B, 1, D]
-                pred = logit.max(-1)[1]
-                correct = pred.eq(target.view_as(pred)).long().sum()
-                loss = loss_func(logit, target)
-                test_acc += correct.item()
+                output, _ = self._param_net(data)  # [B, N, D]
+                loss, extra = self._vote(output, target, loss_func)
+                if self._loss_type == 'classification':
+                    test_acc += extra.item()
                 test_loss += loss.item()
 
-        test_acc /= len(self._test_loader.dataset)
-        logging.info("Test acc: {}".format(test_acc * 100))
+        if self._loss_type == 'classification':
+            test_acc /= len(self._test_loader.dataset)
+            logging.info("Test acc: {}".format(test_acc * 100))
         logging.info("Test loss: {}".format(test_loss))
+
+    def _classification_vote(self, output, target, loss_func):
+        """ensmeble the ooutputs from sampled classifiers."""
+        particles = output.shape[1]
+        probs = F.softmax(output, dim=-1)  # [B, N, D]
+        if self._voting == 'soft':
+            pred = probs.mean(1).cpu()  # [B, D]
+            vote = pred.argmax(-1)
+        elif self._voting == 'hard':
+            pred = probs.argmax(-1).cpu()  # [B, N, 1]
+            vote = pred.mode(1)[0]  # [B, 1]
+        correct = vote.eq(target.cpu().view_as(vote)).float().cpu().sum()
+        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+                                            *target.shape[1:])
+        loss = loss_func(output.transpose(1, 2), target)
+        return loss, correct
+
+    def _regression_vote(self, output, target, loss_func):
+        """ensemble the outputs for sampled regressors."""
+        particles = output.shape[1]
+        pred = output.mean(1)  # [B, D]
+        loss = loss_func(pred, target)
+        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+                                            *target.shape[1:])
+        total_loss = loss_func(output, target)
+        return loss, total_loss

@@ -28,6 +28,17 @@ class ParamFC(nn.Module):
                  output_size,
                  activation=torch.relu_,
                  use_bias=True):
+        """A fully connected layer that does not maintain its own weight and bias,
+        but accepts both from users. If the given parameter (weight and bias) 
+        tensor has an extra batch dimension (first dimension), it performs
+        parallel FC operation. 
+
+        Args:
+            input_size (int): input size
+            output_size (int): output size
+            activation (torch.nn.functional):
+            use_bias (bool): whether use bias
+        """
         super(ParamFC, self).__init__()
 
         self._input_size = input_size
@@ -46,21 +57,26 @@ class ParamFC(nn.Module):
 
     @property
     def weight(self):
+        """Get stored weight tensor or batch of weight tensors."""
         return self._weight
 
     @property
     def bias(self):
+        """Get stored bias tensor or batch of bias tensors."""
         return self._bias
 
     @property
     def weight_length(self):
+        """Get the n_element of a single weight tensor. """
         return self._weight_length
 
     @property
     def bias_length(self):
+        """Get the n_element of a single bias tensor. """
         return self._bias_length
 
     def set_weight(self, weight):
+        """Store a weight tensor or batch of weight tensors."""
         assert (weight.ndim == 2 and weight.shape[1] == self._weight_length), (
             "Input weight has wrong shape %s. Expecting shape (n, %d)" %
             (weight.shape, self._weight_length))
@@ -74,6 +90,7 @@ class ParamFC(nn.Module):
                                    self._input_size)
 
     def set_bias(self, bias):
+        """Store a bias tensor or batch of bias tensors."""
         assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
             "Input bias has wrong shape %s. Expecting shape (n, %d)" %
             (bias.shape, self._bias_length))
@@ -159,7 +176,22 @@ class ParamConv2D(nn.Module):
                  strides=1,
                  pooling_kernel=None,
                  padding=0,
-                 use_bias=True):
+                 use_bias=False):
+        """A 2D conv layer that does not maintain its own weight and bias,
+        but accepts both from users. If the given parameter (weight and bias) 
+        tensor has an extra batch dimension (first dimension), it performs
+        parallel FC operation. 
+
+        Args:
+            in_channels (int): channels of the input image
+            out_channels (int): channels of the output image
+            kernel_size (int or tuple):
+            activation (torch.nn.functional):
+            strides (int or tuple):
+            pooling_kernel (int or tuple):
+            padding (int or tuple):
+            use_bias (bool): whether use bias
+        """
         super(ParamConv2D, self).__init__()
 
         self._in_channels = in_channels
@@ -183,21 +215,26 @@ class ParamConv2D(nn.Module):
 
     @property
     def weight(self):
+        """Get stored weight tensor or batch of weight tensors."""
         return self._weight
 
     @property
     def bias(self):
+        """Get stored bias tensor or batch of bias tensors."""
         return self._bias
 
     @property
     def weight_length(self):
+        """Get the n_element of a single weight tensor. """
         return self._weight_length
 
     @property
     def bias_length(self):
+        """Get the n_element of a single bias tensor. """
         return self._bias_length
 
     def set_weight(self, weight):
+        """Store a weight tensor or batch of weight tensors."""
         assert (weight.ndim == 2 and weight.shape[1] == self._weight_length), (
             "Input weight has wrong shape %s. Expecting shape (n, %d)" %
             (weight.shape, self._weight_length))
@@ -216,6 +253,7 @@ class ParamConv2D(nn.Module):
                                           self._kW)
 
     def set_bias(self, bias):
+        """Store a bias tensor or batch of bias tensors."""
         assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
             "Input bias has wrong shape %s. Expecting shape (n, %d)" %
             (bias.shape, self._bias_length))

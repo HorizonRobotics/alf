@@ -155,15 +155,26 @@ class Generator(Algorithm):
     def _trainable_attributes_to_ignore(self):
         return ["_predict_net"]
 
-    def _predict(self, inputs, batch_size=None, training=True):
+    @property
+    def noise_dim(self):
+        return self._noise_dim
+
+    def _predict(self, inputs, noise=None, batch_size=None, training=True):
         if inputs is None:
             assert self._input_tensor_spec is None
-            assert batch_size is not None
+            if noise is None:
+                assert batch_size is not None
+                noise = torch.randn(batch_size, self._noise_dim)
+            gen_inputs = noise
         else:
             nest.assert_same_structure(inputs, self._input_tensor_spec)
             batch_size = nest.get_nest_batch_size(inputs)
-        noise = torch.randn(batch_size, self._noise_dim)
-        gen_inputs = noise if inputs is None else [noise, inputs]
+            if noise is None:
+                noise = torch.randn(batch_size, self._noise_dim)
+            else:
+                assert noise.shape[0] == batch_size
+                assert noise.shape[1] == self._noise_dim
+            gen_inputs = [noise, inputs]
         if self._predict_net and not training:
             outputs = self._predict_net(gen_inputs)[0]
         else:

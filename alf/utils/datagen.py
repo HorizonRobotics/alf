@@ -11,6 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Adapted from the following:
+
+https://github.com/neale/HyperGAN/blob/master/datagen.py
+"""
 
 import torch
 import torchvision
@@ -75,37 +79,6 @@ def load_notmnist(train_bs=100, test_bs=100, num_workers=0):
         datasets.MNIST(
             path,
             train=False,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
-            ])),
-        batch_size=test_bs,
-        shuffle=False,
-        **kwargs)
-    return train_loader, test_loader
-
-
-def load_fashion_mnist(train_bs=32, test_bs=100):
-    path = 'data_f'
-    torch.cuda.manual_seed(1)
-    kwargs = {'num_workers': 1, 'pin_memory': True, 'drop_last': True}
-    train_loader = torch.utils.data.DataLoader(
-        datasets.FashionMNIST(
-            path,
-            train=True,
-            download=True,
-            transform=transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
-            ])),
-        batch_size=train_bs,
-        shuffle=True,
-        **kwargs)
-    test_loader = torch.utils.data.DataLoader(
-        datasets.FashionMNIST(
-            path,
-            train=False,
-            download=True,
             transform=transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Normalize((0.1307, ), (0.3081, ))

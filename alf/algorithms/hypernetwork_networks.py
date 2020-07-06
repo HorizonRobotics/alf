@@ -25,17 +25,38 @@ from alf.utils import common
 
 @gin.configurable
 class ParamConvNet(Network):
-    """A convolutional network with input network parameters. """
-
     def __init__(self,
                  input_channels,
                  input_size,
                  conv_layer_params,
                  same_padding=False,
                  activation=torch.relu_,
-                 use_bias=True,
+                 use_bias=False,
                  flatten_output=False,
                  name="ParamConvNet"):
+        """A fully 2D conv network that does not maintain its own network parameters,
+        but accepts them from users. If the given parameter tensor has an extra batch
+        dimension (first dimension), it performs parallel operations.
+
+        Args:
+            input_channels (int): number of channels in the input image
+            input_size (int or tuple): the input image size (height, width)
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format 
+                ``(filters, kernel_size, strides, padding, pooling_kernel)``,
+                where ``padding`` and ``pooling_kernel`` are optional.
+            same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
+                True, the user provided paddings in `conv_layer_params` will be
+                replaced by automatically calculated ones; if False, it
+                corresponds to TF's ``valid`` padding mode (the user can still
+                provide custom paddings though)
+            activation (torch.nn.functional): activation for all the layers
+            use_bias (bool): whether use bias
+            flatten_output (bool): If False, the output will be an image
+                structure of shape ``(B, n, C, H, W)``; otherwise the output
+                will be flattened into a feature of shape ``(B, n, C*H*W)``.
+            name (str):
+        """
 
         input_size = common.tuplify2d(input_size)
         super().__init__(
@@ -71,6 +92,7 @@ class ParamConvNet(Network):
 
     @property
     def param_length(self):
+        """Get total number of parameters for all layers. """
         if self._param_length is None:
             length = 0
             for conv_l in self._conv_layers:
@@ -79,6 +101,7 @@ class ParamConvNet(Network):
         return self._param_length
 
     def set_parameters(self, theta):
+        """Distribute parameters to corresponding layers. """
         if theta.ndim == 1:
             theta = theta.unsqueeze(0)
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
@@ -96,7 +119,11 @@ class ParamConvNet(Network):
         self._output_spec = None
 
     def forward(self, inputs, state=()):
-        """The empty state just keeps the interface same with other networks."""
+        """
+        Args:
+            inputs (Tensor):
+            state: not used, just keeps the interface same with other networks.
+        """
         x = inputs
         for conv_l in self._conv_layers[:-1]:
             x = conv_l(x, keep_group_dim=False)
@@ -108,10 +135,6 @@ class ParamConvNet(Network):
 
 @gin.configurable
 class ParamNetwork(Network):
-    """ParamNetwork
-
-    """
-
     def __init__(self,
                  input_tensor_spec,
                  conv_layer_params=None,
@@ -120,6 +143,31 @@ class ParamNetwork(Network):
                  last_layer_size=None,
                  last_activation=None,
                  name="ParamNetwork"):
+        """A network with Fc and conv2D layers that does not maintain its own 
+        network parameters, but accepts them from users. If the given parameter 
+        tensor has an extra batch dimension (first dimension), it performs 
+        parallel operations.
+
+        Args:
+            input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
+                the input. If nested, then ``preprocessing_combiner`` must not be
+                None.
+            conv_layer_params (tuple[tuple]): a tuple of tuples where each
+                tuple takes a format 
+                ``(filters, kernel_size, strides, padding, pooling_kernel)``,
+                where ``padding`` and ``pooling_kernel`` are optional.
+            fc_layer_params (tuple[int]): a tuple of integers
+                representing FC layer sizes.
+            activation (torch.nn.functional): activation for all the layers
+            last_layer_size (int): an optional size of an additional layer
+                appended at the very end. Note that if ``last_activation`` is
+                specified, ``last_layer_size`` has to be specified explicitly.
+            last_activation (nn.functional): activation function of the
+                additional layer specified by ``last_layer_size``. Note that if
+                ``last_layer_size`` is not None, ``last_activation`` has to be
+                specified explicitly.
+            name (str):
+        """
 
         super().__init__(input_tensor_spec=input_tensor_spec, name=name)
 
@@ -170,6 +218,7 @@ class ParamNetwork(Network):
 
     @property
     def param_length(self):
+        """Get total number of parameters for all layers. """
         if self._param_length is None:
             length = 0
             if self._conv_net is not None:
@@ -180,6 +229,7 @@ class ParamNetwork(Network):
         return self._param_length
 
     def set_parameters(self, theta):
+        """Distribute parameters to corresponding layers. """
         if theta.ndim == 1:
             theta = theta.unsqueeze(0)
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
@@ -201,7 +251,11 @@ class ParamNetwork(Network):
         self._output_spec = None
 
     def forward(self, inputs, state=()):
-        """The empty state just keeps the interface same with other networks."""
+        """
+        Args:
+            inputs (Tensor):
+            state: not used, just keeps the interface same with other networks.
+        """
         if self._conv_net is not None:
             x, state = self._conv_net(inputs, state=state)
         for fc_l in self._fc_layers:
