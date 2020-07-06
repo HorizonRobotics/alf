@@ -166,7 +166,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
             stacked = nest.fast_map_structure(
                 lambda *arrays: torch.stack(arrays), *time_steps)
         if alf.get_default_device() == "cuda":
-            stacked = nest.map_structure(lambda x: x.cuda(), stacked)
+            cpu = stacked
+            stacked = nest.map_structure(lambda x: x.cuda(), cpu)
+            stacked._cpu = cpu
         return stacked
 
     def _unstack_actions(self, batched_actions):

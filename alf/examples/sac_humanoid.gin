@@ -14,8 +14,6 @@ create_environment.env_load_fn=@suite_mujoco.load
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
-actor/ActorDistributionNetwork.input_tensor_spec=%observation_spec
-actor/ActorDistributionNetwork.output_tensor_spec=%action_spec
 actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
 actor/ActorDistributionNetwork.continuous_projection_net=@NormalProjectionNetwork
 NormalProjectionNetwork.state_dependent_std=True
@@ -25,14 +23,13 @@ NormalProjectionNetwork.std_transform=@clipped_exp
 
 actor/Adam.learning_rate=3e-4
 
-critic/CriticNetwork.input_tensor_spec=(%observation_spec, %action_spec)
 critic/CriticNetwork.joint_fc_layer_params=(256, 256)
 critic/Adam.learning_rate=3e-4
 
 alpha/Adam.learning_rate=3e-4
 
-SacAlgorithm.actor_network=@actor/ActorDistributionNetwork()
-SacAlgorithm.critic_network=@critic/CriticNetwork()
+SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
+SacAlgorithm.critic_network_cls=@critic/CriticNetwork
 SacAlgorithm.actor_optimizer=@actor/Adam()
 SacAlgorithm.critic_optimizer=@critic/Adam()
 SacAlgorithm.alpha_optimizer=@alpha/Adam()

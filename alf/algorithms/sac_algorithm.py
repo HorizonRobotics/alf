@@ -135,9 +135,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 actor_network: ActorDistributionNetwork = None,
-                 critic_network: CriticNetwork = None,
-                 q_network: QNetwork = None,
+                 actor_network_cls=ActorDistributionNetwork,
+                 critic_network_cls=CriticNetwork,
+                 q_network_cls=QNetwork,
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
@@ -162,15 +162,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 continuous actions can be arbitrary while only one discrete
                 action is allowed currently. If it's a mixture, then it must be
                 a tuple/list ``(discrete_action_spec, continuous_action_spec)``.
-            actor_network (ActorDistributionNetwork): The network will be called
+            actor_network_cls (Callable): is used to construct the actor network.
+                The constructed actor network will be called
                 to sample continuous actions. All of its output specs must be
                 continuous. Note that we don't need a discrete actor network
                 because a discrete action can simply be sampled from the Q values.
-            critic_network (CriticNetwork): used for estimating ``Q(s,a)`` given
-                that the action is continuous. Its input action spec must be
-                consistent with the continuous actions in ``action_spec``.
-            q_network (QNetwork): used for estimating ``Q(s,a)`` given that the
-                action is discrete. Its output spec must be consistent with
+            critic_network_cls (Callable): is used to construct critic network.
+                for estimating ``Q(s,a)`` given that the action is continuous.
+            q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
+                given that the action is discrete. Its output spec must be consistent with
                 the discrete action in ``action_spec``.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
@@ -209,9 +209,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._use_parallel_network = use_parallel_network
 
-        critic_networks, self._act_type = self._make_critic_networks(
-            observation_spec, action_spec, actor_network, critic_network,
-            q_network)
+        critic_networks, actor_network, self._act_type = self._make_networks(
+            observation_spec, action_spec, actor_network_cls,
+            critic_network_cls, q_network_cls)
 
         log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
 
@@ -269,9 +269,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             tau=target_update_tau,
             period=target_update_period)
 
-    def _make_critic_networks(self, observation_spec, action_spec,
-                              continuous_actor_network, critic_network,
-                              q_network):
+    def _make_networks(self, observation_spec, action_spec,
+                       continuous_actor_network_cls, critic_network_cls,
+                       q_network_cls):
         def _make_parallel(net):
             if self._use_parallel_network:
                 nets = net.make_parallel(self._num_critic_replicas)
@@ -300,50 +300,52 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     " (discrete_action_spec, continuous_action_spec)!")
             _check_spec_equal(action_spec[0], discrete_action_spec)
             _check_spec_equal(action_spec[1], continuous_action_spec)
+            discrete_action_spec = action_spec[0]
+            continuous_action_spec = action_spec[1]
+        elif discrete_action_spec:
+            discrete_action_spec = action_spec
+        elif continuous_action_spec:
+            continuous_action_spec = action_spec
 
+        actor_network = None
         if continuous_action_spec:
-            assert continuous_actor_network is not None, (
+            assert continuous_actor_network_cls is not None, (
                 "If there are continuous actions, then a ActorDistributionNetwork "
                 "must be provided for sampling continuous actions!")
-            _check_spec_equal(continuous_action_spec,
-                              continuous_actor_network._action_spec)
+            actor_network = continuous_actor_network_cls(
+                input_tensor_spec=observation_spec,
+                action_spec=continuous_action_spec)
             if not discrete_action_spec:
                 act_type = ActionType.Continuous
-                assert critic_network is not None, (
+                assert critic_network_cls is not None, (
                     "If only continuous actions exist, then a CriticNetwork must"
                     " be provided!")
-                if q_network is not None:
-                    common.warning_once(
-                        "The provided QNetwork will be ignored.")
-                _check_spec_equal(continuous_action_spec,
-                                  critic_network.input_tensor_spec[1])
+                critic_network = critic_network_cls(
+                    input_tensor_spec=(observation_spec,
+                                       continuous_action_spec))
                 critic_networks = _make_parallel(critic_network)
 
         if discrete_action_spec:
             act_type = ActionType.Discrete
-            assert len(discrete_action_spec) == 1, (
+            assert len(alf.nest.flatten(discrete_action_spec)) == 1, (
                 "Only support at most one discrete action currently! "
                 "Discrete action spec: {}".format(discrete_action_spec))
-            assert q_network is not None, (
+            assert q_network_cls is not None, (
                 "If there exists a discrete action, then QNetwork must "
                 "be provided!")
-            if critic_network is not None:
-                common.warning_once(
-                    "The provided CriticNetwork will be ignored.")
             if continuous_action_spec:
                 act_type = ActionType.Mixed
-                assert (
-                    isinstance(q_network.input_tensor_spec, tuple)
-                    and len(q_network.input_tensor_spec) == 2
-                ), ("In the mixed case, the input spec of QNetwork must be "
-                    "a tuple (observation_spec, continuous_action_spec)!")
-                _check_spec_equal(q_network.input_tensor_spec[0],
-                                  observation_spec)
-                _check_spec_equal(q_network.input_tensor_spec[1],
-                                  continuous_action_spec)
+                q_network = q_network_cls(
+                    input_tensor_spec=(observation_spec,
+                                       continuous_action_spec),
+                    action_spec=discrete_action_spec)
+            else:
+                q_network = q_network_cls(
+                    input_tensor_spec=observation_spec,
+                    action_spec=action_spec)
             critic_networks = _make_parallel(q_network)
 
-        return critic_networks, act_type
+        return critic_networks, actor_network, act_type
 
     def _predict_action(self,
                         observation,
@@ -528,9 +530,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return alpha_loss
 
     def train_step(self, exp: Experience, state: SacState):
+        # We detach exp.observation here so that in the case that exp.observation
+        # is calculated by some other trainable module, the training of that
+        # module will not be affected by the gradient back-propagated from the
+        # actor. However, the gradient from critic will still affect the training
+        # of that module.
         (action_distribution, action, critics,
          action_state) = self._predict_action(
-             exp.observation, state=state.action)
+             common.detach(exp.observation), state=state.action)
 
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)

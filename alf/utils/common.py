@@ -175,7 +175,7 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     def update():
         for model, target_model in zip(models, target_models):
             for ws, wt in zip(model.parameters(), target_model.parameters()):
-                wt.data.copy_((1 - tau) * wt + tau * ws)
+                wt.data.lerp_(ws, tau)
 
     return Periodically(update, period, 'periodic_update_targets')
 

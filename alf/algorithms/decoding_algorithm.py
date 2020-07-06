@@ -29,7 +29,8 @@ class DecodingAlgorithm(Algorithm):
     def __init__(self,
                  decoder: Network,
                  loss=torch.nn.MSELoss(reduction='none'),
-                 loss_weight=1.0):
+                 loss_weight=1.0,
+                 name="DecodingAlgorithm"):
         """
 
         Args:
@@ -40,7 +41,7 @@ class DecodingAlgorithm(Algorithm):
             loss_weight (float): weight for the loss.
         """
         super(DecodingAlgorithm, self).__init__(
-            train_state_spec=decoder.state_spec, name="DecodingAlgorithm")
+            train_state_spec=decoder.state_spec, name=name)
 
         self._decoder = decoder
         self._loss = loss

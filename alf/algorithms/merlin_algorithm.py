@@ -516,7 +516,7 @@ class ResnetEncodingNetwork(alf.networks.Network):
         enc_layers.extend([
             nn.Flatten(),
             alf.layers.FC(
-                input_size=np.prod(shape),
+                input_size=int(np.prod(shape)),
                 output_size=output_size,
                 activation=output_activation)
         ])
@@ -556,7 +556,7 @@ class ResnetDecodingNetwork(alf.networks.Network):
         dec_layers.extend([
             alf.layers.FC(input_tensor_spec.shape[0], 500, activation=relu),
             alf.layers.FC(500, h * w, activation=relu),
-            alf.layers.Reshape((64, h / 8, w / 8))
+            alf.layers.Reshape((64, h // 8, w // 8))
         ])
 
         for stride in reversed([2, 1, 2, 1, 2, 1]):

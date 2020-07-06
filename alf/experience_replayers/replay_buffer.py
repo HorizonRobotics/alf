@@ -342,7 +342,10 @@ class ReplayBuffer(RingBuffer):
             if self._postprocess_exp_fn:
                 result, info = self._postprocess_exp_fn(self, result, info)
 
-        return convert_device(result), convert_device(info)
+        if alf.get_default_device() == self._device:
+            return result, info
+        else:
+            return convert_device(result), convert_device(info)
 
     def _recent_sample(self, batch_size, batch_length):
         return self._sample(batch_size, batch_length, self._recent_data_steps)
@@ -407,7 +410,8 @@ class ReplayBuffer(RingBuffer):
                                              batch_length))
             self._change_mini_batch_length(batch_length)
 
-        assert self._sum_tree.summary() > 0, (
+        total_weight = self._sum_tree.summary()
+        assert total_weight > 0, (
             "There is no data in the "
             "buffer or the data of all the environments are shorter than "
             "batch_length=%s" % batch_length)
@@ -416,11 +420,11 @@ class ReplayBuffer(RingBuffer):
         if not self._with_replacement:
             r = (
                 r + torch.arange(batch_size, dtype=torch.float32)) / batch_size
-        r = r * self._sum_tree.summary()
+        r = r * total_weight
         indices = self._sum_tree.find_sum_bound(r)
         env_ids, idx = self._index_to_env_id_idx(indices)
         info = BatchInfo(env_ids=env_ids, positions=self._pad(idx, env_ids))
-        avg_weight = self._sum_tree.nnz / self._sum_tree.summary()
+        avg_weight = self._sum_tree.nnz / total_weight
         info = info._replace(
             importance_weights=self._sum_tree[indices] * avg_weight)
 

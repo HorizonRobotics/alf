@@ -14,7 +14,7 @@
 
 from absl import logging
 from absl.testing import parameterized
-import functools
+from functools import partial
 import torch
 import torch.distributions as td
 import unittest
@@ -46,16 +46,10 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             BoundedTensorSpec((10, ))
         ]
 
-        actor_network = ActorDistributionNetwork(observation_spec,
-                                                 continuous_action_spec)
-        q_network = QNetwork(observation_spec, discrete_action_spec)
-        universal_q_network = QNetwork(
-            (observation_spec, continuous_action_spec),
-            discrete_action_spec,
-            preprocessing_combiner=NestConcat())
-        critic_network = CriticNetwork(
-            (observation_spec, continuous_action_spec),
-            action_preprocessing_combiner=NestConcat())
+        universal_q_network = partial(
+            QNetwork, preprocessing_combiner=NestConcat())
+        critic_network = partial(
+            CriticNetwork, action_preprocessing_combiner=NestConcat())
 
         # q_network instead of critic_network is needed
         self.assertRaises(
@@ -63,12 +57,12 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             SacAlgorithm,
             observation_spec=observation_spec,
             action_spec=discrete_action_spec,
-            critic_network=critic_network)
+            q_network_cls=None)
 
         sac = SacAlgorithm(
             observation_spec=observation_spec,
             action_spec=discrete_action_spec,
-            q_network=q_network)
+            q_network_cls=QNetwork)
         self.assertEqual(sac._act_type, SacActionType.Discrete)
         self.assertEqual(sac.train_state_spec.actor, ())
         self.assertEqual(sac.train_state_spec.action.actor_network, ())
@@ -79,13 +73,12 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             SacAlgorithm,
             observation_spec=observation_spec,
             action_spec=continuous_action_spec,
-            q_network=q_network)
+            critic_network_cls=None)
 
         sac = SacAlgorithm(
             observation_spec=observation_spec,
             action_spec=continuous_action_spec,
-            actor_network=actor_network,
-            critic_network=critic_network)
+            critic_network_cls=critic_network)
         self.assertEqual(sac._act_type, SacActionType.Continuous)
         self.assertEqual(sac.train_state_spec.action.critic, ())
 
@@ -95,22 +88,12 @@ class SACAlgorithmTestInit(alf.test.TestCase):
             SacAlgorithm,
             observation_spec=observation_spec,
             action_spec=(continuous_action_spec, discrete_action_spec),
-            actor_network=actor_network,
-            q_network=universal_q_network)
-        # q_network should be universal_q_network
-        self.assertRaises(
-            AssertionError,
-            SacAlgorithm,
-            observation_spec=observation_spec,
-            action_spec=(discrete_action_spec, continuous_action_spec),
-            actor_network=actor_network,
-            q_network=q_network)
+            q_network_cls=universal_q_network)
 
         sac = SacAlgorithm(
             observation_spec=observation_spec,
             action_spec=(discrete_action_spec, continuous_action_spec),
-            actor_network=actor_network,
-            q_network=universal_q_network)
+            q_network_cls=universal_q_network)
         self.assertEqual(sac._act_type, SacActionType.Mixed)
         self.assertEqual(sac.train_state_spec.actor, ())
 
@@ -142,26 +125,25 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         fc_layer_params = (10, 10)
 
-        continuous_projection_net_ctor = functools.partial(
+        continuous_projection_net_ctor = partial(
             alf.networks.NormalProjectionNetwork,
             state_dependent_std=True,
             scale_distribution=True,
             std_transform=clipped_exp)
 
-        actor_network = ActorDistributionNetwork(
-            obs_spec,
-            action_spec,
+        actor_network = partial(
+            ActorDistributionNetwork,
             fc_layer_params=fc_layer_params,
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
-        critic_network = CriticNetwork((obs_spec, action_spec),
-                                       joint_fc_layer_params=fc_layer_params)
+        critic_network = partial(
+            CriticNetwork, joint_fc_layer_params=fc_layer_params)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
-            actor_network=actor_network,
-            critic_network=critic_network,
+            actor_network_cls=actor_network,
+            critic_network_cls=critic_network,
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,
@@ -213,13 +195,12 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
 
         fc_layer_params = (10, 10)
 
-        q_network = QNetwork(
-            obs_spec, action_spec, fc_layer_params=fc_layer_params)
+        q_network = partial(QNetwork, fc_layer_params=fc_layer_params)
 
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
-            q_network=q_network,
+            q_network_cls=q_network,
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,
@@ -269,28 +250,27 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
 
         fc_layer_params = (10, 10, 10)
 
-        continuous_projection_net_ctor = functools.partial(
+        continuous_projection_net_ctor = partial(
             alf.networks.NormalProjectionNetwork,
             state_dependent_std=True,
             scale_distribution=True,
             std_transform=clipped_exp)
 
-        actor_network = ActorDistributionNetwork(
-            obs_spec,
-            action_spec[1],
+        actor_network = partial(
+            ActorDistributionNetwork,
             fc_layer_params=fc_layer_params,
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
-        q_network = QNetwork((obs_spec, action_spec[1]),
-                             action_spec[0],
-                             preprocessing_combiner=NestConcat(),
-                             fc_layer_params=fc_layer_params)
+        q_network = partial(
+            QNetwork,
+            preprocessing_combiner=NestConcat(),
+            fc_layer_params=fc_layer_params)
 
         alg2 = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
-            actor_network=actor_network,
-            q_network=q_network,
+            actor_network_cls=actor_network,
+            q_network_cls=q_network,
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,

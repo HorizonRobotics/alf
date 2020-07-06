@@ -70,7 +70,9 @@ class device(object):
 
     def __enter__(self):
         self._prev_device_name = get_default_device()
-        set_default_device(self._device_name)
+        if self._prev_device_name != self._device_name:
+            set_default_device(self._device_name)
 
     def __exit__(self, type, value, traceback):
-        set_default_device(self._prev_device_name)
+        if self._prev_device_name != self._device_name:
+            set_default_device(self._prev_device_name)
