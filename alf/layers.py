@@ -344,8 +344,7 @@ class FC(Module):
             alf.summary.scalar(
                 name=self.summary_name + '.pre_activation.output_norm.' +
                 self.exe_mode_str(),
-                data=torch.mean(
-                    y.norm(dim=list(range(1, pre_activation.ndim)))))
+                data=torch.mean(y.norm(dim=list(range(1, y.ndim)))))
         return self._activation(y)
 
     @property
