@@ -404,7 +404,6 @@ class HyperNetwork(Generator):
 
         # compute the kernel width
         h = self._median_width(dist_sq)
-        # h = self._kernel_width()
         h = torch.max(h, torch.as_tensor([h_min]))
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]

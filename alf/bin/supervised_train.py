@@ -148,9 +148,7 @@ def train(config: Config):
 
     algorithm.set_data_loader(trainset, testset)
 
-    ## Perform training
     alf.summary.enable_summary()
-
     summary_dir = os.path.expanduser(train_dir)
     summary_writer = alf.summary.create_summary_writer(
         summary_dir,

@@ -319,7 +319,7 @@ class ParamConv2D(nn.Module):
                     and img.shape[2] == self._in_channels
                 ), ("Input img has wrong shape %s. Expecting (B, %d, %d, H, W)"
                     % (img.shape, self._groups, self._in_channels))
-                # merge groups and channels
+                # merge group and channel dim
                 img = img.reshape(img.shape[0], img.shape[1] * img.shape[2],
                                   *img.shape[3:])
             else:

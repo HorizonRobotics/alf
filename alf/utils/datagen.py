@@ -41,7 +41,6 @@ def load_mnist(train_bs=100, test_bs=100, num_workers=0):
         batch_size=train_bs,
         shuffle=False,
         **kwargs)
-    #batch_size=32, **kwargs)
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
             path,
