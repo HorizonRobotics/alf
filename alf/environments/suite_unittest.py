@@ -183,8 +183,7 @@ class PolicyUnittestEnv(UnittestEnv):
             reward = reward.reshape(self.batch_size)
 
         if self._reward_dim != 1:
-            reward = reward.unsqueeze(-1).expand((self.batch_size,
-                                                  self._reward_dim))
+            reward = reward.unsqueeze(-1).expand((-1, self._reward_dim))
 
         observation = torch.randint(
             0, 2, size=(self.batch_size, 1), dtype=torch.float32)

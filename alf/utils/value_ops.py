@@ -142,10 +142,8 @@ def discounted_return(rewards, values, step_types, discounts, time_major=True):
                                       s=values.shape[0]))
 
     is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
-    if is_lasts.ndim < values.ndim:
-        is_lasts = common.expand_dims_as(is_lasts, values)
-    if discounts.ndim < values.ndim:
-        discounts = common.expand_dims_as(discounts, values)
+    is_lasts = common.expand_dims_as(is_lasts, values)
+    discounts = common.expand_dims_as(discounts, values)
 
     rets = torch.zeros_like(values)
     rets[-1] = values[-1]

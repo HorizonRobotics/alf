@@ -81,7 +81,7 @@ class CriticNetwork(Network):
         Args:
             input_tensor_spec: A tuple of ``TensorSpec``s ``(observation_spec, action_spec)``
                 representing the inputs.
-            ourput_tensor_spec (TensorSpec): spec for the output
+            output_tensor_spec (TensorSpec): spec for the output
             observation_input_preprocessors (nested InputPreprocessor): a nest of
                 ``InputPreprocessor``, each of which will be applied to the
                 corresponding observation input.
