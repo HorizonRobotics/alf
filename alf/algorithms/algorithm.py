@@ -271,8 +271,11 @@ class Algorithm(alf.layers.Module):
             exp_spec = dist_utils.to_distribution_param_spec(
                 self._experience_spec)
             self._exp_replayer = SyncExperienceReplayer(
-                exp_spec, self._exp_replayer_num_envs,
-                self._exp_replayer_length, self._prioritized_sampling)
+                exp_spec,
+                self._exp_replayer_num_envs,
+                self._exp_replayer_length,
+                self._prioritized_sampling,
+                name="exp_replayer")
         else:
             raise ValueError("invalid experience replayer name")
         self._observers.append(self._exp_replayer.observe)
