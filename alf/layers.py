@@ -309,7 +309,12 @@ class FC(Module):
         super(FC, self).__init__()
 
         self._activation = activation
-        self._linear = nn.Linear(input_size, output_size, bias=use_bias)
+        self._weight = nn.Parameter(torch.Tensor(output_size, input_size))
+        if use_bias:
+            self._bias = nn.Parameter(torch.Tensor(output_size))
+        else:
+            self._bias = None
+
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
@@ -319,34 +324,37 @@ class FC(Module):
     def reset_parameters(self):
         if self._kernel_initializer is None:
             variance_scaling_init(
-                self._linear.weight.data,
+                self._weight.data,
                 gain=self._kernel_init_gain,
                 nonlinearity=self._activation)
         else:
-            self._kernel_initializer(self._linear.weight.data)
+            self._kernel_initializer(self._weight.data)
 
         if self._use_bias:
-            nn.init.constant_(self._linear.bias.data, self._bias_init_value)
+            nn.init.constant_(self._bias.data, self._bias_init_value)
 
     def forward(self, inputs):
-        pre_activation = self._linear(inputs)
+        if inputs.dim() == 2 and self._use_bias:
+            y = torch.addmm(self._bias, inputs, self._weight.t())
+        else:
+            y = inputs.matmul(self._weight.t())
+            if self._use_bias:
+                y += self._bias
         if self.summary_name and alf.summary.should_summarize_output():
             alf.summary.scalar(
                 name=self.summary_name + '.pre_activation.output_norm.' +
                 self.exe_mode_str(),
                 data=torch.mean(
-                    pre_activation.norm(
-                        dim=list(range(1, pre_activation.ndim)))))
-
-        return self._activation(pre_activation)
+                    y.norm(dim=list(range(1, pre_activation.ndim)))))
+        return self._activation(y)
 
     @property
     def weight(self):
-        return self._linear.weight
+        return self._weight
 
     @property
     def bias(self):
-        return self._linear.bias
+        return self._bias
 
     def make_parallel(self, n):
         """Create a ``ParallelFC`` using ``n`` replicas of ``self``.

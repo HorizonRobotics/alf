@@ -39,7 +39,7 @@ class MetricBuffer(torch.nn.Module):
         self._buf = db.DataBuffer(
             data_spec=alf.tensor_specs.TensorSpec((), dtype=dtype),
             capacity=max_len,
-            device=alf.get_default_device())
+            device='cpu')
 
     def append(self, value):
         """Append multiple values to the buffer.
@@ -51,7 +51,7 @@ class MetricBuffer(torch.nn.Module):
 
     def mean(self):
         if self._buf.current_size == 0:  # avoid nan
-            return torch.as_tensor(0, dtype=self._dtype)
+            return torch.tensor(0, dtype=self._dtype, device='cpu')
         return self._buf.get_all()[:self._buf.current_size].mean()
 
     def clear(self):
@@ -150,7 +150,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         super(AverageEpisodicSumMetric, self).__init__(
             name=name, dtype=dtype, prefix=prefix)
         if example_metric_value is None:
-            example_metric_value = torch.zeros(())
+            example_metric_value = torch.zeros((), device='cpu')
         self._batch_size = batch_size
         self._buffer_size = buffer_size
         self._initialize(example_metric_value)
@@ -166,7 +166,8 @@ class AverageEpisodicSumMetric(metric.StepMetric):
             return MetricBuffer(max_len=self._buffer_size, dtype=self._dtype)
 
         def _init_acc(val):
-            accumulator = torch.zeros(self._batch_size, dtype=self._dtype)
+            accumulator = torch.zeros(
+                self._batch_size, dtype=self._dtype, device='cpu')
             self.register_buffer('_accumulator%d' % counter[0], accumulator)
             counter[0] += 1
             return accumulator
@@ -195,23 +196,25 @@ class AverageEpisodicSumMetric(metric.StepMetric):
                     values))), ("Value shape is not correct "
                                 "(only scalar values are supported).")
 
+        is_first = time_step.is_first()
+
         def _update_accumulator_(acc, val):
             """In-place update of the accumulators."""
             # Zero out batch indices where a new episode is starting.
             # Update with new values; Ignores first step whose reward comes from
             # the boundary transition of the last step from the previous episode.
-            acc[:] = torch.where(time_step.is_first(), torch.zeros_like(acc),
+            acc[:] = torch.where(is_first, torch.zeros_like(acc),
                                  acc + val.to(self._dtype))
 
         alf.nest.map_structure(_update_accumulator_, self._accumulator, values)
 
         # Add final accumulated value to buffer.
-        last_episode_indices = torch.where(time_step.is_last())[0].type(
-            torch.int64)
+        last_episode_indices = torch.where(time_step.is_last())[0]
 
-        alf.nest.map_structure(
-            lambda buf, acc: buf.append(acc[last_episode_indices]),
-            self._buffer, self._accumulator)
+        if len(last_episode_indices) > 0:
+            alf.nest.map_structure(
+                lambda buf, acc: buf.append(acc[last_episode_indices]),
+                self._buffer, self._accumulator)
 
         return time_step
 

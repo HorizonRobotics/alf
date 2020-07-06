@@ -32,10 +32,10 @@ from alf.data_structures import TimeStep, namedtuple
 from alf.utils import math_ops
 
 AgentState = namedtuple(
-    "AgentState", ["rl", "irm", "goal_generator"], default_value=())
+    "AgentState", ["rl", "irm", "goal_generator", "repr"], default_value=())
 
 AgentInfo = namedtuple(
-    "AgentInfo", ["rl", "irm", "goal_generator", "entropy_target"],
+    "AgentInfo", ["rl", "irm", "goal_generator", "entropy_target", "repr"],
     default_value=())
 
 
@@ -51,6 +51,7 @@ class Agent(OnPolicyAlgorithm):
                  config: TrainerConfig = None,
                  goal_generator=None,
                  rl_algorithm_cls=ActorCriticAlgorithm,
+                 representation_learner_cls=None,
                  intrinsic_reward_module=None,
                  intrinsic_reward_coef=1.0,
                  extrinsic_reward_coef=1.0,
@@ -75,6 +76,10 @@ class Agent(OnPolicyAlgorithm):
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
             rl_algorithm_cls (type): The algorithm class for learning the policy.
+            representation_learner_cls (type): The algorithm class for learning
+                the representation. If provided, the constructed learner will
+                calculate the representation from the original observation as
+                the observation for downstream algorithms such as ``rl_algorithm``.
             intrinsic_reward_module (Algorithm): an algorithm whose outputs
                 is a scalar intrinsic reward.
             goal_generator (Algorithm): an algorithm with output a goal vector
@@ -100,12 +105,22 @@ class Agent(OnPolicyAlgorithm):
             """
         agent_helper = AgentHelper(AgentState)
 
-        ## 1. goal generator
+        ## 0. representation learner
         rl_observation_spec = observation_spec
+        representation_learner = None
+        if representation_learner_cls is not None:
+            representation_learner = representation_learner_cls(
+                observation_spec=rl_observation_spec,
+                action_spec=action_spec,
+                debug_summaries=debug_summaries)
+            rl_observation_spec = representation_learner.output_spec
+            agent_helper.register_algorithm(representation_learner, "repr")
+
+        ## 1. goal generator
         if goal_generator is not None:
             agent_helper.register_algorithm(goal_generator, "goal_generator")
             rl_observation_spec = [
-                observation_spec, goal_generator.action_spec
+                rl_observation_spec, goal_generator.action_spec
             ]
 
         ## 2. rl algorithm
@@ -144,6 +159,7 @@ class Agent(OnPolicyAlgorithm):
             name=name,
             **agent_helper.state_specs())
 
+        self._representation_learner = representation_learner
         self._rl_algorithm = rl_algorithm
         self._entropy_target_algorithm = entropy_target_algorithm
         self._intrinsic_reward_coef = intrinsic_reward_coef
@@ -160,9 +176,16 @@ class Agent(OnPolicyAlgorithm):
         """Predict for one step."""
         new_state = AgentState()
         observation = time_step.observation
+        if self._representation_learner is not None:
+            repr_step = self._representation_learner.predict_step(
+                time_step, state.repr)
+            new_state = new_state._replace(repr=repr_step.state)
+            observation = repr_step.output
+
         if self._goal_generator is not None:
             goal_step = self._goal_generator.predict_step(
-                time_step, state.goal_generator, epsilon_greedy)
+                time_step._replace(observation=observation),
+                state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
             observation = [observation, goal_step.output]
 
@@ -179,9 +202,18 @@ class Agent(OnPolicyAlgorithm):
         info = AgentInfo()
         observation = time_step.observation
 
+        observation = time_step.observation
+        if self._representation_learner is not None:
+            repr_step = self._representation_learner.rollout_step(
+                time_step, state.repr)
+            new_state = new_state._replace(repr=repr_step.state)
+            info = info._replace(repr=repr_step.info)
+            observation = repr_step.output
+
         if self._goal_generator is not None:
             goal_step = self._goal_generator.rollout_step(
-                time_step, state.goal_generator)
+                time_step._replace(observation=observation),
+                state.goal_generator)
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
             observation = [observation, goal_step.output]
@@ -215,9 +247,18 @@ class Agent(OnPolicyAlgorithm):
         info = AgentInfo()
         observation = exp.observation
 
+        if self._representation_learner is not None:
+            repr_step = self._representation_learner.predict_step(
+                exp._replace(rollout_info=exp.rollout_info.repr), state.repr)
+            new_state = new_state._replace(repr=repr_step.state)
+            info = info._replace(repr=repr_step.info)
+            observation = repr_step.output
+
         if self._goal_generator is not None:
             goal_step = self._goal_generator.train_step(
-                exp._replace(rollout_info=exp.rollout_info.goal_generator),
+                exp._replace(
+                    observation=observation,
+                    rollout_info=exp.rollout_info.goal_generator),
                 state.goal_generator)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
@@ -277,13 +318,11 @@ class Agent(OnPolicyAlgorithm):
             experience = experience._replace(
                 reward=self.calc_training_reward(experience.reward,
                                                  train_info))
-        algorithms = [self._rl_algorithm]
-        if self._irm:
-            algorithms.append(self._irm)
-        if self._goal_generator:
-            algorithms.append(self._goal_generator)
-        if self._entropy_target_algorithm:
-            algorithms.append(self._entropy_target_algorithm)
+        algorithms = [
+            self._representation_learner, self._rl_algorithm, self._irm,
+            self._goal_generator, self._entropy_target_algorithm
+        ]
+        algorithms = list(filter(lambda a: a is not None, algorithms))
         return self._agent_helper.accumulate_loss_info(algorithms, experience,
                                                        train_info)
 
@@ -291,18 +330,22 @@ class Agent(OnPolicyAlgorithm):
         """Call ``after_update()`` of the RL algorithm and goal generator,
         respectively.
         """
-        algorithms = [self._rl_algorithm]
-        if self._goal_generator:
-            algorithms.append(self._goal_generator)
+        algorithms = [
+            self._rl_algorithm, self._representation_learner,
+            self._goal_generator
+        ]
+        algorithms = list(filter(lambda a: a is not None, algorithms))
         self._agent_helper.after_update(algorithms, experience, train_info)
 
     def after_train_iter(self, experience, train_info: AgentInfo = None):
         """Call ``after_train_iter()`` of the RL algorithm and goal generator,
         respectively.
         """
-        algorithms = [self._rl_algorithm]
-        if self._goal_generator:
-            algorithms.append(self._goal_generator)
+        algorithms = [
+            self._rl_algorithm, self._representation_learner,
+            self._goal_generator
+        ]
+        algorithms = list(filter(lambda a: a is not None, algorithms))
         self._agent_helper.after_train_iter(algorithms, experience, train_info)
 
     def preprocess_experience(self, exp: Experience):

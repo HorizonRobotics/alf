@@ -15,6 +15,7 @@
 
 import gin
 import torch
+import torch.nn.functional as F
 
 
 @gin.configurable
@@ -27,8 +28,7 @@ def element_wise_huber_loss(x, y):
     Returns:
         loss (Tensor)
     """
-    loss = torch.nn.SmoothL1Loss(reduction="none")
-    return loss(y, x)
+    return F.smooth_l1_loss(y, x, reduction="none")
 
 
 @gin.configurable
@@ -41,5 +41,4 @@ def element_wise_squared_loss(x, y):
     Returns:
         loss (Tensor)
     """
-    loss = torch.nn.MSELoss(reduction="none")
-    return loss(y, x)
+    return F.mse_loss(y, x, reduction="none")

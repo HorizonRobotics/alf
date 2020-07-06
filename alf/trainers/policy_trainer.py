@@ -297,13 +297,13 @@ class Trainer(object):
                  "planning to train from scratch. \n"
                  "Detailed error message: {}").format(self._root_dir, e))
         if recovered_global_step != -1:
-            alf.summary.get_global_counter().fill_(int(recovered_global_step))
+            alf.summary.set_global_counter(recovered_global_step)
 
         self._checkpointer = checkpointer
 
     def _save_checkpoint(self):
         global_step = alf.summary.get_global_counter()
-        self._checkpointer.save(global_step=global_step.numpy())
+        self._checkpointer.save(global_step=global_step)
 
     def _eval(self):
         time_step = common.get_initial_time_step(self._eval_env)
@@ -343,7 +343,7 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
     algorithm.train(True)
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
-        metric(time_step)
+        metric(time_step.cpu())
     return next_time_step, policy_step.state
 
 

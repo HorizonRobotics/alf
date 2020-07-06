@@ -153,6 +153,10 @@ class Algorithm(alf.layers.Module):
         else:
             self._predict_state_spec = self._rollout_state_spec
 
+        self._initial_train_states = {}
+        self._initial_rollout_states = {}
+        self._initial_predict_states = {}
+
         self._experience_spec = None
         self._train_info_spec = None
         self._processed_experience_spec = None
@@ -611,13 +615,27 @@ class Algorithm(alf.layers.Module):
         return state
 
     def get_initial_predict_state(self, batch_size):
-        return spec_utils.zeros_from_spec(self._predict_state_spec, batch_size)
+        r = self._initial_predict_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._predict_state_spec,
+                                           batch_size)
+            self._initial_predict_states[batch_size] = r
+        return r
 
     def get_initial_rollout_state(self, batch_size):
-        return spec_utils.zeros_from_spec(self._rollout_state_spec, batch_size)
+        r = self._initial_rollout_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._rollout_state_spec,
+                                           batch_size)
+            self._initial_rollout_states[batch_size] = r
+        return r
 
     def get_initial_train_state(self, batch_size):
-        return spec_utils.zeros_from_spec(self._train_state_spec, batch_size)
+        r = self._initial_train_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._train_state_spec, batch_size)
+            self._initial_train_states[batch_size] = r
+        return r
 
     @common.add_method(nn.Module)
     def state_dict(self, destination=None, prefix='', visited=None):
@@ -1022,7 +1040,7 @@ class Algorithm(alf.layers.Module):
         loss = weight * loss_info.loss
 
         unhandled = self._setup_optimizers()
-        unhandled = [(self._param_to_name[p], p) for p in unhandled]
+        unhandled = [self._param_to_name[p] for p in unhandled]
         assert not unhandled, ("'%s' has some modules/parameters do not have "
                                "optimizer: %s" % (self.name, unhandled))
         optimizers = self.optimizers()
@@ -1272,7 +1290,7 @@ class Algorithm(alf.layers.Module):
                         lambda x: x[indices], batch_info)
             for b in range(0, batch_size, mini_batch_size):
                 if update_counter_every_mini_batch:
-                    alf.summary.get_global_counter().add_(1)
+                    alf.summary.increment_global_counter()
                 is_last_mini_batch = (u == num_updates - 1
                                       and b + mini_batch_size >= batch_size)
                 do_summary = (is_last_mini_batch
