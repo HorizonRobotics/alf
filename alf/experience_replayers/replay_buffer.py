@@ -293,9 +293,10 @@ class ReplayBuffer(RingBuffer):
                 info = info._replace(
                     importance_weights=self._sum_tree[indices] * avg_weight)
 
-            alf.summary.scalar(
-                "replayer/" + self._name + ".original_reward_mean",
-                torch.mean(result.reward[:-1]))
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "replayer/" + self._name + ".original_reward_mean",
+                    torch.mean(result.reward[:-1]))
             if self._postprocess_exp_fn:
                 result, info = self._postprocess_exp_fn(self, result, info)
 
@@ -560,9 +561,10 @@ def hindsight_relabel_fn(buffer,
     last_env_ids = env_ids[her_indices]
     # Get x, y indices of LAST steps
     dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
-    alf.summary.scalar(
-        "replayer/" + buffer._name + ".mean_steps_to_episode_end",
-        torch.mean(dist.type(torch.float32)))
+    if alf.summary.should_record_summaries():
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".mean_steps_to_episode_end",
+            torch.mean(dist.type(torch.float32)))
 
     # get random future state
     future_idx = buffer.circular(last_step_pos + (torch.rand(*dist.shape) *
@@ -581,12 +583,13 @@ def hindsight_relabel_fn(buffer,
     result_ag = alf.nest.get_field(result, achieved_goal_field)
     relabeled_rewards = reward_fn(
         result_ag, relabed_goal, device=buffer._device)
-    alf.summary.scalar(
-        "replayer/" + buffer._name + ".reward_mean_before_relabel",
-        torch.mean(result.reward[her_indices][:-1]))
-    alf.summary.scalar(
-        "replayer/" + buffer._name + ".reward_mean_after_relabel",
-        torch.mean(relabeled_rewards[her_indices][:-1]))
+    if alf.summary.should_record_summaries():
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".reward_mean_before_relabel",
+            torch.mean(result.reward[her_indices][:-1]))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".reward_mean_after_relabel",
+            torch.mean(relabeled_rewards[her_indices][:-1]))
     # assert reward function is the same as used by the environment.
     if not torch.allclose(relabeled_rewards[non_her_indices],
                           result.reward[non_her_indices]):
