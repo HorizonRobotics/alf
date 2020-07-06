@@ -193,7 +193,8 @@ class Generator(Algorithm):
         Returns:
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
-        outputs, _ = self._predict(inputs, batch_size, training=False)
+        outputs, _ = self._predict(
+            inputs, batch_size=batch_size, training=False)
         return AlgStep(output=outputs, state=(), info=())
 
     def train_step(self, inputs, loss_func, batch_size=None, state=None):
@@ -212,7 +213,7 @@ class Generator(Algorithm):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        outputs, gen_inputs = self._predict(inputs, batch_size)
+        outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
         loss, grad = self._grad_func(inputs, outputs, loss_func)
         loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
