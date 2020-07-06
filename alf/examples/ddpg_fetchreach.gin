@@ -14,6 +14,11 @@ create_environment.env_name='FetchReach-v1'
 
 suite_robotics.load.gym_env_wrappers=(@ObservationClipWrapper,)
 
+ObservationNormalizer.clipping=5.
+ObservationNormalizer.mode='adaptive'
+AdaptiveNormalizer.variance_epsilon=0.01
+Agent.observation_transformer=@ObservationNormalizer(observation_spec=@get_observation_spec())
+
 hidden_layers=(256, 256, 256)
 
 AdamTF.lr=1e-3
