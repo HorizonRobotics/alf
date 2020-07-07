@@ -191,9 +191,9 @@ def expand_dims_as(x, y):
     Returns:
         ``x`` with extra singular dimensions.
     """
-    assert len(x.shape) <= len(y.shape)
+    assert x.ndim <= y.ndim
     assert x.shape == y.shape[:len(x.shape)]
-    k = len(y.shape) - len(x.shape)
+    k = y.ndim - x.ndim
     if k == 0:
         return x
     else:

@@ -62,6 +62,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  critic_network_ctor=CriticNetwork,
                  use_parallel_network=False,
                  observation_transformer=math_ops.identity,
+                 reward_weights=None,
                  env=None,
                  config: TrainerConfig = None,
                  ou_stddev=0.2,
@@ -93,6 +94,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 calculating critics.
             observation_transformer (Callable or list[Callable]): transformation(s)
                 applied to ``time_step.observation``.
+            reward_weights (list[float]): this is only used when the reward is
+                multidimensional. In that case, the weighted sum of the q values
+                is used for training the actor.
             num_critic_replicas (int): number of critics to be used. Default is 1.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
@@ -163,6 +167,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
+
+        self._reward_weights = None
+        if reward_weights:
+            self._reward_weights = torch.tensor(
+                reward_weights, dtype=torch.float32)
 
         self._target_actor_network = actor_network.copy(
             name='target_actor_networks')
@@ -245,6 +254,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         target_q_values, target_critic_states = self._target_critic_networks(
             (exp.observation, target_action), state=state.target_critics)
 
+        if self._num_critic_replicas > 1:
+            target_q_values = target_q_values.min(dim=1)[0]
+        else:
+            target_q_values = target_q_values.squeeze(dim=1)
+
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
 
@@ -264,7 +278,18 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
-        q_value = q_values.min(dim=1)[0]
+        if q_values.ndim == 3:
+            # Multidimensional reward: [B, num_criric_replicas, reward_dim]
+            if self._reward_weights is None:
+                q_values = q_values.sum(dim=2)
+            else:
+                q_values = torch.tensordot(
+                    q_values, self._reward_weights, dims=1)
+
+        if self._num_critic_replicas > 1:
+            q_value = q_values.min(dim=1)[0]
+        else:
+            q_value = q_values.squeeze(dim=1)
 
         dqda = nest_utils.grad(action, q_value.sum())
 
@@ -274,14 +299,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                    self._dqda_clipping)
             loss = 0.5 * losses.element_wise_squared_loss(
                 (dqda + action).detach(), action)
-            loss = loss.sum(list(range(1, loss.ndim)))
             if self._action_l2 > 0:
                 assert action.requires_grad
-                assert action.ndim < 3, (
-                    "Action has ndim: {}.  Tensor.norm ".format(action.ndim) +
-                    "will incorrectly take the norm of the last dim.")
-                loss += self._action_l2 * (action**2).sum(
-                    list(range(1, action.ndim)))
+                loss += self._action_l2 * (action**2)
+            loss = loss.sum(list(range(1, loss.ndim)))
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
@@ -306,8 +327,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         for i in range(self._num_critic_replicas):
             critic_losses[i] = self._critic_losses[i](
                 experience=experience,
-                value=train_info.critic.q_values[..., i],
-                target_value=train_info.critic.target_q_values[..., i]).loss
+                value=train_info.critic.q_values[:, :, i, ...],
+                target_value=train_info.critic.target_q_values).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 

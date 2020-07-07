@@ -12,8 +12,6 @@ create_environment.env_load_fn=@suite_robotics.load
 create_environment.num_parallel_environments=38
 create_environment.env_name='FetchReach-v1'
 
-suite_robotics.load.gym_env_wrappers=(@ObservationClipWrapper,)
-
 ObservationNormalizer.clipping=5.
 ObservationNormalizer.mode='adaptive'
 AdaptiveNormalizer.variance_epsilon=0.01

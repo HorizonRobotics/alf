@@ -47,7 +47,8 @@ class ParallelAlfEnvironmentTest(alf.test.TestCase):
                                                 minimum=-1.0,
                                                 maximum=1.0)
         self.time_step_spec = ds.time_step_spec(self.observation_spec,
-                                                self.action_spec)
+                                                self.action_spec,
+                                                ts.TensorSpec(()))
 
     def _make_parallel_environment(self,
                                    constructor=None,

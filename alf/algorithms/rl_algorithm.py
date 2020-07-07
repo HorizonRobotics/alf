@@ -213,8 +213,16 @@ class RLAlgorithm(Algorithm):
 
     def summarize_reward(self, name, rewards):
         if self._debug_summaries:
-            alf.summary.histogram(name + "/value", rewards)
-            alf.summary.scalar(name + "/mean", torch.mean(rewards))
+            assert 2 <= rewards.ndim <= 3, (
+                "The shape of rewards should be [T, B] or [T, B, k]")
+            if rewards.ndim == 2:
+                alf.summary.histogram(name + "/value", rewards)
+                alf.summary.scalar(name + "/mean", torch.mean(rewards))
+            else:
+                for i in range(rewards.shape[2]):
+                    r = rewards[..., i]
+                    alf.summary.histogram('%s/%s/value' % (name, i), r)
+                    alf.summary.scalar('%s/%s/mean' % (name, i), torch.mean(r))
 
     def summarize_rollout(self, experience):
         """Generate summaries for rollout.
@@ -460,7 +468,11 @@ class RLAlgorithm(Algorithm):
 
             self.observe_for_metrics(time_step.cpu())
 
-            exp = make_experience(time_step.cpu(), policy_step, policy_state)
+            if self._exp_replayer_type == "one_time":
+                exp = make_experience(time_step, policy_step, policy_state)
+            else:
+                exp = make_experience(time_step.cpu(), policy_step,
+                                      policy_state)
 
             t0 = time.time()
             self.observe_for_replay(exp)

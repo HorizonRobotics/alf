@@ -101,7 +101,7 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
         constructor = functools.partial(ctor, scene)
 
-        self._env = parallel_environment.ParallelEnvironment(
+        self._env = parallel_environment.ParallelAlfEnvironment(
             [constructor] * env_num)
         self.assertTrue(self._env.batched)
         self.assertEqual(self._env.batch_size, env_num)
@@ -120,7 +120,8 @@ class SuiteDMLabTest(parameterized.TestCase, alf.test.TestCase):
 
         constructor = functools.partial(ctor, scene)
 
-        self._env = parallel_environment.ParallelEnvironment([constructor] * 5)
+        self._env = parallel_environment.ParallelAlfEnvironment(
+            [constructor] * 5)
         self.assertEqual((3, 84, 84), self._env.observation_spec().shape)
 
         for _ in range(10):

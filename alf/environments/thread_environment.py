@@ -61,6 +61,9 @@ class ThreadEnvironment(alf_environment.AlfEnvironment):
     def action_spec(self):
         return self._apply('action_spec')
 
+    def reward_spec(self):
+        return self._apply('reward_spec')
+
     def _step(self, action):
         action = _tensor_to_array(action)
         return _array_to_tensor(self._apply('step', (action, )))
