@@ -26,6 +26,8 @@ from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 
 class Normalizer(alf.layers.Module):
+    MAX_DIMS_TO_OUTPUT = 30
+
     def __init__(self,
                  tensor_spec,
                  auto_update=True,
@@ -82,11 +84,11 @@ class Normalizer(alf.layers.Module):
         self._mean_averager.update(tensor)
         sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
-        if alf.summary.should_summarize_output():
+        if alf.summary.should_record_summaries():
             suffix = self.exe_mode_str()
 
             def _summary(name, val):
-                if val.shape[0] < 30:
+                if val.shape[0] < self.MAX_DIMS_TO_OUTPUT:
                     for i in range(val.shape[0]):
                         alf.summary.scalar(
                             self._name + "." + name + "_" + str(i) + "." +

@@ -442,6 +442,8 @@ class ObservationNormalizer(nn.Module):
         """Normalize a given observation. If during unroll, then first update
         the normalizer. The normalizer won't be updated in other circumstances.
         """
+        # TODO: To update on unroll, we need to fix the case where test exp
+        # should be excluded.
         if is_training():
             self._normalizer.update(observation)
         return self._normalizer.normalize(observation, self._clipping)

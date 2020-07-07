@@ -261,6 +261,9 @@ def extract_any_leaf_from_nest(nest):
 def all_leaves_with_path_from_nest(nest, path=""):
     """Generates all leaf nodes from a nest, with their paths.
 
+    NOTE: this is not as efficient as a c++ based implementation, and should
+    not be used in frequently called functions.
+
     Args:
         nest (nest): a nested structure
         path (str): path to current nest element
