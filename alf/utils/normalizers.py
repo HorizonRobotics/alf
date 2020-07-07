@@ -88,7 +88,10 @@ class Normalizer(alf.layers.Module):
             suffix = self.exe_mode_str()
 
             def _summary(name, val):
-                if val.shape[0] < self.MAX_DIMS_TO_OUTPUT:
+                if val.ndim == 0:
+                    alf.summary.scalar(self._name + "." + name + "." + suffix,
+                                       val)
+                elif val.shape[0] < self.MAX_DIMS_TO_OUTPUT:
                     for i in range(val.shape[0]):
                         alf.summary.scalar(
                             self._name + "." + name + "_" + str(i) + "." +
