@@ -299,14 +299,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                                    self._dqda_clipping)
             loss = 0.5 * losses.element_wise_squared_loss(
                 (dqda + action).detach(), action)
-            loss = loss.sum(list(range(1, loss.ndim)))
             if self._action_l2 > 0:
                 assert action.requires_grad
-                assert action.ndim < 3, (
-                    "Action has ndim: {}.  Tensor.norm ".format(action.ndim) +
-                    "will incorrectly take the norm of the last dim.")
-                loss += self._action_l2 * (action**2).sum(
-                    list(range(1, action.ndim)))
+                loss += self._action_l2 * (action**2)
+            loss = loss.sum(list(range(1, loss.ndim)))
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)

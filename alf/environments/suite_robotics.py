@@ -135,6 +135,10 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
+    assert (environment_name.startswith("Fetch")
+            or environment_name.startswith("HandManipulate")), (
+                "This suite only supports OpenAI's Fetch and ShadowHand envs!")
+
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     gym_spec = gym.spec(environment_name)
@@ -166,6 +170,7 @@ def load(environment_name,
             from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
             env = FlattenDictWrapper(env, keys)
     env = SuccessWrapper(env, max_episode_steps)
+    env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
 
