@@ -119,6 +119,7 @@ class Trainer(object):
         self._summary_max_queue = config.summary_max_queue
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
+        alf.summary.should_summarize_output(config.summarize_output)
         self._config = config
 
         self._random_seed = common.set_random_seed(self._random_seed)
@@ -266,6 +267,10 @@ class Trainer(object):
             if ((self._num_iterations and iter_num >= self._num_iterations)
                     or (self._num_env_steps
                         and total_time_steps >= self._num_env_steps)):
+                # Evaluate before exiting so that the eval curve shown in TB
+                # will align with the final iter/env_step.
+                if self._evaluate:
+                    self._eval()
                 break
 
             if ((self._num_iterations and iter_num >= time_to_checkpoint)
@@ -292,13 +297,13 @@ class Trainer(object):
                  "planning to train from scratch. \n"
                  "Detailed error message: {}").format(self._root_dir, e))
         if recovered_global_step != -1:
-            alf.summary.get_global_counter().fill_(int(recovered_global_step))
+            alf.summary.set_global_counter(recovered_global_step)
 
         self._checkpointer = checkpointer
 
     def _save_checkpoint(self):
         global_step = alf.summary.get_global_counter()
-        self._checkpointer.save(global_step=global_step.numpy())
+        self._checkpointer.save(global_step=global_step)
 
     def _eval(self):
         time_step = common.get_initial_time_step(self._eval_env)
@@ -332,11 +337,13 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
     transformed_time_step = algorithm.transform_timestep(time_step)
+    algorithm.eval()
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
+    algorithm.train(True)
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
-        metric(time_step)
+        metric(time_step.cpu())
     return next_time_step, policy_step.state
 
 

@@ -71,17 +71,19 @@ def main(_):
     common.set_global_env(env)
     algorithm = algorithm_ctor(
         observation_spec=env.observation_spec(), action_spec=env.action_spec())
-    policy_trainer.play(
-        FLAGS.root_dir,
-        env,
-        algorithm,
-        checkpoint_step=FLAGS.checkpoint_step or "latest",
-        epsilon_greedy=FLAGS.epsilon_greedy,
-        num_episodes=FLAGS.num_episodes,
-        max_episode_length=FLAGS.max_episode_length,
-        sleep_time_per_step=FLAGS.sleep_time_per_step,
-        record_file=FLAGS.record_file)
-    env.close()
+    try:
+        policy_trainer.play(
+            FLAGS.root_dir,
+            env,
+            algorithm,
+            checkpoint_step=FLAGS.checkpoint_step or "latest",
+            epsilon_greedy=FLAGS.epsilon_greedy,
+            num_episodes=FLAGS.num_episodes,
+            max_episode_length=FLAGS.max_episode_length,
+            sleep_time_per_step=FLAGS.sleep_time_per_step,
+            record_file=FLAGS.record_file)
+    finally:
+        env.close()
 
 
 if __name__ == '__main__':

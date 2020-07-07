@@ -84,7 +84,7 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertEqual(dist1.base_dist.mean, params1['loc'])
         self.assertEqual(dist1.base_dist.stddev, params1['scale'])
 
-        self.assertRaises(AssertionError, spec.build_distribution,
+        self.assertRaises(RuntimeError, spec.build_distribution,
                           {'loc': torch.tensor([1., 2.])})
 
     def test_transformed(self):

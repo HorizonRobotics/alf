@@ -635,8 +635,16 @@ class EncodingNetwork(PreprocessorNetwork):
         z, state = super().forward(inputs, state)
         if self._img_encoding_net is not None:
             z, _ = self._img_encoding_net(z)
+        i = 0
         for fc in self._fc_layers:
             z = fc(z)
+            if alf.summary.should_summarize_output():
+                name = ('summarize_output/' + self.name + '.fc.' + str(i) +
+                        '.output_norm')
+                if not self.training:
+                    name += ".eval"
+                alf.summary.scalar(name=name, data=z.norm())
+            i += 1
         return z, state
 
     def make_parallel(self, n):
@@ -806,7 +814,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
         # call super to preprocess inputs
         z, state = super().forward(inputs, state, max_outer_rank=2)
         if self._img_encoding_net is None and len(self._fc_layers) == 0:
-            if inputs.ndim == 2:
+            if z.ndim == 2:
                 z = z.unsqueeze(1).expand(-1, self._n, *z.shape[1:])
         else:
             if self._img_encoding_net is not None:

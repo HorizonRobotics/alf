@@ -31,7 +31,6 @@ except ImportError:
 import functools
 import numpy as np
 import gym
-from gym.wrappers import FlattenDictWrapper
 
 import gin
 from alf.environments import suite_gym, alf_wrappers, process_environment
@@ -84,20 +83,31 @@ class SuccessWrapper(gym.Wrapper):
         return obs, reward, done, info
 
 
+@gin.configurable
 class ObservationClipWrapper(gym.ObservationWrapper):
     """Clip observation values according to OpenAI's baselines.
     """
 
-    def __init__(self, env):
+    def __init__(self, env, min_v=-200., max_v=200.):
         super().__init__(env)
+        # NOTE: the code assumes that all spaces under the nested observation
+        # space is a Box space.
+        self.min_v = min_v
+        self.max_v = max_v
 
     def observation(self, observation):
-        return np.clip(observation, -200., 200.)
+        if isinstance(observation, dict):
+            for k, v in observation.items():
+                observation[k] = np.clip(v, self.min_v, self.max_v)
+            return observation
+        else:
+            return np.clip(observation, self.min_v, self.max_v)
 
 
 @gin.configurable
 def load(environment_name,
          env_id=None,
+         concat_desired_goal=True,
          discount=1.0,
          max_episode_steps=None,
          sparse_reward=False,
@@ -143,12 +153,19 @@ def load(environment_name,
             discount=discount,
             max_episode_steps=max_episode_steps,
             gym_env_wrappers=gym_env_wrappers,
-            alf_env_wrappers=alf_env_wrappers)
+            alf_env_wrappers=alf_env_wrappers,
+            image_channel_first=False)
 
     # concat robot's observation and the goal location
-    env = FlattenDictWrapper(env, ["observation", "desired_goal"])
+    if concat_desired_goal:
+        keys = ["observation", "desired_goal"]
+        try:  # for modern Gym (>=0.15.4)
+            from gym.wrappers import FilterObservation, FlattenObservation
+            env = FlattenObservation(FilterObservation(env, keys))
+        except ImportError:  # for older gym (<=0.15.3)
+            from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
+            env = FlattenDictWrapper(env, keys)
     env = SuccessWrapper(env, max_episode_steps)
-    env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
 

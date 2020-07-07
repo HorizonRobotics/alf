@@ -13,6 +13,7 @@
 # limitations under the License.
 """Various math ops."""
 
+import functools
 import gin
 import torch
 
@@ -81,49 +82,51 @@ def swish(x):
 
 
 def max_n(inputs):
-    """Calculate the maximum of n Tensors
+    """Calculate the maximum of n tensors.
 
     Args:
-        inputs (list[Tensor]): list of Tensors, should have the same shape
+        inputs (iterable[Tensor]): an iterable of tensors. It requires that
+            all tensor shapes can be broadcast to the same shape.
     Returns:
-        the elementwise maximum of all the tensors in `inputs`
+        Tensor: the element-wise maximum of all the tensors in ``inputs``.
     """
-    ret = inputs[0]
-    inputs = inputs[1:]
-    for x in inputs:
-        ret = torch.max(ret, x)
-    return ret
+    return functools.reduce(torch.max, inputs)
 
 
 def min_n(inputs):
-    """Calculate the minimum of n Tensors
+    """Calculate the minimum of n tensors.
 
     Args:
-        inputs (list[Tensor]): list of Tensors, should have the same shape
+        inputs (iterable[Tensor]): an iterable of tensors. It requires that
+            all tensor shapes can be broadcast to the same shape.
     Returns:
-        the elementwise minimum of all the tensors in `inputs`
+        Tensor: the element-wise minimum of all the tensors in ``inputs``.
     """
-    ret = inputs[0]
-    inputs = inputs[1:]
-    for x in inputs:
-        ret = torch.min(ret, x)
-    return ret
+    return functools.reduce(torch.min, inputs)
 
 
 def add_n(inputs):
-    """Calculate the sum of n Tensors
+    """Calculate the sum of n tensors.
 
     Args:
-        inputs (list[Tensor]): list of Tensors, should have the same shape
+        inputs (iterable[Tensor]): an iterable of tensors. It requires that
+            all tensor shapes can be broadcast to the same shape.
     Returns:
-        the elementwise sum of all the tensors in `inputs`
+        Tensor: the element-wise sum of all the tensors in ``inputs``.
     """
-    assert isinstance(inputs, list)
-    ret = inputs[0]
-    inputs = inputs[1:]
-    for x in inputs:
-        ret = torch.add(ret, x)
-    return ret
+    return sum(inputs)
+
+
+def mul_n(inputs):
+    """Calculate the product of n tensors.
+
+    Args:
+        inputs (iterable[Tensor]): an iterable of tensors. It requires that
+            all tensor shapes can be broadcast to the same shape.
+    Returns:
+        Tensor: the element-wise multiplication of all the tensors in ``inputs``.
+    """
+    return functools.reduce(torch.mul, inputs)
 
 
 def square(x):

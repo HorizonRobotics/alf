@@ -140,7 +140,8 @@ class RLAlgorithm(Algorithm):
             else:
                 replayer = "uniform"
             self.set_exp_replayer(replayer, self._env.batch_size,
-                                  config.replay_buffer_length)
+                                  config.replay_buffer_length,
+                                  config.priority_replay)
 
         env = self._env
         if env is not None:
@@ -434,6 +435,7 @@ class RLAlgorithm(Algorithm):
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
 
         env_step_time = 0.
+        store_exp_time = 0.
         for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
@@ -454,10 +456,17 @@ class RLAlgorithm(Algorithm):
             next_time_step = self._env.step(action)
             env_step_time += time.time() - t0
 
-            self.observe_for_metrics(time_step)
+            self.observe_for_metrics(time_step.cpu())
 
-            exp = make_experience(time_step, policy_step, policy_state)
+            if self._exp_replayer_type == "one_time":
+                exp = make_experience(time_step, policy_step, policy_state)
+            else:
+                exp = make_experience(time_step.cpu(), policy_step,
+                                      policy_state)
+
+            t0 = time.time()
             self.observe_for_replay(exp)
+            store_exp_time += time.time() - t0
 
             exp_for_training = Experience(
                 action=action,
@@ -475,7 +484,8 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
-        alf.summary.scalar("time/env_step", env_step_time)
+        alf.summary.scalar("time/unroll_env_step", env_step_time)
+        alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         experience = alf.nest.utils.stack_nests(experience_list)
         experience = experience._replace(
             rollout_info=dist_utils.params_to_distributions(

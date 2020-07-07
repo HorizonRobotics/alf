@@ -71,12 +71,12 @@ class NestCombiner(abc.ABC):
 @gin.configurable
 class NestConcat(NestCombiner):
     def __init__(self, dim=-1, name="NestConcat"):
-        """A combiner for concatenating all elements in a nest along the specified
-        axis. It assumes that all elements have the same tensor spec. Can be used
+        """A combiner for concatenating all tensors in a nest along the specified
+        axis. It assumes that all tensors have the same tensor spec. Can be used
         as a preprocessing combiner in ``EncodingNetwork``.
 
         Args:
-            dim (int): the dim along which the elements are concatenated
+            dim (int): the dim along which the tensors are concatenated
             name (str):
         """
         super(NestConcat, self).__init__(name)
@@ -89,12 +89,12 @@ class NestConcat(NestCombiner):
 @gin.configurable
 class NestSum(NestCombiner):
     def __init__(self, average=False, activation=None, name="NestSum"):
-        """Add all elements in a nest together. It assumes that all elements have
+        """Add all tensors in a nest together. It assumes that all tensors have
         the same tensor shape. Can be used as a preprocessing combiner in
         ``EncodingNetwork``.
 
         Args:
-            average (bool): If True, the elements are averaged instead of summed.
+            average (bool): If True, the tensors are averaged instead of summed.
             activation (Callable): activation function.
             name (str):
         """
@@ -111,6 +111,28 @@ class NestSum(NestCombiner):
         return self._activation(ret)
 
 
+@gin.configurable
+class NestMultiply(NestCombiner):
+    def __init__(self, activation=None, name="NestMultiply"):
+        """Element-wise multiply all tensors in a nest. It assumes that all
+        tensors have the same shape. Can be used as a preprocessing combiner in
+        ``EncodingNetwork``.
+
+        Args:
+            activation (Callable): optional activation function applied after
+                the multiplication.
+            name (str):
+        """
+        super(NestMultiply, self).__init__(name)
+        if activation is None:
+            activation = lambda x: x
+        self._activation = activation
+
+    def _combine_flat(self, tensors):
+        ret = alf.utils.math_ops.mul_n(tensors)
+        return self._activation(ret)
+
+
 def stack_nests(nests):
     """Stack tensors to a sequence.
 
@@ -123,7 +145,11 @@ def stack_nests(nests):
     Returns:
         a nest with same structure as ``nests[0]``.
     """
-    return nest.map_structure(lambda *tensors: torch.stack(tensors), *nests)
+    if len(nests) == 1:
+        return nest.map_structure(lambda tensor: tensor.unsqueeze(0), nests[0])
+    else:
+        return nest.map_structure(lambda *tensors: torch.stack(tensors),
+                                  *nests)
 
 
 def get_outer_rank(tensors, specs):
@@ -147,14 +173,15 @@ def get_outer_rank(tensors, specs):
             are batched but have an incorrect number of outer dims.
     """
 
+    outer_ranks = []
+
     def _get_outer_rank(tensor, spec):
         outer_rank = len(tensor.shape) - len(spec.shape)
         assert outer_rank >= 0
-        assert list(tensor.shape[outer_rank:]) == list(spec.shape)
-        return outer_rank
+        assert tensor.shape[outer_rank:] == spec.shape
+        outer_ranks.append(outer_rank)
 
-    outer_ranks = nest.map_structure(_get_outer_rank, tensors, specs)
-    outer_ranks = nest.flatten(outer_ranks)
+    nest.map_structure(_get_outer_rank, tensors, specs)
     outer_rank = outer_ranks[0]
     assert all([r == outer_rank
                 for r in outer_ranks]), ("Tensors have different "
@@ -249,3 +276,15 @@ def grad(nested, objective):
     """
     return nest.pack_sequence_as(
         nested, list(torch.autograd.grad(objective, nest.flatten(nested))))
+
+
+def zeros_like(nested):
+    """Create a new nest with all zeros like the reference ``nested``.
+
+    Args:
+        nested (nested Tensor): a nested structure
+
+    Returns:
+        nested Tensor: a nest with all zeros
+    """
+    return nest.map_structure(torch.zeros_like, nested)

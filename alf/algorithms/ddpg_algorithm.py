@@ -28,7 +28,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.one_step_loss import OneStepTDLoss
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import TimeStep, Experience, LossInfo, namedtuple
-from alf.data_structures import AlgStep
+from alf.data_structures import AlgStep, StepType
 from alf.nest import nest
 import alf.nest.utils as nest_utils
 from alf.networks import ActorNetwork, CriticNetwork
@@ -72,6 +72,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  target_update_period=1,
                  rollout_random_action=0.,
                  dqda_clipping=None,
+                 action_l2=0,
                  actor_optimizer=None,
                  critic_optimizer=None,
                  debug_summaries=False,
@@ -118,6 +119,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             dqda_clipping (float): when computing the actor loss, clips the
                 gradient dqda element-wise between ``[-dqda_clipping, dqda_clipping]``.
                 Does not perform clipping if ``dqda_clipping == 0``.
+            action_l2 (float): weight of squared action l2-norm on actor loss.
             actor_optimizer (torch.optim.optimizer): The optimizer for actor.
             critic_optimizer (torch.optim.optimizer): The optimizer for critic.
             debug_summaries (bool): True if debug summaries should be created.
@@ -132,6 +134,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         else:
             critic_networks = alf.networks.NaiveParallelNetwork(
                 critic_network, num_critic_replicas)
+        self._action_l2 = action_l2
 
         train_state_spec = DdpgState(
             actor=DdpgActorState(
@@ -272,6 +275,13 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             loss = 0.5 * losses.element_wise_squared_loss(
                 (dqda + action).detach(), action)
             loss = loss.sum(list(range(1, loss.ndim)))
+            if self._action_l2 > 0:
+                assert action.requires_grad
+                assert action.ndim < 3, (
+                    "Action has ndim: {}.  Tensor.norm ".format(action.ndim) +
+                    "will incorrectly take the norm of the last dim.")
+                loss += self._action_l2 * (action**2).sum(
+                    list(range(1, action.ndim)))
             return loss
 
         actor_loss = nest.map_structure(actor_loss_fn, dqda, action)
@@ -301,10 +311,21 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         critic_loss = math_ops.add_n(critic_losses)
 
+        if (experience.batch_info != ()
+                and experience.batch_info.importance_weights != ()):
+            valid_masks = (experience.step_type != StepType.LAST).to(
+                torch.float32)
+            valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)
+            priority = (
+                (critic_loss * valid_masks).sum(dim=0) / valid_n).sqrt()
+        else:
+            priority = ()
+
         actor_loss = train_info.actor_loss
 
         return LossInfo(
             loss=critic_loss + actor_loss.loss,
+            priority=priority,
             extra=DdpgLossInfo(critic=critic_loss, actor=actor_loss.extra))
 
     def after_update(self, experience, train_info: DdpgInfo):

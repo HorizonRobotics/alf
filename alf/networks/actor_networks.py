@@ -20,6 +20,7 @@ import math
 import torch
 import torch.nn as nn
 
+import alf
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .preprocessor_networks import PreprocessorNetwork
 import alf.layers as layers
@@ -106,7 +107,8 @@ class ActorNetwork(PreprocessorNetwork):
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
-            kernel_initializer=kernel_initializer)
+            kernel_initializer=kernel_initializer,
+            name=self.name + ".encoding_net")
 
         last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
                                     a=-0.003, b=0.003)
@@ -136,10 +138,23 @@ class ActorNetwork(PreprocessorNetwork):
         encoded_obs, _ = self._encoding_net(observation)
 
         actions = []
+        i = 0
         for layer, spec in zip(self._action_layers, self._flat_action_spec):
             action = layer(encoded_obs)
             action = spec_utils.scale_to_spec(action, spec)
+
+            if alf.summary.should_summarize_output():
+                a_name = ('summarize_output/' + self.name + '.action_layer.' +
+                          str(i) + '.action.output_norm')
+                if not self.training:
+                    a_name += ".eval"
+                a = action
+                alf.summary.scalar(
+                    name=a_name,
+                    data=torch.mean(a.norm(dim=list(range(1, a.ndim)))))
+
             actions.append(action)
+            i += 1
 
         output_actions = nest.pack_sequence_as(self._action_spec, actions)
         return output_actions, state

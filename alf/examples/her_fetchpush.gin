@@ -1,0 +1,20 @@
+include 'ddpg_fetchpush.gin'
+
+suite_robotics.load.concat_desired_goal=False
+
+ReplayBuffer.keep_episodic_info=True
+ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn
+
+# Finer grain tensorboard summaries plus local action distribution
+#TrainerConfig.summarize_action_distributions=True
+#TrainerConfig.summary_interval=1
+#TrainerConfig.update_counter_every_mini_batch=True
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summarize_output=True
+summarize_gradients.with_histogram=False
+summarize_variables.with_histogram=False
+
+import alf.nest.utils
+actor/ActorNetwork.preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()

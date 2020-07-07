@@ -226,8 +226,7 @@ class TracAlgorithm(OnPolicyAlgorithm):
         state = nest_map(lambda x: x[0], exp_array.state)
         # exp_array.state is no longer needed
         exp_array = exp_array._replace(state=())
-        initial_state = common.zero_tensor_from_nested_spec(
-            self.predict_state_spec, batch_size)
+        initial_state = self.get_initial_predict_state(batch_size)
         total_dists = nest_map(lambda _: torch.tensor(0.), self.action_spec)
         for t in range(num_steps):
             exp = nest_map(lambda x: x[t], exp_array)

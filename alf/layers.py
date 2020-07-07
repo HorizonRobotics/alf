@@ -271,7 +271,12 @@ class FC(nn.Module):
         super(FC, self).__init__()
 
         self._activation = activation
-        self._linear = nn.Linear(input_size, output_size, bias=use_bias)
+        self._weight = nn.Parameter(torch.Tensor(output_size, input_size))
+        if use_bias:
+            self._bias = nn.Parameter(torch.Tensor(output_size))
+        else:
+            self._bias = None
+
         self._kernel_initializer = kernel_initializer
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
@@ -284,31 +289,35 @@ class FC(nn.Module):
     def reset_parameters(self):
         if self._kernel_initializer is None:
             variance_scaling_init(
-                self._linear.weight.data,
+                self._weight.data,
                 gain=self._kernel_init_gain,
                 nonlinearity=self._activation)
         else:
-            self._kernel_initializer(self._linear.weight.data)
+            self._kernel_initializer(self._weight.data)
 
         if self._use_bias:
-            nn.init.constant_(self._linear.bias.data, self._bias_init_value)
+            nn.init.constant_(self._bias.data, self._bias_init_value)
 
     def forward(self, inputs):
-        outs = self._linear(inputs)
+        if inputs.dim() == 2 and self._use_bias:
+            y = torch.addmm(self._bias, inputs, self._weight.t())
+        else:
+            y = inputs.matmul(self._weight.t())
+            if self._use_bias:
+                y += self._bias
         if self._use_bn:
             if not self._use_bias:
                 self._bn.bias.data.zero_()
-            outs = self._bn(outs)
-        return self._activation(outs)
-        # return self._activation(self._linear(inputs))
+            y = self._bn(y) 
+        return self._activation(y)
 
     @property
     def weight(self):
-        return self._linear.weight
+        return self._weight
 
     @property
     def bias(self):
-        return self._linear.bias
+        return self._bias
 
     def make_parallel(self, n):
         """Create a ``ParallelFC`` using ``n`` replicas of ``self``.
