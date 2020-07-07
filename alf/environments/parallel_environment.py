@@ -68,6 +68,7 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self.start()
         self._action_spec = self._envs[0].action_spec()
         self._observation_spec = self._envs[0].observation_spec()
+        self._reward_spec = self._envs[0].reward_spec()
         self._time_step_spec = self._envs[0].time_step_spec()
         self._env_info_spec = self._envs[0].env_info_spec()
         self._time_step_with_env_info_spec = self._time_step_spec._replace(
@@ -113,6 +114,9 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
 
     def action_spec(self):
         return self._action_spec
+
+    def reward_spec(self):
+        return self._reward_spec
 
     def time_step_spec(self):
         return self._time_step_spec

@@ -21,6 +21,7 @@ Adapted from TF-Agents Environment API as seen in:
 import abc
 import six
 
+import alf
 from alf.data_structures import time_step_spec
 
 
@@ -129,6 +130,17 @@ class AlfEnvironment(object):
             An ``TensorSpec``, or a nested dict, list or tuple of ``TensorSpec``s.
         """
 
+    def reward_spec(self):
+        """Defines the reward provided by the environment.
+
+        The reward of the most environments is a scalar. So we provide a default
+        implementation which returns a scalar spec.
+
+        Returns:
+            alf.TensorSpec
+        """
+        return alf.TensorSpec(())
+
     def time_step_spec(self):
         """Describes the ``TimeStep`` fields returned by ``step()``.
 
@@ -140,7 +152,8 @@ class AlfEnvironment(object):
             A ``TimeStep`` namedtuple containing (possibly nested) ``TensorSpec``s defining
             the step_type, reward, discount, observation, prev_action, and end_id.
         """
-        return time_step_spec(self.observation_spec(), self.action_spec())
+        return time_step_spec(self.observation_spec(), self.action_spec(),
+                              self.reward_spec())
 
     def current_time_step(self):
         """Returns the current timestep."""

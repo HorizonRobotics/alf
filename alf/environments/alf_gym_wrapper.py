@@ -136,8 +136,9 @@ class AlfGymWrapper(AlfEnvironment):
             self._gym_env.observation_space, simplify_box_bounds)
         self._action_spec = tensor_spec_from_gym_space(
             self._gym_env.action_space, simplify_box_bounds)
-        self._time_step_spec = ds.time_step_spec(self._observation_spec,
-                                                 self._action_spec)
+        self._reward_spec = TensorSpec(())
+        self._time_step_spec = ds.time_step_spec(
+            self._observation_spec, self._action_spec, self._reward_spec)
         self._info = None
         self._done = True
         self._zero_info = self._obtain_zero_info()
@@ -241,6 +242,9 @@ class AlfGymWrapper(AlfEnvironment):
 
     def action_spec(self):
         return self._action_spec
+
+    def reward_spec(self):
+        return self._reward_spec
 
     def close(self):
         return self._gym_env.close()
