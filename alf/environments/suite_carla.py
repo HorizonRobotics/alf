@@ -1404,7 +1404,7 @@ class CarlaEnvironment(AlfEnvironment):
         num_vehicles = self._batch_size + self._num_other_vehicles
         if num_vehicles <= number_of_spawn_points:
             random.shuffle(spawn_points)
-        elif self._batch_size > number_of_spawn_points:
+        else:
             raise ValueError(
                 "requested %d vehicles, but could only find %d spawn points" %
                 (self._batch_size, number_of_spawn_points))
