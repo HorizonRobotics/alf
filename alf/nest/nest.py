@@ -258,40 +258,6 @@ def extract_any_leaf_from_nest(nest):
                 return ret
 
 
-def all_leaves_with_path_from_nest(nest, path=""):
-    """Generates all leaf nodes from a nest, with their paths.
-
-    NOTE: this is not as efficient as a c++ based implementation, and should
-    not be used in frequently called functions.
-
-    Args:
-        nest (nest): a nested structure
-        path (str): path to current nest element
-
-    Yields:
-        - ret (Tensor): for the leaf
-        - path (str): path to the leaf in the nest
-    """
-    if not is_nested(nest):
-        if nest is not None:
-            yield nest, path
-    elif isinstance(nest, list) or is_unnamedtuple(nest):
-        i = -1
-        for value in nest:
-            i += 1
-            if path:
-                path += "."
-            name = path + str(i)
-            for x, y in all_leaves_with_path_from_nest(value, name):
-                yield x, y
-    else:
-        for name, value in extract_fields_from_nest(nest):
-            if path:
-                path += "."
-            for x, y in all_leaves_with_path_from_nest(value, path + name):
-                yield x, y
-
-
 def is_nested(value):
     """Returns true if the input is one of: ``list``, ``unnamedtuple``, ``dict``,
     or ``namedtuple``. Note that this definition is different from tf's is_nested
@@ -369,6 +335,40 @@ def py_assert_same_structure(nest1, nest2):
                 assert fv1[0] == fv2[0], \
                     "Keys are different !{} <-> {}".format(fv1[0], fv2[0])
                 py_assert_same_structure(fv1[1], fv2[1])
+
+
+def py_map_structure_with_path(func, *nests):
+    """Applies func to each entry in structure and returns a new structure.
+    This function gives func access to one additional parameter:
+    the symbolic string of the path to the element currently supplied.
+    List elements will be index by the ordinal position of the element in the list.
+    """
+    assert nests, "There should be at least one input nest!"
+    for nest in nests[1:]:
+        py_assert_same_structure(nests[0], nest)
+
+    def _map(*nests, path=""):
+        if not is_nested(nests[0]):
+            return func(*nests, path)
+        if isinstance(nests[0], list) or is_unnamedtuple(nests[0]):
+            ret = type(nests[0])([
+                _map(
+                    *values[:-1],
+                    path=path + ("." if path else "") + str(values[-1]))
+                for values in zip(*nests, range(len(nests[0])))
+            ])[:-1]
+        else:
+            ret = {}
+            for fields_and_values in zip(
+                    *[extract_fields_from_nest(nest) for nest in nests]):
+                field = fields_and_values[0][0]
+                values = map(lambda fv: fv[1], fields_and_values)
+                ret[field] = _map(
+                    *values, path=path + ("." if path else "") + field)
+            ret = type(nests[0])(**ret)
+        return ret
+
+    return _map(*nests, path="")
 
 
 def py_map_structure(func, *nests):

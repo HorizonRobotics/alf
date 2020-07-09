@@ -305,6 +305,7 @@ class Trainer(object):
         global_step = alf.summary.get_global_counter()
         self._checkpointer.save(global_step=global_step)
 
+    @common.mark_eval
     def _eval(self):
         time_step = common.get_initial_time_step(self._eval_env)
         policy_state = self._algorithm.get_initial_predict_state(
@@ -337,10 +338,8 @@ def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
     transformed_time_step = algorithm.transform_timestep(time_step)
-    algorithm.eval()
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
-    algorithm.train(True)
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())

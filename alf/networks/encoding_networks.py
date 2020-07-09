@@ -634,7 +634,7 @@ class EncodingNetwork(PreprocessorNetwork):
             z, _ = self._img_encoding_net(z)
         if alf.summary.should_summarize_output():
             name = ('summarize_output/' + self.name + '.fc.0.' + 'input_norm.'
-                    + self.exe_mode_str())
+                    + common.exe_mode_str())
             alf.summary.scalar(
                 name=name, data=torch.mean(z.norm(dim=list(range(1, z.ndim)))))
         i = 0
@@ -642,7 +642,7 @@ class EncodingNetwork(PreprocessorNetwork):
             z = fc(z)
             if alf.summary.should_summarize_output():
                 name = ('summarize_output/' + self.name + '.fc.' + str(i) +
-                        '.output_norm.' + self.exe_mode_str())
+                        '.output_norm.' + common.exe_mode_str())
                 alf.summary.scalar(
                     name=name,
                     data=torch.mean(z.norm(dim=list(range(1, z.ndim)))))

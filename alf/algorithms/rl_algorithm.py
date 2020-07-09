@@ -419,6 +419,7 @@ class RLAlgorithm(Algorithm):
                 reward=self._reward_shaping_fn(time_step.reward))
         return time_step
 
+    @common.mark_rollout
     def unroll(self, unroll_length):
         r"""Unroll ``unroll_length`` steps using the current policy.
 
@@ -452,10 +453,8 @@ class RLAlgorithm(Algorithm):
             # to store it in replay buffers
             transformed_time_step = transformed_time_step._replace(
                 untransformed=time_step)
-            self.rollout()
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
-            self.rollout(False)
             # release the reference to ``time_step``
             transformed_time_step = transformed_time_step._replace(
                 untransformed=())

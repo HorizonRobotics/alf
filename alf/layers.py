@@ -28,14 +28,6 @@ from alf.utils import common
 from alf.utils.math_ops import identity
 
 
-def reduce_along_batch_dims(x, mean, op):
-    spec = TensorSpec.from_tensor(mean)
-    bs = BatchSquash(get_outer_rank(x, spec))
-    x = bs.flatten(x)
-    x = op(x, dim=0)[0]
-    return x
-
-
 def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
     """Normalizes a tensor by ``mean`` and ``variance``, which are expected to have
     the same tensor spec with the inner dims of ``x``.
@@ -109,41 +101,8 @@ class BatchSquash(object):
                      tuple(tensor.shape[1:])))
 
 
-class Module(nn.Module):
-    """Alf's nn.Module wrapper"""
-
-    def __init__(self):
-        super().__init__()
-        self.rollingout = False
-        self.summary_name = ""
-
-    def rollout(self, mode=True):
-        self.rollingout = mode
-        for module in self.children():
-            if isinstance(module, Module):
-                module.rollout(mode)
-
-    def exe_mode_str(self):
-        """Return execution mode according to training and rollingout flags.
-
-        Possible modes include 1) "eval": evaluation, and for training:
-        2) "rollout" and 3) "replay".
-
-        Caller needs to make sure proper inheritance from this Module class,
-        and to set train(mode) and rollout(mode) flags in the proper places.
-        Currently, train(False) is set in policy_trainer._step(), and rollout()
-        is set in rl_algorithm.unroll().  All other places are assumed to
-        be "replay".
-        """
-        if not self.training:
-            mode = "eval"
-        else:
-            mode = ("rollout" if self.rollingout else "replay")
-        return mode
-
-
 @gin.configurable
-class OneHot(Module):
+class OneHot(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
         self._num_classes = num_classes
@@ -154,7 +113,7 @@ class OneHot(Module):
 
 
 @gin.configurable
-class FixedDecodingLayer(Module):
+class FixedDecodingLayer(nn.Module):
     def __init__(self,
                  input_size,
                  output_size,
@@ -274,7 +233,7 @@ class FixedDecodingLayer(Module):
 
 
 @gin.configurable
-class FC(Module):
+class FC(nn.Module):
     def __init__(self,
                  input_size,
                  output_size,
@@ -340,11 +299,6 @@ class FC(Module):
             y = inputs.matmul(self._weight.t())
             if self._use_bias:
                 y += self._bias
-        if self.summary_name and alf.summary.should_summarize_output():
-            alf.summary.scalar(
-                name=self.summary_name + '.pre_activation.output_norm.' +
-                self.exe_mode_str(),
-                data=torch.mean(y.norm(dim=list(range(1, y.ndim)))))
         return self._activation(y)
 
     @property
@@ -363,7 +317,7 @@ class FC(Module):
 
 
 @gin.configurable
-class ParallelFC(Module):
+class ParallelFC(nn.Module):
     def __init__(self,
                  input_size,
                  output_size,

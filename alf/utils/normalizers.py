@@ -21,11 +21,11 @@ import torch.nn as nn
 import alf
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
-from alf.utils import math_ops
+from alf.utils import common, math_ops
 from alf.utils.averager import WindowAverager, EMAverager, AdaptiveAverager
 
 
-class Normalizer(alf.layers.Module):
+class Normalizer(nn.Module):
     MAX_DIMS_TO_OUTPUT = 30
 
     def __init__(self,
@@ -85,13 +85,21 @@ class Normalizer(alf.layers.Module):
         sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
         if alf.summary.should_record_summaries():
-            suffix = self.exe_mode_str()
+            suffix = common.exe_mode_str()
+
+            def _reduce_along_batch_dims(x, mean, op):
+                spec = TensorSpec.from_tensor(mean)
+                bs = alf.layers.BatchSquash(get_outer_rank(x, spec))
+                x = bs.flatten(x)
+                x = op(x, dim=0)[0]
+                return x
 
             def _summary(name, val):
                 if val.ndim == 0:
                     alf.summary.scalar(self._name + "." + name + "." + suffix,
                                        val)
-                elif val.shape[0] < self.MAX_DIMS_TO_OUTPUT:
+                elif (val.shape[0] < self.MAX_DIMS_TO_OUTPUT
+                      and alf.summary.should_summarize_output()):
                     for i in range(val.shape[0]):
                         alf.summary.scalar(
                             self._name + "." + name + "_" + str(i) + "." +
@@ -102,23 +110,19 @@ class Normalizer(alf.layers.Module):
                     alf.summary.scalar(
                         self._name + "." + name + ".max." + suffix, val.max())
 
-            for (t, t_path), (m, m_path), (m2, m2_path) in zip(
-                    alf.nest.all_leaves_with_path_from_nest(tensor),
-                    alf.nest.all_leaves_with_path_from_nest(
-                        self._mean_averager.get()),
-                    alf.nest.all_leaves_with_path_from_nest(
-                        self._m2_averager.get())):
-                path = t_path
-                assert path == m_path
-                assert path == m2_path
+            def _summarize_all(t, m, m2, path):
                 if path:
                     path += "."
                 _summary(path + "tensor.batch_min",
-                         alf.layers.reduce_along_batch_dims(t, m, torch.min))
+                         _reduce_along_batch_dims(t, m, torch.min))
                 _summary(path + "tensor.batch_max",
-                         alf.layers.reduce_along_batch_dims(t, m, torch.max))
+                         _reduce_along_batch_dims(t, m, torch.max))
                 _summary(path + "mean", m)
                 _summary(path + "var", m2 - math_ops.square(m))
+
+            alf.nest.py_map_structure_with_path(_summarize_all, tensor,
+                                                self._mean_averager.get(),
+                                                self._m2_averager.get())
 
     def normalize(self, tensor, clip_value=-1.0):
         """
@@ -150,7 +154,6 @@ class Normalizer(alf.layers.Module):
                                       self._m2_averager.get(), tensor)
 
 
-@gin.configurable
 class WindowNormalizer(Normalizer):
     """Normalization according to a recent window of samples.
     """

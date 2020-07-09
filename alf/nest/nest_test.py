@@ -328,6 +328,15 @@ class TestTransformNest(alf.test.TestCase):
         transformed_ntuple = transform_nest(ntuple, None, NestSum())
         self.assertEqual(transformed_ntuple, 3)
 
+        tuples = [("a", 12), ("b", 13)]
+        nested = collections.OrderedDict(tuples)
+
+        def _check_path(e, path):
+            self.assertEqual(nested[path], e)
+
+        res = nest.py_map_structure_with_path(_check_path, nested)
+        nest.assert_same_structure(nested, res)
+
 
 class TestExtractAnyLeaf(alf.test.TestCase):
     def test_extract_any_leaf(self):
@@ -336,13 +345,6 @@ class TestExtractAnyLeaf(alf.test.TestCase):
             isinstance(nest.extract_any_leaf_from_nest(nested), int))
         self.assertEqual(nest.extract_any_leaf_from_nest([]), None)
         self.assertEqual(nest.extract_any_leaf_from_nest(2), 2)
-
-    def test_extract_all_leaves(self):
-        tuples = [("a", 12), ("b", 13)]
-        nested = collections.OrderedDict(tuples)
-        res = [(y, x)
-               for (x, y) in nest.all_leaves_with_path_from_nest(nested)]
-        self.assertEqual(res, tuples)
 
 
 if __name__ == '__main__':

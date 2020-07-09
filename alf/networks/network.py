@@ -92,7 +92,7 @@ class _NetworkMeta(abc.ABCMeta):
 
 
 @six.add_metaclass(_NetworkMeta)
-class Network(alf.layers.Module):
+class Network(nn.Module):
     """A base class for various networks.
 
     Base extension to nn.Module to simplify copy operations.
