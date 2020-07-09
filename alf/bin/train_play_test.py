@@ -374,11 +374,11 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_merlin_dmlab_collect_good_objects(self):
         self._test(
-            gin_file='icm_super_mario_intrinsic_only.gin',
+            gin_file='merlin_dmlab_collect_good_objects.gin',
             skip_checker=self._skip_if_dmlab_unavailable,
+            test_play=False,  # render mode 'human' is not implemented
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)

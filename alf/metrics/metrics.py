@@ -244,7 +244,11 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
 
     def _extract_metric_values(self, time_step):
         """Accumulate immediate rewards to get episodic return."""
-        return time_step.reward
+        ndim = time_step.step_type.ndim
+        if time_step.reward.ndim == ndim:
+            return time_step.reward
+        else:
+            return alf.math.sum_to_leftmost(time_step.reward, ndim)
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):

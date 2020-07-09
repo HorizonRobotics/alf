@@ -287,8 +287,12 @@ class NaiveParallelNetwork(Network):
             ret = self._networks[i](inp, s)
             ret = alf.nest.map_structure(lambda x: x.unsqueeze(1), ret)
             output_states.append(ret)
-        output, new_state = alf.nest.map_structure(
-            lambda *tensors: torch.cat(tensors, dim=1), *output_states)
+        if self._n > 1:
+            output, new_state = alf.nest.map_structure(
+                lambda *tensors: torch.cat(tensors, dim=1), *output_states)
+        else:
+            output, new_state = output_states[0]
+
         return output, new_state
 
     @property

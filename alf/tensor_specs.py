@@ -93,6 +93,11 @@ class TensorSpec(object):
         return self._shape
 
     @property
+    def numel(self):
+        """Returns the number of elements."""
+        return int(np.prod(self._shape))
+
+    @property
     def ndim(self):
         """Return the rank of the tensor."""
         return len(self._shape)

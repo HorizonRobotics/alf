@@ -21,15 +21,16 @@ from alf.data_structures import LossInfo, StepType
 from alf.utils import common, losses, value_ops
 from alf.utils import tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
+from alf.algorithms.td_loss import TDLoss
 
 
 @gin.configurable
-class OneStepTDLoss(nn.Module):
+class OneStepTDLoss(TDLoss):
     def __init__(self,
                  gamma=0.99,
                  td_error_loss_fn=losses.element_wise_squared_loss,
                  debug_summaries=False,
-                 name="OneStepLoss"):
+                 name="TDLoss"):
         """
         Args:
             gamma (float): A discount factor for future rewards.
@@ -39,35 +40,9 @@ class OneStepTDLoss(nn.Module):
             debug_summaries (bool): True if debug summaries should be created
             name (str): The name of this loss.
         """
-        super().__init__()
-        self._gamma = gamma
-        self._td_error_loss_fn = td_error_loss_fn
-        self._debug_summaries = debug_summaries
-        self._name = name
-
-    def forward(self, experience, value, target_value):
-        returns = value_ops.one_step_discounted_return(
-            rewards=experience.reward,
-            values=target_value,
-            step_types=experience.step_type,
-            discounts=experience.discount * self._gamma)
-        value = value[:-1]
-        if self._debug_summaries and alf.summary.should_record_summaries():
-            mask = experience.step_type[:-1] != StepType.LAST
-            with alf.summary.scope(self._name):
-                alf.summary.scalar(
-                    "explained_variance_of_return_by_value",
-                    tensor_utils.explained_variance(value, returns, mask))
-                safe_mean_hist_summary('values', value, mask)
-                safe_mean_hist_summary('returns', returns, mask)
-                safe_mean_hist_summary("td_error", returns - value, mask)
-        loss = self._td_error_loss_fn(returns.detach(), value)
-
-        # The shape of the loss expected by Algorith.update_with_gradient is
-        # [T, B], so we need to augment it with additional zeros.
-        loss = tensor_utils.tensor_extend_zero(loss)
-        return LossInfo(loss=loss, extra=loss)
-
-    @property
-    def discount(self):
-        return self._gamma
+        super().__init__(
+            gamma=gamma,
+            td_error_loss_fn=td_error_loss_fn,
+            debug_summaries=debug_summaries,
+            td_lambda=0.0,
+            name=name)
