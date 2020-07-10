@@ -20,7 +20,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-import alf
 from alf.initializers import variance_scaling_init
 from alf.nest.utils import get_outer_rank
 from alf.tensor_specs import TensorSpec
