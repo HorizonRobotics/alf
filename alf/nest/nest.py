@@ -691,3 +691,39 @@ def get_field(nested, field):
                             "a dict or namedtuple!")
 
     return _traverse(nested=nested, levels=field.split('.') if field else [])
+
+
+def set_field(nested, field, new_value):
+    """Set the field in nested to ``new_value``.
+
+    field is a string separated by ".". set_filed(nested, "a.b", v) is equivalent
+    to ``nested._replace(a=nested.a._replace(b=v))`` if nested is constructed
+    using namedtuple.
+
+    Args:
+        nested (nest): a nested structure
+        field (str): indicate the path to the field with '.' separating the field
+            name at different level
+        new_value (any): the new value for the field
+    Returns:
+        nest: a nest same as ``nested`` except the filed ``field`` replaced by
+            ``new_value``
+    """
+
+    def _traverse(nested, levels):
+        if not levels:
+            return new_value
+        level = levels[0]
+        if is_namedtuple(nested):
+            new_val = _traverse(
+                nested=getattr(nested, level), levels=levels[1:])
+            return nested._replace(**{level: new_val})
+        elif isinstance(nested, dict):
+            new_val = nested.copy()
+            new_val[level] = _traverse(nested=nested[level], levels=levels[1:])
+            return new_val
+        else:
+            raise TypeError("If value is a nest, it must be either " +
+                            "a dict or namedtuple!")
+
+    return _traverse(nested=nested, levels=field.split('.') if field else [])

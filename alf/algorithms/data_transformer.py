@@ -460,6 +460,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
 class ObservationNormalizer(SimpleDataTransformer):
     def __init__(self,
                  observation_spec,
+                 fields=None,
                  clipping=0.,
                  window_size=10000,
                  update_rate=1e-4,
@@ -480,6 +481,9 @@ class ObservationNormalizer(SimpleDataTransformer):
 
         Args:
             observation_spec (nested TensorSpec): describing the observation in timestep
+            fields (None|list[str]): If None, normalize all fields. Otherwise,
+                only normalized the specified fields. Each string in ``fields``
+                is a a multi-step path denoted by "A.B.C".
             clipping (float): a floating value for clipping the normalized
                 observation into ``[-clipping, clipping]``. Only valid if it's
                 greater than 0.
@@ -493,6 +497,12 @@ class ObservationNormalizer(SimpleDataTransformer):
         super().__init__(observation_spec)
         self._update_mode = update_mode
         self._clipping = float(clipping)
+        self._fields = fields
+        if fields is not None:
+            observation_spec = dict([(field,
+                                      alf.nest.get_field(
+                                          observation_spec, field))
+                                     for field in fields])
         if mode == "adaptive":
             self._normalizer = AdaptiveNormalizer(
                 tensor_spec=observation_spec,
@@ -517,10 +527,20 @@ class ObservationNormalizer(SimpleDataTransformer):
         the normalizer. The normalizer won't be updated in other circumstances.
         """
         observation = timestep_or_exp.observation
+        if self._fields is None:
+            obs = observation
+        else:
+            obs = dict([(field, alf.nest.get_field(observation, field))
+                        for field in self._fields])
         if (self._update_mode == "replay" and common.is_replay()
                 or self._update_mode == "rollout" and common.is_rollout()):
-            self._normalizer.update(observation)
-        observation = self._normalizer.normalize(observation, self._clipping)
+            self._normalizer.update(obs)
+        obs = self._normalizer.normalize(obs, self._clipping)
+        if self._fields is None:
+            observation = obs
+        else:
+            for f, o in obs.items():
+                observation = alf.nest.set_field(observation, f, o)
         return timestep_or_exp._replace(observation=observation)
 
 
