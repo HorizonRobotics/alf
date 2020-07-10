@@ -156,6 +156,8 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         eval_env.reset()
         for i in range(700):
             alg.train_iter()
+            if i < config.initial_collect_steps:
+                continue
             eval_env.reset()
             eval_time_step = unroll(eval_env, alg, steps_per_episode - 1)
             logging.log_every_n_seconds(
@@ -204,7 +206,7 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
             use_parallel_network=use_parallel_network,
             env=env,
             config=config,
-            critic_optimizer=alf.optimizers.Adam(lr=1e-2),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-3),
             alpha_optimizer=alf.optimizers.Adam(lr=1e-2),
             debug_summaries=False,
             name="MySAC")
@@ -212,7 +214,8 @@ class SACAlgorithmTestDiscrete(parameterized.TestCase, alf.test.TestCase):
         eval_env.reset()
         for i in range(700):
             alg2.train_iter()
-
+            if i < config.initial_collect_steps:
+                continue
             eval_env.reset()
             eval_time_step = unroll(eval_env, alg2, steps_per_episode - 1)
             logging.log_every_n_seconds(
@@ -283,6 +286,8 @@ class SACAlgorithmTestMixed(parameterized.TestCase, alf.test.TestCase):
         eval_env.reset()
         for i in range(700):
             alg2.train_iter()
+            if i < config.initial_collect_steps:
+                continue
 
             eval_env.reset()
             eval_time_step = unroll(eval_env, alg2, steps_per_episode - 1)
