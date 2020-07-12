@@ -45,7 +45,8 @@ SacActionState = namedtuple(
 
 SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
 
-SacState = namedtuple("SacState", ["action", "actor", "critic"])
+SacState = namedtuple(
+    "SacState", ["action", "actor", "critic"], default_value=())
 
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
@@ -215,20 +216,22 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
 
+        action_state_spec = SacActionState(
+            actor_network=(() if self._act_type == ActionType.Discrete else
+                           actor_network.state_spec),
+            critic=(() if self._act_type == ActionType.Continuous else
+                    critic_networks.state_spec))
         super().__init__(
             observation_spec,
             action_spec,
             train_state_spec=SacState(
-                action=SacActionState(
-                    actor_network=(() if self._act_type == ActionType.Discrete
-                                   else actor_network.state_spec),
-                    critic=(() if self._act_type == ActionType.Continuous else
-                            critic_networks.state_spec)),
+                action=action_state_spec,
                 actor=(() if self._act_type != ActionType.Continuous else
                        critic_networks.state_spec),
                 critic=SacCriticState(
                     critics=critic_networks.state_spec,
                     target_critics=critic_networks.state_spec)),
+            predict_state_spec=SacState(action=action_state_spec),
             observation_transformer=observation_transformer,
             env=env,
             config=config,
@@ -362,7 +365,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type != ActionType.Discrete:
             continuous_action_dist, actor_network_state = self._actor_network(
                 observation, state=state.actor_network)
-            new_state._replace(actor_network=actor_network_state)
+            new_state = new_state._replace(actor_network=actor_network_state)
             if eps_greedy_sampling:
                 continuous_action = dist_utils.epsilon_greedy_sample(
                     continuous_action_dist, epsilon_greedy)
@@ -378,7 +381,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type != ActionType.Continuous:
             q_values, critic_state = self._critic_networks(
                 critic_network_inputs, state=state.critic)
-            new_state._replace(critic=critic_state)
+            new_state = new_state._replace(critic=critic_state)
             alpha = torch.exp(self._log_alpha)
             # p(a|s) = exp(Q(s,a)/alpha) / Z;
             # the discrete distribution will never be trained, so we detach the
@@ -423,18 +426,48 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=epsilon_greedy,
             eps_greedy_sampling=True)
-        empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
-        new_state = empty_state._replace(action=action_state)
+        return AlgStep(
+            output=action,
+            state=SacState(action=action_state),
+            info=SacInfo(action_distribution=action_dist))
+
+    def rollout_step(self, time_step: TimeStep, state: SacState):
+        """``rollout_step()`` basically predicts actions like what is done by
+        ``predict_step()``. Additionally, if states are to be stored a in replay
+        buffer, then this function also call ``_critic_networks`` and
+        ``_target_critic_networks`` to maintain their states.
+        """
+        action_dist, action, _, action_state = self._predict_action(
+            time_step.observation,
+            state=state.action,
+            epsilon_greedy=1.0,
+            eps_greedy_sampling=True)
+
+        if self.need_full_rollout_state():
+            _, critics_state = self._compute_critics(
+                self._critic_networks, time_step.observation, action,
+                state.critic.critics)
+            _, target_critics_state = self._compute_critics(
+                self._target_critic_networks, time_step.observation, action,
+                state.critic.target_critics)
+            critic_state = SacCriticState(
+                critics=critics_state, target_critics=target_critics_state)
+            if self._act_type == ActionType.Continuous:
+                # During unroll, the computations of ``critics_state`` and
+                # ``actor_state`` are the same.
+                actor_state = critics_state
+            else:
+                actor_state = ()
+        else:
+            actor_state = state.actor
+            critic_state = state.critic
+
+        new_state = SacState(
+            action=action_state, actor=actor_state, critic=critic_state)
         return AlgStep(
             output=action,
             state=new_state,
             info=SacInfo(action_distribution=action_dist))
-
-    def rollout_step(self, time_step: TimeStep, state: SacState):
-        if self.need_full_rollout_state():
-            raise NotImplementedError("Storing RNN state to replay buffer "
-                                      "is not supported by SacAlgorithm")
-        return self.predict_step(time_step, state, epsilon_greedy=1.0)
 
     def _compute_critics(self, critic_net, observation, action, critics_state):
         if self._act_type == ActionType.Continuous:

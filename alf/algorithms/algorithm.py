@@ -1255,17 +1255,22 @@ class Algorithm(nn.Module):
             common.warning_once(
                 "Experience length has been cut to %s" % length)
 
-        if len(alf.nest.flatten(
-                self.train_state_spec)) > 0 and not self._use_rollout_state:
-            if mini_batch_length == 1:
-                logging.fatal(
-                    "Should use TrainerConfig.use_rollout_state=True "
-                    "for training from a replay buffer when minibatch_length==1, "
-                    "otherwise the initial states are always zeros!")
-            else:
+        if len(alf.nest.flatten(self.train_state_spec)) > 0:
+            if not self._use_rollout_state:
+                if mini_batch_length == 1:
+                    logging.fatal(
+                        "Should use TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer when minibatch_length==1, "
+                        "otherwise the initial states are always zeros!")
+                else:
+                    common.warning_once(
+                        "Consider using TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer.")
+            elif mini_batch_length == 1:
                 common.warning_once(
-                    "Consider using TrainerConfig.use_rollout_state=True "
-                    "for training from a replay buffer.")
+                    "Using rollout states but with mini_batch_length=1. In "
+                    "this case, any recurrent model can't be properly trained!"
+                )
 
         experience = alf.nest.map_structure(
             lambda x: x.reshape(-1, mini_batch_length, *x.shape[2:]),
