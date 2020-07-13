@@ -107,7 +107,7 @@ class PriorActor(Algorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
-                 same_actin_noise=0.1,
+                 same_action_noise=0.1,
                  same_action_prob=0.9,
                  debug_summaries=False,
                  name="PriorActor"):
@@ -154,7 +154,7 @@ class PriorActor(Algorithm):
                 spec['minimum'] + spec['maximum']).squeeze(-1)
             spec['scale'] = torch.cat([
                 spec['maximum'] - spec['minimum'],
-                (spec['maximum'] - spec['minimum']) * same_actin_noise
+                (spec['maximum'] - spec['minimum']) * same_action_noise
             ],
                                       dim=-1)
             mix_prob = torch.tensor([1. - same_action_prob, same_action_prob])
