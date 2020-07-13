@@ -445,8 +445,6 @@ class ObservationNormalizer(nn.Module):
         """Normalize a given observation. If during unroll, then first update
         the normalizer. The normalizer won't be updated in other circumstances.
         """
-        # TODO: To update on unroll, we need to fix the case where test exp
-        # should be excluded.
         if (self._update_mode == "replay" and is_replay()
                 or self._update_mode == "rollout" and is_rollout()):
             self._normalizer.update(observation)
@@ -826,7 +824,7 @@ def set_exe_mode(mode):
     _exe_mode = mode
 
 
-def exe_mode_str():
+def exe_mode_name():
     """return the execution mode as string.
     """
     return _exe_mode_strs[_exe_mode]

@@ -230,11 +230,8 @@ def transform_nest(nested, field, func):
             return nested._replace(**{level: new_val})
         elif isinstance(nested, dict):
             new_val = nested.copy()
-            _val = _traverse_transform(nested=nested[level], levels=levels[1:])
-            if _val is not None:
-                new_val[level] = _val
-            else:
-                del new_val[level]
+            new_val[level] = _traverse_transform(
+                nested=nested[level], levels=levels[1:])
             return new_val
         else:
             raise TypeError("If value is a nest, it must be either " +

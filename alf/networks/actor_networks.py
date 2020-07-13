@@ -148,13 +148,13 @@ class ActorNetwork(PreprocessorNetwork):
                 alf.summary.scalar(
                     name='summarize_output/' + self.name + '.action_layer.' +
                     str(i) + '.pre_activation.output_norm.' +
-                    common.exe_mode_str(),
+                    common.exe_mode_name(),
                     data=torch.mean(
                         pre_activation.norm(
                             dim=list(range(1, pre_activation.ndim)))))
                 a_name = (
                     'summarize_output/' + self.name + '.action_layer.' + str(i)
-                    + '.action.output_norm.' + common.exe_mode_str())
+                    + '.action.output_norm.' + common.exe_mode_name())
                 alf.summary.scalar(
                     name=a_name,
                     data=torch.mean(

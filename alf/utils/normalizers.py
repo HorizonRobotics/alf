@@ -85,7 +85,7 @@ class Normalizer(nn.Module):
         sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
         if alf.summary.should_record_summaries():
-            suffix = common.exe_mode_str()
+            suffix = common.exe_mode_name()
 
             def _reduce_along_batch_dims(x, mean, op):
                 spec = TensorSpec.from_tensor(mean)
