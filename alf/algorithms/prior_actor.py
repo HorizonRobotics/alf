@@ -219,7 +219,7 @@ class UniformPriorActor(Algorithm):
                  observation_spec,
                  action_spec: BoundedTensorSpec,
                  debug_summaries=False,
-                 name="PriorActor"):
+                 name="UniformPriorActor"):
         """
         UniformPriorActor can be used as a prior for KLD regularized RL-algorithms. It
         generate a prior distribution for the next action using limited information,

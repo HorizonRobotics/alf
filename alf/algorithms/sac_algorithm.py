@@ -91,6 +91,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         Haarnoja et al "Soft Actor-Critic Algorithms and Applications", arXiv:1812.05905v2
 
+    In addition to the entropy regularization described in the SAC paper, we
+    also support KL-Divergence regularization if a prior actor is provided.
+    In this case, the training objective is:
+        :math:`E_\pi(\sum_t \gamma^t(r_t + \alpha D_{\rm KL}(\pi(\cdot)|s_t)||\pi^0(\cdot)|s_t)))`
+    where :math:`pi^0` is the prior actor.
+
     There are 3 points different with ``tf_agents.agents.sac.sac_agent``:
 
     1. To reduce computation, here we sample actions only once for calculating
@@ -194,6 +200,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 callable function, then it will be called on the action spec to
                 calculate a target entropy. If ``None``, a default entropy will
                 be calculated.
+            prior_actor_ctor (Callable): If provided, it will be called using
+                ``prior_actor_ctor(observation_spec, action_spec, debug_summaries=debug_summaries)``
+                to constructor a prior actor. The output of the prior actor is
+                the distribution of the next action. Two prior actors are implemented:
+                ``alf.algorithms.prior_actor.PriorActor`` and
+                ``alf.algorithms.prior_actor.UniformPriorActor``.
+            target_kld_per_dim (float): ``alpha`` is dynamically ajusted so that
+                the KLD is about ``target_kld_per_dim * dim``.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
