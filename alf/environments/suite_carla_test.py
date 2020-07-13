@@ -141,8 +141,10 @@ def main():
     if not FLAGS.manual:
         return False
 
+    logging.use_absl_handler()
     logging.set_verbosity(logging.INFO)
-    env = suite_carla.CarlaEnvironment(1, 'Town01')
+    env = suite_carla.CarlaEnvironment(
+        batch_size=1, map_name='Town01', num_other_vehicles=20, num_walkers=20)
     try:
         play(env)
     finally:

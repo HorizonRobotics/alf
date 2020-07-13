@@ -674,9 +674,9 @@ class World(object):
         self._world = world
         self._map = world.get_map()
         self._waypoints = self._map.generate_waypoints(2.0)
-        self._vehicles = []
-        self._vehicle_dict = {}
-        self._vehicle_locations = {}
+        self._actors = []  # including vehicles and walkers
+        self._actor_dict = {}
+        self._actor_locations = {}
 
         dao = GlobalRoutePlannerDAO(world.get_map(), sampling_resolution=1.0)
         self._global_route_planner = GlobalRoutePlanner(dao)
@@ -693,37 +693,37 @@ class World(object):
         """
         return self._global_route_planner.trace_route(origin, destination)
 
-    def add_vehicle(self, actor: carla.Actor):
-        self._vehicles.append(actor)
-        self._vehicle_dict[actor.id] = actor
+    def add_actor(self, actor: carla.Actor):
+        self._actors.append(actor)
+        self._actor_dict[actor.id] = actor
 
-    def get_vehicles(self):
-        return self._vehicles
+    def get_actors(self):
+        return self._actors
 
-    def update_vehicle_location(self, vid, loc):
-        """Update the next location of the vehicle.
+    def update_actor_location(self, aid, loc):
+        """Update the next location of the actor.
 
         Args:
-            vid (int): vehicle id
-            loc (carla.Location): location of the vehicle
+            aid (int): actor id
+            loc (carla.Location): location of the actor
         """
-        self._vehicle_locations[vid] = loc
+        self._actor_locations[aid] = loc
 
-    def get_vehicle_location(self, vid):
-        """Get the latest location of the vehicle.
+    def get_actor_location(self, aid):
+        """Get the latest location of the actor.
 
         The reason of using this instead of calling ``carla.Actor.get_location()``
-        directly is that the location of vehicle may not have been updated before
+        directly is that the location of actors may not have been updated before
         world.tick().
 
         Args:
-            vid (int): vehicle id
+            aid (int): actor id
         Returns:
             carla.Location:
         """
-        loc = self._vehicle_locations.get(vid, None)
+        loc = self._actor_locations.get(aid, None)
         if loc is None:
-            loc = self._vehicle_dict[vid].get_location()
+            loc = self._actor_dict[aid].get_location()
         return loc
 
     def get_waypoints(self):
@@ -768,7 +768,7 @@ class NavigationSensor(SensorBase):
         Args:
             destination (carla.Location):
         """
-        start = self._alf_world.get_vehicle_location(self._parent.id)
+        start = self._alf_world.get_actor_location(self._parent.id)
         self._route = self._alf_world.trace_route(start, destination)
         self._waypoints = np.array([[
             wp.transform.location.x, wp.transform.location.y,
@@ -796,7 +796,7 @@ class NavigationSensor(SensorBase):
         Returns:
             np.ndarray: positions of future waypoints on the route.
         """
-        loc = self._alf_world.get_vehicle_location(self._parent.id)
+        loc = self._alf_world.get_actor_location(self._parent.id)
         loc = np.array([loc.x, loc.y, loc.y])
         nearby_waypoints = self._waypoints[self._nearest_index:self.
                                            _nearest_index + self.WINDOW]
@@ -903,11 +903,11 @@ class Player(object):
                                        dtype=np.float32)
 
         forbidden_locations = []
-        for v in self._alf_world.get_vehicles():
+        for v in self._alf_world.get_actors():
             if v.id == self._actor.id:
                 continue
             forbidden_locations.append(
-                self._alf_world.get_vehicle_location(v.id))
+                self._alf_world.get_actor_location(v.id))
 
         # find a waypoint far enough from other vehicles
         ok = False
@@ -940,7 +940,7 @@ class Player(object):
         self._prev_location = loc
         self._prev_action = np.zeros(
             self.action_spec().shape, dtype=np.float32)
-        self._alf_world.update_vehicle_location(self._actor.id, loc)
+        self._alf_world.update_actor_location(self._actor.id, loc)
 
         self._navigation.set_destination(goal_loc)
 
@@ -1031,8 +1031,8 @@ class Player(object):
         for sensor_name, sensor in self._observation_sensors.items():
             obs[sensor_name] = sensor.get_current_observation(current_frame)
         obs['goal'] = self._get_goal()
-        self._alf_world.update_vehicle_location(self._actor.id,
-                                                self._actor.get_location())
+        self._alf_world.update_actor_location(self._actor.id,
+                                              self._actor.get_location())
         v = self._actor.get_velocity()
         obs['speed'] = np.float32(
             np.sqrt(np.float32(v.x * v.x + v.y * v.y + v.z * v.z)))
@@ -1291,10 +1291,30 @@ class CarlaEnvironment(AlfEnvironment):
                  batch_size,
                  map_name,
                  vehicle_filter='vehicle.*',
+                 walker_filter='walker.pedestrian.*',
+                 num_other_vehicles=0,
+                 num_walkers=0,
+                 percentage_walkers_running=0.1,
+                 percentage_walkers_crossing=0.1,
+                 global_distance_to_leading_vehicle=2.0,
+                 use_hybrid_physics_mode=True,
                  safe=True,
                  step_time=0.05):
         """
         Args:
+            batch_size (int): the number of learning vehicles.
+            map_name (str): the name of the map (e.g. "Town01")
+            vehicle_filter (str): the filter for getting vehicle blueprints.
+            walker_filter (str): the filter for getting walker blueprints.
+            num_other_vehicles (int): the number of autopilot vehicles
+            num_walkers (int): the number of walkers
+            global_distance_to_leading_vehicle (str): the autopiloted vehicles
+                will try to keep such distance from other vehicles.
+            percentage_walkers_running (float): percent of running walkers
+            percentage_walkers_crossing (float): percent of walkers walking
+                across the road.
+            use_hybrid_physics_mode (bool): If true, the autopiloted vehicle will
+                not use physics for simulation if it is far from other vehicles.
             safe (bool): avoid spawning vehicles prone to accidents.
             step_time (float): how many seconds does each step of simulation represents.
         """
@@ -1304,6 +1324,11 @@ class CarlaEnvironment(AlfEnvironment):
             self._server = CarlaServer(rpc_port, streaming_port)
 
         self._batch_size = batch_size
+        self._num_other_vehicles = num_other_vehicles
+        self._num_walkers = num_walkers
+        self._percentage_walkers_running = percentage_walkers_running
+        self._percentage_walkers_crossing = percentage_walkers_crossing
+
         self._world = None
         try:
             for i in range(10):
@@ -1322,10 +1347,21 @@ class CarlaEnvironment(AlfEnvironment):
 
         logging.info("Server started.")
 
+        self._traffic_manager = None
+        if self._num_other_vehicles + self._num_walkers > 0:
+            with _get_unused_port(8000, n=1) as tm_port:
+                self._traffic_manager = self._client.get_trafficmanager(
+                    tm_port)
+            self._traffic_manager.set_hybrid_physics_mode(
+                use_hybrid_physics_mode)
+            self._traffic_manager.set_global_distance_to_leading_vehicle(
+                global_distance_to_leading_vehicle)
+
         self._client.set_timeout(20)
         self._alf_world = World(self._world)
         self._safe = safe
         self._vehicle_filter = vehicle_filter
+        self._walker_filter = walker_filter
 
         settings = self._world.get_settings()
         settings.synchronous_mode = True
@@ -1333,9 +1369,14 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._world.apply_settings(settings)
         self._map_name = map_name
-        self._spawn()
 
-    def _spawn(self):
+        self._spawn_vehicles()
+        self._spawn_walkers()
+
+        self._observation_spec = self._players[0].observation_spec()
+        self._action_spec = self._players[0].action_spec()
+
+    def _spawn_vehicles(self):
         blueprints = self._world.get_blueprint_library().filter(
             self._vehicle_filter)
         assert len(
@@ -1359,17 +1400,17 @@ class CarlaEnvironment(AlfEnvironment):
 
         spawn_points = self._world.get_map().get_spawn_points()
         number_of_spawn_points = len(spawn_points)
-        if self._batch_size < number_of_spawn_points:
+
+        num_vehicles = self._batch_size + self._num_other_vehicles
+        if num_vehicles <= number_of_spawn_points:
             random.shuffle(spawn_points)
-        elif self._batch_size > number_of_spawn_points:
+        else:
             raise ValueError(
                 "requested %d vehicles, but could only find %d spawn points" %
                 (self._batch_size, number_of_spawn_points))
 
-        SpawnActor = carla.command.SpawnActor
-
         commands = []
-        for transform in spawn_points[:self._batch_size]:
+        for i, transform in enumerate(spawn_points[:num_vehicles]):
             blueprint = random.choice(blueprints)
             if blueprint.has_attribute('color'):
                 color = random.choice(
@@ -1379,25 +1420,122 @@ class CarlaEnvironment(AlfEnvironment):
                 driver_id = random.choice(
                     blueprint.get_attribute('driver_id').recommended_values)
                 blueprint.set_attribute('driver_id', driver_id)
-            blueprint.set_attribute('role_name', 'autopilot')
-            commands.append(SpawnActor(blueprint, transform))
-
-        # TODO: add walkers and autopilot vehicles, see carla/PythonAPI/examples/spawn_npc.py
+            if i < self._batch_size:
+                blueprint.set_attribute('role_name', 'hero')
+            else:
+                blueprint.set_attribute('role_name', 'autopilot')
+            command = carla.command.SpawnActor(blueprint, transform)
+            if i >= self._batch_size:
+                # managed by traffic manager
+                command = command.then(
+                    carla.command.SetAutopilot(
+                        carla.command.FutureActor, True,
+                        self._traffic_manager.get_port()))
+            commands.append(command)
 
         self._players = []
-        for response in self._client.apply_batch_sync(commands, True):
+        self._other_vehicles = []
+        responses = self._client.apply_batch_sync(commands, True)
+        for i, response in enumerate(responses):
             if response.error:
                 logging.error(response.error)
-            else:
-                vehicle = self._world.get_actor(response.actor_id)
+                continue
+            vehicle = self._world.get_actor(response.actor_id)
+            if i < self._batch_size:
                 self._players.append(Player(vehicle, self._alf_world))
-                self._alf_world.add_vehicle(vehicle)
+            else:
+                self._other_vehicles.append(vehicle)
+            self._alf_world.add_actor(vehicle)
+            self._alf_world.update_actor_location(vehicle.id,
+                                                  spawn_points[i].location)
 
-        assert len(self._players) == self._batch_size, (
-            "Fail to create %s vehicles" % self._batch_size)
+        assert len(self._players) + len(
+            self._other_vehicles) == num_vehicles, (
+                "Fail to create %s vehicles" % num_vehicles)
 
-        self._observation_spec = self._players[0].observation_spec()
-        self._action_spec = self._players[0].action_spec()
+    def _spawn_walkers(self):
+        walker_blueprints = self._world.get_blueprint_library().filter(
+            self._walker_filter)
+
+        # 1. take all the random locations to spawn
+        spawn_points = []
+        for i in range(self._num_walkers):
+            spawn_point = carla.Transform()
+            loc = self._world.get_random_location_from_navigation()
+            if loc != None:
+                spawn_point.location = loc
+                spawn_points.append(spawn_point)
+
+        # 2. we spawn the walker object
+        commands = []
+        walker_speeds = []
+        for spawn_point in spawn_points:
+            walker_bp = random.choice(walker_blueprints)
+            # set as not invincible
+            if walker_bp.has_attribute('is_invincible'):
+                walker_bp.set_attribute('is_invincible', 'false')
+            # set the max speed
+            if walker_bp.has_attribute('speed'):
+                if (random.random() > self._percentage_walkers_running):
+                    # walking
+                    walker_speeds.append(
+                        walker_bp.get_attribute('speed').recommended_values[1])
+                else:
+                    # running
+                    walker_speeds.append(
+                        walker_bp.get_attribute('speed').recommended_values[2])
+            else:
+                logging.info("Walker has no speed")
+                walker_speeds.append(0.0)
+            commands.append(carla.command.SpawnActor(walker_bp, spawn_point))
+        responses = self._client.apply_batch_sync(commands, True)
+        walker_speeds2 = []
+        self._walkers = []
+        for response, walker_speed, spawn_point in zip(
+                responses, walker_speeds, spawn_points):
+            if response.error:
+                logging.error(
+                    "%s: %s" % (response.error, spawn_point.location))
+                continue
+            walker = self._world.get_actor(response.actor_id)
+            self._walkers.append({"walker": walker})
+            walker_speeds2.append(walker_speed)
+        walker_speeds = walker_speeds2
+
+        # 3. we spawn the walker controller
+        commands = []
+        walker_controller_bp = self._world.get_blueprint_library().find(
+            'controller.ai.walker')
+        for walker in self._walkers:
+            commands.append(
+                carla.command.SpawnActor(walker_controller_bp,
+                                         carla.Transform(),
+                                         walker["walker"].id))
+        responses = self._client.apply_batch_sync(commands, True)
+        for response, walker in zip(responses, self._walkers):
+            if response.error:
+                logging.error(response.error)
+                continue
+            walker["controller"] = self._world.get_actor(response.actor_id)
+
+        # wait for a tick to ensure client receives the last transform of the walkers we have just created
+        self._world.tick()
+
+        # 5. initialize each controller and set target to walk to (list is [controler, actor, controller, actor ...])
+        # set how many pedestrians can cross the road
+        self._world.set_pedestrians_cross_factor(
+            self._percentage_walkers_crossing)
+        for walker, walker_speed in zip(self._walkers, walker_speeds):
+            # start walker
+            walker['controller'].start()
+            # set walk to random point
+            location = self._world.get_random_location_from_navigation()
+            walker['controller'].go_to_location(location)
+            # max speed
+            walker['controller'].set_max_speed(float(walker_speed))
+            self._alf_world.add_actor(walker['walker'])
+            self._alf_world.update_actor_location(walker['walker'].id,
+                                                  location)
 
     def _clear(self):
         if self._world is None:
@@ -1410,6 +1548,20 @@ class CarlaEnvironment(AlfEnvironment):
                 if response.error:
                     logging.error(response.error)
             self._players.clear()
+        commands = []
+        for vehicle in self._other_vehicles:
+            commands.append(carla.command.DestroyActor(vehicle))
+        for walker in self._walkers:
+            walker['controller'].stop()
+            commands.append(carla.command.DestroyActor(walker['controller']))
+            commands.append(carla.command.DestroyActor(walker['walker']))
+
+        if commands:
+            for response in self._client.apply_batch_sync(commands, True):
+                if response.error:
+                    logging.error(response.error)
+        self._other_vehicles.clear()
+        self._walkers.clear()
 
     @property
     def batched(self):
@@ -1462,6 +1614,14 @@ class CarlaEnvironment(AlfEnvironment):
             if response.error:
                 logging.error(response.error)
         self._current_frame = self._world.tick()
+        for vehicle in self._other_vehicles:
+            self._alf_world.update_actor_location(vehicle.id,
+                                                  vehicle.get_location())
+        for walker in self._walkers:
+            actor = walker['walker']
+            self._alf_world.update_actor_location(actor.id,
+                                                  actor.get_location())
+
         return self._get_current_time_step()
 
     def _get_current_time_step(self):
