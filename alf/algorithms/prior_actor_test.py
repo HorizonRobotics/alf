@@ -35,23 +35,28 @@ class PriorActorTest(alf.test.TestCase):
                 b=torch.tensor([[-1., 0., -2.], [2., 2., 3.]]),
                 c=action_spec['c'].sample((2, ))))
         alg_step = actor.predict_step(batch, ())
-        self.assertEqual(
+        self.assertAlmostEqual(
             alg_step.output['a'].log_prob(torch.tensor([0., 0.]))[0],
-            alg_step.output['a'].log_prob(torch.tensor([1., 1.]))[0])
-        self.assertEqual(
-            alg_step.output['a'].log_prob(torch.tensor(
-                [0., 0.]))[1], alg_step.output['a'].log_prob(
-                    torch.tensor([0., 0.]))[0] + math.log(0.1))
+            alg_step.output['a'].log_prob(torch.tensor([1., 1.]))[0],
+            delta=1e-6)
+        self.assertAlmostEqual(
+            alg_step.output['a'].log_prob(torch.tensor([0., 0.]))[1],
+            alg_step.output['a'].log_prob(torch.tensor([0., 0.]))[0] +
+            math.log(0.1),
+            delta=1e-6)
 
-        self.assertEqual(
+        self.assertAlmostEqual(
             alg_step.output['b'].log_prob(torch.tensor(
-                [[-1., 0., -2.]] * 2))[0], alg_step.output['b'].log_prob(
-                    torch.tensor([[2., 2., 3.]] * 2))[0])
+                [[-1., 0., -2.]] * 2))[0],
+            alg_step.output['b'].log_prob(torch.tensor([[2., 2., 3.]] * 2))[0],
+            delta=1e-6)
 
-        self.assertEqual(
+        self.assertAlmostEqual(
             alg_step.output['b'].log_prob(torch.tensor(
-                [[-1., 0., -2.]] * 2))[1], alg_step.output['b'].log_prob(
-                    torch.tensor([[-1., 0., -2.]] * 2))[0] + 3 * math.log(0.1))
+                [[-1., 0., -2.]] * 2))[1],
+            alg_step.output['b'].log_prob(torch.tensor(
+                [[-1., 0., -2.]] * 2))[0] + 3 * math.log(0.1),
+            delta=1e-6)
 
     def test_uniform_prior_actor(self):
         action_spec = dict(
