@@ -145,6 +145,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
+                 prior_actor_ctor=None,
+                 target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
                  target_update_tau=0.05,
                  target_update_period=1,
@@ -258,8 +260,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._critic_losses.append(
                 critic_loss_ctor(name="critic_loss%d" % (i + 1)))
 
-        self._target_entropy = _set_target_entropy(
-            self.name, target_entropy, nest.flatten(self._action_spec))
+        self._prior_actor = None
+        if prior_actor_ctor is not None:
+            assert self._act_type == ActionType.Continuous, (
+                "Only continuous action is supported when using prior_actor")
+            self._prior_actor = prior_actor_ctor(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                debug_summaries=debug_summaries)
+            total_action_dims = sum(
+                [spec.numel for spec in alf.nest.flatten(action_spec)])
+            self._target_entropy = -target_kld_per_dim * total_action_dims
+        else:
+            self._target_entropy = _set_target_entropy(
+                self.name, target_entropy, nest.flatten(self._action_spec))
 
         self._dqda_clipping = dqda_clipping
 
@@ -541,6 +555,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
+
+        if self._prior_actor is not None:
+            prior_step = self._prior_actor.train_step(exp, ())
+            log_prior = dist_utils.compute_log_probability(
+                prior_step.output, action)
+            log_pi = log_pi - log_prior
 
         actor_state, actor_loss = self._actor_train_step(
             exp, state.actor, action, critics, log_pi)
