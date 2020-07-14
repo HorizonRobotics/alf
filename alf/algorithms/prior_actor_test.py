@@ -16,18 +16,19 @@ import math
 import torch
 
 import alf
-from alf.algorithms.prior_actor import PriorActor, UniformPriorActor
+from alf.algorithms.prior_actor import SameActionPriorActor, UniformPriorActor
 from alf.tensor_specs import BoundedTensorSpec
 from alf.data_structures import TimeStep, StepType
 
 
 class PriorActorTest(alf.test.TestCase):
-    def test_prior_actor(self):
+    def test_same_actin_prior_actor(self):
         action_spec = dict(
             a=BoundedTensorSpec(shape=()),
             b=BoundedTensorSpec((3, ), minimum=(-1, 0, -2), maximum=(2, 2, 3)),
             c=BoundedTensorSpec((2, 3), minimum=-1, maximum=1))
-        actor = PriorActor(observation_spec=(), action_spec=action_spec)
+        actor = SameActionPriorActor(
+            observation_spec=(), action_spec=action_spec)
         batch = TimeStep(
             step_type=torch.tensor([StepType.FIRST, StepType.MID]),
             prev_action=dict(

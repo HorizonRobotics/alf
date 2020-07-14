@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Prior action policies for KL regularized RL."""
 
 import gin
 import numpy as np
@@ -26,9 +27,8 @@ from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 
 
 def normcdf(a, b):
-    # 0.7071067811865476 = math.sqrt(0.5)
-    return 0.5 * (
-        torch.erf(0.7071067811865476 * b) - torch.erf(0.7071067811865476 * a))
+    c = 0.7071067811865476  # = math.sqrt(0.5)
+    return 0.5 * (torch.erf(c * b) - torch.erf(c * a))
 
 
 class TruncatedNormal(td.Distribution):
@@ -77,8 +77,12 @@ class TruncatedNormal(td.Distribution):
 
 class MixtureSameFamily(td.Distribution):
     """
-    ``MixtureSameFamily`` was introduced in pytorch 1.5. Here we only implement
-    a subset of its functions.
+    ``MixtureSameFamily`` was introduced in pytorch 1.5. Since we are currently
+    using pytorch 1.4, here we only implement a subset of its functions. See
+    `<https://pytorch.org/docs/stable/distributions.html#mixturesamefamily>`_
+    for full description of it.
+
+    TODO: remove this after upgrading to pytorch 1.5.
     """
 
     def __init__(self,
@@ -103,7 +107,7 @@ class MixtureSameFamily(td.Distribution):
 
 
 @gin.configurable
-class PriorActor(Algorithm):
+class SameActionPriorActor(Algorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
@@ -112,11 +116,10 @@ class PriorActor(Algorithm):
                  debug_summaries=False,
                  name="PriorActor"):
         """
-        PriorActor can be used as a prior for KLD regularized RL-algorithms. It
-        generate a prior distribution for the next action using limited information,
-        which can be used as the prior distribution in KLD.
-
-        The distribution for each dimension is a mixture of two components:
+        ``SameActionPriorActor`` can be used as a prior for KLD regularized RL-algorithms.
+        It encodes the prior intuition that the next action should be same as the
+        previous action most of time. More specifically, the distribution for each
+        action dimension is a mixture of two components:
         1. a flat ``TruncatedNormal`` with ``loc`` equal to the median of the
             action range ``scale`` equal to the action range.
         2. a sharp ``TruncatedNormal`` with ``loc`` equal to the previous action
