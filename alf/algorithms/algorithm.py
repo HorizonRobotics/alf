@@ -275,8 +275,11 @@ class Algorithm(nn.Module):
             exp_spec = dist_utils.to_distribution_param_spec(
                 self._experience_spec)
             self._exp_replayer = SyncExperienceReplayer(
-                exp_spec, self._exp_replayer_num_envs,
-                self._exp_replayer_length, self._prioritized_sampling)
+                exp_spec,
+                self._exp_replayer_num_envs,
+                self._exp_replayer_length,
+                self._prioritized_sampling,
+                name="exp_replayer")
         else:
             raise ValueError("invalid experience replayer name")
         self._observers.append(self._exp_replayer.observe)
@@ -1127,7 +1130,6 @@ class Algorithm(nn.Module):
             " calc_loss() to generate LossInfo from train_info")
         return train_info
 
-    @common.mark_training
     def train_from_unroll(self, experience, train_info):
         """Train given the info collected from ``unroll()``. This function can
         be called by any child algorithm that doesn't have the unroll logic but
@@ -1151,7 +1153,7 @@ class Algorithm(nn.Module):
         self.summarize_train(experience, train_info, loss_info, params)
         return torch.tensor(alf.nest.get_nest_shape(experience)).prod()
 
-    @common.mark_training
+    @common.mark_replay
     def train_from_replay_buffer(self, update_global_counter=False):
         """This function can be called by any algorithm that has its own
         replay buffer configured. There are several parameters specified in

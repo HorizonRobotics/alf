@@ -16,6 +16,7 @@
 import torch
 
 from absl.testing import parameterized
+import collections
 
 import alf
 import alf.nest as nest
@@ -326,6 +327,15 @@ class TestTransformNest(alf.test.TestCase):
         ntuple = NTuple(a=1, b=2)
         transformed_ntuple = transform_nest(ntuple, None, NestSum())
         self.assertEqual(transformed_ntuple, 3)
+
+        tuples = [("a", 12), ("b", 13)]
+        nested = collections.OrderedDict(tuples)
+
+        def _check_path(e, path):
+            self.assertEqual(nested[path], e)
+
+        res = nest.py_map_structure_with_path(_check_path, nested)
+        nest.assert_same_structure(nested, res)
 
 
 class TestExtractAnyLeaf(alf.test.TestCase):

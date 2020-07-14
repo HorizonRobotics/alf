@@ -419,6 +419,7 @@ class RLAlgorithm(Algorithm):
                 reward=self._reward_shaping_fn(time_step.reward))
         return time_step
 
+    @common.mark_rollout
     def unroll(self, unroll_length):
         r"""Unroll ``unroll_length`` steps using the current policy.
 

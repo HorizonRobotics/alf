@@ -282,7 +282,7 @@ class ReplayBuffer(RingBuffer):
     def get_batch(self, batch_size, batch_length):
         """Randomly get ``batch_size`` trajectories from the buffer.
 
-        It hindsight relabels the experience when ReplayBuffer.her_proportion > 0.
+        It could hindsight relabel the experience via postprocess_exp_fn.
 
         Note: The environments where the sampels are from are ordered in the
             returned batch.
@@ -338,6 +338,11 @@ class ReplayBuffer(RingBuffer):
                 batch_size, batch_length)  # [B, T]
             result = alf.nest.map_structure(lambda b: b[(out_env_ids, idx)],
                                             self._buffer)
+
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "replayer/" + self._name + ".original_reward_mean",
+                    torch.mean(result.reward[:-1]))
 
             if self._postprocess_exp_fn:
                 result, info = self._postprocess_exp_fn(self, result, info)
@@ -587,10 +592,9 @@ def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
 def hindsight_relabel_fn(buffer,
                          result,
                          info,
-                         her_proportion=0.8,
+                         her_proportion,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
-                         reward_field="reward",
                          reward_fn=l2_dist_close_reward_fn):
     """Randomly get `batch_size` hindsight relabeled trajectories.
 
@@ -606,8 +610,6 @@ def hindsight_relabel_fn(buffer,
             exp nest.
         desired_goal_field (str): path to the desired_goal field in the
             exp nest.
-        reward_field (str): path to the reward field in the exp nest.
-            are for hindsight experience replay.
         reward_fn (Callable): function to recompute reward based on
             achieve_goal and desired_goal.  Default gives reward 0 when
             L2 distance less than 0.05 and -1 otherwise, same as is done in
@@ -640,8 +642,10 @@ def hindsight_relabel_fn(buffer,
     last_env_ids = env_ids[her_indices]
     # Get x, y indices of LAST steps
     dist = buffer.steps_to_episode_end(last_step_pos, last_env_ids)
-    alf.summary.scalar("replayer/mean_steps_to_episode_end",
-                       torch.mean(dist.type(torch.float32)))
+    if alf.summary.should_record_summaries():
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".mean_steps_to_episode_end",
+            torch.mean(dist.type(torch.float32)))
 
     # get random future state
     future_idx = buffer.circular(last_step_pos + (torch.rand(*dist.shape) *
@@ -657,30 +661,31 @@ def hindsight_relabel_fn(buffer,
     relabed_goal[her_batch_index_tuple] = future_ag
 
     # recompute rewards
-    result_rewards = alf.nest.get_field(result, reward_field)
     result_ag = alf.nest.get_field(result, achieved_goal_field)
     relabeled_rewards = reward_fn(
         result_ag, relabed_goal, device=buffer._device)
-    alf.summary.scalar("replayer/reward_mean_before_relabel",
-                       torch.mean(result_rewards[her_indices][:-1]))
-    alf.summary.scalar("replayer/reward_mean_after_relabel",
-                       torch.mean(relabeled_rewards[her_indices][:-1]))
+    if alf.summary.should_record_summaries():
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".reward_mean_before_relabel",
+            torch.mean(result.reward[her_indices][:-1]))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".reward_mean_after_relabel",
+            torch.mean(relabeled_rewards[her_indices][:-1]))
     # assert reward function is the same as used by the environment.
     if not torch.allclose(relabeled_rewards[non_her_indices],
-                          result_rewards[non_her_indices]):
+                          result.reward[non_her_indices]):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
-               "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\start_pos:\n{}"
+               "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
                ).format(relabeled_rewards[non_her_indices],
-                        result_rewards[non_her_indices],
+                        result.reward[non_her_indices],
                         result_ag[non_her_indices],
                         result_desired_goal[non_her_indices],
                         env_ids[non_her_indices], start_pos[non_her_indices])
         logging.warning(msg)
         # assert False, msg
-        relabeled_rewards[non_her_indices] = result_rewards[non_her_indices]
+        relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
 
     result = alf.nest.utils.transform_nest(
         result, desired_goal_field, lambda _: relabed_goal)
-    result = alf.nest.utils.transform_nest(
-        result, reward_field, lambda _: relabeled_rewards)
+    result = result._replace(reward=relabeled_rewards)
     return result, info

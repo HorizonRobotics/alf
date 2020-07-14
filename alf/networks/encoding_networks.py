@@ -632,15 +632,20 @@ class EncodingNetwork(PreprocessorNetwork):
         z, state = super().forward(inputs, state)
         if self._img_encoding_net is not None:
             z, _ = self._img_encoding_net(z)
+        if alf.summary.should_summarize_output():
+            name = ('summarize_output/' + self.name + '.fc.0.' + 'input_norm.'
+                    + common.exe_mode_name())
+            alf.summary.scalar(
+                name=name, data=torch.mean(z.norm(dim=list(range(1, z.ndim)))))
         i = 0
         for fc in self._fc_layers:
             z = fc(z)
             if alf.summary.should_summarize_output():
                 name = ('summarize_output/' + self.name + '.fc.' + str(i) +
-                        '.output_norm')
-                if not self.training:
-                    name += ".eval"
-                alf.summary.scalar(name=name, data=z.norm())
+                        '.output_norm.' + common.exe_mode_name())
+                alf.summary.scalar(
+                    name=name,
+                    data=torch.mean(z.norm(dim=list(range(1, z.ndim)))))
             i += 1
         return z, state
 
