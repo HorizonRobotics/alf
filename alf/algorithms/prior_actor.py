@@ -114,7 +114,7 @@ class SameActionPriorActor(Algorithm):
                  same_action_noise=0.1,
                  same_action_prob=0.9,
                  debug_summaries=False,
-                 name="PriorActor"):
+                 name="SameActionPriorActor"):
         """
         ``SameActionPriorActor`` can be used as a prior for KLD regularized RL-algorithms.
         It encodes the prior intuition that the next action should be same as the
