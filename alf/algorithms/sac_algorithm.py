@@ -204,7 +204,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 ``prior_actor_ctor(observation_spec, action_spec, debug_summaries=debug_summaries)``
                 to constructor a prior actor. The output of the prior actor is
                 the distribution of the next action. Two prior actors are implemented:
-                ``alf.algorithms.prior_actor.PriorActor`` and
+                ``alf.algorithms.prior_actor.SameActionPriorActor`` and
                 ``alf.algorithms.prior_actor.UniformPriorActor``.
             target_kld_per_dim (float): ``alpha`` is dynamically adjusted so that
                 the KLD is about ``target_kld_per_dim * dim``.
