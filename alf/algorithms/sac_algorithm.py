@@ -130,6 +130,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
        :math:`s`. Still only an ``ActorDistributionNetwork`` is needed for first
        sampling continuous actions, and then a discrete action is sampled from Q
        values conditioned on the continuous actions.
+
+    In addition to the entropy regularization described in the SAC paper, we
+    also support KL-Divergence regularization if a prior actor is provided.
+    In this case, the training objective is:
+        :math:`E_\pi(\sum_t \gamma^t(r_t - \alpha D_{\rm KL}(\pi(\cdot)|s_t)||\pi^0(\cdot)|s_t)))`
+    where :math:`pi^0` is the prior actor.
     """
 
     def __init__(self,
@@ -145,6 +151,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
+                 prior_actor_ctor=None,
+                 target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
                  target_update_tau=0.05,
                  target_update_period=1,
@@ -192,6 +200,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 callable function, then it will be called on the action spec to
                 calculate a target entropy. If ``None``, a default entropy will
                 be calculated.
+            prior_actor_ctor (Callable): If provided, it will be called using
+                ``prior_actor_ctor(observation_spec, action_spec, debug_summaries=debug_summaries)``
+                to constructor a prior actor. The output of the prior actor is
+                the distribution of the next action. Two prior actors are implemented:
+                ``alf.algorithms.prior_actor.SameActionPriorActor`` and
+                ``alf.algorithms.prior_actor.UniformPriorActor``.
+            target_kld_per_dim (float): ``alpha`` is dynamically adjusted so that
+                the KLD is about ``target_kld_per_dim * dim``.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -258,8 +274,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._critic_losses.append(
                 critic_loss_ctor(name="critic_loss%d" % (i + 1)))
 
-        self._target_entropy = _set_target_entropy(
-            self.name, target_entropy, nest.flatten(self._action_spec))
+        self._prior_actor = None
+        if prior_actor_ctor is not None:
+            assert self._act_type == ActionType.Continuous, (
+                "Only continuous action is supported when using prior_actor")
+            self._prior_actor = prior_actor_ctor(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                debug_summaries=debug_summaries)
+            total_action_dims = sum(
+                [spec.numel for spec in alf.nest.flatten(action_spec)])
+            self._target_entropy = -target_kld_per_dim * total_action_dims
+        else:
+            self._target_entropy = _set_target_entropy(
+                self.name, target_entropy, nest.flatten(self._action_spec))
 
         self._dqda_clipping = dqda_clipping
 
@@ -541,6 +569,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
+
+        if self._prior_actor is not None:
+            prior_step = self._prior_actor.train_step(exp, ())
+            log_prior = dist_utils.compute_log_probability(
+                prior_step.output, action)
+            log_pi = log_pi - log_prior
 
         actor_state, actor_loss = self._actor_train_step(
             exp, state.actor, action, critics, log_pi)
