@@ -936,8 +936,8 @@ class Player(object):
         self._max_stuck_at_collision_frames = max_stuck_at_collision_seconds / self._delta_seconds
         self._stuck_at_collision_distance = stuck_at_collision_distance
         self._sparse_reward = sparse_reward
-        self._sparse_reward_index_interval = max(
-            1, sparse_reward_interval // self._alf_world.route_resolution)
+        self._sparse_reward_index_interval = int(
+            max(1, sparse_reward_interval // self._alf_world.route_resolution))
 
         self._observation_sensors = {
             'collision': self._collision_sensor,
@@ -1037,9 +1037,8 @@ class Player(object):
         self._collision_loc = None  # the location of the car when it starts to have collition
 
         # The intermediate goal for sparse reward
-        self._intermediate_goal_index = int(
-            min(self._sparse_reward_index_interval,
-                self._navigation.num_waypoints - 1))
+        self._intermediate_goal_index = min(self._sparse_reward_index_interval,
+                                            self._navigation.num_waypoints - 1)
 
         # The location of the car when the intermediate goal is set
         self._intermediate_start = _to_numpy_loc(loc)
