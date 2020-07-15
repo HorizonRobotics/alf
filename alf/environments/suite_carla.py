@@ -533,7 +533,7 @@ class CameraSensor(SensorBase):
                 degrees.
             fov (str): horizontal field of view in degrees.
             image_size_x (int): image width in pixels.
-            image_size_t (int): image height in pixels.
+            image_size_y (int): image height in pixels.
             gamma (float): target gamma value of the camera.
             iso (float): the camera sensor sensitivity.
         """
@@ -1015,6 +1015,7 @@ class Player(object):
         self._intermediate_start = _to_numpy_loc(loc)
 
         self._episode_reward = 0.
+        self._is_first_step = True
 
         return commands
 
@@ -1121,7 +1122,12 @@ class Player(object):
         discount = 1.0
         info = OrderedDict(success=np.float32(0.0), collision=np.float32(0.0))
 
-        self._collision = not np.all(obs['collision'] == 0)
+        # When the previous episode ends because of stucking at a collision with
+        # another vehicle, it may get an additional collision event in the new frame
+        # because the relocation of the car may happen after the simulation of the
+        # moving. So we ignore the collision at the first step.
+        self._collision = not np.all(
+            obs['collision'] == 0) and not self._is_first_step
         if self._collision and not self._prev_collision:
             # We only report the first collision event among contiguous collision
             # events.
@@ -1217,6 +1223,7 @@ class Player(object):
         """
         self._prev_collision = self._collision
         self._prev_location = self._actor.get_location()
+        self._is_first_step = False
         if self._done:
             return self.reset()
         self._control.throttle = max(float(action[0]), 0.0)
