@@ -673,17 +673,29 @@ def _calculate_relative_position(self_transform, location):
 class World(object):
     """Keeping data for the world."""
 
-    def __init__(self, world: carla.World):
+    def __init__(self, world: carla.World, route_resolution=1.0):
+        """
+        Args:
+            world (carla.World): the carla world instance
+            route_resolution (float): the resolution in meters for planned route
+        """
         self._world = world
         self._map = world.get_map()
         self._waypoints = self._map.generate_waypoints(2.0)
         self._actors = []  # including vehicles and walkers
         self._actor_dict = {}
         self._actor_locations = {}
+        self._route_resolution = route_resolution
 
-        dao = GlobalRoutePlannerDAO(world.get_map(), sampling_resolution=1.0)
+        dao = GlobalRoutePlannerDAO(
+            world.get_map(), sampling_resolution=route_resolution)
         self._global_route_planner = GlobalRoutePlanner(dao)
         self._global_route_planner.setup()
+
+    @property
+    def route_resolution(self):
+        """The sampling resolution of route."""
+        return self._route_resolution
 
     def trace_route(self, origin, destination):
         """Find the route from ``origin`` to ``destination``.
@@ -878,7 +890,7 @@ class Player(object):
                  max_stuck_at_collision_seconds=5.0,
                  stuck_at_collision_distance=1.0,
                  sparse_reward=False,
-                 sparse_reward_distance=10,
+                 sparse_reward_interval=10.,
                  min_speed=5.):
         """
         Args:
@@ -901,8 +913,8 @@ class Player(object):
             sparse_reward (bool): If False, the distance reward is given at every
                 step based on how much it moves along the navigation route. If
                 True, the distance reward is only given after moving ``sparse_reward_distance``.
-            sparse_reward_distance (float): the sparse reward is given after every
-                such distance along the route has been driven.
+            sparse_reward_interval (float): the sparse reward is given after
+                approximately every such distance along the route has been driven.
             min_speed (float): unit is m/s. Failure if initial_distance / min_speed
                 seconds passed
         """
@@ -924,7 +936,8 @@ class Player(object):
         self._max_stuck_at_collision_frames = max_stuck_at_collision_seconds / self._delta_seconds
         self._stuck_at_collision_distance = stuck_at_collision_distance
         self._sparse_reward = sparse_reward
-        self._sparse_reward_distance = sparse_reward_distance
+        self._sparse_reward_index_interval = max(
+            1, sparse_reward_interval // self._alf_world.route_resolution)
 
         self._observation_sensors = {
             'collision': self._collision_sensor,
@@ -1024,8 +1037,9 @@ class Player(object):
         self._collision_loc = None  # the location of the car when it starts to have collition
 
         # The intermediate goal for sparse reward
-        self._intermediate_goal_index = min(self._sparse_reward_distance,
-                                            self._navigation.num_waypoints - 1)
+        self._intermediate_goal_index = int(
+            min(self._sparse_reward_index_interval,
+                self._navigation.num_waypoints - 1))
 
         # The location of the car when the intermediate goal is set
         self._intermediate_start = _to_numpy_loc(loc)
@@ -1206,7 +1220,7 @@ class Player(object):
                 self._intermediate_start = intermediate_goal
                 self._intermediate_goal_index = min(
                     self._intermediate_goal_index +
-                    self._sparse_reward_distance,
+                    self._sparse_reward_index_interval,
                     self._navigation.num_waypoints - 1)
         else:
             goal0 = obs['navigation'][2]  # This is about 10m ahead
