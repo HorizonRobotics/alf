@@ -127,7 +127,6 @@ class Agent(OnPolicyAlgorithm):
         rl_algorithm = rl_algorithm_cls(
             observation_spec=rl_observation_spec,
             action_spec=action_spec,
-            config=config,  # set use_rollout_state
             debug_summaries=debug_summaries)
         agent_helper.register_algorithm(rl_algorithm, "rl")
         # Whether the agent is on-policy or not depends on its rl algorithm.
@@ -167,6 +166,10 @@ class Agent(OnPolicyAlgorithm):
         self._irm = intrinsic_reward_module
         self._goal_generator = goal_generator
         self._agent_helper = agent_helper
+        # Set ``use_rollout_state``` for all submodules using the setter.
+        # Need to make sure that no submodules use ``self._use_rollout_state``
+        # before this line.
+        self.use_rollout_state = self.use_rollout_state
 
     def is_on_policy(self):
         return self._is_on_policy
