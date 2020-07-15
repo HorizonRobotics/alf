@@ -62,7 +62,7 @@ def main(_):
 
     width = 640
     height = 320
-    display = pygame.display.set_mode((640, 320),
+    display = pygame.display.set_mode((width, height),
                                       pygame.HWSURFACE | pygame.DOUBLEBUF)
 
     font_name = 'courier' if os.name == 'nt' else 'mono'
