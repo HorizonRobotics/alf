@@ -1257,17 +1257,40 @@ class Algorithm(nn.Module):
             common.warning_once(
                 "Experience length has been cut to %s" % length)
 
-        if len(alf.nest.flatten(
-                self.train_state_spec)) > 0 and not self._use_rollout_state:
-            if mini_batch_length == 1:
-                logging.fatal(
-                    "Should use TrainerConfig.use_rollout_state=True "
-                    "for training from a replay buffer when minibatch_length==1, "
-                    "otherwise the initial states are always zeros!")
-            else:
+        if len(alf.nest.flatten(self.train_state_spec)) > 0:
+            if not self._use_rollout_state:
+                # If not using rollout states, then we will assume zero initial
+                # training states. To have a proper state warm up,
+                # mini_batch_length should be greater than 1. Otherwise the states
+                # are always 0s.
+                if mini_batch_length == 1:
+                    logging.fatal(
+                        "Should use TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer when minibatch_length==1, "
+                        "otherwise the initial states are always zeros!")
+                else:
+                    # In this case, a state warm up is recommended. For example,
+                    # having mini_batch_length>1 and discarding first several
+                    # steps when computing losses. For a warm up, make sure to
+                    # leave a mini_batch_length > 1 if any recurrent model is to
+                    # be trained.
+                    common.warning_once(
+                        "Consider using TrainerConfig.use_rollout_state=True "
+                        "for training from a replay buffer.")
+            elif mini_batch_length == 1:
+                # If using rollout states and mini_batch_length=1, there will be
+                # no gradient flowing in any recurrent matrix. Only the output
+                # layers on top of the recurrent output will be trained.
                 common.warning_once(
-                    "Consider using TrainerConfig.use_rollout_state=True "
-                    "for training from a replay buffer.")
+                    "Using rollout states but with mini_batch_length=1. In "
+                    "this case, any recurrent model can't be properly trained!"
+                )
+            else:
+                # If using rollout states with mini_batch_length>1. In theory,
+                # any recurrent model can be properly trained. With a greater
+                # mini_batch_length, the temporal correlation can be better
+                # captured.
+                pass
 
         experience = alf.nest.map_structure(
             lambda x: x.reshape(-1, mini_batch_length, *x.shape[2:]),
