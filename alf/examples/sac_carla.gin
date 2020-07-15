@@ -43,9 +43,11 @@ Agent.optimizer=@Adam()
 agent/image_scale_transformer.min=0.0
 agent/image_scale_transformer.fields=['camera']
 
-#create_environment.num_parallel_environments=16
+# Not yet able to successfully train with sparse reward.
 suite_carla.Player.sparse_reward=False
-suite_carla.Player.collision_reward=-1.
+
+# Currently, even a small penalty such as one make the training much worse
+suite_carla.Player.max_collision_penalty=0.
 
 # training config
 TrainerConfig.initial_collect_steps=3000
