@@ -151,7 +151,8 @@ class FixedDecodingLayer(nn.Module):
         def _polyvander_matrix(n, D, tau=tau):
             # non-square matrix [n, D + 1]
             x = torch.linspace(-1, 1, n)
-            B = torch.as_tensor(np.polynomial.polynomial.polyvander(x, D))
+            B = torch.as_tensor(
+                np.polynomial.polynomial.polyvander(x.cpu(), D))
             # weight for encoding the preference to low-frequency basis
             exp_factor = torch.arange(D + 1).float()
             basis_weight = tau**exp_factor
@@ -238,6 +239,7 @@ class FC(nn.Module):
                  output_size,
                  activation=identity,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -251,6 +253,7 @@ class FC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
+            use_bn (bool): whether use batch normalization.
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -277,6 +280,11 @@ class FC(nn.Module):
         self._kernel_init_gain = kernel_init_gain
         self._bias_init_value = bias_init_value
         self._use_bias = use_bias
+        self._use_bn = use_bn
+        if use_bn:
+            self._bn = nn.BatchNorm1d(output_size)
+        else:
+            self._bn = None
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -291,6 +299,9 @@ class FC(nn.Module):
         if self._use_bias:
             nn.init.constant_(self._bias.data, self._bias_init_value)
 
+        if self._use_bn:
+            self._bn.reset_parameters()
+
     def forward(self, inputs):
         if inputs.dim() == 2 and self._use_bias:
             y = torch.addmm(self._bias, inputs, self._weight.t())
@@ -298,6 +309,10 @@ class FC(nn.Module):
             y = inputs.matmul(self._weight.t())
             if self._use_bias:
                 y += self._bias
+        if self._use_bn:
+            if not self._use_bias:
+                self._bn.bias.data.zero_()
+            y = self._bn(y)
         return self._activation(y)
 
     @property
@@ -323,6 +338,7 @@ class ParallelFC(nn.Module):
                  n,
                  activation=identity,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -336,6 +352,7 @@ class ParallelFC(nn.Module):
             output_size (int): output size
             n (int): n independent ``FC`` layers
             activation (torch.nn.functional):
+            use_bn (bool): whehter use Batch Normalization.
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain
@@ -364,6 +381,10 @@ class ParallelFC(nn.Module):
 
         if use_bias:
             nn.init.constant_(self._bias.data, bias_init_value)
+        if use_bn:
+            self._bn = nn.BatchNorm1d(n * output_size)
+        else:
+            self._bn = None
 
     def forward(self, inputs):
         """Forward
@@ -394,6 +415,12 @@ class ParallelFC(nn.Module):
         else:
             y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
         y = y.transpose(0, 1)  # [B, n, k]
+        if self._bn is not None:
+            if self._bias is None:
+                self._bn.bias.data.zero_()
+            y1 = y.reshape(-1, n * k)
+            y1 = self._bn(y1)
+            y = y1.view(-1, n, k)
         return self._activation(y)
 
     @property
@@ -429,6 +456,7 @@ class Conv2D(nn.Module):
                  strides=1,
                  padding=0,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -444,7 +472,8 @@ class Conv2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool):
+            use_bias (bool): whether use bias
+            use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
                 ``kernel_init_gain`` will be used.
@@ -473,9 +502,16 @@ class Conv2D(nn.Module):
 
         if use_bias:
             nn.init.constant_(self._conv2d.bias.data, bias_init_value)
+        if use_bn:
+            self._bn = nn.BatchNorm2d(out_channels)
+        else:
+            self._bn = None
 
     def forward(self, img):
-        return self._activation(self._conv2d(img))
+        y = self._conv2d(img)
+        if self._bn is not None:
+            y = self._bn(y)
+        return self._activation(y)
 
     @property
     def weight(self):
@@ -497,6 +533,7 @@ class ParallelConv2D(nn.Module):
                  strides=1,
                  padding=0,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -514,7 +551,8 @@ class ParallelConv2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool):
+            use_bias (bool): whether use bias
+            use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a ``variance_scaling_initializer`` with gain
                 as ``kernel_init_gain`` will be used.
@@ -561,6 +599,11 @@ class ParallelConv2D(nn.Module):
             self._bias = self._conv2d.bias.view(self._n, self._out_channels)
         else:
             self._bias = None
+
+        if use_bn:
+            self._bn = nn.BatchNorm2d(n * out_channels)
+        else:
+            self._bn = None
 
     def forward(self, img):
         """Forward
@@ -611,12 +654,15 @@ class ParallelConv2D(nn.Module):
         img = img.reshape(img.shape[0], img.shape[1] * img.shape[2],
                           *img.shape[3:])
 
-        res = self._activation(self._conv2d(img))
+        res = self._conv2d(img)
+
+        if self._bn is not None:
+            res = self._bn(res)
 
         # reshape back: [B, n*C', H', W'] -> [B, n, C', H', W']
         res = res.reshape(res.shape[0], self._n, self._out_channels,
                           *res.shape[2:])
-        return res
+        return self._activation(res)
 
     @property
     def weight(self):
@@ -637,6 +683,7 @@ class ConvTranspose2D(nn.Module):
                  strides=1,
                  padding=0,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -654,6 +701,7 @@ class ConvTranspose2D(nn.Module):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
+            use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a variance_scaling_initializer with gain as
                 ``kernel_init_gain`` will be used.
@@ -683,8 +731,16 @@ class ConvTranspose2D(nn.Module):
         if use_bias:
             nn.init.constant_(self._conv_trans2d.bias.data, bias_init_value)
 
+        if use_bn:
+            self._bn = nn.BatchNorm2d(out_channels)
+        else:
+            self._bn = None
+
     def forward(self, img):
-        return self._activation(self._conv_trans2d(img))
+        y = self._conv_trans2d(img)
+        if self._bn is not None:
+            y = self._bn(y)
+        return self._activation(y)
 
     @property
     def weight(self):
@@ -706,6 +762,7 @@ class ParallelConvTranspose2D(nn.Module):
                  strides=1,
                  padding=0,
                  use_bias=True,
+                 use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -721,6 +778,7 @@ class ParallelConvTranspose2D(nn.Module):
             strides (int or tuple):
             padding (int or tuple):
             use_bias (bool):
+            use_bn (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a ``variance_scaling_initializer`` with gain
                 as ``kernel_init_gain`` will be used.
@@ -768,6 +826,11 @@ class ParallelConvTranspose2D(nn.Module):
                                                       self._out_channels)
         else:
             self._bias = None
+
+        if use_bn:
+            self._bn = nn.BatchNorm2d(n * out_channels)
+        else:
+            self._bn = None
 
     def forward(self, img):
         """Forward
@@ -817,12 +880,13 @@ class ParallelConvTranspose2D(nn.Module):
         img = img.reshape(img.shape[0], img.shape[1] * img.shape[2],
                           *img.shape[3:])
 
-        res = self._activation(self._conv_trans2d(img))
-
+        res = self._conv_trans2d(img)
+        if self._bn is not None:
+            res = self._bn(res)
         # reshape back: [B, n*C', H', W'] -> [B, n, C', H', W']
         res = res.reshape(res.shape[0], self._n, self._out_channels,
                           res.shape[2], res.shape[3])
-        return res
+        return self._activation(res)
 
     @property
     def weight(self):

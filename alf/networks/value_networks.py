@@ -37,6 +37,7 @@ class ValueNetwork(PreprocessorNetwork):
                  fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 use_fc_bn=False,
                  name="ValueNetwork"):
         """Creates a value network that estimates the expected return.
 
@@ -65,6 +66,8 @@ class ValueNetwork(PreprocessorNetwork):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
+            use_fc_bn (bool): whether use Batch Normalization for the internal
+                FC layers (i.e. FC layers beside the last one).
             the last layer. If none is provided a default xavier_uniform
             initializer will be used.
             name (str):
@@ -87,6 +90,7 @@ class ValueNetwork(PreprocessorNetwork):
             fc_layer_params=fc_layer_params,
             activation=activation,
             kernel_initializer=kernel_initializer,
+            use_fc_bn=use_fc_bn,
             last_layer_size=1,
             last_activation=math_ops.identity,
             last_kernel_initializer=last_kernel_initializer)
