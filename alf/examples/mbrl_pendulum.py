@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin.tf
-import tensorflow as tf
+import gin
+import torch
 
 # implement the respective reward functions for desired environments here
 
@@ -22,21 +22,22 @@ import tensorflow as tf
 def reward_function_for_pendulum(obs, action):
     """Function for computing reward for gym Pendulum environment. It takes
         as input:
-        (1) observation (tf.Tensor of shape [batch_size, observation_dim])
-        (2) action (tf.Tensor of shape [batch_size, num_actions])
+        (1) observation (Tensor of shape [batch_size, observation_dim])
+        (2) action (Tensor of shape [batch_size, num_actions])
         and returns a reward Tensor of shape [batch_size].
     """
 
     def _observation_cost(obs):
         c_theta, s_theta, d_theta = obs[:, :1], obs[:, 1:2], obs[:, 2:3]
-        theta = tf.math.atan2(s_theta, c_theta)
-        cost = tf.reduce_sum(
-            tf.square(theta) + 0.1 * tf.square(d_theta), axis=1)
-        cost = tf.where(tf.math.is_nan(cost), 1e6 * tf.ones_like(cost), cost)
+        theta = torch.atan2(s_theta, c_theta)
+        cost = theta**2 + 0.1 * d_theta**2
+        cost = torch.sum(cost, dim=1)
+        cost = torch.where(
+            torch.isnan(cost), 1e6 * torch.ones_like(cost), cost)
         return cost
 
     def _action_cost(action):
-        return 0.001 * tf.reduce_sum(tf.square(action), axis=1)
+        return 0.001 * torch.sum(action**2, dim=1)
 
     cost = _observation_cost(obs) + _action_cost(action)
     # negative cost as reward

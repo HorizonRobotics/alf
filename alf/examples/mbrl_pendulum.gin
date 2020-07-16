@@ -1,10 +1,9 @@
 import alf.algorithms.mbrl_algorithm
-import alf.trainers.off_policy_trainer
 import alf.algorithms.dynamics_learning_algorithm
 import alf.algorithms.reward_learning_algorithm
 import alf.algorithms.planning_algorithm
 import alf.examples.mbrl_pendulum
-import tf_agents.networks.encoding_network
+import alf.utils.math_ops
 
 # environment config
 env_name='Pendulum-v0'
@@ -13,19 +12,19 @@ create_environment.env_load_fn=@suite_gym.load
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 create_environment.env_name=%env_name
 
+
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
-# dynamics learning config
-EncodingNetwork.activation_fn=@tf.nn.swish
+# --------------------dynamics learning config------------------------
 DeterministicDynamicsAlgorithm.action_spec=%action_spec
 DeterministicDynamicsAlgorithm.feature_spec=%observation_spec
 DeterministicDynamicsAlgorithm.hidden_size=(500, 500, 500)
 
-# reward learning config
+# -------------------reward learning config----------------------------
 FixedRewardFunction.reward_func=@reward_function_for_pendulum
 
-# planner config
+# ----------------------planner config---------------------------------
 RandomShootingAlgorithm.feature_spec=%observation_spec
 RandomShootingAlgorithm.action_spec=%action_spec
 RandomShootingAlgorithm.population_size=5000
@@ -39,32 +38,26 @@ MbrlAlgorithm.reward_module=@FixedRewardFunction()
 MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
 
 # agent config
-Agent/Adam.learning_rate=1e-3
-Agent.optimizer=@Agent/Adam()
-Agent.intrinsic_reward_coef=0
-Agent.extrinsic_reward_coef=1
-Agent.action_spec=%action_spec
-Agent.rl_algorithm_cls=@MbrlAlgorithm
-
+Mbrl/AdamW.weight_decay=0.0001
+Mbrl/AdamW.lr=1e-3
+opt=@Mbrl/AdamW()
+MbrlAlgorithm.dynamics_optimizer=%opt
 
 # training config
-TrainerConfig.trainer=@sync_off_policy_trainer
 TrainerConfig.initial_collect_steps=200
 TrainerConfig.mini_batch_length=1
 TrainerConfig.unroll_length=200
 TrainerConfig.mini_batch_size=32
-TrainerConfig.num_updates_per_train_step=5 # epoches
+TrainerConfig.num_updates_per_train_iter=5 # epoches
 TrainerConfig.whole_replay_buffer_training=True
 TrainerConfig.clear_replay_buffer=False
-TrainerConfig.algorithm_ctor=@Agent
+TrainerConfig.algorithm_ctor=@MbrlAlgorithm
 TrainerConfig.num_iterations=50 # num of interactions of unroll_length with env
-TrainerConfig.checkpoint_interval=10
+TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=1
-TrainerConfig.eval_interval=1
+TrainerConfig.eval_interval=5
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=1
 TrainerConfig.use_rollout_state=True
-TrainerConfig.use_tf_functions=True
-
-ReplayBuffer.max_length=100000
+TrainerConfig.replay_buffer_length=100000

@@ -13,34 +13,34 @@
 # limitations under the License.
 
 from collections import namedtuple
+import gin
+
+import torch
+import torch.nn as nn
+import torch.distributions as td
 from typing import Callable
 
-import gin.tf
-import tensorflow as tf
-
-from tf_agents.networks.network import Network
-import tf_agents.specs.tensor_spec as tensor_spec
-
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.data_structures import ActionTimeStep, namedtuple
+from alf.algorithms.algorithm import Algorithm
+from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
+                                 TimeStep)
+from alf.nest import nest
 
 
 @gin.configurable
 class RewardEstimationAlgorithm(Algorithm):
     """Reward Estimation Module
-
     This module is responsible to compute/predict rewards
     """
 
     def __init__(self, name="RewardEstimationAlgorithm"):
         """Create a RewardEstimationAlgorithm.
         """
-        super().__init__(name=name)
+        super().__init__(train_state_spec=(), name=name)
 
-    def train_step(self, time_step: ActionTimeStep, state):
+    def train_step(self, time_step: TimeStep, state):
         """
         Args:
-            time_step (ActionTimeStep): input data for dynamics learning
+            time_step (TimeStep): input data for dynamics learning
             state (Tensor): state for dynamics learning (previous observation)
         Returns:
             TrainStep:
@@ -51,7 +51,7 @@ class RewardEstimationAlgorithm(Algorithm):
         pass
 
     def calc_loss(self, info):
-        loss = tf.nest.map_structure(tf.reduce_mean, info.loss)
+        loss = nest.map_structure(torch.mean, info.loss)
         return LossInfo(
             loss=info.loss, scalar_loss=loss.loss, extra=loss.extra)
 
@@ -73,7 +73,6 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
 
     def __init__(self, reward_func: Callable, name="FixedRewardFunction"):
         """Create a FixedRewardFunction.
-
         Args:
             reward_func (Callable): a function for computing reward. It takes
                 as input:
@@ -84,10 +83,10 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
         super().__init__(name=name)
         self._reward_func = reward_func
 
-    def train_step(self, time_step: ActionTimeStep, state):
+    def train_step(self, time_step: TimeStep, state):
         """
         Args:
-            time_step (ActionTimeStep): input data for dynamics learning
+            time_step (TimeStep): input data for dynamics learning
             state (Tensor): state for dynamics learning (previous observation)
         Returns:
             TrainStep:
@@ -95,7 +94,7 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """
-        return AlgorithmStep(outputs=(), state=(), info=())
+        return AlgStep(output=(), state=(), info=())
 
     def compute_reward(self, obs, action):
         """Compute reward based on current observation and action

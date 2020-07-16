@@ -13,20 +13,26 @@
 # limitations under the License.
 
 from collections import namedtuple
+import gin
 
-import gin.tf
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.distributions as td
+from typing import Callable
 
-from tf_agents.networks.network import Network
-import tf_agents.specs.tensor_spec as tensor_spec
+from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
+from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
+                                 TimeStep)
+from alf.nest import nest
+from alf.optimizers.traj_optimizers import RandomOptimizer
 
-from alf.algorithms.algorithm import Algorithm, AlgorithmStep, LossInfo
-from alf.data_structures import ActionTimeStep, namedtuple
-from alf.optimizers.random import RandomOptimizer
+PlannerState = namedtuple("PlannerState", ["policy"], default_value=())
+PlannerInfo = namedtuple("PlannerInfo", ["policy"])
+PlannerLossInfo = namedtuple('PlannerLossInfo', ["policy"])
 
 
 @gin.configurable
-class PlanAlgorithm(Algorithm):
+class PlanAlgorithm(OffPolicyAlgorithm):
     """Planning Module
 
     This module plans for actions based on initial observation
@@ -36,7 +42,8 @@ class PlanAlgorithm(Algorithm):
     def __init__(self,
                  feature_spec,
                  action_spec,
-                 planning_horizon,
+                 train_state_spec,
+                 planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
                  name="PlanningAlgorithm"):
@@ -49,18 +56,22 @@ class PlanAlgorithm(Algorithm):
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
         """
-        super().__init__(name=name)
+        super().__init__(
+            feature_spec,
+            action_spec,
+            train_state_spec=train_state_spec,
+            name=name)
 
-        flat_action_spec = tf.nest.flatten(action_spec)
+        flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"
 
-        flat_feature_spec = tf.nest.flatten(feature_spec)
+        flat_feature_spec = nest.flatten(feature_spec)
         assert len(
             flat_feature_spec) == 1, "doesn't support nested feature_spec"
 
         action_spec = flat_action_spec[0]
 
-        assert not tensor_spec.is_discrete(action_spec), "only support \
+        assert action_spec.is_continuous, "only support \
                                                     continious control"
 
         self._num_actions = action_spec.shape[-1]
@@ -75,15 +86,16 @@ class PlanAlgorithm(Algorithm):
 
         self._reward_func = None
         self._dynamics_func = None
+        self._step_eval_func = None  # per step evaluation function
 
-    def train_step(self, time_step: ActionTimeStep, state):
+    def train_step(self, time_step: TimeStep, state):
         """
         Args:
-            time_step (ActionTimeStep): input data for dynamics learning
+            time_step (TimeStep): input data for dynamics learning
             state (Tensor): state for dynamics learning (previous observation)
         Returns:
             TrainStep:
-                outputs: empty tuple ()
+                output: empty tuple ()
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """
@@ -102,24 +114,20 @@ class PlanAlgorithm(Algorithm):
         Args:
             dynamics_func (Callable): reward function to be used for planning.
             dynamics_func takes (time_step, state) as input and returns
-            next_time_step (ActionTimeStep) and the next_state
+            next_time_step (TimeStep) and the next_state
         """
         self._dynamics_func = dynamics_func
 
-    def generate_plan(self, time_step: ActionTimeStep, state):
+    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
         """Compute the plan based on the provided observation and action
         Args:
-            time_step (ActionTimeStep): input data for next step prediction
+            time_step (TimeStep): input data for next step prediction
             state: input state next step prediction
         Returns:
             action: planned action for the given inputs
+            state: mbrl state
         """
         pass
-
-    def calc_loss(self, info):
-        loss = tf.nest.map_structure(tf.reduce_mean, info.loss)
-        return LossInfo(
-            loss=info.loss, scalar_loss=loss.loss, extra=loss.extra)
 
 
 @gin.configurable
@@ -150,16 +158,17 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         super().__init__(
             feature_spec=feature_spec,
             action_spec=action_spec,
+            train_state_spec=(),
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
             lower_bound=lower_bound,
             name=name)
 
-        flat_action_spec = tf.nest.flatten(action_spec)
+        flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, ("RandomShootingAlgorithm doesn't "
                                             "support nested action_spec")
 
-        flat_feature_spec = tf.nest.flatten(feature_spec)
+        flat_feature_spec = nest.flatten(feature_spec)
         assert len(flat_feature_spec) == 1, ("RandomShootingAlgorithm doesn't "
                                              "support nested feature_spec")
 
@@ -171,20 +180,20 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             upper_bound=action_spec.maximum,
             lower_bound=action_spec.minimum)
 
-    def train_step(self, time_step: ActionTimeStep, state):
+    def train_step(self, time_step: TimeStep, state):
         """
         Args:
-            time_step (ActionTimeStep): input data for planning
+            time_step (TimeStep): input data for planning
             state: state for planning (previous observation)
         Returns:
             TrainStep:
-                outputs: empty tuple ()
+                output: empty tuple ()
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """
-        return AlgorithmStep(outputs=(), state=(), info=())
+        return AlgStep(output=(), state=(), info=())
 
-    def generate_plan(self, time_step: ActionTimeStep, state):
+    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
         assert self._reward_func is not None, ("specify reward function "
                                                "before planning")
 
@@ -194,34 +203,31 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
         opt_action = self._plan_optimizer.obtain_solution(time_step, state)
         action = opt_action[:, 0]
-        action = tf.reshape(action, [time_step.observation.shape[0], -1])
-        return action
+        action = torch.reshape(action, [time_step.observation.shape[0], -1])
+        return action, state
 
     def _expand_to_population(self, data):
         """Expand the input tensor to a population of replications
         Args:
-            data (tf.Tensor): input data with shape [batch_size, ...]
+            data (Tensor): input data with shape [batch_size, ...]
         Returns:
-            data_population (tf.Tensor) with shape
+            data_population (Tensor) with shape
                                     [batch_size * self._population_size, ...].
             For example data tensor [[a, b], [c, d]] and a population_size of 2,
             we have the following data_population tensor as output
                                     [[a, b], [a, b], [c, d], [c, d]]
         """
-        data_population = tf.tile(
-            tf.expand_dims(data, 1),
-            [1, self._population_size] + [1] * len(data.shape[1:]))
-        data_population = tf.reshape(data_population,
-                                     [-1] + data.shape[1:].as_list())
+        data_population = torch.repeat_interleave(
+            data, self._population_size, dim=0)
         return data_population
 
-    def _calc_cost_for_action_sequence(self, time_step: ActionTimeStep, state,
+    def _calc_cost_for_action_sequence(self, time_step: TimeStep, state,
                                        ac_seqs):
         """
         Args:
-            time_step (ActionTimeStep): input data for next step prediction
+            time_step (TimeStep): input data for next step prediction
             state (MbrlState): input state for next step prediction
-            ac_seqs: action_sequence (tf.Tensor) of shape [batch_size,
+            ac_seqs: action_sequence (Tensor) of shape [batch_size,
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
         Returns:
@@ -229,17 +235,18 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         """
         obs = time_step.observation
         batch_size = obs.shape[0]
-        init_costs = tf.zeros([batch_size, self._population_size])
-        ac_seqs = tf.reshape(
+
+        ac_seqs = torch.reshape(
             ac_seqs,
             [batch_size, self._population_size, self._planning_horizon, -1])
-        ac_seqs = tf.reshape(
-            tf.transpose(ac_seqs, [2, 0, 1, 3]),
-            [self._planning_horizon, -1, self._num_actions])
+
+        ac_seqs = ac_seqs.permute(2, 0, 1, 3)
+        ac_seqs = torch.reshape(
+            ac_seqs, (self._planning_horizon, -1, self._num_actions))
 
         state = state._replace(dynamics=state.dynamics._replace(feature=obs))
         init_obs = self._expand_to_population(obs)
-        state = tf.nest.map_structure(self._expand_to_population, state)
+        state = nest.map_structure(self._expand_to_population, state)
 
         obs = init_obs
         cost = 0
@@ -248,13 +255,13 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             time_step = time_step._replace(prev_action=action)
             time_step, state = self._dynamics_func(time_step, state)
             next_obs = time_step.observation
-            # Note: currently using (next_obs, action), might need to
-            # consider (obs, action) in order to be more compatible
-            # with the conventional definition of reward function
             reward_step = self._reward_func(next_obs, action)
             cost = cost - reward_step
             obs = next_obs
 
         # reshape cost back to [batch size, population_size]
-        cost = tf.reshape(cost, [batch_size, -1])
+        cost = torch.reshape(cost, [batch_size, -1])
         return cost
+
+    def after_update(self, training_info):
+        pass
