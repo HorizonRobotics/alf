@@ -90,6 +90,8 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
         """
         root_dir = os.path.expanduser(config.root_dir)
+        os.makedirs(root_dir, exist_ok=True)
+        logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
         self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
