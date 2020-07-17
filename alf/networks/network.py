@@ -188,8 +188,11 @@ class Network(nn.Module):
         can be obtained easily in other ways.
         """
         if self._output_spec is None:
+            training = self.training
+            self.eval()
             self._output_spec = extract_spec(
                 self._test_forward()[0], from_dim=1)
+            self.train(training)
         return self._output_spec
 
     @property

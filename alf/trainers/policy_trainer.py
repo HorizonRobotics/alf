@@ -309,6 +309,7 @@ class Trainer(object):
 
     @common.mark_eval
     def _eval(self):
+        self._algorithm.eval()
         time_step = common.get_initial_time_step(self._eval_env)
         policy_state = self._algorithm.get_initial_predict_state(
             self._eval_env.batch_size)
@@ -332,6 +333,7 @@ class Trainer(object):
                     step_metrics=step_metrics)
 
         common.log_metrics(self._eval_metrics)
+        self._algorithm.train()
 
 
 @torch.no_grad()
@@ -402,6 +404,7 @@ def play(root_dir,
     if recorder:
         recorder.capture_frame()
     time_step = common.get_initial_time_step(env)
+    algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
     episode_reward = 0.
     episode_length = 0

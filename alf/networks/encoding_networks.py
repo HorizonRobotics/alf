@@ -505,9 +505,11 @@ class EncodingNetwork(PreprocessorNetwork):
                  fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 use_fc_bn=False,
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
+                 last_use_fc_bn=False,
                  name="EncodingNetwork"):
         """
         Args:
@@ -538,6 +540,7 @@ class EncodingNetwork(PreprocessorNetwork):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If None, a variance_scaling_initializer will be
                 used.
+            use_fc_bn (bool): whether use Batch Normalization for fc layers.
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -545,6 +548,8 @@ class EncodingNetwork(PreprocessorNetwork):
                 additional layer specified by ``last_layer_size``. Note that if
                 ``last_layer_size`` is not None, ``last_activation`` has to be
                 specified explicitly.
+            last_use_fc_bn (bool): whether use Batch Normalization for the last
+                fc layer.
             last_kernel_initializer (Callable): initializer for the the
                 additional layer specified by ``last_layer_size``.
                 If None, it will be the same with ``kernel_initializer``. If
@@ -599,6 +604,7 @@ class EncodingNetwork(PreprocessorNetwork):
                     input_size,
                     size,
                     activation=activation,
+                    use_bn=use_fc_bn,
                     kernel_initializer=kernel_initializer))
             input_size = size
 
@@ -617,6 +623,7 @@ class EncodingNetwork(PreprocessorNetwork):
                     input_size,
                     last_layer_size,
                     activation=last_activation,
+                    use_bn=last_use_fc_bn,
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
