@@ -259,7 +259,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             # Note: currently using (next_obs, action), might need to
             # consider (obs, action) in order to be more compatible
             # with the conventional definition of the reward function
-            reward_step = self._reward_func(next_obs, action)
+            reward_step = self._reward_func(next_obs, action, state)
             cost = cost - reward_step
             obs = next_obs
 

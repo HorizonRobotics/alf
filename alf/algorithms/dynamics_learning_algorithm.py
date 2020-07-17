@@ -194,6 +194,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
         """Predict the current observation using ``time_step.prev_action``
             and the feature of the previous observation from ``state``.
+            Note that time_step.observation is not used for the prediction.
         """
         action = self._encode_action(time_step.prev_action)
         obs = state.feature

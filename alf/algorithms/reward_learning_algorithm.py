@@ -49,15 +49,15 @@ class RewardEstimationAlgorithm(Algorithm):
         pass
 
     def calc_loss(self, info):
-        loss = nest.map_structure(torch.mean, info.loss)
         return LossInfo(
-            loss=info.loss, scalar_loss=loss.loss, extra=loss.extra)
+            loss=info.loss, scalar_loss=info.loss, extra=loss.extra)
 
-    def compute_reward(self, obs, action):
+    def compute_reward(self, obs, action, state):
         """Compute reward based on the provided observation and action
         Args:
             obs (Tensor): observation
             action (Tensor): action
+            state ()
         Returns:
             reward (Tensor): compuated reward for the given input
         """
@@ -81,7 +81,7 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
         super().__init__(name=name)
         self._reward_func = reward_func
 
-    def train_step(self, time_step: TimeStep, state):
+    def train_step(self, time_step: TimeStep, state=()):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
@@ -89,9 +89,9 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
         Returns:
             AlgStep
         """
-        return AlgStep(output=(), state=(), info=())
+        return AlgStep(output=(), state=state, info=())
 
-    def compute_reward(self, obs, action):
+    def compute_reward(self, obs, action, state):
         """Compute reward based on current observation and action
         """
         return self._reward_func(obs, action)

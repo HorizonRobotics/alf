@@ -136,7 +136,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         self._planner_module.set_reward_func(self._calc_step_reward)
         self._planner_module.set_dynamics_func(self._predict_next_step)
 
-    def _predict_next_step(self, time_step, state):
+    def _predict_next_step(self, time_step, state: MbrlState):
         """Predict the next step (observation and state) based on the current
             time step and state
         Args:
@@ -155,8 +155,17 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             next_state = state._replace(dynamics=dynamics_step.state)
         return next_time_step, next_state
 
-    def _calc_step_reward(self, obs, action):
-        reward = self._reward_module.compute_reward(obs, action)
+    def _calc_step_reward(self, obs, action, state: MbrlState):
+        """Calculate the step reward based on the given observation, action
+            and state.
+        Args:
+            obs (Tensor): observation
+            action (Tensor): action
+            state: state for reward calculation
+        Returns:
+            reward (Tensor): compuated reward for the given input
+        """
+        reward = self._reward_module.compute_reward(obs, action, state.reward)
         return reward
 
     def _predict_with_planning(self, time_step: TimeStep, state,
