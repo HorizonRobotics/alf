@@ -88,16 +88,16 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._dynamics_func = None
         self._step_eval_func = None  # per step evaluation function
 
-    def train_step(self, time_step: TimeStep, state):
+    def train_step(self, time_step: TimeStep, state: PlannerState):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
             state (Tensor): state for dynamics learning (previous observation)
         Returns:
-            TrainStep:
+            AlgStep:
                 output: empty tuple ()
-                state (DynamicsState): state for training
-                info (DynamicsInfo):
+                state (PlannerState): state for training
+                info (PlannerInfo):
         """
         pass
 
@@ -122,10 +122,11 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """Compute the plan based on the provided observation and action
         Args:
             time_step (TimeStep): input data for next step prediction
-            state: input state next step prediction
+            state (MbrlState): input state for next step prediction. It will
+                be used by the next step prediction function set by
+                ```set_dynamics_func```.
         Returns:
             action: planned action for the given inputs
-            state: mbrl state
         """
         pass
 
@@ -186,7 +187,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             time_step (TimeStep): input data for planning
             state: state for planning (previous observation)
         Returns:
-            TrainStep:
+            AlgStep:
                 output: empty tuple ()
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
@@ -204,7 +205,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         opt_action = self._plan_optimizer.obtain_solution(time_step, state)
         action = opt_action[:, 0]
         action = torch.reshape(action, [time_step.observation.shape[0], -1])
-        return action, state
+        return action
 
     def _expand_to_population(self, data):
         """Expand the input tensor to a population of replications
@@ -231,7 +232,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
         Returns:
-            cost (tf.Tensor) with shape [batch_size, population_size]
+            cost (Tensor) with shape [batch_size, population_size]
         """
         obs = time_step.observation
         batch_size = obs.shape[0]
@@ -255,6 +256,9 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             time_step = time_step._replace(prev_action=action)
             time_step, state = self._dynamics_func(time_step, state)
             next_obs = time_step.observation
+            # Note: currently using (next_obs, action), might need to
+            # consider (obs, action) in order to be more compatible
+            # with the conventional definition of the reward function
             reward_step = self._reward_func(next_obs, action)
             cost = cost - reward_step
             obs = next_obs

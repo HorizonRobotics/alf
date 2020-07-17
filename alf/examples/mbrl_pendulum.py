@@ -25,6 +25,11 @@ def reward_function_for_pendulum(obs, action):
         (1) observation (Tensor of shape [batch_size, observation_dim])
         (2) action (Tensor of shape [batch_size, num_actions])
         and returns a reward Tensor of shape [batch_size].
+
+        Note that in the planning module, (next_obs, action) is currently used
+        as the input to this function. Might need to consider (obs, action)
+        on the caller side in order to be more compatible with the conventional
+        definition of the reward function.
     """
 
     def _observation_cost(obs):

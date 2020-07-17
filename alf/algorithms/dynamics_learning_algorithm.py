@@ -48,12 +48,13 @@ class DynamicsLearningAlgorithm(Algorithm):
 
         Args:
             hidden_size (int|tuple): size of hidden layer(s)
-            dynamics_network (Network): network for predicting next feature
-                based on the previous feature and action. It should accept
-                input with spec [feature_spec, encoded_action_spec] and output
-                a tensor of shape feature_spec. For discrete action,
-                encoded_action is an one-hot representation of the action.
-                For continuous action, encoded action is the original action.
+            dynamics_network (Network): network for predicting the change of
+                the next feature based on the previous feature and action.
+                It should accept input with spec of the format
+                [feature_spec, encoded_action_spec] and output a tensor of the
+                shape feature_spec. For discrete action case, encoded_action
+                is a one-hot representation of the action. For continuous
+                action, encoded action is the original action.
         """
         super().__init__(train_state_spec=train_state_spec, name=name)
 
@@ -101,15 +102,13 @@ class DynamicsLearningAlgorithm(Algorithm):
 
     def update_state(self, time_step: TimeStep, state: DynamicsState):
         """Update the state based on TimeStep data. This function is
-            mainly used during rollout together with a planner
+            mainly used during rollout together with a planner.
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for DML (previous observation)
+            state (DynamicsState): state for DynamicsLearningAlgorithm
+                (previous observation)
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
-                state: feature
-                info (DynamicsInfo):
+            state (DynamicsState): updated dynamics state
         """
         pass
 
@@ -120,13 +119,27 @@ class DynamicsLearningAlgorithm(Algorithm):
         """
         pass
 
+    def predict_step(self, time_step: TimeStep, state: DynamicsState):
+        """Predict the current observation using ``time_step.prev_action``
+            and the feature of the previous observation from ``state``.
+        Args:
+            time_step (TimeStep): input data for dynamics learning
+            state (DynamicsState): state for dynamics learning
+        Returns:
+            AlgStep:
+                outputs: empty tuple ()
+                state (DynamicsState):
+                info (DynamicsInfo):
+        """
+        pass
+
     def train_step(self, time_step: TimeStep, state: DynamicsState):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            state (DynamicsState): state for dynamics learning (previous observation)
         Returns:
-            TrainStep:
+            AlgStep:
                 outputs: empty tuple ()
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
@@ -134,9 +147,8 @@ class DynamicsLearningAlgorithm(Algorithm):
         pass
 
     def calc_loss(self, info: DynamicsInfo):
-        loss = nest.map_structure(torch.mean, info.loss)
         return LossInfo(
-            loss=info.loss, scalar_loss=loss.loss, extra=loss.extra)
+            loss=info.loss, scalar_loss=info.loss, extra=loss.extra)
 
 
 @gin.configurable
@@ -157,12 +169,13 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
 
         Args:
             hidden_size (int|tuple): size of hidden layer(s)
-            dynamics_network (Network): network for predicting next feature
-                based on the previous feature and action. It should accept
-                input with spec [feature_spec, encoded_action_spec] and output
-                a tensor of shape feature_spec. For discrete action,
-                encoded_action is an one-hot representation of the action.
-                For continuous action, encoded action is the original action.
+            dynamics_network (Network): network for predicting the change of
+                the next feature based on the previous feature and action.
+                It should accept input with spec of the format
+                [feature_spec, encoded_action_spec] and output a tensor of the
+                shape feature_spec. For discrete action case, encoded_action
+                is a one-hot representation of the action. For continuous
+                action, encoded action is the original action.
         """
         if dynamics_network is not None:
             dynamics_network_state_spec = dynamics_network.state_spec
@@ -179,9 +192,8 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
             name=name)
 
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
-        """Predict the next observation given the current time_step.
-                The next step is predicted using the prev_action from time_step
-                and the feature from state.
+        """Predict the current observation using ``time_step.prev_action``
+            and the feature of the previous observation from ``state``.
         """
         action = self._encode_action(time_step.prev_action)
         obs = state.feature
@@ -195,15 +207,16 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
 
     def update_state(self, time_step: TimeStep, state: DynamicsState):
         """Update the state based on TimeStep data. This function is
-            mainly used during rollout together with a planner
+            mainly used during rollout together with a planner. This
+            function is necessary as we need to update the feature in
+            DynamicsState with those of the current observation, after
+            each step of rollout.
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for DML (previous observation)
+            state (DynamicsState): state for DeterministicDynamicsAlgorithm
+                (previous observation)
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
-                state: feature
-                info (DynamicsInfo):
+            state (DynamicsState): updated dynamics state
         """
         feature = time_step.observation
         return state._replace(feature=feature)
@@ -212,9 +225,9 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            state (DynamicsState): state for dynamics learning (previous observation)
         Returns:
-            TrainStep:
+            AlgStep:
                 outputs: empty tuple ()
                 state (DynamicsState): state for training
                 info (DynamicsInfo):

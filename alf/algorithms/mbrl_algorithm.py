@@ -78,8 +78,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 representation of the action. For continuous action, encoded
                 action is same as the original action.
             reward_module (RewardEstimationAlgorithm): module for calculating
-            the reward, i.e.,  evaluating the reward for a (s, a) pair
-            planner_module (PLANAlgorithm): module for generating planned action
+                the reward, i.e.,  evaluating the reward for a (s, a) pair
+            planner_module (PlanAlgorithm): module for generating planned action
                 based on specified reward function and dynamics function
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
@@ -162,14 +162,14 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
     def _predict_with_planning(self, time_step: TimeStep, state,
                                epsilon_greedy):
         # full state in
-        action, mbrl_state = self._planner_module.generate_plan(
-            time_step, state, epsilon_greedy)
+        action = self._planner_module.generate_plan(time_step, state,
+                                                    epsilon_greedy)
         dynamics_state = self._dynamics_module.update_state(
             time_step, state.dynamics)
 
         return AlgStep(
             output=action,
-            state=mbrl_state._replace(dynamics=dynamics_state),
+            state=state._replace(dynamics=dynamics_state),
             info=MbrlInfo())
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy=0.0):

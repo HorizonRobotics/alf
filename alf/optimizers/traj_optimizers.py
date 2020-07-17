@@ -18,7 +18,11 @@ from alf.data_structures import TimeStep
 
 
 class TrajOptimizer(object):
-    """Random Trajectory Optimizer"""
+    """Trajectory Optimizer Module
+
+    This module generates optimized trajectories by minimizing a trajectory
+        cost function set through ``set_cost``.
+    """
 
     def __init__(self, *args, **kwargs):
         pass
@@ -30,9 +34,9 @@ class TrajOptimizer(object):
         """Set cost function for miminizing.
         cost_function (Callable): the cost function to be minimized. It
             takes as input:
-            (1) time_step (ActionTimeStep) for next step prediction
+            (1) time_step (TimeStep) for next step prediction
             (2) state: input state for next step prediction
-            (3) action_sequence (tf.Tensor of shape [batch_size,
+            (3) action_sequence (Tensor of shape [batch_size,
                 population_size, solution_dim])
             and returns a cost Tensor of shape [batch_size, population_size]
         """
@@ -50,12 +54,15 @@ class RandomOptimizer(TrajOptimizer):
                  lower_bound=None):
         """Random Trajectory Optimizer
 
+        This module conducts trajectory optimization via random-shooting-based
+            optimization.
+
         Args:
             solution_dim (int): The dimensionality of the problem space
             population_size (int): The number of candidate solutions to be
                 sampled at every iteration
-            upper_bound (int|tf.Tensor): upper bounds for elements in solution
-            lower_bound (int|tf.Tensor): lower bounds for elements in solution
+            upper_bound (int|Tensor): upper bounds for elements in solution
+            lower_bound (int|Tensor): lower bounds for elements in solution
         """
         super().__init__()
         self._solution_dim = solution_dim
@@ -77,5 +84,6 @@ class RandomOptimizer(TrajOptimizer):
         ) * (self._upper_bound - self._lower_bound) + self._lower_bound * 1.0
         costs = self.cost_function(time_step, state, solutions)
         min_ind = torch.argmin(costs, dim=-1).long()
+        # solutions [B, pop_size, sol_dim] -> [B, 1, sol_dim] -> [B, sol_dim]
         solution = solutions.index_select(1, min_ind).squeeze(1)
         return solution

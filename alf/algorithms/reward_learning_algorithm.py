@@ -29,7 +29,8 @@ from alf.nest import nest
 @gin.configurable
 class RewardEstimationAlgorithm(Algorithm):
     """Reward Estimation Module
-    This module is responsible to compute/predict rewards
+
+    This module is responsible for computing/predicting rewards
     """
 
     def __init__(self, name="RewardEstimationAlgorithm"):
@@ -43,10 +44,7 @@ class RewardEstimationAlgorithm(Algorithm):
             time_step (TimeStep): input data for dynamics learning
             state (Tensor): state for dynamics learning (previous observation)
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
-                state (DynamicsState): state for training
-                info (DynamicsInfo):
+            AlgStep
         """
         pass
 
@@ -74,10 +72,10 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
     def __init__(self, reward_func: Callable, name="FixedRewardFunction"):
         """Create a FixedRewardFunction.
         Args:
-            reward_func (Callable): a function for computing reward. It takes
-                as input:
-                (1) observation (tf.Tensor of shape [batch_size, observation_dim])
-                (2) action (tf.Tensor of shape [batch_size, num_actions])
+            reward_func (Callable): a function for computing reward.
+                It takes as input:
+                (1) observation (Tensor of shape [batch_size, observation_dim])
+                (2) action (Tensor of shape [batch_size, num_actions])
                 and returns a reward Tensor of shape [batch_size]
         """
         super().__init__(name=name)
@@ -87,12 +85,9 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            state: state for reward learning
         Returns:
-            TrainStep:
-                outputs: empty tuple ()
-                state (DynamicsState): state for training
-                info (DynamicsInfo):
+            AlgStep
         """
         return AlgStep(output=(), state=(), info=())
 
