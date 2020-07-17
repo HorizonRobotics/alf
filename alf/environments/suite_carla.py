@@ -228,7 +228,7 @@ class Player(object):
         self.reset()
 
         # for rendering
-        self._display = None
+        self._surface = None
         self._font = None
         self._clock = None
 
@@ -319,7 +319,7 @@ class Player(object):
         commands.extend(self._lane_invasion_sensor.destroy())
         commands.extend(self._radar_sensor.destroy())
         commands.append(carla.command.DestroyActor(self._actor))
-        if self._display is not None:
+        if self._surface is not None:
             import pygame
             pygame.quit()
 
@@ -522,51 +522,57 @@ class Player(object):
         """Render the simulation.
 
         Args:
-            mode (str): one of ['rgb', 'human']
+            mode (str): one of ['rgb_array', 'human']
         Returns:
             one of the following:
                 - None: if mode is 'human'
                 - np.ndarray: the image of shape [height, width, channeles] if
-                    mode is 'rgb'
+                    mode is 'rgb_array'
         """
-        if mode == 'human':
-            import pygame
-            if self._display is None:
-                pygame.init()
-                pygame.font.init()
-                self._clock = pygame.time.Clock()
-                height, width = self._camera_sensor.observation_spec(
-                ).shape[1:3]
-                height = max(height, MINIMUM_RENDER_HEIGHT)
-                width = max(width, MINIMUM_RENDER_WIDTH)
-                self._display = pygame.display.set_mode(
+        import pygame
+        if self._surface is None:
+            pygame.init()
+            pygame.font.init()
+            self._clock = pygame.time.Clock()
+            height, width = self._camera_sensor.observation_spec().shape[1:3]
+            height = max(height, MINIMUM_RENDER_HEIGHT)
+            width = max(width, MINIMUM_RENDER_WIDTH)
+            if mode == 'human':
+                self._surface = pygame.display.set_mode(
                     (width, height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+            else:
+                self._surface = pygame.Surface((width, height))
 
+        if mode == 'human':
             self._clock.tick_busy_loop(1000)
-            self._camera_sensor.render(self._display)
-            obs = self._current_time_step.observation
-            info_text = [
-                'FPS: %6.2f' % self._clock.get_fps(),
-                'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
-                'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()),
-                'Ahead: (%7.1f, %8.1f, %5.1f)' % tuple(
-                    obs['navigation'][2].tolist()),
-                'Distance: %7.2f' % np.linalg.norm(obs['goal']),
-                'Speed: %5.1f km/h' % (3.6 * obs['speed']),
-                'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
-                    obs['imu'][0:3].tolist()),
-                'Compass: %5.1f' % math.degrees(float(obs['imu'][6])),
-                'Throttle: %4.2f' % self._control.throttle,
-                'Brake:    %4.2f' % self._control.brake,
-                'Steer:    %4.2f' % self._control.steer,
-                'Reverse:  %4s' % self._control.reverse,
-                'Reward: %.1f' % float(self._current_time_step.reward),
-            ]
-            self._draw_text(info_text)
+
+        self._camera_sensor.render(self._surface)
+        obs = self._current_time_step.observation
+        info_text = [
+            'FPS: %6.2f' % self._clock.get_fps(),
+            'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
+            'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()),
+            'Ahead: (%7.1f, %8.1f, %5.1f)' % tuple(
+                obs['navigation'][2].tolist()),
+            'Distance: %7.2f' % np.linalg.norm(obs['goal']),
+            'Speed: %5.1f km/h' % (3.6 * obs['speed']),
+            'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
+                obs['imu'][0:3].tolist()),
+            'Compass: %5.1f' % math.degrees(float(obs['imu'][6])),
+            'Throttle: %4.2f' % self._control.throttle,
+            'Brake:    %4.2f' % self._control.brake,
+            'Steer:    %4.2f' % self._control.steer,
+            'Reverse:  %4s' % self._control.reverse,
+            'Reward: %.1f' % float(self._current_time_step.reward),
+        ]
+        self._draw_text(info_text)
+
+        if mode == 'human':
             pygame.display.flip()
-        elif mode == 'rgb':
-            return np.transpose(self._current_time_step.observation['camera'],
-                                (1, 2, 0))
+        elif mode == 'rgb_array':
+            # (x, y, c) => (y, x, c)
+            return np.transpose(
+                pygame.surfarray.array3d(self._surface), (1, 0, 2))
         else:
             raise ValueError("Unsupported render mode: %s" % mode)
 
@@ -582,11 +588,11 @@ class Player(object):
             self._font = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
         info_surface = pygame.Surface((240, 240))
         info_surface.set_alpha(100)
-        self._display.blit(info_surface, (0, 0))
+        self._surface.blit(info_surface, (0, 0))
         v_offset = 4
         for item in texts:
             surface = self._font.render(item, True, (255, 255, 255))
-            self._display.blit(surface, (8, v_offset))
+            self._surface.blit(surface, (8, v_offset))
             v_offset += 18
 
 
@@ -795,6 +801,12 @@ class CarlaEnvironment(AlfEnvironment):
         self._observation_spec = self._players[0].observation_spec()
         self._action_spec = self._players[0].action_spec()
         self._env_info_spec = self._players[0].info_spec()
+
+        # metadata property is required by video recording
+        self.metadata = {
+            'render.modes': ['human', 'rgb_array'],
+            'video.frames_per_second': 1 / step_time
+        }
 
     def _spawn_vehicles(self):
         blueprints = self._world.get_blueprint_library().filter(
