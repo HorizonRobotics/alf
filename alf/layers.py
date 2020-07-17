@@ -352,7 +352,7 @@ class ParallelFC(nn.Module):
             output_size (int): output size
             n (int): n independent ``FC`` layers
             activation (torch.nn.functional):
-            use_bn (bool): whehter use Batch Normalization.
+            use_bn (bool): whether use Batch Normalization.
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain
