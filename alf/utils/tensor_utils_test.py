@@ -61,25 +61,5 @@ class NormClippingTest(alf.test.TestCase):
             torch.as_tensor(1.0))
 
 
-class TensorIndexingTest(alf.test.TestCase):
-    def test_batched_index_select(self):
-        tensor = torch.randn([3, 4, 5])
-        index = torch.tensor([1, 2, 0]).long()
-
-        sliced_tensor = tensor_utils.batched_index_select(
-            tensor, dim=1, index=index)
-        expected_tensor = torch.empty(3, 1, 5)
-        for i in range(index.shape[0]):
-            expected_tensor[i] = tensor[i, index[i]:index[i] + 1, ...]
-        self.assertTensorClose(sliced_tensor, expected_tensor)
-
-        sliced_tensor = tensor_utils.batched_index_select(
-            tensor, dim=2, index=index)
-        expected_tensor = torch.empty(3, 4, 1)
-        for i in range(index.shape[0]):
-            expected_tensor[i] = tensor[i, :, index[i]:index[i] + 1]
-        self.assertTensorClose(sliced_tensor, expected_tensor)
-
-
 if __name__ == "__main__":
     alf.test.main()

@@ -7,7 +7,7 @@ import alf.utils.math_ops
 
 # environment config
 env_name='Pendulum-v0'
-NUM_PARALLEL_ENVIRONMENTS=2
+NUM_PARALLEL_ENVIRONMENTS=1
 create_environment.env_load_fn=@suite_gym.load
 create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
 create_environment.env_name=%env_name

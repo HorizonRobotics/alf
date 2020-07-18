@@ -86,7 +86,6 @@ class RandomOptimizer(TrajOptimizer):
         ) * (self._upper_bound - self._lower_bound) + self._lower_bound * 1.0
         costs = self.cost_function(time_step, state, solutions)
         min_ind = torch.argmin(costs, dim=-1).long()
-        # solutions [B, pop_size, sol_dim] -> [B, 1, sol_dim] -> [B, sol_dim]
-        solution = tensor_utils.batched_index_select(solutions, 1,
-                                                     min_ind).squeeze(1)
+        # solutions [B, pop_size, sol_dim] -> [B, sol_dim]
+        solution = solutions[(torch.arange(batch_size), min_ind)]
         return solution
