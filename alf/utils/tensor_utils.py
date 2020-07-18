@@ -27,7 +27,8 @@ def batched_index_select(input, dim, index):
     in a batch aligned manner along the spedicied dim.
 
     Args:
-        input (Tensor) – the input tensor, with shape [B, ..., n, ...], wheren denotes the size along the dimension specified by ``dim``
+        input (Tensor) – the input tensor, with shape [B, ..., n, ...], where
+            n denotes the size along the dimension specified by ``dim``
         dim (int) – the dimension along which to conduct indexing, excluding
             the batch dimension
         index (LongTensor) – a 1D tensor containing the indices to index the
