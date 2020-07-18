@@ -93,5 +93,12 @@ class FixedRewardFunction(RewardEstimationAlgorithm):
 
     def compute_reward(self, obs, action, state):
         """Compute reward based on current observation and action
+        Args:
+            obs (Tensor): observation
+            action (Tensor): action
+            state: state for reward calculation
+        Returns:
+            reward (Tensor): compuated reward for the given input
+            state: updated state, currently simply passing the input state
         """
-        return self._reward_func(obs, action)
+        return self._reward_func(obs, action), state

@@ -117,7 +117,7 @@ class DynamicsLearningAlgorithm(Algorithm):
         This function is mainly used for constructing the nested state specs
         by the upper-level module.
         """
-        pass
+        raise NotImplementedError
 
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
         """Predict the current observation using ``time_step.prev_action``
@@ -127,11 +127,11 @@ class DynamicsLearningAlgorithm(Algorithm):
             state (DynamicsState): state for dynamics learning
         Returns:
             AlgStep:
-                outputs: empty tuple ()
+                output:
                 state (DynamicsState):
                 info (DynamicsInfo):
         """
-        pass
+        raise NotImplementedError
 
     def train_step(self, time_step: TimeStep, state: DynamicsState):
         """
@@ -140,11 +140,11 @@ class DynamicsLearningAlgorithm(Algorithm):
             state (DynamicsState): state for dynamics learning (previous observation)
         Returns:
             AlgStep:
-                outputs: empty tuple ()
+                output:
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """
-        pass
+        raise NotImplementedError
 
     def calc_loss(self, info: DynamicsInfo):
         return LossInfo(
@@ -229,7 +229,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
             state (DynamicsState): state for dynamics learning (previous observation)
         Returns:
             AlgStep:
-                outputs: empty tuple ()
+                output: empty tuple ()
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """

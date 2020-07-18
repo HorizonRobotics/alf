@@ -164,9 +164,12 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             state: state for reward calculation
         Returns:
             reward (Tensor): compuated reward for the given input
+            updated_state (MbrlState): updated state from the reward module
         """
-        reward = self._reward_module.compute_reward(obs, action, state.reward)
-        return reward
+        reward, reward_state = self._reward_module.compute_reward(
+            obs, action, state.reward)
+        updated_state = state._replace(reward=reward_state)
+        return reward, updated_state
 
     def _predict_with_planning(self, time_step: TimeStep, state,
                                epsilon_greedy):

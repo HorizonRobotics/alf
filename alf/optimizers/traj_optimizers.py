@@ -55,7 +55,8 @@ class RandomOptimizer(TrajOptimizer):
         """Random Trajectory Optimizer
 
         This module conducts trajectory optimization via random-shooting-based
-            optimization.
+            optimization, i.e., generating a random population for each sample
+            in the batch and select those having the lowest cost as the solution.
 
         Args:
             solution_dim (int): The dimensionality of the problem space
@@ -84,6 +85,6 @@ class RandomOptimizer(TrajOptimizer):
         ) * (self._upper_bound - self._lower_bound) + self._lower_bound * 1.0
         costs = self.cost_function(time_step, state, solutions)
         min_ind = torch.argmin(costs, dim=-1).long()
-        # solutions [B, pop_size, sol_dim] -> [B, 1, sol_dim] -> [B, sol_dim]
+        # solutions [B, pop_size, sol_dim] -> [B, B, sol_dim] -> [B, sol_dim]
         solution = solutions.index_select(1, min_ind).squeeze(1)
         return solution
