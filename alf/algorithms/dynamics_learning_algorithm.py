@@ -147,8 +147,10 @@ class DynamicsLearningAlgorithm(Algorithm):
         raise NotImplementedError
 
     def calc_loss(self, info: DynamicsInfo):
-        return LossInfo(
-            loss=info.loss, scalar_loss=info.loss, extra=loss.extra)
+        # Here we take mean over the loss to avoid undesired additional
+        # masking from base algorithm's ``update_with_gradient``.
+        scalar_loss = nest.map_structure(torch.mean, info.loss)
+        return LossInfo(scalar_loss=scalar_loss, extra=loss.extra)
 
 
 @gin.configurable
@@ -240,6 +242,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         forward_loss = 0.5 * forward_loss.mean(
             list(range(1, forward_loss.ndim)))
 
+        # we mask out FIRST as its state is invalid
         valid_masks = (time_step.step_type != StepType.FIRST).to(torch.float32)
         forward_loss = forward_loss * valid_masks
 
