@@ -17,6 +17,7 @@ import gin
 import math
 import numpy as np
 import torch
+from typing import Callable
 
 import alf
 from alf.algorithms.algorithm import Algorithm
@@ -24,6 +25,7 @@ from alf.data_structures import namedtuple, AlgStep, LossInfo, StepType
 from alf.summary import should_record_summaries
 from alf.utils.averager import ScalarWindowAverager
 from alf.utils.dist_utils import calc_default_target_entropy, entropy_with_fallback
+from alf.utils.schedulers import ConstantScheduler
 
 EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
 EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["loss"])
@@ -129,24 +131,23 @@ class EntropyTargetAlgorithm(Algorithm):
                 list(map(calc_default_target_entropy, flat_action_spec)))
             logging.info("target_entropy=%s" % target_entropy)
 
+        if not isinstance(target_entropy, Callable):
+            target_entropy = ConstantScheduler(target_entropy)
+
         if max_entropy is None:
             # max_entropy will be estimated in the first `average_window` steps.
             max_entropy = 0.
             self._stage.fill_(-2 - average_window)
         else:
-            assert target_entropy <= max_entropy, (
+            assert target_entropy() <= max_entropy, (
                 "Target entropy %s should be less or equal than max entropy %s!"
-                % (target_entropy, max_entropy))
+                % (target_entropy(), max_entropy))
         self.register_buffer("_max_entropy",
                              torch.tensor(max_entropy, dtype=torch.float32))
 
         if skip_free_stage:
             self._stage.fill_(1)
 
-        if target_entropy > 0:
-            self._fast_stage_thresh = 0.5 * target_entropy
-        else:
-            self._fast_stage_thresh = 2.0 * target_entropy
         self._target_entropy = target_entropy
         self._very_slow_update_rate = very_slow_update_rate
         self._slow_update_rate = torch.tensor(slow_update_rate)
@@ -233,6 +234,13 @@ class EntropyTargetAlgorithm(Algorithm):
         prev_avg_entropy = self._avg_entropy.get()
         avg_entropy = self._avg_entropy.average(entropy)
 
+        target_entropy = self._target_entropy()
+
+        if target_entropy > 0:
+            fast_stage_thresh = 0.5 * target_entropy
+        else:
+            fast_stage_thresh = 2.0 * target_entropy
+
         def _init_entropy():
             self._max_entropy.fill_(
                 torch.min(0.8 * avg_entropy, avg_entropy / 0.8))
@@ -248,18 +256,18 @@ class EntropyTargetAlgorithm(Algorithm):
                 torch.max(self._log_alpha + update_rate, self._min_log_alpha))
 
         def _free():
-            crossing = avg_entropy < self._target_entropy
+            crossing = avg_entropy < target_entropy
             self._stage.add_(crossing.type(torch.int32))
 
         def _adjust():
             previous_above = self._stage.type(torch.bool)
-            above = avg_entropy > self._target_entropy
+            above = avg_entropy > target_entropy
             self._stage.fill_(above.type(torch.int32))
             crossing = above != previous_above
             update_rate = self._update_rate
             update_rate = torch.where(crossing, 0.9 * update_rate, update_rate)
             update_rate = torch.max(update_rate, self._slow_update_rate)
-            update_rate = torch.where(entropy < self._fast_stage_thresh,
+            update_rate = torch.where(entropy < fast_stage_thresh,
                                       self._fast_update_rate, update_rate)
             self._update_rate.fill_(update_rate)
             above = above.type(torch.float32)
@@ -288,5 +296,7 @@ class EntropyTargetAlgorithm(Algorithm):
                 alf.summary.scalar("avg_entropy", avg_entropy)
                 alf.summary.scalar("stage", self._stage)
                 alf.summary.scalar("update_rate", self._update_rate)
+                if type(self._target_entropy) != ConstantScheduler:
+                    alf.summary.scalar("target_entropy", target_entropy)
 
         return alpha

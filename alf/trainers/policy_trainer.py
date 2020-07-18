@@ -202,6 +202,14 @@ class Trainer(object):
         """
         return Trainer._trainer_progress.progress
 
+    @staticmethod
+    def current_iterations():
+        return Trainer._trainer_progress._iter_num
+
+    @staticmethod
+    def current_env_steps():
+        return Trainer._trainer_progress._env_step
+
     def train(self):
         """Perform training."""
         self._restore_checkpoint()
@@ -230,8 +238,9 @@ class Trainer(object):
                 ps.print_callees()
 
                 logging.info(s.getvalue())
-        finally:
+
             self._save_checkpoint()
+        finally:
             self._close_envs()
 
     def _train(self):
