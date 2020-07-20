@@ -255,14 +255,17 @@ class OffPolicyDriverTest(parameterized.TestCase, tf.test.TestCase):
                     max_num_steps=batch_size * mini_batch_length * 2,
                     time_step=time_step,
                     policy_state=policy_state)
+                whole_replay_buffer_training = False
                 clear_replay_buffer = False
             else:
                 driver.run_async()
+                whole_replay_buffer_training = True
                 clear_replay_buffer = True
 
             driver.algorithm.train(
                 mini_batch_size=128,
                 mini_batch_length=mini_batch_length,
+                whole_replay_buffer_training=whole_replay_buffer_training,
                 clear_replay_buffer=clear_replay_buffer)
             eval_env.reset()
             eval_time_step, _ = eval_driver.run(
