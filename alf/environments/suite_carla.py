@@ -1079,8 +1079,8 @@ class CarlaEnvironment(AlfEnvironment):
         return self._get_current_time_step()
 
 
-@gin.configurable(whitelist=[])
-def load(map_name, batch_size):
+@gin.configurable(whitelist=['wrappers'])
+def load(map_name, batch_size, wrappers=[]):
     """Load CaraEnvironment
 
     Args:
@@ -1088,8 +1088,12 @@ def load(map_name, batch_size):
             'Town01, Town02', 'Town03', 'Town04', 'Town05', 'Town06', 'Town07',
             and 'Town10HD'
         batch_size (int): the number of vehicles in the simulation.
+        wrappers (list[AlfEnvironmentBaseWrapper]): environment wrappers
     """
-    return CarlaEnvironment(batch_size, map_name)
+    env = CarlaEnvironment(batch_size, map_name)
+    for wrapper in wrappers:
+        env = wrapper(env)
+    return env
 
 
 load.batched = True
