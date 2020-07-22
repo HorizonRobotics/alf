@@ -18,6 +18,7 @@ Adapted from TF-Agents Environment API as seen in:
 """
 
 import abc
+import copy
 import cProfile
 import gin
 import numpy as np
@@ -369,3 +370,43 @@ class RandomFirstEpisodeLength(AlfEnvironmentBaseWrapper):
             self._num_steps = None
 
         return time_step
+
+
+@gin.configurable(whitelist=[])
+class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
+    def __init__(self, env):
+        """Add prev_action to observation.
+
+        The new observation is:
+
+        .. code-block:: python
+
+            {
+                'observation': original_observation,
+                'prev_action': prev_action
+            }
+
+        Args:
+            env (AlfEnvironment): An AlfEnvironment isinstance to wrap.
+        """
+        super().__init__(env)
+        self._time_step_spec = self._add_action(env.time_step_spec())
+        self._observation_spec = self._time_step_spec.observation
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def time_step_spec(self):
+        return self._time_step_spec
+
+    def _reset(self):
+        return self._add_action(self._env.reset())
+
+    def _step(self, action):
+        return self._add_action(self._env.step(action))
+
+    def _add_action(self, time_step):
+        return time_step._replace(
+            observation=dict(
+                observation=time_step.observation,
+                prev_action=time_step.prev_action))
