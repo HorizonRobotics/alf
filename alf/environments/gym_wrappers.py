@@ -266,11 +266,21 @@ class FrameSkip(gym.Wrapper):
         accumulated_reward = 0
         done = False
         info = None
+        num_env_steps = 0
         for _ in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             accumulated_reward += reward
+            if isinstance(info, dict) and 'num_env_steps' in info:
+                # in case FrameSkip wrapper is being nested:
+                n_steps = info['num_env_steps']
+            else:
+                n_steps = 1
+            num_env_steps += n_steps
             if done:
                 break
+        if not info:
+            info = {}
+        info['num_env_steps'] = num_env_steps
         return obs, accumulated_reward, done, info
 
     def reset(self, **kwargs):
