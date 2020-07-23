@@ -15,6 +15,7 @@
 from absl.testing import parameterized
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 import alf
 from alf.algorithms.hypernetwork_algorithm import HyperNetwork
@@ -24,89 +25,131 @@ from alf.utils import math_ops
 
 
 class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
+    def cov(self, data, rowvar=False):
+        """Estimate a covariance matrix given data.
+
+        Args:
+            data (tensor): A 1-D or 2-D tensor containing multiple observations 
+                of multiple dimentions. Each row of ``mat`` represents a
+                dimension of the observation, and each column a single
+                observation.
+            rowvar (bool): If True, then each row represents a dimension, with
+                observations in the columns. Othewise, each column represents
+                a dimension while the rows contains observations.
+
+        Returns:
+            The covariance matrix
+        """
+        if data.dim() > 2:
+            raise ValueError('data has more than 2 dimensions')
+        if data.dim() < 2:
+            data = data.view(1, -1)
+        if not rowvar and data.size(0) != 1:
+            data = data.t()
+        fact = 1.0 / (data.size(1) - 1)
+        data -= torch.mean(data, dim=1, keepdim=True)
+        return fact * data.matmul(data.t()).squeeze()
+
     def assertArrayGreater(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(
-        ('svgd', True),
-        ('svgd', False),
-        ('gfsf', False),
-    )
-    def test_hypernetwork_regression(self,
-                                     par_vi,
-                                     use_fc_bn=False,
-                                     particles=None):
+    # @parameterized.parameters('svgd', 'gfsf')
+    def test_bayesian_linear_regression(self, par_vi='gfsf', particles=None):
         """
-        The hypernetwork generator is trained to match a random linear function,
-        :math:`f(x) = W^T x`, where :math:`W` follows a Gaussian distribution.
-        The output variances from the groundtruth random linear function and 
-        the sampled functions from hypernetwork are computed during after training.
-        The difference between the two variances are expected to decrase with training.
+        The hypernetwork is trained to generate the parameter vector for a linear
+        regressor. The target linear regressor is :math:`y = X\beta + e`, where 
+        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
+        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
+        closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
+        For a linear generator with weight W and bias b, and takes standard Gaussian 
+        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should 
+        match the posterior :math:`p(\beta|X,y)` for both svgd and gfsf.
         
         """
 
-        input_spec = TensorSpec((3, 15, 15), torch.float32)
-        particles = 64
-        train_batch_size = 20
-        test_batch_size = 1000
-        output_dim = 4
-        conv_layer_params = ((16, 3, 1, 2, 2), (10, 2, 1))
-        fc_layer_params = (64, )
+        input_size = 3
+        input_spec = TensorSpec((input_size, ), torch.float32)
+        output_dim = 1
+        batch_size = 100
+        # inputs = input_spec.randn(outer_dims=(batch_size, ))
+        inputs = torch.randn(batch_size, input_size)
+        beta = torch.rand(input_size, output_dim) + 5.
+        print("beta: {}".format(beta))
+        noise = torch.randn(batch_size, output_dim)
+        targets = inputs @ beta + noise
+        true_cov = torch.inverse(
+            inputs.t() @ inputs)  # + torch.eye(input_size))
+        true_mean = true_cov @ inputs.t() @ targets
+        noise_dim = 3
+        particles = 4
+        train_batch_size = 100
+        # gen_input = torch.randn(particles, noise_dim)
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            last_layer_size=output_dim,
+            last_layer_param=(output_dim, False),
             last_activation=math_ops.identity,
-            use_fc_bn=use_fc_bn,
+            noise_dim=noise_dim,
+            # hidden_layers=(16, ),
+            hidden_layers=None,
             loss_type='regression',
             par_vi=par_vi,
-            optimizer=alf.optimizers.Adam(lr=1e-4))
-        fc = alf.layers.FC(
-            np.prod(input_spec.shape),
-            output_dim,
-            activation=math_ops.identity,
-            use_bias=False)
-        weight_mean = fc.weight.data
-
-        def fc_predict(inputs):
-            weight_noise = torch.randn(fc.weight.shape)
-            fc.weight.data.copy_(weight_mean + weight_noise)
-            return fc(inputs.view(inputs.shape[0], -1))
+            optimizer=alf.optimizers.Adam(lr=1e-4),
+            regenerate_for_each_batch=True)
+        print("ground truth mean: {}".format(true_mean))
+        print("ground truth cov norm: {}".format(true_cov.norm()))
+        print("ground truth cov: {}".format(true_cov))
 
         def _train():
-            inputs = input_spec.randn(outer_dims=(train_batch_size, ))
-            targets = fc_predict(inputs)
+            # perm = torch.randperm(batch_size)
+            # idx = perm[:train_batch_size]
+            # train_inputs = inputs[idx]
+            # train_targets = targets[idx]
+            train_inputs = inputs
+            train_targets = targets
+            # params = algorithm.sample_parameters(noise=gen_input)
             alg_step = algorithm.train_step(
-                inputs=(inputs, targets), particles=particles)
+                inputs=(train_inputs, train_targets),
+                # params=params,
+                particles=particles)
             algorithm.update_with_gradient(alg_step.info)
 
         def _test():
-            inputs = input_spec.randn(outer_dims=(test_batch_size, ))
-            fc.weight.data.copy_(weight_mean)
-            targets_mean = fc(inputs.view(inputs.shape[0], -1))
-            targets = []
-            for i in range(particles):
-                targets.append(fc_predict(inputs))
-            targets = torch.stack(targets, dim=0)
-            true_var = torch.var(targets, dim=0) / particles
 
-            outputs = algorithm.predict(inputs, particles=particles)
-            est_var = torch.var(outputs, dim=1) / particles
-            return true_var, est_var
+            # params = algorithm.sample_parameters()
+            # # params = algorithm.sample_parameters(noise=gen_input)
+            # computed_cov = self.cov(params)
+            # # computed_mean = params.mean(0)
+            # computed_mean = params
 
-        true_var, est_var = _test()
-        init_err = torch.abs(true_var - est_var)
-        for i in range(1000):
+            print("-" * 68)
+            weight = algorithm._net._fc_layers[0].weight
+            print("norm of generator weight: {}".format(weight.norm()))
+            learned_cov = weight @ weight.t()
+            learned_mean = algorithm._net._fc_layers[0].bias
+
+            # predicts = algorithm.predict(inputs, params=params)
+            # predicts = predicts.mean(dim=1)
+            predicts = inputs @ learned_mean
+
+            pred_err = torch.norm(predicts - targets.squeeze())
+            mean_err = torch.norm(learned_mean - true_mean)
+            mean_err = mean_err / torch.norm(true_mean)
+            # if mean_err < 1.6:
+            #     import pdb; pdb.set_trace()
+            cov_err = torch.norm(learned_cov - true_cov)
+            cov_err = cov_err / torch.norm(true_cov)
+            print("train_iter {}: pred err {}".format(i, pred_err))
+            print("train_iter {}: mean err {}".format(i, mean_err))
+            print("train_iter {}: cov err {}".format(i, cov_err))
+            print("learned_cov norm: {}".format(learned_cov.norm()))
+
+        for i in range(1000000):
             _train()
-            if i % 100 == 0:
-                true_var, est_var = _test()
-                err = torch.abs(true_var - est_var)
-                print("train_iter {}: mean err {}".format(i, err.mean()))
-        true_var, est_var = _test()
-        final_err = torch.abs(true_var - est_var)
-        self.assertArrayGreater(init_err, final_err, 10.)
+            if i % 1000 == 0:
+                _test()
+
+        # self.assertArrayGreater(init_err, final_err, 10.)
 
     def test_hypernetwork_classification(self):
         # TODO: out of distribution tests

@@ -69,7 +69,7 @@ class HyperNetwork(Generator):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
-                 last_layer_size=None,
+                 last_layer_param=None,
                  last_activation=None,
                  noise_dim=32,
                  hidden_layers=(64, 64),
@@ -96,16 +96,19 @@ class HyperNetwork(Generator):
                 tuple takes a format 
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
-            fc_layer_params (tuple[int]): a tuple of integers
-                representing FC layer sizes.
+            fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
+                takes a format ``(FC layer sizes. use_bias)``, where 
+                ``use_bias`` is optional.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
-            last_layer_size (int): an optional size of an additional layer
-                appended at the very end. Note that if ``last_activation`` is
-                specified, ``last_layer_size`` has to be specified explicitly.
+            last_layer_param (tuple): an optional tuple of the format
+                ``(size, use_bias)``, where ``use_bias`` is optional,
+                it appends an additional layer at the very end. 
+                Note that if ``last_activation`` is specified, 
+                ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
-                additional layer specified by ``last_layer_size``. Note that if
-                ``last_layer_size`` is not None, ``last_activation`` has to be
+                additional layer specified by ``last_layer_param``. Note that if
+                ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
 
             Args for the generator
@@ -138,7 +141,7 @@ class HyperNetwork(Generator):
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=activation,
-            last_layer_size=last_layer_size,
+            last_layer_param=last_layer_param,
             last_activation=last_activation)
 
         gen_output_dim = param_net.param_length
@@ -224,10 +227,11 @@ class HyperNetwork(Generator):
             inputs=None, noise=noise, batch_size=particles, training=training)
         return params
 
-    def predict(self, inputs, particles=None):
+    def predict(self, inputs, params=None, particles=None):
         """Predict ensemble outputs for inputs using the hypernetwork model."""
 
-        params = self.sample_parameters(particles=particles)
+        if params is None:
+            params = self.sample_parameters(particles=particles)
         self._param_net.set_parameters(params)
         outputs, _ = self._param_net(inputs)
         return outputs
@@ -240,12 +244,12 @@ class HyperNetwork(Generator):
             loss = 0.
             if self._loss_type == 'classification':
                 avg_acc = []
+            params = None
+            if not self._regenerate_for_each_batch:
+                params = self.sample_parameters(particles=particles)
             for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
-                params = None
-                if not self._regenerate_for_each_batch:
-                    params = self.sample_parameters(particles=particles)
                 alg_step = self.train_step((data, target),
                                            params=params,
                                            particles=particles,
@@ -311,7 +315,8 @@ class HyperNetwork(Generator):
 
         loss_grad = torch.autograd.grad(loss.sum(), params)[0]
         logq_grad = self._score_func(params)
-        grad = loss_grad + logq_grad
+        grad = loss_grad - logq_grad
+        # grad = loss_grad
 
         train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
         loss_propagated = torch.sum(grad.detach() * params, dim=-1)
@@ -335,7 +340,7 @@ class HyperNetwork(Generator):
         kappa, kappa_grad = self._rbf_func(q_j, q_i)  # [Nj, Ni], [Nj, Ni, W]
         Nj = kappa.shape[0]
         kernel_logp = torch.einsum('ji, jw->iw', kappa, loss_grad) / Nj
-        grad = (kernel_logp + kappa_grad.mean(0))  # [Ni, W]
+        grad = (kernel_logp - kappa_grad.mean(0))  # [Ni, W]
 
         train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
         loss_propagated = torch.sum(grad.detach() * params_i, dim=-1)
@@ -350,7 +355,11 @@ class HyperNetwork(Generator):
         return loss, avg_acc
 
     def _regression_loss(self, output, target, loss_func):
-        loss = loss_func(output, target)
+        out_shape = output.shape[-1]
+        assert (target.shape[-1] == out_shape), (
+            "feature dimension of output and target does not match.")
+        loss = loss_func(
+            output.reshape(-1, out_shape), target.reshape(-1, out_shape))
         return loss, ()
 
     def _rbf_func(self, x, y, h_min=1e-3):

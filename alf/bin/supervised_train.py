@@ -64,7 +64,8 @@ class Config(object):
                  algorithm_ctor=None,
                  random_seed=None,
                  epochs=2e+5,
-                 evaluate=True,
+                 eval_accuracy=True,
+                 eval_uncertainty=False,
                  summary_interval=50,
                  summaries_flush_secs=1,
                  summary_max_queue=100,
@@ -76,7 +77,8 @@ class Config(object):
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             random_seed (None|int): random seed, a random seed is used if None
             epochs (int): number of training epoches
-            evaluate (bool): whether to evluate after training
+            eval_accuracy (bool): whether to evluate accuracy after training
+            eval_uncertainty (bool): whether to evluate uncertainty after training
             summary_interval (int): write summary every so many training steps
             summaries_flush_secs (int): flush summary to disk every so many seconds
             summary_max_queue (int): flush to disk every so mary summaries
@@ -88,7 +90,7 @@ class Config(object):
             algorithm_ctor=algorithm_ctor,
             random_seed=random_seed,
             epochs=epochs,
-            evaluate=evaluate,
+            # evaluate=evaluate,
             summary_interval=summary_interval,
             summaries_flush_secs=summaries_flush_secs,
             summary_max_queue=summary_max_queue,
@@ -143,7 +145,7 @@ def train(config: Config):
 
     algorithm = config.algorithm_ctor(
         input_tensor_spec=input_tensor_spec,
-        last_layer_size=output_dim,
+        last_layer_param=(output_dim, True),
         last_activation=math_ops.identity)
 
     algorithm.set_data_loader(trainset, testset)
@@ -194,9 +196,9 @@ def train(config: Config):
                                          _markdownify(git_utils.get_diff()))
                         alf.summary.text('seed', str(random_seed))
 
-                if config.evaluate:
-                    print("==> Begin testing")
-                    algorithm.evaluate()
+                # if config.evaluate:
+                #     print("==> Begin testing")
+                #     algorithm.evaluate()
 
                 epoch_num += 1
                 if (config.epochs and epoch_num >= config.epochs):

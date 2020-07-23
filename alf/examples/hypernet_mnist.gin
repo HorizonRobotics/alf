@@ -7,7 +7,7 @@ create_dataset.test_batch_size=100
 
 # Lenet for MNIST
 CONV_LAYER_PARAMS=((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-FC_LAYER_PARAMS = (84, )
+FC_LAYER_PARAMS = ((84, True), )
 HIDDEN_LAYERS = (512, 1024)
 
 hypernet/Adam.lr=1e-4
@@ -31,7 +31,8 @@ ParamConvNet.use_bias=True
 Config.algorithm_ctor=@HyperNetwork
 Config.epochs=1000
 Config.summarize_grads_and_vars=True
-Config.evaluate=True
+# Config.evaluate=True
+Config.eval_uncertainty=True
 
 
 

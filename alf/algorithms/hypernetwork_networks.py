@@ -140,7 +140,7 @@ class ParamNetwork(Network):
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
-                 last_layer_size=None,
+                 last_layer_param=None,
                  last_activation=None,
                  name="ParamNetwork"):
         """A network with Fc and conv2D layers that does not maintain its own 
@@ -156,15 +156,18 @@ class ParamNetwork(Network):
                 tuple takes a format 
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
-            fc_layer_params (tuple[int]): a tuple of integers
-                representing FC layer sizes.
+            fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
+                takes a format ``(FC layer sizes. use_bias)``, where 
+                ``use_bias`` is optional.
             activation (torch.nn.functional): activation for all the layers
-            last_layer_size (int): an optional size of an additional layer
-                appended at the very end. Note that if ``last_activation`` is
-                specified, ``last_layer_size`` has to be specified explicitly.
+            last_layer_param (tuple): an optional tuple of the format
+                ``(size, use_bias)``, where ``use_bias`` is optional,
+                it appends an additional layer at the very end. 
+                Note that if ``last_activation`` is specified, 
+                ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
-                additional layer specified by ``last_layer_size``. Note that if
-                ``last_layer_size`` is not None, ``last_activation`` has to be
+                additional layer specified by ``last_layer_param``. Note that if
+                ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
             name (str):
         """
@@ -199,18 +202,38 @@ class ParamNetwork(Network):
             assert isinstance(fc_layer_params, tuple)
             fc_layer_params = list(fc_layer_params)
 
-        for size in fc_layer_params:
-            self._fc_layers.append(
-                ParamFC(input_size, size, activation=activation))
+        for params in fc_layer_params:
+            size = params[0]
+            if len(params) > 1:
+                self._fc_layers.append(
+                    ParamFC(
+                        input_size,
+                        size,
+                        activation=activation,
+                        use_bias=params[1]))
+            else:
+                self._fc_layers.append(
+                    ParamFC(input_size, size, activation=activation))
             input_size = size
 
-        if last_layer_size is not None or last_activation is not None:
-            assert last_layer_size is not None and last_activation is not None, \
-            "Both last_layer_size and last_activation need to be specified!"
+        if last_layer_param is not None or last_activation is not None:
+            assert last_layer_param is not None and last_activation is not None, \
+            "Both last_layer_param and last_activation need to be specified!"
 
-            self._fc_layers.append(
-                ParamFC(
-                    input_size, last_layer_size, activation=last_activation))
+            last_layer_size = last_layer_param[0]
+            if len(last_layer_param) > 1:
+                self._fc_layers.append(
+                    ParamFC(
+                        input_size,
+                        last_layer_size,
+                        activation=last_activation,
+                        use_bias=last_layer_param[1]))
+            else:
+                self._fc_layers.append(
+                    ParamFC(
+                        input_size,
+                        last_layer_size,
+                        activation=last_activation))
             input_size = last_layer_size
 
         self._output_spec = TensorSpec((input_size, ),
@@ -235,9 +258,13 @@ class ParamNetwork(Network):
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
             "Input theta has wrong shape %s. Expecting shape (, %d)" %
             self.param_length)
-        conv_theta = theta[:, :self._conv_net.param_length]
-        fc_theta = theta[:, self._conv_net.param_length:]
-        self._conv_net.set_parameters(conv_theta)
+        if self._conv_net is not None:
+            split = self._conv_net.param_length
+            conv_theta = theta[:, :split]
+            self._conv_net.set_parameters(conv_theta)
+            fc_theta = theta[:, self._conv_net.param_length:]
+        else:
+            fc_theta = theta
 
         pos = 0
         for fc_l in self._fc_layers:
@@ -256,8 +283,9 @@ class ParamNetwork(Network):
             inputs (Tensor):
             state: not used, just keeps the interface same with other networks.
         """
+        x = inputs
         if self._conv_net is not None:
-            x, state = self._conv_net(inputs, state=state)
+            x, state = self._conv_net(x, state=state)
         for fc_l in self._fc_layers:
             x = fc_l(x)
         return x, state
