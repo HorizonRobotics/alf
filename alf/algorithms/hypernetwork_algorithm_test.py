@@ -116,7 +116,9 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         def _test():
 
-            # params = algorithm.sample_parameters()
+            params = algorithm.sample_parameters(particles=100)
+            computed_mean = params.mean(0)
+            computed_cov = self.cov(params)
             # # params = algorithm.sample_parameters(noise=gen_input)
             # computed_cov = self.cov(params)
             # # computed_mean = params.mean(0)
@@ -128,19 +130,32 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             learned_cov = weight @ weight.t()
             learned_mean = algorithm._net._fc_layers[0].bias
 
-            # predicts = algorithm.predict(inputs, params=params)
-            # predicts = predicts.mean(dim=1)
+            sampled_preds = algorithm.predict(inputs, params=params)
+            sampled_preds = sampled_preds.mean(dim=1)
+
             predicts = inputs @ learned_mean
 
+            spred_err = torch.norm(sampled_preds - targets)
             pred_err = torch.norm(predicts - targets.squeeze())
-            mean_err = torch.norm(learned_mean - true_mean)
+
+            smean_err = torch.norm(computed_mean - true_mean.squeeze())
+            smean_err = smean_err / torch.norm(true_mean)
+
+            mean_err = torch.norm(learned_mean - true_mean.squeeze())
             mean_err = mean_err / torch.norm(true_mean)
             # if mean_err < 1.6:
             #     import pdb; pdb.set_trace()
+
+            scov_err = torch.norm(computed_cov - true_cov)
+            scov_err = scov_err / torch.norm(true_cov)
+
             cov_err = torch.norm(learned_cov - true_cov)
             cov_err = cov_err / torch.norm(true_cov)
             print("train_iter {}: pred err {}".format(i, pred_err))
+            print("train_iter {}: sampled pred err {}".format(i, spred_err))
             print("train_iter {}: mean err {}".format(i, mean_err))
+            print("train_iter {}: sampled mean err {}".format(i, smean_err))
+            print("train_iter {}: sampled cov err {}".format(i, scov_err))
             print("train_iter {}: cov err {}".format(i, cov_err))
             print("learned_cov norm: {}".format(learned_cov.norm()))
 
