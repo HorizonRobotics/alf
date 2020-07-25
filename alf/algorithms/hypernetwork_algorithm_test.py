@@ -40,15 +40,16 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         Returns:
             The covariance matrix
         """
-        if data.dim() > 2:
+        x = data.detach().clone()
+        if x.dim() > 2:
             raise ValueError('data has more than 2 dimensions')
-        if data.dim() < 2:
-            data = data.view(1, -1)
-        if not rowvar and data.size(0) != 1:
-            data = data.t()
-        fact = 1.0 / (data.size(1) - 1)
-        data -= torch.mean(data, dim=1, keepdim=True)
-        return fact * data.matmul(data.t()).squeeze()
+        if x.dim() < 2:
+            x = x.view(1, -1)
+        if not rowvar and x.size(0) != 1:
+            x = x.t()
+        fact = 1.0 / (x.size(1) - 1)
+        x -= torch.mean(x, dim=1, keepdim=True)
+        return fact * x.matmul(x.t()).squeeze()
 
     def assertArrayGreater(self, x, y, eps):
         self.assertEqual(x.shape, y.shape)
@@ -116,13 +117,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
         def _test():
 
-            params = algorithm.sample_parameters(particles=100)
+            params = algorithm.sample_parameters(particles=200)
             computed_mean = params.mean(0)
             computed_cov = self.cov(params)
-            # # params = algorithm.sample_parameters(noise=gen_input)
-            # computed_cov = self.cov(params)
-            # # computed_mean = params.mean(0)
-            # computed_mean = params
+            # params = algorithm.sample_parameters(noise=gen_input)
 
             print("-" * 68)
             weight = algorithm._net._fc_layers[0].weight
@@ -131,11 +129,13 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             learned_mean = algorithm._net._fc_layers[0].bias
 
             sampled_preds = algorithm.predict(inputs, params=params)
-            sampled_preds = sampled_preds.mean(dim=1)
+            sampled_preds = sampled_preds.squeeze()  # [batch, particles]
 
-            predicts = inputs @ learned_mean
+            computed_preds = inputs @ computed_mean  # [batch]
+            predicts = inputs @ learned_mean  # [batch]
 
-            spred_err = torch.norm(sampled_preds - targets)
+            spred_err = torch.norm((sampled_preds - targets).mean(1))
+            cpred_err = torch.norm(computed_preds - targets.squeeze())
             pred_err = torch.norm(predicts - targets.squeeze())
 
             smean_err = torch.norm(computed_mean - true_mean.squeeze())
@@ -143,8 +143,6 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
             mean_err = torch.norm(learned_mean - true_mean.squeeze())
             mean_err = mean_err / torch.norm(true_mean)
-            # if mean_err < 1.6:
-            #     import pdb; pdb.set_trace()
 
             scov_err = torch.norm(computed_cov - true_cov)
             scov_err = scov_err / torch.norm(true_cov)
