@@ -37,6 +37,7 @@ class TicTacToeModel(MCTSModel):
             0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 1, 2, 2,
             1, 0
         ])
+        self._actions = torch.arange(9, dtype=torch.int32).unsqueeze(0)
 
     def initial_inference(self, observation):
         batch_size = observation.shape[0]
@@ -52,13 +53,13 @@ class TicTacToeModel(MCTSModel):
             game_over[i] = self._check_game_over(board)
 
         value = torch.zeros((batch_size, ))
-        action_distribution = Categorical(probs=prob)
 
         return ModelOutput(
             value=value,
             reward=reward,
             state=observation,
-            action_distribution=action_distribution,
+            actions=self._actions.expand(batch_size, -1),
+            action_probs=prob,
             game_over=game_over)
 
     def recurrent_inference(self, state, action):
@@ -81,12 +82,12 @@ class TicTacToeModel(MCTSModel):
             game_over[i] = self._check_game_over(board)
 
         value = torch.zeros((batch_size, ))
-        action_distribution = Categorical(probs=prob)
         return ModelOutput(
             value=value,
             reward=reward,
             state=new_state,
-            action_distribution=action_distribution,
+            actions=self._actions.expand(batch_size, -1),
+            action_probs=prob,
             game_over=game_over)
 
     def _check_player_win(self, board, player):
@@ -154,6 +155,8 @@ class MCTSAlgorithmTest(alf.test.TestCase):
             ([[0, 0, 0], [0, -1, 0], [0, 0, 0]], (0, 2, 6, 8)),
             ([[0, 0, 0], [0, 1, -1], [1, -1, -1]], 2),
         ]
+
+        # test case serially
         for observation, action in cases:
             observation = torch.tensor([observation], dtype=torch.float32)
             state = MCTSState(steps=(observation != 0).sum(dim=(1, 2)))
@@ -168,10 +171,31 @@ class MCTSAlgorithmTest(alf.test.TestCase):
             mcts.set_model(model)
             alg_step = mcts.predict_step(
                 time_step._replace(observation=observation), state)
+            #print(observation, alg_step.output, alg_step.info)
             if type(action) == tuple:
                 self.assertTrue(alg_step.output[0] in action)
             else:
                 self.assertEqual(alg_step.output[0], action)
+
+        # test batch predict
+        observation = torch.tensor([case[0] for case in cases],
+                                   dtype=torch.float32)
+        state = MCTSState(steps=(observation != 0).sum(dim=(1, 2)))
+        mcts = create_board_game_mcts(
+            observation_spec,
+            action_spec,
+            dirichlet_alpha=100.,
+            num_simulations=2000)
+        mcts.set_model(model)
+        alg_step = mcts.predict_step(
+            time_step._replace(
+                step_type=torch.tensor([StepType.MID] * len(cases)),
+                observation=observation), state)
+        for i, (observation, action) in enumerate(cases):
+            if type(action) == tuple:
+                self.assertTrue(alg_step.output[i] in action)
+            else:
+                self.assertEqual(alg_step.output[i], action)
 
 
 if __name__ == '__main__':
