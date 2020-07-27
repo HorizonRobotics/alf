@@ -159,10 +159,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     2. When calculating UCB score, the pseudocode normalizes value before adding
        with reward. We normalize after summing reward and value.
     3. When calculating UCB score, if the visit count of the node is 0, the value
-       component of the score is 0 in the pseudocode. We use normlize(0) instead.
-    4. The pseudocode intilizes the visit count of root to 0. We initialize it
+       component of the score is 0 in the pseudocode. We use 0.5 instead so that
+       it is not always the lowest score (or highest for player 1) no matter what
+       the outcome of its siblings are.
+    4. The pseudocode initializes the visit count of root to 0. We initialize it
        to 1 instead so that prior is not neglected in the first select_child().
-       And this is consistent with how the visit_count of other nodes are initialized.
+       This is consistent with how the visit_count of other nodes are initialized.
        When other nodes are expanded, the immediately subsequenct backup() will
        make their initial visit_count to be 1.
     5. We add a game_over field to ModelOutput to indicate the game is over so
@@ -242,11 +244,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             - info (MCTSInfo): info from the search. It might be used for
                 training the model.
         """
+        assert self._model is not None, "Need to call `set_model` before `predict_step`"
         batch_size = time_step.step_type.shape[0]
         model_output = self._model.initial_inference(time_step.observation)
         trees = _MCTSTree(self._num_simulations + 1, model_output,
                           self._known_value_bounds)
         if self._is_two_player_game:
+            # We may need the environment to pass to_play and pass to_play to
+            # model because players may not always alternate in some game.
+            # And for many games, it is not always obvious to determine which
+            # player is in the current turn by looking at the board.
             to_plays = state.steps % 2
         else:
             to_plays = torch.zeros((batch_size, ), dtype=torch.int64)
@@ -259,20 +266,18 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             model_output=model_output,
             dirichlet_alpha=self._root_dirichlet_alpha,
             exploration_fraction=self._root_exploration_fraction)
-        # paper pseudocode starts from 0
-        # we start the root visit_count with 1 so that the first select_child
-        # will be based on none-zero ucb_score
+        # paper pseudocode starts visit_count from 0
+        # we start the root visit_count from 1 so that the first update_best_child
+        # will be based on none-zero ucb_scores
         trees.visit_count[roots] = 1
         self._update_best_child(trees, roots)
 
         best_child_index = trees.best_child_index
         game_over = trees.game_over
+        to_plays = to_plays.cpu()
         for sim in range(1, self._num_simulations + 1):
             search_paths = []
             last_to_plays = []
-            to_plays = to_plays.cpu()
-            best_child_index = trees.best_child_index
-            game_over = trees.game_over
 
             for b in range(batch_size):
                 to_play = to_plays[b]
@@ -326,11 +331,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 nodes.extend([(b, int(c)) for c in list(children)])
 
     def _select_action(self, trees, steps):
-        batch_size = steps.shape[0]
         roots = (trees.B, trees.root_indices)
         children = torch.arange(trees.branch_factor, 2 * trees.branch_factor)
-        children = (trees.B.unsqueeze(1).expand(-1, trees.branch_factor),
-                    children.unsqueeze(0).expand(batch_size, -1))
+        children = (trees.B.unsqueeze(1), children.unsqueeze(0))
         visit_counts = trees.visit_count[children]
         t = self._visit_softmax_temperature_fn(steps).unsqueeze(-1)
         action = torch.multinomial(
@@ -349,8 +352,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     def _update_best_child(self, trees: _MCTSTree, parents):
         children = trees.first_child_index[parents].unsqueeze(-1)
         children = children + torch.arange(trees.branch_factor).unsqueeze(0)
-        children = (parents[0].unsqueeze(-1).expand(-1, trees.branch_factor),
-                    children)
+        children = (parents[0].unsqueeze(-1), children)
         ucb_scores = self._ucb_score(trees, parents, children)
         invalid = trees.prior[children] == 0
         ucb_scores[invalid] = -MAXIMUM_FLOAT_VALUE
@@ -373,6 +375,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         value_score = trees.reward[
             children] + self._discount * trees.calc_value(children)
         value_score = trees.normalize_value(value_score)
+        value_score[child_visit_count == 0] = 0.5
         value_score = value_score * (
             (trees.to_play[parents] == 0) * 2 - 1).unsqueeze(-1)
 
@@ -422,8 +425,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
         children = torch.arange(first_child_index,
                                 first_child_index + trees.branch_factor)
-        children = (trees.B.unsqueeze(1).expand(-1, trees.branch_factor),
-                    children.unsqueeze(0).expand(batch_size, -1))
+        children = (trees.B.unsqueeze(1), children.unsqueeze(0))
 
         trees.action[children] = model_output.actions
         prior = model_output.action_probs
