@@ -14,7 +14,6 @@
 """Monte-Carlo Tree Search."""
 
 import abc
-import numpy
 import torch
 import torch.distributions as td
 import torch.nn.functional as F

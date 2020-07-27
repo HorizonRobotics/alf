@@ -11,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import time
 import torch
-from torch.distributions import Categorical
 
 import alf
 from alf.algorithms.mcts_algorithm import MCTSModel, MCTSState, ModelOutput, MCTSAlgorithm, create_board_game_mcts
@@ -171,6 +169,7 @@ class MCTSAlgorithmTest(alf.test.TestCase):
             mcts.set_model(model)
             alg_step = mcts.predict_step(
                 time_step._replace(observation=observation), state)
+            print(observation, alg_step.output, alg_step.info)
             if type(action) == tuple:
                 self.assertTrue(alg_step.output[0] in action)
             else:
