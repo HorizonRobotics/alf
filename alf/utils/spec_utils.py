@@ -15,6 +15,7 @@
 
 import numpy as np
 import torch
+from typing import Iterable
 
 from alf.layers import BatchSquash
 import alf.nest as nest
@@ -80,14 +81,18 @@ def zeros_from_spec(nested_spec, batch_size):
 
     Args:
         nested_spec (nested TensorSpec or DistributionSpec):
-        batch_size (int): batch size added as the first dimension to the shapes
+        batch_size (int|tuple|list): batch size/shape added as the first dimension to the shapes
              in TensorSpec
     Returns:
         nested Tensor or Distribution
     """
+    if isinstance(batch_size, Iterable):
+        shape = batch_size
+    else:
+        shape = [batch_size]
 
     def _zero_tensor(spec):
-        return spec.zeros([batch_size])
+        return spec.zeros(shape)
 
     param_spec = dist_utils.to_distribution_param_spec(nested_spec)
     params = nest.map_structure(_zero_tensor, param_spec)

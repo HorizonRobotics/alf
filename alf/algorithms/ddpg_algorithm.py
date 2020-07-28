@@ -80,6 +80,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  name="DdpgAlgorithm"):
         """
         Args:
+            observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
             actor_network_ctor (Callable): Function to construct the actor network.
                 ``actor_network_ctor`` needs to accept ``input_tensor_spec`` and
