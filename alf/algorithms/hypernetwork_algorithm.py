@@ -32,11 +32,12 @@ HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo", ["loss", "extra"])
 
 
 @gin.configurable
-class HyperNetwork(Generator):
+class HyperNetwork(Algorithm):
     """HyperNetwork 
 
-    HyperrNetwork is a generator that generates a set of parameters for a predefined
-    neural network from a random noise input. It is based on the following work:
+    HyperrNetwork algorithm maintains a generator that generates a set of 
+    parameters for a predefined neural network from a random noise input. 
+    It is based on the following work:
 
     https://github.com/neale/HyperGAN
 
@@ -83,7 +84,7 @@ class HyperNetwork(Generator):
                  par_vi="gfsf",
                  optimizer=None,
                  regenerate_for_each_batch=True,
-                 print_network=False,
+                 logging_network=False,
                  name="HyperNetwork"):
         """
         Args:
@@ -133,7 +134,7 @@ class HyperNetwork(Generator):
             optimizer (torch.optim.Optimizer): The optimizer for training.
             regenerate_for_each_batch (bool): If True, particles will be regenerated 
                 for every training batch.
-            print_network (bool): whether print out the archetectures of networks.
+            logging_network (bool): whether logging the archetectures of networks.
             name (str):
         """
         param_net = ParamNetwork(
@@ -154,16 +155,16 @@ class HyperNetwork(Generator):
             last_activation=math_ops.identity,
             name="Generator")
 
-        if print_network:
-            print("Generated network")
-            print("-" * 68)
-            print(param_net)
+        if logging_network:
+            logging.info("Generated network")
+            logging.info("-" * 68)
+            logging.info(param_net)
 
-            print("Generator network")
-            print("-" * 68)
-            print(net)
+            logging_info("Generator network")
+            logging_info("-" * 68)
+            logging_info(net)
 
-        super().__init__(
+        self._generator = Generator(
             gen_output_dim,
             noise_dim=noise_dim,
             net=net,
@@ -335,11 +336,13 @@ class HyperNetwork(Generator):
         loss, extra = self._compute_loss(output, target, loss_func)
 
         loss_grad = torch.autograd.grad(loss.sum(), params_j)[0]  # [Nj, W]
-        q_i = params_i + torch.rand_like(params_i) * 1e-8
-        q_j = params_j + torch.rand_like(params_j) * 1e-8
-        kappa, kappa_grad = self._rbf_func(q_j, q_i)  # [Nj, Ni], [Nj, Ni, W]
+        # q_i = params_i + torch.rand_like(params_i) * 1e-8
+        # q_j = params_j + torch.rand_like(params_j) * 1e-8
+        # kappa, kappa_grad = self._rbf_func(q_j, q_i)  # [Nj, Ni], [Nj, Ni, W]
+        kappa, kappa_grad = self._rbf_func(params_j,
+                                           params_i)  # [Nj, Ni], [Nj, Ni, W]
         Nj = kappa.shape[0]
-        kernel_logp = torch.einsum('ji, jw->iw', kappa, loss_grad) / Nj
+        kernel_logp = torch.matmul(kappa.t(), loss_grad) / Nj
         grad = (kernel_logp - kappa_grad.mean(0))  # [Ni, W]
 
         train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
@@ -439,11 +442,11 @@ class HyperNetwork(Generator):
         if loss_func is None:
             loss_func = self._loss_func
         if self._use_fc_bn:
-            self._net.eval()
+            self._generator.eval()
         params = self.sample_parameters(particles=particles)
         self._param_net.set_parameters(params)
         if self._use_fc_bn:
-            self._net.train()
+            self._generator.train()
         with record_time("time/test"):
             if self._loss_type == 'classification':
                 test_acc = 0.

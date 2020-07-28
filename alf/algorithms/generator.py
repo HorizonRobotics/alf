@@ -14,6 +14,7 @@
 """A generic generator."""
 
 import gin
+import numpy as np
 import torch
 
 from alf.algorithms.algorithm import Algorithm
@@ -83,6 +84,7 @@ class Generator(Algorithm):
                  kernel_sharpness=2.,
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
+                 par_vi="gfsf",
                  optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
@@ -116,7 +118,16 @@ class Generator(Algorithm):
         if entropy_regularization == 0:
             self._grad_func = self._ml_grad
         else:
-            self._grad_func = self._stein_grad
+            if par_vi == 'gfsf':
+                self._grad_func = self._gfsf_grad
+            elif par_vi == 'svgd':
+                self._grad_func = self._svgd_grad
+            elif par_vi == 'svgd2':
+                self._grad_func = self._svgd_grad2
+            else:
+                assert ValueError(
+                    "par_vi only supports \"gfsf\", \"svgd\", and \"svgd2\"")
+
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=TensorSpec(shape=(output_dim, )))
             self._kernel_sharpness = kernel_sharpness
@@ -238,14 +249,131 @@ class Generator(Algorithm):
 
         return loss, grad
 
+    def _median_width(self, mat_dist):
+        """Compute the kernel width from median of the distance matrix."""
+
+        values, _ = torch.topk(
+            mat_dist.view(-1), k=mat_dist.nelement() // 2 + 1)
+        median = values[-1]
+        return median / np.log(mat_dist.shape[0])
+
     def _kernel_func(self, x, y):
         d = (x - y)**2
         self._kernel_width_averager.update(torch.mean(d, dim=0))
-        d = torch.mean(d / self._kernel_width_averager.get(), dim=-1)
+        d = torch.sum(d / self._kernel_width_averager.get(), dim=-1)
         w = torch.exp(-self._kernel_sharpness * d)
         return w
 
-    def _stein_grad(self, inputs, outputs, loss_func):
+    def _rbf_func(self, x, y, h_min=1e-3):
+        r"""Compute the rbf kernel and its gradient w.r.t. first entry 
+            :math:`K(x, y), \nabla_x K(x, y)`
+
+        Args:
+            x (Tensor): set of N particles, shape (Nx x W), where W is the 
+                dimenseion of each particle
+            y (Tensor): set of N particles, shape (Ny x W), where W is the 
+                dimenseion of each particle
+            h_min (float): minimum kernel bandwidth
+
+        Returns:
+            :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
+            :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
+            
+        """
+        Nx, Dx = x.shape
+        Ny, Dy = y.shape
+        assert Dx == Dy
+        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
+        dist_sq = torch.sum(diff**2, -1)  # [Nx, Ny]
+        # h = self._median_width(dist_sq)
+        # h = torch.max(h, torch.as_tensor([h_min]))
+        h = 2
+
+        kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
+        kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
+                                  -2 * diff / h)  # [Nx, Ny, W]
+        return kappa, kappa_grad
+
+    def _score_func(self, x, alpha=1e-7, h_min=1e-3):
+        r"""Compute the stein estimator of the score function 
+            :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`
+
+        Args:
+            x (Tensor): set of N particles, shape (N x D), where D is the 
+                dimenseion of each particle
+            alpha (float): weight of regularization for inverse kernel
+                this parameter turns out to be crucial for convergence.
+
+        Returns:
+            :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
+            
+        """
+        N, D = x.shape
+        diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
+        dist_sq = torch.sum(diff**2, -1)  # [N, N]
+
+        # diff = diff**2
+        # self._kernel_width_averager.update(diff.mean(dim=0).mean(dim=0))
+        # h = self._kernel_width_averager.get()
+        # dist = diff / h
+        # dist_sq = torch.sum(dist, dim=-1)
+        # kappa = torch.exp(-self._kernel_sharpness * dist_sq)
+
+        # compute the kernel width
+        h = self._median_width(dist_sq)
+        h = torch.max(h, torch.as_tensor([h_min]))
+        # h =.1
+        kappa = torch.exp(-dist_sq / h)  # [N, N]
+
+        kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
+        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
+        # kappa_grad = torch.einsum(
+        #     'ij,ijk->jk', kappa, -2 * self._kernel_sharpness * dist)  # [N, D]
+
+        return kappa_inv @ kappa_grad
+
+    def _score_func2(self, x, y, alpha=1e-8, h_min=1e-3):
+        r"""Compute the stein estimator of the score function 
+            :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`
+
+        Args:
+            x (Tensor): set of N particles, shape (N x D), where D is the 
+                dimenseion of each particle
+            alpha (float): weight of regularization for inverse kernel
+
+        Returns:
+            :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
+            
+        """
+        Nx, D = x.shape
+        Ny, Dy = y.shape
+        assert D == Dy
+        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, D]
+
+        d = (x - y)**2
+        self._kernel_width_averager.update(torch.mean(d, dim=0))
+        h = self._kernel_width_averager.get()
+        dist = diff**2 / h
+        dist_sq = torch.sum(dist, dim=-1)
+        kappa = torch.exp(-self._kernel_sharpness * dist_sq)  # [Nx, Ny]
+
+        # compute the kernel width
+        # h = self._median_width(dist_sq)
+        # h = torch.max(h, torch.as_tensor([h_min]))
+        # h =.1
+
+        kappa_inv = torch.inverse(kappa + alpha * torch.eye(Nx))  # [Ny, Nx]
+        # kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
+        kappa_grad = torch.einsum(
+            'ij,ijk->jk', kappa, -2 * self._kernel_sharpness * dist)  # [Ny, D]
+
+        return kappa_inv.t() @ kappa_grad
+
+    def _svgd_grad(self, inputs, outputs, loss_func):
+        """
+        Compute particle gradients via SVGD, empirical expectation
+        evaluated by a single resampled particle. 
+        """
         outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
         kernel_weight = self._kernel_func(outputs, outputs2)
         weight_sum = self._entropy_regularization * kernel_weight.sum()
@@ -254,11 +382,55 @@ class Generator(Algorithm):
 
         loss_inputs = outputs2 if inputs is None else [outputs2, inputs]
         loss = loss_func(loss_inputs)
-        weighted_loss = kernel_weight.detach() * loss
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        weighted_loss = kernel_weight.detach() * neglogp
 
         loss_grad = torch.autograd.grad(weighted_loss.sum(), outputs2)[0]
 
         return loss, loss_grad - kernel_grad
+
+    def _svgd_grad2(self, inputs, outputs, loss_func):
+        """
+        Compute particle gradients via SVGD, empirical expectation
+        evaluated by resampled particles of the same batch size. 
+        """
+        particles = outputs.shape[0]
+        outputs2, _ = self._predict(inputs, batch_size=particles)
+        # [N2, N], [N2, N, D]
+
+        loss_inputs = outputs2 if inputs is None else [outputs2, inputs]
+        loss = loss_func(loss_inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), outputs2)[0]  # [N2, D]
+
+        kernel_weight, kernel_grad = self._rbf_func(outputs2, outputs)
+        kernel_logp = torch.matmul(kernel_weight.t(),
+                                   loss_grad) / particles  # [N, D]
+
+        return loss, kernel_logp - kernel_grad.mean(0)
+
+    def _gfsf_grad(self, inputs, outputs, loss_func):
+        """Compute particle gradients via GFSF (Stein estimator). """
+        # particles = outputs.shape[0]
+        # outputs2, _ = self._predict(inputs, batch_size=particles)
+
+        loss_inputs = outputs if inputs is None else [outputs, inputs]
+        loss = loss_func(loss_inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), outputs)[0]  # [N2, D]
+
+        logq_grad = self._score_func(outputs)
+
+        return loss, loss_grad - logq_grad
 
     def after_update(self, training_info):
         if self._predict_net:
