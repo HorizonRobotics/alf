@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+import functools
 import gin
 import numpy as np
 import torch
@@ -46,22 +47,12 @@ class HyperNetwork(Algorithm):
 
     Major differences versus the original paper are:
 
-        * A single genrator that generates parameters for all network layers.
+    * A single genrator that generates parameters for all network layers.
 
-        * Remove the mixer and the distriminator.
+    * Remove the mixer and the distriminator.
 
-        * Amortized particle-based variational inference (ParVI) to train the hypernetwork,
-          in particular, two ParVI methods are implemented:
-
-            1. amortized Stein Variational Gradient Descent (SVGD):
-
-            Feng et al "Learning to Draw Samples with Amortized Stein Variational
-            Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
-
-            2. amortized Wasserstein ParVI with Smooth Functions (GFSF):
-
-            Liu, Chang, et al. "Understanding and accelerating particle-based 
-            variational inference." International Conference on Machine Learning. 2019.
+    * The generator is trained with Amortized particle-based variational 
+      inference (ParVI) methods, please refer to generator.py for details.
 
     """
 
@@ -83,7 +74,6 @@ class HyperNetwork(Algorithm):
                  voting="soft",
                  par_vi="gfsf",
                  optimizer=None,
-                 regenerate_for_each_batch=True,
                  logging_network=False,
                  name="HyperNetwork"):
         """
@@ -132,8 +122,6 @@ class HyperNetwork(Algorithm):
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
             optimizer (torch.optim.Optimizer): The optimizer for training.
-            regenerate_for_each_batch (bool): If True, particles will be regenerated 
-                for every training batch.
             logging_network (bool): whether logging the archetectures of networks.
             name (str):
         """
@@ -170,6 +158,7 @@ class HyperNetwork(Algorithm):
             net=net,
             entropy_regularization=entropy_regularization,
             kernel_sharpness=kernel_sharpness,
+            par_vi=par_vi,
             optimizer=optimizer,
             name=name)
 
@@ -177,7 +166,6 @@ class HyperNetwork(Algorithm):
         self._particles = particles
         self._train_loader = None
         self._test_loader = None
-        self._regenerate_for_each_batch = regenerate_for_each_batch
         self._loss_func = loss_func
         self._par_vi = par_vi
         self._use_fc_bn = use_fc_bn
@@ -194,7 +182,8 @@ class HyperNetwork(Algorithm):
             self._compute_loss = self._regression_loss
             self._vote = self._regression_vote
             if self._loss_func is None:
-                self._loss_func = F.mse_loss
+                self._loss_func = functools.partial(
+                    F.mse_loss, reduction='sum')
         else:
             assert ValueError(
                 "loss_type only supports \"classification\" and \"regression\""
@@ -224,20 +213,30 @@ class HyperNetwork(Algorithm):
         "Sample parameters for an ensemble of networks." ""
         if noise is None and particles is None:
             particles = self.particles
-        params, _ = self._predict(
-            inputs=None, noise=noise, batch_size=particles, training=training)
-        return params
+        generator_step = self._generator.predict_step(
+            noise=noise, batch_size=particles, training=training)
+        return generator_step.output
 
-    def predict(self, inputs, params=None, particles=None):
-        """Predict ensemble outputs for inputs using the hypernetwork model."""
+    def predict_step(self, inputs, params=None, particles=None, state=None):
+        """Predict ensemble outputs for inputs using the hypernetwork model.
+        
+        Args:
+            inputs (Tensor): inputs to the ensemble of networks.
+            params (Tensor): parameters of the ensemble of networks,
+                if None, will resample.
+            particles (int): size of sampled ensemble.
+            state: not used.
 
+        Returns:
+            AlgorithmStep: outputs with shape (batch_size, output_dim)
+        """
         if params is None:
             params = self.sample_parameters(particles=particles)
         self._param_net.set_parameters(params)
         outputs, _ = self._param_net(inputs)
-        return outputs
+        return AlgStep(output=outputs, state=(), info=())
 
-    def train_iter(self, particles=None, state=None):
+    def train_iter(self, particles=None, loss_func=None, state=None):
         """Perform one epoch (iteration) of training."""
 
         assert self._train_loader is not None, "Must set data_loader first."
@@ -246,14 +245,15 @@ class HyperNetwork(Algorithm):
             if self._loss_type == 'classification':
                 avg_acc = []
             params = None
-            if not self._regenerate_for_each_batch:
-                params = self.sample_parameters(particles=particles)
+            # if not self._regenerate_for_each_batch:
+            #     params = self.sample_parameters(particles=particles)
             for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 alg_step = self.train_step((data, target),
                                            params=params,
                                            particles=particles,
+                                           loss_func=loss_func,
                                            state=state)
                 self.update_with_gradient(alg_step.info)
                 loss += alg_step.info.extra.loss
@@ -289,16 +289,14 @@ class HyperNetwork(Algorithm):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
+        # def _neglogprob(inputs, params)
         if loss_func is None:
             loss_func = self._loss_func
-        if self._regenerate_for_each_batch:
-            params = self.sample_parameters(particles=particles)
-        else:
-            assert params is not None, "Need sample params first."
+        # if self._regenerate_for_each_batch:
+        params = self.sample_parameters(particles=particles)
 
         train_info, loss_propagated = self._grad_func(inputs, params,
                                                       loss_func)
-
         return AlgStep(
             output=params,
             state=(),
@@ -423,18 +421,6 @@ class HyperNetwork(Algorithm):
 
         return kappa_inv @ kappa_grad
 
-    def _median_width(self, mat_dist):
-        """Compute the kernel width from median of the distance matrix."""
-
-        values, _ = torch.topk(
-            mat_dist.view(-1), k=mat_dist.nelement() // 2 + 1)
-        median = values[-1]
-        return median / np.log(mat_dist.shape[0])
-
-    def _kernel_width(self):
-        # TODO: implement the kernel bandwidth selection via Heat equation.
-        return self._kernel_sharpness
-
     def evaluate(self, loss_func=None, particles=None):
         """Evaluate on a randomly drawn network. """
 
@@ -490,3 +476,24 @@ class HyperNetwork(Algorithm):
                                             *target.shape[1:])
         total_loss = loss_func(output, target)
         return loss, total_loss
+
+    def summarize_train(self, experience, train_info, loss_info, params):
+        """Generate summaries for training & loss info after each gradient update.
+        The default implementation of this function only summarizes params
+        (with grads) and the loss. An algorithm can override this for additional
+        summaries. See ``RLAlgorithm.summarize_train()`` for an example.
+
+        Args:
+            experience (nested Tensor): samples used for the most recent
+                ``update_with_gradient()``. By default it's not summarized.
+            train_info (nested Tensor): ``AlgStep.info`` returned by either
+                ``rollout_step()`` (on-policy training) or ``train_step()``
+                (off-policy training). By default it's not summarized.
+            loss_info (LossInfo): loss
+            params (list[Parameter]): list of parameters with gradients
+        """
+        if self._config.summarize_grads_and_vars:
+            summary_utils.summarize_variables(params)
+            summary_utils.summarize_gradients(params)
+        if self._debug_summaries:
+            summary_utils.summarize_loss(loss_info)

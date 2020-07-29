@@ -58,11 +58,18 @@ class Generator(Algorithm):
       minimizing loss_func(net([noise, inputs]))
 
     * entropy_regularization > 0: the minimization is achieved using amortized
-      Stein variational gradient descent (SVGD). See the following paper for
-      reference:
+      particle-based variational inference (ParVI), in particular, two ParVI
+      methods are implemented:
 
-      Feng et al "Learning to Draw Samples with Amortized Stein Variational
-      Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+        1. amortized Stein Variational Gradient Descent (SVGD):
+
+        Feng et al "Learning to Draw Samples with Amortized Stein Variational
+        Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+
+        2. amortized Wasserstein ParVI with Smooth Functions (GFSF):
+
+        Liu, Chang, et al. "Understanding and accelerating particle-based 
+        variational inference." International Conference on Machine Learning. 2019.
 
     It also supports an additional optional objective of maximizing the mutual
     information between [noise, inputs] and outputs by using mi_estimator to
@@ -109,12 +116,17 @@ class Generator(Algorithm):
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
+            par_vi (string): ParVI methods, options are
+                [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``],
+                note that for conditional case, i.e., generating from [noise, inputs],
+                only ``svgd`` can be used.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
+        self._par_vi = par_vi
         if entropy_regularization == 0:
             self._grad_func = self._ml_grad
         else:
@@ -124,9 +136,12 @@ class Generator(Algorithm):
                 self._grad_func = self._svgd_grad
             elif par_vi == 'svgd2':
                 self._grad_func = self._svgd_grad2
+            elif par_vi == 'svgd3':
+                self._grad_func = self._svgd_grad3
             else:
                 assert ValueError(
-                    "par_vi only supports \"gfsf\", \"svgd\", and \"svgd2\"")
+                    "par_vi only supports \"gfsf\", \"svgd\", \"svgd2\", and \"svgd3\""
+                )
 
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=TensorSpec(shape=()))
@@ -170,7 +185,8 @@ class Generator(Algorithm):
     def noise_dim(self):
         return self._noise_dim
 
-    def _predict(self, inputs, noise=None, batch_size=None, training=True):
+    def _predict(self, inputs=None, noise=None, batch_size=None,
+                 training=True):
         if inputs is None:
             assert self._input_tensor_spec is None
             if noise is None:
@@ -192,23 +208,38 @@ class Generator(Algorithm):
             outputs = self._net(gen_inputs)[0]
         return outputs, gen_inputs
 
-    def predict_step(self, inputs, batch_size=None, state=None):
+    def predict_step(self,
+                     inputs=None,
+                     noise=None,
+                     batch_size=None,
+                     training=False,
+                     state=None):
         """Generate outputs given inputs.
 
         Args:
             inputs (nested Tensor): if None, the outputs is generated only from
                 noise.
+            noise (Tensor): input to the generator.
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None
+            training (bool): whether train the generator.
             state: not used
         Returns:
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
         outputs, _ = self._predict(
-            inputs, batch_size=batch_size, training=False)
+            inputs=inputs,
+            noise=noise,
+            batch_size=batch_size,
+            training=training)
         return AlgStep(output=outputs, state=(), info=())
 
-    def train_step(self, inputs, loss_func, batch_size=None, state=None):
+    def train_step(self,
+                   inputs,
+                   loss_func,
+                   outputs=None,
+                   batch_size=None,
+                   state=None):
         """
         Args:
             inputs (nested Tensor): if None, the outputs is generated only from
@@ -224,9 +255,12 @@ class Generator(Algorithm):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
-        loss, grad = self._grad_func(inputs, outputs, loss_func)
-        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
+        if outputs is None:
+            outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
+        loss, loss_propagated = self._grad_func(inputs, outputs, loss_func)
+
+        # loss, grad = self._grad_func(inputs, outputs, loss_func)
+        # loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
         mi_loss = ()
         if self._mi_estimator is not None:
@@ -246,8 +280,9 @@ class Generator(Algorithm):
         loss = loss_func(loss_inputs)
 
         grad = torch.autograd.grad(loss.sum(), outputs)[0]
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
-        return loss, grad
+        return loss, loss_propagated
 
     def _kernel_width(self, dist):
         """Update kernel_width averager and get latest kernel_width. """
@@ -346,17 +381,44 @@ class Generator(Algorithm):
         weighted_loss = kernel_weight.detach() * neglogp
 
         loss_grad = torch.autograd.grad(weighted_loss.sum(), outputs2)[0]
+        grad = loss_grad - kernel_grad
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
-        return loss, loss_grad - kernel_grad
+        return loss, loss_propagated
 
     def _svgd_grad2(self, inputs, outputs, loss_func):
         """
         Compute particle gradients via SVGD, empirical expectation
+        evaluated by splitting half of the sampled batch. 
+        """
+        assert inputs is None, "\"svgd2\" does not support conditional generator"
+        particles = outputs.shape[0] // 2
+        outputs_i, outputs_j = torch.split(outputs, particles, dim=0)
+        loss_inputs = outputs_j
+        loss = loss_func(loss_inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), outputs_j)[0]  # [Nj, D]
+
+        # [Nj, Ni], [Nj, Ni, D]
+        kernel_weight, kernel_grad = self._rbf_func2(outputs_j, outputs_i)
+        kernel_logp = torch.matmul(kernel_weight.t(),
+                                   loss_grad) / particles  # [Ni, D]
+        grad = kernel_logp - kernel_grad.mean(0)
+        loss_propagated = torch.sum(grad.detach() * outputs_i, dim=-1)
+        return loss, loss_propagated
+
+    def _svgd_grad3(self, inputs, outputs, loss_func):
+        """
+        Compute particle gradients via SVGD, empirical expectation
         evaluated by resampled particles of the same batch size. 
         """
+        assert inputs is None, "\"svgd3\" does not support conditional generator"
         particles = outputs.shape[0]
         outputs2, _ = self._predict(inputs, batch_size=particles)
-        loss_inputs = outputs2 if inputs is None else [outputs2, inputs]
+        loss_inputs = outputs2
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
             neglogp = loss.loss
@@ -368,12 +430,15 @@ class Generator(Algorithm):
         kernel_weight, kernel_grad = self._rbf_func2(outputs2, outputs)
         kernel_logp = torch.matmul(kernel_weight.t(),
                                    loss_grad) / particles  # [N, D]
+        grad = kernel_logp - kernel_grad.mean(0)
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
-        return loss, kernel_logp - kernel_grad.mean(0)
+        return loss, loss_propagated
 
     def _gfsf_grad(self, inputs, outputs, loss_func):
         """Compute particle gradients via GFSF (Stein estimator). """
-        loss_inputs = outputs if inputs is None else [outputs, inputs]
+        assert inputs is None, "\"gfsf\" does not support conditional generator"
+        loss_inputs = outputs
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
             neglogp = loss.loss
@@ -382,8 +447,10 @@ class Generator(Algorithm):
         loss_grad = torch.autograd.grad(neglogp.sum(), outputs)[0]  # [N2, D]
 
         logq_grad = self._score_func(outputs)
+        grad = loss_grad - logq_grad
+        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
-        return loss, loss_grad - logq_grad
+        return loss, loss_propagated
 
     def after_update(self, training_info):
         if self._predict_net:
