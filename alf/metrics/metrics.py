@@ -59,7 +59,7 @@ class MetricBuffer(torch.nn.Module):
 
 
 class EnvironmentSteps(metric.StepMetric):
-    """Counts the number of steps taken in the environment."""
+    """Counts the number of steps taken in the environment after FrameSkip."""
 
     def __init__(self,
                  name='EnvironmentSteps',
