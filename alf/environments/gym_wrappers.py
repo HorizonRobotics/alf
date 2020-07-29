@@ -266,19 +266,19 @@ class FrameSkip(gym.Wrapper):
         accumulated_reward = 0
         done = False
         info = {}
-        num_env_steps = 0
+        num_env_frames = 0
         for _ in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             accumulated_reward += reward
-            if 'num_env_steps' in info:
+            if 'num_env_frames' in info:
                 # in case FrameSkip wrapper is being nested:
-                n_steps = info['num_env_steps']
+                n_steps = info['num_env_frames']
             else:
                 n_steps = 1
-            num_env_steps += n_steps
+            num_env_frames += n_steps
             if done:
                 break
-        info['num_env_steps'] = num_env_steps
+        info['num_env_frames'] = num_env_frames
         return obs, accumulated_reward, done, info
 
     def reset(self, **kwargs):
@@ -476,7 +476,7 @@ class DMAtariPreprocessing(gym.Wrapper):
         life_lost = False
 
         info = {}
-        num_env_steps = 0
+        num_env_frames = 0
         for time_step in range(self.frame_skip):
             # We bypass the Gym observation altogether and directly fetch the
             # grayscale image from the ALE. This is a little faster.
@@ -484,12 +484,12 @@ class DMAtariPreprocessing(gym.Wrapper):
             life_lost = self.env.ale.lives() < self._lives
             self._lives = self.env.ale.lives()
             accumulated_reward += reward
-            if 'num_env_steps' in info:
+            if 'num_env_frames' in info:
                 # in case FrameSkip wrapper is being nested:
-                n_steps = info['num_env_steps']
+                n_steps = info['num_env_frames']
             else:
                 n_steps = 1
-            num_env_steps += n_steps
+            num_env_frames += n_steps
             if game_over or life_lost:
                 break
             # We max-pool over the last two frames, in grayscale.
@@ -497,7 +497,7 @@ class DMAtariPreprocessing(gym.Wrapper):
                 t = time_step - (self.frame_skip - 2)
                 # when frame_skip==1, self.screen_buffer[1] will be filled!
                 self._fetch_grayscale_observation(self.screen_buffer[t])
-        info['num_env_steps'] = num_env_steps
+        info['num_env_frames'] = num_env_frames
 
         if self.frame_skip == 1:
             self.screen_buffer[0] = self.screen_buffer[1]
