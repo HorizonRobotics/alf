@@ -57,14 +57,14 @@ class SparseReward(gym.Wrapper):
             done = True
         return ob, reward + 1, done, info
 
-
+@gin.configurable
 class SuccessWrapper(gym.Wrapper):
     """Retrieve the success info from the environment return.
     """
 
-    def __init__(self, env, max_episode_steps):
+    def __init__(self, env, since_episode_steps):
         super().__init__(env)
-        self._max_episode_steps = max_episode_steps
+        self._since_episode_steps = since_episode_steps 
 
     def reset(self, **kwargs):
         self._steps = 0
@@ -75,8 +75,8 @@ class SuccessWrapper(gym.Wrapper):
         self._steps += 1
 
         info["success"] = 0.0
-        # only count success at the episode end
-        if self._steps == self._max_episode_steps and info["is_success"] == 1:
+        # only count success after a certain amount of steps
+        if self._steps == self._since_episode_steps and info["is_success"] == 1:
             info["success"] = 1.0
 
         info.pop("is_success")  # from gym, we remove it here
@@ -111,6 +111,7 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          sparse_reward=False,
+         use_success_wrapper=True,
          gym_env_wrappers=(),
          alf_env_wrappers=(),
          wrap_with_process=False):
@@ -169,7 +170,8 @@ def load(environment_name,
         except ImportError:  # for older gym (<=0.15.3)
             from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
             env = FlattenDictWrapper(env, keys)
-    env = SuccessWrapper(env, max_episode_steps)
+    if use_success_wrapper:
+        env = SuccessWrapper(env, max_episode_steps)
     env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
