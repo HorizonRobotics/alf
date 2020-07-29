@@ -57,6 +57,7 @@ class SparseReward(gym.Wrapper):
             done = True
         return ob, reward + 1, done, info
 
+
 @gin.configurable
 class SuccessWrapper(gym.Wrapper):
     """Retrieve the success info from the environment return.
@@ -64,7 +65,7 @@ class SuccessWrapper(gym.Wrapper):
 
     def __init__(self, env, since_episode_steps):
         super().__init__(env)
-        self._since_episode_steps = since_episode_steps 
+        self._since_episode_steps = since_episode_steps
 
     def reset(self, **kwargs):
         self._steps = 0
@@ -122,12 +123,16 @@ def load(environment_name,
 
     Args:
         environment_name: Name for the environment to load.
+        env_id: A scalar ``Tensor`` of the environment ID of the time step.
         discount: Discount to use for the environment.
         max_episode_steps: If None the ``max_episode_steps`` will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
             to 0 or if there is no ``timestep_limit`` set in the environment's spec.
         sparse_reward (bool): If True, the game ends once the goal is achieved.
             Rewards will be added by 1, changed from -1/0 to 0/1.
+        use_success_wrapper (bool): If True, wraps the environment with the
+            SuccessWrapper which will record Success info after a specified
+            amount of timesteps.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
         alf_env_wrappers: Iterable with references to wrapper classes to use on
