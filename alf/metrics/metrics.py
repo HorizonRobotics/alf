@@ -79,11 +79,8 @@ class EnvironmentSteps(metric.StepMetric):
         Returns:
             The arguments, for easy chaining.
         """
-        if time_step.env_info and 'num_env_steps' in time_step.env_info:
-            num_steps = torch.sum(time_step.env_info['num_env_steps'])
-        else:
-            steps = (torch.logical_not(time_step.is_first())).type(self._dtype)
-            num_steps = torch.sum(steps)
+        steps = (torch.logical_not(time_step.is_first())).type(self._dtype)
+        num_steps = torch.sum(steps)
         self._environment_steps.add_(num_steps)
         return time_step
 

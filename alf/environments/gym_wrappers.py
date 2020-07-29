@@ -265,12 +265,12 @@ class FrameSkip(gym.Wrapper):
         obs = None
         accumulated_reward = 0
         done = False
-        info = None
+        info = {}
         num_env_steps = 0
         for _ in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             accumulated_reward += reward
-            if isinstance(info, dict) and 'num_env_steps' in info:
+            if 'num_env_steps' in info:
                 # in case FrameSkip wrapper is being nested:
                 n_steps = info['num_env_steps']
             else:
@@ -278,8 +278,6 @@ class FrameSkip(gym.Wrapper):
             num_env_steps += n_steps
             if done:
                 break
-        if not info:
-            info = {}
         info['num_env_steps'] = num_env_steps
         return obs, accumulated_reward, done, info
 
@@ -477,7 +475,7 @@ class DMAtariPreprocessing(gym.Wrapper):
         accumulated_reward = 0.
         life_lost = False
 
-        info = None
+        info = {}
         num_env_steps = 0
         for time_step in range(self.frame_skip):
             # We bypass the Gym observation altogether and directly fetch the
@@ -486,7 +484,7 @@ class DMAtariPreprocessing(gym.Wrapper):
             life_lost = self.env.ale.lives() < self._lives
             self._lives = self.env.ale.lives()
             accumulated_reward += reward
-            if isinstance(info, dict) and 'num_env_steps' in info:
+            if 'num_env_steps' in info:
                 # in case FrameSkip wrapper is being nested:
                 n_steps = info['num_env_steps']
             else:
@@ -499,8 +497,6 @@ class DMAtariPreprocessing(gym.Wrapper):
                 t = time_step - (self.frame_skip - 2)
                 # when frame_skip==1, self.screen_buffer[1] will be filled!
                 self._fetch_grayscale_observation(self.screen_buffer[t])
-        if not info:
-            info = {}
         info['num_env_steps'] = num_env_steps
 
         if self.frame_skip == 1:

@@ -95,27 +95,6 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         else:
             self.assertEqual(0.0, metric.result())
 
-    def testEnvStepsInfo(self):
-        t0 = timestep_first([0, 0], [1, 2],
-                            dict(num_env_steps=to_tensor([0, 0])))
-        t1 = timestep_mid([1, 2], [1, 2],
-                          dict(num_env_steps=to_tensor([1, 1])))
-        t2 = timestep_last([3, 4], [1, 2],
-                           dict(num_env_steps=to_tensor([2, 2])))
-        t3 = timestep_first([0, 0], [1, 2],
-                            dict(num_env_steps=to_tensor([0, 0])))
-        t4 = timestep_mid([5, 6], [1, 2],
-                          dict(num_env_steps=to_tensor([4, 4])))
-        trajectories = [t0, t1, t2, t3, t4]
-        metric = EnvironmentSteps()
-        expected_result = 0
-        for t in trajectories:
-            metric(t)
-            for steps in t.env_info['num_env_steps']:
-                expected_result += steps
-
-        self.assertEqual(expected_result, metric.result())
-
 
 if __name__ == "__main__":
     unittest.main()
