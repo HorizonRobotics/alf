@@ -77,7 +77,7 @@ class SuccessWrapper(gym.Wrapper):
 
         info["success"] = 0.0
         # only count success after a certain amount of steps
-        if self._steps == self._since_episode_steps and info["is_success"] == 1:
+        if self._steps >= self._since_episode_steps and info["is_success"] == 1:
             info["success"] = 1.0
 
         info.pop("is_success")  # from gym, we remove it here
