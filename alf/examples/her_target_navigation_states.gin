@@ -1,25 +1,9 @@
 include 'ddpg_target_navigation_states.gin'
 
-suite_gym.wrap_env.image_channel_first=False
-
-import alf.nest.utils
-GoalTask.success_with_angle_requirement=False
-PlayGround.goal_conditioned=True
-GoalTask.goal_conditioned=True
-actor/ActorNetwork.preprocessing_combiner=@NestConcat()
-critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
-critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
-
 ReplayBuffer.keep_episodic_info=True
 ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn
 hindsight_relabel_fn.her_proportion=0.8
 l2_dist_close_reward_fn.threshold=0.5
-
-hidden_layers=(256,256)
-actor/ActorNetwork.fc_layer_params=%hidden_layers
-critic/CriticNetwork.joint_fc_layer_params=%hidden_layers
-
-# DdpgAlgorithm.action_l2=0.05
 
 # Finer grain tensorboard summaries plus local action distribution
 # TrainerConfig.summarize_action_distributions=True
