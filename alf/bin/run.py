@@ -69,33 +69,56 @@ VALUE_SEP = "_"
 # Gin configs:
 
 TARGET_NAV_GIN_TAGS = [
-    'actargetnav', 'actargetnavattn', 'ppotargetnav', 'ddpgtargetnav',
-    'sactargetnav'
+    'actargetnav', 'actargetnavst', 'actargetnavattn', 'ppotargetnav',
+    'ddpgtargetnav', 'ddpgtargetnavst', 'hertargetnavst', 'sactargetnav'
 ]
+
+SOCIAL_BOT_GIN_TAGS = TARGET_NAV_GIN_TAGS + ['offsimplenav', 'simplenav']
+
 GYM_GIN_TAGS = [
     'acbreakout', 'offpolicyacbreakout', 'acbreakoutvtrace', 'accartpole'
+]
+
+MJC_GIN_TAGS = [
+    "sacfetchreach", "sacfetchpush", "sacfetchslide", "ddpgfetchreach",
+    "ddpgfetchpush", "herfetchpush", "ddpgfetchslide", "herfetchslide"
 ]
 
 
 def get_gin_file(gin_file_tag):
     switcher = {
         "actargetnav": "ac_target_navigation",
+        "actargetnavst": "ac_target_navigation_states",
         "actargetnavattn": "ac_target_navigation_attn",
         "ppotargetnav": "ppo_target_navigation",
         "ddpgtargetnav": "ddpg_target_navigation",
+        "ddpgtargetnavst": "ddpg_target_navigation_states",
+        "hertargetnavst": "her_target_navigation_states",
         "sactargetnav": "sac_target_navigation",
         "acbreakout": "ac_breakout",
         "offpolicyacbreakout": "off_policy_ac_breakout",
+        "offsimplenav": "off_policy_ac_simple_navigation",
+        "simplenav": "ac_simple_navigation",
         "acbreakoutvtrace": "off_policy_ac_breakout_vtrace",
         "accartpole": "ac_cart_pole",
-        "dmexploregoal": "off_policy_ac_dm_explore_goal_vtrace"
+        "dmexploregoal": "off_policy_ac_dm_explore_goal_vtrace",
+        "sacfetchreach": "sac_fetchreach",
+        "sacfetchpush": "sac_fetchpush",
+        "sacfetchslide": "sac_fetchslide",
+        "ddpgfetchreach": "ddpg_fetchreach",
+        "ddpgfetchpush": "ddpg_fetchpush",
+        "herfetchpush": "her_fetchpush",
+        "ddpgfetchslide": "ddpg_fetchslide",
+        "herfetchslide": "her_fetchslide",
     }
     return switcher.get(gin_file_tag,
                         "no_such_gin_file_tag_" + gin_file_tag) + ".gin"
 
 
 TARGET_NAV_GIN_FILES = [get_gin_file(t) for t in TARGET_NAV_GIN_TAGS]
+SOCIAL_BOT_GIN_FILES = [get_gin_file(t) for t in SOCIAL_BOT_GIN_TAGS]
 GYM_GIN_FILES = [get_gin_file(t) for t in GYM_GIN_TAGS]
+MJC_GIN_FILES = [get_gin_file(t) for t in MJC_GIN_TAGS]
 
 
 # Utils:
@@ -106,10 +129,12 @@ def get_env_load_fn(gin_file):
         m = re.search('create_environment\.env_load_fn\=\@(\S+)', data)
         if m:
             return m.group(1)
-        elif gin_file in TARGET_NAV_GIN_FILES:
+        elif gin_file in SOCIAL_BOT_GIN_FILES:
             return "suite_socialbot.load"
         elif gin_file in GYM_GIN_FILES:
             return "suite_gym.load"
+        elif gin_file in MJC_GIN_FILES:
+            return "suite_robotics.load"
     assert False, "NO ENV LOAD FN in {}.".format(gin_file)
 
 
@@ -140,6 +165,22 @@ def gen_args(named_tags, task="NO_TASK", load_fn="NO_LOAD_FN", gin_file=""):
             m_arg_value[name] = value
         elif name not in ['rnn']:
             remaining_args.append(name)
+    if ('obtransObNorm' in named_tags
+            or 'obnorm' in named_tags) and 'ddpg_' in gin_file:
+        args.append(
+            "--gin_param='suite_robotics.load.concat_desired_goal=False'")
+        args.append(
+            "--gin_param='actor/ActorNetwork.preprocessing_combiner=@NestConcat()'"
+        )
+        args.append(
+            "--gin_param='critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()'"
+        )
+        args.append(
+            "--gin_param='critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()'"
+        )
+    if 'obnorm' in named_tags:
+        args.append("--gin_param='Agent.observation_transformer=[]'")
+
     if 'image' not in m_arg_value and gin_file in TARGET_NAV_GIN_FILES:
         args.append("--gin_param='image_scale_transformer.fields=[]'")
         args.append("--gin_param='Agent.observation_transformer=[]'")
@@ -154,13 +195,12 @@ def gen_args(named_tags, task="NO_TASK", load_fn="NO_LOAD_FN", gin_file=""):
         args.append("--gin_param='Agent.enforce_entropy_target=True'")
         args.append(
             "--gin_param='ActorCriticLoss.entropy_regularization=None'")
-
+    args.sort()
     print('\n'.join(args))
     print("========================================")
     for name in remaining_args:
         print('* Warning: parameter name {} not understood by parser.'.format(
             name))
-
     return ' '.join(args), m_arg_value
 
 
@@ -192,24 +232,41 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'create_environment.num_parallel_environments',
         'eval':
             'TrainerConfig.evaluate',
-        'lr':
-            'ac/Adam.learning_rate',
+        'lr': ['ac/AdamTF.lr', 'AdamTF.lr', 'Adam.lr'],
         'tffn':
             'TrainerConfig.use_tf_functions',
         'unroll':
             'TrainerConfig.unroll_length',
+        'rblen':
+            'TrainerConfig.replay_buffer_length',
+        'rbrecsteps':
+            'ReplayBuffer.recent_data_steps',
+        'rbrecratio':
+            'ReplayBuffer.recent_data_ratio',
         'td':
             'ActorCriticLoss.td_lambda',
         'ent':
             'ActorCriticLoss.entropy_regularization',
+        'ddpgrnd':
+            'DdpgAlgorithm.rollout_random_action',
+        'herk':
+            'hindsight_relabel_fn.her_proportion',
+        'collect':
+            'TrainerConfig.initial_collect_steps',
         'vtrace':
             'ActorCriticLoss.use_vtrace',
+        'impclip':
+            'action_importance_ratio.importance_ratio_clipping',
         'tilestsen': [
             'get_value_network.num_state_tiles',
             'get_value_network.num_sentence_tiles',
             'get_actor_network.num_state_tiles',
             'get_actor_network.num_sentence_tiles',
         ],
+        'asyncreplay':
+            'AsyncOffPolicyDriver.exp_replayer',
+        'minibatchleng':
+            'TrainerConfig.mini_batch_length',
         'msteps': [task + '.max_steps', parent_task + '.max_steps'],
         'stept':
             parent_task + '.step_time',
@@ -221,10 +278,16 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             task + '.end_on_hitting_distraction',
         'gymwrap':
             load_fn + '.gym_env_wrappers',
+        'aclipmin':
+            'ContinuousActionClip.min_v',
+        'aclipmax':
+            'ContinuousActionClip.max_v',
         'randgoal':
             task + '.random_goal',
         'goalname':
             task + '.goal_name',
+        'succangle':
+            task + '.success_with_angle_requirement',
         'distract':
             task + '.distraction_list',
         'curridistr':
@@ -259,7 +322,10 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
         ],
         'internalst':
             parent_task + '.image_with_internal_states',
-        'simplefullst':
+        'fullst':
+            task + '.use_full_states',
+        # used to be simplefullst=>use_egocentric_states
+        'egocent':
             task + '.use_egocentric_states',
         'anglelimit': [
             task + '.egocentric_perception_range',
@@ -271,11 +337,35 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
         'rnn':
             'get_ac_networks.rnn',
         'lstm': [
-            'ActorDistributionRnnNetwork.lstm_size',
-            'ValueRnnNetwork.lstm_size'
+            'ActorDistributionRNNNetwork.lstm_hidden_size',
+            'ValueRNNNetwork.lstm_hidden_size'
         ],
+        'actact': ['actor/ActorNetwork.activation', ],
+        'fc': [
+            'actor/ActorNetwork.fc_layer_params',
+            'actor/ActorDistributionNetwork.fc_layer_params',
+            'critic/CriticNetwork.joint_fc_layer_params',
+            'value/ValueNetwork.fc_layer_params',
+        ],
+        'actsqsh':
+            'actor/ActorNetwork.squashing_func',
+        # 'rmf': 'DdpgAlgorithm.remove_field_for_training',
+        'oustddev':
+            'DdpgAlgorithm.ou_stddev',
+        'obnorm':
+            'TrainerConfig.normalize_observations',  # branch obn: gsp
+        'obtrans':
+            'Agent.observation_transformer',
+        'actl2':
+            'DdpgAlgorithm.action_l2',
+        'normeps':
+            'AdaptiveNormalizer.variance_epsilon',
+        # 'preactcost': 'DdpgAlgorithm.pre_activation_cost',
+        # 'gausseps': 'DdpgAlgorithm.gaussian_eps',
         'heads':
             'get_ac_networks.n_heads',
+        'gft':
+            'get_ac_networks.gft',
         'entmax':
             'EntropyTargetAlgorithm.max_entropy',
         'initalpha':
@@ -293,6 +383,7 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             task + '.increase_range_by_percent',
         'finstepmode':
             'OnPolicyDriver.final_step_mode',
+        # 'obclip': load_fn + '.clip_observation', disabled, use gymwrap_@ObservationClipWrapper_... instead
     }
     return switcher.get(name, None)
 
@@ -314,6 +405,8 @@ def map_list_value(value, quoted=False):
 
 
 def brace_map_list_value(value):
+    if value in ('None', '0', 'False'):
+        return "()"
     return '(' + map_list_value(value) + ')'
 
 
@@ -321,11 +414,16 @@ def maybe_map_value(key, value=None):
     switcher = {
         'image': brace_map_list_value(value),  # 84_84 => (84,84)
         'lstm': brace_map_list_value(value),
+        'fc': brace_map_list_value(value),
+        'gymwrap': brace_map_list_value(value),
         'goalname': map_list_value(value, quoted=True),
         'distract':
             '[' + map_list_value(value, quoted=True) +
             ']',  # ball_car__wheel => ball_car+wheel => [ball,car_wheel]
-        'world': tokenize(value, quoted=True)
+        'world': tokenize(value, quoted=True),
+        'asyncreplay': tokenize(value, quoted=True),
+        'rmf': tokenize(value, quoted=True),
+        # 'obtrans': tokenize(value, quoted=True),
     }
     return switcher.get(key, map_list_value(value))
 
@@ -351,9 +449,10 @@ def main(argv):
     for tag in tags:
         kv = tag.split(VALUE_SEP, 1)  # try split once
         if len(kv) == 2:
-            named_tags[kv[0]] = maybe_map_value(kv[0], value=kv[1])
+            v = kv[1]
         else:
-            named_tags[tag] = "True"
+            v = "True"
+        named_tags[kv[0]] = maybe_map_value(kv[0], value=v)
 
     if "gin" in named_tags:
         gin_file_tag = named_tags["gin"]
@@ -363,6 +462,8 @@ def main(argv):
     parent_task = get_parent_task(task)
     train = "play" if FLAGS.play else "train"
     root_dir = FLAGS.path + "/" + run_tag
+    root_dir = root_dir.replace("(", "LP")
+    root_dir = root_dir.replace(")", "RP")
     log_file = root_dir + "/{}.log".format(train)
 
     load_fn = get_env_load_fn(gin_file)
@@ -395,25 +496,29 @@ def main(argv):
         if FLAGS.mp4_file:
             additional_flag += " --record_file='{}'".format(FLAGS.mp4_file)
         if FLAGS.ckpt:
-            additional_flag += " --checkpoint_name=ckpt-{}".format(FLAGS.ckpt)
+            additional_flag += " --checkpoint_step={}".format(FLAGS.ckpt)
         if gin_file_tag in TARGET_NAV_GIN_TAGS:
-            additional_flag += " --gin_param='{}.start_range=1'".format(task)
+            additional_flag += " --gin_param='{}.start_range=3'".format(task)
             additional_flag += " --gin_param='{}.max_steps=100'".format(
                 parent_task)
             additional_flag += " --gin_param='suite_socialbot.load.max_episode_steps=1000'"
             additional_flag += " --verbosity=1"
         if FLAGS.sleep:
             additional_flag += " --sleep_time_per_step={}".format(FLAGS.sleep)
-        if ('tffn' in m_arg_value
-                and m_arg_value['tffn'] in ['False', '0']) or not FLAGS.tffn:
-            additional_flag += " --use_tf_functions=False  --gin_param='TrainerConfig.use_tf_functions=False'"
     if gin_file_tag in TARGET_NAV_GIN_TAGS:
         additional_flag += " --gin_param='{}.polar_coord=False'".format(task)
+
+    additional_flag += " --gin_param='TrainerConfig.summarize_output=True'"
 
     command = (
         "python3 ../bin/{module}.py --gin_file={gin_file} --root_dir={root_dir} "
         + args + additional_flag + log_cmd).format(
             module=module, gin_file=gin_file, root_dir=root_dir)
+
+    # WFH remote playing with vglrun.
+    # Run "/opt/TurboVNC/bin/vncserver :8" before playing.
+    if FLAGS.play and FLAGS.mp4_file == '':  # and os.environ.get('DISPLAY') == ':8':
+        command = 'DISPLAY=:8 vglrun -d :7 ' + command
 
     if FLAGS.cluster:
         os.chdir('/home/users/le.zhao/jobs/gail')
@@ -433,7 +538,7 @@ def main(argv):
         ret = os.system(command)
         if ret and log_to_file:
             print("========================================")
-            os.system('tail -n 100 {}'.format(log_file))
+            os.system('tail -n 200 {}'.format(log_file))
 
 
 if __name__ == '__main__':
