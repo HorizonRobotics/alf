@@ -24,7 +24,7 @@ suite_socialbot.load.max_episode_steps=100
 GoalTask.max_steps=1000
 PlayGround.max_steps=1000
 GoalTask.fail_distance_thresh=1000
-GoalTask.end_on_success=True
+GoalTask.end_episode_after_success=True
 GoalTask.end_on_hitting_distraction=True
 
 # Goal & distraction object setup
