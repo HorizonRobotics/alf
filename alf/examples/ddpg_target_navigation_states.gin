@@ -1,7 +1,20 @@
 include 'ac_target_navigation_states.gin'
 include 'ddpg.gin'
 
-hidden_layers=(256,)
+# Goal conditioned task setup
+GoalTask.success_with_angle_requirement=False
+PlayGround.goal_conditioned=True
+GoalTask.goal_conditioned=True
+
+suite_gym.wrap_env.image_channel_first=False
+
+# Networks
+import alf.nest.utils
+actor/ActorNetwork.preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
+
+hidden_layers=(256,256)
 actor/ActorNetwork.fc_layer_params=%hidden_layers
 critic/CriticNetwork.joint_fc_layer_params=%hidden_layers
 
