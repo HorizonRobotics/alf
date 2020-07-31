@@ -14,7 +14,7 @@
 import torch
 
 import alf
-from alf.algorithms.mcts_algorithm import MCTSModel, MCTSState, ModelOutput, MCTSAlgorithm, create_board_game_mcts
+from alf.algorithms.mcts_algorithm import MCTSModel, MCTSState, ModelOutput, create_board_game_mcts
 from alf.data_structures import StepType, TimeStep
 
 
@@ -27,29 +27,23 @@ class TicTacToeModel(MCTSModel):
     """
 
     def __init__(self):
-        self._line_x = torch.tensor([
-            0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0,
-            1, 2
-        ])
-        self._line_y = torch.tensor([
-            0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 0, 1, 1, 1, 2, 2, 2, 0, 1, 2, 2,
-            1, 0
-        ])
-        self._actions = torch.arange(9, dtype=torch.int32).unsqueeze(0)
+        super().__init__()
+        self._line_x = torch.tensor(
+            [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [0, 1, 2], [0, 1, 2],
+             [0, 1, 2], [0, 1, 2]]).unsqueeze(0)
+        self._line_y = torch.tensor(
+            [[0, 1, 2], [0, 1, 2], [0, 1, 2], [0, 0, 0], [1, 1, 1], [2, 2, 2],
+             [0, 1, 2], [2, 1, 0]]).unsqueeze(0)
+        self._actions = torch.arange(9, dtype=torch.int64).unsqueeze(0)
 
     def initial_inference(self, observation):
         batch_size = observation.shape[0]
-        reward = torch.zeros((batch_size, ))
-        prob = torch.zeros((batch_size, 9))
-        game_over = torch.zeros((batch_size, ), dtype=torch.bool)
-        for i in range(batch_size):
-            board = observation[i]
-            player = -self._get_current_player(board)
-            reward[i] = -player * self._check_player_win(board, player).to(
-                torch.float)
-            prob[i] = self._get_action_probs(board)
-            game_over[i] = self._check_game_over(board)
-
+        board = observation
+        player = -self._get_current_player(board)
+        won = self._check_player_win(board, player)
+        reward = torch.where(won, -player.to(torch.float32), torch.tensor(0.))
+        game_over = self._check_game_over(board)
+        prob = self._get_action_probs(board)
         value = torch.zeros((batch_size, ))
 
         return ModelOutput(
@@ -62,77 +56,104 @@ class TicTacToeModel(MCTSModel):
 
     def recurrent_inference(self, state, action):
         batch_size = state.shape[0]
+        B = torch.arange(batch_size)
         x = action % 3
         y = action // 3
-        new_state = state.clone()
-        reward = torch.zeros((batch_size, ))
-        prob = torch.zeros((batch_size, 9))
-        game_over = torch.zeros((batch_size, ), dtype=torch.bool)
-        for i in range(batch_size):
-            board = new_state[i]
-            player = self._get_current_player(board)
-            if not self._check_game_over(board):
-                assert board[y[i], x[i]] == 0
-                board[y[i], x[i]] = player
-                reward[i] = -player * self._check_player_win(board, player).to(
-                    torch.float)
-            prob[i] = self._get_action_probs(board)
-            game_over[i] = self._check_game_over(board)
-
+        board = state.clone()
+        game_over = self._check_game_over(board)
+        assert not torch.any(game_over)
+        player = self._get_current_player(board).to(torch.float32)
+        valid = board[B, y, x] == 0
+        board[B[valid], y[valid], x[valid]] = player[valid]
+        won = self._check_player_win(board, player)
+        reward = torch.where(won, -player, torch.tensor(0.))
+        reward = torch.where(valid, reward, player)
+        game_over = self._check_game_over(board)
+        game_over = torch.max(game_over, ~valid)
+        prob = self._get_action_probs(board)
         value = torch.zeros((batch_size, ))
         return ModelOutput(
             value=value,
             reward=reward,
-            state=new_state,
+            state=board,
             actions=self._actions.expand(batch_size, -1),
             action_probs=prob,
             game_over=game_over)
 
     def _check_player_win(self, board, player):
-        lines = board[(self._line_y, self._line_x)].reshape(-1, 3)
-        return ((lines == player).sum(dim=1) == 3).any()
+        B = torch.arange(board.shape[0]).unsqueeze(-1).unsqueeze(-1)
+        player = player.unsqueeze(-1).unsqueeze(-1)
+        lines = board[B, self._line_y, self._line_x]
+        return ((lines == player).sum(dim=2) == 3).any(dim=1)
 
     def _check_game_over(self, board):
-        return (board == 0).sum() == 0 or self._check_player_win(
-            board, -1) or self._check_player_win(board, 1)
+        board_full = (board == 0).sum(dim=(1, 2)) == 0
+        B = torch.arange(board.shape[0]).unsqueeze(-1).unsqueeze(-1)
+        lines = board[B, self._line_y, self._line_x]
+        player1_won = ((lines == -1).sum(dim=2) == 3).any(dim=1)
+        player2_won = ((lines == 1).sum(dim=2) == 3).any(dim=1)
+        return torch.max(board_full, torch.max(player1_won, player2_won))
 
     def _get_current_player(self, board):
-        return ((board != 0).sum() % 2) * 2 - 1
+        return ((board != 0).sum(dim=(1, 2)) % 2) * 2 - 1
 
     def _get_action_probs(self, board):
-        p = (board.reshape(-1) == 0).to(torch.float)
-        if p.sum() != 0:
-            return p / p.sum()
-        else:
-            return torch.ones((9, )) / 9
+        p = (board.reshape(board.shape[0], -1) == 0).to(torch.float)
+        return p / (p.sum(dim=1, keepdims=True) + 1e-30)
 
 
 class TicTacToeModelTest(alf.test.TestCase):
     def test_tic_tac_toe(self):
         model = TicTacToeModel()
-        observation = torch.tensor([[[1, 0, -1.], [-1, 1, 1], [-1, -1, 1.]]])
-
+        observation = torch.tensor([[[ 1,  0, -1.],
+                                     [-1,  1,  1],
+                                     [-1, -1,  1.]]]) # yapf: disable
         model_output = model.initial_inference(observation)
         self.assertEqual(model_output.reward, torch.tensor([[-1.]]))
         self.assertEqual(model_output.game_over, torch.tensor([[True]]))
 
-        observation = torch.tensor([[[-1, 1, 1.], [-1, -1, 1], [-1, -1, 1.]]])
+        observation = torch.tensor([[[-1,  1,  1.],
+                                     [-1, -1,  1],
+                                     [-1, -1,  1.]]]) # yapf: disable
         model_output = model.initial_inference(observation)
         self.assertEqual(model_output.game_over, torch.tensor([[True]]))
 
         self.assertEqual(model_output.reward, torch.tensor([[1.]]))
-        observation = torch.tensor([[[0., 0., 1.], [0., 1., -1.],
-                                     [1., -1., -1.]]])
+        observation = torch.tensor([[[0.,  0.,  1.],
+                                     [0.,  1., -1.],
+                                     [1., -1., -1.]]]) # yapf: disable
         model_output = model.initial_inference(observation)
         self.assertEqual(model_output.reward, torch.tensor([[-1.]]))
         self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+        # calling recurrent_inference on ended game causes exception
+        self.assertRaises(AssertionError, model.recurrent_inference,
+                          observation, torch.tensor([3]))
+
+        observation = torch.tensor([[[0.,  0.,  1.],
+                                     [0.,  1., -1.],
+                                     [0., -1., -1.]]]) # yapf: disable
+        model_output = model.recurrent_inference(observation,
+                                                 torch.tensor([6]))
+        self.assertEqual(model_output.reward, torch.tensor([[-1.]]))
+        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+
+        # not a valid move for player -1
+        model_output = model.recurrent_inference(observation,
+                                                 torch.tensor([5]))
+        self.assertEqual(model_output.reward, torch.tensor([[1.]]))
+        self.assertEqual(model_output.game_over, torch.tensor([[True]]))
+
+        model_output = model.recurrent_inference(observation,
+                                                 torch.tensor([3]))
+        self.assertEqual(model_output.reward, torch.tensor([[0.]]))
+        self.assertEqual(model_output.game_over, torch.tensor([[False]]))
 
 
 class MCTSAlgorithmTest(alf.test.TestCase):
     def test_mcts_algorithm(self):
         observation_spec = alf.TensorSpec((3, 3))
         action_spec = alf.BoundedTensorSpec((),
-                                            dtype=torch.int32,
+                                            dtype=torch.int64,
                                             minimum=0,
                                             maximum=8)
         mcts = create_board_game_mcts(
@@ -144,15 +165,31 @@ class MCTSAlgorithmTest(alf.test.TestCase):
         time_step = TimeStep(step_type=torch.tensor([StepType.MID]))
 
         # board situations and expected actions
+        # yapf: disable
         cases = [
-            ([[1, -1, 1], [1, -1, -1], [0, 0, 1]], 6),
-            ([[0, 0, 0], [0, -1, -1], [0, 1, 0]], 3),
-            ([[1, -1, -1], [-1, -1, 0], [0, 1, 1]], 6),
-            ([[-1, 0, 1], [0, -1, -1], [0, 0, 1]], 3),
-            ([[0, 0, 0], [0, 0, 0], [0, 0, -1]], 4),
-            ([[0, 0, 0], [0, -1, 0], [0, 0, 0]], (0, 2, 6, 8)),
-            ([[0, 0, 0], [0, 1, -1], [1, -1, -1]], 2),
+            ([[1, -1,  1],
+              [1, -1, -1],
+              [0,  0,  1]], 6),
+            ([[0,  0,  0],
+              [0, -1, -1],
+              [0,  1,  0]], 3),
+            ([[ 1, -1, -1],
+              [-1, -1,  0],
+              [ 0,  1,  1]], 6),
+            ([[-1,  0,  1],
+              [ 0, -1, -1],
+              [ 0,  0,  1]], 3),
+            ([[0, 0,  0],
+              [0, 0,  0],
+              [0, 0, -1]], 4),
+            ([[0,  0, 0],
+              [0, -1, 0],
+              [0,  0, 0]], (0, 2, 6, 8)),
+            ([[0,  0,  0],
+              [0,  1, -1],
+              [1, -1, -1]], 2),
         ]
+        # yapf: enable
 
         # test case serially
         for observation, action in cases:

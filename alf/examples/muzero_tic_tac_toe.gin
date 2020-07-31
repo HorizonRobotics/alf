@@ -1,0 +1,38 @@
+include 'muzero.gin'
+
+import alf.environments.suite_tic_tac_toe
+
+create_environment.env_name=""
+#create_environment.env_name="Pendulum-v0"
+create_environment.env_load_fn=@suite_tic_tac_toe.load
+create_environment.num_parallel_environments=32
+
+create_board_game_mcts.dirichlet_alpha=0.25
+create_board_game_mcts.num_simulations=20
+MuzeroAlgorithm.mcts_algorithm_ctor=@create_board_game_mcts
+MuzeroAlgorithm.model_ctor=@SimpleMCTSModel
+MuzeroAlgorithm.num_unroll_steps=5
+MuzeroAlgorithm.td_steps=5
+
+encoder/EncodingNetwork.fc_layer_params=(256, 256)
+encoder/EncodingNetwork.input_preprocessors=alf.layers.Reshape([-1])
+encoder/EncodingAlgorithm.encoder_cls=@encoder/EncodingNetwork
+
+Agent.representation_learner_cls=@encoder/EncodingAlgorithm
+Agent.optimizer=@Adam()
+FrameStacker.stack_size=2
+FrameStacker.stack_axis=-1
+TrainerConfig.data_transformer_ctor=@FrameStacker
+
+# training config
+TrainerConfig.unroll_length=10
+TrainerConfig.mini_batch_size=256
+TrainerConfig.num_updates_per_train_iter=1
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=10000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summary_interval=10
+TrainerConfig.replay_buffer_length=100000

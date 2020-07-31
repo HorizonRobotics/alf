@@ -1,0 +1,12 @@
+import alf
+import alf.algorithms.agent
+import alf.algorithms.encoding_algorithm
+import alf.algorithms.muzero_algorithm
+import alf.experience_replayers.replay_buffer
+
+Agent.rl_algorithm_cls=@MuzeroAlgorithm
+
+TrainerConfig.algorithm_ctor=@Agent
+TrainerConfig.mini_batch_length=1
+
+ReplayBuffer.keep_episodic_info=True
