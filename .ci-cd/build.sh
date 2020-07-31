@@ -74,6 +74,7 @@ function test() {
         alf.environments.suite_gym_test \
         alf.environments.suite_mario_test \
         alf.environments.suite_socialbot_test \
+        alf.environments.suite_tic_tac_toe_test \
         alf.environments.suite_unittest_test \
         alf.environments.alf_environment_test \
         alf.environments.alf_gym_wrapper_test \
