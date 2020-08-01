@@ -71,9 +71,12 @@ class CategoricalProjectionNetwork(Network):
     def forward(self, inputs, state=()):
         logits = self._projection_layer(inputs)
         logits = logits.reshape(inputs.shape[0], *self._output_shape)
-        return td.Independent(
-            td.Categorical(logits=logits),
-            reinterpreted_batch_ndims=len(self._output_shape) - 1), state
+        if len(self._output_shape) > 1:
+            return td.Independent(
+                td.Categorical(logits=logits),
+                reinterpreted_batch_ndims=len(self._output_shape) - 1), state
+        else:
+            return td.Categorical(logits=logits), state
 
 
 @gin.configurable

@@ -183,6 +183,7 @@ class SyncExperienceReplayer(ExperienceReplayer):
                  experience_spec,
                  batch_size,
                  max_length,
+                 num_earliest_frames_ignored=0,
                  prioritized_sampling=False,
                  name="SyncExperienceReplayer"):
         """Create a ReplayBuffer.
@@ -193,6 +194,9 @@ class SyncExperienceReplayer(ExperienceReplayer):
             batch_size (int): number of environments.
             max_length (int): The maximum number of items that can be stored
                 for a single environment.
+            num_earliest_frames_ignored (int): ignore the earlist so many frames
+                when sample from the buffer. This is typically required when
+                FrameStack is used.
             prioritized_sampling (bool): Use prioritized sampling if this is True.
         """
         super().__init__()
@@ -202,6 +206,7 @@ class SyncExperienceReplayer(ExperienceReplayer):
             batch_size,
             max_length=max_length,
             prioritized_sampling=prioritized_sampling,
+            num_earliest_frames_ignored=num_earliest_frames_ignored,
             name=name)
         self._data_iter = None
 
@@ -265,3 +270,7 @@ class SyncExperienceReplayer(ExperienceReplayer):
     @property
     def total_size(self):
         return self._buffer.total_size
+
+    @property
+    def replay_buffer(self):
+        return self._buffer

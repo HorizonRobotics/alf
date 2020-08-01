@@ -1,6 +1,7 @@
 # You need to install following packages
 # pip3 install atari-py opencv-python
 
+import alf.algorithms.agent
 import alf.algorithms.actor_critic_algorithm
 import alf.trainers.policy_trainer
 
@@ -38,13 +39,12 @@ ActorCriticAlgorithm.actor_network_ctor=@actor/ActorDistributionNetwork
 ActorCriticAlgorithm.value_network_ctor=@value/ValueNetwork
 ActorCriticAlgorithm.optimizer=@ac/Adam()
 
-RLAlgorithm.reward_shaping_fn=@reward_clipping
+Agent.rl_algorithm_cls=@ActorCriticAlgorithm
 
-common.reward_clipping.minmax=(-1, 1)
 
 # training config
 TrainerConfig.unroll_length=8
-TrainerConfig.algorithm_ctor=@ActorCriticAlgorithm
+TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.num_iterations=0
 TrainerConfig.num_env_steps=5000000
 TrainerConfig.evaluate=False
@@ -52,7 +52,6 @@ TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=10
 
-RLAlgorithm.observation_transformer=@image_scale_transformer
-common.image_scale_transformer.min=0.0
+
 
 

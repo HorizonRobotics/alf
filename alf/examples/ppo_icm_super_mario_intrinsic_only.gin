@@ -77,5 +77,5 @@ TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
 TrainerConfig.replay_buffer_length=32
 
-Agent.observation_transformer=@image_scale_transformer
+TrainerConfig.data_transformer_ctor=@ImageScaleTransformer
 

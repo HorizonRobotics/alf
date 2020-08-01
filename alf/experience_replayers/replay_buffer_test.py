@@ -436,6 +436,58 @@ class ReplayBufferTest(RingBufferTest):
             info.positions[:16],
             torch.tensor([28] * 4 + [29] * 4 + [30] * 4 + [31] * 4))
 
+    def test_num_earliest_frames_ignored_uniform(self):
+        num_envs = 4
+        max_length = 100
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=num_envs,
+            max_length=max_length,
+            keep_episodic_info=False,
+            num_earliest_frames_ignored=2)
+
+        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=0, x=0.))
+        # not enough data
+        self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
+
+        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=1, x=0.))
+        # not enough data
+        self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
+
+        replay_buffer.add_batch(get_batch([0, 1, 2, 3], self.dim, t=2, x=0.))
+        for _ in range(10):
+            batch, batch_info = replay_buffer.get_batch(1, 1)
+            self.assertEqual(batch.t, torch.tensor([[2]]))
+
+    def test_num_earliest_frames_ignored_priortized(self):
+        replay_buffer = ReplayBuffer(
+            data_spec=self.data_spec,
+            num_environments=self.num_envs,
+            max_length=self.max_length,
+            num_earliest_frames_ignored=2,
+            keep_episodic_info=False,
+            prioritized_sampling=True)
+
+        batch1 = get_batch([1], self.dim, x=0.25, t=0)
+        replay_buffer.add_batch(batch1, batch1.env_id)
+        # not enough data
+        self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
+
+        batch2 = get_batch([1], self.dim, x=0.25, t=1)
+        replay_buffer.add_batch(batch2, batch1.env_id)
+        # not enough data
+        self.assertRaises(AssertionError, replay_buffer.get_batch, 1, 1)
+
+        batch3 = get_batch([1], self.dim, x=0.25, t=2)
+        replay_buffer.add_batch(batch3, batch1.env_id)
+        for _ in range(10):
+            batch, batch_info = replay_buffer.get_batch(1, 1)
+            self.assertEqual(batch_info.env_ids,
+                             torch.tensor([1], dtype=torch.int64))
+            self.assertEqual(batch_info.importance_weights, 1.)
+            self.assertEqual(batch_info.importance_weights, torch.tensor([1.]))
+            self.assertEqual(batch.t, torch.tensor([[2]]))
+
     def test_prioritized_replay(self):
         replay_buffer = ReplayBuffer(
             data_spec=self.data_spec,

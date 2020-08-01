@@ -4,6 +4,10 @@ import alf.environments.gym_wrappers
 
 # Do not use suite_atari.load as it has some resetting issue!
 create_environment.env_load_fn=@suite_gym.load
-suite_gym.load.gym_env_wrappers=(@DMAtariPreprocessing, @FrameStack)
-FrameStack.stack_size=4
 DMAtariPreprocessing.frame_skip=4
+suite_gym.load.gym_env_wrappers=[@DMAtariPreprocessing]
+
+FrameStacker.stack_size=4
+ImageScaleTransformer.min=0.0
+RewardClipping.minmax=(-1, 1)
+TrainerConfig.data_transformer_ctor=[@FrameStacker, @ImageScaleTransformer, @RewardClipping]

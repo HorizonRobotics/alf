@@ -51,6 +51,7 @@ class ReplayBuffer(RingBuffer):
                  data_spec,
                  num_environments,
                  max_length=1024,
+                 num_earliest_frames_ignored=0,
                  prioritized_sampling=False,
                  initial_priority=1.0,
                  recent_data_steps=1,
@@ -58,7 +59,7 @@ class ReplayBuffer(RingBuffer):
                  with_replacement=False,
                  device="cpu",
                  allow_multiprocess=False,
-                 keep_episodic_info=False,
+                 keep_episodic_info=None,
                  step_type_field="step_type",
                  postprocess_exp_fn=None,
                  name="ReplayBuffer"):
@@ -68,6 +69,11 @@ class ReplayBuffer(RingBuffer):
             num_environments (int): total number of parallel environments
                 stored in the buffer.
             max_length (int): maximum number of time steps stored in buffer.
+            num_earliest_frames_ignored (int): ignore the earlist so many frames
+                when sample from the buffer. This is typically required when
+                FrameStacker is used. ``keep_episodic_info`` will be set to True
+                if ``num_earliest_frames_ignored`` > 0 as ``FrameStacker`` need
+                episode information.
             prioritized_sampling (bool): Use prioritized sampling if this is True.
             initial_priority (float): initial priority used for new experiences.
                 The actual initial priority used for new experience is the maximum
@@ -83,6 +89,7 @@ class ReplayBuffer(RingBuffer):
             device (string): "cpu" or "cuda" where tensors are created.
             allow_multiprocess (bool): whether multiprocessing is supported.
             keep_episodic_info (bool): index episode start and ending positions.
+                If None, its value will be set to True if ``num_earliest_frames_ignored``>0
             step_type_field (string): path to the step_type field in exp nest.
                 This and the following fields are for hindsight relabeling.
             postprocess_exp_fn (callable): function to postprocess experience.
@@ -104,6 +111,12 @@ class ReplayBuffer(RingBuffer):
             device=device,
             allow_multiprocess=allow_multiprocess,
             name=name)
+        self._num_earliest_frames_ignored = num_earliest_frames_ignored
+        if num_earliest_frames_ignored > 0:
+            if keep_episodic_info is None:
+                keep_episodic_info = True
+        if keep_episodic_info is None:
+            keep_episodic_info = False
         self._step_type_field = step_type_field
         self._prioritized_sampling = prioritized_sampling
         if prioritized_sampling:
@@ -262,6 +275,16 @@ class ReplayBuffer(RingBuffer):
             self.enqueue(batch, env_ids, blocking=blocking)
             if self._prioritized_sampling:
                 self._initialize_priority(env_ids)
+                if self._num_earliest_frames_ignored > 0:
+                    # Make sure the priortized sampling ignores the earliest
+                    # frames by setting their priorities to 0.
+                    current_pos = self._current_pos[env_ids]
+                    pos = current_pos - self._current_size[env_ids]
+                    pos = pos + self._num_earliest_frames_ignored - 1
+                    pos = torch.min(pos, current_pos - 1)
+                    self.update_priority(
+                        env_ids, pos, torch.zeros_like(
+                            pos, dtype=torch.float32))
 
             if self._keep_episodic_info:
                 # 3. Update associated episode end indices
@@ -302,8 +325,8 @@ class ReplayBuffer(RingBuffer):
         with alf.device(self._device):
             recent_batch_size = 0
             if self._recent_data_ratio > 0:
-                avg_size = self.total_size / float(
-                    self._num_envs) - batch_length + 1
+                d = batch_length - 1 + self._num_earliest_frames_ignored
+                avg_size = self.total_size / float(self._num_envs) - d
                 if (avg_size * self._recent_data_ratio >
                         self._recent_data_steps):
                     # If this condition is False, regular sampling without considering
@@ -356,7 +379,7 @@ class ReplayBuffer(RingBuffer):
         return self._sample(batch_size, batch_length, self._recent_data_steps)
 
     def _uniform_sample(self, batch_size, batch_length):
-        min_size = self._current_size.min()
+        min_size = self._current_size.min() - self._num_earliest_frames_ignored
         assert min_size >= batch_length, (
             "Not all environments have enough data. The smallest data "
             "size is: %s Try storing more data before calling get_batch" %
@@ -395,13 +418,13 @@ class ReplayBuffer(RingBuffer):
             # we need to make sure r is smaller than 1.
             r = torch.clamp(r, max=self.ONE_MINUS)
 
-        d = batch_length - 1
+        d = batch_length - 1 + self._num_earliest_frames_ignored
         num_positions = self._current_size - d
         if sample_from_recent_n_data_steps is not None:
             num_positions = torch.clamp(
                 num_positions, max=sample_from_recent_n_data_steps)
         pos = (r * num_positions[env_ids]).to(torch.int64)
-        pos += (self._current_pos - num_positions - d)[env_ids]
+        pos += (self._current_pos - num_positions - batch_length + 1)[env_ids]
         info = BatchInfo(env_ids=env_ids, positions=pos)
         return info
 
@@ -496,8 +519,7 @@ class ReplayBuffer(RingBuffer):
         # If current step is FIRST, skip second lookup.
         buffer_step_types = alf.nest.get_field(self._buffer,
                                                self._step_type_field)
-        is_first_cond = buffer_step_types[(env_ids, idx)] == ds.StepType.FIRST
-        is_first, = torch.where(is_first_cond)
+        is_first = buffer_step_types[(env_ids, idx)] == ds.StepType.FIRST
         result[is_first] = first_step_pos[is_first]
         # If the current timestep is "headless", i.e. whose ``FIRST`` step
         # has been overwritten by new data added into the RingBuffer,
@@ -508,9 +530,9 @@ class ReplayBuffer(RingBuffer):
         # (The case where current step is a ``FIRST`` step can be safely
         # ignored because the first_step_pos points to episode end which
         # is guarranteed to be existing.)
-        headless, = torch.where(
-            self._current_pos[env_ids] > first_step_pos + self._max_length)
-        headless_env_ids = env_ids[headless]
+        headless = self._current_pos[
+            env_ids] > first_step_pos + self._max_length
+        headless_env_ids = env_ids.expand_as(idx)[headless]
         result[headless] = self._headless_indexed_pos[headless_env_ids]
         return result
 
@@ -526,6 +548,18 @@ class ReplayBuffer(RingBuffer):
         """
         last_pos = self._get_episode_end_pos(self.circular(pos), env_ids)
         return last_pos - pos
+
+    def get_episode_begin_position(self, pos, env_ids):
+        """
+        Note that the episode begin may not still be in the replay buffer.
+        """
+        indices = (env_ids, self.circular(pos))
+        first_step_pos = self._indexed_pos[indices]
+        buffer_step_types = alf.nest.get_field(self._buffer,
+                                               self._step_type_field)
+        is_first = buffer_step_types[indices] == ds.StepType.FIRST
+        first_step_pos[is_first] = pos[is_first]
+        return first_step_pos
 
     @atomic
     def gather_all(self):
@@ -569,6 +603,28 @@ class ReplayBuffer(RingBuffer):
             "gather needs to be modified to support" +
             " dequeue. Also need to update episode beginning indices if any" +
             " gets removed.")
+
+    def get_field(self, field_name, env_ids, positions):
+        """Get stored data of field from the replay buffer by ``env_ids`` and ``positions``.
+
+        Args:
+            field_name (str): indicate the path to the field with '.' separating
+                the field name at different level
+            env_ids (Tensor): 1-D int64 Tensor.
+            positions (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
+                These positions should be obtained from the BatchInfo returned
+                by ``get_batch()``.
+        Returns:
+            Tensor: with the same shape as broadcasted shape of env_ids and positions
+        """
+        current_pos = self._current_pos[env_ids]
+        assert torch.all(positions < current_pos), "Invalid positions"
+        assert torch.all(
+            positions >= current_pos - self._max_length), "Invalid positions"
+        field = alf.nest.get_field(self._buffer, field_name)
+        indices = (env_ids, self.circular(positions))
+        result = alf.nest.map_structure(lambda x: x[indices], field)
+        return convert_device(result)
 
     @property
     def total_size(self):

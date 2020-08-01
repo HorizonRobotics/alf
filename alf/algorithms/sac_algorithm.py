@@ -148,7 +148,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
-                 observation_transformer=math_ops.identity,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
@@ -188,8 +187,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
                 algorithm.
-            observation_transformer (Callable or list[Callable]): transformation(s)
-                applied to ``time_step.observation``.
             config (TrainerConfig): config for training. It only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
@@ -248,7 +245,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     critics=critic_networks.state_spec,
                     target_critics=critic_networks.state_spec)),
             predict_state_spec=SacState(action=action_state_spec),
-            observation_transformer=observation_transformer,
             env=env,
             config=config,
             debug_summaries=debug_summaries,

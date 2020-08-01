@@ -84,4 +84,4 @@ TrainerConfig.use_rollout_state = True
 TrainerConfig.use_tf_functions = True
 TrainerConfig.num_envs = %N
 
-Agent.observation_transformer=@image_scale_transformer
+TrainerConfig.data_transformer_ctor=@ImageScaleTransformer

@@ -106,11 +106,13 @@ def unroll(env, algorithm, steps, epsilon_greedy=0.1):
     """Run `steps` environment steps using algoirthm.predict_step()."""
     time_step = common.get_initial_time_step(env)
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
+    trans_state = algorithm.get_initial_transform_state(env.batch_size)
     for _ in range(steps):
         policy_state = common.reset_state_if_necessary(
             policy_state, algorithm.get_initial_predict_state(env.batch_size),
             time_step.is_first())
-        transformed_time_step = algorithm.transform_timestep(time_step)
+        transformed_time_step, trans_state = algorithm.transform_timestep(
+            time_step, trans_state)
         policy_step = algorithm.predict_step(
             transformed_time_step, policy_state, epsilon_greedy=epsilon_greedy)
         time_step = env.step(policy_step.output)

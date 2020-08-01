@@ -14,8 +14,8 @@ create_environment.env_name="CartPole-v0"
 create_environment.num_parallel_environments=8
 
 # reward scaling
-Agent.reward_shaping_fn = @reward_scaling
-common.reward_scaling.scale = 0.01
+TrainerConfig.data_transformer_ctor = @RewardScaling
+RewardScaling.scale = 0.01
 
 # algorithm config
 

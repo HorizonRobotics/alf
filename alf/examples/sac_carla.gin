@@ -37,11 +37,11 @@ encoder/EncodingNetwork.preprocessing_combiner=@NestSum(activation=%activation, 
 encoder/EncodingNetwork.activation=%activation
 encoder/EncodingNetwork.fc_layer_params=%fc_layers_params
 encoder/EncodingAlgorithm.encoder_cls=@encoder/EncodingNetwork
-Agent.observation_transformer=@agent/image_scale_transformer
+TrainerConfig.data_transformer_ctor=@agent/ImageScaleTransformer
 Agent.representation_learner_cls=@encoder/EncodingAlgorithm
 Agent.optimizer=@Adam()
-agent/image_scale_transformer.min=0.0
-agent/image_scale_transformer.fields=['camera']
+agent/ImageScaleTransformer.min=0.0
+agent/ImageScaleTransformer.fields=['camera']
 
 # Not yet able to successfully train with sparse reward.
 suite_carla.Player.sparse_reward=False

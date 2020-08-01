@@ -32,6 +32,8 @@ import os
 
 import torch
 
+from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
 from alf.trainers import policy_trainer
 from alf.utils import common
@@ -69,8 +71,16 @@ def main(_):
     env = create_environment(nonparallel=True, seed=seed)
     env.reset()
     common.set_global_env(env)
+    config = policy_trainer.TrainerConfig(root_dir="")
+    data_transformer = create_data_transformer(config.data_transformer_ctor,
+                                               env.observation_spec())
+    config.data_transformer = data_transformer
+    observation_spec = data_transformer.transformed_observation_spec
+    common.set_transformed_observation_spec(observation_spec)
     algorithm = algorithm_ctor(
-        observation_spec=env.observation_spec(), action_spec=env.action_spec())
+        observation_spec=observation_spec,
+        action_spec=env.action_spec(),
+        config=config)
     try:
         policy_trainer.play(
             FLAGS.root_dir,

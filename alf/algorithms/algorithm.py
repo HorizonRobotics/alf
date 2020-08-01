@@ -16,7 +16,6 @@
 from absl import logging
 import copy
 from collections import OrderedDict
-from collections import Iterable
 from functools import wraps
 import itertools
 import json
@@ -35,6 +34,7 @@ from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
 from alf.utils.summary_utils import record_time
 from alf.utils.math_ops import add_ignore_empty
 from .config import TrainerConfig
+from .data_transformer import IdentityDataTransformer
 
 
 def _get_optimizer_params(optimizer: torch.optim.Optimizer):
@@ -108,7 +108,6 @@ class Algorithm(nn.Module):
                  rollout_state_spec=None,
                  predict_state_spec=None,
                  optimizer=None,
-                 observation_transformer=math_ops.identity,
                  config: TrainerConfig = None,
                  debug_summaries=False,
                  name="Algorithm"):
@@ -125,13 +124,14 @@ class Algorithm(nn.Module):
         Args:
             train_state_spec (nested TensorSpec): for the network state of
                 ``train_step()``.
+            rollout_state_spec (nested TensorSpec): for the network state of
+                ``predict_step()``. If None, it's assumed to be the same as
+                ``train_state_spec``.
             predict_state_spec (nested TensorSpec): for the network state of
                 ``predict_step()``. If None, it's assume to be same as
                 ``rollout_state_spec``.
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
-            observation_transformer (Callable or list[Callable]): transformation(s)
-                applied to ``time_step.observation``.
             config (TrainerConfig): config for training. ``config`` only needs to
                 be provided to the algorithm which performs a training iteration
                 by itself.
@@ -156,21 +156,18 @@ class Algorithm(nn.Module):
         self._initial_train_states = {}
         self._initial_rollout_states = {}
         self._initial_predict_states = {}
+        self._initial_transform_states = {}
 
         self._experience_spec = None
         self._train_info_spec = None
         self._processed_experience_spec = None
 
-        if isinstance(observation_transformer, Iterable):
-            observation_transformers = list(observation_transformer)
+        if config and config.data_transformer:
+            self._data_transformer = config.data_transformer
         else:
-            observation_transformers = [observation_transformer]
-        self._observation_transformers = observation_transformers
-        # Save nn.module transformers for checkpoints
-        self._stateful_obs_transformers = nn.ModuleList()
-        for t in observation_transformers:
-            if isinstance(t, nn.Module):
-                self._stateful_obs_transformers.append(t)
+            self._data_transformer = IdentityDataTransformer(None)
+        self._num_earliest_frames_ignored = self._data_transformer.stack_size - 1
+        self._transform_state_spec = self._data_transformer.state_spec
 
         self._observers = []
         self._metrics = []
@@ -270,6 +267,10 @@ class Algorithm(nn.Module):
             alf.nest.extract_fields_from_nest(sample_exp)))
 
         if self._exp_replayer_type == "one_time":
+            assert self._num_earliest_frames_ignored == 0, (
+                "For TrainerConfig, "
+                "whole_replay_buffer_training and clear_replay_buffer cannot both be "
+                "True when FrameStacker is used")
             self._exp_replayer = OnetimeExperienceReplayer()
         elif self._exp_replayer_type == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
@@ -278,7 +279,8 @@ class Algorithm(nn.Module):
                 exp_spec,
                 self._exp_replayer_num_envs,
                 self._exp_replayer_length,
-                self._prioritized_sampling,
+                prioritized_sampling=self._prioritized_sampling,
+                num_earliest_frames_ignored=self._num_earliest_frames_ignored,
                 name="exp_replayer")
         else:
             raise ValueError("invalid experience replayer name")
@@ -316,7 +318,7 @@ class Algorithm(nn.Module):
         for metric in self._metrics:
             metric(time_step)
 
-    def transform_timestep(self, time_step):
+    def transform_timestep(self, time_step, state):
         """Transform time_step.
 
         ``transform_timestep`` is called for all raw time_step got from
@@ -331,14 +333,25 @@ class Algorithm(nn.Module):
 
         Args:
             time_step (TimeStep or Experience): time step
+            state (nested Tensor): state of the transformer(s)
         Returns:
             TimeStep or Experience: transformed time step
         """
-        if self._observation_transformers is not None:
-            for observation_transformer in self._observation_transformers:
-                time_step = time_step._replace(
-                    observation=observation_transformer(time_step.observation))
-        return time_step
+        return self._data_transformer.transform_timestep(time_step, state)
+
+    def transform_experience(self, experience):
+        """Transform an Experience structure.
+
+        This is used on the experience data retrieved from replay buffer.
+
+        Args:
+            experience (Experience): the experience retrieved from replay buffer.
+                Note that ``experience.batch_info``, ``experience.replay_buffer``
+                need to be set.
+        Returns:
+            Experience: transformed experience
+        """
+        return self._data_transformer.transform_experience(experience)
 
     def preprocess_experience(self, experience):
         """This function is called on the experiences obtained from a replay
@@ -613,6 +626,14 @@ class Algorithm(nn.Module):
         alf.nest.assert_same_structure(self._train_state_spec,
                                        self._predict_state_spec)
         return state
+
+    def get_initial_transform_state(self, batch_size):
+        r = self._initial_transform_states.get(batch_size)
+        if r is None:
+            r = spec_utils.zeros_from_spec(self._transform_state_spec,
+                                           batch_size)
+            self._initial_transform_states[batch_size] = r
+        return r
 
     def get_initial_predict_state(self, batch_size):
         r = self._initial_predict_states.get(batch_size)
@@ -1147,6 +1168,7 @@ class Algorithm(nn.Module):
                 torch.float32)
         else:
             valid_masks = None
+        experience = experience._replace(rollout_info_field='rollout_info')
         loss_info = self.calc_loss(experience, train_info)
         loss_info, params = self.update_with_gradient(loss_info, valid_masks)
         self.after_update(experience, train_info)
@@ -1227,8 +1249,10 @@ class Algorithm(nn.Module):
         """Train using experience."""
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
-        experience = self.transform_timestep(experience)
+        experience = self._add_batch_info(experience, batch_info)
+        experience = self.transform_experience(experience)
         experience = self.preprocess_experience(experience)
+        experience = self._clear_batch_info(experience)
         if self._processed_experience_spec is None:
             self._processed_experience_spec = dist_utils.extract_spec(
                 experience, from_dim=2)
@@ -1399,6 +1423,17 @@ class Algorithm(nn.Module):
         info = dist_utils.params_to_distributions(info, self.train_info_spec)
         return info
 
+    def _add_batch_info(self, experience, batch_info):
+        if batch_info is not None:
+            experience = experience._replace(
+                batch_info=batch_info,
+                replay_buffer=self._exp_replayer.replay_buffer)
+        return experience._replace(rollout_info_field='rollout_info')
+
+    def _clear_batch_info(self, experience):
+        return experience._replace(
+            batch_info=(), replay_buffer=(), rollout_info_field=())
+
     def _update(self, experience, batch_info, weight):
         length = alf.nest.get_nest_size(experience, dim=0)
         if self._config.temporally_independent_train_step or length == 1:
@@ -1409,8 +1444,7 @@ class Algorithm(nn.Module):
         experience = dist_utils.params_to_distributions(
             experience, self.processed_experience_spec)
 
-        if batch_info is not None:
-            experience = experience._replace(batch_info=batch_info)
+        experience = self._add_batch_info(experience, batch_info)
         loss_info = self.calc_loss(experience, train_info)
         if loss_info.priority != ():
             priority = (loss_info.priority**self._config.priority_replay_alpha

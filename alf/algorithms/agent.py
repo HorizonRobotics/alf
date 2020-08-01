@@ -32,7 +32,8 @@ from alf.data_structures import TimeStep, namedtuple
 from alf.utils import math_ops
 
 AgentState = namedtuple(
-    "AgentState", ["rl", "irm", "goal_generator", "repr"], default_value=())
+    "AgentState", ["obs_trans", "rl", "irm", "goal_generator", "repr"],
+    default_value=())
 
 AgentInfo = namedtuple(
     "AgentInfo", ["rl", "irm", "goal_generator", "entropy_target", "repr"],
@@ -49,17 +50,15 @@ class Agent(OnPolicyAlgorithm):
                  action_spec,
                  env=None,
                  config: TrainerConfig = None,
-                 goal_generator=None,
                  rl_algorithm_cls=ActorCriticAlgorithm,
                  representation_learner_cls=None,
+                 goal_generator=None,
                  intrinsic_reward_module=None,
                  intrinsic_reward_coef=1.0,
                  extrinsic_reward_coef=1.0,
                  enforce_entropy_target=False,
                  entropy_target_cls=None,
                  optimizer=None,
-                 reward_shaping_fn: Callable = None,
-                 observation_transformer=math_ops.identity,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
         """
@@ -96,17 +95,14 @@ class Agent(OnPolicyAlgorithm):
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
             optimizer (tf.optimizers.Optimizer): The optimizer for training
-            reward_shaping_fn (Callable): a function that transforms extrinsic
-                immediate rewards
-            observation_transformer (Callable | list[Callable]): transformation(s)
-                applied to ``time_step.observation``.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
         agent_helper = AgentHelper(AgentState)
 
-        ## 0. representation learner
         rl_observation_spec = observation_spec
+
+        ## 0. representation learner
         representation_learner = None
         if representation_learner_cls is not None:
             representation_learner = representation_learner_cls(
@@ -152,8 +148,6 @@ class Agent(OnPolicyAlgorithm):
             optimizer=optimizer,
             env=env,
             config=config,
-            reward_shaping_fn=reward_shaping_fn,
-            observation_transformer=observation_transformer,
             debug_summaries=debug_summaries,
             name=name,
             **agent_helper.state_specs())
@@ -205,7 +199,6 @@ class Agent(OnPolicyAlgorithm):
         info = AgentInfo()
         observation = time_step.observation
 
-        observation = time_step.observation
         if self._representation_learner is not None:
             repr_step = self._representation_learner.rollout_step(
                 time_step, state.repr)
@@ -358,6 +351,10 @@ class Agent(OnPolicyAlgorithm):
         """
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)
         new_exp = self._rl_algorithm.preprocess_experience(
-            exp._replace(reward=reward, rollout_info=exp.rollout_info.rl))
+            exp._replace(
+                reward=reward,
+                rollout_info=exp.rollout_info.rl,
+                rollout_info_field=exp.rollout_info_field + '.rl'))
         return new_exp._replace(
-            rollout_info=exp.rollout_info._replace(rl=new_exp.rollout_info))
+            rollout_info=exp.rollout_info._replace(rl=new_exp.rollout_info),
+            rollout_info_field=exp.rollout_info_field)

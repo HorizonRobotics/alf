@@ -26,7 +26,9 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
 from alf.utils import common
 from alf.utils import git_utils
@@ -132,8 +134,14 @@ class Trainer(object):
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
         common.set_global_env(env)
 
+        data_transformer = create_data_transformer(
+            config.data_transformer_ctor, env.observation_spec())
+        self._config.data_transformer = data_transformer
+        observation_spec = data_transformer.transformed_observation_spec
+        common.set_transformed_observation_spec(observation_spec)
+
         self._algorithm = self._algorithm_ctor(
-            observation_spec=env.observation_spec(),
+            observation_spec=observation_spec,
             action_spec=env.action_spec(),
             env=env,
             config=self._config,
@@ -313,13 +321,16 @@ class Trainer(object):
         time_step = common.get_initial_time_step(self._eval_env)
         policy_state = self._algorithm.get_initial_predict_state(
             self._eval_env.batch_size)
+        trans_state = self._algorithm.get_initial_transform_state(
+            self._eval_env.batch_size)
         episodes = 0
         while episodes < self._num_eval_episodes:
-            time_step, policy_state = _step(
+            time_step, policy_state, trans_state = _step(
                 algorithm=self._algorithm,
                 env=self._eval_env,
                 time_step=time_step,
                 policy_state=policy_state,
+                trans_state=trans_state,
                 epsilon_greedy=self._config.epsilon_greedy,
                 metrics=self._eval_metrics)
             if time_step.is_last():
@@ -337,17 +348,19 @@ class Trainer(object):
 
 
 @torch.no_grad()
-def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
+def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
+          metrics):
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
-    transformed_time_step = algorithm.transform_timestep(time_step)
+    transformed_time_step, trans_state = algorithm.transform_timestep(
+        time_step, trans_state)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
-    return next_time_step, policy_step.state
+    return next_time_step, policy_step.state, trans_state
 
 
 def play(root_dir,
@@ -406,15 +419,17 @@ def play(root_dir,
     time_step = common.get_initial_time_step(env)
     algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
+    trans_state = algorithm.get_initial_transform_state(env.batch_size)
     episode_reward = 0.
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        time_step, policy_state = _step(
+        time_step, policy_state, trans_state = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
             policy_state=policy_state,
+            trans_state=trans_state,
             epsilon_greedy=epsilon_greedy,
             metrics=[])
         episode_length += 1

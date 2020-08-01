@@ -30,7 +30,9 @@ def _make_alg_experience(experience, name):
         rollout_info = ()
     else:
         rollout_info = getattr(experience.rollout_info, name)
-    return experience._replace(rollout_info=rollout_info)
+    return experience._replace(
+        rollout_info=rollout_info,
+        rollout_info_field=experience.rollout_info_field + '.' + name)
 
 
 class AgentHelper(object):
