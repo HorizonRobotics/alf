@@ -259,9 +259,6 @@ class Generator(Algorithm):
             outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
         loss, loss_propagated = self._grad_func(inputs, outputs, loss_func)
 
-        # loss, grad = self._grad_func(inputs, outputs, loss_func)
-        # loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
-
         mi_loss = ()
         if self._mi_estimator is not None:
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])

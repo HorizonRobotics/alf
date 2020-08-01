@@ -20,7 +20,7 @@ HyperNetwork.hidden_layers=%HIDDEN_LAYERS
 HyperNetwork.particles=10
 HyperNetwork.noise_dim=256
 HyperNetwork.kernel_sharpness=.1
-HyperNetwork.par_vi = 'gfsf'
+HyperNetwork.par_vi = 'svgd'
 HyperNetwork.loss_type = 'classification'
 HyperNetwork.optimizer=@hypernet/Adam()
 
@@ -31,7 +31,7 @@ ParamConvNet.use_bias=True
 Config.algorithm_ctor=@HyperNetwork
 Config.epochs=1000
 Config.summarize_grads_and_vars=True
-# Config.evaluate=True
+Config.eval_accuracy=True
 Config.eval_uncertainty=True
 
 

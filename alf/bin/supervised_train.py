@@ -90,7 +90,7 @@ class Config(object):
             algorithm_ctor=algorithm_ctor,
             random_seed=random_seed,
             epochs=epochs,
-            # evaluate=evaluate,
+            evaluate=eval_accuracy,
             summary_interval=summary_interval,
             summaries_flush_secs=summaries_flush_secs,
             summary_max_queue=summary_max_queue,
@@ -196,9 +196,9 @@ def train(config: Config):
                                          _markdownify(git_utils.get_diff()))
                         alf.summary.text('seed', str(random_seed))
 
-                # if config.evaluate:
-                #     print("==> Begin testing")
-                #     algorithm.evaluate()
+                if config.evaluate:
+                    print("==> Begin testing")
+                    algorithm.evaluate()
 
                 epoch_num += 1
                 if (config.epochs and epoch_num >= config.epochs):

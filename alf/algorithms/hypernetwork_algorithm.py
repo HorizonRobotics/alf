@@ -21,6 +21,7 @@ import torch.nn.functional as F
 from typing import Callable
 
 import alf
+from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.algorithms.generator import Generator
 from alf.algorithms.hypernetwork_networks import ParamNetwork
@@ -30,6 +31,43 @@ from alf.utils import common, math_ops
 from alf.utils.summary_utils import record_time
 
 HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo", ["loss", "extra"])
+
+
+def classification_loss(output, target):
+    pred = output.max(-1)[1]
+    acc = pred.eq(target).float().mean(0)
+    avg_acc = acc.mean()
+    loss = F.cross_entropy(output.transpose(1, 2), target)
+    return HyperNetworkLossInfo(loss=loss, extra=avg_acc)
+
+
+def regression_loss(output, target):
+    out_shape = output.shape[-1]
+    assert (target.shape[-1] == out_shape), (
+        "feature dimension of output and target does not match.")
+    loss = 0.5 * F.mse_loss(
+        output.reshape(-1, out_shape),
+        target.reshape(-1, out_shape),
+        reduction='sum')
+    return HyperNetworkLossInfo(loss=loss, extra=())
+
+
+def neglogprob(inputs, param_net, loss_type, params):
+    if loss_type == 'regression':
+        loss_func = regression_loss
+    elif loss_type == 'classification':
+        loss_func = classification_loss
+    else:
+        assert ValueError(
+            "loss_type only supports \"regression\" and \"classification\"")
+
+    param_net.set_parameters(params)
+    particles = params.shape[0]
+    data, target = inputs
+    output, _ = param_net(data)  # [B, N, D]
+    target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+                                        *target.shape[1:])
+    return loss_func(output, target)
 
 
 @gin.configurable
@@ -70,7 +108,6 @@ class HyperNetwork(Algorithm):
                  entropy_regularization=1.,
                  kernel_sharpness=1.,
                  loss_type="classification",
-                 loss_func: Callable = None,
                  voting="soft",
                  par_vi="gfsf",
                  optimizer=None,
@@ -118,13 +155,13 @@ class HyperNetwork(Algorithm):
             ====================================================================
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
-            loss_func (Callable): loss_func(outputs, targets)   
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
             optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
             name (str):
         """
+        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
             conv_layer_params=conv_layer_params,
@@ -152,6 +189,9 @@ class HyperNetwork(Algorithm):
             logging_info("-" * 68)
             logging_info(net)
 
+        if par_vi == 'svgd':
+            par_vi = 'svgd3'
+
         self._generator = Generator(
             gen_output_dim,
             noise_dim=noise_dim,
@@ -166,34 +206,19 @@ class HyperNetwork(Algorithm):
         self._particles = particles
         self._train_loader = None
         self._test_loader = None
-        self._loss_func = loss_func
-        self._par_vi = par_vi
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
         assert (voting in ['soft', 'hard'
                            ]), ("voting only supports \"soft\" and \"hard\"")
         self._voting = voting
         if loss_type == 'classification':
-            self._compute_loss = self._classification_loss
             self._vote = self._classification_vote
-            if self._loss_func is None:
-                self._loss_func = F.cross_entropy
         elif loss_type == 'regression':
-            self._compute_loss = self._regression_loss
             self._vote = self._regression_vote
-            if self._loss_func is None:
-                self._loss_func = functools.partial(
-                    F.mse_loss, reduction='sum')
         else:
             assert ValueError(
                 "loss_type only supports \"classification\" and \"regression\""
             )
-        if par_vi == 'gfsf':
-            self._grad_func = self._stein_grad
-        elif par_vi == 'svgd':
-            self._grad_func = self._svgd_grad
-        else:
-            assert ValueError("par_vi only supports \"gfsf\" and \"svgd\"")
 
     def set_data_loader(self, train_loader, test_loader=None):
         """Set data loadder for training and testing."""
@@ -236,7 +261,7 @@ class HyperNetwork(Algorithm):
         outputs, _ = self._param_net(inputs)
         return AlgStep(output=outputs, state=(), info=())
 
-    def train_iter(self, particles=None, loss_func=None, state=None):
+    def train_iter(self, particles=None, state=None):
         """Perform one epoch (iteration) of training."""
 
         assert self._train_loader is not None, "Must set data_loader first."
@@ -244,21 +269,16 @@ class HyperNetwork(Algorithm):
             loss = 0.
             if self._loss_type == 'classification':
                 avg_acc = []
-            params = None
-            # if not self._regenerate_for_each_batch:
-            #     params = self.sample_parameters(particles=particles)
             for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 alg_step = self.train_step((data, target),
-                                           params=params,
                                            particles=particles,
-                                           loss_func=loss_func,
                                            state=state)
                 self.update_with_gradient(alg_step.info)
-                loss += alg_step.info.extra.loss
+                loss += alg_step.info.extra.generator.loss
                 if self._loss_type == 'classification':
-                    avg_acc.append(alg_step.info.extra.extra)
+                    avg_acc.append(alg_step.info.extra.generator.extra)
         if self._loss_type == 'classification':
             acc = torch.as_tensor(avg_acc)
             logging.info("Avg acc: {}".format(acc.mean() * 100))
@@ -266,21 +286,11 @@ class HyperNetwork(Algorithm):
 
         return batch_idx + 1
 
-    def train_step(self,
-                   inputs,
-                   params=None,
-                   loss_func=None,
-                   particles=None,
-                   state=None):
+    def train_step(self, inputs, particles=None, state=None):
         """Perform one batch of training computation.
 
         Args:
             inputs (nested Tensor): input training data. 
-            params (Tensor): sampled parameter for param_net, if None,
-                will re-sample.
-            loss_func (Callable): loss_func([outputs, inputs])
-                (loss_func(outputs) if inputs is None) returns a Tensor with
-                shape [batch_size] as a loss for optimizing the generator
             particles (int): number of sampled particles. 
             state: not used
 
@@ -289,144 +299,19 @@ class HyperNetwork(Algorithm):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        # def _neglogprob(inputs, params)
-        if loss_func is None:
-            loss_func = self._loss_func
-        # if self._regenerate_for_each_batch:
         params = self.sample_parameters(particles=particles)
 
-        train_info, loss_propagated = self._grad_func(inputs, params,
-                                                      loss_func)
-        return AlgStep(
-            output=params,
-            state=(),
-            info=LossInfo(loss=loss_propagated, extra=train_info))
+        return self._generator.train_step(
+            inputs=None,
+            loss_func=functools.partial(neglogprob, inputs, self._param_net,
+                                        self._loss_type),
+            outputs=params,
+            state=())
 
-    def _stein_grad(self, inputs, params, loss_func):
-        """Compute particle gradients via gfsf (stein estimator). """
-        data, target = inputs
-        particles = params.shape[0]
-        self._param_net.set_parameters(params)
-        output, _ = self._param_net(data)  # [B, N, D]
-        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
-                                            *target.shape[1:])
-        loss, extra = self._compute_loss(output, target, loss_func)
-
-        loss_grad = torch.autograd.grad(loss.sum(), params)[0]
-        logq_grad = self._score_func(params)
-        grad = loss_grad - logq_grad
-        # grad = loss_grad
-
-        train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
-        loss_propagated = torch.sum(grad.detach() * params, dim=-1)
-
-        return train_info, loss_propagated
-
-    def _svgd_grad(self, inputs, params, loss_func):
-        """Compute particle gradients via svgd. """
-        data, target = inputs
-        particles = params.shape[0] // 2
-        params_i, params_j = torch.split(params, particles, dim=0)
-        self._param_net.set_parameters(params_j)
-        output, _ = self._param_net(data)  # [B, N/2, D]
-        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
-                                            *target.shape[1:])
-        loss, extra = self._compute_loss(output, target, loss_func)
-
-        loss_grad = torch.autograd.grad(loss.sum(), params_j)[0]  # [Nj, W]
-        # q_i = params_i + torch.rand_like(params_i) * 1e-8
-        # q_j = params_j + torch.rand_like(params_j) * 1e-8
-        # kappa, kappa_grad = self._rbf_func(q_j, q_i)  # [Nj, Ni], [Nj, Ni, W]
-        kappa, kappa_grad = self._rbf_func(params_j,
-                                           params_i)  # [Nj, Ni], [Nj, Ni, W]
-        Nj = kappa.shape[0]
-        kernel_logp = torch.matmul(kappa.t(), loss_grad) / Nj
-        grad = (kernel_logp - kappa_grad.mean(0))  # [Ni, W]
-
-        train_info = HyperNetworkLossInfo(loss=loss, extra=extra)
-        loss_propagated = torch.sum(grad.detach() * params_i, dim=-1)
-
-        return train_info, loss_propagated
-
-    def _classification_loss(self, output, target, loss_func):
-        pred = output.max(-1)[1]
-        acc = pred.eq(target).float().mean(0)
-        avg_acc = acc.mean()
-        loss = loss_func(output.transpose(1, 2), target)
-        return loss, avg_acc
-
-    def _regression_loss(self, output, target, loss_func):
-        out_shape = output.shape[-1]
-        assert (target.shape[-1] == out_shape), (
-            "feature dimension of output and target does not match.")
-        loss = loss_func(
-            output.reshape(-1, out_shape), target.reshape(-1, out_shape))
-        return loss, ()
-
-    def _rbf_func(self, x, y, h_min=1e-3):
-        r"""Compute the rbf kernel and its gradient w.r.t. first entry 
-            :math:`K(x, y), \nabla_x K(x, y)`
-
-        Args:
-            x (Tensor): set of N particles, shape (Nx x W), where W is the 
-                dimenseion of each particle
-            y (Tensor): set of N particles, shape (Ny x W), where W is the 
-                dimenseion of each particle
-            h_min (float): minimum kernel bandwidth
-
-        Returns:
-            :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
-            :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
-            
-        """
-        Nx, Dx = x.shape
-        Ny, Dy = y.shape
-        assert Dx == Dy
-        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
-        dist_sq = torch.sum(diff**2, -1)  # [Nx, Ny]
-        h = self._median_width(dist_sq)
-        h = torch.max(h, torch.as_tensor([h_min]))
-
-        kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
-        kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
-                                  -2 * diff / h)  # [Nx, Ny, W]
-
-        return kappa, kappa_grad
-
-    def _score_func(self, x, alpha=1e-6, h_min=1e-3):
-        r"""Compute the stein estimator of the score function 
-            :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`
-
-        Args:
-            x (Tensor): set of N particles, shape (N x D), where D is the 
-                dimenseion of each particle
-            alpha (float): weight of regularization for inverse kernel
-
-        Returns:
-            :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
-            
-        """
-        N, D = x.shape
-        diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
-        dist_sq = torch.sum(diff**2, -1)  # [N, N]
-
-        # compute the kernel width
-        h = self._median_width(dist_sq)
-        h = torch.max(h, torch.as_tensor([h_min]))
-        # h =.1
-
-        kappa = torch.exp(-dist_sq / h)  # [N, N]
-        kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
-
-        return kappa_inv @ kappa_grad
-
-    def evaluate(self, loss_func=None, particles=None):
+    def evaluate(self, particles=None):
         """Evaluate on a randomly drawn network. """
 
         assert self._test_loader is not None, "Must set test_loader first."
-        if loss_func is None:
-            loss_func = self._loss_func
         if self._use_fc_bn:
             self._generator.eval()
         params = self.sample_parameters(particles=particles)
@@ -441,17 +326,17 @@ class HyperNetwork(Algorithm):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 output, _ = self._param_net(data)  # [B, N, D]
-                loss, extra = self._vote(output, target, loss_func)
+                loss, extra = self._vote(output, target)
                 if self._loss_type == 'classification':
                     test_acc += extra.item()
-                test_loss += loss.item()
+                test_loss += loss.loss.item()
 
         if self._loss_type == 'classification':
             test_acc /= len(self._test_loader.dataset)
             logging.info("Test acc: {}".format(test_acc * 100))
         logging.info("Test loss: {}".format(test_loss))
 
-    def _classification_vote(self, output, target, loss_func):
+    def _classification_vote(self, output, target):
         """ensmeble the ooutputs from sampled classifiers."""
         particles = output.shape[1]
         probs = F.softmax(output, dim=-1)  # [B, N, D]
@@ -464,20 +349,20 @@ class HyperNetwork(Algorithm):
         correct = vote.eq(target.cpu().view_as(vote)).float().cpu().sum()
         target = target.unsqueeze(1).expand(*target.shape[:1], particles,
                                             *target.shape[1:])
-        loss = loss_func(output.transpose(1, 2), target)
+        loss = classification_loss(output.transpose(1, 2), target)
         return loss, correct
 
-    def _regression_vote(self, output, target, loss_func):
+    def _regression_vote(self, output, target):
         """ensemble the outputs for sampled regressors."""
         particles = output.shape[1]
         pred = output.mean(1)  # [B, D]
-        loss = loss_func(pred, target)
+        loss = regression_loss(pred, target)
         target = target.unsqueeze(1).expand(*target.shape[:1], particles,
                                             *target.shape[1:])
-        total_loss = loss_func(output, target)
+        total_loss = regression_loss(output, target)
         return loss, total_loss
 
-    def summarize_train(self, experience, train_info, loss_info, params):
+    def summarize_train(self, train_info, loss_info, params):
         """Generate summaries for training & loss info after each gradient update.
         The default implementation of this function only summarizes params
         (with grads) and the loss. An algorithm can override this for additional
