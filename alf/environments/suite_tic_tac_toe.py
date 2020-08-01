@@ -26,7 +26,7 @@ class TicTacToeEnvironment(AlfEnvironment):
 
     For two players, X and O, who take turns marking the spaces in a 3×3 grid.
     The player who succeeds in placing three of their marks in a horizontal,
-    vertical, or diagonal row is the winner.
+    vertical, or diagonal line is the winner.
 
     The reward is +1 if player 0 win, -1 if player 1 win and 0 for draw.
     An invalid move will give the reward for the opponent.
@@ -146,9 +146,9 @@ class TicTacToeEnvironment(AlfEnvironment):
         board_full = (self._boards == 0).sum(dim=(1, 2)) == 0
         B = self._B.unsqueeze(-1).unsqueeze(-1)
         lines = self._boards[B, self._line_y, self._line_x]
-        player1_won = ((lines == -1).sum(dim=2) == 3).any(dim=1)
-        player2_won = ((lines == 1).sum(dim=2) == 3).any(dim=1)
-        return torch.max(board_full, torch.max(player1_won, player2_won))
+        player0_won = ((lines == self._player_0).sum(dim=2) == 3).any(dim=1)
+        player1_won = ((lines == self._player_1).sum(dim=2) == 3).any(dim=1)
+        return torch.max(board_full, torch.max(player0_won, player1_won))
 
     def _get_current_player(self):
         return ((self._boards != 0).sum(dim=(1, 2)) % 2) * 2 - 1
@@ -180,7 +180,7 @@ class TicTacToeEnvironment(AlfEnvironment):
 
 @gin.configurable(whitelist=[])
 def load(name='', batch_size=1):
-    """Load CaraEnvironment
+    """Load TicTacToeEnvironment
 
     Args:
         name (str): not used
@@ -189,4 +189,6 @@ def load(name='', batch_size=1):
     return TicTacToeEnvironment(batch_size)
 
 
+# environments.utils.create_environment() check this flag to see if load()
+# has direct support for batched environment or not.
 load.batched = True
