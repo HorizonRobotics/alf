@@ -106,7 +106,6 @@ class HyperNetwork(Algorithm):
                  use_fc_bn=False,
                  particles=32,
                  entropy_regularization=1.,
-                 kernel_sharpness=1.,
                  loss_type="classification",
                  voting="soft",
                  par_vi="gfsf",
@@ -146,10 +145,6 @@ class HyperNetwork(Algorithm):
             use_fc_bn (bool): whether use batnch normalization for fc layers.
             particles (int): number of sampling particles
             entropy_regularization (float): weight of entropy regularization
-            kernel_sharpness (float): Used only for entropy_regularization > 0.
-                We calcualte the kernel in SVGD as:
-                    :math:`\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))`
-                where width is the elementwise moving average of :math:`(x-y)^2`
 
             Args for training and testing
             ====================================================================
@@ -197,13 +192,13 @@ class HyperNetwork(Algorithm):
             noise_dim=noise_dim,
             net=net,
             entropy_regularization=entropy_regularization,
-            kernel_sharpness=kernel_sharpness,
             par_vi=par_vi,
             optimizer=optimizer,
             name=name)
 
         self._param_net = param_net
         self._particles = particles
+        self._entropy_regularization = entropy_regularization
         self._train_loader = None
         self._test_loader = None
         self._use_fc_bn = use_fc_bn
@@ -224,6 +219,7 @@ class HyperNetwork(Algorithm):
         """Set data loadder for training and testing."""
         self._train_loader = train_loader
         self._test_loader = test_loader
+        self._entropy_regularization = 1 / len(train_loader)
 
     def set_particles(self, particles):
         """Set the number of particles to sample through one forward
@@ -286,7 +282,11 @@ class HyperNetwork(Algorithm):
 
         return batch_idx + 1
 
-    def train_step(self, inputs, particles=None, state=None):
+    def train_step(self,
+                   inputs,
+                   particles=None,
+                   entropy_regularization=None,
+                   state=None):
         """Perform one batch of training computation.
 
         Args:
@@ -300,12 +300,15 @@ class HyperNetwork(Algorithm):
                 info: LossInfo
         """
         params = self.sample_parameters(particles=particles)
+        if entropy_regularization is None:
+            entropy_regularization = self._entropy_regularization
 
         return self._generator.train_step(
             inputs=None,
             loss_func=functools.partial(neglogprob, inputs, self._param_net,
                                         self._loss_type),
             outputs=params,
+            entropy_regularization=entropy_regularization,
             state=())
 
     def evaluate(self, particles=None):

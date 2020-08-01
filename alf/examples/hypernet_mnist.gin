@@ -19,7 +19,6 @@ HyperNetwork.fc_layer_params=%FC_LAYER_PARAMS
 HyperNetwork.hidden_layers=%HIDDEN_LAYERS
 HyperNetwork.particles=10
 HyperNetwork.noise_dim=256
-HyperNetwork.kernel_sharpness=.1
 HyperNetwork.par_vi = 'svgd'
 HyperNetwork.loss_type = 'classification'
 HyperNetwork.optimizer=@hypernet/Adam()

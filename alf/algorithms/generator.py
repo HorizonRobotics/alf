@@ -88,7 +88,6 @@ class Generator(Algorithm):
                  net: Network = None,
                  net_moving_average_rate=None,
                  entropy_regularization=0.,
-                 kernel_sharpness=2.,
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
                  par_vi="gfsf",
@@ -109,10 +108,6 @@ class Generator(Algorithm):
                 version of net to do prediction. This has been shown to be
                 effective for GAN training (arXiv:1907.02544, arXiv:1812.04948).
             entropy_regularization (float): weight of entropy regularization
-            kernel_sharpness (float): Used only for entropy_regularization > 0.
-                We calcualte the kernel in SVGD as:
-                    :math:`\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))`
-                where width is the elementwise moving average of :math:`(x-y)^2`
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
@@ -145,7 +140,6 @@ class Generator(Algorithm):
 
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=TensorSpec(shape=()))
-            self._kernel_sharpness = kernel_sharpness
 
         noise_spec = TensorSpec(shape=(noise_dim, ))
 
@@ -239,6 +233,7 @@ class Generator(Algorithm):
                    loss_func,
                    outputs=None,
                    batch_size=None,
+                   entropy_regularization=None,
                    state=None):
         """
         Args:
@@ -257,7 +252,10 @@ class Generator(Algorithm):
         """
         if outputs is None:
             outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
-        loss, loss_propagated = self._grad_func(inputs, outputs, loss_func)
+        if entropy_regularization is None:
+            entropy_regularization = self._entropy_regularization
+        loss, loss_propagated = self._grad_func(inputs, outputs, loss_func,
+                                                entropy_regularization)
 
         mi_loss = ()
         if self._mi_estimator is not None:
@@ -358,14 +356,14 @@ class Generator(Algorithm):
 
         return kappa_inv @ kappa_grad
 
-    def _svgd_grad(self, inputs, outputs, loss_func):
+    def _svgd_grad(self, inputs, outputs, loss_func, entropy_regularization):
         """
         Compute particle gradients via SVGD, empirical expectation
         evaluated by a single resampled particle. 
         """
         outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
         kernel_weight = self._rbf_func(outputs, outputs2)
-        weight_sum = self._entropy_regularization * kernel_weight.sum()
+        weight_sum = entropy_regularization * kernel_weight.sum()
 
         kernel_grad = torch.autograd.grad(weight_sum, outputs2)[0]
 
@@ -383,7 +381,7 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
-    def _svgd_grad2(self, inputs, outputs, loss_func):
+    def _svgd_grad2(self, inputs, outputs, loss_func, entropy_regularization):
         """
         Compute particle gradients via SVGD, empirical expectation
         evaluated by splitting half of the sampled batch. 
@@ -403,11 +401,11 @@ class Generator(Algorithm):
         kernel_weight, kernel_grad = self._rbf_func2(outputs_j, outputs_i)
         kernel_logp = torch.matmul(kernel_weight.t(),
                                    loss_grad) / particles  # [Ni, D]
-        grad = kernel_logp - kernel_grad.mean(0)
+        grad = kernel_logp - entropy_regularization * kernel_grad.mean(0)
         loss_propagated = torch.sum(grad.detach() * outputs_i, dim=-1)
         return loss, loss_propagated
 
-    def _svgd_grad3(self, inputs, outputs, loss_func):
+    def _svgd_grad3(self, inputs, outputs, loss_func, entropy_regularization):
         """
         Compute particle gradients via SVGD, empirical expectation
         evaluated by resampled particles of the same batch size. 
@@ -427,12 +425,12 @@ class Generator(Algorithm):
         kernel_weight, kernel_grad = self._rbf_func2(outputs2, outputs)
         kernel_logp = torch.matmul(kernel_weight.t(),
                                    loss_grad) / particles  # [N, D]
-        grad = kernel_logp - kernel_grad.mean(0)
+        grad = kernel_logp - entropy_regularization * kernel_grad.mean(0)
         loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
         return loss, loss_propagated
 
-    def _gfsf_grad(self, inputs, outputs, loss_func):
+    def _gfsf_grad(self, inputs, outputs, loss_func, entropy_regularization):
         """Compute particle gradients via GFSF (Stein estimator). """
         assert inputs is None, "\"gfsf\" does not support conditional generator"
         loss_inputs = outputs
@@ -444,7 +442,7 @@ class Generator(Algorithm):
         loss_grad = torch.autograd.grad(neglogp.sum(), outputs)[0]  # [N2, D]
 
         logq_grad = self._score_func(outputs)
-        grad = loss_grad - logq_grad
+        grad = loss_grad - entropy_regularization * logq_grad
         loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
         return loss, loss_propagated

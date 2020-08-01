@@ -55,8 +55,17 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf', 500), ('svgd2'), ('svgd3'))
-    def test_bayesian_linear_regression(self, par_vi='gfsf', particles=32):
+    @parameterized.parameters(
+        # ('gfsf', 512),
+        # ('gfsf', 512, 100),
+        ('svgd2'),
+        ('svgd2', 32, 100),
+        ('svgd3'),
+        ('svgd3', 32, 100))
+    def test_bayesian_linear_regression(self,
+                                        par_vi='svgd3',
+                                        particles=32,
+                                        train_batch_size=10):
         """
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where 
@@ -97,14 +106,15 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         print("ground truth cov: {}".format(true_cov))
 
         def _train():
-            # perm = torch.randperm(batch_size)
-            # idx = perm[:train_batch_size]
-            # train_inputs = inputs[idx]
-            # train_targets = targets[idx]
-            train_inputs = inputs
-            train_targets = targets
+            perm = torch.randperm(batch_size)
+            idx = perm[:train_batch_size]
+            train_inputs = inputs[idx]
+            train_targets = targets[idx]
             alg_step = algorithm.train_step(
-                inputs=(train_inputs, train_targets), particles=particles)
+                inputs=(train_inputs, train_targets),
+                entropy_regularization=train_batch_size / batch_size,
+                particles=particles)
+
             algorithm.update_with_gradient(alg_step.info)
 
         def _test():
@@ -148,7 +158,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             print("train_iter {}: cov err {}".format(i, cov_err))
             print("learned_cov norm: {}".format(learned_cov.norm()))
 
-        for i in range(50000):
+        for i in range(40000):
             _train()
             if i % 1000 == 0:
                 _test()
