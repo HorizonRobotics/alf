@@ -86,7 +86,6 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             inputs.t() @ inputs)  # + torch.eye(input_size))
         true_mean = true_cov @ inputs.t() @ targets
         noise_dim = 3
-        train_batch_size = 100
         algorithm = HyperNetwork(
             input_tensor_spec=input_spec,
             last_layer_param=(output_dim, False),
@@ -113,7 +112,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
             algorithm.update_with_gradient(alg_step.info)
 
-        def _test():
+        def _test(i):
 
             params = algorithm.sample_parameters(particles=200)
             computed_mean = params.mean(0)
@@ -154,10 +153,22 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             print("train_iter {}: cov err {}".format(i, cov_err))
             print("learned_cov norm: {}".format(learned_cov.norm()))
 
+        # train_iter = 1000
+        # for t in range(int(batch_size / train_batch_size)):
+        #     train_inputs = inputs[t*train_batch_size : (t+1)*train_batch_size]
+        #     train_targets = targets[t*train_batch_size : (t+1)*train_batch_size]
+        #     for j in range(train_iter):
+        #         alg_step = algorithm.train_step(
+        #             inputs=(train_inputs, train_targets),
+        #             entropy_regularization=1/(t+1),
+        #             particles=particles)
+        #         algorithm.update_with_gradient(alg_step.info)
+        #     _test(t)
+
         for i in range(40000):
             _train()
             if i % 1000 == 0:
-                _test()
+                _test(i)
 
         learned_mean = algorithm._generator._net._fc_layers[0].bias
         mean_err = torch.norm(learned_mean - true_mean.squeeze())
