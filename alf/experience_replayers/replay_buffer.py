@@ -70,7 +70,7 @@ class ReplayBuffer(RingBuffer):
                 stored in the buffer.
             max_length (int): maximum number of time steps stored in buffer.
             num_earliest_frames_ignored (int): ignore the earlist so many frames
-                when sample from the buffer. This is typically required when
+                from the buffer when sampling. This is typically required when
                 FrameStacker is used. ``keep_episodic_info`` will be set to True
                 if ``num_earliest_frames_ignored`` > 0 as ``FrameStacker`` need
                 episode information.

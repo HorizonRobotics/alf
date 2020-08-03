@@ -165,7 +165,7 @@ class Algorithm(nn.Module):
         if config and config.data_transformer:
             self._data_transformer = config.data_transformer
         else:
-            self._data_transformer = IdentityDataTransformer(None)
+            self._data_transformer = IdentityDataTransformer()
         self._num_earliest_frames_ignored = self._data_transformer.stack_size - 1
         self._transform_state_spec = self._data_transformer.state_spec
 

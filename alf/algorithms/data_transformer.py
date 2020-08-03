@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Data transformers for transforming data from environment or replay buffer."""
 
 import copy
 from functools import partial
@@ -43,7 +44,7 @@ class DataTransformer(nn.Module):
     def __init__(self, transformed_observation_spec, state_spec):
         """
         Args:
-            transformed_observation_spec (nested TensorSpec): descriging the
+            transformed_observation_spec (nested TensorSpec): describing the
                 transformed observation
             state_spec (nested TensorSpec): describing the state of the
                 transformer when it is used to transform ``TimeStep``
@@ -60,6 +61,10 @@ class DataTransformer(nn.Module):
     @property
     def transformed_observation_spec(self):
         """Get the transformed observation_spec."""
+        assert self._transformed_observation_spec is not None, (
+            "transformed_observation_spec is not set. This might be caused by "
+            "not setting observation_spec when constructing IdentityDataTransformer."
+        )
         return self._transformed_observation_spec
 
     @property
@@ -101,7 +106,7 @@ class DataTransformer(nn.Module):
 
 
 class SequentialDataTransformer(DataTransformer):
-    """A data transformer consisting of sequence of data transformers."""
+    """A data transformer consisting of a sequence of data transformers."""
 
     def __init__(self, data_transformer_ctors, observation_spec):
         """
@@ -391,6 +396,14 @@ class SimpleDataTransformer(DataTransformer):
 
 class IdentityDataTransformer(SimpleDataTransformer):
     """A data transformer that keeps the data unchanged."""
+
+    def __init__(self, observation_spec=None):
+        """
+        observation_spec (nested TensorSpec): describing the observation. This
+            should be provided when ``transformed_observation_spec`` propery
+            needs to be accessed.
+        """
+        super().__init__(observation_spec)
 
     def _transform(self, timestep_or_exp):
         return timestep_or_exp
