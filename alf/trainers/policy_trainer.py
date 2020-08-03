@@ -207,12 +207,29 @@ class Trainer(object):
         self._restore_checkpoint()
         alf.summary.enable_summary()
         try:
+            if self._config.profiling:
+                import cProfile, pstats, io
+                from pstats import SortKey
+                pr = cProfile.Profile()
+                pr.enable()
+
             common.run_under_record_context(
                 self._train,
                 summary_dir=self._train_dir,
                 summary_interval=self._summary_interval,
                 flush_secs=self._summaries_flush_secs,
                 summary_max_queue=self._summary_max_queue)
+
+            if self._config.profiling:
+                pr.disable()
+                s = io.StringIO()
+                ps = pstats.Stats(pr, stream=s).sort_stats(SortKey.TIME)
+                ps.print_stats()
+                ps = pstats.Stats(pr, stream=s).sort_stats(SortKey.CUMULATIVE)
+                ps.print_stats()
+                ps.print_callees()
+
+                logging.info(s.getvalue())
         finally:
             self._save_checkpoint()
             self._close_envs()
