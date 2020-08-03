@@ -897,6 +897,7 @@ class ParallelConvTranspose2D(nn.Module):
         return self._bias
 
 
+@gin.configurable
 class Reshape(nn.Module):
     def __init__(self, shape):
         """A layer for reshape the tensor.

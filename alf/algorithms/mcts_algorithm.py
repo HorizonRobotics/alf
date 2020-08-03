@@ -27,7 +27,7 @@ from alf.utils import dist_utils
 from alf import nest
 from alf.nest.utils import convert_device
 from alf.trainers.policy_trainer import Trainer
-from alf.utils import common
+from alf.utils import common, tensor_utils
 from .mcts_models import MCTSModel, ModelOutput
 
 MAXIMUM_FLOAT_VALUE = float('inf')
@@ -242,11 +242,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
         to_plays = to_plays.cpu()
         for sim in range(1, self._num_simulations + 1):
-            search_paths, last_to_plays = self._search(trees, to_plays)
-            nodes_to_expand = [search_path[-1] for search_path in search_paths]
-            nodes_to_expand = torch.tensor(nodes_to_expand)
-            prev_nodes = [search_path[-2] for search_path in search_paths]
-            prev_nodes = torch.tensor(prev_nodes)
+            search_paths, path_lengths, last_to_plays = self._search(
+                trees, to_plays)
+            nodes_to_expand = search_paths[path_lengths - 1, trees.B]
+            prev_nodes = search_paths[path_lengths - 2, trees.B]
             model_state = trees.model_state[(trees.B, prev_nodes)]
             action = trees.action[(trees.B, nodes_to_expand)]
             model_output = self._model.recurrent_inference(model_state, action)
@@ -261,6 +260,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             self._backup(
                 trees,
                 search_paths=search_paths,
+                path_lengths=path_lengths,
                 values=model_output.value,
                 to_plays=last_to_plays)
 
@@ -283,25 +283,35 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 nodes.extend([(b, int(c)) for c in list(children)])
 
     def _search(self, trees, to_plays):
-        batch_size = to_plays.shape[0]
+        """
+        Returns:
+            tuple:
+            - search_paths: [T, B] int64 matrix, where T is the max length of the
+                search paths. For paths whose length is shorter than T, search_path
+                is padded with the last node index of that path.
+            - path_lenghts: [B] vector, length of each search path
+            - last_to_plays: to_play for the last node of each path
+        """
         best_child_index = trees.best_child_index
         game_over = trees.game_over
         search_paths = []
-        last_to_plays = []
+        B = trees.B
+        nodes = trees.root_indices.cpu()
+        path_lengths = torch.ones_like(trees.B, device='cpu')
+        search_paths = [nodes]
+        while True:
+            done = torch.max(best_child_index[B, nodes] == 0,
+                             game_over[B, nodes])
+            if torch.all(done):
+                break
+            nodes = torch.where(done, nodes, best_child_index[B, nodes])
+            path_lengths[~done] += 1
+            search_paths.append(nodes)
+            to_plays = torch.where(done, to_plays,
+                                   self._is_two_player_game - to_plays)
 
-        for b in range(batch_size):
-            to_play = to_plays[b]
-            node = 0
-            search_path = [node]
-            while best_child_index[b, node] != 0 and not game_over[b, node]:
-                node = best_child_index[b, node]
-                search_path.append(node)
-                to_play = self._is_two_player_game - to_play
-            search_paths.append(search_path)
-            last_to_plays.append(to_play)
-
-        last_to_plays = torch.tensor(last_to_plays)
-        return search_paths, last_to_plays
+        search_paths = torch.stack(search_paths)
+        return convert_device((search_paths, path_lengths, to_plays))
 
     def _select_action(self, trees, steps):
         roots = (trees.B, trees.root_indices)
@@ -354,24 +364,34 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
         return prior_score + value_score
 
-    def _backup(self, trees: _MCTSTree, search_paths, values, to_plays):
-        values = values.cpu()
-        B = sum([[b] * len(p) for b, p in enumerate(search_paths)], [])
-        B = torch.tensor(B)
-        nodes = (B, torch.tensor(sum(search_paths, [])))
+    def _backup(self, trees: _MCTSTree, search_paths, path_lengths, values,
+                to_plays):
+        B = trees.B.unsqueeze(0)
+        T = search_paths.shape[0]
+        depth = torch.arange(T).unsqueeze(-1)
 
-        reward = trees.reward[nodes].cpu()
-        value_sum = trees.value_sum[nodes].cpu()
-        pos = len(value_sum) - 1
+        reward = trees.reward[B, search_paths]
+        reward[depth > path_lengths] = 0.
+        # [T+1, batch_size]
+        reward = tensor_utils.tensor_extend_zero(reward)
+        reward[path_lengths, B] = values
+        discounts = (self._discount**torch.arange(T + 1)).unsqueeze(-1)
 
-        for value, search_path in reversed(list(zip(values, search_paths))):
-            for _ in reversed(search_path):
-                value_sum[pos] += value
-                value = reward[pos] + self._discount * value
-                pos -= 1
+        # discounted_return[t] = discount^t * reward[t]
+        discounted_return = reward * discounts
+        # discounted_return[t] = \sum_{s=t}^T discount^s * reward[s]
+        discounted_return = reward.flip(0).cumsum(dim=0).flip(0)
 
+        # discounted_return[t] = \sum_{s=t}^T discount^(s-t) * reward[s]
+        discounted_return = discounted_return / discounts
+        discounted_return = discounted_return[1:]
+
+        value_sum = trees.value_sum[B, search_paths] + discounted_return
+
+        valid = depth < path_lengths
+        nodes = (B.expand(T, -1)[valid], search_paths[valid])
         trees.visit_count[nodes] += 1
-        trees.value_sum[nodes] = convert_device(value_sum)
+        trees.value_sum[nodes] = value_sum[valid]
         node_values = trees.calc_value(nodes)
         trees.update_value_stats(node_values)
         self._update_best_child(trees, nodes)

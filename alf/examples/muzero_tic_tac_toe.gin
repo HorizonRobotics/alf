@@ -12,10 +12,10 @@ create_board_game_mcts.num_simulations=20
 MuzeroAlgorithm.mcts_algorithm_ctor=@create_board_game_mcts
 MuzeroAlgorithm.model_ctor=@SimpleMCTSModel
 MuzeroAlgorithm.num_unroll_steps=5
-MuzeroAlgorithm.td_steps=5
+MuzeroAlgorithm.td_steps=-1
 
 encoder/EncodingNetwork.fc_layer_params=(256, 256)
-encoder/EncodingNetwork.input_preprocessors=alf.layers.Reshape([-1])
+encoder/EncodingNetwork.input_preprocessors=@alf.layers.Reshape([-1])
 encoder/EncodingAlgorithm.encoder_cls=@encoder/EncodingNetwork
 
 Agent.representation_learner_cls=@encoder/EncodingAlgorithm
