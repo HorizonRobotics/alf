@@ -97,23 +97,27 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             par_vi=par_vi,
             optimizer=alf.optimizers.Adam(lr=1e-4))
         print("ground truth mean: {}".format(true_mean))
-        print("ground truth cov norm: {}".format(true_cov.norm()))
         print("ground truth cov: {}".format(true_cov))
+        print("ground truth cov norm: {}".format(true_cov.norm()))
 
-        def _train():
-            perm = torch.randperm(batch_size)
-            idx = perm[:train_batch_size]
-            train_inputs = inputs[idx]
-            train_targets = targets[idx]
+        def _train(train_batch=None, entropy_regularization=None):
+            if train_batch is None:
+                perm = torch.randperm(batch_size)
+                idx = perm[:train_batch_size]
+                train_inputs = inputs[idx]
+                train_targets = targets[idx]
+            else:
+                train_inputs, train_targets = train_batch
+            if entropy_regularization is None:
+                entropy_regularization = train_batch_size / batch_size
             alg_step = algorithm.train_step(
                 inputs=(train_inputs, train_targets),
-                entropy_regularization=train_batch_size / batch_size,
+                entropy_regularization=entropy_regularization,
                 particles=particles)
 
             algorithm.update_with_gradient(alg_step.info)
 
         def _test(i):
-
             params = algorithm.sample_parameters(particles=200)
             computed_mean = params.mean(0)
             computed_cov = self.cov(params)
@@ -131,7 +135,6 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             predicts = inputs @ learned_mean  # [batch]
 
             spred_err = torch.norm((sampled_preds - targets).mean(1))
-            cpred_err = torch.norm(computed_preds - targets.squeeze())
             pred_err = torch.norm(predicts - targets.squeeze())
 
             smean_err = torch.norm(computed_mean - true_mean.squeeze())
@@ -153,19 +156,26 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             print("train_iter {}: cov err {}".format(i, cov_err))
             print("learned_cov norm: {}".format(learned_cov.norm()))
 
-        # train_iter = 1000
-        # for t in range(int(batch_size / train_batch_size)):
-        #     train_inputs = inputs[t*train_batch_size : (t+1)*train_batch_size]
-        #     train_targets = targets[t*train_batch_size : (t+1)*train_batch_size]
-        #     for j in range(train_iter):
-        #         alg_step = algorithm.train_step(
-        #             inputs=(train_inputs, train_targets),
-        #             entropy_regularization=1/(t+1),
-        #             particles=particles)
-        #         algorithm.update_with_gradient(alg_step.info)
-        #     _test(t)
+        # train_iter = 90000
+        # true_mean = beta
+        # for t in range(1, train_iter+1):
+        #     train_inputs = input_spec.randn(outer_dims=(train_batch_size, ))
+        #     noise = torch.randn(train_batch_size, output_dim)
+        #     train_targets = train_inputs @ beta + noise
+        #     _train(train_batch=(train_inputs, train_targets),
+        #            entropy_regularization=1/t)
+        #     if t % 1000 == 0:
+        #         print("-" * 68)
+        #         learned_mean = algorithm._generator._net._fc_layers[0].bias
+        #         mean_err = torch.norm(learned_mean - true_mean.squeeze())
+        #         mean_err = mean_err / torch.norm(true_mean)
+        #         weight = algorithm._generator._net._fc_layers[0].weight
+        #         learned_cov = weight @ weight.t()
+        #         print("train_iter {}: mean err {}".format(t, mean_err))
+        #         print("train_iter {}: learned_cov norm {}".format(t, torch.norm(learned_cov)))
 
-        for i in range(40000):
+        train_iter = 40000
+        for i in range(train_iter):
             _train()
             if i % 1000 == 0:
                 _test(i)
@@ -177,6 +187,9 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         learned_cov = weight @ weight.t()
         cov_err = torch.norm(learned_cov - true_cov)
         cov_err = cov_err / torch.norm(true_cov)
+        print("-" * 68)
+        print("train_iter {}: mean err {}".format(train_iter, mean_err))
+        print("train_iter {}: cov err {}".format(train_iter, cov_err))
 
         self.assertLess(mean_err, 0.01)
         self.assertLess(cov_err, 0.1)

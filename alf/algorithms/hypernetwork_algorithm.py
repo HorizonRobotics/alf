@@ -22,12 +22,13 @@ from typing import Callable
 
 import alf
 from alf.algorithms.algorithm import Algorithm
+from alf.algorithms.config import SupervisedTrainerConfig
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.algorithms.generator import Generator
 from alf.algorithms.hypernetwork_networks import ParamNetwork
 from alf.networks import EncodingNetwork
 from alf.tensor_specs import TensorSpec
-from alf.utils import common, math_ops
+from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
 
 HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo", ["loss", "extra"])
@@ -111,6 +112,7 @@ class HyperNetwork(Algorithm):
                  par_vi="gfsf",
                  optimizer=None,
                  logging_network=False,
+                 config: SupervisedTrainerConfig = None,
                  name="HyperNetwork"):
         """
         Args:
@@ -157,6 +159,7 @@ class HyperNetwork(Algorithm):
             name (str):
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
             conv_layer_params=conv_layer_params,
@@ -196,6 +199,7 @@ class HyperNetwork(Algorithm):
             optimizer=optimizer,
             name=name)
 
+        self._config = config
         self._param_net = param_net
         self._particles = particles
         self._entropy_regularization = entropy_regularization
@@ -261,6 +265,7 @@ class HyperNetwork(Algorithm):
         """Perform one epoch (iteration) of training."""
 
         assert self._train_loader is not None, "Must set data_loader first."
+        alf.summary.increment_global_counter()
         with record_time("time/train"):
             loss = 0.
             if self._loss_type == 'classification':
@@ -271,14 +276,17 @@ class HyperNetwork(Algorithm):
                 alg_step = self.train_step((data, target),
                                            particles=particles,
                                            state=state)
-                self.update_with_gradient(alg_step.info)
-                loss += alg_step.info.extra.generator.loss
+                loss_info, params = self.update_with_gradient(alg_step.info)
+                # loss += alg_step.info.extra.generator.loss
+                loss += loss_info.extra.generator.loss
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.generator.extra)
+        acc = None
         if self._loss_type == 'classification':
-            acc = torch.as_tensor(avg_acc)
-            logging.info("Avg acc: {}".format(acc.mean() * 100))
+            acc = torch.as_tensor(avg_acc).mean() * 100
+            logging.info("Avg acc: {}".format(acc))
         logging.info("Cum loss: {}".format(loss))
+        self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
 
         return batch_idx + 1
 
@@ -337,7 +345,9 @@ class HyperNetwork(Algorithm):
         if self._loss_type == 'classification':
             test_acc /= len(self._test_loader.dataset)
             logging.info("Test acc: {}".format(test_acc * 100))
+            alf.summary.scalar(name='eval/test_acc', data=test_acc * 100)
         logging.info("Test loss: {}".format(test_loss))
+        alf.summary.scalar(name='eval/test_loss', data=test_loss)
 
     def _classification_vote(self, output, target):
         """ensmeble the ooutputs from sampled classifiers."""
@@ -365,7 +375,7 @@ class HyperNetwork(Algorithm):
         total_loss = regression_loss(output, target)
         return loss, total_loss
 
-    def summarize_train(self, train_info, loss_info, params):
+    def summarize_train(self, loss_info, params, cum_loss=None, avg_acc=None):
         """Generate summaries for training & loss info after each gradient update.
         The default implementation of this function only summarizes params
         (with grads) and the loss. An algorithm can override this for additional
@@ -383,5 +393,9 @@ class HyperNetwork(Algorithm):
         if self._config.summarize_grads_and_vars:
             summary_utils.summarize_variables(params)
             summary_utils.summarize_gradients(params)
-        if self._debug_summaries:
+        if self._config.debug_summaries:
             summary_utils.summarize_loss(loss_info)
+        if cum_loss is not None:
+            alf.summary.scalar(name='train_epoch/neglogprob', data=cum_loss)
+        if avg_acc is not None:
+            alf.summary.scalar(name='train_epoch/avg_acc', data=avg_acc)

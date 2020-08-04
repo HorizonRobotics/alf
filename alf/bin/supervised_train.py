@@ -41,6 +41,7 @@ import time
 import torch
 import torch.nn as nn
 
+from alf.algorithms.config import SupervisedTrainerConfig
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, git_utils, math_ops
 import alf.utils.datagen as datagen
@@ -53,50 +54,6 @@ flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 
 FLAGS = flags.FLAGS
-
-
-@gin.configurable
-class Config(object):
-    """Configuration for supervised training."""
-
-    def __init__(self,
-                 root_dir,
-                 algorithm_ctor=None,
-                 random_seed=None,
-                 epochs=2e+5,
-                 eval_accuracy=True,
-                 eval_uncertainty=False,
-                 summary_interval=50,
-                 summaries_flush_secs=1,
-                 summary_max_queue=100,
-                 summarize_grads_and_vars=False):
-        """
-        Args:
-            root_dir (str): directory for saving summary and checkpoints
-            algorithm_ctor (Callable): callable that create an
-                ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
-            random_seed (None|int): random seed, a random seed is used if None
-            epochs (int): number of training epoches
-            eval_accuracy (bool): whether to evluate accuracy after training
-            eval_uncertainty (bool): whether to evluate uncertainty after training
-            summary_interval (int): write summary every so many training steps
-            summaries_flush_secs (int): flush summary to disk every so many seconds
-            summary_max_queue (int): flush to disk every so mary summaries
-            summarize_grads_and_vars (bool): If True, gradient and network variable
-                summaries will be written during training.
-        """
-        parameters = dict(
-            root_dir=root_dir,
-            algorithm_ctor=algorithm_ctor,
-            random_seed=random_seed,
-            epochs=epochs,
-            evaluate=eval_accuracy,
-            summary_interval=summary_interval,
-            summaries_flush_secs=summaries_flush_secs,
-            summary_max_queue=summary_max_queue,
-            summarize_grads_and_vars=summarize_grads_and_vars)
-        for k, v in parameters.items():
-            self.__setattr__(k, v)
 
 
 @gin.configurable
@@ -126,7 +83,7 @@ def create_dataset(dataset_name='mnist',
     return trainset, testset
 
 
-def train(config: Config):
+def train(config: SupervisedTrainerConfig):
     root_dir = os.path.expanduser(config.root_dir)
     train_dir = os.path.join(root_dir, 'train')
     eval_dir = os.path.join(root_dir, 'eval')
@@ -146,7 +103,8 @@ def train(config: Config):
     algorithm = config.algorithm_ctor(
         input_tensor_spec=input_tensor_spec,
         last_layer_param=(output_dim, True),
-        last_activation=math_ops.identity)
+        last_activation=math_ops.identity,
+        config=config)
 
     algorithm.set_data_loader(trainset, testset)
 
@@ -210,7 +168,7 @@ def train(config: Config):
 def main(_):
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-    train_config = Config(FLAGS.root_dir)
+    train_config = SupervisedTrainerConfig(FLAGS.root_dir)
     train(train_config)
 
 

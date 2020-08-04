@@ -27,11 +27,12 @@ import alf.algorithms.hypernetwork_networks
 ParamConvNet.use_bias=True
 
 # training config
-Config.algorithm_ctor=@HyperNetwork
-Config.epochs=1000
-Config.summarize_grads_and_vars=True
-Config.eval_accuracy=True
-Config.eval_uncertainty=True
+SupervisedTrainerConfig.algorithm_ctor=@HyperNetwork
+SupervisedTrainerConfig.epochs=1000
+SupervisedTrainerConfig.debug_summaries=True
+SupervisedTrainerConfig.summarize_grads_and_vars=True
+SupervisedTrainerConfig.eval_accuracy=True
+SupervisedTrainerConfig.eval_uncertainty=True
 
 
 
