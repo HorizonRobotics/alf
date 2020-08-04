@@ -334,6 +334,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
             discrete_action_spec = action_spec[0]
             continuous_action_spec = action_spec[1]
         elif discrete_action_spec:
+            assert len(alf.nest.flatten(discrete_action_spec)) == 1, (
+                "Only support at most one discrete action currently! "
+                "Discrete action spec: {}".format(discrete_action_spec))
             discrete_action_spec = action_spec
         elif continuous_action_spec:
             continuous_action_spec = action_spec
@@ -358,9 +361,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if discrete_action_spec:
             act_type = ActionType.Discrete
-            assert len(alf.nest.flatten(discrete_action_spec)) == 1, (
-                "Only support at most one discrete action currently! "
-                "Discrete action spec: {}".format(discrete_action_spec))
             assert q_network_cls is not None, (
                 "If there exists a discrete action, then QNetwork must "
                 "be provided!")
