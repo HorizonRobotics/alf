@@ -146,7 +146,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             discount: float,
             is_two_player_game: bool,
             visit_softmax_temperature_fn: Callable,
-            known_value_bounds=(None, None),
+            known_value_bounds=None,
             debug_summaries=False,
     ):
         r"""
@@ -319,9 +319,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         children = (trees.B.unsqueeze(1), children.unsqueeze(0))
         visit_counts = trees.visit_count[children]
         t = self._visit_softmax_temperature_fn(steps).unsqueeze(-1)
-        action = torch.multinomial(
+        action_id = torch.multinomial(
             F.softmax(visit_counts / t, dim=1), num_samples=1).squeeze(1)
-
+        candidate_actions = trees.action[children]
+        action = candidate_actions[trees.B, action_id]
         children_visit_count = trees.visit_count[children]
         parent_visit_count = (trees.visit_count[roots] - 1.0).unsqueeze(-1)
         info = MCTSInfo(
@@ -375,7 +376,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         # [T+1, batch_size]
         reward = tensor_utils.tensor_extend_zero(reward)
         reward[path_lengths, B] = values
-        discounts = (self._discount**torch.arange(T + 1)).unsqueeze(-1)
+        discounts = (self._discount
+                     **torch.arange(T + 1, dtype=torch.float32)).unsqueeze(-1)
 
         # discounted_return[t] = discount^t * reward[t]
         discounted_return = reward * discounts
@@ -522,7 +524,10 @@ def create_shogi_mcts(observation_spec, action_spec, debug_summaries):
 
 
 @gin.configurable
-def create_control_mcts(observation_spec, action_spec):
+def create_control_mcts(observation_spec,
+                        action_spec,
+                        num_simulations=50,
+                        debug_summaries=False):
     """Helper function for creating MCTSAlgorithm for atari games."""
 
     def visit_softmax_temperature(num_moves):
@@ -545,4 +550,5 @@ def create_control_mcts(observation_spec, action_spec):
         pb_c_init=1.25,
         pb_c_base=19652,
         is_two_player_game=False,
-        visit_softmax_temperature_fn=visit_softmax_temperature)
+        visit_softmax_temperature_fn=visit_softmax_temperature,
+        debug_summaries=debug_summaries)

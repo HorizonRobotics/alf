@@ -110,7 +110,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         # target_action.shape is [B, unroll_steps+1, num_candidate]
         # log_prob needs sample shape in the beginning
-        action = target.action.permute(2, 0, 1, *target.action.shape[3:])
+        action = target.action.permute(2, 0, 1,
+                                       *list(range(3, target.action.ndim)))
         action_log_probs = model_output.action_distribution.log_prob(action)
         action_log_probs = action_log_probs.permute(1, 2, 0)
         policy_loss = -(target.action_probability * action_log_probs).sum(
@@ -271,10 +272,13 @@ class SimpleMCTSModel(MCTSModel):
         game_over_logit = self._game_over_layer(x).squeeze(1)
         game_over = game_over_logit > self._game_over_logit_thresh
         if self._num_sampled_actions is not None:
-            actions = action_distribution.rsample((self._num_sampled_actions))
-            action_probs = action_distribution.log_prob(actions)
-            actions = actions.permute(1, 2, 0, *actions.shape[3:])
-            action_probs = action_probs.permute(1, 2, 0)
+            # [num_sampled_actions, B, ...]
+            actions = action_distribution.rsample(
+                (self._num_sampled_actions, ))
+            # [num_sampled_actions, B]
+            action_probs = action_distribution.log_prob(actions).exp()
+            actions = actions.transpose(0, 1)
+            action_probs = action_probs.transpose(0, 1)
         else:
             actions = self._actions.expand(state.shape[0], -1)
             action_probs = action_distribution.probs
