@@ -40,6 +40,7 @@ class TrainerConfig(object):
                  summaries_flush_secs=1,
                  summary_max_queue=10,
                  debug_summaries=False,
+                 profiling=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
                  summarize_output=False,
@@ -109,6 +110,8 @@ class TrainerConfig(object):
             summaries_flush_secs (int): flush summary to disk every so many seconds
             summary_max_queue (int): flush to disk every so mary summaries
             debug_summaries (bool): A bool to gather debug summaries.
+            profiling (bool): If True, use cProfile to profile the training. The
+                profile result will be written to ``root_dir``/py_train.INFO.
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
             summarize_output (bool): If True, summarize output of certain networks.
@@ -169,6 +172,7 @@ class TrainerConfig(object):
             summaries_flush_secs=summaries_flush_secs,
             summary_max_queue=summary_max_queue,
             debug_summaries=debug_summaries,
+            profiling=profiling,
             summarize_grads_and_vars=summarize_grads_and_vars,
             summarize_action_distributions=summarize_action_distributions,
             summarize_output=summarize_output,
