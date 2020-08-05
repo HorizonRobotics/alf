@@ -13,6 +13,7 @@
 # limitations under the License.
 """Wrappers for gym (numpy) environments. """
 
+from absl import logging
 from collections import deque
 import copy
 import cv2
@@ -174,7 +175,11 @@ class ImageChannelFirst(BaseObservationWrapper):
 
 @gin.configurable
 class FrameStack(BaseObservationWrapper):
-    """Stack previous `stack_size` frames, applied to Gym env."""
+    """Stack previous `stack_size` frames, applied to Gym env.
+
+    This is deprecated. Please use ``alf.algorithms.data_transformer.FrameStacker``,
+    which is more memory-efficient.
+    """
 
     def __init__(self,
                  env,
@@ -191,6 +196,9 @@ class FrameStack(BaseObservationWrapper):
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
+        logging.warning(
+            "FrameStack is deprecated. Please use data_transformer.FrameStacker "
+            "instead, which is more memory-efficient")
         self._channel_order = channel_order
         assert channel_order in ['channels_last', 'channels_first']
         if self._channel_order == 'channels_last':
