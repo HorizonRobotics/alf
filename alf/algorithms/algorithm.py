@@ -267,10 +267,6 @@ class Algorithm(nn.Module):
             alf.nest.extract_fields_from_nest(sample_exp)))
 
         if self._exp_replayer_type == "one_time":
-            assert self._num_earliest_frames_ignored == 0, (
-                "For TrainerConfig, "
-                "whole_replay_buffer_training and clear_replay_buffer cannot both be "
-                "True when FrameStacker is used")
             self._exp_replayer = OnetimeExperienceReplayer()
         elif self._exp_replayer_type == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(

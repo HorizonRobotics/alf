@@ -7,12 +7,6 @@ include "image_game_model.gin"
 import alf.algorithms.rnd_algorithm
 import alf.tensor_specs
 
-# FrameStacker data transformer does not work with PPO because FrameStacker needs
-# ReplayBuffer, while PPO uses "one_time" experience replay, which does not use
-# ReplayBuffer. So we need to use FrameStack gym wrapper instead.
-suite_gym.load.gym_env_wrappers=(@DMAtariPreprocessing, @FrameStack)
-FrameStack.stack_size=4
-
 suite_gym.load.max_episode_steps = 4500
 DMAtariPreprocessing.noop_max = 0
 # From OpenAI gym wiki:
