@@ -1250,7 +1250,10 @@ class Algorithm(nn.Module):
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
         experience = self._add_batch_info(experience, batch_info)
-        experience = self.transform_experience(experience)
+        if self._exp_replayer_type != "one_time":
+            # The experience put in one_time replayer is already transformed
+            # in unroll().
+            experience = self.transform_experience(experience)
         experience = self.preprocess_experience(experience)
         experience = self._clear_batch_info(experience)
         if self._processed_experience_spec is None:

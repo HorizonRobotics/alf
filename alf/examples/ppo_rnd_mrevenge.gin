@@ -55,7 +55,6 @@ RNDAlgorithm.keep_stacked_frames=%keep_stacked_frames
 rl/Adam.lr = 1e-4
 Agent.optimizer=@rl/Adam()
 Agent.intrinsic_reward_module=@RNDAlgorithm()
-TrainerConfig.data_transformer_ctor=[@ImageScaleTransformer, @RewardClipping]
 
 PPOLoss.entropy_regularization = 0.01
 
