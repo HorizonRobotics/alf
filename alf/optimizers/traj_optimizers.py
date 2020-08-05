@@ -15,7 +15,7 @@
 from absl import logging
 import numpy as np
 import torch
-from torch.distributions import MultivariateNormal
+from torch.distributions import Normal
 
 from alf.data_structures import TimeStep
 from alf.utils import tensor_utils
@@ -137,9 +137,9 @@ class CEMOptimizer(TrajOptimizer):
     def _init_distr(self, batch_size):
         means = self._init_mean * torch.zeros(
             batch_size * self._planning_horizon * self._action_dim)
-        covs = self._init_var * torch.eye(
+        std = self._init_var * torch.ones(
             batch_size * self._planning_horizon * self._action_dim)
-        return means, covs
+        return means, torch.sqrt(std)
 
     def obtain_solution(self, time_step: TimeStep, state):
         """Minimize the cost function provided
@@ -154,7 +154,7 @@ class CEMOptimizer(TrajOptimizer):
         """
         init_obs = time_step.observation
         batch_size = init_obs.shape[0]
-        distr = MultivariateNormal(*self._init_distr(batch_size))
+        distr = Normal(*self._init_distr(batch_size))
         solution = None
         for i in range(self._iterations):
             samples = distr.sample(
@@ -177,8 +177,8 @@ class CEMOptimizer(TrajOptimizer):
                 means = torch.mean(tops, dim=0)
                 # minimum cov of 1e-4 tends to work well with planning horizon
                 # of 10 with simpler as well as harder cost functions.
-                covs = torch.diag(
-                    torch.sum((tops - means)**2, dim=0) /
-                    (self._top_percent * self._population_size - 1) + 1.e-4)
-                distr = MultivariateNormal(means, covs)
+                std = torch.sum(
+                    (tops - means)**2, dim=0) / (
+                        self._top_percent * self._population_size - 1) + 1.e-4
+                distr = Normal(means, torch.sqrt(std))
         return solution
