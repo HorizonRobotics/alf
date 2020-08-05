@@ -62,6 +62,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  mcts_algorithm_ctor,
                  num_unroll_steps,
                  td_steps,
+                 recurrent_gradient_scaling_factor=0.5,
                  debug_summaries=False,
                  name="MuZero"):
         """
@@ -70,7 +71,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             action_spec (BoundedTensorSpec): representing the actions.
             model_ctor (Callable): will be called as
                 ``model_ctor(observation_spec=?, action_spec=?, debug_summaries=?)``
-                to constrcut the model. The model should follow the interface
+                to construct the model. The model should follow the interface
                 ``alf.algorithms.mcts_models.MCTSModel``.
             mcts_algorithm_ctor (Callable): will be called as
                 ``mcts_algorithm_ctor(observation_spec=?, action_spec=?, debug_summaries=?)``
@@ -80,7 +81,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 the discounted return. -1 means to bootstrap to the end of the game.
                 Can only used for environments whose rewards are zero except for
                 the last step as the current implmentation only use the reward
-                at the last step to caculate the return.
+                at the last step to calculate the return.
+            recurrent_gradient_scaling_factor (float): the gradient go through
+                the ``model.recurrent_inference`` is scaled by this factor. This
+                is suggested in Appendix G.
             debug_summaries (bool):
             name (str):
         """
@@ -109,6 +113,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._num_unroll_steps = num_unroll_steps
         self._td_steps = td_steps
         self._discount = mcts.discount
+        self._recurrent_gradient_scaling_factor = recurrent_gradient_scaling_factor
 
     def predict_step(self, time_step: TimeStep, state, epsilon_greedy):
         return self._mcts.predict_step(time_step, state)
@@ -126,7 +131,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             model_output = self._model.recurrent_inference(
                 model_output.state, info.action[:, i, ...])
             model_output = model_output._replace(
-                state=scale_gradient(model_output.state, 0.5))
+                state=scale_gradient(model_output.state, self.
+                                     _recurrent_gradient_scaling_factor))
             model_outputs.append(
                 dist_utils.distributions_to_params(model_output))
 

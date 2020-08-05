@@ -275,10 +275,10 @@ class SimpleMCTSModel(MCTSModel):
             # [num_sampled_actions, B, ...]
             actions = action_distribution.rsample(
                 (self._num_sampled_actions, ))
-            # [num_sampled_actions, B]
-            action_probs = action_distribution.log_prob(actions).exp()
+            # [B, num_sampled_actions]
+            log_probs = action_distribution.log_prob(actions).transpose(0, 1)
+            action_probs = F.softmax(log_probs, dim=1)
             actions = actions.transpose(0, 1)
-            action_probs = action_probs.transpose(0, 1)
         else:
             actions = self._actions.expand(state.shape[0], -1)
             action_probs = action_distribution.probs

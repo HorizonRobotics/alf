@@ -39,9 +39,17 @@ class _MCTSTree(object):
         action_spec = dist_utils.extract_spec(model_output.actions, from_dim=2)
         state_spec = dist_utils.extract_spec(model_output.state, from_dim=1)
         if known_value_bounds:
+            self.fixed_bounds = True
             self.minimum, self.maximum = known_value_bounds
         else:
+            self.fixed_bounds = False
             self.minimum, self.maximum = MAXIMUM_FLOAT_VALUE, -MAXIMUM_FLOAT_VALUE
+        self.minimum = torch.full((batch_size, ),
+                                  self.minimum,
+                                  dtype=torch.float32)
+        self.maximum = torch.full((batch_size, ),
+                                  self.maximum,
+                                  dtype=torch.float32)
         self.B = torch.arange(batch_size)
         self.root_indices = torch.zeros((batch_size, ), dtype=torch.int64)
         self.branch_factor = branch_factor
@@ -77,15 +85,37 @@ class _MCTSTree(object):
             shape, dtype=torch.int64, device='cpu')
         self.ucb_score = torch.zeros(shape)
 
-    def update_value_stats(self, values):
-        self.maximum = max(self.maximum, values.max())
-        self.minimum = min(self.minimum, values.min())
+        self.normalize_scale = torch.ones((batch_size, ))
+        self.normalize_base = torch.zeros((batch_size, ))
 
-    def normalize_value(self, value):
-        if self.maximum > self.minimum:
-            # We normalize only when we have set the maximum and minimum values.
-            return (value - self.minimum) / (self.maximum - self.minimum)
-        return value
+    def update_value_stats(self, nodes, valid):
+        """Update min max stats for each tree.
+
+        Only valid values are used to update the stats.
+        We maintain separate stats for each tree.
+        The shapes of ``nodes`` and ``valid`` are [T, B].
+        The invalid entries in ``values`` will be modified.
+        """
+        if self.fixed_bounds:
+            return
+        values = self.calc_value(nodes)
+        invalid = ~valid
+        values[invalid] = -MAXIMUM_FLOAT_VALUE
+        self.maximum = torch.max(self.maximum, values.max(dim=0)[0])
+        values[invalid] = MAXIMUM_FLOAT_VALUE
+        self.minimum = torch.min(self.minimum, values.min(dim=0)[0])
+
+        # We normalize only when we have set the maximum and minimum values.
+        normalize = self.maximum > self.minimum
+        self.normalize_scale = torch.where(
+            normalize, 1 / (self.maximum - self.minimum + 1e-30),
+            self.normalize_scale)
+        self.normalize_base = torch.where(normalize, self.minimum,
+                                          self.normalize_base)
+
+    def normalize_value(self, value, batch_index):
+        return self.normalize_scale[batch_index] * (
+            value - self.normalize_base[batch_index])
 
     def calc_value(self, nodes):
         return self.value_sum[nodes] / (self.visit_count[nodes] + 1e-30)
@@ -246,8 +276,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 trees, to_plays)
             nodes_to_expand = search_paths[path_lengths - 1, trees.B]
             prev_nodes = search_paths[path_lengths - 2, trees.B]
-            model_state = trees.model_state[(trees.B, prev_nodes)]
-            action = trees.action[(trees.B, nodes_to_expand)]
+            model_state = trees.model_state[trees.B, prev_nodes]
+            action = trees.action[trees.B, nodes_to_expand]
             model_output = self._model.recurrent_inference(model_state, action)
 
             self._expand_node(
@@ -289,7 +319,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             - search_paths: [T, B] int64 matrix, where T is the max length of the
                 search paths. For paths whose length is shorter than T, search_path
                 is padded with the last node index of that path.
-            - path_lenghts: [B] vector, length of each search path
+            - path_lengths: [B] vector, length of each search path
             - last_to_plays: to_play for the last node of each path
         """
         best_child_index = trees.best_child_index
@@ -358,7 +388,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         prior_score = pb_c * trees.prior[children]
         value_score = trees.reward[
             children] + self._discount * trees.calc_value(children)
-        value_score = trees.normalize_value(value_score)
+        value_score = trees.normalize_value(value_score, children[0])
         value_score[child_visit_count == 0] = 0.5
         value_score = value_score * (
             (trees.to_play[parents] == 0) * 2 - 1).unsqueeze(-1)
@@ -391,11 +421,11 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         value_sum = trees.value_sum[B, search_paths] + discounted_return
 
         valid = depth < path_lengths
+        trees.update_value_stats((B, search_paths), valid)
+
         nodes = (B.expand(T, -1)[valid], search_paths[valid])
         trees.visit_count[nodes] += 1
         trees.value_sum[nodes] = value_sum[valid]
-        node_values = trees.calc_value(nodes)
-        trees.update_value_stats(node_values)
         self._update_best_child(trees, nodes)
 
     def _expand_node(
@@ -528,7 +558,7 @@ def create_control_mcts(observation_spec,
                         action_spec,
                         num_simulations=50,
                         debug_summaries=False):
-    """Helper function for creating MCTSAlgorithm for atari games."""
+    """Helper function for creating MCTSAlgorithm for control tasks."""
 
     def visit_softmax_temperature(num_moves):
         progress = Trainer.progress()

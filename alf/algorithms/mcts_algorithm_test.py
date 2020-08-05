@@ -90,9 +90,9 @@ class TicTacToeModel(MCTSModel):
         board_full = (board == 0).sum(dim=(1, 2)) == 0
         B = torch.arange(board.shape[0]).unsqueeze(-1).unsqueeze(-1)
         lines = board[B, self._line_y, self._line_x]
-        player1_won = ((lines == -1).sum(dim=2) == 3).any(dim=1)
-        player2_won = ((lines == 1).sum(dim=2) == 3).any(dim=1)
-        return torch.max(board_full, torch.max(player1_won, player2_won))
+        player0_won = ((lines == -1).sum(dim=2) == 3).any(dim=1)
+        player1_won = ((lines == 1).sum(dim=2) == 3).any(dim=1)
+        return torch.max(board_full, torch.max(player0_won, player1_won))
 
     def _get_current_player(self, board):
         return ((board != 0).sum(dim=(1, 2)) % 2) * 2 - 1
