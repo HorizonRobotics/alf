@@ -131,7 +131,8 @@ class RingBuffer(nn.Module):
                 "_current_size",
                 torch.zeros(num_environments, dtype=torch.int64))
             # Current *ending* positions of data in the buffer without modulo.
-            # These pos always increases.  To get the index in the RingBuffer,
+            # The next experience will be stored at this position after modulo.
+            # These pos always increases. To get the index in the RingBuffer,
             # use ``circular()``, e.g. ``last_idx = self.circular(pos - 1)``.
             self.register_buffer(
                 "_current_pos", torch.zeros(
@@ -142,6 +143,11 @@ class RingBuffer(nn.Module):
 
         if allow_multiprocess:
             self.share_memory()
+
+    @property
+    def device(self):
+        """The device where the data is stored in."""
+        return self._device
 
     def circular(self, pos):
         """Mod pos by _max_length to get the actual index in the _buffer."""
@@ -391,6 +397,18 @@ class RingBuffer(nn.Module):
     @property
     def num_environments(self):
         return self._num_envs
+
+    def get_earliest_position(self, env_ids):
+        """The earliest position that is still in the replay buffer.
+
+        Args:
+            env_ids (Tensor): int64 Tensor of environment ids
+        Returns:
+            A tensor with the same shape as env_ids, whose each entry is the
+                earliest position that is still in the replay buffer for
+                corresponding environment.
+        """
+        return self._current_pos[env_ids] - self._current_size[env_ids]
 
 
 class DataBuffer(RingBuffer):

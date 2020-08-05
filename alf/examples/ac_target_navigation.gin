@@ -1,7 +1,7 @@
 include 'ac_simple_navigation.gin'
 
 CHANNEL_ORDER='channels_last'
-FrameStack.channel_order=%CHANNEL_ORDER
+FrameStacker.channel_order=%CHANNEL_ORDER
 
 batch_size=30
 create_environment.num_parallel_environments=%batch_size
@@ -13,8 +13,8 @@ PlayGround.resized_image_size=(84, 84)
 
 GoalTask.polar_coord=False
 
-FrameStack.fields=['image']  # must be a subset of input observations
-image_scale_transformer.fields=['image']
+FrameStacker.fields=['image']  # must be a subset of input observations
+ImageScaleTransformer.fields=['image']
 
 tf.keras.layers.Conv2D.data_format=%CHANNEL_ORDER
 

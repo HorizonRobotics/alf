@@ -673,7 +673,7 @@ def get_field(nested, field):
     Args:
         nested (nest): a nested structure
         field (str): indicate the path to the field with '.' separating the field
-            name at different level
+            name at different level. ``None`` means the whole nest
     Returns:
         nest: value of the field corresponding to ``field``
     """
@@ -690,4 +690,4 @@ def get_field(nested, field):
             raise TypeError("If value is a nest, it must be either " +
                             "a dict or namedtuple!")
 
-    return _traverse(nested=nested, levels=field.split('.'))
+    return _traverse(nested=nested, levels=field.split('.') if field else [])

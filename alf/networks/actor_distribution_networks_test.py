@@ -148,8 +148,7 @@ class TestActorDistributionNetworks(parameterized.TestCase, alf.test.TestCase):
             isinstance(actor_dist_net.output_spec["continuous"],
                        DistributionSpec))
 
-        self.assertTrue(
-            isinstance(act_dist["discrete"].base_dist, td.Categorical))
+        self.assertTrue(isinstance(act_dist["discrete"], td.Categorical))
         self.assertTrue(
             isinstance(act_dist["continuous"].base_dist, td.Normal))
 

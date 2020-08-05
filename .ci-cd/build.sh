@@ -47,6 +47,7 @@ function test() {
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.agent_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.data_transformer_test \
         alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \

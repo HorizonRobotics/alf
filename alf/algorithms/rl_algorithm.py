@@ -79,8 +79,6 @@ class RLAlgorithm(Algorithm):
                  env=None,
                  config: TrainerConfig = None,
                  optimizer=None,
-                 reward_shaping_fn: Callable = None,
-                 observation_transformer=math_ops.identity,
                  debug_summaries=False,
                  name="RLAlgorithm"):
         """
@@ -105,10 +103,6 @@ class RLAlgorithm(Algorithm):
                 be provided to the algorithm which performs a training iteration
                 by itself.
             optimizer (torch.optim.Optimizer): The default optimizer for training.
-            reward_shaping_fn (Callable): a function that transforms extrinsic
-                immediate rewards.
-            observation_transformer (Callable | list[Callable]): transformation(s)
-                applied to ``time_step.observation``.
             debug_summaries (bool): If True, debug summaries will be created.
             name (str): Name of this algorithm.
         """
@@ -117,7 +111,6 @@ class RLAlgorithm(Algorithm):
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,
             optimizer=optimizer,
-            observation_transformer=observation_transformer,
             config=config,
             debug_summaries=debug_summaries,
             name=name)
@@ -125,7 +118,6 @@ class RLAlgorithm(Algorithm):
         self._env = env
         self._observation_spec = observation_spec
         self._action_spec = action_spec
-        self._reward_shaping_fn = reward_shaping_fn
 
         self._proc = psutil.Process(os.getpid())
 
@@ -133,6 +125,7 @@ class RLAlgorithm(Algorithm):
 
         self._current_time_step = None
         self._current_policy_state = None
+        self._current_transform_state = None
 
         if self._env is not None and not self.is_on_policy():
             if config.whole_replay_buffer_training and config.clear_replay_buffer:
@@ -394,30 +387,6 @@ class RLAlgorithm(Algorithm):
         """
         pass
 
-    def transform_timestep(self, time_step):
-        """Transform time_step.
-
-        ``transform_timestep`` is called for all raw time_step got from
-        the environment before passing to ``predict_step`` and ``rollout_step``. For
-        off-policy algorithms, the replay buffer stores raw time_step. So when
-        experiences are retrieved from the replay buffer, they are tranformed by
-        ``transform_timestep`` in ``OffPolicyAlgorithm`` before passing to
-        ``_update()``.
-
-        This function additionally transforms rewards on top of the
-        ``transform_timestep()`` of the base class ``Algorithm``.
-
-        Args:
-            time_step (TimeStep or Experience): time step
-        Returns:
-            TimeStep or Experience: transformed time step
-        """
-        time_step = super(RLAlgorithm, self).transform_timestep(time_step)
-        if self._reward_shaping_fn is not None:
-            time_step = time_step._replace(
-                reward=self._reward_shaping_fn(time_step.reward))
-        return time_step
-
     @common.mark_rollout
     def unroll(self, unroll_length):
         r"""Unroll ``unroll_length`` steps using the current policy.
@@ -436,8 +405,13 @@ class RLAlgorithm(Algorithm):
         if self._current_policy_state is None:
             self._current_policy_state = self.get_initial_rollout_state(
                 self._env.batch_size)
+        if self._current_transform_state is None:
+            self._current_transform_state = self.get_initial_transform_state(
+                self._env.batch_size)
+
         time_step = self._current_time_step
         policy_state = self._current_policy_state
+        trans_state = self._current_transform_state
 
         experience_list = []
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
@@ -447,7 +421,8 @@ class RLAlgorithm(Algorithm):
         for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
-            transformed_time_step = self.transform_timestep(time_step)
+            transformed_time_step, trans_state = self.transform_timestep(
+                time_step, trans_state)
             # save the untransformed time step in case that sub-algorithms need
             # to store it in replay buffers
             transformed_time_step = transformed_time_step._replace(
@@ -467,7 +442,8 @@ class RLAlgorithm(Algorithm):
             self.observe_for_metrics(time_step.cpu())
 
             if self._exp_replayer_type == "one_time":
-                exp = make_experience(time_step, policy_step, policy_state)
+                exp = make_experience(transformed_time_step, policy_step,
+                                      policy_state)
             else:
                 exp = make_experience(time_step.cpu(), policy_step,
                                       policy_state)
@@ -504,6 +480,7 @@ class RLAlgorithm(Algorithm):
         # the next unroll. Otherwise backward() will report error for on-policy
         # training after the next unroll.
         self._current_policy_state = common.detach(policy_state)
+        self._current_transform_state = common.detach(trans_state)
 
         return experience
 

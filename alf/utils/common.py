@@ -36,7 +36,6 @@ import alf
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
-from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
 from . import dist_utils, gin_utils
 
 
@@ -299,53 +298,6 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
     return observation
 
 
-@gin.configurable
-def scale_transformer(observation, scale, dtype=torch.float32, fields=None):
-    """Scale observation
-
-    Args:
-         observation (nested Tensor): observation to be scaled
-         scale (float): scale factor
-         dtype (Dtype): The destination type.
-         fields (list[str]): fields to be scaled, A field str is a multi-level
-                path denoted by "A.B.C".
-    Returns:
-        scaled observation
-    """
-
-    def _scale_obs(obs):
-        return (obs * scale).type(dtype)
-
-    fields = fields or [None]
-    for field in fields:
-        observation = nest.utils.transform_nest(
-            nested=observation, field=field, func=_scale_obs)
-    return observation
-
-
-@gin.configurable
-def reward_clipping(r, minmax=(-1, 1)):
-    """
-    Clamp immediate rewards to the range :math:`[min, max]`.
-
-    Can be used as a reward shaping function passed to an algorithm
-    (e.g. ``ActorCriticAlgorithm``).
-    """
-    assert minmax[0] <= minmax[1], "range error"
-    return torch.clamp(r, minmax[0], minmax[1])
-
-
-@gin.configurable
-def reward_scaling(r, scale=1):
-    """
-    Scale immediate rewards by a factor of ``scale``.
-
-    Can be used as a reward shaping function passed to an algorithm
-    (e.g. ``ActorCriticAlgorithm``).
-    """
-    return r * scale
-
-
 def _markdownify_gin_config_str(string, description=''):
     """Convert an gin config string to markdown format.
 
@@ -383,72 +335,6 @@ def _markdownify_gin_config_str(string, description=''):
             output_lines.append(procd_line)
 
     return '\n'.join(output_lines)
-
-
-@gin.configurable
-class ObservationNormalizer(nn.Module):
-    def __init__(self,
-                 observation_spec,
-                 clipping=0.,
-                 window_size=10000,
-                 update_rate=1e-4,
-                 speed=8.0,
-                 update_mode="replay",
-                 mode="adaptive"):
-        """Create an observation normalizer with optional value clipping to be
-        used as the ``observation_transformer`` of an algorithm. It will be called
-        before both ``rollout_step()`` and ``train_step()``.
-
-        The normalizer by default doesn't automatically update the mean and std.
-        Instead, it will check when ``self.forward()`` is called, whether an
-        algorithm is unrolling or training. It only updates the mean and std
-        during unroll. This is the suggested way of using an observation
-        normalizer (i.e., update the stats when encountering new data for the
-        first time). This same strategy has been used by OpenAI's baselines for
-        training their Robotics environments.
-
-        Args:
-            observation_spec (TensorSpec): the observation spec
-            clipping (float): a floating value for clipping the normalized
-                observation into ``[-clipping, clipping]``. Only valid if it's
-                greater than 0.
-            window_size (int): the window size of ``WindowNormalizer``.
-            update_rate (float): the update rate of ``EMNormalizer``.
-            speed (float): the speed of updating for ``AdaptiveNormalizer``.
-            update_mode (str): update stats during either "replay" or "rollout".
-            mode (str): a value in ["adaptive", "window", "em"] indicates which
-                normalizer to use.
-        """
-        super().__init__()
-        self._update_mode = update_mode
-        self._clipping = float(clipping)
-        if mode == "adaptive":
-            self._normalizer = AdaptiveNormalizer(
-                tensor_spec=observation_spec,
-                speed=float(speed),
-                auto_update=False,
-                name="observations/adaptive_normalizer")
-        elif mode == "window":
-            self._normalzier = WindowNormalizer(
-                tensor_spec=observation_spec,
-                window_size=int(window_size),
-                auto_update=False)
-        elif mode == "em":
-            self._normalizer = EMNormalizer(
-                tensor_spec=observation_spec,
-                update_rate=float(update_rate),
-                auto_update=False)
-        else:
-            raise ValueError("Unsupported mode: " + mode)
-
-    def forward(self, observation):
-        """Normalize a given observation. If during unroll, then first update
-        the normalizer. The normalizer won't be updated in other circumstances.
-        """
-        if (self._update_mode == "replay" and is_replay()
-                or self._update_mode == "rollout" and is_rollout()):
-            self._normalizer.update(observation)
-        return self._normalizer.normalize(observation, self._clipping)
 
 
 def get_gin_confg_strs():
@@ -570,14 +456,8 @@ def set_global_env(env):
 
 
 @gin.configurable
-def get_observation_spec(field=None):
+def get_raw_observation_spec(field=None):
     """Get the ``TensorSpec`` of observations provided by the global environment.
-
-    This spec is used for creating models only! All ``uint8`` dtype will be converted
-    to torch.float32 as a temporary solution, to be consistent with
-    ``image_scale_transformer()``. See
-
-    https://github.com/HorizonRobotics/alf/pull/239#issuecomment-544644558
 
     Args:
         field (str): a multi-step path denoted by "A.B.C".
@@ -586,10 +466,38 @@ def get_observation_spec(field=None):
     """
     assert _env, "set a global env by `set_global_env` before using the function"
     specs = _env.observation_spec()
-    specs = nest.map_structure(
-        lambda spec: (TensorSpec(spec.shape, torch.float32)
-                      if spec.dtype == torch.uint8 else spec), specs)
+    if field:
+        for f in field.split('.'):
+            specs = specs[f]
+    return specs
 
+
+_transformed_observation_spec = None
+
+
+def set_transformed_observation_spec(spec):
+    """Set the spec of the observation transformed by data transformers."""
+    global _transformed_observation_spec
+    _transformed_observation_spec = spec
+
+
+@gin.configurable
+def get_observation_spec(field=None):
+    """Get the spec of observation transformed by data transformers.
+
+    The data transformers are specified by ``TrainerConfig.data_transformer_ctor``.
+
+    Args:
+        field (str): a multi-step path denoted by "A.B.C".
+    Returns:
+        nested TensorSpec: a spec that describes the observation.
+    """
+    assert _transformed_observation_spec is not None, (
+        "This function should be "
+        "called after the global variable _transformed_observation_spec is set"
+    )
+
+    specs = _transformed_observation_spec
     if field:
         for f in field.split('.'):
             specs = specs[f]

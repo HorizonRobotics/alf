@@ -70,8 +70,8 @@ ac/AdamTF.lr=1e-4
 
 Agent.optimizer=@ac/AdamTF()
 Agent.rl_algorithm_cls=@MerlinAlgorithm
-Agent.observation_transformer=@image_scale_transformer
-common.image_scale_transformer.min=0.0
+TrainerConfig.data_transformer_ctor=@ImageScaleTransformer
+ImageScaleTransformer.min=0.0
 
 # training config
 TrainerConfig.unroll_length=20
