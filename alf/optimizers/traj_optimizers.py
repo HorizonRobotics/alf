@@ -160,6 +160,7 @@ class CEMOptimizer(TrajOptimizer):
             samples = distr.sample(
                 (self._population_size, )).clamp(*self._bounds)
             costs = self.cost_function(time_step, state, samples)
+            assert costs.shape[0] == samples.shape[0], "bad cost function"
             min_inds = torch.topk(
                 costs,
                 int(self._population_size * self._top_percent),
@@ -174,8 +175,10 @@ class CEMOptimizer(TrajOptimizer):
                 break
             else:
                 means = torch.mean(tops, dim=0)
+                # minimum cov of 1e-4 tends to work well with planning horizon
+                # of 10 with simpler as well as harder cost functions.
                 covs = torch.diag(
                     torch.sum((tops - means)**2, dim=0) /
-                    (self._top_percent * self._population_size - 1) + 1.e-15)
+                    (self._top_percent * self._population_size - 1) + 1.e-4)
                 distr = MultivariateNormal(means, covs)
         return solution
