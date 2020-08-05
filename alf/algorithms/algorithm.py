@@ -267,10 +267,6 @@ class Algorithm(nn.Module):
             alf.nest.extract_fields_from_nest(sample_exp)))
 
         if self._exp_replayer_type == "one_time":
-            assert self._num_earliest_frames_ignored == 0, (
-                "For TrainerConfig, "
-                "whole_replay_buffer_training and clear_replay_buffer cannot both be "
-                "True when FrameStacker is used")
             self._exp_replayer = OnetimeExperienceReplayer()
         elif self._exp_replayer_type == "uniform":
             exp_spec = dist_utils.to_distribution_param_spec(
@@ -1250,7 +1246,10 @@ class Algorithm(nn.Module):
         experience = dist_utils.params_to_distributions(
             experience, self.experience_spec)
         experience = self._add_batch_info(experience, batch_info)
-        experience = self.transform_experience(experience)
+        if self._exp_replayer_type != "one_time":
+            # The experience put in one_time replayer is already transformed
+            # in unroll().
+            experience = self.transform_experience(experience)
         experience = self.preprocess_experience(experience)
         experience = self._clear_batch_info(experience)
         if self._processed_experience_spec is None:
