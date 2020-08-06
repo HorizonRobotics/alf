@@ -187,7 +187,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                                                      positions, value_field)
             else:
                 values = self._calc_monte_carlo_return(replay_buffer, env_ids,
-                                                       positions)
+                                                       positions, value_field)
 
             rewards = replay_buffer.get_field('reward', env_ids, positions)
             rewards[beyond_episode_end] = 0.
@@ -196,6 +196,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             candidate_action_visit_probabilities = replay_buffer.get_field(
                 candidate_action_visit_probabilities_field, env_ids, positions)
             game_overs = positions == episode_end_positions
+            discount = replay_buffer.get_field('discount', env_ids, positions)
+            # In the case of discount == 0, the game over may not always be correct
+            # since the episode is truncated because of TimeLimit or incomplete
+            # last episode in the replay buffer. There is no way to know for sure
+            # the future game overs.
+            game_overs = torch.min(game_overs, discount == 0.)
             values[game_overs] = 0.
             action = replay_buffer.get_field('action', env_ids, positions)
 
@@ -246,7 +252,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             self._td_steps, dtype=torch.float32)
         return values + (rewards * discounts).sum(dim=-1)
 
-    def _calc_monte_carlo_return(self, replay_buffer, env_ids, positions):
+    def _calc_monte_carlo_return(self, replay_buffer, env_ids, positions,
+                                 value_field):
         # We only use the reward at the episode end.
         # [B, unroll_steps]
         steps_to_episode_end = replay_buffer.steps_to_episode_end(
@@ -256,6 +263,16 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         reward = replay_buffer.get_field('reward', env_ids,
                                          episode_end_positions)
+        # For the current implementation of replay buffer, the last episode is
+        # likely to be incomplete, which means that the episode end is not the
+        # real episode end and the corresponding discount is 1. So we bootstrap
+        # with value in these cases.
+        # TODO: only use complete episodes from replay buffer.
+        discount = replay_buffer.get_field('discount', env_ids,
+                                           episode_end_positions)
+        value = replay_buffer.get_field(value_field, env_ids,
+                                        episode_end_positions)
+        reward = reward + self._discount * discount * value
         return reward * (self._discount**(steps_to_episode_end - 1))
 
     def calc_loss(self, experience, train_info: LossInfo):

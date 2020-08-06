@@ -23,7 +23,7 @@ import torch.nn.functional as F
 import alf
 from alf.data_structures import LossInfo, namedtuple
 from alf.networks import EncodingNetwork, StableNormalProjectionNetwork, CategoricalProjectionNetwork
-from alf.utils import dist_utils, tensor_utils
+from alf.utils import dist_utils, tensor_utils, summary_utils
 from alf.utils.losses import element_wise_squared_loss
 
 ModelOutput = namedtuple(
@@ -136,6 +136,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
                 p = target.game_over.to(torch.float32).mean()
+                alf.summary.scalar("game_over", p)
                 p = torch.tensor([p, 1 - p]) + 1e-30
                 h_game_over = -(p * p.log()).sum()
                 alf.summary.scalar(
@@ -149,6 +150,13 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 alf.summary.scalar(
                     "explained_entropy_of_game_over",
                     1. - unscaled_game_over_loss.mean() / h_game_over)
+                summary_utils.add_mean_hist_summary("target_value",
+                                                    target.value)
+                summary_utils.add_mean_hist_summary("value",
+                                                    model_output.value)
+                summary_utils.add_mean_hist_summary(
+                    "td_error", target.value - model_output.value)
+
         return LossInfo(
             loss=value_loss + reward_loss + policy_loss + game_over_loss,
             extra=dict(
@@ -229,6 +237,8 @@ class SimpleMCTSModel(MCTSModel):
             self._action_net = StableNormalProjectionNetwork(
                 input_size=dim,
                 action_spec=action_spec,
+                state_dependent_std=True,
+                scale_distribution=True,
                 dist_squashing_transform=dist_utils.Softsign())
         else:
             self._action_net = CategoricalProjectionNetwork(

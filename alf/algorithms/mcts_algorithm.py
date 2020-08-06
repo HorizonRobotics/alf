@@ -247,18 +247,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 training the model.
         """
         assert self._model is not None, "Need to call `set_model` before `predict_step`"
-        batch_size = time_step.step_type.shape[0]
         model_output = self._model.initial_inference(time_step.observation)
         trees = _MCTSTree(self._num_simulations + 1, model_output,
                           self._known_value_bounds)
+        to_plays = ()
         if self._is_two_player_game:
             # We may need the environment to pass to_play and pass to_play to
             # model because players may not always alternate in some game.
             # And for many games, it is not always obvious to determine which
             # player is in the current turn by looking at the board.
             to_plays = state.steps % 2
-        else:
-            to_plays = torch.zeros((batch_size, ), dtype=torch.int64)
         roots = (trees.B, trees.root_indices)
         self._expand_node(
             trees,
@@ -274,7 +272,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         trees.visit_count[roots] = 1
         self._update_best_child(trees, roots)
 
-        to_plays = to_plays.cpu()
+        if self._is_two_player_game:
+            to_plays = to_plays.cpu()
         for sim in range(1, self._num_simulations + 1):
             search_paths, path_lengths, last_to_plays = self._search(
                 trees, to_plays)
@@ -341,8 +340,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             nodes = torch.where(done, nodes, best_child_index[B, nodes])
             path_lengths[~done] += 1
             search_paths.append(nodes)
-            to_plays = torch.where(done, to_plays,
-                                   self._is_two_player_game - to_plays)
+            if self._is_two_player_game:
+                to_plays = torch.where(done, to_plays,
+                                       self._is_two_player_game - to_plays)
 
         search_paths = torch.stack(search_paths)
         return convert_device((search_paths, path_lengths, to_plays))
@@ -394,8 +394,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             children] + self._discount * trees.calc_value(children)
         value_score = trees.normalize_value(value_score, children[0])
         value_score[child_visit_count == 0] = 0.5
-        value_score = value_score * (
-            (trees.to_play[parents] == 0) * 2 - 1).unsqueeze(-1)
+        if self._is_two_player_game:
+            value_score = value_score * (
+                (trees.to_play[parents] == 0) * 2 - 1).unsqueeze(-1)
 
         return prior_score + value_score
 
@@ -425,11 +426,10 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         value_sum = trees.value_sum[B, search_paths] + discounted_return
 
         valid = depth < path_lengths
-        trees.update_value_stats((B, search_paths), valid)
-
         nodes = (B.expand(T, -1)[valid], search_paths[valid])
         trees.visit_count[nodes] += 1
         trees.value_sum[nodes] = value_sum[valid]
+        trees.update_value_stats((B, search_paths), valid)
         self._update_best_child(trees, nodes)
 
     def _expand_node(
@@ -443,7 +443,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             exploration_fraction=None):
         batch_size = model_output.action_probs.shape[0]
         indices = (trees.B, node_indices)
-        trees.to_play[indices] = to_plays
+        if self._is_two_player_game:
+            trees.to_play[indices] = to_plays
         first_child_index = (n + 1) * trees.branch_factor
         trees.first_child_index[indices] = first_child_index
         trees.game_over[(indices[0].cpu(),
@@ -496,6 +497,30 @@ def create_atari_mcts(observation_spec, action_spec):
         pb_c_base=19652,
         is_two_player_game=False,
         visit_softmax_temperature_fn=visit_softmax_temperature)
+
+
+@gin.configurable
+class VisitSoftmaxTemperatureByMoves(object):
+    def __init__(self, move_temperature_pairs=[(29, 1.0), (10000, 0.0001)]):
+        """Scheduling the temperature by move.
+
+        Args:
+            move_temperature_pairs (list[tuple]): each (moves, temperature) pair
+                indicates using this temperature until so many moves have been
+                played in the current game. The moves should be in ascending order.
+                Note that ``num_moves`` used to calculate the temperature starts
+                from 0.
+        """
+        self._move_temperature_pairs = list(
+            reversed(move_temperature_pairs[:-1]))
+        self._last_temperature = move_temperature_pairs[-1][1]
+
+    def __call__(self, num_moves):
+        t = torch.full_like(
+            num_moves, self._last_temperature, dtype=torch.float32)
+        for move, temp in self._move_temperature_pairs:
+            t[num_moves <= move] = temp
+        return t
 
 
 @gin.configurable
@@ -586,3 +611,25 @@ def create_control_mcts(observation_spec,
         is_two_player_game=False,
         visit_softmax_temperature_fn=visit_softmax_temperature,
         debug_summaries=debug_summaries)
+
+
+@gin.configurable
+class VisitSoftmaxTemperatureByProgress(object):
+    def __init__(self,
+                 progress_temperature_pairs=[(0.5, 1.0), (0.75, 0.5), (1,
+                                                                       0.25)]):
+        """Scheduling the temperature by training progress.
+
+        Args:
+            progress_temperature_pairs (list[tuple]): each (progress, temperature)
+                pair indicates using this temperature until this training
+                progress. Note that progress should be in ascending order.
+        """
+        self._progress_temperature_pairs = progress_temperature_pairs
+
+    def __call__(self, num_moves):
+        progress = Trainer.progress()
+        for p, t in self._progress_temperature_pairs:
+            if progress < p:
+                break
+        return torch.full_like(num_moves, t, dtype=torch.float32)
