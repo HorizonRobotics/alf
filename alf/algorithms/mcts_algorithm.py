@@ -50,6 +50,13 @@ class _MCTSTree(object):
         self.maximum = torch.full((batch_size, ),
                                   self.maximum,
                                   dtype=torch.float32)
+        if known_value_bounds:
+            self.normalize_scale = 1 / (self.maximum - self.minimum + 1e-30)
+            self.normalize_base = self.minimum
+        else:
+            self.normalize_scale = torch.ones((batch_size, ))
+            self.normalize_base = torch.zeros((batch_size, ))
+
         self.B = torch.arange(batch_size)
         self.root_indices = torch.zeros((batch_size, ), dtype=torch.int64)
         self.branch_factor = branch_factor
@@ -84,9 +91,6 @@ class _MCTSTree(object):
         self.best_child_index = torch.zeros(
             shape, dtype=torch.int64, device='cpu')
         self.ucb_score = torch.zeros(shape)
-
-        self.normalize_scale = torch.ones((batch_size, ))
-        self.normalize_base = torch.zeros((batch_size, ))
 
     def update_value_stats(self, nodes, valid):
         """Update min max stats for each tree.
