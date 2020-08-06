@@ -41,35 +41,35 @@ class Generator(Algorithm):
 
     The generator is trained to minimize the following objective:
 
-        :math:`E(loss_func(net([noise, input]))) - entropy_regulariztion \cdot H(P)`
+        :math:`E(loss\_func(net([noise, input]))) - entropy\_regulariztion \cdot H(P)`
 
     where P is the (conditional) distribution of outputs given the inputs
     implied by `net` and H(P) is the (conditional) entropy of P.
 
     If the loss is the (unnormalized) negative log probability of some
-    distribution Q and the entropy_regularization is 1, this objective is
+    distribution Q and the ``entropy_regularization`` is 1, this objective is
     equivalent to minimizing :math:`KL(P||Q)`.
 
     It uses two different ways to optimize `net` depending on
-    entropy_regularization:
+    ``entropy_regularization``:
 
-    * entropy_regularization = 0: the minimization is achieved by simply
+    * ``entropy_regularization`` = 0: the minimization is achieved by simply
       minimizing loss_func(net([noise, inputs]))
 
-    * entropy_regularization > 0: the minimization is achieved using amortized
+    * ``entropy_regularization`` > 0: the minimization is achieved using amortized
       Stein variational gradient descent (SVGD). See the following paper for
       reference:
 
-      Feng et al "Learning to Draw Samples with Amortized Stein Variational
-      Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+      Feng et al `Learning to Draw Samples with Amortized Stein Variational
+      Gradient Descent <https://arxiv.org/pdf/1707.06626.pdf>`_
 
     It also supports an additional optional objective of maximizing the mutual
     information between [noise, inputs] and outputs by using mi_estimator to
-    prevent mode collapse. This might be useful for entropy_regulariztion = 0
+    prevent mode collapse. This might be useful for ``entropy_regulariztion`` = 0
     as suggested in section 5.1 of the following paper:
 
-    Hjelm et al "Learning Deep Representations by Mutual Information Estimation
-    and Maximization" https://arxiv.org/pdf/1808.06670.pdf
+    Hjelm et al `Learning Deep Representations by Mutual Information Estimation
+    and Maximization <https://arxiv.org/pdf/1808.06670.pdf>`_
     """
 
     def __init__(self,
@@ -102,7 +102,7 @@ class Generator(Algorithm):
             entropy_regularization (float): weight of entropy regularization
             kernel_sharpness (float): Used only for entropy_regularization > 0.
                 We calcualte the kernel in SVGD as:
-                    :math:`\exp(-kernel_sharpness * reduce_mean(\frac{(x-y)^2}{width}))`
+                    :math:`\exp(-kernel\_sharpness * mean(\frac{(x-y)^2}{width}))`
                 where width is the elementwise moving average of :math:`(x-y)^2`
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
