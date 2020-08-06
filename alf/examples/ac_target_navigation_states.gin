@@ -34,7 +34,7 @@ GoalTask.distraction_list=['coke_can', 'car_wheel']
 GoalTask.distraction_penalty_distance_thresh=0.4
 
 # Curriculum
-GoalTask.use_curriculum_training=True
+GoalTask.use_curriculum_training=False
 GoalTask.start_range=1
 GoalTask.max_reward_q_length=100
 GoalTask.reward_thresh_to_increase_range=0.9

@@ -1,4 +1,3 @@
-
 include 'sac.gin'
 
 import alf.utils.dist_utils
@@ -7,8 +6,11 @@ import alf.environments.suite_robotics
 
 # environment config
 create_environment.env_load_fn=@suite_robotics.load
-create_environment.num_parallel_environments=20
+create_environment.num_parallel_environments=38
 create_environment.env_name='FetchReach-v1'
+
+ObservationNormalizer.clipping=5.
+Agent.observation_transformer=@ObservationNormalizer(observation_spec=@get_observation_spec())
 
 hidden_layers=(256, 256, 256)
 
