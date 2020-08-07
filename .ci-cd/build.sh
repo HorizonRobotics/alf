@@ -72,6 +72,7 @@ function test() {
         alf.environments.process_environment_test \
         alf.environments.random_alf_environment_test \
         alf.environments.simple.noisy_array_test \
+        alf.environments.suite_go_test \
         alf.environments.suite_gym_test \
         alf.environments.suite_mario_test \
         alf.environments.suite_socialbot_test \
