@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+import gin
 import numpy as np
 import torch
 from torch.distributions import Normal
@@ -94,6 +95,7 @@ class RandomOptimizer(TrajOptimizer):
         return solution
 
 
+@gin.configurable
 class CEMOptimizer(TrajOptimizer):
     def __init__(self,
                  planning_horizon,
@@ -101,9 +103,9 @@ class CEMOptimizer(TrajOptimizer):
                  population_size,
                  top_percent,
                  iterations,
+                 bounds,
                  init_mean=None,
-                 init_var=None,
-                 bounds=None):
+                 init_var=None):
         """Cross Entropy Method Trajectory Optimizer
 
         This module conducts trajectory optimization via sampling from a number
@@ -119,9 +121,9 @@ class CEMOptimizer(TrajOptimizer):
             population_size (int): population to compute cost and optimize
             top_percent (float): percentage of top samples to use for optimization
             iterations (int): number of iterations to run CEM optimization
+            bounds (pair of float): min and max bounds of the samples
             init_mean (float|Tensor): mean to initialize the normal distributions
             init_var (float|Tensor): var to initialize the normal distributions
-            bounds (pair of float): min and max bounds of the samples
         """
         super().__init__()
         self._planning_horizon = planning_horizon
@@ -129,16 +131,40 @@ class CEMOptimizer(TrajOptimizer):
         self._population_size = population_size
         self._top_percent = top_percent
         self._iterations = iterations
-        self._init_mean = init_mean
-        self._init_var = init_var
-        self._bounds = bounds
+        assert len(bounds) == 2, "must provide (min, max) bounds"
+        bounds = (torch.as_tensor(bounds[0], dtype=torch.float32),
+                  torch.as_tensor(bounds[1], dtype=torch.float32))
+        if bounds[0].shape == ():
+            bounds = (bounds[0].expand(action_dim),
+                      bounds[1].expand(action_dim))
+        assert bounds[0].shape == (action_dim, ), "bounds not of action_dim"
+        assert bounds[0].shape == bounds[1].shape, "shape mismatch"
+        if init_mean is None:
+            init_mean = (bounds[0] + bounds[1]) / 2.
+        else:
+            init_mean = torch.as_tensor(init_mean)
+            if init_mean.shape == ():
+                init_mean = init_mean.expand(action_dim)
+        self._init_mean = torch.as_tensor(init_mean).reshape(1, 1, action_dim)
+        if init_var is None:
+            init_var = bounds[1] - bounds[0]
+        else:
+            init_var = torch.as_tensor(init_var)
+            if init_var.shape == ():
+                init_var = init_var.expand(action_dim)
+        self._init_var = torch.as_tensor(init_var).reshape(1, 1, action_dim)
+        self._bounds = (bounds[0].expand(1, 1, planning_horizon, action_dim),
+                        bounds[1].expand(1, 1, planning_horizon, action_dim))
         assert self._top_percent * self._population_size > 1, "too few samples"
 
     def _init_distr(self, batch_size):
-        means = self._init_mean * torch.zeros(
-            batch_size * self._planning_horizon * self._action_dim)
-        std = self._init_var * torch.ones(
-            batch_size * self._planning_horizon * self._action_dim)
+        means = self._init_mean.expand(batch_size, self._planning_horizon,
+                                       self._action_dim) + torch.zeros(
+                                           batch_size, self._planning_horizon,
+                                           self._action_dim)
+        std = self._init_var.expand(
+            batch_size, self._planning_horizon, self._action_dim) * torch.ones(
+                batch_size, self._planning_horizon, self._action_dim)
         return means, torch.sqrt(std)
 
     def obtain_solution(self, time_step: TimeStep, state):
@@ -149,36 +175,49 @@ class CEMOptimizer(TrajOptimizer):
             state: input state to start planning
 
         Returns:
-            solution Tensor of length ``batch_size`` * ``planning_horizon`` *
-                ``action_dim``
+            Tensor of shape (``batch_size``, ``planning_horizon``, ``action_dim``)
         """
         init_obs = time_step.observation
         batch_size = init_obs.shape[0]
         distr = Normal(*self._init_distr(batch_size))
         solution = None
+
+        def _clamp(v, min_v, max_v):
+            # v: (pop_size, B, plan_horizon, act_dim)
+            # max_v: (1, 1, plan_horizon, act_dim)
+            return torch.max(torch.min(v, max_v), min_v)
+
         for i in range(self._iterations):
-            samples = distr.sample(
-                (self._population_size, )).clamp(*self._bounds)
+            # samples shape (B, pop_size, horizon, act_dim)
+            samples = _clamp(
+                distr.sample((self._population_size, )),
+                *self._bounds).transpose(0, 1)
             costs = self.cost_function(time_step, state, samples)
-            assert costs.shape[0] == samples.shape[0], "bad cost function"
+            assert costs.shape == samples.shape[:2], "bad cost function"
             min_inds = torch.topk(
                 costs,
                 int(self._population_size * self._top_percent),
                 largest=False,
-                dim=0)[1].long()
-            # samples [pop_size, B * horizon * act_dim]
-            tops = samples[min_inds]
+                dim=1)[1].long()
+            # min_inds shape: (B, pop_size * top_percent)
+            tops = samples[(torch.arange(batch_size).unsqueeze(1), min_inds)]
 
+            # if (i + 1) % (self._iterations / 5) == 0:
+            #     logging.warning(
+            #         "%d: distr means: %s", i,
+            #         str(
+            #             distr.loc.reshape(batch_size, self._planning_horizon,
+            #                               self._action_dim)))
             if i == self._iterations - 1:
-                min_ind = torch.argmin(costs, dim=0).long()
-                solution = samples[min_ind]
+                min_ind = torch.argmin(costs, dim=1).long()
+                solution = samples[(torch.arange(batch_size), min_ind)]
                 break
             else:
-                means = torch.mean(tops, dim=0)
+                means = torch.mean(tops, dim=1)
                 # minimum cov of 1e-4 tends to work well with planning horizon
                 # of 10 with simpler as well as harder cost functions.
                 std = torch.sum(
-                    (tops - means)**2, dim=0) / (
+                    (tops - means.unsqueeze(1))**2, dim=1) / (
                         self._top_percent * self._population_size - 1) + 1.e-4
                 distr = Normal(means, torch.sqrt(std))
         return solution

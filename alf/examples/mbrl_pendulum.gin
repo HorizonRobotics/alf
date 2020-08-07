@@ -30,6 +30,9 @@ RandomShootingAlgorithm.action_spec=%action_spec
 RandomShootingAlgorithm.population_size=5000
 RandomShootingAlgorithm.planning_horizon=25
 
+CEMOptimizer.top_percent=0.05
+CEMOptimizer.iterations=2
+
 # model-based RL algo config
 MbrlAlgorithm.feature_spec=%observation_spec
 MbrlAlgorithm.action_spec=%action_spec

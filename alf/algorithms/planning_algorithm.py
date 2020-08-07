@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 from collections import namedtuple
 import gin
 
@@ -24,7 +25,7 @@ from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
                                  TimeStep)
 from alf.nest import nest
-from alf.optimizers.traj_optimizers import RandomOptimizer
+from alf.optimizers.traj_optimizers import CEMOptimizer, RandomOptimizer
 
 PlannerState = namedtuple("PlannerState", ["policy"], default_value=())
 PlannerInfo = namedtuple("PlannerInfo", ["policy"])
@@ -143,6 +144,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                  planning_horizon,
                  upper_bound=None,
                  lower_bound=None,
+                 plan_optimizer="random",
                  hidden_size=256,
                  name="RandomShootingAlgorithm"):
         """Create a RandomShootingAlgorithm.
@@ -175,11 +177,18 @@ class RandomShootingAlgorithm(PlanAlgorithm):
 
         self._population_size = population_size
         solution_size = self._planning_horizon * self._num_actions
-        self._plan_optimizer = RandomOptimizer(
-            solution_size,
-            self._population_size,
-            upper_bound=action_spec.maximum,
-            lower_bound=action_spec.minimum)
+        if plan_optimizer == "random":
+            self._plan_optimizer = RandomOptimizer(
+                solution_size,
+                self._population_size,
+                upper_bound=action_spec.maximum,
+                lower_bound=action_spec.minimum)
+        else:
+            self._plan_optimizer = CEMOptimizer(
+                self._planning_horizon,
+                self._num_actions,
+                self._population_size,
+                bounds=(action_spec.minimum, action_spec.maximum))
 
     def train_step(self, time_step: TimeStep, state):
         """
@@ -203,7 +212,9 @@ class RandomShootingAlgorithm(PlanAlgorithm):
 
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
         opt_action = self._plan_optimizer.obtain_solution(time_step, state)
-        action = opt_action[:, 0]
+        batch_size = time_step.observation.shape[0]
+        action = opt_action.reshape(batch_size, self._planning_horizon,
+                                    self._num_actions)[:, 0, :]
         action = torch.reshape(action, [time_step.observation.shape[0], -1])
         return action
 
