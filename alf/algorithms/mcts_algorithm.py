@@ -13,7 +13,7 @@
 # limitations under the License.
 """Monte-Carlo Tree Search."""
 
-import abc
+import gin
 import torch
 import torch.distributions as td
 import torch.nn.functional as F
@@ -21,49 +21,14 @@ from typing import Callable
 
 import alf
 from alf import TensorSpec
-from alf.data_structures import AlgStep, namedtuple, TimeStep
+from alf.data_structures import AlgStep, LossInfo, namedtuple, TimeStep
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.utils import dist_utils
 from alf import nest
 from alf.nest.utils import convert_device
 from alf.trainers.policy_trainer import Trainer
-from alf.utils import common
-
-ModelOutput = namedtuple(
-    'ModelOutput',
-    [
-        'value',  # [B], value for the player 0
-        'reward',  # [B], reward for the player 0
-        'game_over',  # [B], whether the game is over
-        'actions',  # [B, K, ...]
-        'action_probs',  # [B, K], prob of 0 indicate invalid action
-        'state',  # [B, ...]
-    ])
-
-
-class MCTSModel(abc.ABC):
-    """The interface for the model used by MCTSAlgorithm."""
-
-    @abc.abstractmethod
-    def initial_inference(self, observation):
-        """Generate the initial prediction given observation.
-
-        Returns:
-            ModelOutput: the prediction
-        """
-
-    @abc.abstractmethod
-    def recurrent_inference(self, state, action):
-        """Generate prediction given state and action.
-
-        Args:
-            state (Tensor): the latent state of the model. The state should be from
-                previous call of ``initial_inference`` or ``recurrent_inference``.
-            action (Tensor): the imagined action
-        Returns:
-            ModelOutput: the prediction
-        """
-
+from alf.utils import common, tensor_utils
+from .mcts_models import MCTSModel, ModelOutput
 
 MAXIMUM_FLOAT_VALUE = float('inf')
 
@@ -74,9 +39,24 @@ class _MCTSTree(object):
         action_spec = dist_utils.extract_spec(model_output.actions, from_dim=2)
         state_spec = dist_utils.extract_spec(model_output.state, from_dim=1)
         if known_value_bounds:
+            self.fixed_bounds = True
             self.minimum, self.maximum = known_value_bounds
         else:
+            self.fixed_bounds = False
             self.minimum, self.maximum = MAXIMUM_FLOAT_VALUE, -MAXIMUM_FLOAT_VALUE
+        self.minimum = torch.full((batch_size, ),
+                                  self.minimum,
+                                  dtype=torch.float32)
+        self.maximum = torch.full((batch_size, ),
+                                  self.maximum,
+                                  dtype=torch.float32)
+        if known_value_bounds:
+            self.normalize_scale = 1 / (self.maximum - self.minimum + 1e-30)
+            self.normalize_base = self.minimum
+        else:
+            self.normalize_scale = torch.ones((batch_size, ))
+            self.normalize_base = torch.zeros((batch_size, ))
+
         self.B = torch.arange(batch_size)
         self.root_indices = torch.zeros((batch_size, ), dtype=torch.int64)
         self.branch_factor = branch_factor
@@ -112,15 +92,34 @@ class _MCTSTree(object):
             shape, dtype=torch.int64, device='cpu')
         self.ucb_score = torch.zeros(shape)
 
-    def update_value_stats(self, values):
-        self.maximum = max(self.maximum, values.max())
-        self.minimum = min(self.minimum, values.min())
+    def update_value_stats(self, nodes, valid):
+        """Update min max stats for each tree.
 
-    def normalize_value(self, value):
-        if self.maximum > self.minimum:
-            # We normalize only when we have set the maximum and minimum values.
-            return (value - self.minimum) / (self.maximum - self.minimum)
-        return value
+        Only valid values are used to update the stats.
+        We maintain separate stats for each tree.
+        The shapes of ``nodes`` and ``valid`` are [T, B].
+        The invalid entries in ``values`` will be modified.
+        """
+        if self.fixed_bounds:
+            return
+        values = self.calc_value(nodes)
+        invalid = ~valid
+        values[invalid] = -MAXIMUM_FLOAT_VALUE
+        self.maximum = torch.max(self.maximum, values.max(dim=0)[0])
+        values[invalid] = MAXIMUM_FLOAT_VALUE
+        self.minimum = torch.min(self.minimum, values.min(dim=0)[0])
+
+        # We normalize only when we have set the maximum and minimum values.
+        normalize = self.maximum > self.minimum
+        self.normalize_scale = torch.where(
+            normalize, 1 / (self.maximum - self.minimum + 1e-30),
+            self.normalize_scale)
+        self.normalize_base = torch.where(normalize, self.minimum,
+                                          self.normalize_base)
+
+    def normalize_value(self, value, batch_index):
+        return self.normalize_scale[batch_index] * (
+            value - self.normalize_base[batch_index])
 
     def calc_value(self, nodes):
         return self.value_sum[nodes] / (self.visit_count[nodes] + 1e-30)
@@ -136,6 +135,7 @@ MCTSInfo = namedtuple(
     ["candidate_actions", "value", "candidate_action_visit_probabilities"])
 
 
+@gin.configurable
 class MCTSAlgorithm(OffPolicyAlgorithm):
     r"""Monte-Carlo Tree Search algorithm.
 
@@ -144,6 +144,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     The pseudocode can be downloaded from `<https://arxiv.org/src/1911.08265v2/anc/pseudocode.py>`_
 
     There are several differences:
+
     1. In this implementation, all values and rewards are for player 0. It seems
        that the values and rewards in the pseudocode can be either for player 0 or
        player 1 depending on who is on current turn. It makes reasoning the logic
@@ -179,7 +180,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             discount: float,
             is_two_player_game: bool,
             visit_softmax_temperature_fn: Callable,
-            known_value_bounds=(None, None),
+            known_value_bounds=None,
+            debug_summaries=False,
     ):
         r"""
         Args:
@@ -196,7 +198,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             is_two_player_game (bool): whether this is a two player (zero-sum) game
             visit_softmax_temperature_fn (Callable): function for calculating the
                 softmax temperature for sampling action based on the visit_counts
-                of the children of the root. :math:`P(a) \propto \exp(visit_count/t)`.
+                of the children of the root. :math:`P(a) \propto \exp(visit\_count/t)`.
                 This function is called as ``visit_softmax_temperature_fn(steps)``,
                 where ``steps`` is a vector representing the number of steps in
                 the games. And it is expected to return a float vector of the same
@@ -219,12 +221,18 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             observation_spec,
             action_spec,
             train_state_spec=MCTSState(
-                steps=alf.TensorSpec((), dtype=torch.int32)))
+                steps=alf.TensorSpec((), dtype=torch.int64)),
+            debug_summaries=debug_summaries)
 
     def set_model(self, model: MCTSModel):
         """Set the model used by the algorithm."""
         self._model = model
 
+    @property
+    def discount(self):
+        return self._discount
+
+    @torch.no_grad()
     def predict_step(self, time_step: TimeStep, state: MCTSState):
         """Predict the action.
 
@@ -239,18 +247,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 training the model.
         """
         assert self._model is not None, "Need to call `set_model` before `predict_step`"
-        batch_size = time_step.step_type.shape[0]
         model_output = self._model.initial_inference(time_step.observation)
         trees = _MCTSTree(self._num_simulations + 1, model_output,
                           self._known_value_bounds)
+        to_plays = ()
         if self._is_two_player_game:
             # We may need the environment to pass to_play and pass to_play to
             # model because players may not always alternate in some game.
             # And for many games, it is not always obvious to determine which
             # player is in the current turn by looking at the board.
             to_plays = state.steps % 2
-        else:
-            to_plays = torch.zeros((batch_size, ), dtype=torch.int64)
         roots = (trees.B, trees.root_indices)
         self._expand_node(
             trees,
@@ -266,31 +272,15 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         trees.visit_count[roots] = 1
         self._update_best_child(trees, roots)
 
-        best_child_index = trees.best_child_index
-        game_over = trees.game_over
-        to_plays = to_plays.cpu()
+        if self._is_two_player_game:
+            to_plays = to_plays.cpu()
         for sim in range(1, self._num_simulations + 1):
-            search_paths = []
-            last_to_plays = []
-
-            for b in range(batch_size):
-                to_play = to_plays[b]
-                node = 0
-                search_path = [node]
-                while best_child_index[b, node] != 0 and not game_over[b, node]:
-                    node = best_child_index[b, node]
-                    search_path.append(node)
-                    to_play = self._is_two_player_game - to_play
-                search_paths.append(search_path)
-                last_to_plays.append(to_play)
-
-            last_to_plays = torch.tensor(last_to_plays)
-            nodes_to_expand = [search_path[-1] for search_path in search_paths]
-            nodes_to_expand = torch.tensor(nodes_to_expand)
-            prev_nodes = [search_path[-2] for search_path in search_paths]
-            prev_nodes = torch.tensor(prev_nodes)
-            model_state = trees.model_state[(trees.B, prev_nodes)]
-            action = trees.action[(trees.B, nodes_to_expand)]
+            search_paths, path_lengths, last_to_plays = self._search(
+                trees, to_plays)
+            nodes_to_expand = search_paths[path_lengths - 1, trees.B]
+            prev_nodes = search_paths[path_lengths - 2, trees.B]
+            model_state = trees.model_state[trees.B, prev_nodes]
+            action = trees.action[trees.B, nodes_to_expand]
             model_output = self._model.recurrent_inference(model_state, action)
 
             self._expand_node(
@@ -303,6 +293,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             self._backup(
                 trees,
                 search_paths=search_paths,
+                path_lengths=path_lengths,
                 values=model_output.value,
                 to_plays=last_to_plays)
 
@@ -324,15 +315,48 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                     trees.first_child_index[node] + trees.branch_factor)
                 nodes.extend([(b, int(c)) for c in list(children)])
 
+    def _search(self, trees, to_plays):
+        """
+        Returns:
+            tuple:
+            - search_paths: [T, B] int64 matrix, where T is the max length of the
+                search paths. For paths whose length is shorter than T, search_path
+                is padded with the last node index of that path.
+            - path_lengths: [B] vector, length of each search path
+            - last_to_plays: to_play for the last node of each path
+        """
+        best_child_index = trees.best_child_index
+        game_over = trees.game_over
+        search_paths = []
+        B = trees.B
+        nodes = trees.root_indices.cpu()
+        path_lengths = torch.ones_like(trees.B, device='cpu')
+        search_paths = [nodes]
+        while True:
+            done = torch.max(best_child_index[B, nodes] == 0,
+                             game_over[B, nodes])
+            if torch.all(done):
+                break
+            nodes = torch.where(done, nodes, best_child_index[B, nodes])
+            path_lengths[~done] += 1
+            search_paths.append(nodes)
+            if self._is_two_player_game:
+                to_plays = torch.where(done, to_plays,
+                                       self._is_two_player_game - to_plays)
+
+        search_paths = torch.stack(search_paths)
+        return convert_device((search_paths, path_lengths, to_plays))
+
     def _select_action(self, trees, steps):
         roots = (trees.B, trees.root_indices)
         children = torch.arange(trees.branch_factor, 2 * trees.branch_factor)
         children = (trees.B.unsqueeze(1), children.unsqueeze(0))
         visit_counts = trees.visit_count[children]
         t = self._visit_softmax_temperature_fn(steps).unsqueeze(-1)
-        action = torch.multinomial(
+        action_id = torch.multinomial(
             F.softmax(visit_counts / t, dim=1), num_samples=1).squeeze(1)
-
+        candidate_actions = trees.action[children]
+        action = candidate_actions[trees.B, action_id]
         children_visit_count = trees.visit_count[children]
         parent_visit_count = (trees.visit_count[roots] - 1.0).unsqueeze(-1)
         info = MCTSInfo(
@@ -368,33 +392,44 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         prior_score = pb_c * trees.prior[children]
         value_score = trees.reward[
             children] + self._discount * trees.calc_value(children)
-        value_score = trees.normalize_value(value_score)
+        value_score = trees.normalize_value(value_score, children[0])
         value_score[child_visit_count == 0] = 0.5
-        value_score = value_score * (
-            (trees.to_play[parents] == 0) * 2 - 1).unsqueeze(-1)
+        if self._is_two_player_game:
+            value_score = value_score * (
+                (trees.to_play[parents] == 0) * 2 - 1).unsqueeze(-1)
 
         return prior_score + value_score
 
-    def _backup(self, trees: _MCTSTree, search_paths, values, to_plays):
-        values = values.cpu()
-        B = sum([[b] * len(p) for b, p in enumerate(search_paths)], [])
-        B = torch.tensor(B)
-        nodes = (B, torch.tensor(sum(search_paths, [])))
+    def _backup(self, trees: _MCTSTree, search_paths, path_lengths, values,
+                to_plays):
+        B = trees.B.unsqueeze(0)
+        T = search_paths.shape[0]
+        depth = torch.arange(T).unsqueeze(-1)
 
-        reward = trees.reward[nodes].cpu()
-        value_sum = trees.value_sum[nodes].cpu()
-        pos = len(value_sum) - 1
+        reward = trees.reward[B, search_paths]
+        reward[depth > path_lengths] = 0.
+        # [T+1, batch_size]
+        reward = tensor_utils.tensor_extend_zero(reward)
+        reward[path_lengths, B] = values
+        discounts = (self._discount
+                     **torch.arange(T + 1, dtype=torch.float32)).unsqueeze(-1)
 
-        for value, search_path in reversed(list(zip(values, search_paths))):
-            for _ in reversed(search_path):
-                value_sum[pos] += value
-                value = reward[pos] + self._discount * value
-                pos -= 1
+        # discounted_return[t] = discount^t * reward[t]
+        discounted_return = reward * discounts
+        # discounted_return[t] = \sum_{s=t}^T discount^s * reward[s]
+        discounted_return = reward.flip(0).cumsum(dim=0).flip(0)
 
+        # discounted_return[t] = \sum_{s=t}^T discount^(s-t) * reward[s]
+        discounted_return = discounted_return / discounts
+        discounted_return = discounted_return[1:]
+
+        value_sum = trees.value_sum[B, search_paths] + discounted_return
+
+        valid = depth < path_lengths
+        nodes = (B.expand(T, -1)[valid], search_paths[valid])
         trees.visit_count[nodes] += 1
-        trees.value_sum[nodes] = convert_device(value_sum)
-        node_values = trees.calc_value(nodes)
-        trees.update_value_stats(node_values)
+        trees.value_sum[nodes] = value_sum[valid]
+        trees.update_value_stats((B, search_paths), valid)
         self._update_best_child(trees, nodes)
 
     def _expand_node(
@@ -408,7 +443,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             exploration_fraction=None):
         batch_size = model_output.action_probs.shape[0]
         indices = (trees.B, node_indices)
-        trees.to_play[indices] = to_plays
+        if self._is_two_player_game:
+            trees.to_play[indices] = to_plays
         first_child_index = (n + 1) * trees.branch_factor
         trees.first_child_index[indices] = first_child_index
         trees.game_over[(indices[0].cpu(),
@@ -436,6 +472,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         trees.prior[children] = prior
 
 
+@gin.configurable
 def create_atari_mcts(observation_spec, action_spec):
     """Helper function for creating MCTSAlgorithm for atari games."""
 
@@ -462,11 +499,37 @@ def create_atari_mcts(observation_spec, action_spec):
         visit_softmax_temperature_fn=visit_softmax_temperature)
 
 
+@gin.configurable
+class VisitSoftmaxTemperatureByMoves(object):
+    def __init__(self, move_temperature_pairs=[(29, 1.0), (10000, 0.0001)]):
+        """Scheduling the temperature by move.
+
+        Args:
+            move_temperature_pairs (list[tuple]): each (moves, temperature) pair
+                indicates using this temperature until so many moves have been
+                played in the current game. The moves should be in ascending order.
+                Note that ``num_moves`` used to calculate the temperature starts
+                from 0.
+        """
+        self._move_temperature_pairs = list(
+            reversed(move_temperature_pairs[:-1]))
+        self._last_temperature = move_temperature_pairs[-1][1]
+
+    def __call__(self, num_moves):
+        t = torch.full_like(
+            num_moves, self._last_temperature, dtype=torch.float32)
+        for move, temp in self._move_temperature_pairs:
+            t[num_moves <= move] = temp
+        return t
+
+
+@gin.configurable
 def create_board_game_mcts(observation_spec,
                            action_spec,
                            dirichlet_alpha: float,
                            pb_c_init=1.25,
-                           num_simulations=800):
+                           num_simulations=800,
+                           debug_summaries=False):
     """Helper function for creating MCTSAlgorithm for board games."""
 
     def visit_softmax_temperature(num_moves):
@@ -490,3 +553,83 @@ def create_board_game_mcts(observation_spec,
         visit_softmax_temperature_fn=visit_softmax_temperature,
         known_value_bounds=(-1, 1),
         is_two_player_game=True)
+
+
+@gin.configurable
+def create_go_mcts(observation_spec, action_spec, debug_summaries):
+    return create_board_game_mcts(
+        observation_spec,
+        action_spec,
+        dirichlet_alpha=0.03,
+        debug_summaries=debug_summaries)
+
+
+@gin.configurable
+def create_chess_mcts(observation_spec, action_spec, debug_summaries):
+    return create_board_game_mcts(
+        observation_spec,
+        action_spec,
+        dirichlet_alpha=0.3,
+        debug_summaries=debug_summaries)
+
+
+@gin.configurable
+def create_shogi_mcts(observation_spec, action_spec, debug_summaries):
+    return create_board_game_mcts(
+        observation_spec,
+        action_spec,
+        dirichlet_alpha=0.15,
+        debug_summaries=debug_summaries)
+
+
+@gin.configurable
+def create_control_mcts(observation_spec,
+                        action_spec,
+                        num_simulations=50,
+                        debug_summaries=False):
+    """Helper function for creating MCTSAlgorithm for control tasks."""
+
+    def visit_softmax_temperature(num_moves):
+        progress = Trainer.progress()
+        if progress < 0.5:
+            t = 1.0
+        elif progress < 0.75:
+            t = 0.5
+        else:
+            t = 0.25
+        return t * torch.ones_like(num_moves, dtype=torch.float32)
+
+    return MCTSAlgorithm(
+        observation_spec=observation_spec,
+        action_spec=action_spec,
+        discount=0.997,
+        num_simulations=num_simulations,
+        root_dirichlet_alpha=0.25,
+        root_exploration_fraction=0.25,
+        pb_c_init=1.25,
+        pb_c_base=19652,
+        is_two_player_game=False,
+        visit_softmax_temperature_fn=visit_softmax_temperature,
+        debug_summaries=debug_summaries)
+
+
+@gin.configurable
+class VisitSoftmaxTemperatureByProgress(object):
+    def __init__(self,
+                 progress_temperature_pairs=[(0.5, 1.0), (0.75, 0.5), (1,
+                                                                       0.25)]):
+        """Scheduling the temperature by training progress.
+
+        Args:
+            progress_temperature_pairs (list[tuple]): each (progress, temperature)
+                pair indicates using this temperature until this training
+                progress. Note that progress should be in ascending order.
+        """
+        self._progress_temperature_pairs = progress_temperature_pairs
+
+    def __call__(self, num_moves):
+        progress = Trainer.progress()
+        for p, t in self._progress_temperature_pairs:
+            if progress < p:
+                break
+        return torch.full_like(num_moves, t, dtype=torch.float32)
