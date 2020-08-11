@@ -46,7 +46,6 @@ class CEMOptimizerTest(alf.test.TestCase):
 
         def _costs_agg_dist(time_step, state, samples, squared=True):
             batch_size = time_step.observation.shape[0]
-            samples = samples.reshape(batch_size, pop_size, -1, act_dim)
             start = time_step.achieved_goal.reshape(
                 batch_size, 1, 1, act_dim).expand(batch_size, pop_size, 1,
                                                   act_dim)

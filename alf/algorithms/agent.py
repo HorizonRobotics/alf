@@ -190,7 +190,10 @@ class Agent(OnPolicyAlgorithm):
                 time_step._replace(observation=observation),
                 state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
-            observation = [observation, goal_step.output]
+            if isinstance(observation, dict) and "desired_goal" in observation:
+                observation["desired_goal"] = goal_step.output
+            else:
+                observation = [observation, goal_step.output]
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl,
@@ -219,7 +222,10 @@ class Agent(OnPolicyAlgorithm):
                 state.goal_generator)
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
-            observation = [observation, goal_step.output]
+            if isinstance(observation, dict) and "desired_goal" in observation:
+                observation["desired_goal"] = goal_step.output
+            else:
+                observation = [observation, goal_step.output]
 
         rl_step = self._rl_algorithm.rollout_step(
             time_step._replace(observation=observation), state.rl)
@@ -265,7 +271,10 @@ class Agent(OnPolicyAlgorithm):
                 state.goal_generator)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
-            observation = [observation, goal_step.output]
+            if isinstance(observation, dict) and "desired_goal" in observation:
+                observation["desired_goal"] = goal_step.output
+            else:
+                observation = [observation, goal_step.output]
 
         if self._irm is not None:
             irm_step = self._irm.train_step(

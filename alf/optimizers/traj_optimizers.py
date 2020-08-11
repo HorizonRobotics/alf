@@ -18,6 +18,7 @@ import numpy as np
 import torch
 from torch.distributions import Normal
 
+import alf
 from alf.data_structures import TimeStep
 from alf.utils import tensor_utils
 
@@ -100,10 +101,10 @@ class CEMOptimizer(TrajOptimizer):
     def __init__(self,
                  planning_horizon,
                  action_dim,
-                 population_size,
-                 top_percent,
-                 iterations,
                  bounds,
+                 population_size=100,
+                 top_percent=0.1,
+                 iterations=2,
                  init_mean=None,
                  init_var=None):
         """Cross Entropy Method Trajectory Optimizer
@@ -118,10 +119,10 @@ class CEMOptimizer(TrajOptimizer):
             planning_horizon (int): The number of steps to plan
             action_dim (int): The dimensionality of each action executed at
                 each step
+            bounds (pair of float Tensors): min and max bounds of the samples
             population_size (int): population to compute cost and optimize
             top_percent (float): percentage of top samples to use for optimization
             iterations (int): number of iterations to run CEM optimization
-            bounds (pair of float): min and max bounds of the samples
             init_mean (float|Tensor): mean to initialize the normal distributions
             init_var (float|Tensor): var to initialize the normal distributions
         """
@@ -178,7 +179,7 @@ class CEMOptimizer(TrajOptimizer):
             Tensor of shape (``batch_size``, ``planning_horizon``, ``action_dim``)
         """
         init_obs = time_step.observation
-        batch_size = init_obs.shape[0]
+        batch_size = alf.nest.get_nest_batch_size(init_obs)
         distr = Normal(*self._init_distr(batch_size))
         solution = None
 
