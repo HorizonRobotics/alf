@@ -26,6 +26,7 @@ from alf.data_structures import namedtuple
 from alf.nest.utils import convert_device
 from alf.utils.common import warning_once
 from alf.utils.data_buffer import atomic, RingBuffer
+from alf.utils import checkpoint_utils
 
 from .segment_tree import SumSegmentTree, MaxSegmentTree, MinSegmentTree
 
@@ -62,6 +63,7 @@ class ReplayBuffer(RingBuffer):
                  keep_episodic_info=None,
                  step_type_field="step_type",
                  postprocess_exp_fn=None,
+                 enable_checkpoint=False,
                  name="ReplayBuffer"):
         """
         Args:
@@ -102,6 +104,7 @@ class ReplayBuffer(RingBuffer):
                     could be populated by gin.
                 Returns:
                     updated ``(batch, batch_info)``.
+            enable_checkpoint (bool): whether checkpointing this replay buffer.
             name (string): name of the replay buffer object.
         """
         super().__init__(
@@ -151,6 +154,7 @@ class ReplayBuffer(RingBuffer):
             self.register_buffer(
                 "_headless_indexed_pos",
                 torch.zeros(self._num_envs, dtype=torch.int64, device=device))
+        checkpoint_utils.enable_checkpoint(self, enable_checkpoint)
 
     @property
     def initial_priority(self):
@@ -630,6 +634,22 @@ class ReplayBuffer(RingBuffer):
     def total_size(self):
         """Total size from all environments."""
         return convert_device(self._current_size.sum())
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        super()._load_from_state_dict(state_dict, prefix, local_metadata,
+                                      strict, missing_keys, unexpected_keys,
+                                      error_msgs)
+        if not self._step_type_field:
+            return
+        env_ids = torch.arange(self._num_envs)
+        positions = self._current_pos - 1
+        valid = positions >= 0
+        env_ids = env_ids[valid]
+        positions = positions[valid]
+        step_type = alf.nest.get_field(self._buffer, self._step_type_field)
+        step_type[env_ids, self.circular(positions)] = torch.tensor(
+            ds.StepType.LAST)
 
 
 @gin.configurable

@@ -17,7 +17,30 @@ import warnings
 import torch
 from absl import logging
 
-from alf.algorithms.algorithm import Algorithm
+
+def is_checkpoint_enabled(module):
+    """Whether ``module`` will checkpointed.
+
+    By default, a module used in ``Algorithm`` will be checkpointed. The checkpointing
+    can be disabled by calling ``enable_checkpoint(module, False)``
+    Args:
+        module (torch.nn.Module): module in question
+    Returns:
+        bool: True if the parameters of this module will be checkpointed
+    """
+    if hasattr(module, "_alf_checkpoint_enabled"):
+        return module._alf_checkpoint_enabled
+    return True
+
+
+def enable_checkpoint(module, flag=True):
+    """Enable/disable checkpoint for ``module``.
+
+    Args:
+        module (torch.nn.Module):
+        flag (bool): True to enable checkpointing, False to disable.
+    """
+    module._alf_checkpoint_enabled = flag
 
 
 class Checkpointer(object):
@@ -94,6 +117,20 @@ class Checkpointer(object):
                         global_step)))
 
         return self._global_step
+
+    def has_checkpoint(self, global_step="latest"):
+        """Whether there is a checkpoint in the checkpoint directory.
+
+        Args:
+            global_step (int|str): If an int, return True if file "ckpt-{global_step}"
+                is in the checkpoint directory. If "lastest", return True if
+                "latest" is in the checkpoint directory.
+        """
+        f_path_latest = os.path.join(self._ckpt_dir, "latest")
+        f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
+        if global_step == "latest" and os.path.isfile(f_path_latest):
+            return True
+        return os.path.isfile(f_path)
 
     def save(self, global_step):
         """Save states of all modules to checkpoint
