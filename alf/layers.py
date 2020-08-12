@@ -252,7 +252,7 @@ class FC(nn.Module):
             output_size (int): output size
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
-            use_bn (bool): whether use batchnorm, not available for ParallelFC.
+            use_bn (bool): whether use batch normalization.
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -264,7 +264,6 @@ class FC(nn.Module):
         # get the argument list with vals
         self._kwargs = copy.deepcopy(locals())
         self._kwargs.pop('self')
-        self._kwargs.pop('use_bn')
         self._kwargs.pop('__class__')
 
         super(FC, self).__init__()
@@ -283,6 +282,8 @@ class FC(nn.Module):
         self._use_bn = use_bn
         if use_bn:
             self._bn = nn.BatchNorm1d(output_size)
+        else:
+            self._bn = None
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -296,6 +297,9 @@ class FC(nn.Module):
 
         if self._use_bias:
             nn.init.constant_(self._bias.data, self._bias_init_value)
+
+        if self._use_bn:
+            self._bn.reset_parameters()
 
     def forward(self, inputs):
         if inputs.dim() == 2 and self._use_bias:
@@ -322,6 +326,7 @@ class FC(nn.Module):
         """Create a ``ParallelFC`` using ``n`` replicas of ``self``.
         The initialized layer parameters will be different.
         """
+        assert self._use_bn is False, "BatchNorm is not supported by ParallelFC."
         return ParallelFC(n=n, **self._kwargs)
 
 

@@ -22,17 +22,21 @@ HyperNetwork.noise_dim=256
 HyperNetwork.par_vi = 'svgd'
 HyperNetwork.loss_type = 'classification'
 HyperNetwork.optimizer=@hypernet/Adam()
+HyperNetwork.logging_training=True
+HyperNetwork.logging_evaluate=True
 
 import alf.algorithms.hypernetwork_networks
 ParamConvNet.use_bias=True
 
 # training config
-SupervisedTrainerConfig.algorithm_ctor=@HyperNetwork
-SupervisedTrainerConfig.epochs=1000
-SupervisedTrainerConfig.debug_summaries=True
-SupervisedTrainerConfig.summarize_grads_and_vars=True
-SupervisedTrainerConfig.eval_accuracy=True
-SupervisedTrainerConfig.eval_uncertainty=True
+TrainerConfig.algorithm_ctor=@HyperNetwork
+TrainerConfig.num_epochs=1000
+TrainerConfig.num_checkpoints=2
+TrainerConfig.evaluate=True
+TrainerConfig.eval_interval=1
+TrainerConfig.summary_interval=1
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=True
 
 
 

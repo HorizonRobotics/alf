@@ -22,7 +22,7 @@ from typing import Callable
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.algorithms.config import SupervisedTrainerConfig
+from alf.algorithms.config import TrainerConfig
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 from alf.algorithms.generator import Generator
 from alf.algorithms.hypernetwork_networks import ParamNetwork
@@ -59,8 +59,7 @@ def neglogprob(inputs, param_net, loss_type, params):
     elif loss_type == 'classification':
         loss_func = classification_loss
     else:
-        assert ValueError(
-            "loss_type only supports \"regression\" and \"classification\"")
+        raise ValueError("Unsupported loss_type: %s" % loss_type)
 
     param_net.set_parameters(params)
     particles = params.shape[0]
@@ -112,7 +111,9 @@ class HyperNetwork(Algorithm):
                  par_vi="gfsf",
                  optimizer=None,
                  logging_network=False,
-                 config: SupervisedTrainerConfig = None,
+                 logging_training=False,
+                 logging_evaluate=False,
+                 config: TrainerConfig = None,
                  name="HyperNetwork"):
         """
         Args:
@@ -154,8 +155,13 @@ class HyperNetwork(Algorithm):
                 types are [``classification``, ``regression``]
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
+            par_vi (str): types of particle-based methods for variational inference,
+                types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``]
             optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
+            logging_training (bool): whether logging loss and acc during training.
+            logging_evaluate (bool): whether logging loss and acc of evaluate.
+            config (TrainerConfig): configuration for training
             name (str):
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
@@ -183,9 +189,9 @@ class HyperNetwork(Algorithm):
             logging.info("-" * 68)
             logging.info(param_net)
 
-            logging_info("Generator network")
-            logging_info("-" * 68)
-            logging_info(net)
+            logging.info("Generator network")
+            logging.info("-" * 68)
+            logging.info(net)
 
         if par_vi == 'svgd':
             par_vi = 'svgd3'
@@ -199,7 +205,6 @@ class HyperNetwork(Algorithm):
             optimizer=optimizer,
             name=name)
 
-        self._config = config
         self._param_net = param_net
         self._particles = particles
         self._entropy_regularization = entropy_regularization
@@ -207,6 +212,9 @@ class HyperNetwork(Algorithm):
         self._test_loader = None
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
+        self._logging_training = logging_training
+        self._logging_evaluate = logging_evaluate
+        self._config = config
         assert (voting in ['soft', 'hard'
                            ]), ("voting only supports \"soft\" and \"hard\"")
         self._voting = voting
@@ -215,9 +223,7 @@ class HyperNetwork(Algorithm):
         elif loss_type == 'regression':
             self._vote = self._regression_vote
         else:
-            assert ValueError(
-                "loss_type only supports \"classification\" and \"regression\""
-            )
+            raise ValueError("Unsupported loss_type: %s" % loss_type)
 
     def set_data_loader(self, train_loader, test_loader=None):
         """Set data loadder for training and testing."""
@@ -284,8 +290,10 @@ class HyperNetwork(Algorithm):
         acc = None
         if self._loss_type == 'classification':
             acc = torch.as_tensor(avg_acc).mean() * 100
-            logging.info("Avg acc: {}".format(acc))
-        logging.info("Cum loss: {}".format(loss))
+        if self._logging_training:
+            if self._loss_type == 'classification':
+                logging.info("Avg acc: {}".format(acc))
+            logging.info("Cum loss: {}".format(loss))
         self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
 
         return batch_idx + 1
@@ -323,6 +331,7 @@ class HyperNetwork(Algorithm):
         """Evaluate on a randomly drawn network. """
 
         assert self._test_loader is not None, "Must set test_loader first."
+        logging.info("==> Begin testing")
         if self._use_fc_bn:
             self._generator.eval()
         params = self.sample_parameters(particles=particles)
@@ -344,9 +353,11 @@ class HyperNetwork(Algorithm):
 
         if self._loss_type == 'classification':
             test_acc /= len(self._test_loader.dataset)
-            logging.info("Test acc: {}".format(test_acc * 100))
             alf.summary.scalar(name='eval/test_acc', data=test_acc * 100)
-        logging.info("Test loss: {}".format(test_loss))
+        if self._logging_evaluate:
+            if self._loss_type == 'classification':
+                logging.info("Test acc: {}".format(test_acc * 100))
+            logging.info("Test loss: {}".format(test_loss))
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
 
     def _classification_vote(self, output, target):

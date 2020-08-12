@@ -53,6 +53,7 @@ from alf.utils import common
 import alf.utils.external_configurables
 from alf.trainers import policy_trainer
 
+flags.DEFINE_string('ml_type', 'rl', 'type of the learning task')
 flags.DEFINE_string('root_dir', os.getenv('TEST_UNDECLARED_OUTPUTS_DIR'),
                     'Root directory for writing logs/summaries/checkpoints.')
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
@@ -62,21 +63,28 @@ FLAGS = flags.FLAGS
 
 
 @gin.configurable
-def train_eval(root_dir):
+def train_eval(ml_type, root_dir):
     """Train and evaluate algorithm
 
     Args:
+        ml_type (str): type of machine learning task, 'rl' or 'sl'
         root_dir (str): directory for saving summary and checkpoints
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
-    trainer = policy_trainer.Trainer(trainer_conf)
+    if ml_type == 'rl':
+        trainer = policy_trainer.RLTrainer(trainer_conf)
+    elif ml_type == 'sl':
+        trainer = policy_trainer.SLTrainer(trainer_conf)
+    else:
+        raise ValueError("Unsupported ml_type: %s" % ml_type)
+
     trainer.train()
 
 
 def main(_):
     gin_file = common.get_gin_file()
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-    train_eval(FLAGS.root_dir)
+    train_eval(FLAGS.ml_type, FLAGS.root_dir)
 
 
 if __name__ == '__main__':

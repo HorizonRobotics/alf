@@ -28,10 +28,39 @@ import torch.nn as nn
 import alf
 from alf.algorithms.config import TrainerConfig
 from alf.environments.utils import create_environment
+from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils import git_utils
+from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
+import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
+
+
+@gin.configurable
+def create_dataset(dataset_name='mnist',
+                   dataset_loader=datagen,
+                   train_batch_size=100,
+                   test_batch_size=100):
+    """Create a pytorch data loaders.
+
+    Args:
+        dataset_name (str): dataset_name
+        dataset_loader (Callable) : callable that create pytorch data
+            loaders for both training and testing.
+        train_batch_size (int): batch_size for training.
+        test_batch_size (int): batch_size for testing.
+
+    Returns:
+        trainset (torch.utils.data.DataLoaderr):
+        testset (torch.utils.data.DataLoaderr):
+    """
+
+    trainset, testset = getattr(dataset_loader,
+                                'load_{}'.format(dataset_name))(
+                                    train_bs=train_batch_size,
+                                    test_bs=test_batch_size)
+    return trainset, testset
 
 
 class _TrainerProgress(nn.Module):
@@ -43,7 +72,7 @@ class _TrainerProgress(nn.Module):
         self._num_env_steps = None
         self._progress = None
 
-    def set_termination_criterion(self, num_iterations, num_env_steps):
+    def set_termination_criterion(self, num_iterations, num_env_steps=0):
         self._num_iterations = float(num_iterations)
         self._num_env_steps = float(num_env_steps)
         # might be loaded from a checkpoint, so we update first
@@ -75,9 +104,9 @@ class _TrainerProgress(nn.Module):
 
 
 class Trainer(object):
-    """Trainer.
+    """Base class for trainers. 
 
-    Trainer is responsible for creating algorithm and environment, setting up
+    Trainer is responsible for creating algorithm and dataset/environment, setting up
     summary, checkpointing, running training iterations, and evaluating periodically.
     """
 
@@ -94,35 +123,89 @@ class Trainer(object):
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
 
-        self._envs = []
         self._algorithm_ctor = config.algorithm_ctor
         self._algorithm = None
-
-        self._random_seed = config.random_seed
-        self._num_iterations = config.num_iterations
-        self._num_env_steps = config.num_env_steps
-        assert (self._num_iterations + self._num_env_steps > 0
-                and self._num_iterations * self._num_env_steps == 0), \
-            "Must provide #iterations or #env_steps exclusively for training!"
-        self._trainer_progress.set_termination_criterion(
-            self._num_iterations, self._num_env_steps)
 
         self._num_checkpoints = config.num_checkpoints
         self._checkpointer = None
 
         self._evaluate = config.evaluate
         self._eval_interval = config.eval_interval
-        self._num_eval_episodes = config.num_eval_episodes
 
         self._summary_interval = config.summary_interval
         self._summaries_flush_secs = config.summaries_flush_secs
         self._summary_max_queue = config.summary_max_queue
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
-        alf.summary.should_summarize_output(config.summarize_output)
         self._config = config
 
+        self._random_seed = config.random_seed
         self._random_seed = common.set_random_seed(self._random_seed)
+
+    @staticmethod
+    def progress():
+        """A static method that returns the current training progress, provided
+        that only one trainer will be used for training.
+
+        Returns:
+            float: a number in :math:`[0,1]` indicating the training progress.
+        """
+        return Trainer._trainer_progress.progress
+
+    def train(self):
+        """Perform training."""
+        self._restore_checkpoint()
+        alf.summary.enable_summary()
+        try:
+            common.run_under_record_context(
+                self._train,
+                summary_dir=self._train_dir,
+                summary_interval=self._summary_interval,
+                flush_secs=self._summaries_flush_secs,
+                summary_max_queue=self._summary_max_queue)
+        finally:
+            self._save_checkpoint()
+            self._close()
+
+    def _train(self):
+        """Perform training according the the learning type. """
+        pass
+
+    def _close(self):
+        """Closing operations after training. """
+        pass
+
+    def _restore_checkpoint(self):
+        """retore from saved checkpoint."""
+        pass
+
+    def _save_checkpoint(self):
+        global_step = alf.summary.get_global_counter()
+        self._checkpointer.save(global_step=global_step)
+
+
+class RLTrainer(Trainer):
+    """Trainer for reinforcement learning. """
+
+    def __init__(self, config: TrainerConfig):
+        """
+
+        Args:
+            config (TrainerConfig): configuration used to construct this trainer
+        """
+        super().__init__(config)
+
+        self._envs = []
+        self._num_env_steps = config.num_env_steps
+        self._num_iterations = config.num_iterations
+        assert (self._num_iterations + self._num_env_steps > 0
+                and self._num_iterations * self._num_env_steps == 0), \
+            "Must provide #iterations or #env_steps exclusively for training!"
+        self._trainer_progress.set_termination_criterion(
+            self._num_iterations, self._num_env_steps)
+
+        self._num_eval_episodes = config.num_eval_episodes
+        alf.summary.should_summarize_output(config.summarize_output)
 
         env = self._create_environment(random_seed=self._random_seed)
         logging.info(
@@ -161,7 +244,7 @@ class Trainer(object):
             self._eval_summary_writer = alf.summary.create_summary_writer(
                 self._eval_dir, flush_secs=config.summaries_flush_secs)
 
-    @gin.configurable('alf.trainers.Trainer._create_environment')
+    @gin.configurable('alf.trainers.RLTrainer._create_environment')
     def _create_environment(self,
                             nonparallel=False,
                             random_seed=None,
@@ -181,31 +264,6 @@ class Trainer(object):
         for env in self._envs:
             env.close()
         self._unwrapped_env.close()
-
-    @staticmethod
-    def progress():
-        """A static method that returns the current training progress, provided
-        that only one trainer will be used for training.
-
-        Returns:
-            float: a number in :math:`[0,1]` indicating the training progress.
-        """
-        return Trainer._trainer_progress.progress
-
-    def train(self):
-        """Perform training."""
-        self._restore_checkpoint()
-        alf.summary.enable_summary()
-        try:
-            common.run_under_record_context(
-                self._train,
-                summary_dir=self._train_dir,
-                summary_interval=self._summary_interval,
-                flush_secs=self._summaries_flush_secs,
-                summary_max_queue=self._summary_max_queue)
-        finally:
-            self._save_checkpoint()
-            self._close_envs()
 
     def _train(self):
         for env in self._envs:
@@ -279,6 +337,10 @@ class Trainer(object):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
 
+    def _close(self):
+        """Closing operations after training. """
+        self._close_envs()
+
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
@@ -300,10 +362,6 @@ class Trainer(object):
             alf.summary.set_global_counter(recovered_global_step)
 
         self._checkpointer = checkpointer
-
-    def _save_checkpoint(self):
-        global_step = alf.summary.get_global_counter()
-        self._checkpointer.save(global_step=global_step)
 
     def _eval(self):
         time_step = common.get_initial_time_step(self._eval_env)
@@ -329,6 +387,109 @@ class Trainer(object):
                     step_metrics=step_metrics)
 
         common.log_metrics(self._eval_metrics)
+
+
+class SLTrainer(Trainer):
+    """Trainer for supervised learning. """
+
+    def __init__(self, config: TrainerConfig):
+        """Create a SLTrainer
+
+        Args:
+            config (TrainerConfig): configuration used to construct this trainer
+        """
+        super().__init__(config)
+
+        assert config.num_epochs > 0, \
+            "Must provide num_epochs for training!"
+
+        self._num_epochs = config.num_epochs
+        self._trainer_progress.set_termination_criterion(self._num_epochs)
+
+        trainset, testset = create_dataset()
+        input_tensor_spec = TensorSpec(shape=testset.dataset[0][0].shape)
+        output_dim = len(testset.dataset.classes)
+
+        self._algorithm = config.algorithm_ctor(
+            input_tensor_spec=input_tensor_spec,
+            last_layer_param=(output_dim, True),
+            last_activation=math_ops.identity,
+            config=config)
+
+        self._algorithm.set_data_loader(trainset, testset)
+
+    def _train(self):
+        begin_epoch_num = int(self._trainer_progress._iter_num)
+        epoch_num = begin_epoch_num
+
+        checkpoint_interval = math.ceil(
+            self._num_epochs / self._num_checkpoints)
+        time_to_checkpoint = checkpoint_interval
+
+        logging.info("==> Begin Training")
+        while True:
+            logging.info("-" * 68)
+            logging.info("Epoch: {}".format(epoch_num + 1))
+            with record_time("time/train_iter"):
+                train_steps = self._algorithm.train_iter()
+
+            if self._evaluate and (epoch_num + 1) % self._eval_interval == 0:
+                self._algorithm.evaluate()
+
+            if epoch_num == begin_epoch_num:
+                # We need to wait for one iteration to get the operative args
+                # Right just give a fixed gin file name to store operative args
+                common.write_gin_configs(self._root_dir, "configured.gin")
+
+                with alf.summary.record_if(lambda: True):
+
+                    def _markdownify(paragraph):
+                        return "    ".join(
+                            (os.linesep + paragraph).splitlines(keepends=True))
+
+                    common.summarize_gin_config()
+                    alf.summary.text('commandline', ' '.join(sys.argv))
+                    alf.summary.text(
+                        'optimizers',
+                        _markdownify(self._algorithm.get_optimizer_info()))
+                    alf.summary.text('revision', git_utils.get_revision())
+                    alf.summary.text('diff',
+                                     _markdownify(git_utils.get_diff()))
+                    alf.summary.text('seed', str(self._random_seed))
+
+            # check termination
+            epoch_num += 1
+            self._trainer_progress.update(epoch_num)
+
+            if (self._num_epochs and epoch_num >= self._num_epochs):
+                if self._evaluate:
+                    self._algorithm.evaluate()
+                break
+
+            if self._num_epochs and epoch_num >= time_to_checkpoint:
+                self._save_checkpoint()
+                time_to_checkpoint += checkpoint_interval
+
+    def _restore_checkpoint(self):
+        checkpointer = Checkpointer(
+            ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
+            algorithm=self._algorithm,
+            trainer_progress=self._trainer_progress)
+
+        try:
+            recovered_global_step = checkpointer.load()
+        except Exception as e:
+            raise RuntimeError(
+                ("Checkpoint loading failed from the provided root_dir={}. "
+                 "Typically this is caused by using a wrong checkpoint. \n"
+                 "Please make sure the root_dir is set correctly. "
+                 "Use a new value for it if "
+                 "planning to train from scratch. \n"
+                 "Detailed error message: {}").format(self._root_dir, e))
+        if recovered_global_step != -1:
+            alf.summary.set_global_counter(recovered_global_step)
+
+        self._checkpointer = checkpointer
 
 
 @torch.no_grad()

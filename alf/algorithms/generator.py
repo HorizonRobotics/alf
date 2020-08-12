@@ -134,9 +134,7 @@ class Generator(Algorithm):
             elif par_vi == 'svgd3':
                 self._grad_func = self._svgd_grad3
             else:
-                assert ValueError(
-                    "par_vi only supports \"gfsf\", \"svgd\", \"svgd2\", and \"svgd3\""
-                )
+                raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
             self._kernel_width_averager = AdaptiveAverager(
                 tensor_spec=TensorSpec(shape=()))

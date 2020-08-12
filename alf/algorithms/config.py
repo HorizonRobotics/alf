@@ -24,6 +24,7 @@ class TrainerConfig(object):
                  root_dir,
                  algorithm_ctor=None,
                  random_seed=None,
+                 num_epochs=2e+5,
                  num_iterations=1000,
                  num_env_steps=0,
                  unroll_length=8,
@@ -34,6 +35,7 @@ class TrainerConfig(object):
                  evaluate=False,
                  eval_interval=10,
                  epsilon_greedy=0.1,
+                 eval_uncertainty=False,
                  num_eval_episodes=10,
                  summary_interval=50,
                  update_counter_every_mini_batch=False,
@@ -61,6 +63,7 @@ class TrainerConfig(object):
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
             random_seed (None|int): random seed, a random seed is used if None
+            num_epochs (int): number of training epochs 
             num_iterations (int): number of update iterations (ignored if 0). Note
                 that for off-policy algorithms, if ``initial_collect_steps>0``,
                 then the first ``initial_collect_steps//(unroll_length*num_envs)``
@@ -99,6 +102,7 @@ class TrainerConfig(object):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
+            eval_uncertainty (bool): whether to evluate uncertainty after training
             num_eval_episodes (int) : number of episodes for one evaluation
             summary_interval (int): write summary every so many training steps
             update_counter_every_mini_batch (bool): whether to update counter
@@ -153,6 +157,7 @@ class TrainerConfig(object):
             root_dir=root_dir,
             algorithm_ctor=algorithm_ctor,
             random_seed=random_seed,
+            num_epochs=num_epochs,
             num_iterations=num_iterations,
             num_env_steps=num_env_steps,
             unroll_length=unroll_length,
@@ -163,6 +168,7 @@ class TrainerConfig(object):
             evaluate=evaluate,
             eval_interval=eval_interval,
             epsilon_greedy=epsilon_greedy,
+            eval_uncertainty=eval_uncertainty,
             num_eval_episodes=num_eval_episodes,
             summary_interval=summary_interval,
             update_counter_every_mini_batch=update_counter_every_mini_batch,
@@ -184,51 +190,5 @@ class TrainerConfig(object):
             priority_replay_beta=priority_replay_beta,
             priority_replay_eps=priority_replay_eps,
             num_envs=num_envs)
-        for k, v in parameters.items():
-            self.__setattr__(k, v)
-
-
-@gin.configurable
-class SupervisedTrainerConfig(object):
-    """Configuration for supervised training."""
-
-    def __init__(self,
-                 root_dir,
-                 algorithm_ctor=None,
-                 random_seed=None,
-                 epochs=2e+5,
-                 eval_accuracy=True,
-                 eval_uncertainty=False,
-                 summary_interval=50,
-                 summaries_flush_secs=1,
-                 summary_max_queue=100,
-                 debug_summaries=False,
-                 summarize_grads_and_vars=False):
-        """
-        Args:
-            root_dir (str): directory for saving summary and checkpoints
-            algorithm_ctor (Callable): callable that create an
-                ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
-            random_seed (None|int): random seed, a random seed is used if None
-            epochs (int): number of training epoches
-            eval_accuracy (bool): whether to evluate accuracy after training
-            eval_uncertainty (bool): whether to evluate uncertainty after training
-            summary_interval (int): write summary every so many training steps
-            summaries_flush_secs (int): flush summary to disk every so many seconds
-            summary_max_queue (int): flush to disk every so mary summaries
-            summarize_grads_and_vars (bool): If True, gradient and network variable
-                summaries will be written during training.
-        """
-        parameters = dict(
-            root_dir=root_dir,
-            algorithm_ctor=algorithm_ctor,
-            random_seed=random_seed,
-            epochs=epochs,
-            evaluate=eval_accuracy,
-            summary_interval=summary_interval,
-            summaries_flush_secs=summaries_flush_secs,
-            summary_max_queue=summary_max_queue,
-            debug_summaries=debug_summaries,
-            summarize_grads_and_vars=summarize_grads_and_vars)
         for k, v in parameters.items():
             self.__setattr__(k, v)
