@@ -204,13 +204,6 @@ class Trainer(object):
 
     def train(self):
         """Perform training."""
-        self._checkpointer = Checkpointer(
-            ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
-            algorithm=self._algorithm,
-            metrics=nn.ModuleList(self._algorithm.get_metrics()),
-            trainer_progress=self._trainer_progress)
-        if self._checkpointer.has_checkpoint():
-            self._algorithm.train_iter()
         self._restore_checkpoint()
         alf.summary.enable_summary()
         try:
@@ -314,8 +307,20 @@ class Trainer(object):
                 time_to_checkpoint += checkpoint_interval
 
     def _restore_checkpoint(self):
+        checkpointer = Checkpointer(
+            ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
+            algorithm=self._algorithm,
+            metrics=nn.ModuleList(self._algorithm.get_metrics()),
+            trainer_progress=self._trainer_progress)
+
+        if checkpointer.has_checkpoint():
+            # Some objects (e.g. ReplayBuffer) are constructed lazily in algorithm.
+            # They only appear after one training iteration. So we need to run
+            # train_iter() once before loading the checkpoint
+            self._algorithm.train_iter()
+
         try:
-            recovered_global_step = self._checkpointer.load()
+            recovered_global_step = checkpointer.load()
         except Exception as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
@@ -326,6 +331,8 @@ class Trainer(object):
                  "Detailed error message: {}").format(self._root_dir, e))
         if recovered_global_step != -1:
             alf.summary.set_global_counter(recovered_global_step)
+
+        self._checkpointer = checkpointer
 
     def _save_checkpoint(self):
         global_step = alf.summary.get_global_counter()
