@@ -58,6 +58,10 @@ flags.DEFINE_string(
     "to a file instead of shown on the screen.")
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+flags.DEFINE_string(
+    'ignored_parameter_prefixes', "_exp_replayer.",
+    "Comma separated strings to ingore the parameters whose name has one of "
+    "these prefixes in the checkpoint.")
 
 FLAGS = flags.FLAGS
 
@@ -91,7 +95,9 @@ def main(_):
             num_episodes=FLAGS.num_episodes,
             max_episode_length=FLAGS.max_episode_length,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
-            record_file=FLAGS.record_file)
+            record_file=FLAGS.record_file,
+            ingored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
+                ","))
     finally:
         env.close()
 
