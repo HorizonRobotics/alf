@@ -20,6 +20,7 @@ import abc
 import gin
 import six
 import torch
+from torch import nn
 
 import alf
 from alf.experience_replayers.replay_buffer import ReplayBuffer
@@ -28,7 +29,7 @@ from alf.utils import common
 
 
 @six.add_metaclass(abc.ABCMeta)
-class ExperienceReplayer(object):
+class ExperienceReplayer(nn.Module):
     """
     Base class for implementing experience storing and replay. A subclass should
     implement the abstract functions. This class object will be used by OffPolicyDrivers

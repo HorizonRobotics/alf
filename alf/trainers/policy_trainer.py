@@ -313,6 +313,12 @@ class Trainer(object):
             metrics=nn.ModuleList(self._algorithm.get_metrics()),
             trainer_progress=self._trainer_progress)
 
+        if checkpointer.has_checkpoint():
+            # Some objects (e.g. ReplayBuffer) are constructed lazily in algorithm.
+            # They only appear after one training iteration. So we need to run
+            # train_iter() once before loading the checkpoint
+            self._algorithm.train_iter()
+
         try:
             recovered_global_step = checkpointer.load()
         except Exception as e:

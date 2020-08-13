@@ -29,6 +29,7 @@ import alf
 from alf.data_structures import AlgStep, namedtuple, LossInfo, StepType
 from alf.experience_replayers.experience_replay import (
     OnetimeExperienceReplayer, SyncExperienceReplayer)
+from alf.utils.checkpoint_utils import is_checkpoint_enabled
 from alf.utils import (common, dist_utils, math_ops, spec_utils, summary_utils,
                        tensor_utils)
 from alf.utils.summary_utils import record_time
@@ -684,6 +685,9 @@ class Algorithm(nn.Module):
         if visited is None:
             visited = {self}
 
+        if not is_checkpoint_enabled(self):
+            return destination
+
         self._save_to_state_dict(destination, prefix, visited)
         opts_dict = OrderedDict()
         for name, child in self._modules.items():
@@ -737,6 +741,8 @@ class Algorithm(nn.Module):
         def _load(module, prefix='', visited=None):
             if visited is None:
                 visited = {self}
+            if not is_checkpoint_enabled(module):
+                return
             if isinstance(module, Algorithm):
                 module._setup_optimizers()
                 for i, opt in enumerate(module._optimizers):
