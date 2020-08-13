@@ -19,11 +19,13 @@ import gin
 
 import torch
 
+import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.agent_helpers import AgentHelper
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
+from alf.algorithms.goal_generator import SubgoalPlanningGoalGenerator
 from alf.algorithms.icm_algorithm import ICMAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.rl_algorithm import RLAlgorithm
@@ -115,9 +117,12 @@ class Agent(OnPolicyAlgorithm):
         ## 1. goal generator
         if goal_generator is not None:
             agent_helper.register_algorithm(goal_generator, "goal_generator")
-            rl_observation_spec = [
-                rl_observation_spec, goal_generator.action_spec
-            ]
+            if not isinstance(
+                    rl_observation_spec,
+                    dict) or "desired_goal" not in rl_observation_spec:
+                rl_observation_spec = [
+                    rl_observation_spec, goal_generator.action_spec
+                ]
 
         ## 2. rl algorithm
         rl_algorithm = rl_algorithm_cls(
@@ -127,6 +132,20 @@ class Agent(OnPolicyAlgorithm):
         agent_helper.register_algorithm(rl_algorithm, "rl")
         # Whether the agent is on-policy or not depends on its rl algorithm.
         self._is_on_policy = rl_algorithm.is_on_policy()
+        if goal_generator is not None and isinstance(
+                goal_generator, SubgoalPlanningGoalGenerator):
+
+            def _value(obs, states=()):
+                ts = TimeStep(observation=obs)
+                batch_size = alf.nest.get_nest_batch_size(obs)
+                # We are assuming full state observation, no policy state
+                state = rl_algorithm.get_initial_rollout_state(batch_size)
+                policy_step = rl_algorithm.predict_step(
+                    ts, state=state, epsilon_greedy=0)
+                act = policy_step.output
+                return rl_algorithm._critic_networks((obs, act), state=())
+
+            goal_generator.set_value_fn(_value)
 
         ## 3. intrinsic motivation module
         if intrinsic_reward_module is not None:
@@ -168,6 +187,19 @@ class Agent(OnPolicyAlgorithm):
     def is_on_policy(self):
         return self._is_on_policy
 
+    def _goal_observation(self, observation, goal_step, info=None):
+        if isinstance(observation, dict) and "desired_goal" in observation:
+            if info:
+                # Put original goal into info to be stored in ReplayBuffer
+                info = info._replace(
+                    goal_generator=info.goal_generator._replace(
+                        original_goal=observation["desired_goal"]))
+            # Set generated goal as desired_goal, also goes into ReplayBuffer
+            observation["desired_goal"] = goal_step.output
+        else:
+            observation = [observation, goal_step.output]
+        return observation, info
+
     def predict_step(self, time_step: TimeStep, state: AgentState,
                      epsilon_greedy):
         """Predict for one step."""
@@ -188,10 +220,8 @@ class Agent(OnPolicyAlgorithm):
                 state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
-            if isinstance(observation, dict) and "desired_goal" in observation:
-                observation["desired_goal"] = goal_step.output
-            else:
-                observation = [observation, goal_step.output]
+            observation, _ = self._goal_observation(observation, goal_step,
+                                                    info)
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl,
@@ -220,10 +250,8 @@ class Agent(OnPolicyAlgorithm):
                 state.goal_generator)
             new_state = new_state._replace(goal_generator=goal_step.state)
             info = info._replace(goal_generator=goal_step.info)
-            if isinstance(observation, dict) and "desired_goal" in observation:
-                observation["desired_goal"] = goal_step.output
-            else:
-                observation = [observation, goal_step.output]
+            observation, info = self._goal_observation(observation, goal_step,
+                                                       info)
 
         rl_step = self._rl_algorithm.rollout_step(
             time_step._replace(observation=observation), state.rl)
@@ -269,10 +297,8 @@ class Agent(OnPolicyAlgorithm):
                 state.goal_generator)
             info = info._replace(goal_generator=goal_step.info)
             new_state = new_state._replace(goal_generator=goal_step.state)
-            if isinstance(observation, dict) and "desired_goal" in observation:
-                observation["desired_goal"] = goal_step.output
-            else:
-                observation = [observation, goal_step.output]
+            observation, info = self._goal_observation(observation, goal_step,
+                                                       info)
 
         if self._irm is not None:
             irm_step = self._irm.train_step(

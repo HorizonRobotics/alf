@@ -68,7 +68,7 @@ class CEMOptimizerTest(alf.test.TestCase):
             achieved_goal=0,
             desired_goal=0)
         opt.set_cost(_costs)
-        solution = opt.obtain_solution(fake_item, ())
+        solution, _costs = opt.obtain_solution(fake_item, ())
         self.assertEqual(solution.shape,
                          (batch_size, planning_horizon, act_dim))
         self.assertTensorClose(solution, torch.Tensor([10.0]), epsilon=1e-1)
@@ -80,7 +80,7 @@ class CEMOptimizerTest(alf.test.TestCase):
             achieved_goal=start,
             desired_goal=end)
         opt.set_cost(_costs_agg_dist)
-        solution = opt.obtain_solution(item, ())
+        solution, _costs = opt.obtain_solution(item, ())
         self.assertTensorClose(
             solution.reshape(-1, act_dim),
             start +
@@ -102,7 +102,7 @@ class CEMOptimizerTest(alf.test.TestCase):
             observation=torch.zeros(1, ),
             achieved_goal=start2,
             desired_goal=end2)
-        solution2 = opt2.obtain_solution(item2, ())
+        solution2, _costs = opt2.obtain_solution(item2, ())
         self.assertTensorClose(
             solution2,
             torch.Tensor([[[-6., -0.6], [-2., -0.2], [2, 0.2], [6, 0.6]]]),
