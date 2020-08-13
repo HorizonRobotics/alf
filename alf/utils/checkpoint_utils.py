@@ -73,22 +73,35 @@ class Checkpointer(object):
 
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
-    def load(self, global_step="latest"):
+    def load(self, global_step="latest", ignored_parameter_prefixes=[]):
         """Load checkpoint
         Args:
             global_step (int|str): the number of training steps which is used to
                 specify the checkpoint to be loaded. If global_step is 'latest',
                 the most recent checkpoint named 'latest' will be loaded.
+            ingored_parameter_prefixes (list[str]): ignore the parameters whose
+                name has one of these prefixes in the checkpoint.
         Returns:
             current_step_num (int): the current step number for the loaded
                 checkpoint. current_step_num is set to - 1 if the specified
                 checkpoint does not exist.
         """
 
+        def _remove_ignored_parameters(checkpoint):
+            to_delete = []
+            for k in checkpoint.keys():
+                for prefix in ignored_parameter_prefixes:
+                    if k.startswith(prefix):
+                        to_delete.append(k)
+                        break
+            for k in to_delete:
+                checkpoint.pop(k)
+
         def _load_checkpoint(checkpoint):
             self._global_step = checkpoint["global_step"]
             try:
                 for k, v in self._modules.items():
+                    _remove_ignored_parameters(checkpoint[k])
                     self._modules[k].load_state_dict(checkpoint[k])
             except Exception as e:
                 raise RuntimeError((

@@ -394,7 +394,8 @@ def play(root_dir,
          num_episodes=10,
          max_episode_length=0,
          sleep_time_per_step=0.01,
-         record_file=None):
+         record_file=None,
+         ignored_parameter_prefixes=['_exp_replayer.']):
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
@@ -422,13 +423,17 @@ def play(root_dir,
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
-    """
+        ignored_parameter_prefixes (list[str]): ignore the parameters whose
+            name has one of these prefixes in the checkpoint. This is useful
+            for skipping loading the checkpoint of ReplayBuffer.
+"""
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
     checkpointer = Checkpointer(ckpt_dir=ckpt_dir, algorithm=algorithm)
-    checkpointer.load(checkpoint_step)
+    checkpointer.load(
+        checkpoint_step, ignored_parameter_prefixes=ignored_parameter_prefixes)
 
     recorder = None
     if record_file is not None:
