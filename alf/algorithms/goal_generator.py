@@ -28,7 +28,8 @@ import alf.utils.common as common
 
 GoalState = namedtuple(
     "GoalState", ["goal", "steps_since_last_goal"], default_value=())
-GoalInfo = namedtuple("GoalInfo", ["goal", "loss"], default_value=())
+GoalInfo = namedtuple(
+    "GoalInfo", ["goal", "original_goal", "loss"], default_value=())
 
 
 class ConditionalGoalGenerator(RLAlgorithm):
@@ -98,7 +99,7 @@ class ConditionalGoalGenerator(RLAlgorithm):
         """
         new_goal_mask, state = self.update_condition(observation, step_type,
                                                      state)
-        if new_goal_mask:
+        if new_goal_mask is not None:
             generated_goal = self.generate_goal(observation, state)
             new_goal = torch.where(new_goal_mask, generated_goal, state.goal)
             return new_goal, state
@@ -243,7 +244,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  num_subgoals,
                  action_dim,
                  action_bounds,
-                 value_fn,
+                 value_fn=None,
                  value_state_spec=(),
                  max_subgoal_steps=10,
                  name="SubgoalPlanningGoalGenerator"):
@@ -252,9 +253,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             observation_spec (nested TensorSpec): representing the observations.
             num_subgoals (int): number of subgoals in a planned path.
             action_dim (int): number of dimensions of the (goal) action.
-            action_bounds (pair of float Tensors): min and max bounds of each action
-                dimension.
-            value_fn (Callable): value function to measure distance between states.
+            action_bounds (pair of float Tensors or lists): min and max bounds of
+                each action dimension.
+            value_fn (Callable or None): value function to measure distance between states.
+                When value_fn is None, it can also be set via set_value_fn.
             value_state_spec (nested TensorSpec): spec of the state of value function.
             max_subgoal_steps (int): number of steps to execute any subgoal before
                 updating it.
@@ -271,13 +273,20 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             action_spec=BoundedTensorSpec(
                 shape=goal_shape,
                 dtype='float32',
-                minimum=torch.min(action_bounds[0]),
-                maximum=torch.max(action_bounds[1])),
+                minimum=torch.min(
+                    torch.as_tensor(action_bounds[0],
+                                    dtype=torch.float32)).item(),
+                maximum=torch.max(
+                    torch.as_tensor(action_bounds[1],
+                                    dtype=torch.float32)).item()),
             train_state_spec=train_state_spec,
             name=name)
         self._num_subgoals = num_subgoals
         self._action_dim = action_dim
-        self._value_fn = value_fn
+        if value_fn:
+            self._value_fn = value_fn
+        self._max_subgoal_steps = max_subgoal_steps
+
         self._value_state_spec = value_state_spec
         self._opt = CEMOptimizer(
             planning_horizon=num_subgoals,
@@ -285,30 +294,36 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             bounds=action_bounds)
 
         def _costs_agg_dist(time_step, state, samples):
+            assert self._value_fn, "no value function provided."
             (batch_size, pop_size, horizon, action_dim) = samples.shape
             start = time_step.observation["achieved_goal"].reshape(
-                batch_size, 1, 1, action_dim).expand(batch_size, pop_size,
-                                                     horizon, action_dim)
+                batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
+                                                     action_dim)
             end = time_step.observation["desired_goal"].reshape(
-                batch_size, 1, 1, action_dim).expand(batch_size, pop_size,
-                                                     horizon, action_dim)
+                batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
+                                                     action_dim)
             samples_e = torch.cat([start, samples, end], dim=2)
-            stack_obs = time_step.observation
+            stack_obs = time_step.observation.copy()
             stack_obs["observation"] = time_step.observation[
                 "observation"].reshape(batch_size, 1, 1, -1).expand(
-                    batch_size, pop_size, horizon + 1, -1)
-            stack_obs["achieved_goal"] = samples_e[:, :, :-1, :]
-            stack_obs["desired_goal"] = samples_e[:, :, 1:, :]
+                    batch_size, pop_size, horizon + 1, -1).reshape(
+                        batch_size * pop_size * (horizon + 1), -1)
+            stack_obs["achieved_goal"] = samples_e[:, :, :-1, :].reshape(
+                batch_size * pop_size * (horizon + 1), -1)
+            stack_obs["desired_goal"] = samples_e[:, :, 1:, :].reshape(
+                batch_size * pop_size * (horizon + 1), -1)
 
             if self._value_state_spec != ():
                 raise NotImplementedError()
-            dists = -self._value_fn(stack_obs, ())
-            assert dists.shape[:3] == (batch_size, pop_size, horizon)
-            agg_dist = torch.sum(
-                dists.reshape(batch_size, pop_size, horizon), dim=2)
+            values, _unused_value_state = self._value_fn(stack_obs, ())
+            dists = -values.reshape(batch_size, pop_size, horizon + 1)
+            agg_dist = torch.sum(dists, dim=2)
             return agg_dist
 
         self._opt.set_cost(_costs_agg_dist)
+
+    def set_value_fn(self, value_fn):
+        self._value_fn = value_fn
 
     def generate_goal(self, observation, state):
         """Generate new goals.
@@ -318,11 +333,34 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             state (nested Tensor): state of this goal generator.
 
         Returns:
-            Tensor: a batch of one-hot goal tensors.
+            Tensor: a batch of goal tensors.
         """
         ts = TimeStep(observation=observation)
-        goals = self._opt.obtain_solution(ts, ())
-        return goals
+        assert self._value_fn, "set_value_fn before generate_goal"
+        values, _v_state = self._value_fn(observation, ())
+        init_costs = -values
+        goals, costs = self._opt.obtain_solution(ts, ())
+        subgoal = goals[:, 0, :]  # the first subgoal in the plan
+        plan_success = init_costs > costs
+        alf.summary.scalar(
+            "planner/success_rate" + "." + common.exe_mode_name(),
+            torch.mean(plan_success.float()))
+        # We assume costs are positive.  Then, adv_max should vary from
+        # -inf to 1, positively correlated with planner's success.
+        # Initially, when value_fn isn't trained well, init_costs could be
+        # negative while costs positive, causing adv_max to be above 1.
+        # Hence we cap adv_max at 2.
+        adv_max = torch.min(
+            torch.max(-(costs - init_costs) / (init_costs + 1.e-5)), 2.)
+        alf.summary.scalar(
+            "planner/plan_advantage_max" + "." + common.exe_mode_name(),
+            adv_max)
+        alf.summary.scalar(
+            "planner/orig_goal_cost_mean" + "." + common.exe_mode_name(),
+            torch.mean(init_costs))
+        subgoal = torch.where(plan_success, subgoal,
+                              observation["desired_goal"])
+        return subgoal
 
     def update_condition(self, observation, step_type, state):
         """Condition to update the goals.
@@ -338,16 +376,18 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             - state (nest): new goal generator state.
         """
         inc_steps = state.steps_since_last_goal + 1
-        steps_since_last_goal = torch.where(step_type == StepType.FIRST, 10000,
-                                            inc_steps)
+        steps_since_last_goal = torch.where(
+            step_type == StepType.FIRST,
+            torch.as_tensor(10000, dtype=torch.int32), inc_steps)
         if torch.all(steps_since_last_goal > self._max_subgoal_steps):
             # This is an efficiency trick so planning only happens for all envs
             # together.
             state = state._replace(
                 steps_since_last_goal=torch.zeros_like(inc_steps))
-            return torch.ones(step_type.shape).unsqueeze(-1), state
+            return torch.ones(
+                step_type.shape, dtype=torch.uint8).unsqueeze(-1), state
         else:
-            goals = torch.where(step_type == StepType.FIRST,
+            goals = torch.where((step_type == StepType.FIRST).unsqueeze(-1),
                                 observation["desired_goal"], state.goal)
             state = state._replace(
                 steps_since_last_goal=steps_since_last_goal, goal=goals)

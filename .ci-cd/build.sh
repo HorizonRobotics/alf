@@ -94,6 +94,7 @@ function test() {
         alf.networks.projection_networks_test \
         alf.networks.q_networks_test \
         alf.optimizers.optimizers_test \
+        alf.optimizers.traj_optimizers_test \
         alf.optimizers.trusted_updater_test \
         alf.summary.summary_ops_test \
         alf.tensor_specs_test \

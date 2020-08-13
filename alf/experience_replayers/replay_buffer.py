@@ -593,6 +593,7 @@ def hindsight_relabel_fn(buffer,
                          result,
                          info,
                          her_proportion,
+                         use_original_goals_from_info=False,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
                          reward_fn=l2_dist_close_reward_fn):
@@ -606,6 +607,9 @@ def hindsight_relabel_fn(buffer,
         result (nest): of tensors of the sampled exp
         info (BatchInfo): of the sampled result
         her_proportion (float): proportion of hindsight relabeled experience.
+        use_original_goals_from_info (bool): if True, use Agent has stored the
+            original goal into rollout_info.goal_generator.original_goal field.
+            Use this field as the desired_goal of the experience.
         achieved_goal_field (str): path to the achieved_goal field in
             exp nest.
         desired_goal_field (str): path to the desired_goal field in the
@@ -623,6 +627,11 @@ def hindsight_relabel_fn(buffer,
                 - importance_weights: priority divided by the average of all
                     non-zero priorities in the buffer.
     """
+    if use_original_goals_from_info:
+        orig_goal = alf.nest.get_field(
+            result, "rollout_info.goal_generator.original_goal")
+        result = alf.nest.utils.transform_nest(
+            result, desired_goal_field, lambda _: orig_goal)
     if her_proportion == 0:
         return result
 
@@ -671,7 +680,7 @@ def hindsight_relabel_fn(buffer,
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_after_relabel",
             torch.mean(relabeled_rewards[her_indices][:-1]))
-    # assert reward function is the same as used by the environment.
+    # check reward function is the same as used by the environment.
     if not torch.allclose(relabeled_rewards[non_her_indices],
                           result.reward[non_her_indices]):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
@@ -682,7 +691,6 @@ def hindsight_relabel_fn(buffer,
                         result_desired_goal[non_her_indices],
                         env_ids[non_her_indices], start_pos[non_her_indices])
         logging.warning(msg)
-        # assert False, msg
         relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
 
     result = alf.nest.utils.transform_nest(

@@ -83,6 +83,10 @@ class RandomOptimizer(TrajOptimizer):
         Args:
             time_step (TimeStep): the initial time_step to start rollout
             state: input state to start rollout
+
+        Returns:
+            - solution (Tensor): shape (``batch_size``, ``planning_horizon``, ``action_dim``)
+            - cost (Tensor): costs corresponding to the best solution
         """
         init_obs = time_step.observation
         batch_size = init_obs.shape[0]
@@ -93,7 +97,8 @@ class RandomOptimizer(TrajOptimizer):
         min_ind = torch.argmin(costs, dim=-1).long()
         # solutions [B, pop_size, sol_dim] -> [B, sol_dim]
         solution = solutions[(torch.arange(batch_size), min_ind)]
-        return solution
+        return solution, costs[(torch.arange(batch_size),
+                                min_ind)].unsqueeze(-1)
 
 
 @gin.configurable
@@ -176,7 +181,8 @@ class CEMOptimizer(TrajOptimizer):
             state: input state to start planning
 
         Returns:
-            Tensor of shape (``batch_size``, ``planning_horizon``, ``action_dim``)
+            - solution (Tensor): shape (``batch_size``, ``planning_horizon``, ``action_dim``)
+            - cost (Tensor): costs corresponding to the best solution
         """
         init_obs = time_step.observation
         batch_size = alf.nest.get_nest_batch_size(init_obs)
@@ -221,4 +227,5 @@ class CEMOptimizer(TrajOptimizer):
                     (tops - means.unsqueeze(1))**2, dim=1) / (
                         self._top_percent * self._population_size - 1) + 1.e-4
                 distr = Normal(means, torch.sqrt(std))
-        return solution
+        return solution, costs[(torch.arange(batch_size),
+                                min_ind)].unsqueeze(-1)

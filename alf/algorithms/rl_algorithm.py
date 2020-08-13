@@ -444,6 +444,7 @@ class RLAlgorithm(Algorithm):
 
         env_step_time = 0.
         store_exp_time = 0.
+        policy_step_time = 0.
         for _ in range(unroll_length):
             policy_state = common.reset_state_if_necessary(
                 policy_state, initial_state, time_step.is_first())
@@ -452,8 +453,10 @@ class RLAlgorithm(Algorithm):
             # to store it in replay buffers
             transformed_time_step = transformed_time_step._replace(
                 untransformed=time_step)
+            t0 = time.time()
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
+            policy_step_time += time.time() - t0
             # release the reference to ``time_step``
             transformed_time_step = transformed_time_step._replace(
                 untransformed=())
@@ -492,6 +495,7 @@ class RLAlgorithm(Algorithm):
             time_step = next_time_step
             policy_state = policy_step.state
 
+        alf.summary.scalar("time/unroll_policy_step", policy_step_time)
         alf.summary.scalar("time/unroll_env_step", env_step_time)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
         experience = alf.nest.utils.stack_nests(experience_list)

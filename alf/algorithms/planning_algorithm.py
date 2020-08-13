@@ -211,7 +211,8 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                                                  "before planning")
 
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
-        opt_action = self._plan_optimizer.obtain_solution(time_step, state)
+        opt_action, _costs = self._plan_optimizer.obtain_solution(
+            time_step, state)
         batch_size = time_step.observation.shape[0]
         action = opt_action.reshape(batch_size, self._planning_horizon,
                                     self._num_actions)[:, 0, :]
