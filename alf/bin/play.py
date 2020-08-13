@@ -61,7 +61,8 @@ flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_string(
     'ignored_parameter_prefixes', "_exp_replayer.",
     "Comma separated strings to ingore the parameters whose name has one of "
-    "these prefixes in the checkpoint.")
+    "these prefixes in the checkpoint. This is useful for skipping loading the "
+    "checkpoint of ReplayBuffer")
 
 FLAGS = flags.FLAGS
 
@@ -96,7 +97,7 @@ def main(_):
             max_episode_length=FLAGS.max_episode_length,
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
-            ingored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
+            ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ","))
     finally:
         env.close()
