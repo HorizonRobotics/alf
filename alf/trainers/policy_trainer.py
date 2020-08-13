@@ -110,8 +110,6 @@ class Trainer(object):
     summary, checkpointing, running training iterations, and evaluating periodically.
     """
 
-    _trainer_progress = _TrainerProgress()
-
     def __init__(self, config: TrainerConfig):
         """
 
@@ -141,16 +139,6 @@ class Trainer(object):
 
         self._random_seed = config.random_seed
         self._random_seed = common.set_random_seed(self._random_seed)
-
-    @staticmethod
-    def progress():
-        """A static method that returns the current training progress, provided
-        that only one trainer will be used for training.
-
-        Returns:
-            float: a number in :math:`[0,1]` indicating the training progress.
-        """
-        return Trainer._trainer_progress.progress
 
     def train(self):
         """Perform training."""
@@ -186,6 +174,8 @@ class Trainer(object):
 
 class RLTrainer(Trainer):
     """Trainer for reinforcement learning. """
+
+    _trainer_progress = _TrainerProgress()
 
     def __init__(self, config: TrainerConfig):
         """
@@ -264,6 +254,16 @@ class RLTrainer(Trainer):
         for env in self._envs:
             env.close()
         self._unwrapped_env.close()
+
+    @staticmethod
+    def progress():
+        """A static method that returns the current training progress, provided
+        that only one trainer will be used for training.
+
+        Returns:
+            float: a number in :math:`[0,1]` indicating the training progress.
+        """
+        return RLTrainer._trainer_progress.progress
 
     def _train(self):
         for env in self._envs:
@@ -392,6 +392,8 @@ class RLTrainer(Trainer):
 class SLTrainer(Trainer):
     """Trainer for supervised learning. """
 
+    _trainer_progress = _TrainerProgress()
+
     def __init__(self, config: TrainerConfig):
         """Create a SLTrainer
 
@@ -417,6 +419,16 @@ class SLTrainer(Trainer):
             config=config)
 
         self._algorithm.set_data_loader(trainset, testset)
+
+    @staticmethod
+    def progress():
+        """A static method that returns the current training progress, provided
+        that only one trainer will be used for training.
+
+        Returns:
+            float: a number in :math:`[0,1]` indicating the training progress.
+        """
+        return SLTrainer._trainer_progress.progress
 
     def _train(self):
         begin_epoch_num = int(self._trainer_progress._iter_num)
@@ -473,7 +485,7 @@ class SLTrainer(Trainer):
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
-            algorithm=self._algorithm,
+            # generator=self._algorithm._generator,
             trainer_progress=self._trainer_progress)
 
         try:

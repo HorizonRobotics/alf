@@ -12,16 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import functools
 import tempfile
 import torch
 
 import alf
+from alf.algorithms.hypernetwork_algorithm import HyperNetwork
 from alf.algorithms.rl_algorithm_test import MyEnv, MyAlg
-from alf.trainers.policy_trainer import Trainer, TrainerConfig, play
+from alf.trainers.policy_trainer import RLTrainer, SLTrainer, TrainerConfig, play
 from alf.utils import common
 
 
-class MyTrainer(Trainer):
+class MyRLTrainer(RLTrainer):
     def _create_environment(self,
                             nonparallel=False,
                             random_seed=None,
@@ -33,7 +35,7 @@ class MyTrainer(Trainer):
 
 
 class TrainerTest(alf.test.TestCase):
-    def test_trainer(self):
+    def test_rl_trainer(self):
         with tempfile.TemporaryDirectory() as root_dir:
             conf = TrainerConfig(
                 algorithm_ctor=MyAlg,
@@ -42,10 +44,10 @@ class TrainerTest(alf.test.TestCase):
                 num_iterations=100)
 
             # test train
-            trainer = MyTrainer(conf)
-            self.assertEqual(Trainer.progress(), 0)
+            trainer = MyRLTrainer(conf)
+            self.assertEqual(RLTrainer.progress(), 0)
             trainer.train()
-            self.assertEqual(Trainer.progress(), 1)
+            self.assertEqual(RLTrainer.progress(), 1)
 
             alg = trainer._algorithm
             env = common.get_env()
@@ -59,9 +61,9 @@ class TrainerTest(alf.test.TestCase):
 
             # test checkpoint
             conf.num_iterations = 200
-            new_trainer = MyTrainer(conf)
+            new_trainer = MyRLTrainer(conf)
             new_trainer._restore_checkpoint()
-            self.assertEqual(Trainer.progress(), 0.5)
+            self.assertEqual(RLTrainer.progress(), 0.5)
             time_step = common.get_initial_time_step(env)
             state = alg.get_initial_predict_state(env.batch_size)
             policy_step = alg.rollout_step(time_step, state)
@@ -70,9 +72,41 @@ class TrainerTest(alf.test.TestCase):
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
             new_trainer.train()
-            self.assertEqual(Trainer.progress(), 1)
+            self.assertEqual(RLTrainer.progress(), 1)
 
             # TODO: test play. Need real env to test.
+
+    def test_sl_trainer(self):
+        CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
+        FC_LAYER_PARAMS = ((84, True), )
+        HIDDEN_LAYERS = (64, 64)
+        with tempfile.TemporaryDirectory() as root_dir:
+            conf = TrainerConfig(
+                algorithm_ctor=functools.partial(
+                    HyperNetwork,
+                    conv_layer_params=CONV_LAYER_PARAMS,
+                    fc_layer_params=FC_LAYER_PARAMS,
+                    hidden_layers=HIDDEN_LAYERS,
+                    optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
+                root_dir=root_dir,
+                num_checkpoints=2,
+                evaluate=True,
+                eval_interval=1,
+                num_epochs=2)
+
+            # test train
+            trainer = SLTrainer(conf)
+            self.assertEqual(SLTrainer.progress(), 0)
+            trainer.train()
+            self.assertEqual(SLTrainer.progress(), 1)
+
+            # # test checkpoint
+            # conf.num_epochs = 4
+            # new_trainer = SLTrainer(conf)
+            # new_trainer._restore_checkpoint()
+            # self.assertEqual(SLTrainer.progress(), 0.5)
+            # new_trainer.train()
+            # self.assertEqual(SLTrainer.progress(), 1)
 
 
 if __name__ == "__main__":

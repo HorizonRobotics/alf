@@ -268,7 +268,8 @@ class Generator(Algorithm):
                 loss=loss_propagated,
                 extra=GeneratorLossInfo(generator=loss, mi_estimator=mi_loss)))
 
-    def _ml_grad(self, inputs, outputs, loss_func):
+    def _ml_grad(self, inputs, outputs, loss_func,
+                 entropy_regularization=None):
         loss_inputs = outputs if inputs is None else [outputs, inputs]
         loss = loss_func(loss_inputs)
 
