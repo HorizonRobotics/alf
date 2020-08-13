@@ -39,7 +39,7 @@ class GoBoard(object):
         The board is padded with 2 on four sides to make the handling of boundary
         simpler.
     2. _cc_id: the connected component (CC) which each position belongs to. The
-        shape is [B, max_num_ccs].
+        shape is [B, H, W].
     3. _cc_qi: the qi (liberty) of each CC. The shape is [B, max_num_ccs].
     4. _num_ccs: the number of CCs.
 
@@ -111,7 +111,8 @@ class GoBoard(object):
             Tensor: bool Tensor with the same size as ``board_indices``. It indicates
                 whether the move for each board is invalid. Invalid move is caused
                 by suicidal move (i.e., making the qi of the player 0). Note that
-                invalid move will NOT change the board.
+                invalid move may change the board because all the stones of the player
+                which are connected to the invalid move will be removed.
         """
         B = board_indices
         y = y + 1
