@@ -368,7 +368,9 @@ class GoEnvironment(AlfEnvironment):
             observation=OrderedDict(
                 board=self._board.get_board().detach().unsqueeze(1),
                 to_play=torch.zeros((self._batch_size), dtype=torch.int8)),
-            step_type=torch.full((self._batch_size, ), StepType.FIRST),
+            step_type=torch.full((self._batch_size, ),
+                                 StepType.FIRST,
+                                 dtype=torch.int32),
             reward=torch.zeros((self._batch_size, )),
             discount=torch.ones((self._batch_size, )),
             prev_action=self._action_spec.zeros((self._batch_size, )),
@@ -384,7 +386,9 @@ class GoEnvironment(AlfEnvironment):
         current_board = self._board.get_board()
         player = ((self._num_moves % 2) * 2 - 1).to(torch.int8)
         prev_game_over = self._game_over
-        step_type = torch.full((self._batch_size, ), int(StepType.MID))
+        step_type = torch.full((self._batch_size, ),
+                               StepType.MID,
+                               dtype=torch.int32)
         x = action % self._width
         y = (action // self._width).clamp(max=self._height - 1)
 
