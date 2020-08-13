@@ -158,7 +158,7 @@ class GoBoard(object):
 
         invalid = qi == 0
         if invalid.any():
-            # restore the board for invalid moves
+            # remove the connected stones for invalid move
             self._remove_cc_if_dead(B[invalid], new_cc_id[invalid])
 
         return invalid
