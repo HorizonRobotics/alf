@@ -418,7 +418,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # p(a|s) = exp(Q(s,a)/alpha) / Z;
             # the discrete distribution will never be trained, so we detach the
             # logits here.
-            logits = (q_values.min(dim=1)[0] / alpha[0]).detach()
+            logits = (q_values.min(dim=1)[0] / alpha).detach()
             discrete_action_dist = td.Categorical(logits=logits)
             if eps_greedy_sampling:
                 discrete_action = dist_utils.epsilon_greedy_sample(
