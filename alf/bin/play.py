@@ -59,10 +59,9 @@ flags.DEFINE_string(
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_string(
-    'ignored_parameter_prefixes', "_exp_replayer.",
+    'ignored_parameter_prefixes', "",
     "Comma separated strings to ingore the parameters whose name has one of "
-    "these prefixes in the checkpoint. This is useful for skipping loading the "
-    "checkpoint of ReplayBuffer")
+    "these prefixes in the checkpoint.")
 
 FLAGS = flags.FLAGS
 

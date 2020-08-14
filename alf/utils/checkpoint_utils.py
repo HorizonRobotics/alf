@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import glob
 import os
 import warnings
 import torch
@@ -73,7 +74,12 @@ class Checkpointer(object):
 
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
-    def load(self, global_step="latest", ignored_parameter_prefixes=[]):
+    def load(self,
+             global_step="latest",
+             ignored_parameter_prefixes=[],
+             including_optimizer=True,
+             including_replay_buffer=True,
+             strict=True):
         """Load checkpoint
         Args:
             global_step (int|str): the number of training steps which is used to
@@ -81,6 +87,15 @@ class Checkpointer(object):
                 the most recent checkpoint named 'latest' will be loaded.
             ingored_parameter_prefixes (list[str]): ignore the parameters whose
                 name has one of these prefixes in the checkpoint.
+            including_optimizer (bool): whether load optimizer checkpoint
+            including_replay_buffer (bool): whether load replay buffer checkpoint.
+            strict (bool, optional): whether to strictly enforce that the keys
+                in ``state_dict`` match the keys returned by this module's
+                ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
+                keep lists of missing and unexpected keys and raise error when
+                any of the lists is non-empty; if ``strict=False``, missing/unexpected
+                keys will be omitted and no error will be raised.
+                (Default: ``True``)
         Returns:
             current_step_num (int): the current step number for the loaded
                 checkpoint. current_step_num is set to - 1 if the specified
@@ -121,40 +136,95 @@ class Checkpointer(object):
                 else:
                     checkpoint[k] = v
 
-        def _load_checkpoint(checkpoint):
-            self._global_step = checkpoint["global_step"]
-            try:
-                for k, v in self._modules.items():
-                    _remove_ignored_parameters(checkpoint[k])
-                    _convert_legacy_parameter(checkpoint[k])
-                    self._modules[k].load_state_dict(checkpoint[k])
-            except Exception as e:
-                raise RuntimeError((
-                    "Checkpoint loading failed due to a mis-match between the "
-                    "checkpoint and the model. \n {}".format(e)))
+        def _load_one(module, checkpoint):
+            missing_keys, unexpected_keys = module.load_state_dict(
+                checkpoint, strict=strict)
+            if not including_optimizer:
+                missing_keys = list(
+                    filter(lambda k: not k.find('_optimizers.'), missing_keys))
+            if not including_replay_buffer:
+                missing_keys = list(
+                    filter(lambda k: not k.startswith('_exp_replayer.'),
+                           missing_keys))
+            if strict:
+                error_msgs = []
+                if len(unexpected_keys) > 0:
+                    error_msgs.insert(
+                        0, 'Unexpected key(s) in state_dict: {}. '.format(
+                            ', '.join(
+                                '"{}"'.format(k) for k in unexpected_keys)))
+                if len(missing_keys) > 0:
+                    error_msgs.insert(
+                        0, 'Missing key(s) in state_dict: {}. '.format(
+                            ', '.join('"{}"'.format(k) for k in missing_keys)))
 
-        f_path_latest = os.path.join(self._ckpt_dir, "latest")
+                if len(error_msgs) > 0:
+                    raise RuntimeError(
+                        'Error(s) in loading state_dict for {}:\n\t{}'.format(
+                            self.__class__.__name__, "\n\t".join(error_msgs)))
+
+        def _merge_checkpoint(merged, new):
+            for mk in self._modules.keys():
+                if not isinstance(new[mk], dict):
+                    continue
+                for k in new[mk].keys():
+                    merged[mk][k] = new[mk][k]
+
+        if global_step == "latest":
+            global_step = self._get_latest_checkpoint_step()
+
+        if global_step is None:
+            warnings.warn("There is no checkpoint in directory %s. "
+                          "Train from scratch" % self._ckpt_dir)
+            return self._global_step
+
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
+        if not os.path.isfile(f_path):
+            warnings.warn(
+                "Checkpoint '%s' does not exist. Train from scratch." % f_path)
+            return self._global_step
+
         map_location = None
         if not torch.cuda.is_available():
             map_location = torch.device('cpu')
-        if global_step == "latest" and os.path.isfile(f_path_latest):
-            checkpoint = torch.load(f_path_latest, map_location=map_location)
-            _load_checkpoint(checkpoint)
-            logging.info("Checkpoint 'latest' is loaded successfully.")
-        elif os.path.isfile(f_path):
-            checkpoint = torch.load(f_path, map_location=map_location)
-            _load_checkpoint(checkpoint)
-            logging.info("Checkpoint 'ckpt-{}' is loaded successfully.".format(
-                global_step))
-        else:
-            warnings.warn(
-                ("Checkpoint '{}' does not exist. "
-                 "Train from scratch.".
-                 format(global_step if global_step == "latest" else "ckpt-%d" %
-                        global_step)))
+
+        checkpoint = torch.load(f_path, map_location=map_location)
+        if including_optimizer:
+            opt_checkpoint = torch.load(
+                f_path + '-optimizer', map_location=map_location)
+            _merge_checkpoint(checkpoint, opt_checkpoint)
+        if including_replay_buffer:
+            replay_buffer_checkpoint = torch.load(
+                f_path + '-replay_buffer', map_location=map_location)
+            _merge_checkpoint(checkpoint, replay_buffer_checkpoint)
+
+        self._global_step = checkpoint["global_step"]
+        for k in self._modules.keys():
+            _remove_ignored_parameters(checkpoint[k])
+            _convert_legacy_parameter(checkpoint[k])
+            _load_one(self._modules[k], checkpoint[k])
+
+        logging.info(
+            "Checkpoint 'ckpt-{}' is loaded successfully.".format(global_step))
 
         return self._global_step
+
+    def _get_latest_checkpoint_step(self):
+        file_names = glob.glob(os.path.join(self._ckpt_dir, "ckpt-*"))
+        if not file_names:
+            return None
+        latest_step = None
+        for file_name in file_names:
+            try:
+                step = int(os.path.basename(file_name)[5:])
+            except ValueError:
+                continue
+            if latest_step is None:
+                latest_step = step
+            elif step > latest_step:
+                latest_step = step
+
+        return latest_step
 
     def has_checkpoint(self, global_step="latest"):
         """Whether there is a checkpoint in the checkpoint directory.
@@ -164,11 +234,28 @@ class Checkpointer(object):
                 is in the checkpoint directory. If "lastest", return True if
                 "latest" is in the checkpoint directory.
         """
-        f_path_latest = os.path.join(self._ckpt_dir, "latest")
+        if global_step == "latest":
+            global_step = self._get_latest_checkpoint_step()
+            if global_step is None:
+                return False
         f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
-        if global_step == "latest" and os.path.isfile(f_path_latest):
-            return True
         return os.path.isfile(f_path)
+
+    def _separate_state(self, state):
+        model_state = {}
+        optimizer_state = {}
+        replay_buffer_state = {}
+
+        for k, v in state.items():
+            if k.find('_optimizers.') and isinstance(
+                    v, dict) and 'param_groups' in v:
+                optimizer_state[k] = v
+            elif k.startswith('_exp_replayer.'):
+                replay_buffer_state[k] = v
+            else:
+                model_state[k] = v
+
+        return model_state, optimizer_state, replay_buffer_state
 
     def save(self, global_step):
         """Save states of all modules to checkpoint
@@ -185,11 +272,20 @@ class Checkpointer(object):
             if type(v) == torch.nn.DataParallel else v.state_dict()
             for k, v in self._modules.items()
         }
-        state['global_step'] = global_step
-        torch.save(state, f_path)
+        model_state = {}
+        optimizer_state = {}
+        replay_buffer_state = {}
+        for k, v in state.items():
+            ms, opts, rs = self._separate_state(v)
+            model_state[k] = ms
+            optimizer_state[k] = opts
+            replay_buffer_state[k] = rs
+
+        model_state['global_step'] = global_step
+
+        torch.save(model_state, f_path)
+        torch.save(optimizer_state, f_path + '-optimizer')
+        torch.save(replay_buffer_state, f_path + '-replay_buffer')
+
         logging.info(
             "Checkpoint 'ckpt-{}' is saved successfully.".format(global_step))
-
-        f_path_latest = os.path.join(self._ckpt_dir, "latest")
-        torch.save(state, f_path_latest)
-        logging.info("Checkpoint 'latest' is saved successfully.")
