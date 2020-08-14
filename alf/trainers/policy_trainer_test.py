@@ -83,14 +83,14 @@ class TrainerTest(alf.test.TestCase):
         HIDDEN_LAYERS = (1, 1)
         with tempfile.TemporaryDirectory() as root_dir:
             with alf.device("cuda"):
-                opt = alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)
                 conf = TrainerConfig(
                     algorithm_ctor=functools.partial(
                         HyperNetwork,
                         conv_layer_params=CONV_LAYER_PARAMS,
                         fc_layer_params=FC_LAYER_PARAMS,
                         hidden_layers=HIDDEN_LAYERS,
-                        optimizer=opt),
+                        optimizer=alf.optimizers.Adam(
+                            lr=1e-4, weight_decay=1e-4)),
                     root_dir=root_dir,
                     num_checkpoints=2,
                     evaluate=True,
@@ -116,6 +116,7 @@ class TrainerTest(alf.test.TestCase):
                     evaluate=True,
                     eval_interval=1,
                     num_epochs=1)
+
                 # test checkpoint
                 conf.num_epochs = 4
                 new_trainer = SLTrainer(conf2)
@@ -124,7 +125,44 @@ class TrainerTest(alf.test.TestCase):
                 new_trainer.train()
                 self.assertEqual(SLTrainer.progress(), 1)
 
+    def test_optimizer(self):
+        with tempfile.TemporaryDirectory() as root_dir:
+
+            conf = TrainerConfig(
+                algorithm_ctor=MyAlg,
+                root_dir=root_dir,
+                unroll_length=5,
+                num_iterations=100)
+
+            # test train
+            trainer1 = MyRLTrainer(conf)
+            trainer2 = MyRLTrainer(conf)
+            print(trainer1._algorithm._optimizers[0] == trainer2._algorithm.
+                  _optimizers[0])
+
+            ##SL case
+            CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (1, 5, 1, 0, 2), (1, 5, 1))
+            FC_LAYER_PARAMS = ((1, True), )
+            HIDDEN_LAYERS = (1, 1)
+            conf = TrainerConfig(
+                algorithm_ctor=functools.partial(
+                    HyperNetwork,
+                    conv_layer_params=CONV_LAYER_PARAMS,
+                    fc_layer_params=FC_LAYER_PARAMS,
+                    hidden_layers=HIDDEN_LAYERS,
+                    optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
+                root_dir=root_dir,
+                num_checkpoints=2,
+                evaluate=True,
+                eval_interval=1,
+                num_epochs=1)
+
+            trainer1 = SLTrainer(conf)
+            trainer2 = SLTrainer(conf)
+            print(trainer1._algorithm._optimizers[0] == trainer2._algorithm.
+                  _optimizers[0])
+
 
 if __name__ == "__main__":
     #alf.test.main()
-    TrainerTest().test_sl_trainer()
+    TrainerTest().test_optimizer()
