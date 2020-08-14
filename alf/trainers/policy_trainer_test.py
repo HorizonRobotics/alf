@@ -37,76 +37,92 @@ class MyRLTrainer(RLTrainer):
 class TrainerTest(alf.test.TestCase):
     def test_rl_trainer(self):
         with tempfile.TemporaryDirectory() as root_dir:
-            conf = TrainerConfig(
-                algorithm_ctor=MyAlg,
-                root_dir=root_dir,
-                unroll_length=5,
-                num_iterations=100)
+            with alf.device("cuda"):
+                conf = TrainerConfig(
+                    algorithm_ctor=MyAlg,
+                    root_dir=root_dir,
+                    unroll_length=5,
+                    num_iterations=100)
 
-            # test train
-            trainer = MyRLTrainer(conf)
-            self.assertEqual(RLTrainer.progress(), 0)
-            trainer.train()
-            self.assertEqual(RLTrainer.progress(), 1)
+                # test train
+                trainer = MyRLTrainer(conf)
+                self.assertEqual(RLTrainer.progress(), 0)
+                trainer.train()
+                self.assertEqual(RLTrainer.progress(), 1)
 
-            alg = trainer._algorithm
-            env = common.get_env()
-            time_step = common.get_initial_time_step(env)
-            state = alg.get_initial_predict_state(env.batch_size)
-            policy_step = alg.rollout_step(time_step, state)
-            logits = policy_step.info.base_dist.logits
-            print("logits: ", logits)
-            self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
-            self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+                alg = trainer._algorithm
+                env = common.get_env()
+                time_step = common.get_initial_time_step(env)
+                state = alg.get_initial_predict_state(env.batch_size)
+                policy_step = alg.rollout_step(time_step, state)
+                logits = policy_step.info.base_dist.logits
+                print("logits: ", logits)
+                self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
+                self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
-            # test checkpoint
-            conf.num_iterations = 200
-            new_trainer = MyRLTrainer(conf)
-            new_trainer._restore_checkpoint()
-            self.assertEqual(RLTrainer.progress(), 0.5)
-            time_step = common.get_initial_time_step(env)
-            state = alg.get_initial_predict_state(env.batch_size)
-            policy_step = alg.rollout_step(time_step, state)
-            logits = policy_step.info.base_dist.logits
-            self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
-            self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
+                # test checkpoint
+                conf.num_iterations = 200
+                new_trainer = MyRLTrainer(conf)
+                new_trainer._restore_checkpoint()
+                self.assertEqual(RLTrainer.progress(), 0.5)
+                time_step = common.get_initial_time_step(env)
+                state = alg.get_initial_predict_state(env.batch_size)
+                policy_step = alg.rollout_step(time_step, state)
+                logits = policy_step.info.base_dist.logits
+                self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
+                self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
-            new_trainer.train()
-            self.assertEqual(RLTrainer.progress(), 1)
+                new_trainer.train()
+                self.assertEqual(RLTrainer.progress(), 1)
 
             # TODO: test play. Need real env to test.
 
     def test_sl_trainer(self):
-        CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (16, 5, 1, 0, 2), (120, 5, 1))
-        FC_LAYER_PARAMS = ((84, True), )
-        HIDDEN_LAYERS = (64, 64)
+        CONV_LAYER_PARAMS = ((6, 5, 1, 2, 2), (1, 5, 1, 0, 2), (1, 5, 1))
+        FC_LAYER_PARAMS = ((1, True), )
+        HIDDEN_LAYERS = (1, 1)
         with tempfile.TemporaryDirectory() as root_dir:
-            conf = TrainerConfig(
-                algorithm_ctor=functools.partial(
-                    HyperNetwork,
-                    conv_layer_params=CONV_LAYER_PARAMS,
-                    fc_layer_params=FC_LAYER_PARAMS,
-                    hidden_layers=HIDDEN_LAYERS,
-                    optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
-                root_dir=root_dir,
-                num_checkpoints=2,
-                evaluate=True,
-                eval_interval=1,
-                num_epochs=2)
+            with alf.device("cuda"):
+                opt = alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)
+                conf = TrainerConfig(
+                    algorithm_ctor=functools.partial(
+                        HyperNetwork,
+                        conv_layer_params=CONV_LAYER_PARAMS,
+                        fc_layer_params=FC_LAYER_PARAMS,
+                        hidden_layers=HIDDEN_LAYERS,
+                        optimizer=opt),
+                    root_dir=root_dir,
+                    num_checkpoints=2,
+                    evaluate=True,
+                    eval_interval=1,
+                    num_epochs=1)
 
-            # test train
-            trainer = SLTrainer(conf)
-            self.assertEqual(SLTrainer.progress(), 0)
-            trainer.train()
-            self.assertEqual(SLTrainer.progress(), 1)
+                # test train
+                trainer = SLTrainer(conf)
+                self.assertEqual(SLTrainer.progress(), 0)
+                trainer.train()
+                self.assertEqual(SLTrainer.progress(), 1)
 
-            # test checkpoint
-            conf.num_epochs = 4
-            new_trainer = SLTrainer(conf)
-            new_trainer._restore_checkpoint()
-            self.assertEqual(SLTrainer.progress(), 0.5)
-            new_trainer.train()
-            self.assertEqual(SLTrainer.progress(), 1)
+                conf2 = TrainerConfig(
+                    algorithm_ctor=functools.partial(
+                        HyperNetwork,
+                        conv_layer_params=CONV_LAYER_PARAMS,
+                        fc_layer_params=FC_LAYER_PARAMS,
+                        hidden_layers=HIDDEN_LAYERS,
+                        optimizer=alf.optimizers.Adam(
+                            lr=1e-4, weight_decay=1e-4)),
+                    root_dir=root_dir,
+                    num_checkpoints=2,
+                    evaluate=True,
+                    eval_interval=1,
+                    num_epochs=1)
+                # test checkpoint
+                conf.num_epochs = 4
+                new_trainer = SLTrainer(conf2)
+                new_trainer._restore_checkpoint()
+                self.assertEqual(SLTrainer.progress(), 0.5)
+                new_trainer.train()
+                self.assertEqual(SLTrainer.progress(), 1)
 
 
 if __name__ == "__main__":

@@ -68,7 +68,7 @@ class Generator(Algorithm):
 
         2. amortized Wasserstein ParVI with Smooth Functions (GFSF):
 
-        Liu, Chang, et al. "Understanding and accelerating particle-based 
+        Liu, Chang, et al. "Understanding and accelerating particle-based
         variational inference." International Conference on Machine Learning. 2019.
 
     It also supports an additional optional objective of maximizing the mutual
@@ -118,7 +118,7 @@ class Generator(Algorithm):
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
-        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        super().__init__(train_state_spec=(), name=name)
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
         self._par_vi = par_vi
@@ -163,6 +163,10 @@ class Generator(Algorithm):
                 x_spec, y_spec, sampler='shift')
             self._mi_weight = mi_weight
         self._net = net
+
+        # if optimizer is not None:
+        #     self.add_optimizer(optimizer, [self._net])
+
         self._predict_net = None
         self._net_moving_average_rate = net_moving_average_rate
         if net_moving_average_rate:
@@ -171,7 +175,7 @@ class Generator(Algorithm):
                 self._net, self._predict_net, tau=net_moving_average_rate)
 
     def _trainable_attributes_to_ignore(self):
-        return ["_predict_net"]
+        return ["_predict_net", "_kernel_width_averager"]
 
     @property
     def noise_dim(self):
@@ -300,20 +304,20 @@ class Generator(Algorithm):
 
     def _rbf_func2(self, x, y):
         r"""
-        Compute the rbf kernel and its gradient w.r.t. first entry 
+        Compute the rbf kernel and its gradient w.r.t. first entry
         :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2.
 
         Args:
-            x (Tensor): set of N particles, shape (Nx x W), where W is the 
+            x (Tensor): set of N particles, shape (Nx x W), where W is the
                 dimenseion of each particle
-            y (Tensor): set of N particles, shape (Ny x W), where W is the 
+            y (Tensor): set of N particles, shape (Ny x W), where W is the
                 dimenseion of each particle
             h_min (float): minimum kernel bandwidth
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
             :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
-            
+
         """
         Nx, Dx = x.shape
         Ny, Dy = y.shape
@@ -329,19 +333,19 @@ class Generator(Algorithm):
 
     def _score_func(self, x, alpha=1e-5):
         r"""
-        Compute the stein estimator of the score function 
+        Compute the stein estimator of the score function
         :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
-        used by gfsf_grad. 
+        used by gfsf_grad.
 
         Args:
-            x (Tensor): set of N particles, shape (N x D), where D is the 
+            x (Tensor): set of N particles, shape (N x D), where D is the
                 dimenseion of each particle
             alpha (float): weight of regularization for inverse kernel
                 this parameter turns out to be crucial for convergence.
 
         Returns:
             :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
-            
+
         """
         N, D = x.shape
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
@@ -358,7 +362,7 @@ class Generator(Algorithm):
     def _svgd_grad(self, inputs, outputs, loss_func, entropy_regularization):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by a single resampled particle. 
+        evaluated by a single resampled particle.
         """
         outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
         kernel_weight = self._rbf_func(outputs, outputs2)
@@ -383,7 +387,7 @@ class Generator(Algorithm):
     def _svgd_grad2(self, inputs, outputs, loss_func, entropy_regularization):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by splitting half of the sampled batch. 
+        evaluated by splitting half of the sampled batch.
         """
         assert inputs is None, "\"svgd2\" does not support conditional generator"
         particles = outputs.shape[0] // 2
@@ -407,7 +411,7 @@ class Generator(Algorithm):
     def _svgd_grad3(self, inputs, outputs, loss_func, entropy_regularization):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by resampled particles of the same batch size. 
+        evaluated by resampled particles of the same batch size.
         """
         assert inputs is None, "\"svgd3\" does not support conditional generator"
         particles = outputs.shape[0]

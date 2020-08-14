@@ -488,16 +488,17 @@ class SLTrainer(Trainer):
             generator=self._algorithm._generator,
             trainer_progress=self._trainer_progress)
 
-        try:
-            recovered_global_step = checkpointer.load()
-        except Exception as e:
-            raise RuntimeError(
-                ("Checkpoint loading failed from the provided root_dir={}. "
-                 "Typically this is caused by using a wrong checkpoint. \n"
-                 "Please make sure the root_dir is set correctly. "
-                 "Use a new value for it if "
-                 "planning to train from scratch. \n"
-                 "Detailed error message: {}").format(self._root_dir, e))
+        # try:
+        self._algorithm.train_iter()
+        recovered_global_step = checkpointer.load()
+        # except Exception as e:
+        #     raise RuntimeError(
+        #         ("Checkpoint loading failed from the provided root_dir={}. "
+        #          "Typically this is caused by using a wrong checkpoint. \n"
+        #          "Please make sure the root_dir is set correctly. "
+        #          "Use a new value for it if "
+        #          "planning to train from scratch. \n"
+        #          "Detailed error message: {}").format(self._root_dir, e))
         if recovered_global_step != -1:
             alf.summary.set_global_counter(recovered_global_step)
 

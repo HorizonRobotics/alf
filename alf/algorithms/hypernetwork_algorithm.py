@@ -72,15 +72,15 @@ def neglogprob(inputs, param_net, loss_type, params):
 
 @gin.configurable
 class HyperNetwork(Algorithm):
-    """HyperNetwork 
+    """HyperNetwork
 
-    HyperrNetwork algorithm maintains a generator that generates a set of 
-    parameters for a predefined neural network from a random noise input. 
+    HyperrNetwork algorithm maintains a generator that generates a set of
+    parameters for a predefined neural network from a random noise input.
     It is based on the following work:
 
     https://github.com/neale/HyperGAN
 
-    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, 
+    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse,
     Performant Neural Networks." International Conference on Machine Learning. 2019.
 
     Major differences versus the original paper are:
@@ -89,7 +89,7 @@ class HyperNetwork(Algorithm):
 
     * Remove the mixer and the distriminator.
 
-    * The generator is trained with Amortized particle-based variational 
+    * The generator is trained with Amortized particle-based variational
       inference (ParVI) methods, please refer to generator.py for details.
 
     """
@@ -123,18 +123,18 @@ class HyperNetwork(Algorithm):
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where 
+                takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end. 
-                Note that if ``last_activation`` is specified, 
+                it appends an additional layer at the very end.
+                Note that if ``last_activation`` is specified,
                 ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
@@ -164,7 +164,7 @@ class HyperNetwork(Algorithm):
             config (TrainerConfig): configuration for training
             name (str):
         """
-        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        super().__init__(train_state_spec=(), name=name)
 
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
@@ -204,6 +204,9 @@ class HyperNetwork(Algorithm):
             par_vi=par_vi,
             optimizer=optimizer,
             name=name)
+
+        if optimizer is not None:
+            self.add_optimizer(optimizer, [self._generator])
 
         self._param_net = param_net
         self._particles = particles
@@ -250,7 +253,7 @@ class HyperNetwork(Algorithm):
 
     def predict_step(self, inputs, params=None, particles=None, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
-        
+
         Args:
             inputs (Tensor): inputs to the ensemble of networks.
             params (Tensor): parameters of the ensemble of networks,
@@ -283,6 +286,7 @@ class HyperNetwork(Algorithm):
                                            particles=particles,
                                            state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
+                loss_info = alg_step.info
                 # loss += alg_step.info.extra.generator.loss
                 loss += loss_info.extra.generator.loss
                 if self._loss_type == 'classification':
@@ -294,7 +298,7 @@ class HyperNetwork(Algorithm):
             if self._loss_type == 'classification':
                 logging.info("Avg acc: {}".format(acc))
             logging.info("Cum loss: {}".format(loss))
-        self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
+        #self.summarize_train(loss_info, params, cum_loss=loss, avg_acc=acc)
 
         return batch_idx + 1
 
@@ -306,8 +310,8 @@ class HyperNetwork(Algorithm):
         """Perform one batch of training computation.
 
         Args:
-            inputs (nested Tensor): input training data. 
-            particles (int): number of sampled particles. 
+            inputs (nested Tensor): input training data.
+            particles (int): number of sampled particles.
             state: not used
 
         Returns:
@@ -410,3 +414,6 @@ class HyperNetwork(Algorithm):
             alf.summary.scalar(name='train_epoch/neglogprob', data=cum_loss)
         if avg_acc is not None:
             alf.summary.scalar(name='train_epoch/avg_acc', data=avg_acc)
+
+    def _trainable_attributes_to_ignore(self):
+        return ['_param_net']
