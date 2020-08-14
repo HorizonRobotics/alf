@@ -104,7 +104,7 @@ class _TrainerProgress(nn.Module):
 
 
 class Trainer(object):
-    """Base class for trainers. 
+    """Base class for trainers.
 
     Trainer is responsible for creating algorithm and dataset/environment, setting up
     summary, checkpointing, running training iterations, and evaluating periodically.
@@ -485,7 +485,7 @@ class SLTrainer(Trainer):
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
-            # generator=self._algorithm._generator,
+            generator=self._algorithm._generator,
             trainer_progress=self._trainer_progress)
 
         try:

@@ -100,14 +100,15 @@ class TrainerTest(alf.test.TestCase):
             trainer.train()
             self.assertEqual(SLTrainer.progress(), 1)
 
-            # # test checkpoint
-            # conf.num_epochs = 4
-            # new_trainer = SLTrainer(conf)
-            # new_trainer._restore_checkpoint()
-            # self.assertEqual(SLTrainer.progress(), 0.5)
-            # new_trainer.train()
-            # self.assertEqual(SLTrainer.progress(), 1)
+            # test checkpoint
+            conf.num_epochs = 4
+            new_trainer = SLTrainer(conf)
+            new_trainer._restore_checkpoint()
+            self.assertEqual(SLTrainer.progress(), 0.5)
+            new_trainer.train()
+            self.assertEqual(SLTrainer.progress(), 1)
 
 
 if __name__ == "__main__":
-    alf.test.main()
+    #alf.test.main()
+    TrainerTest().test_sl_trainer()
