@@ -464,14 +464,7 @@ class Algorithm(nn.Module):
         for name, param in self.named_parameters():
             self._param_to_name[param] = name
 
-        res = self._setup_optimizers_()[0]
-        optimizers = self.optimizers()
-        #print(optimizers[0])
-        if len(optimizers) > 0:
-            for pg in optimizers[0].param_groups:
-                for p in pg['params']:
-                    print(self._param_to_name[p])
-        return res
+        return self._setup_optimizers_()[0]
 
     def _setup_optimizers_(self):
         """Setup the param groups for optimizers.
@@ -491,11 +484,7 @@ class Algorithm(nn.Module):
             existing_params = _get_optimizer_params(opt)
             params = list(filter(lambda p: p not in existing_params, params))
             if params:
-                print("-----add")
                 opt.add_param_group({'params': params})
-                print(len(opt.param_groups))
-                if len(opt.param_groups) == 3:
-                    print(len(opt.param_groups))
 
         for child in self._get_children():
             if child in handled:
@@ -517,11 +506,9 @@ class Algorithm(nn.Module):
                 if default_optimizer is not None:
                     self._module_to_optimizer[child] = default_optimizer
             else:
-                print(str(child))
                 _add_params_to_optimizer(params, optimizer)
 
         if default_optimizer is not None:
-            print(str(child))
             _add_params_to_optimizer(new_params, default_optimizer)
             return [], handled
         else:

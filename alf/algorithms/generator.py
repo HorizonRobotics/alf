@@ -164,8 +164,8 @@ class Generator(Algorithm):
             self._mi_weight = mi_weight
         self._net = net
 
-        # if optimizer is not None:
-        #     self.add_optimizer(optimizer, [self._net])
+        if optimizer is not None:
+            self.add_optimizer(optimizer, [self._net])
 
         self._predict_net = None
         self._net_moving_average_rate = net_moving_average_rate
