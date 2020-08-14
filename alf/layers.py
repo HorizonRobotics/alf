@@ -998,9 +998,16 @@ class BottleneckBlock(nn.Module):
         nn.init.kaiming_normal_(c.weight.data)
         nn.init.zeros_(c.bias.data)
 
-        s = conv_fn(in_channels, filters3, 1, stride)
-        nn.init.kaiming_normal_(s.weight.data)
-        nn.init.zeros_(s.bias.data)
+        if stride != 1 or in_channels != filters3:
+            s = conv_fn(in_channels, filters3, 1, stride)
+            nn.init.kaiming_normal_(s.weight.data)
+            nn.init.zeros_(s.bias.data)
+            if with_batch_normalization:
+                shortcut_layers = nn.Sequential(s, nn.BatchNorm2d(filters3))
+            else:
+                shortcut_layers = s
+        else:
+            shortcut_layers = None
 
         relu = nn.ReLU(inplace=True)
 
@@ -1008,17 +1015,18 @@ class BottleneckBlock(nn.Module):
             core_layers = nn.Sequential(a, nn.BatchNorm2d(filters1), relu, b,
                                         nn.BatchNorm2d(filters2), relu, c,
                                         nn.BatchNorm2d(filters3))
-            shortcut_layers = nn.Sequential(s, nn.BatchNorm2d(filters3))
         else:
             core_layers = nn.Sequential(a, relu, b, relu, c)
-            shortcut_layers = s
 
         self._core_layers = core_layers
         self._shortcut_layers = shortcut_layers
 
     def forward(self, inputs):
         core = self._core_layers(inputs)
-        shortcut = self._shortcut_layers(inputs)
+        if self._shortcut_layers:
+            shortcut = self._shortcut_layers(inputs)
+        else:
+            shortcut = inputs
 
         return torch.relu_(core + shortcut)
 
