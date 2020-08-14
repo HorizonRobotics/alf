@@ -16,7 +16,7 @@
 import abc
 from absl import logging
 import gin
-from gym.wrappers.monitoring.video_recorder import VideoRecorder
+from alf.utils.video_recorder import VideoRecorder
 import math
 import os
 import pprint
@@ -348,7 +348,7 @@ class Trainer(object):
             self._eval_env.batch_size)
         episodes = 0
         while episodes < self._num_eval_episodes:
-            time_step, policy_state, trans_state = _step(
+            time_step, policy_state, trans_state, _ = _step(
                 algorithm=self._algorithm,
                 env=self._eval_env,
                 time_step=time_step,
@@ -383,7 +383,7 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
-    return next_time_step, policy_step.state, trans_state
+    return next_time_step, policy_step.state, trans_state, policy_step.info
 
 
 def play(root_dir,
@@ -442,8 +442,7 @@ def play(root_dir,
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
     env.reset()
-    if recorder:
-        recorder.capture_frame()
+
     time_step = common.get_initial_time_step(env)
     algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
@@ -452,7 +451,7 @@ def play(root_dir,
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        time_step, policy_state, trans_state = _step(
+        time_step, policy_state, trans_state, info = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
@@ -462,7 +461,7 @@ def play(root_dir,
             metrics=[])
         episode_length += 1
         if recorder:
-            recorder.capture_frame()
+            recorder.capture_frame(info)
         else:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
