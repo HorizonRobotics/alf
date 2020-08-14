@@ -97,11 +97,36 @@ class Checkpointer(object):
             for k in to_delete:
                 checkpoint.pop(k)
 
+        def _convert_legacy_parameter(checkpoint):
+            """
+            Due to different implmentation of FC layer, the old checkpoints cannot
+            be loaded directly. Hence we check if the checkpoint uses old FC layer
+            and convert to the new FC layer format.
+            _log_alpha for SacAlgorithm was changed from [1] Tensor to [] Tensor.
+            """
+            d = {}
+            for k, v in checkpoint.items():
+                if k.endswith('._linear.weight') or k.endswith(
+                        '._linear.bias'):
+                    d[k] = v
+                elif k.endswith('._log_alpha') and v.shape == (1, ):
+                    d[k] = v[0]
+            for k, v in d.items():
+                del checkpoint[k]
+                logging.info("Converted legacy parameter %s" % k)
+                if k.endswith('.weight'):
+                    checkpoint[k[:-13] + 'weight'] = v
+                elif k.endswith('.bias'):
+                    checkpoint[k[:-11] + 'bias'] = v
+                else:
+                    checkpoint[k] = v
+
         def _load_checkpoint(checkpoint):
             self._global_step = checkpoint["global_step"]
             try:
                 for k, v in self._modules.items():
                     _remove_ignored_parameters(checkpoint[k])
+                    _convert_legacy_parameter(checkpoint[k])
                     self._modules[k].load_state_dict(checkpoint[k])
             except Exception as e:
                 raise RuntimeError((
