@@ -205,8 +205,8 @@ class HyperNetwork(Algorithm):
             optimizer=optimizer,
             name=name)
 
-        # if optimizer is not None:
-        #     self.add_optimizer(optimizer, [self._generator])
+        if optimizer is not None:
+            self.add_optimizer(optimizer, [self._generator])
 
         self._param_net = param_net
         self._particles = particles
