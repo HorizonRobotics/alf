@@ -32,6 +32,7 @@ GoalInfo = namedtuple(
     "GoalInfo", ["goal", "original_goal", "loss"], default_value=())
 
 
+@gin.configurable
 class ConditionalGoalGenerator(RLAlgorithm):
     """Conditional Goal Generation Module.
 
@@ -42,12 +43,17 @@ class ConditionalGoalGenerator(RLAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 train_with_goal="rollout",
                  train_state_spec=(),
                  name="ConditionalGoalGenerator"):
         """
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested TensorSpec): representing the action.
+            train_with_goal (str): source of goal during training: "rollout" for
+                rollout_info generated during unroll by goal generator, or "exp"
+                for the "desired_goal" field in observation.  Use "exp" if using
+                hindsight relabeling.
             train_state_spec (nested tensorSpec): representing the train state.
             name (str): name of the algorithm.
         """
@@ -56,6 +62,7 @@ class ConditionalGoalGenerator(RLAlgorithm):
             action_spec=action_spec,
             train_state_spec=train_state_spec,
             name=name)
+        self._train_with_goal = train_with_goal
 
     def update_condition(self, observation, step_type, state):
         """Condition to update the goals.
@@ -158,7 +165,14 @@ class ConditionalGoalGenerator(RLAlgorithm):
             - state (nested Tensor):
             - info (GoalInfo): for training.
         """
-        goal = exp.rollout_info.goal
+        if self._train_with_goal == 'rollout':
+            goal = exp.rollout_info.goal
+        elif self._train_with_goal == 'exp':
+            goal = exp.observation["desired_goal"]
+        elif self._train_with_goal == 'orig':
+            goal = exp.rollout_info.original_goal
+        else:
+            raise NotImplementedError()
         return AlgStep(output=goal, state=state, info=GoalInfo(goal=goal))
 
     def calc_loss(self, experience, info: GoalInfo):
@@ -247,6 +261,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  value_fn=None,
                  value_state_spec=(),
                  max_subgoal_steps=10,
+                 plan_margin=0.,
+                 min_goal_cost_to_use_plan=0.,
                  name="SubgoalPlanningGoalGenerator"):
         """
         Args:
@@ -260,6 +276,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             value_state_spec (nested TensorSpec): spec of the state of value function.
             max_subgoal_steps (int): number of steps to execute any subgoal before
                 updating it.
+            plan_margin (float): how much larger value than baseline does the plan need,
+                to be adopted.
             name (str): name of the algorithm.
         """
         goal_shape = (action_dim, )
@@ -286,6 +304,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if value_fn:
             self._value_fn = value_fn
         self._max_subgoal_steps = max_subgoal_steps
+        self._plan_margin = plan_margin
+        self._min_goal_cost_to_use_plan = min_goal_cost_to_use_plan
 
         self._value_state_spec = value_state_spec
         self._opt = CEMOptimizer(
@@ -341,22 +361,20 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         init_costs = -values
         goals, costs = self._opt.obtain_solution(ts, ())
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
-        plan_success = init_costs > costs
+        # Assumes costs are positive, at least later on during training,
+        # Otherwise, don't use planner.
+        # We also require goal to be > min_goal_cost_to_use_plan away.
+        # If goal is within the min_cost range, just use original goal.
+        plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
+            costs > 0) & (init_costs > costs * (1. + self._plan_margin))
         alf.summary.scalar(
-            "planner/success_rate" + "." + common.exe_mode_name(),
+            "planner/plan_adoption_rate" + "." + common.exe_mode_name(),
             torch.mean(plan_success.float()))
-        # We assume costs are positive.  Then, adv_max should vary from
-        # -inf to 1, positively correlated with planner's success.
-        # Initially, when value_fn isn't trained well, init_costs could be
-        # negative while costs positive, causing adv_max to be above 1.
-        # Hence we cap adv_max at 2.
-        adv_max = torch.min(
-            torch.max(-(costs - init_costs) / (init_costs + 1.e-5)), 2.)
         alf.summary.scalar(
-            "planner/plan_advantage_max" + "." + common.exe_mode_name(),
-            adv_max)
+            "planner/cost_mean_planned" + "." + common.exe_mode_name(),
+            torch.mean(costs))
         alf.summary.scalar(
-            "planner/orig_goal_cost_mean" + "." + common.exe_mode_name(),
+            "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
             torch.mean(init_costs))
         subgoal = torch.where(plan_success, subgoal,
                               observation["desired_goal"])

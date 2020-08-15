@@ -5,13 +5,6 @@ ReplayBuffer.postprocess_exp_fn=@hindsight_relabel_fn
 hindsight_relabel_fn.her_proportion=0.8
 l2_dist_close_reward_fn.threshold=0.5
 
-observation_spec=@get_observation_spec()
-
-import alf.algorithms.goal_generator
-SubgoalPlanningGoalGenerator.observation_spec=%observation_spec
-SubgoalPlanningGoalGenerator.action_dim=2
-SubgoalPlanningGoalGenerator.action_bounds=[[-10,-10],[10,10]]
-
 # Finer grain tensorboard summaries plus local action distribution
 # TrainerConfig.summarize_action_distributions=True
 # TrainerConfig.summary_interval=1

@@ -593,7 +593,7 @@ def hindsight_relabel_fn(buffer,
                          result,
                          info,
                          her_proportion,
-                         use_original_goals_from_info=False,
+                         use_original_goals_from_info=0.,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
                          reward_fn=l2_dist_close_reward_fn):
@@ -607,9 +607,17 @@ def hindsight_relabel_fn(buffer,
         result (nest): of tensors of the sampled exp
         info (BatchInfo): of the sampled result
         her_proportion (float): proportion of hindsight relabeled experience.
-        use_original_goals_from_info (bool): if True, use Agent has stored the
-            original goal into rollout_info.goal_generator.original_goal field.
-            Use this field as the desired_goal of the experience.
+        use_original_goals_from_info (float): if positive, use the stored
+            original goal in rollout_info.goal_generator.original_goal field
+            as the desired_goal of the experience.
+            For the rest (1 - use_original_goals_from_info) of the experience,
+            we use rollout goals and recomputed rewards.  This is useful for
+            goal generator generated rollout goals which may not correspond
+            well with the env rewards collected.
+            This is done before HER relabelling, so the actual exp using original
+            goal is ``use_original_goals_from_info * (1 - her_proportion)``, and using
+            rollout goals and recomputed rewards is
+            ``(1 - use_original_goals_from_info) * (1 - her_proportion)``.
         achieved_goal_field (str): path to the achieved_goal field in
             exp nest.
         desired_goal_field (str): path to the desired_goal field in the
@@ -627,14 +635,6 @@ def hindsight_relabel_fn(buffer,
                 - importance_weights: priority divided by the average of all
                     non-zero priorities in the buffer.
     """
-    if use_original_goals_from_info:
-        orig_goal = alf.nest.get_field(
-            result, "rollout_info.goal_generator.original_goal")
-        result = alf.nest.utils.transform_nest(
-            result, desired_goal_field, lambda _: orig_goal)
-    if her_proportion == 0:
-        return result
-
     env_ids = info.env_ids
     start_pos = info.positions
     shape = alf.nest.get_nest_shape(result)
@@ -642,10 +642,20 @@ def hindsight_relabel_fn(buffer,
     # TODO: add support for batch_length > 2.
     assert batch_length == 2, shape
 
+    if use_original_goals_from_info > 0:
+        orig_goal_cond = torch.rand(batch_size) < use_original_goals_from_info
+        orig_goal = alf.nest.get_field(
+            result, "rollout_info.goal_generator.original_goal")
+        result_goals = alf.nest.get_field(result, desired_goal_field)
+        result_goals[orig_goal_cond] = orig_goal[orig_goal_cond]
+        result = alf.nest.utils.transform_nest(
+            result, desired_goal_field, lambda _: result_goals)
+
     # relabel only these sampled indices
     her_cond = torch.rand(batch_size) < her_proportion
+    non_her_cond = torch.logical_not(her_cond)
     (her_indices, ) = torch.where(her_cond)
-    (non_her_indices, ) = torch.where(torch.logical_not(her_cond))
+    (non_her_indices, ) = torch.where(non_her_cond)
 
     last_step_pos = start_pos[her_indices] + batch_length - 1
     last_env_ids = env_ids[her_indices]
@@ -691,9 +701,14 @@ def hindsight_relabel_fn(buffer,
                         result_desired_goal[non_her_indices],
                         env_ids[non_her_indices], start_pos[non_her_indices])
         logging.warning(msg)
-        relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
+        orig_reward_cond = non_her_cond
+        if use_original_goals_from_info > 0:
+            orig_reward_cond &= orig_goal_cond
+        relabeled_rewards[orig_reward_cond] = result.reward[orig_reward_cond]
 
+    result = result._replace(reward=relabeled_rewards)
+    if her_proportion <= 0:
+        return result, info
     result = alf.nest.utils.transform_nest(
         result, desired_goal_field, lambda _: relabed_goal)
-    result = result._replace(reward=relabeled_rewards)
     return result, info
