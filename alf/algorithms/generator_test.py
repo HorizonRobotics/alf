@@ -167,7 +167,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             alg_step = generator.train_step(inputs=y, loss_func=_neglogprob)
             generator.update_with_gradient(alg_step.info)
 
-        for i in range(10000):
+        for i in range(5000):
             _train()
             learned_var = torch.matmul(net.fc1.weight, net.fc1.weight.t())
             if i % 500 == 0:
@@ -177,11 +177,11 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         if mi_weight is not None:
             self.assertGreater(float(torch.sum(torch.abs(learned_var))), 0.5)
         elif entropy_regularization == 1.0:
-            self.assertArrayEqual(net.fc2.weight.t(), u, 0.05)
-            self.assertArrayEqual(torch.diag(var), learned_var, 0.05)
+            self.assertArrayEqual(net.fc2.weight.t(), u, 0.1)
+            self.assertArrayEqual(torch.diag(var), learned_var, 0.1)
         else:
-            self.assertArrayEqual(net.fc2.weight.t(), u, 0.05)
-            self.assertArrayEqual(torch.zeros(dim, dim), learned_var, 0.05)
+            self.assertArrayEqual(net.fc2.weight.t(), u, 0.1)
+            self.assertArrayEqual(torch.zeros(dim, dim), learned_var, 0.1)
 
 
 if __name__ == '__main__':
