@@ -20,6 +20,7 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import math
 import os
 import pprint
+import signal
 import sys
 import time
 import torch
@@ -210,10 +211,19 @@ class Trainer(object):
     def current_env_steps():
         return Trainer._trainer_progress._env_step
 
+    def _request_checkpoint(self, signum, frame):
+        self._checkpoint_requested = True
+
     def train(self):
         """Perform training."""
         self._restore_checkpoint()
         alf.summary.enable_summary()
+
+        self._checkpoint_requested = False
+        signal.signal(signal.SIGUSR2, self._request_checkpoint)
+        logging.info("Use `kill -%s %s` to request checkpoint during training."
+                     % (int(signal.SIGUSR2), os.getpid()))
+
         try:
             if self._config.profiling:
                 import cProfile, pstats, io
@@ -317,6 +327,9 @@ class Trainer(object):
                         and total_time_steps >= time_to_checkpoint)):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
+            elif self._checkpoint_requested:
+                self._save_checkpoint()
+                self._checkpoint_requested = False
 
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
