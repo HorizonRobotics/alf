@@ -95,7 +95,8 @@ class LinearScheduler(Scheduler):
             schedule (list[tuple]): each tuple is a pair of (progress, value)
                 which means that if the current progress between progress[i-1]
                 and progress[i], a linear interpolation between value[i-1] and
-                value[i] will be used. progress[0] must be 0.
+                value[i] will be used. progress[0] must be 0. If the current
+                progress is greater than progress[-1], value[-1] will be used.
         """
         super().__init__(progress_type)
         assert schedule[0][
