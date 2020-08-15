@@ -21,6 +21,41 @@ import torchvision
 from torchvision import datasets, transforms
 
 
+class TestDataSet(torch.utils.data.Dataset):
+    def __init__(self, input_dim=3, output_dim=1, size=1000, weight=None):
+        self._features = torch.randn(size, input_dim)
+        if weight is None:
+            self._weight = torch.rand(input_dim, output_dim) + 5.
+        else:
+            self._weight = weight
+        noise = torch.randn(size, output_dim)
+        self._values = self._features @ self._weight + noise
+
+    def __getitem__(self, index):
+        return self._features[index], self._values[index]
+
+    def __len__(self):
+        return len(self._features)
+
+
+def load_test(train_bs=50, test_bs=10, num_workers=0):
+    input_dim = 3
+    output_dim = 1
+    weight = torch.rand(input_dim, output_dim) + 5.
+    trainset = TestDataSet(
+        input_dim=input_dim, output_dim=output_dim, size=1000, weight=weight)
+    testset = TestDataSet(
+        input_dim=input_dim, output_dim=output_dim, size=500, weight=weight)
+
+    train_loader = torch.utils.data.DataLoader(
+        trainset, batch_size=train_bs, shuffle=True, num_workers=num_workers)
+
+    test_loader = torch.utils.data.DataLoader(
+        trainset, batch_size=test_bs, shuffle=True, num_workers=num_workers)
+
+    return train_loader, test_loader
+
+
 def load_mnist(train_bs=100, test_bs=100, num_workers=0):
     torch.cuda.manual_seed(1)
     kwargs = {

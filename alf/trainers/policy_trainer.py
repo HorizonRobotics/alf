@@ -408,9 +408,12 @@ class SLTrainer(Trainer):
         self._num_epochs = config.num_epochs
         self._trainer_progress.set_termination_criterion(self._num_epochs)
 
-        trainset, testset = create_dataset()
-        input_tensor_spec = TensorSpec(shape=testset.dataset[0][0].shape)
-        output_dim = len(testset.dataset.classes)
+        trainset, testset = self._create_dataset()
+        input_tensor_spec = TensorSpec(shape=trainset.dataset[0][0].shape)
+        if hasattr(trainset.dataset, 'classes'):
+            output_dim = len(trainset.dataset.classes)
+        else:
+            output_dim = len(trainset.dataset[0][1])
 
         self._algorithm = config.algorithm_ctor(
             input_tensor_spec=input_tensor_spec,
@@ -429,6 +432,10 @@ class SLTrainer(Trainer):
             float: a number in :math:`[0,1]` indicating the training progress.
         """
         return SLTrainer._trainer_progress.progress
+
+    def _create_dataset(self):
+        """Create data loaders."""
+        return create_dataset()
 
     def _train(self):
         begin_epoch_num = int(self._trainer_progress._iter_num)

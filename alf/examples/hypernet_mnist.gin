@@ -1,4 +1,5 @@
 import alf.algorithms.hypernetwork_algorithm
+import alf.trainers.policy_trainer
 
 # dataset config
 create_dataset.dataset_name='mnist'
