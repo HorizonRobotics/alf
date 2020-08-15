@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import glob
 import os
-import warnings
 import torch
-from absl import logging
+from torch import nn
+import warnings
 
 
 def is_checkpoint_enabled(module):
@@ -137,11 +138,16 @@ class Checkpointer(object):
                     checkpoint[k] = v
 
         def _load_one(module, checkpoint):
-            missing_keys, unexpected_keys = module.load_state_dict(
-                checkpoint, strict=strict)
+            if isinstance(module, nn.Module):
+                missing_keys, unexpected_keys = module.load_state_dict(
+                    checkpoint, strict=strict)
+            else:
+                module.load_state_dict(checkpoint)
+                missing_keys, unexpected_keys = [], []
+
             if not including_optimizer:
                 missing_keys = list(
-                    filter(lambda k: not k.find('_optimizers.'), missing_keys))
+                    filter(lambda k: k.find('_optimizers.') < 0, missing_keys))
             if not including_replay_buffer:
                 missing_keys = list(
                     filter(lambda k: not k.startswith('_exp_replayer.'),
@@ -161,7 +167,8 @@ class Checkpointer(object):
                 if len(error_msgs) > 0:
                     raise RuntimeError(
                         'Error(s) in loading state_dict for {}:\n\t{}'.format(
-                            self.__class__.__name__, "\n\t".join(error_msgs)))
+                            module.__class__.__name__,
+                            "\n\t".join(error_msgs)))
 
         def _merge_checkpoint(merged, new):
             for mk in self._modules.keys():

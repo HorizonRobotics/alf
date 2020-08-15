@@ -97,7 +97,7 @@ def main(_):
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
-                ","))
+                ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
         env.close()
 
