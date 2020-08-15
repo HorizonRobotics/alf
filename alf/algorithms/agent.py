@@ -143,7 +143,9 @@ class Agent(OnPolicyAlgorithm):
                 policy_step = rl_algorithm.predict_step(
                     ts, state=state, epsilon_greedy=0)
                 act = policy_step.output
-                return rl_algorithm._critic_networks((obs, act), state=())
+                v, s = rl_algorithm._critic_networks((obs, act), state=())
+                # Value cannot be positive.
+                return torch.min(v, torch.tensor([0.])), s
 
             goal_generator.set_value_fn(_value)
 

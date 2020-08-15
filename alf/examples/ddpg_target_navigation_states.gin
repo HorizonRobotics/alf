@@ -26,6 +26,14 @@ DdpgAlgorithm.use_parallel_network=False
 DdpgAlgorithm.rollout_random_action=0.3
 DdpgAlgorithm.target_update_period=40
 
+# GoalGenerator
+observation_spec=@get_observation_spec()
+
+import alf.algorithms.goal_generator
+SubgoalPlanningGoalGenerator.observation_spec=%observation_spec
+SubgoalPlanningGoalGenerator.action_dim=2
+SubgoalPlanningGoalGenerator.action_bounds=[[-10,-10],[10,10]]
+
 # TrainerConfig
 TrainerConfig.initial_collect_steps=10000
 TrainerConfig.mini_batch_length=2
