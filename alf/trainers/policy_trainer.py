@@ -238,8 +238,11 @@ class Trainer(object):
                 ps.print_callees()
 
                 logging.info(s.getvalue())
-
             self._save_checkpoint()
+        except:
+            ans = input("Do you want to save checkpoint? (y/n): ")
+            if ans.lower().startswith('y'):
+                self._save_checkpoint()
         finally:
             self._close_envs()
 

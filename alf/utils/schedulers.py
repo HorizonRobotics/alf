@@ -78,12 +78,8 @@ class StepScheduler(Scheduler):
         progress = self.progress()
         index = self._index
         progresses = self._progresses
-        if progress < progresses[index]:
-            while index > 0 and progress < progresses[index - 1]:
-                index -= 1
-        else:
-            while index < len(progresses) - 1 and progress >= progresses[index]:
-                index += 1
+        while index < len(progresses) - 1 and progress >= progresses[index]:
+            index += 1
         self._index = index
         return self._values[index]
 
@@ -97,8 +93,9 @@ class LinearScheduler(Scheduler):
         Args:
             progress_type (str): one of "percent", "iterations", "env_steps"
             schedule (list[tuple]): each tuple is a pair of (progress, value)
-                which means that if current progress is less than progress,
-                the current value will be value.
+                which means that if the current progress between progress[i-1]
+                and progress[i], a linear interpolation between value[i-1] and
+                value[i] will be used. progress[0] must be 0.
         """
         super().__init__(progress_type)
         assert schedule[0][
@@ -113,12 +110,8 @@ class LinearScheduler(Scheduler):
         progress = self.progress()
         index = self._index
         progresses = self._progresses
-        if progress < progresses[index]:
-            while index > 0 and progress < progresses[index - 1]:
-                index -= 1
-        else:
-            while index < len(progresses) and progress >= progresses[index]:
-                index += 1
+        while index < len(progresses) and progress >= progresses[index]:
+            index += 1
         if index < len(progress):
             w = (progress - progresses[index - 1]) / (
                 progresses[index] - progresses[index - 1])
