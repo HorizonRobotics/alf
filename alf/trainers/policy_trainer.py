@@ -485,7 +485,7 @@ class SLTrainer(Trainer):
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
             ckpt_dir=os.path.join(self._train_dir, 'algorithm'),
-            # generator=self._algorithm._generator,
+            algorithm=self._algorithm,
             trainer_progress=self._trainer_progress)
 
         try:

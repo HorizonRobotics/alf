@@ -164,7 +164,7 @@ class HyperNetwork(Algorithm):
             config (TrainerConfig): configuration for training
             name (str):
         """
-        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        super().__init__(train_state_spec=(), name=name)
 
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
@@ -250,7 +250,7 @@ class HyperNetwork(Algorithm):
 
     def predict_step(self, inputs, params=None, particles=None, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
-        
+
         Args:
             inputs (Tensor): inputs to the ensemble of networks.
             params (Tensor): parameters of the ensemble of networks,
@@ -283,7 +283,6 @@ class HyperNetwork(Algorithm):
                                            particles=particles,
                                            state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
-                # loss += alg_step.info.extra.generator.loss
                 loss += loss_info.extra.generator.loss
                 if self._loss_type == 'classification':
                     avg_acc.append(alg_step.info.extra.generator.extra)

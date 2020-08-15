@@ -89,10 +89,10 @@ class TrainerTest(alf.test.TestCase):
                     hidden_layers=HIDDEN_LAYERS,
                     optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
                 root_dir=root_dir,
-                num_checkpoints=2,
+                num_checkpoints=1,
                 evaluate=True,
                 eval_interval=1,
-                num_epochs=2)
+                num_epochs=1)
 
             # test train
             trainer = SLTrainer(conf)
@@ -100,13 +100,25 @@ class TrainerTest(alf.test.TestCase):
             trainer.train()
             self.assertEqual(SLTrainer.progress(), 1)
 
-            # # test checkpoint
-            # conf.num_epochs = 4
-            # new_trainer = SLTrainer(conf)
-            # new_trainer._restore_checkpoint()
-            # self.assertEqual(SLTrainer.progress(), 0.5)
-            # new_trainer.train()
-            # self.assertEqual(SLTrainer.progress(), 1)
+            # test checkpoint
+            conf2 = TrainerConfig(
+                algorithm_ctor=functools.partial(
+                    HyperNetwork,
+                    conv_layer_params=CONV_LAYER_PARAMS,
+                    fc_layer_params=FC_LAYER_PARAMS,
+                    hidden_layers=HIDDEN_LAYERS,
+                    optimizer=alf.optimizers.Adam(lr=1e-4, weight_decay=1e-4)),
+                root_dir=root_dir,
+                num_checkpoints=1,
+                evaluate=True,
+                eval_interval=1,
+                num_epochs=2)
+
+            new_trainer = SLTrainer(conf2)
+            new_trainer._restore_checkpoint()
+            self.assertEqual(SLTrainer.progress(), 0.5)
+            new_trainer.train()
+            self.assertEqual(SLTrainer.progress(), 1)
 
 
 if __name__ == "__main__":
