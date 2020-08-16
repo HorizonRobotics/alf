@@ -20,6 +20,7 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import math
 import os
 import pprint
+import signal
 import sys
 import time
 import torch
@@ -117,6 +118,8 @@ class Trainer(object):
             config (TrainerConfig): configuration used to construct this trainer
         """
         root_dir = os.path.expanduser(config.root_dir)
+        os.makedirs(root_dir, exist_ok=True)
+        logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
         self._root_dir = root_dir
         self._train_dir = os.path.join(root_dir, 'train')
         self._eval_dir = os.path.join(root_dir, 'eval')
@@ -144,13 +147,41 @@ class Trainer(object):
         """Perform training."""
         self._restore_checkpoint()
         alf.summary.enable_summary()
+
+        self._checkpoint_requested = False
+        signal.signal(signal.SIGUSR2, self._request_checkpoint)
+        logging.info("Use `kill -%s %s` to request checkpoint during training."
+                     % (int(signal.SIGUSR2), os.getpid()))
+
         try:
+            if self._config.profiling:
+                import cProfile, pstats, io
+                from pstats import SortKey
+                pr = cProfile.Profile()
+                pr.enable()
+
             common.run_under_record_context(
                 self._train,
                 summary_dir=self._train_dir,
                 summary_interval=self._summary_interval,
                 flush_secs=self._summaries_flush_secs,
                 summary_max_queue=self._summary_max_queue)
+
+            if self._config.profiling:
+                pr.disable()
+                s = io.StringIO()
+                ps = pstats.Stats(pr, stream=s).sort_stats(SortKey.TIME)
+                ps.print_stats()
+                ps = pstats.Stats(pr, stream=s).sort_stats(SortKey.CUMULATIVE)
+                ps.print_stats()
+                ps.print_callees()
+
+                logging.info(s.getvalue())
+            self._save_checkpoint()
+        except:
+            ans = input("Do you want to save checkpoint? (y/n): ")
+            if ans.lower().startswith('y'):
+                self._save_checkpoint()
         finally:
             self._save_checkpoint()
             self._close()
@@ -162,6 +193,9 @@ class Trainer(object):
     def _close(self):
         """Closing operations after training. """
         pass
+
+    def _request_checkpoint(self, signum, frame):
+        self._checkpoint_requested = True
 
     def _restore_checkpoint(self):
         """retore from saved checkpoint."""
@@ -202,6 +236,12 @@ class RLTrainer(Trainer):
             "observation_spec=%s" % pprint.pformat(env.observation_spec()))
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
         common.set_global_env(env)
+
+        data_transformer = create_data_transformer(
+            config.data_transformer_ctor, env.observation_spec())
+        self._config.data_transformer = data_transformer
+        observation_spec = data_transformer.transformed_observation_spec
+        common.set_transformed_observation_spec(observation_spec)
 
         self._algorithm = self._algorithm_ctor(
             observation_spec=env.observation_spec(),
@@ -264,6 +304,14 @@ class RLTrainer(Trainer):
             float: a number in :math:`[0,1]` indicating the training progress.
         """
         return RLTrainer._trainer_progress.progress
+
+    @staticmethod
+    def current_iterations():
+        return RLTrainer._trainer_progress._iter_num
+
+    @staticmethod
+    def current_env_steps():
+        return RLTrainer._trainer_progress._env_step
 
     def _train(self):
         for env in self._envs:
