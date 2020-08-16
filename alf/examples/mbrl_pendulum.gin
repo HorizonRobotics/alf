@@ -1,0 +1,63 @@
+import alf.algorithms.mbrl_algorithm
+import alf.algorithms.dynamics_learning_algorithm
+import alf.algorithms.reward_learning_algorithm
+import alf.algorithms.planning_algorithm
+import alf.examples.mbrl_pendulum
+import alf.utils.math_ops
+
+# environment config
+env_name='Pendulum-v0'
+NUM_PARALLEL_ENVIRONMENTS=1
+create_environment.env_load_fn=@suite_gym.load
+create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+create_environment.env_name=%env_name
+
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+# --------------------dynamics learning config------------------------
+DeterministicDynamicsAlgorithm.action_spec=%action_spec
+DeterministicDynamicsAlgorithm.feature_spec=%observation_spec
+DeterministicDynamicsAlgorithm.hidden_size=(500, 500, 500)
+
+# -------------------reward learning config----------------------------
+FixedRewardFunction.reward_func=@reward_function_for_pendulum
+
+# ----------------------planner config---------------------------------
+RandomShootingAlgorithm.feature_spec=%observation_spec
+RandomShootingAlgorithm.action_spec=%action_spec
+RandomShootingAlgorithm.population_size=5000
+RandomShootingAlgorithm.planning_horizon=25
+
+# model-based RL algo config
+MbrlAlgorithm.feature_spec=%observation_spec
+MbrlAlgorithm.action_spec=%action_spec
+MbrlAlgorithm.dynamics_module=@DeterministicDynamicsAlgorithm()
+MbrlAlgorithm.reward_module=@FixedRewardFunction()
+MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
+
+# agent config
+Mbrl/AdamW.weight_decay=0.0001
+Mbrl/AdamW.lr=1e-3
+opt=@Mbrl/AdamW()
+MbrlAlgorithm.dynamics_optimizer=%opt
+
+# training config
+TrainerConfig.initial_collect_steps=200
+TrainerConfig.mini_batch_length=1
+TrainerConfig.unroll_length=200
+TrainerConfig.mini_batch_size=32
+TrainerConfig.num_updates_per_train_iter=5 # epoches
+TrainerConfig.whole_replay_buffer_training=True
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.algorithm_ctor=@MbrlAlgorithm
+TrainerConfig.num_iterations=50 # num of interactions of unroll_length with env
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=1
+TrainerConfig.eval_interval=5
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summary_interval=1
+TrainerConfig.use_rollout_state=True
+TrainerConfig.replay_buffer_length=100000

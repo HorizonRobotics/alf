@@ -15,6 +15,7 @@
 import copy
 import gin
 import torch
+from typing import Callable
 
 import alf
 from alf.utils import common
@@ -48,7 +49,19 @@ def wrap_optimizer(cls):
             name (str): the name displayed when summarizing the gradient norm. If
                 None, then a global name in the format of "class_name_i" will be
                 created, where "i" is the global optimizer id.
+            kwargs: arguments passed to the constructor of the underline torch
+                optimizer. If ``lr`` is given and it is a ``Callable``, it is
+                treated as a learning rate scheduler and will be called everytime
+                when ``step()`` is called to get the latest learning rate.
+                Available schedulers are in ``alf.utils.schedulers``.
         """
+        self._lr_scheduler = None
+        if "lr" in kwargs:
+            lr = kwargs["lr"]
+            if isinstance(lr, Callable):
+                self._lr_scheduler = lr
+                kwargs["lr"] = float(lr())
+
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
@@ -62,6 +75,10 @@ def wrap_optimizer(cls):
         """This function first clips the gradients if needed, then call the
         parent's ``step()`` function.
         """
+        if self._lr_scheduler is not None:
+            lr = float(self._lr_scheduler())
+            for param_group in self.param_groups:
+                param_group['lr'] = lr
         if self._gradient_clipping is not None:
             params = []
             for param_group in self.param_groups:

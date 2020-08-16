@@ -4,8 +4,8 @@ target_navigation.get_ac_networks.attention=True
 
 # PlayGround.group_img_lang=True
 
-# FrameStack.fields_to_stack=['image_sentence.image']  # must be a subset of input observations
-# image_scale_transformer.fields=['image_sentence.image']
+# FrameStacker.fields=['image_sentence.image']  # must be a subset of input observations
+# ImageScaleTransformer.fields=['image_sentence.image']
 
 num_state_tiles=0
 num_sentence_tiles=0

@@ -26,7 +26,7 @@ from alf.tensor_specs import TensorSpec
 from alf.utils.data_buffer import RingBuffer, DataBuffer
 from alf.utils.checkpoint_utils import Checkpointer
 
-DataItem = namedtuple("DataItem", ["env_id", "x", "t", "o", "r"])
+DataItem = namedtuple("DataItem", ["env_id", "x", "t", "o", "reward"])
 
 
 # Using cpu tensors are needed for running on cuda enabled devices,
@@ -55,7 +55,7 @@ def get_batch(env_ids, dim, t, x):
             "a": a,
             "g": g
         }),
-        r=r)
+        reward=r)
 
 
 class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
@@ -74,7 +74,7 @@ class RingBufferTest(parameterized.TestCase, alf.test.TestCase):
                 "a": alf.TensorSpec(shape=(), dtype=torch.float32),
                 "g": alf.TensorSpec(shape=(), dtype=torch.float32)
             }),
-            r=alf.TensorSpec(shape=(), dtype=torch.float32))
+            reward=alf.TensorSpec(shape=(), dtype=torch.float32))
 
     @parameterized.named_parameters([
         ('test_sync', False),

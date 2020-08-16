@@ -247,9 +247,17 @@ def is_summary_enabled():
 
 
 def should_summarize_output(flag=None):
+    """Get or set summarize output flag.
+
+    Args:
+        flag (bool or None): when provided, sets the flag, otherwise, return
+            the stored _summarize_output flag.
+    Returns:
+        bool for getter or None for setter.
+    """
     global _summarize_output
     if flag is None:
-        return _summarize_output
+        return _summarize_output and should_record_summaries()
     else:
         _summarize_output = bool(flag)
 

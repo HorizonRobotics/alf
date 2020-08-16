@@ -27,17 +27,21 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
+        dict(
+            n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
     )
     def test_parallel_fc(self,
                          n=2,
                          act=math_ops.identity,
                          use_bias=True,
+                         use_bn=False,
                          parallel_x=True):
         batch_size = 3
         x_dim = 4
         pfc = alf.layers.ParallelFC(
-            x_dim, 6, n=n, activation=act, use_bias=use_bias)
-        fc = alf.layers.FC(x_dim, 6, activation=act, use_bias=use_bias)
+            x_dim, 6, n=n, activation=act, use_bias=use_bias, use_bn=use_bn)
+        fc = alf.layers.FC(
+            x_dim, 6, activation=act, use_bias=use_bias, use_bn=use_bn)
 
         if parallel_x:
             px = torch.randn((batch_size, n, x_dim))
@@ -62,11 +66,14 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
+        dict(
+            n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
     )
     def test_parallel_conv(self,
                            n=2,
                            act=math_ops.identity,
                            use_bias=True,
+                           use_bn=False,
                            parallel_x=True):
         batch_size = 5
         in_channels = 4
@@ -79,6 +86,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             kernel_size=3,
             n=n,
             activation=act,
+            use_bn=use_bn,
             use_bias=use_bias)
 
         conv = alf.layers.Conv2D(
@@ -86,6 +94,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             out_channels=out_channels,
             kernel_size=3,
             activation=act,
+            use_bn=use_bn,
             use_bias=use_bias)
         if parallel_x:
             px = torch.randn((batch_size, n, in_channels, height, width))
@@ -110,11 +119,14 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=False),
         dict(n=2, act=torch.relu, use_bias=True, parallel_x=True),
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
+        dict(
+            n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
     )
     def test_parallel_conv_transpose(self,
                                      n=2,
                                      act=math_ops.identity,
                                      use_bias=True,
+                                     use_bn=False,
                                      parallel_x=True):
         batch_size = 5
         in_channels = 4
@@ -127,6 +139,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             kernel_size=3,
             n=n,
             activation=act,
+            use_bn=use_bn,
             use_bias=use_bias)
 
         convt = alf.layers.ConvTranspose2D(
@@ -134,6 +147,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             out_channels=out_channels,
             kernel_size=3,
             activation=act,
+            use_bn=use_bn,
             use_bias=use_bias)
         if parallel_x:
             px = torch.randn((batch_size, n, in_channels, height, width))
@@ -203,7 +217,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             if basis_type == "poly" or basis_type == "cheb":
                 exp_factor = torch.arange(input_size).float()
                 basis_weight_expected = basis_weight_tau**exp_factor
-                self.assertTensorEqual(basis_weight, basis_weight_expected)
+                self.assertTensorClose(basis_weight, basis_weight_expected)
             elif basis_type == "haar":
                 exp_factor = torch.ceil(
                     torch.log2(torch.arange(input_size).float() + 1))

@@ -83,6 +83,7 @@ def train_eval(ml_type, root_dir):
 
 def main(_):
     gin_file = common.get_gin_file()
+    FLAGS.alsologtostderr = True
     gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
     train_eval(FLAGS.ml_type, FLAGS.root_dir)
 

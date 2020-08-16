@@ -27,7 +27,7 @@ import alf.layers as layers
 import alf.nest as nest
 from alf.initializers import variance_scaling_init
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
-from alf.utils import math_ops, spec_utils
+from alf.utils import common, math_ops, spec_utils
 
 
 @gin.configurable
@@ -113,12 +113,12 @@ class ActorNetwork(PreprocessorNetwork):
         last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
                                     a=-0.003, b=0.003)
         self._action_layers = nn.ModuleList()
+        self._squashing_func = squashing_func
         for single_action_spec in flat_action_spec:
             self._action_layers.append(
                 layers.FC(
                     self._encoding_net.output_spec.shape[0],
                     single_action_spec.shape[0],
-                    activation=squashing_func,
                     kernel_initializer=last_kernel_initializer))
 
     def forward(self, observation, state=()):
@@ -140,18 +140,25 @@ class ActorNetwork(PreprocessorNetwork):
         actions = []
         i = 0
         for layer, spec in zip(self._action_layers, self._flat_action_spec):
-            action = layer(encoded_obs)
+            pre_activation = layer(encoded_obs)
+            action = self._squashing_func(pre_activation)
             action = spec_utils.scale_to_spec(action, spec)
 
             if alf.summary.should_summarize_output():
-                a_name = ('summarize_output/' + self.name + '.action_layer.' +
-                          str(i) + '.action.output_norm')
-                if not self.training:
-                    a_name += ".eval"
-                a = action
+                alf.summary.scalar(
+                    name='summarize_output/' + self.name + '.action_layer.' +
+                    str(i) + '.pre_activation.output_norm.' +
+                    common.exe_mode_name(),
+                    data=torch.mean(
+                        pre_activation.norm(
+                            dim=list(range(1, pre_activation.ndim)))))
+                a_name = (
+                    'summarize_output/' + self.name + '.action_layer.' + str(i)
+                    + '.action.output_norm.' + common.exe_mode_name())
                 alf.summary.scalar(
                     name=a_name,
-                    data=torch.mean(a.norm(dim=list(range(1, a.ndim)))))
+                    data=torch.mean(
+                        action.norm(dim=list(range(1, action.ndim)))))
 
             actions.append(action)
             i += 1

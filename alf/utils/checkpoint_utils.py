@@ -17,7 +17,30 @@ import warnings
 import torch
 from absl import logging
 
-from alf.algorithms.algorithm import Algorithm
+
+def is_checkpoint_enabled(module):
+    """Whether ``module`` will checkpointed.
+
+    By default, a module used in ``Algorithm`` will be checkpointed. The checkpointing
+    can be disabled by calling ``enable_checkpoint(module, False)``
+    Args:
+        module (torch.nn.Module): module in question
+    Returns:
+        bool: True if the parameters of this module will be checkpointed
+    """
+    if hasattr(module, "_alf_checkpoint_enabled"):
+        return module._alf_checkpoint_enabled
+    return True
+
+
+def enable_checkpoint(module, flag=True):
+    """Enable/disable checkpoint for ``module``.
+
+    Args:
+        module (torch.nn.Module):
+        flag (bool): True to enable checkpointing, False to disable.
+    """
+    module._alf_checkpoint_enabled = flag
 
 
 class Checkpointer(object):
@@ -50,22 +73,60 @@ class Checkpointer(object):
 
         os.makedirs(self._ckpt_dir, exist_ok=True)
 
-    def load(self, global_step="latest"):
+    def load(self, global_step="latest", ignored_parameter_prefixes=[]):
         """Load checkpoint
         Args:
             global_step (int|str): the number of training steps which is used to
                 specify the checkpoint to be loaded. If global_step is 'latest',
                 the most recent checkpoint named 'latest' will be loaded.
+            ingored_parameter_prefixes (list[str]): ignore the parameters whose
+                name has one of these prefixes in the checkpoint.
         Returns:
             current_step_num (int): the current step number for the loaded
                 checkpoint. current_step_num is set to - 1 if the specified
                 checkpoint does not exist.
         """
 
+        def _remove_ignored_parameters(checkpoint):
+            to_delete = []
+            for k in checkpoint.keys():
+                for prefix in ignored_parameter_prefixes:
+                    if k.startswith(prefix):
+                        to_delete.append(k)
+                        break
+            for k in to_delete:
+                checkpoint.pop(k)
+
+        def _convert_legacy_parameter(checkpoint):
+            """
+            Due to different implmentation of FC layer, the old checkpoints cannot
+            be loaded directly. Hence we check if the checkpoint uses old FC layer
+            and convert to the new FC layer format.
+            _log_alpha for SacAlgorithm was changed from [1] Tensor to [] Tensor.
+            """
+            d = {}
+            for k, v in checkpoint.items():
+                if k.endswith('._linear.weight') or k.endswith(
+                        '._linear.bias'):
+                    d[k] = v
+                elif k.endswith('._log_alpha') and v.shape == (1, ):
+                    d[k] = v[0]
+            for k, v in d.items():
+                del checkpoint[k]
+                logging.info("Converted legacy parameter %s" % k)
+                if k.endswith('.weight'):
+                    checkpoint[k[:-13] + 'weight'] = v
+                elif k.endswith('.bias'):
+                    checkpoint[k[:-11] + 'bias'] = v
+                else:
+                    checkpoint[k] = v
+
         def _load_checkpoint(checkpoint):
             self._global_step = checkpoint["global_step"]
             try:
                 for k, v in self._modules.items():
+                    _remove_ignored_parameters(checkpoint[k])
+                    _convert_legacy_parameter(checkpoint[k])
                     self._modules[k].load_state_dict(checkpoint[k])
             except Exception as e:
                 raise RuntimeError((
@@ -94,6 +155,20 @@ class Checkpointer(object):
                         global_step)))
 
         return self._global_step
+
+    def has_checkpoint(self, global_step="latest"):
+        """Whether there is a checkpoint in the checkpoint directory.
+
+        Args:
+            global_step (int|str): If an int, return True if file "ckpt-{global_step}"
+                is in the checkpoint directory. If "lastest", return True if
+                "latest" is in the checkpoint directory.
+        """
+        f_path_latest = os.path.join(self._ckpt_dir, "latest")
+        f_path = os.path.join(self._ckpt_dir, "ckpt-{0}".format(global_step))
+        if global_step == "latest" and os.path.isfile(f_path_latest):
+            return True
+        return os.path.isfile(f_path)
 
     def save(self, global_step):
         """Save states of all modules to checkpoint

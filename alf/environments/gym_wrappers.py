@@ -13,6 +13,7 @@
 # limitations under the License.
 """Wrappers for gym (numpy) environments. """
 
+from absl import logging
 from collections import deque
 import copy
 import cv2
@@ -174,7 +175,11 @@ class ImageChannelFirst(BaseObservationWrapper):
 
 @gin.configurable
 class FrameStack(BaseObservationWrapper):
-    """Stack previous `stack_size` frames, applied to Gym env."""
+    """Stack previous `stack_size` frames, applied to Gym env.
+
+    This is deprecated. Please use ``alf.algorithms.data_transformer.FrameStacker``,
+    which is more memory-efficient.
+    """
 
     def __init__(self,
                  env,
@@ -191,6 +196,9 @@ class FrameStack(BaseObservationWrapper):
             fields (list[str]): fields to be stacked, A field str is a multi-level
                 path denoted by "A.B.C". If None, then non-nested observation is stacked.
         """
+        logging.warning(
+            "FrameStack is deprecated. Please use data_transformer.FrameStacker "
+            "instead, which is more memory-efficient")
         self._channel_order = channel_order
         assert channel_order in ['channels_last', 'channels_first']
         if self._channel_order == 'channels_last':
@@ -265,12 +273,20 @@ class FrameSkip(gym.Wrapper):
         obs = None
         accumulated_reward = 0
         done = False
-        info = None
+        info = {}
+        num_env_frames = 0
         for _ in range(self._skip):
             obs, reward, done, info = self.env.step(action)
             accumulated_reward += reward
+            if 'num_env_frames' in info:
+                # in case FrameSkip wrapper is being nested:
+                n_steps = info['num_env_frames']
+            else:
+                n_steps = 1
+            num_env_frames += n_steps
             if done:
                 break
+        info['num_env_frames'] = num_env_frames
         return obs, accumulated_reward, done, info
 
     def reset(self, **kwargs):
@@ -467,6 +483,8 @@ class DMAtariPreprocessing(gym.Wrapper):
         accumulated_reward = 0.
         life_lost = False
 
+        info = {}
+        num_env_frames = 0
         for time_step in range(self.frame_skip):
             # We bypass the Gym observation altogether and directly fetch the
             # grayscale image from the ALE. This is a little faster.
@@ -474,6 +492,12 @@ class DMAtariPreprocessing(gym.Wrapper):
             life_lost = self.env.ale.lives() < self._lives
             self._lives = self.env.ale.lives()
             accumulated_reward += reward
+            if 'num_env_frames' in info:
+                # in case FrameSkip wrapper is being nested:
+                n_steps = info['num_env_frames']
+            else:
+                n_steps = 1
+            num_env_frames += n_steps
             if game_over or life_lost:
                 break
             # We max-pool over the last two frames, in grayscale.
@@ -481,6 +505,7 @@ class DMAtariPreprocessing(gym.Wrapper):
                 t = time_step - (self.frame_skip - 2)
                 # when frame_skip==1, self.screen_buffer[1] will be filled!
                 self._fetch_grayscale_observation(self.screen_buffer[t])
+        info['num_env_frames'] = num_env_frames
 
         if self.frame_skip == 1:
             self.screen_buffer[0] = self.screen_buffer[1]

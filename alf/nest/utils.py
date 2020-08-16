@@ -133,7 +133,7 @@ class NestMultiply(NestCombiner):
         return self._activation(ret)
 
 
-def stack_nests(nests):
+def stack_nests(nests, dim=0):
     """Stack tensors to a sequence.
 
     All the nest should have same structure and shape. In the resulted nest,
@@ -142,13 +142,16 @@ def stack_nests(nests):
 
     Args:
         nests (list[nest]): list of nests with same structure and shape.
+        dim (int): dimension to insert. Has to be between 0 and the number of
+            dimensions of concatenated tensors (inclusive)
     Returns:
         a nest with same structure as ``nests[0]``.
     """
     if len(nests) == 1:
-        return nest.map_structure(lambda tensor: tensor.unsqueeze(0), nests[0])
+        return nest.map_structure(lambda tensor: tensor.unsqueeze(dim),
+                                  nests[0])
     else:
-        return nest.map_structure(lambda *tensors: torch.stack(tensors),
+        return nest.map_structure(lambda *tensors: torch.stack(tensors, dim),
                                   *nests)
 
 

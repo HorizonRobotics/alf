@@ -45,7 +45,8 @@ SacActionState = namedtuple(
 
 SacCriticState = namedtuple("SacCriticState", ["critics", "target_critics"])
 
-SacState = namedtuple("SacState", ["action", "actor", "critic"])
+SacState = namedtuple(
+    "SacState", ["action", "actor", "critic"], default_value=())
 
 SacCriticInfo = namedtuple("SacCriticInfo", ["critics", "target_critic"])
 
@@ -130,6 +131,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
        :math:`s`. Still only an ``ActorDistributionNetwork`` is needed for first
        sampling continuous actions, and then a discrete action is sampled from Q
        values conditioned on the continuous actions.
+
+    In addition to the entropy regularization described in the SAC paper, we
+    also support KL-Divergence regularization if a prior actor is provided.
+    In this case, the training objective is:
+        :math:`E_\pi(\sum_t \gamma^t(r_t - \alpha D_{\rm KL}(\pi(\cdot)|s_t)||\pi^0(\cdot)|s_t)))`
+    where :math:`pi^0` is the prior actor.
     """
 
     def __init__(self,
@@ -141,11 +148,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
-                 observation_transformer=math_ops.identity,
                  config: TrainerConfig = None,
                  critic_loss_ctor=None,
                  target_entropy=None,
+                 prior_actor_ctor=None,
+                 target_kld_per_dim=3.,
                  initial_log_alpha=0.0,
+                 max_log_alpha=None,
                  target_update_tau=0.05,
                  target_update_period=1,
                  dqda_clipping=None,
@@ -179,19 +188,27 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
                 algorithm.
-            observation_transformer (Callable or list[Callable]): transformation(s)
-                applied to ``time_step.observation``.
             config (TrainerConfig): config for training. It only needs to be
                 provided to the algorithm which performs ``train_iter()`` by
                 itself.
             critic_loss_ctor (None|OneStepTDLoss|MultiStepLoss): a critic loss
                 constructor. If ``None``, a default ``OneStepTDLoss`` will be used.
             initial_log_alpha (float): initial value for variable ``log_alpha``.
+            max_log_alpha (float|None): if not None, ``log_alpha`` will be
+                capped at this value.
             target_entropy (float|Callable|None): If a floating value, it's the
                 target average policy entropy, for updating ``alpha``. If a
                 callable function, then it will be called on the action spec to
                 calculate a target entropy. If ``None``, a default entropy will
                 be calculated.
+            prior_actor_ctor (Callable): If provided, it will be called using
+                ``prior_actor_ctor(observation_spec, action_spec, debug_summaries=debug_summaries)``
+                to constructor a prior actor. The output of the prior actor is
+                the distribution of the next action. Two prior actors are implemented:
+                ``alf.algorithms.prior_actor.SameActionPriorActor`` and
+                ``alf.algorithms.prior_actor.UniformPriorActor``.
+            target_kld_per_dim (float): ``alpha`` is dynamically adjusted so that
+                the KLD is about ``target_kld_per_dim * dim``.
             target_update_tau (float): Factor for soft update of the target
                 networks.
             target_update_period (int): Period for soft update of the target
@@ -213,23 +230,24 @@ class SacAlgorithm(OffPolicyAlgorithm):
             observation_spec, action_spec, actor_network_cls,
             critic_network_cls, q_network_cls)
 
-        log_alpha = nn.Parameter(torch.Tensor([float(initial_log_alpha)]))
+        log_alpha = nn.Parameter(torch.tensor(float(initial_log_alpha)))
 
+        action_state_spec = SacActionState(
+            actor_network=(() if self._act_type == ActionType.Discrete else
+                           actor_network.state_spec),
+            critic=(() if self._act_type == ActionType.Continuous else
+                    critic_networks.state_spec))
         super().__init__(
             observation_spec,
             action_spec,
             train_state_spec=SacState(
-                action=SacActionState(
-                    actor_network=(() if self._act_type == ActionType.Discrete
-                                   else actor_network.state_spec),
-                    critic=(() if self._act_type == ActionType.Continuous else
-                            critic_networks.state_spec)),
+                action=action_state_spec,
                 actor=(() if self._act_type != ActionType.Continuous else
                        critic_networks.state_spec),
                 critic=SacCriticState(
                     critics=critic_networks.state_spec,
                     target_critics=critic_networks.state_spec)),
-            observation_transformer=observation_transformer,
+            predict_state_spec=SacState(action=action_state_spec),
             env=env,
             config=config,
             debug_summaries=debug_summaries,
@@ -243,6 +261,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self.add_optimizer(alpha_optimizer, [log_alpha])
 
         self._log_alpha = log_alpha
+        if max_log_alpha is not None:
+            self._max_log_alpha = torch.tensor(float(max_log_alpha))
+        else:
+            self._max_log_alpha = None
+
         self._actor_network = actor_network
         self._critic_networks = critic_networks
         self._target_critic_networks = self._critic_networks.copy(
@@ -258,8 +281,20 @@ class SacAlgorithm(OffPolicyAlgorithm):
             self._critic_losses.append(
                 critic_loss_ctor(name="critic_loss%d" % (i + 1)))
 
-        self._target_entropy = _set_target_entropy(
-            self.name, target_entropy, nest.flatten(self._action_spec))
+        self._prior_actor = None
+        if prior_actor_ctor is not None:
+            assert self._act_type == ActionType.Continuous, (
+                "Only continuous action is supported when using prior_actor")
+            self._prior_actor = prior_actor_ctor(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                debug_summaries=debug_summaries)
+            total_action_dims = sum(
+                [spec.numel for spec in alf.nest.flatten(action_spec)])
+            self._target_entropy = -target_kld_per_dim * total_action_dims
+        else:
+            self._target_entropy = _set_target_entropy(
+                self.name, target_entropy, nest.flatten(self._action_spec))
 
         self._dqda_clipping = dqda_clipping
 
@@ -362,7 +397,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type != ActionType.Discrete:
             continuous_action_dist, actor_network_state = self._actor_network(
                 observation, state=state.actor_network)
-            new_state._replace(actor_network=actor_network_state)
+            new_state = new_state._replace(actor_network=actor_network_state)
             if eps_greedy_sampling:
                 continuous_action = dist_utils.epsilon_greedy_sample(
                     continuous_action_dist, epsilon_greedy)
@@ -378,12 +413,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type != ActionType.Continuous:
             q_values, critic_state = self._critic_networks(
                 critic_network_inputs, state=state.critic)
-            new_state._replace(critic=critic_state)
+            new_state = new_state._replace(critic=critic_state)
             alpha = torch.exp(self._log_alpha)
             # p(a|s) = exp(Q(s,a)/alpha) / Z;
             # the discrete distribution will never be trained, so we detach the
             # logits here.
-            logits = (q_values.min(dim=1)[0] / alpha[0]).detach()
+            logits = (q_values.min(dim=1)[0] / alpha).detach()
             discrete_action_dist = td.Categorical(logits=logits)
             if eps_greedy_sampling:
                 discrete_action = dist_utils.epsilon_greedy_sample(
@@ -423,18 +458,48 @@ class SacAlgorithm(OffPolicyAlgorithm):
             state=state.action,
             epsilon_greedy=epsilon_greedy,
             eps_greedy_sampling=True)
-        empty_state = nest.map_structure(lambda x: (), self.train_state_spec)
-        new_state = empty_state._replace(action=action_state)
+        return AlgStep(
+            output=action,
+            state=SacState(action=action_state),
+            info=SacInfo(action_distribution=action_dist))
+
+    def rollout_step(self, time_step: TimeStep, state: SacState):
+        """``rollout_step()`` basically predicts actions like what is done by
+        ``predict_step()``. Additionally, if states are to be stored a in replay
+        buffer, then this function also call ``_critic_networks`` and
+        ``_target_critic_networks`` to maintain their states.
+        """
+        action_dist, action, _, action_state = self._predict_action(
+            time_step.observation,
+            state=state.action,
+            epsilon_greedy=1.0,
+            eps_greedy_sampling=True)
+
+        if self.need_full_rollout_state():
+            _, critics_state = self._compute_critics(
+                self._critic_networks, time_step.observation, action,
+                state.critic.critics)
+            _, target_critics_state = self._compute_critics(
+                self._target_critic_networks, time_step.observation, action,
+                state.critic.target_critics)
+            critic_state = SacCriticState(
+                critics=critics_state, target_critics=target_critics_state)
+            if self._act_type == ActionType.Continuous:
+                # During unroll, the computations of ``critics_state`` and
+                # ``actor_state`` are the same.
+                actor_state = critics_state
+            else:
+                actor_state = ()
+        else:
+            actor_state = state.actor
+            critic_state = state.critic
+
+        new_state = SacState(
+            action=action_state, actor=actor_state, critic=critic_state)
         return AlgStep(
             output=action,
             state=new_state,
             info=SacInfo(action_distribution=action_dist))
-
-    def rollout_step(self, time_step: TimeStep, state: SacState):
-        if self.need_full_rollout_state():
-            raise NotImplementedError("Storing RNN state to replay buffer "
-                                      "is not supported by SacAlgorithm")
-        return self.predict_step(time_step, state, epsilon_greedy=1.0)
 
     def _compute_critics(self, critic_net, observation, action, critics_state):
         if self._act_type == ActionType.Continuous:
@@ -542,6 +607,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         log_pi = dist_utils.compute_log_probability(action_distribution,
                                                     action)
 
+        if self._prior_actor is not None:
+            prior_step = self._prior_actor.train_step(exp, ())
+            log_prior = dist_utils.compute_log_probability(
+                prior_step.output, action)
+            log_pi = log_pi - log_prior
+
         actor_state, actor_loss = self._actor_train_step(
             exp, state.actor, action, critics, log_pi)
         critic_state, critic_info = self._critic_train_step(
@@ -559,6 +630,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
     def after_update(self, experience, train_info: SacInfo):
         self._update_target()
+        if self._max_log_alpha is not None:
+            self._log_alpha.data.copy_(
+                torch.min(self._log_alpha, self._max_log_alpha))
 
     def calc_loss(self, experience, train_info: SacInfo):
         critic_loss = self._calc_critic_loss(experience, train_info)

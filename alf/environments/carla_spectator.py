@@ -60,8 +60,8 @@ def main(_):
     pygame.init()
     pygame.font.init()
 
-    width = 480
-    height = 240
+    width = 640
+    height = 320
     display = pygame.display.set_mode((width, height),
                                       pygame.HWSURFACE | pygame.DOUBLEBUF)
 
@@ -93,9 +93,19 @@ def main(_):
         return
 
     vehicle_id = 0
+    xyz = [(1.6, 0., 1.7), (0., 0., 50.)]
+    pyr = [(0., 0., 0.), (-90., 0., 0.)]
+    view = 0
 
-    camera = CameraSensor(
-        vehicles[vehicle_id], image_size_x=width, image_size_y=height)
+    def _make_camera(vehicle, view):
+        return CameraSensor(
+            vehicle,
+            image_size_x=width,
+            image_size_y=height,
+            xyz=xyz[view],
+            pyr=pyr[view])
+
+    camera = _make_camera(vehicles[vehicle_id], view)
     clock = pygame.time.Clock()
 
     def on_tick(timestamp):
@@ -123,7 +133,8 @@ def main(_):
 
     logging.info("Keyboard contorl:" + """
     ESC          : quit
-    TAB          : switch vechile
+    TAB          : switch vehicle
+    SPACE        : switch between ego view and birdeye view
     """)
     stopping = False
     import pygame.locals as K
@@ -142,10 +153,14 @@ def main(_):
                     client.apply_batch_sync(camera.destroy(), True)
                     vehicle_id = (vehicle_id + 1) % len(vehicles)
                     vehicle = vehicles[vehicle_id]
-                    camera = CameraSensor(
-                        vehicle, image_size_x=width, image_size_y=height)
+                    camera = _make_camera(vehicle, view)
                     logging.info("Switched to id: %s type_id: %s" %
                                  (vehicle.id, vehicle.type_id))
+                if event.key == K.K_SPACE:
+                    view = 1 - view
+                    client.apply_batch_sync(camera.destroy(), True)
+                    vehicle = vehicles[vehicle_id]
+                    camera = _make_camera(vehicle, view)
     finally:
         world.remove_on_tick(callback_id)
         client.apply_batch_sync(camera.destroy(), True)

@@ -27,7 +27,9 @@ import torch
 import torch.nn as nn
 
 import alf
+from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
@@ -244,7 +246,7 @@ class RLTrainer(Trainer):
         common.set_transformed_observation_spec(observation_spec)
 
         self._algorithm = self._algorithm_ctor(
-            observation_spec=env.observation_spec(),
+            observation_spec=observation_spec,
             action_spec=env.action_spec(),
             env=env,
             config=self._config,
@@ -384,6 +386,9 @@ class RLTrainer(Trainer):
                         and total_time_steps >= time_to_checkpoint)):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
+            elif self._checkpoint_requested:
+                self._save_checkpoint()
+                self._checkpoint_requested = False
 
     def _close(self):
         """Closing operations after training. """
@@ -395,6 +400,12 @@ class RLTrainer(Trainer):
             algorithm=self._algorithm,
             metrics=nn.ModuleList(self._algorithm.get_metrics()),
             trainer_progress=self._trainer_progress)
+
+        if checkpointer.has_checkpoint():
+            # Some objects (e.g. ReplayBuffer) are constructed lazily in algorithm.
+            # They only appear after one training iteration. So we need to run
+            # train_iter() once before loading the checkpoint
+            self._algorithm.train_iter()
 
         try:
             recovered_global_step = checkpointer.load()
@@ -411,17 +422,22 @@ class RLTrainer(Trainer):
 
         self._checkpointer = checkpointer
 
+    @common.mark_eval
     def _eval(self):
+        self._algorithm.eval()
         time_step = common.get_initial_time_step(self._eval_env)
         policy_state = self._algorithm.get_initial_predict_state(
             self._eval_env.batch_size)
+        trans_state = self._algorithm.get_initial_transform_state(
+            self._eval_env.batch_size)
         episodes = 0
         while episodes < self._num_eval_episodes:
-            time_step, policy_state = _step(
+            time_step, policy_state, trans_state = _step(
                 algorithm=self._algorithm,
                 env=self._eval_env,
                 time_step=time_step,
                 policy_state=policy_state,
+                trans_state=trans_state,
                 epsilon_greedy=self._config.epsilon_greedy,
                 metrics=self._eval_metrics)
             if time_step.is_last():
@@ -435,6 +451,7 @@ class RLTrainer(Trainer):
                     step_metrics=step_metrics)
 
         common.log_metrics(self._eval_metrics)
+        self._algorithm.train()
 
 
 class SLTrainer(Trainer):
@@ -560,19 +577,19 @@ class SLTrainer(Trainer):
 
 
 @torch.no_grad()
-def _step(algorithm, env, time_step, policy_state, epsilon_greedy, metrics):
+def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
+          metrics):
     policy_state = common.reset_state_if_necessary(
         policy_state, algorithm.get_initial_predict_state(env.batch_size),
         time_step.is_first())
-    transformed_time_step = algorithm.transform_timestep(time_step)
-    algorithm.eval()
+    transformed_time_step, trans_state = algorithm.transform_timestep(
+        time_step, trans_state)
     policy_step = algorithm.predict_step(transformed_time_step, policy_state,
                                          epsilon_greedy)
-    algorithm.train(True)
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
-    return next_time_step, policy_step.state
+    return next_time_step, policy_step.state, trans_state
 
 
 def play(root_dir,
@@ -583,7 +600,8 @@ def play(root_dir,
          num_episodes=10,
          max_episode_length=0,
          sleep_time_per_step=0.01,
-         record_file=None):
+         record_file=None,
+         ignored_parameter_prefixes=['_exp_replayer.']):
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
@@ -611,13 +629,17 @@ def play(root_dir,
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
-    """
+        ignored_parameter_prefixes (list[str]): ignore the parameters whose
+            name has one of these prefixes in the checkpoint. This is useful
+            for skipping loading the checkpoint of ReplayBuffer.
+"""
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
 
     ckpt_dir = os.path.join(train_dir, 'algorithm')
     checkpointer = Checkpointer(ckpt_dir=ckpt_dir, algorithm=algorithm)
-    checkpointer.load(checkpoint_step)
+    checkpointer.load(
+        checkpoint_step, ignored_parameter_prefixes=ignored_parameter_prefixes)
 
     recorder = None
     if record_file is not None:
@@ -629,16 +651,19 @@ def play(root_dir,
     if recorder:
         recorder.capture_frame()
     time_step = common.get_initial_time_step(env)
+    algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
+    trans_state = algorithm.get_initial_transform_state(env.batch_size)
     episode_reward = 0.
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        time_step, policy_state = _step(
+        time_step, policy_state, trans_state = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
             policy_state=policy_state,
+            trans_state=trans_state,
             epsilon_greedy=epsilon_greedy,
             metrics=[])
         episode_length += 1

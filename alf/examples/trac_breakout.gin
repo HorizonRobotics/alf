@@ -61,10 +61,6 @@ TracAlgorithm.action_dist_clip_per_dim=0.01
 Agent.optimizer=@ac/Adam()
 Agent.gradient_clipping=None
 
-Agent.reward_shaping_fn=@reward_clipping
-
-common.reward_clipping.minmax=(-1, 1)
-
 # training config
 TrainerConfig.trainer=@on_policy_trainer
 TrainerConfig.unroll_length=%unroll_length
@@ -75,8 +71,5 @@ TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=1
 TrainerConfig.summarize_grads_and_vars=1
 TrainerConfig.summary_interval=10
-
-Agent.observation_transformer=@image_scale_transformer
-common.image_scale_transformer.min=0.0
 
 TrainerConfig.summarize_action_distributions=True

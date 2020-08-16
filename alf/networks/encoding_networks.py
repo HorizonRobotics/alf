@@ -509,6 +509,7 @@ class EncodingNetwork(PreprocessorNetwork):
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
+                 last_use_fc_bn=False,
                  name="EncodingNetwork"):
         """
         Args:
@@ -547,6 +548,8 @@ class EncodingNetwork(PreprocessorNetwork):
                 additional layer specified by ``last_layer_size``. Note that if
                 ``last_layer_size`` is not None, ``last_activation`` has to be
                 specified explicitly.
+            last_use_fc_bn (bool): whether use Batch Normalization for the last
+                fc layer.
             last_kernel_initializer (Callable): initializer for the the
                 additional layer specified by ``last_layer_size``.
                 If None, it will be the same with ``kernel_initializer``. If
@@ -620,6 +623,7 @@ class EncodingNetwork(PreprocessorNetwork):
                     input_size,
                     last_layer_size,
                     activation=last_activation,
+                    use_bn=last_use_fc_bn,
                     kernel_initializer=last_kernel_initializer))
             input_size = last_layer_size
 
@@ -635,15 +639,20 @@ class EncodingNetwork(PreprocessorNetwork):
         z, state = super().forward(inputs, state)
         if self._img_encoding_net is not None:
             z, _ = self._img_encoding_net(z)
+        if alf.summary.should_summarize_output():
+            name = ('summarize_output/' + self.name + '.fc.0.' + 'input_norm.'
+                    + common.exe_mode_name())
+            alf.summary.scalar(
+                name=name, data=torch.mean(z.norm(dim=list(range(1, z.ndim)))))
         i = 0
         for fc in self._fc_layers:
             z = fc(z)
             if alf.summary.should_summarize_output():
                 name = ('summarize_output/' + self.name + '.fc.' + str(i) +
-                        '.output_norm')
-                if not self.training:
-                    name += ".eval"
-                alf.summary.scalar(name=name, data=z.norm())
+                        '.output_norm.' + common.exe_mode_name())
+                alf.summary.scalar(
+                    name=name,
+                    data=torch.mean(z.norm(dim=list(range(1, z.ndim)))))
             i += 1
         return z, state
 

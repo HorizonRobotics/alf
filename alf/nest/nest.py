@@ -337,6 +337,40 @@ def py_assert_same_structure(nest1, nest2):
                 py_assert_same_structure(fv1[1], fv2[1])
 
 
+def py_map_structure_with_path(func, *nests):
+    """Applies func to each entry in structure and returns a new structure.
+    This function gives func access to one additional parameter:
+    the symbolic string of the path to the element currently supplied.
+    List elements will be index by the ordinal position of the element in the list.
+    """
+    assert nests, "There should be at least one input nest!"
+    for nest in nests[1:]:
+        py_assert_same_structure(nests[0], nest)
+
+    def _map(*nests, path=""):
+        if not is_nested(nests[0]):
+            return func(*nests, path)
+        if isinstance(nests[0], list) or is_unnamedtuple(nests[0]):
+            ret = type(nests[0])([
+                _map(
+                    *values[:-1],
+                    path=path + ("." if path else "") + str(values[-1]))
+                for values in zip(*nests, range(len(nests[0])))
+            ])[:-1]
+        else:
+            ret = {}
+            for fields_and_values in zip(
+                    *[extract_fields_from_nest(nest) for nest in nests]):
+                field = fields_and_values[0][0]
+                values = map(lambda fv: fv[1], fields_and_values)
+                ret[field] = _map(
+                    *values, path=path + ("." if path else "") + field)
+            ret = type(nests[0])(**ret)
+        return ret
+
+    return _map(*nests, path="")
+
+
 def py_map_structure(func, *nests):
     """Applies func to each entry in structure and returns a new structure."""
     assert nests, "There should be at least one input nest!"
@@ -639,7 +673,7 @@ def get_field(nested, field):
     Args:
         nested (nest): a nested structure
         field (str): indicate the path to the field with '.' separating the field
-            name at different level
+            name at different level. ``None`` means the whole nest
     Returns:
         nest: value of the field corresponding to ``field``
     """
@@ -656,4 +690,4 @@ def get_field(nested, field):
             raise TypeError("If value is a nest, it must be either " +
                             "a dict or namedtuple!")
 
-    return _traverse(nested=nested, levels=field.split('.'))
+    return _traverse(nested=nested, levels=field.split('.') if field else [])

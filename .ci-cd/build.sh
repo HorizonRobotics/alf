@@ -47,6 +47,7 @@ function test() {
         alf.algorithms.actor_critic_loss_test \
         alf.algorithms.agent_test \
         alf.algorithms.algorithm_test \
+        alf.algorithms.data_transformer_test \
         alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \
@@ -55,10 +56,12 @@ function test() {
         alf.algorithms.hypernetwork_networks_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
+        alf.algorithms.mcts_algorithm_test \
         alf.algorithms.memory_test \
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
         alf.algorithms.ppo_algorithm_test \
+        alf.algorithms.prior_actor_test \
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.sarsa_algorithm_test \
         alf.algorithms.sac_algorithm_test \
@@ -72,9 +75,11 @@ function test() {
         alf.environments.process_environment_test \
         alf.environments.random_alf_environment_test \
         alf.environments.simple.noisy_array_test \
+        alf.environments.suite_go_test \
         alf.environments.suite_gym_test \
         alf.environments.suite_mario_test \
         alf.environments.suite_socialbot_test \
+        alf.environments.suite_tic_tac_toe_test \
         alf.environments.suite_unittest_test \
         alf.environments.alf_environment_test \
         alf.environments.alf_gym_wrapper_test \

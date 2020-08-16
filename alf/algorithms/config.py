@@ -23,6 +23,7 @@ class TrainerConfig(object):
     def __init__(self,
                  root_dir,
                  algorithm_ctor=None,
+                 data_transformer_ctor=None,
                  random_seed=None,
                  num_epochs=2e+5,
                  num_iterations=1000,
@@ -42,6 +43,7 @@ class TrainerConfig(object):
                  summaries_flush_secs=1,
                  summary_max_queue=10,
                  debug_summaries=False,
+                 profiling=False,
                  summarize_grads_and_vars=False,
                  summarize_action_distributions=False,
                  summarize_output=False,
@@ -62,6 +64,12 @@ class TrainerConfig(object):
             root_dir (str): directory for saving summary and checkpoints
             algorithm_ctor (Callable): callable that create an
                 ``OffPolicyAlgorithm`` or ``OnPolicyAlgorithm`` instance
+            data_transformer_ctor (Callable|list[Callable]): Function(s)
+                for creating data transformer(s). Each of them will be called
+                as ``data_transformer_ctor(observation_spec)`` to create a data
+                transformer. Available transformers are in ``algorithms.data_transformer``.
+                The data transformer constructed by this can be access as
+                ``TrainerConfig.data_transformer``.
             random_seed (None|int): random seed, a random seed is used if None
             num_epochs (int): number of training epochs 
             num_iterations (int): number of update iterations (ignored if 0). Note
@@ -113,6 +121,8 @@ class TrainerConfig(object):
             summaries_flush_secs (int): flush summary to disk every so many seconds
             summary_max_queue (int): flush to disk every so mary summaries
             debug_summaries (bool): A bool to gather debug summaries.
+            profiling (bool): If True, use cProfile to profile the training. The
+                profile result will be written to ``root_dir``/py_train.INFO.
             summarize_grads_and_vars (bool): If True, gradient and network variable
                 summaries will be written during training.
             summarize_output (bool): If True, summarize output of certain networks.
@@ -156,6 +166,8 @@ class TrainerConfig(object):
         parameters = dict(
             root_dir=root_dir,
             algorithm_ctor=algorithm_ctor,
+            data_transformer_ctor=data_transformer_ctor,
+            data_transformer=None,  # to be set by Trainer
             random_seed=random_seed,
             num_epochs=num_epochs,
             num_iterations=num_iterations,
@@ -175,6 +187,7 @@ class TrainerConfig(object):
             summaries_flush_secs=summaries_flush_secs,
             summary_max_queue=summary_max_queue,
             debug_summaries=debug_summaries,
+            profiling=profiling,
             summarize_grads_and_vars=summarize_grads_and_vars,
             summarize_action_distributions=summarize_action_distributions,
             summarize_output=summarize_output,

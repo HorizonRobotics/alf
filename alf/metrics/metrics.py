@@ -59,7 +59,12 @@ class MetricBuffer(torch.nn.Module):
 
 
 class EnvironmentSteps(metric.StepMetric):
-    """Counts the number of steps taken in the environment."""
+    """Counts the number of steps taken in the environment after FrameSkip.
+
+    If Frames are skipped by any of the environment wrappers, a separate metric
+    AverageEnvInfoMetric['num_env_frames'] will report the actual frame count including
+    skipped ones.
+    """
 
     def __init__(self,
                  name='EnvironmentSteps',
@@ -244,7 +249,11 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
 
     def _extract_metric_values(self, time_step):
         """Accumulate immediate rewards to get episodic return."""
-        return time_step.reward
+        ndim = time_step.step_type.ndim
+        if time_step.reward.ndim == ndim:
+            return time_step.reward
+        else:
+            return alf.math.sum_to_leftmost(time_step.reward, ndim)
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):

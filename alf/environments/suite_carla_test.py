@@ -132,7 +132,12 @@ def play(env):
                 steer += steer_increment
         steer = min(0.7, max(-0.7, steer))
         action[:, STEER] = steer
-        env.step(action)
+
+        time_step = env.step(action)
+        if time_step.step_type[0] == alf.data_structures.StepType.LAST:
+            action = env.action_spec().zeros([env.batch_size])
+            steer = 0.
+
         env.render("human")
 
 
@@ -141,8 +146,10 @@ def main():
     if not FLAGS.manual:
         return False
 
+    logging.use_absl_handler()
     logging.set_verbosity(logging.INFO)
-    env = suite_carla.CarlaEnvironment(1, 'Town01')
+    env = suite_carla.CarlaEnvironment(
+        batch_size=1, map_name='Town01', num_other_vehicles=20, num_walkers=20)
     try:
         play(env)
     finally:

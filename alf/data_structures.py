@@ -136,8 +136,10 @@ class Experience(
                 'env_id',
                 'action',
                 'rollout_info',  # AlgStep.info from rollout()
+                'state',  # state passed to rollout() to generate `action`
                 'batch_info',
-                'state'  # state passed to rollout() to generate `action`
+                'replay_buffer',
+                'rollout_info_field',
             ],
             default_value=())):
     """An ``Experience`` is a ``TimeStep`` in the context of training an RL algorithm.
@@ -150,6 +152,13 @@ class Experience(
         This is only used when experiece is passed as an argument for ``Algorithm.calc_loss()``.
         Different from other members, the shape of the tensors in ``batch_info``
         is [B], where B is the batch size.
+    - replay_buffer: The replay buffer where the batch_info generated from.
+        Currently, this field is available when experience is passed to
+        ``Algorithm.calc_loss()``, ``Algorithm.preprocess_experience()`` or
+        ``DataTransformer.transform_experience()``
+    - rollout_info_field: The name of the rollout_info field in replay buffer.
+        This is useful when an algorithm needs to access its rollout_info in
+        the replay buffer.
     """
 
     def is_first(self):
@@ -397,7 +406,7 @@ def termination(observation, prev_action, reward, env_id=None, env_info={}):
             env_info=env_info)
 
 
-def time_step_spec(observation_spec, action_spec):
+def time_step_spec(observation_spec, action_spec, reward_spec):
     """Returns a ``TimeStep`` spec given the ``observation_spec`` and the
     ``action_spec``.
     """
@@ -409,7 +418,7 @@ def time_step_spec(observation_spec, action_spec):
     assert all(map(is_valid_tensor_spec, nest.flatten(action_spec)))
     return TimeStep(
         step_type=ts.TensorSpec([], torch.int32),
-        reward=ts.TensorSpec([], torch.float32),
+        reward=reward_spec,
         discount=ts.BoundedTensorSpec([],
                                       torch.float32,
                                       minimum=0.0,

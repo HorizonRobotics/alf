@@ -36,7 +36,7 @@ Make sure you are using python3.7
 
 """
 
-import abc
+from collections import OrderedDict
 from absl import logging
 import gin
 import math
@@ -47,428 +47,25 @@ import subprocess
 import sys
 import time
 import torch
-import weakref
 
 try:
     import carla
 except ImportError:
     carla = None
 
-if carla is not None:
-    try:
-        from agents.navigation.global_route_planner import GlobalRoutePlanner
-        from agents.navigation.global_route_planner_dao import GlobalRoutePlannerDAO
-        from agents.navigation.local_planner import RoadOption
-    except ImportError:
-        logging.fatal("Cannot import carla agents package. Please add "
-                      "$CARLA_ROOT/PythonAPI/carla to your PYTHONPATH")
-        carla = None
-
 import alf
 import alf.data_structures as ds
 from alf.utils import common
 from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
+from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
+                            IMUSensor, LaneInvasionSensor, NavigationSensor,
+                            RadarSensor, World, MINIMUM_RENDER_WIDTH,
+                            MINIMUM_RENDER_HEIGHT)
 
 
 def is_available():
     return carla is not None
-
-
-MINIMUM_RENDER_WIDTH = 640
-MINIMUM_RENDER_HEIGHT = 240
-
-
-class SensorBase(abc.ABC):
-    """Base class for sersors."""
-
-    def __init__(self, parent_actor):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-        """
-        self._sensor = None
-        self._parent = parent_actor
-
-    def destroy(self):
-        """Return the commands for destroying this sensor.
-
-        Use ``carla.Client.apply_batch_sync()`` to actually destroy the sensor.
-
-        Returns:
-            list[carla.command]: the commands used to destroy the sensor.
-        """
-        if self._sensor is not None:
-            self._sensor.stop()
-            return [carla.command.DestroyActor(self._sensor)]
-        else:
-            return []
-
-    @abc.abstractmethod
-    def get_current_observation(self, current_frame):
-        """Get the current observation.
-
-        Args:
-            current_frame (int): current frame no. For some sensors, they may
-                not receive any data in the most recent tick. ``current_frame``
-                will be compared against the frame no. of the last received data
-                to make sure that the data is correctly interpretted.
-        Returns:
-            nested np.ndarray: sensor data received in the last tick.
-        """
-
-    @abc.abstractmethod
-    def observation_spec(self):
-        """Get the observation spec of this sensor.
-
-        Returns:
-            nested TensorSpec:
-        """
-
-    @abc.abstractmethod
-    def observation_desc(self):
-        """Get the description about the observation of this sensor.
-
-        Returns:
-            nested str: each str corresponds to one TensorSpec from
-            ``observatin_spec()``.
-        """
-
-
-@gin.configurable
-class CollisionSensor(SensorBase):
-    """CollisionSensor for getting collision signal.
-
-    It gets the impulses from the collisions during the last tick.
-
-    TODO: include event.other_actor in the sensor result.
-    """
-
-    def __init__(self, parent_actor, max_num_collisions=4):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-            max_num_collisions (int): maximal number of collisions to be included
-        """
-        super().__init__(parent_actor)
-        self._max_num_collisions = max_num_collisions
-        world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.collision')
-        self._sensor = world.spawn_actor(
-            bp, carla.Transform(), attach_to=self._parent)
-        # We need to pass the lambda a weak reference to self to avoid circular
-        # reference.
-        weak_self = weakref.ref(self)
-        self._sensor.listen(lambda event: CollisionSensor._on_collision(
-            weak_self, event))
-        self._frame = 0
-        self._empty_impulse = np.zeros([max_num_collisions, 3],
-                                       dtype=np.float32)
-        self._impulse = self._empty_impulse
-        self._collisions = []
-        self._empty_impulses = np.zeros([max_num_collisions, 3],
-                                        dtype=np.float32)
-
-    @staticmethod
-    def _on_collision(weak_self, event):
-        self = weak_self()
-        if not self:
-            return
-        impulse = event.normal_impulse
-        if self._frame != event.frame:
-            self._collisions = []
-        self._collisions.append([impulse.x, impulse.y, impulse.z])
-        self._frame = event.frame
-
-    def observation_spec(self):
-        return alf.TensorSpec([self._max_num_collisions, 3])
-
-    def observation_desc(self):
-        return (
-            "Impulses from collision during the last tick. Each impulse is "
-            "a 3-D vector. At most %d collisions are used. The result is padded "
-            "with zeros if there are less than %d collisions" %
-            (self._max_num_collisions, self._max_num_collisions))
-
-    def get_current_observation(self, current_frame):
-        """Get the current observation.
-
-        Args:
-            current_frame (int): current frame no. CollisionSensor may not
-                not receive any data in the most recent tick. ``current_frame``
-                will be compared against the frame no. of the last received data
-                to make sure that the data is correctly interpretted.
-        Returns:
-            np.ndarray: Impulses from collision during the last tick. Each
-                impulse is a 3-D vector. At most ``max_num_collisions``
-                collisions are used. The result is padded with zeros if there
-                are less than ``max_num_collisions`` collisions
-
-        """
-        if current_frame == self._frame:
-            impulses = np.array(self._collisions, dtype=np.float32)
-            n = len(self._collisions)
-            if n < self._max_num_collisions:
-                impulses = np.concatenate([
-                    np.zeros([self._max_num_collisions - n, 3],
-                             dtype=np.float32), impulses
-                ],
-                                          axis=0)
-            elif n > self._max_num_collisions:
-                impulses = impulses[-self._max_num_collisions:]
-            return impulses
-        else:
-            return self._empty_impulse
-
-
-# ==============================================================================
-# -- LaneInvasionSensor --------------------------------------------------------
-# ==============================================================================
-class LaneInvasionSensor(SensorBase):
-    """LaneInvasionSensor for detecting lane invasion.
-
-    Lane invasion cannot be directly observed by raw sensors used by real cars.
-    So main purpose of this is to provide training signal (e.g. reward).
-
-    TODO: not completed.
-    """
-
-    def __init__(self, parent_actor):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-        """
-        super().__init__(parent_actor)
-        world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.lane_invasion')
-        self._sensor = world.spawn_actor(
-            bp, carla.Transform(), attach_to=self._parent)
-        # We need to pass the lambda a weak reference to self to avoid circular
-        # reference.
-        weak_self = weakref.ref(self)
-        self._sensor.listen(lambda event: LaneInvasionSensor._on_invasion(
-            weak_self, event))
-
-    @staticmethod
-    def _on_invasion(weak_self, event):
-        self = weak_self()
-        if not self:
-            return
-
-    def get_current_observation(self, current_frame):
-        raise NotImplementedError()
-
-    def observation_spec(self):
-        raise NotImplementedError()
-
-    def observation_desc(self):
-        raise NotImplementedError()
-
-
-# ==============================================================================
-# -- GnssSensor ----------------------------------------------------------------
-# ==============================================================================
-class GnssSensor(SensorBase):
-    """GnssSensor for sensing GPS location."""
-
-    def __init__(self, parent_actor):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-        """
-        super().__init__(parent_actor)
-        world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.gnss')
-        self._sensor = world.spawn_actor(
-            bp,
-            carla.Transform(carla.Location(x=1.0, z=2.8)),
-            attach_to=self._parent)
-        # We need to pass the lambda a weak reference to self to avoid circular
-        # reference.
-        weak_self = weakref.ref(self)
-        self._sensor.listen(lambda event: GnssSensor._on_gnss_event(
-            weak_self, event))
-        self._gps_location = np.zeros([3], dtype=np.float32)
-        self._frame = 0
-
-    @staticmethod
-    def _on_gnss_event(weak_self, event):
-        self = weak_self()
-        if not self:
-            return
-        self._gps_location = np.array(
-            [event.latitude, event.longitude, event.altitude],
-            dtype=np.float32)
-        self._frame = event.frame
-
-    def observation_spec(self):
-        return alf.TensorSpec([3])
-
-    def observation_desc(self):
-        return "A vector of [latitude (degrees), longitude (degrees), altitude (meters to be confirmed)]"
-
-    def get_current_observation(self, current_frame):
-        """
-        Args:
-            current_frame (int): not used
-        Returns:
-            np.ndarray: A vector of [latitude (degrees), longitude (degrees),
-                altitude (meters to be confirmed)]
-        """
-        return self._gps_location
-
-
-# ==============================================================================
-# -- IMUSensor -----------------------------------------------------------------
-# ==============================================================================
-class IMUSensor(SensorBase):
-    """IMUSensor for sensing accelaration and rotation."""
-
-    def __init__(self, parent_actor):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-        """
-        super().__init__(parent_actor)
-        self._compass = 0.0
-        world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.imu')
-        self._sensor = world.spawn_actor(
-            bp, carla.Transform(), attach_to=self._parent)
-        # We need to pass the lambda a weak reference to self to avoid circular
-        # reference.
-        weak_self = weakref.ref(self)
-        self._sensor.listen(lambda sensor_data: IMUSensor._IMU_callback(
-            weak_self, sensor_data))
-        self._imu_reading = np.zeros([7], dtype=np.float32)
-        self._frame = 0
-
-    @staticmethod
-    def _IMU_callback(weak_self, sensor_data):
-        self = weak_self()
-        if not self:
-            return
-        if not math.isnan(sensor_data.compass):
-            self._compass = sensor_data.compass
-        else:
-            logging.warning(
-                "Got nan for compass. Use the previous compass reading.")
-        imu_reading = np.array([
-            sensor_data.accelerometer.x, sensor_data.accelerometer.y,
-            sensor_data.accelerometer.z, sensor_data.gyroscope.x,
-            sensor_data.gyroscope.y, sensor_data.gyroscope.z, self._compass
-        ],
-                               dtype=np.float32)
-        self._imu_reading = np.clip(imu_reading, -99.9, 99.9)
-        self._frame = sensor_data.frame
-
-    def observation_spec(self):
-        return alf.TensorSpec([7])
-
-    def observation_desc(self):
-        return (
-            "7-D vector of [accelaration, gyroscope, compass], where "
-            "accelaration is a 3-D vector in m/s^2, gyroscope is angular "
-            "velocity in rad/s^2, and compass is orientation with regard to the "
-            "North ((0.0, 1.0, 0.0) in Unreal Engine) in radians.")
-
-    def get_current_observation(self, current_frame):
-        return self._imu_reading
-
-
-# ==============================================================================
-# -- RadarSensor ---------------------------------------------------------------
-# ==============================================================================
-@gin.configurable
-class RadarSensor(SensorBase):
-    """RadarSensor for detecting obstacles."""
-
-    def __init__(self,
-                 parent_actor,
-                 xyz=(2.8, 0., 1.0),
-                 pyr=(5., 0., 0.),
-                 max_num_detections=200):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor.
-            xyz (tuple[float]): the attachment positition (x, y, z) relative to
-                the parent_actor.
-            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
-                degrees.
-            max_num_detections (int): maximal number of detection points.
-        """
-        super().__init__(parent_actor)
-        self._velocity_range = 7.5  # m/s
-        self._max_num_detections = max_num_detections
-
-        world = self._parent.get_world()
-        bp = world.get_blueprint_library().find('sensor.other.radar')
-        bp.set_attribute('horizontal_fov', str(35))
-        bp.set_attribute('vertical_fov', str(20))
-        self._sensor = world.spawn_actor(
-            bp,
-            carla.Transform(carla.Location(*xyz), carla.Rotation(*pyr)),
-            attach_to=self._parent)
-        # We need a weak reference to self to avoid circular reference.
-        weak_self = weakref.ref(self)
-        self._sensor.listen(lambda radar_data: RadarSensor._Radar_callback(
-            weak_self, radar_data))
-
-        self._empty_points = np.zeros([max_num_detections, 4],
-                                      dtype=np.float32)
-        self._detected_points = self._empty_points
-        self._frame = 0
-
-    @staticmethod
-    def _Radar_callback(weak_self, radar_data):
-        self = weak_self()
-        if not self:
-            return
-        points = np.frombuffer(radar_data.raw_data, dtype=np.float32)
-        points = np.reshape(points, (len(radar_data), 4))
-        n = len(radar_data)
-        if n < self._max_num_detections:
-            points = np.concatenate([
-                np.zeros([self._max_num_detections - n, 4], dtype=np.float32),
-                points
-            ],
-                                    axis=0)
-        elif n > self._max_num_detections:
-            points = points[-self._max_num_detections:, :]
-        self._detected_points = points
-        self._frame = radar_data.frame
-
-    def observation_spec(self):
-        return alf.TensorSpec([self._max_num_detections, 4])
-
-    def observation_desc(self):
-        return (
-            "A set of detected points. Each detected point is a 4-D vector "
-            "of [vel, altitude, azimuth, depth], where vel is the velocity of "
-            "the detected object towards the sensor in m/s, altitude is the "
-            "altitude angle of the detection in radians, azimuth is the azimuth "
-            "angle of the detection in radians, and depth id the distance from "
-            "the sensor to the detection in meters.")
-
-    def get_current_observation(self, current_frame):
-        """
-        Args:
-            current_frame (int): current frame no. RadarSensor may not receive
-                any data in the most recent tick. ``current_frame`` will be
-                compared against the frame no. of the last received data to make
-                sure that the data is correctly interpretted.
-        Returns:
-            np.ndarray: A set of detected points. Each detected point is a 4-D
-                vector of [vel, altitude, azimuth, depth], where vel is the
-                velocity of the detected object towards the sensor in m/s,
-                altitude is the altitude angle of the detection in radians,
-                azimuth is the azimuth angle of the detection in radians, and
-                depth id the distance from the sensor to the detection in meters.
-        """
-        if current_frame == self._frame:
-            return self._detected_points
-        else:
-            return self._empty_points
 
 
 def geo_distance(loc1, loc2):
@@ -495,160 +92,6 @@ def geo_distance(loc1, loc2):
     return np.sqrt(c * c + d[2] * d[2])
 
 
-# ==============================================================================
-# -- CameraSensor -------------------------------------------------------------
-# ==============================================================================
-@gin.configurable
-class CameraSensor(SensorBase):
-    """CameraSensor."""
-
-    def __init__(
-            self,
-            parent_actor,
-            sensor_type='sensor.camera.rgb',
-            xyz=(1.6, 0., 1.7),
-            pyr=(0., 0., 0.),
-            attachment_type='rigid',
-            fov=90.0,
-            fstop=1.4,
-            gamma=2.2,
-            image_size_x=640,
-            image_size_y=480,
-            iso=1200.0,
-    ):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-            sensor_type (str): 'sensor.camera.rgb', 'sensor.camera.depth',
-                'sensor.camera.semantic_segmentation'
-            attachment_type (str): There are two types of attachement. 'rigid':
-                the object follow its parent position strictly. 'spring_arm':
-                the object expands or retracts depending on camera situation.
-            xyz (tuple[float]): the attachment positition (x, y, z) relative to
-                the parent_actor.
-            pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
-                degrees.
-            fov (str): horizontal field of view in degrees.
-            image_size_x (int): image width in pixels.
-            image_size_t (int): image height in pixels.
-            gamma (float): target gamma value of the camera.
-            iso (float): the camera sensor sensitivity.
-        """
-        super().__init__(parent_actor)
-        attachment_type_map = {
-            'rigid': carla.AttachmentType.Rigid,
-            'spring_arm': carla.AttachmentType.SpringArm,
-        }
-        assert attachment_type in attachment_type_map, (
-            "Unknown attachment_type %s" % attachment_type)
-        self._attachment_type = attachment_type_map[attachment_type]
-        self._camera_transform = carla.Transform(
-            carla.Location(*xyz), carla.Rotation(*pyr))
-        self._sensor_type = sensor_type
-
-        sensor_map = {
-            'sensor.camera.rgb': (carla.ColorConverter.Raw, 3),
-            'sensor.camera.depth': (carla.ColorConverter.LogarithmicDepth, 1),
-            'sensor.camera.semantic_segmentation': (carla.ColorConverter.Raw,
-                                                    1),
-        }
-        assert sensor_type in sensor_map, "Unknown sensor type %s" % sensor_type
-        conversion, num_channels = sensor_map[sensor_type]
-
-        self._conversion = conversion
-        self._observation_spec = alf.TensorSpec(
-            [num_channels, image_size_y, image_size_x], dtype='uint8')
-
-        world = self._parent.get_world()
-        bp = world.get_blueprint_library().find(sensor_type)
-
-        attributes = dict(
-            fov=fov,
-            fstop=fstop,
-            gamma=gamma,
-            image_size_x=image_size_x,
-            image_size_y=image_size_y,
-            iso=iso)
-        for name, val in attributes.items():
-            if bp.has_attribute(name):
-                bp.set_attribute(name, str(val))
-
-        self._sensor = self._parent.get_world().spawn_actor(
-            bp,
-            self._camera_transform,
-            attach_to=self._parent,
-            attachment_type=self._attachment_type)
-        # We need to pass the lambda a weak reference to self to avoid
-        # circular reference.
-        weak_self = weakref.ref(self)
-        self._sensor.listen(lambda image: CameraSensor._parse_image(
-            weak_self, image))
-        self._frame = 0
-        self._image = np.zeros([num_channels, image_size_y, image_size_x],
-                               dtype=np.uint8)
-
-    def render(self, display):
-        """Render the camera image to a pygame display.
-
-        Args:
-            display (pygame.Surface): the display surface to draw the image
-        """
-        if self._image is not None:
-            import cv2
-            import pygame
-            height, width = self._image.shape[1:3]
-            image = np.transpose(self._image, (2, 1, 0))
-            if width < MINIMUM_RENDER_WIDTH:
-                height = height * MINIMUM_RENDER_WIDTH // width
-                image = cv2.resize(
-                    image,
-                    dsize=(height, MINIMUM_RENDER_WIDTH),
-                    interpolation=cv2.INTER_NEAREST)
-            surface = pygame.surfarray.make_surface(image)
-            display.blit(surface, (0, 0))
-
-    @staticmethod
-    def _parse_image(weak_self, image):
-        self = weak_self()
-        if not self:
-            return
-        image.convert(self._conversion)
-        array = np.frombuffer(image.raw_data, dtype=np.uint8)
-        array = np.reshape(array, (image.height, image.width, 4))
-        array = array[:, :, :3]
-        array = array[:, :, ::-1]
-        array = np.transpose(array, (2, 0, 1))
-        self._image = array.copy()
-
-    def observation_desc(self):
-        height, width = self.observation_spec().shape[1:3]
-        if self._sensor_type == "sensor.camera.rgb":
-            return "3x%dx%d RGB image " % (height, width)
-        elif self._sensor_type == "sensor.camera.depth":
-            return (
-                "1x%dx%d depth image. The depth is in logarithmic scale. "
-                "See https://carla.readthedocs.io/en/latest/ref_sensors/#rgb-camera "
-                "for detail" % (height, width))
-        elif self._sensor_type == "sensor.camera.semantic_segmentation":
-            return (
-                "1x%dx%d semantic label image. Current possible labels are "
-                "0-12. See https://carla.readthedocs.io/en/latest/ref_sensors/#semantic-segmentation-camera "
-                "for detail" % (height, width))
-
-    def observation_spec(self):
-        return self._observation_spec
-
-    def get_current_observation(self, current_frame):
-        """
-        Args:
-            current_frame (int): not used.
-        Returns:
-            np.ndarray: The shape is [num_channels, image_size_y, image_size_x],
-                where num_channels is 3 for rgb sensor, and 1 for other sensors.
-        """
-        return self._image
-
-
 def _calculate_relative_position(self_transform, location):
     """
     Args:
@@ -667,159 +110,30 @@ def _calculate_relative_position(self_transform, location):
     return np.matmul(location - self_loc, rot).astype(np.float32)
 
 
-class World(object):
-    """Keeping data for the world."""
-
-    def __init__(self, world: carla.World):
-        self._world = world
-        self._map = world.get_map()
-        self._waypoints = self._map.generate_waypoints(2.0)
-        self._vehicles = []
-        self._vehicle_dict = {}
-        self._vehicle_locations = {}
-
-        dao = GlobalRoutePlannerDAO(world.get_map(), sampling_resolution=1.0)
-        self._global_route_planner = GlobalRoutePlanner(dao)
-        self._global_route_planner.setup()
-
-    def trace_route(self, origin, destination):
-        """Find the route from ``origin`` to ``destination``.
-
-        Args:
-            origin (carla.Location):
-            destination (carla.Location):
-        Returns:
-            list[tuple(carla.Waypoint, RoadOption)]
-        """
-        return self._global_route_planner.trace_route(origin, destination)
-
-    def add_vehicle(self, actor: carla.Actor):
-        self._vehicles.append(actor)
-        self._vehicle_dict[actor.id] = actor
-
-    def get_vehicles(self):
-        return self._vehicles
-
-    def update_vehicle_location(self, vid, loc):
-        """Update the next location of the vehicle.
-
-        Args:
-            vid (int): vehicle id
-            loc (carla.Location): location of the vehicle
-        """
-        self._vehicle_locations[vid] = loc
-
-    def get_vehicle_location(self, vid):
-        """Get the latest location of the vehicle.
-
-        The reason of using this instead of calling ``carla.Actor.get_location()``
-        directly is that the location of vehicle may not have been updated before
-        world.tick().
-
-        Args:
-            vid (int): vehicle id
-        Returns:
-            carla.Location:
-        """
-        loc = self._vehicle_locations.get(vid, None)
-        if loc is None:
-            loc = self._vehicle_dict[vid].get_location()
-        return loc
-
-    def get_waypoints(self):
-        """Get the coordinates of way points
-
-        Returns:
-            list[carla.Waypoint]:
-        """
-        return self._waypoints
-
-    def transform_to_geolocation(self, location: carla.Location):
-        """Transform a map coordiate to geo coordinate.
-
-        Returns:
-            np.ndarray: ``[latitude, longitude, altidude]``
-        """
-        loc = self._map.transform_to_geolocation(location)
-        return np.array([loc.latitude, loc.longitude, loc.altitude])
-
-
-class NavigationSensor(SensorBase):
-    """Generating future waypoints on the route.
-
-    Note that the route is fixed (not change based on current vehicle location)
-    """
-
-    WINDOW = 5
-
-    def __init__(self, parent_actor, alf_world: World):
-        """
-        Args:
-            parent_actor (carla.Actor): the parent actor of this sensor
-            alf_world (World):
-        """
-        super().__init__(parent_actor)
-        self._alf_world = alf_world
-        self._future_indices = np.array([1, 3, 10, 30, 100, 300, 1000, 3000])
-
-    def set_destination(self, destination):
-        """Set the navigation destination.
-
-        Args:
-            destination (carla.Location):
-        """
-        start = self._alf_world.get_vehicle_location(self._parent.id)
-        self._route = self._alf_world.trace_route(start, destination)
-        self._waypoints = np.array([[
-            wp.transform.location.x, wp.transform.location.y,
-            wp.transform.location.z
-        ] for wp, _ in self._route])
-        self._road_option = np.array(
-            [road_option for _, road_option in self._route])
-        self._nearest_index = 0
-
-    def observation_spec(self):
-        return alf.TensorSpec([len(self._future_indices), 3])
-
-    def observation_desc(self):
-        return ("Positions of the %s future locations in the route." % len(
-            self._future_indices))
-
-    def get_current_observation(self, current_frame):
-        """Get the current observation.
-
-        The observation is an 8x3 array consists of the posistions of 8 future
-        locations on the routes.
-
-        Args:
-            current_frame (int): not used.
-        Returns:
-            np.ndarray: positions of future waypoints on the route.
-        """
-        loc = self._alf_world.get_vehicle_location(self._parent.id)
-        loc = np.array([loc.x, loc.y, loc.y])
-        nearby_waypoints = self._waypoints[self._nearest_index:self.
-                                           _nearest_index + self.WINDOW]
-        dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
-        self._nearest_index = self._nearest_index + np.argmin(dist)
-        indices = np.minimum(self._nearest_index + self._future_indices,
-                             self._waypoints.shape[0] - 1)
-        return self._waypoints[indices]
-
-
 def _to_numpy_loc(loc: carla.Location):
     return np.array([loc.x, loc.y, loc.z])
 
 
+@gin.configurable(blacklist=['actor', 'alf_world'])
 class Player(object):
     """Player is a vehicle with some sensors.
 
-    An episode terminates if the vehicle arrives at the goal or the time exceeds
-    ``initial_distance / min_speed``.
+    An episode terminates if it reaches one of the following situations:
+    1. the vehicle arrives at the goal.
+    2. the time exceeds ``route_length / min_speed``.
+    3. it get stuck because of a collision.
 
     At each step, the reward is given based on the following components:
     1. Arriving goal:  ``success_reward``
     2. Moving in the navigation direction: the number of meters moved
+       This moving reward can be either dense of sparse depending on the argument
+       ``sparse_reward``.
+    3. Negative reward caused by collision: ``-min(max_collision_reward, max(epside_reward, 0))``
+
+    Currently, the player has the these sensors: ``CollisionSensor``, ``GnssSensor``,
+    ``IMUSensor``, ``CameraSensor``, ``LaneInvasionSensor`` , ``RadarSensor``,
+    ``NavigationSensor``. See the documentation for these class for the definition
+    the data generated by these sensors.
     """
 
     def __init__(self,
@@ -827,6 +141,11 @@ class Player(object):
                  alf_world,
                  success_reward=100.,
                  success_distance_thresh=5.0,
+                 max_collision_penalty=100.,
+                 max_stuck_at_collision_seconds=5.0,
+                 stuck_at_collision_distance=1.0,
+                 sparse_reward=False,
+                 sparse_reward_interval=10.,
                  min_speed=5.):
         """
         Args:
@@ -835,6 +154,22 @@ class Player(object):
             success_reward (float): the reward for arriving the goal location.
             success_distance_thresh (float): success is achieved if the current
                 location is with such distance of the goal
+            max_collision_penalty (float): the maximum penalty (i.e. negative reward)
+                for collision. We don't want the collision penalty to be too large
+                if the player cannot even get enough positive moving reward. So the
+                panalty is capped at ``max(0., episode_reward))``. Note that this
+                reward is only given once at the first step of contiguous collisions.
+            max_stuck_at_collision_seconds (float): the episode will end and is
+                considerred as failure if the car is stuck at the collision for
+                so many seconds,
+            stuck_at_collision_distance (float): the car is considerred as being
+                stuck at the collision if it is within such distance of the first
+                collision location.
+            sparse_reward (bool): If False, the distance reward is given at every
+                step based on how much it moves along the navigation route. If
+                True, the distance reward is only given after moving ``sparse_reward_distance``.
+            sparse_reward_interval (float): the sparse reward is given after
+                approximately every such distance along the route has been driven.
             min_speed (float): unit is m/s. Failure if initial_distance / min_speed
                 seconds passed
         """
@@ -852,6 +187,12 @@ class Player(object):
         self._min_speed = min_speed
         self._delta_seconds = actor.get_world().get_settings(
         ).fixed_delta_seconds
+        self._max_collision_penalty = max_collision_penalty
+        self._max_stuck_at_collision_frames = max_stuck_at_collision_seconds / self._delta_seconds
+        self._stuck_at_collision_distance = stuck_at_collision_distance
+        self._sparse_reward = sparse_reward
+        self._sparse_reward_index_interval = int(
+            max(1, sparse_reward_interval // self._alf_world.route_resolution))
 
         self._observation_sensors = {
             'collision': self._collision_sensor,
@@ -880,11 +221,14 @@ class Player(object):
         self._observation_desc['navigation'] = (
             'Relative positions of the future waypoints in the route')
         self._observation_desc['speed'] = "Speed in m/s"
+        self._info_spec = OrderedDict(
+            success=alf.TensorSpec(()), collision=alf.TensorSpec(()))
+
         self._control = carla.VehicleControl()
         self.reset()
 
         # for rendering
-        self._display = None
+        self._surface = None
         self._font = None
         self._clock = None
 
@@ -903,11 +247,11 @@ class Player(object):
                                        dtype=np.float32)
 
         forbidden_locations = []
-        for v in self._alf_world.get_vehicles():
+        for v in self._alf_world.get_actors():
             if v.id == self._actor.id:
                 continue
             forbidden_locations.append(
-                self._alf_world.get_vehicle_location(v.id))
+                self._alf_world.get_actor_location(v.id))
 
         # find a waypoint far enough from other vehicles
         ok = False
@@ -934,15 +278,28 @@ class Player(object):
             carla.command.ApplyAngularVelocity(self._actor, carla.Vector3D())
         ]
 
-        self._fail_frame = None
+        self._max_frame = None
         self._done = False
-        p = np.array([loc.x, loc.y, loc.z])
         self._prev_location = loc
         self._prev_action = np.zeros(
             self.action_spec().shape, dtype=np.float32)
-        self._alf_world.update_vehicle_location(self._actor.id, loc)
+        self._alf_world.update_actor_location(self._actor.id, loc)
 
-        self._navigation.set_destination(goal_loc)
+        self._route_length = self._navigation.set_destination(goal_loc)
+
+        self._prev_collision = False  # whether there is collision in the previous frame
+        self._collision = False  # whether there is colliion in the current frame
+        self._collision_loc = None  # the location of the car when it starts to have collition
+
+        # The intermediate goal for sparse reward
+        self._intermediate_goal_index = min(self._sparse_reward_index_interval,
+                                            self._navigation.num_waypoints - 1)
+
+        # The location of the car when the intermediate goal is set
+        self._intermediate_start = _to_numpy_loc(loc)
+
+        self._episode_reward = 0.
+        self._is_first_step = True
 
         return commands
 
@@ -962,7 +319,7 @@ class Player(object):
         commands.extend(self._lane_invasion_sensor.destroy())
         commands.extend(self._radar_sensor.destroy())
         commands.append(carla.command.DestroyActor(self._actor))
-        if self._display is not None:
+        if self._surface is not None:
             import pygame
             pygame.quit()
 
@@ -1001,6 +358,10 @@ class Player(object):
                                      minimum=[-1., -1., -1., 0.],
                                      maximum=[1., 1., 1., 1.])
 
+    def info_spec(self):
+        """Get the info spec."""
+        return self._info_spec
+
     def action_desc(self):
         """Get the description about the action.
 
@@ -1031,43 +392,99 @@ class Player(object):
         for sensor_name, sensor in self._observation_sensors.items():
             obs[sensor_name] = sensor.get_current_observation(current_frame)
         obs['goal'] = self._get_goal()
-        self._alf_world.update_vehicle_location(self._actor.id,
-                                                self._actor.get_location())
+        self._alf_world.update_actor_location(self._actor.id,
+                                              self._actor.get_location())
         v = self._actor.get_velocity()
         obs['speed'] = np.float32(
             np.sqrt(np.float32(v.x * v.x + v.y * v.y + v.z * v.z)))
         self._current_distance = np.linalg.norm(obs['goal'])
+
+        prev_loc = _to_numpy_loc(self._prev_location)
+        curr_loc = _to_numpy_loc(self._actor.get_location())
+
         reward = 0.
         discount = 1.0
-        info = {}
-        info['success'] = np.float32(0.0)
+        info = OrderedDict(success=np.float32(0.0), collision=np.float32(0.0))
 
-        if self._fail_frame is None:
+        # When the previous episode ends because of stucking at a collision with
+        # another vehicle, it may get an additional collision event in the new frame
+        # because the relocation of the car may happen after the simulation of the
+        # moving. So we ignore the collision at the first step.
+        self._collision = not np.all(
+            obs['collision'] == 0) and not self._is_first_step
+        if self._collision and not self._prev_collision:
+            # We only report the first collision event among contiguous collision
+            # events.
+            info['collision'] = np.float32(1.0)
+            logging.info("actor=%d frame=%d COLLISION" % (self._actor.id,
+                                                          current_frame))
+            self._collision_loc = curr_loc
+            self._collision_frame = current_frame
+            # We don't want the collision penalty to be too large if the player
+            # cannot even get enough positive moving reward. So we cap the penalty
+            # at ``max(0., self._episode_reward)``
+            reward -= min(self._max_collision_penalty,
+                          max(0., self._episode_reward))
+
+        if self._max_frame is None:
             step_type = ds.StepType.FIRST
             max_frames = math.ceil(
-                self._current_distance / self._min_speed / self._delta_seconds)
-            self._fail_frame = current_frame + max_frames
+                self._route_length / self._min_speed / self._delta_seconds)
+            self._max_frame = current_frame + max_frames
         elif (self._current_distance < self._success_distance_thresh
               and self._actor.get_velocity() == carla.Location(0., 0., 0.)):
             # TODO: include waypoint orientation as success critiria
-            self._done = True
             step_type = ds.StepType.LAST
             reward += self._success_reward
             discount = 0.0
             info['success'] = np.float32(1.0)
-        elif current_frame >= self._fail_frame:
-            self._done = True
+            logging.info(
+                "actor=%d frame=%d SUCCESS" % (self._actor.id, current_frame))
+        elif current_frame >= self._max_frame:
+            logging.info("actor=%d frame=%d FAILURE: out of time" %
+                         (self._actor.id, current_frame))
+            step_type = ds.StepType.LAST
+        elif (self._collision_loc is not None
+              and current_frame - self._collision_frame >
+              self._max_stuck_at_collision_frames
+              and np.linalg.norm(curr_loc - self._collision_loc) <
+              self._stuck_at_collision_distance):
+            logging.info("actor=%d frame=%d FAILURE: stuck at collision" %
+                         (self._actor.id, current_frame))
             step_type = ds.StepType.LAST
         else:
             step_type = ds.StepType.MID
 
-        prev_loc = _to_numpy_loc(self._prev_location)
-        curr_loc = _to_numpy_loc(self._actor.get_location())
-        goal0 = obs['navigation'][2]  # This is about 10m ahead in the route
-        reward += (np.linalg.norm(prev_loc - goal0) -
-                   np.linalg.norm(curr_loc - goal0))
+        if self._sparse_reward:
+            current_index = self._navigation.get_next_waypoint_index()
+            if step_type == ds.StepType.LAST and info['success'] == 1.0:
+                # Since the episode is finished, we need to incorporate the final
+                # progress towards the goal as reward to encourage stopping near the goal.
+                reward += (np.linalg.norm(self._intermediate_start -
+                                          self._goal_location) -
+                           np.linalg.norm(curr_loc - self._goal_location))
+            elif self._intermediate_goal_index < current_index:
+                # This means that the car has passed the intermediate goal.
+                # And we give it a reward which is equal to the distance it
+                # travels.
+                intermediate_goal = self._navigation.get_waypoint(
+                    self._intermediate_goal_index)
+                reward += np.linalg.norm(intermediate_goal -
+                                         self._intermediate_start)
+                self._intermediate_start = intermediate_goal
+                self._intermediate_goal_index = min(
+                    self._intermediate_goal_index +
+                    self._sparse_reward_index_interval,
+                    self._navigation.num_waypoints - 1)
+        else:
+            goal0 = obs['navigation'][2]  # This is about 10m ahead
+            reward += (np.linalg.norm(prev_loc - goal0) -
+                       np.linalg.norm(curr_loc - goal0))
         obs['navigation'] = _calculate_relative_position(
             self._actor.get_transform(), obs['navigation'])
+
+        self._done = step_type == ds.StepType.LAST
+        self._episode_reward += reward
 
         self._current_time_step = ds.TimeStep(
             step_type=step_type,
@@ -1088,7 +505,9 @@ class Player(object):
         Returns:
             list[carla.command]:
         """
+        self._prev_collision = self._collision
         self._prev_location = self._actor.get_location()
+        self._is_first_step = False
         if self._done:
             return self.reset()
         self._control.throttle = max(float(action[0]), 0.0)
@@ -1103,51 +522,57 @@ class Player(object):
         """Render the simulation.
 
         Args:
-            mode (str): one of ['rgb', 'human']
+            mode (str): one of ['rgb_array', 'human']
         Returns:
             one of the following:
                 - None: if mode is 'human'
                 - np.ndarray: the image of shape [height, width, channeles] if
-                    mode is 'rgb'
+                    mode is 'rgb_array'
         """
-        if mode == 'human':
-            import pygame
-            if self._display is None:
-                pygame.init()
-                pygame.font.init()
-                self._clock = pygame.time.Clock()
-                height, width = self._camera_sensor.observation_spec(
-                ).shape[1:3]
-                height = max(height, MINIMUM_RENDER_HEIGHT)
-                width = max(width, MINIMUM_RENDER_WIDTH)
-                self._display = pygame.display.set_mode(
+        import pygame
+        if self._surface is None:
+            pygame.init()
+            pygame.font.init()
+            self._clock = pygame.time.Clock()
+            height, width = self._camera_sensor.observation_spec().shape[1:3]
+            height = max(height, MINIMUM_RENDER_HEIGHT)
+            width = max(width, MINIMUM_RENDER_WIDTH)
+            if mode == 'human':
+                self._surface = pygame.display.set_mode(
                     (width, height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+            else:
+                self._surface = pygame.Surface((width, height))
 
+        if mode == 'human':
             self._clock.tick_busy_loop(1000)
-            self._camera_sensor.render(self._display)
-            obs = self._current_time_step.observation
-            info_text = [
-                'FPS: %6.2f' % self._clock.get_fps(),
-                'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
-                'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()),
-                'Ahead: (%7.1f, %8.1f, %5.1f)' % tuple(
-                    obs['navigation'][2].tolist()),
-                'Distance: %7.2f' % np.linalg.norm(obs['goal']),
-                'Speed: %5.1f km/h' % (3.6 * obs['speed']),
-                'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
-                    obs['imu'][0:3].tolist()),
-                'Compass: %5.1f' % math.degrees(float(obs['imu'][6])),
-                'Throttle: %4.2f' % self._control.throttle,
-                'Brake:    %4.2f' % self._control.brake,
-                'Steer:    %4.2f' % self._control.steer,
-                'Reverse:  %4s' % self._control.reverse,
-                'Reward: %.1f' % float(self._current_time_step.reward),
-            ]
-            self._draw_text(info_text)
+
+        self._camera_sensor.render(self._surface)
+        obs = self._current_time_step.observation
+        info_text = [
+            'FPS: %6.2f' % self._clock.get_fps(),
+            'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
+            'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()),
+            'Ahead: (%7.1f, %8.1f, %5.1f)' % tuple(
+                obs['navigation'][2].tolist()),
+            'Distance: %7.2f' % np.linalg.norm(obs['goal']),
+            'Speed: %5.1f km/h' % (3.6 * obs['speed']),
+            'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
+                obs['imu'][0:3].tolist()),
+            'Compass: %5.1f' % math.degrees(float(obs['imu'][6])),
+            'Throttle: %4.2f' % self._control.throttle,
+            'Brake:    %4.2f' % self._control.brake,
+            'Steer:    %4.2f' % self._control.steer,
+            'Reverse:  %4s' % self._control.reverse,
+            'Reward: %.1f' % float(self._current_time_step.reward),
+        ]
+        self._draw_text(info_text)
+
+        if mode == 'human':
             pygame.display.flip()
-        elif mode == 'rgb':
-            return np.transpose(self._current_time_step.observation['camera'],
-                                (1, 2, 0))
+        elif mode == 'rgb_array':
+            # (x, y, c) => (y, x, c)
+            return np.transpose(
+                pygame.surfarray.array3d(self._surface), (1, 0, 2))
         else:
             raise ValueError("Unsupported render mode: %s" % mode)
 
@@ -1163,11 +588,11 @@ class Player(object):
             self._font = pygame.font.Font(mono, 12 if os.name == 'nt' else 14)
         info_surface = pygame.Surface((240, 240))
         info_surface.set_alpha(100)
-        self._display.blit(info_surface, (0, 0))
+        self._surface.blit(info_surface, (0, 0))
         v_offset = 4
         for item in texts:
             surface = self._font.render(item, True, (255, 255, 255))
-            self._display.blit(surface, (8, v_offset))
+            self._surface.blit(surface, (8, v_offset))
             v_offset += 18
 
 
@@ -1291,10 +716,30 @@ class CarlaEnvironment(AlfEnvironment):
                  batch_size,
                  map_name,
                  vehicle_filter='vehicle.*',
+                 walker_filter='walker.pedestrian.*',
+                 num_other_vehicles=0,
+                 num_walkers=0,
+                 percentage_walkers_running=0.1,
+                 percentage_walkers_crossing=0.1,
+                 global_distance_to_leading_vehicle=2.0,
+                 use_hybrid_physics_mode=True,
                  safe=True,
                  step_time=0.05):
         """
         Args:
+            batch_size (int): the number of learning vehicles.
+            map_name (str): the name of the map (e.g. "Town01")
+            vehicle_filter (str): the filter for getting vehicle blueprints.
+            walker_filter (str): the filter for getting walker blueprints.
+            num_other_vehicles (int): the number of autopilot vehicles
+            num_walkers (int): the number of walkers
+            global_distance_to_leading_vehicle (str): the autopiloted vehicles
+                will try to keep such distance from other vehicles.
+            percentage_walkers_running (float): percent of running walkers
+            percentage_walkers_crossing (float): percent of walkers walking
+                across the road.
+            use_hybrid_physics_mode (bool): If true, the autopiloted vehicle will
+                not use physics for simulation if it is far from other vehicles.
             safe (bool): avoid spawning vehicles prone to accidents.
             step_time (float): how many seconds does each step of simulation represents.
         """
@@ -1304,9 +749,14 @@ class CarlaEnvironment(AlfEnvironment):
             self._server = CarlaServer(rpc_port, streaming_port)
 
         self._batch_size = batch_size
+        self._num_other_vehicles = num_other_vehicles
+        self._num_walkers = num_walkers
+        self._percentage_walkers_running = percentage_walkers_running
+        self._percentage_walkers_crossing = percentage_walkers_crossing
+
         self._world = None
         try:
-            for i in range(10):
+            for i in range(20):
                 try:
                     logging.info(
                         "Waiting for server to start. Try %d" % (i + 1))
@@ -1322,10 +772,21 @@ class CarlaEnvironment(AlfEnvironment):
 
         logging.info("Server started.")
 
+        self._traffic_manager = None
+        if self._num_other_vehicles + self._num_walkers > 0:
+            with _get_unused_port(8000, n=1) as tm_port:
+                self._traffic_manager = self._client.get_trafficmanager(
+                    tm_port)
+            self._traffic_manager.set_hybrid_physics_mode(
+                use_hybrid_physics_mode)
+            self._traffic_manager.set_global_distance_to_leading_vehicle(
+                global_distance_to_leading_vehicle)
+
         self._client.set_timeout(20)
         self._alf_world = World(self._world)
         self._safe = safe
         self._vehicle_filter = vehicle_filter
+        self._walker_filter = walker_filter
 
         settings = self._world.get_settings()
         settings.synchronous_mode = True
@@ -1333,9 +794,21 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._world.apply_settings(settings)
         self._map_name = map_name
-        self._spawn()
 
-    def _spawn(self):
+        self._spawn_vehicles()
+        self._spawn_walkers()
+
+        self._observation_spec = self._players[0].observation_spec()
+        self._action_spec = self._players[0].action_spec()
+        self._env_info_spec = self._players[0].info_spec()
+
+        # metadata property is required by video recording
+        self.metadata = {
+            'render.modes': ['human', 'rgb_array'],
+            'video.frames_per_second': 1 / step_time
+        }
+
+    def _spawn_vehicles(self):
         blueprints = self._world.get_blueprint_library().filter(
             self._vehicle_filter)
         assert len(
@@ -1359,17 +832,17 @@ class CarlaEnvironment(AlfEnvironment):
 
         spawn_points = self._world.get_map().get_spawn_points()
         number_of_spawn_points = len(spawn_points)
-        if self._batch_size < number_of_spawn_points:
+
+        num_vehicles = self._batch_size + self._num_other_vehicles
+        if num_vehicles <= number_of_spawn_points:
             random.shuffle(spawn_points)
-        elif self._batch_size > number_of_spawn_points:
+        else:
             raise ValueError(
                 "requested %d vehicles, but could only find %d spawn points" %
                 (self._batch_size, number_of_spawn_points))
 
-        SpawnActor = carla.command.SpawnActor
-
         commands = []
-        for transform in spawn_points[:self._batch_size]:
+        for i, transform in enumerate(spawn_points[:num_vehicles]):
             blueprint = random.choice(blueprints)
             if blueprint.has_attribute('color'):
                 color = random.choice(
@@ -1379,25 +852,122 @@ class CarlaEnvironment(AlfEnvironment):
                 driver_id = random.choice(
                     blueprint.get_attribute('driver_id').recommended_values)
                 blueprint.set_attribute('driver_id', driver_id)
-            blueprint.set_attribute('role_name', 'autopilot')
-            commands.append(SpawnActor(blueprint, transform))
-
-        # TODO: add walkers and autopilot vehicles, see carla/PythonAPI/examples/spawn_npc.py
+            if i < self._batch_size:
+                blueprint.set_attribute('role_name', 'hero')
+            else:
+                blueprint.set_attribute('role_name', 'autopilot')
+            command = carla.command.SpawnActor(blueprint, transform)
+            if i >= self._batch_size:
+                # managed by traffic manager
+                command = command.then(
+                    carla.command.SetAutopilot(
+                        carla.command.FutureActor, True,
+                        self._traffic_manager.get_port()))
+            commands.append(command)
 
         self._players = []
-        for response in self._client.apply_batch_sync(commands, True):
+        self._other_vehicles = []
+        responses = self._client.apply_batch_sync(commands, True)
+        for i, response in enumerate(responses):
             if response.error:
                 logging.error(response.error)
-            else:
-                vehicle = self._world.get_actor(response.actor_id)
+                continue
+            vehicle = self._world.get_actor(response.actor_id)
+            if i < self._batch_size:
                 self._players.append(Player(vehicle, self._alf_world))
-                self._alf_world.add_vehicle(vehicle)
+            else:
+                self._other_vehicles.append(vehicle)
+            self._alf_world.add_actor(vehicle)
+            self._alf_world.update_actor_location(vehicle.id,
+                                                  spawn_points[i].location)
 
-        assert len(self._players) == self._batch_size, (
-            "Fail to create %s vehicles" % self._batch_size)
+        assert len(self._players) + len(
+            self._other_vehicles) == num_vehicles, (
+                "Fail to create %s vehicles" % num_vehicles)
 
-        self._observation_spec = self._players[0].observation_spec()
-        self._action_spec = self._players[0].action_spec()
+    def _spawn_walkers(self):
+        walker_blueprints = self._world.get_blueprint_library().filter(
+            self._walker_filter)
+
+        # 1. take all the random locations to spawn
+        spawn_points = []
+        for _ in range(self._num_walkers):
+            spawn_point = carla.Transform()
+            loc = self._world.get_random_location_from_navigation()
+            if loc != None:
+                spawn_point.location = loc
+                spawn_points.append(spawn_point)
+
+        # 2. we spawn the walker object
+        commands = []
+        walker_speeds = []
+        for spawn_point in spawn_points:
+            walker_bp = random.choice(walker_blueprints)
+            # set as not invincible
+            if walker_bp.has_attribute('is_invincible'):
+                walker_bp.set_attribute('is_invincible', 'false')
+            # set the max speed
+            if walker_bp.has_attribute('speed'):
+                if (random.random() > self._percentage_walkers_running):
+                    # walking
+                    walker_speeds.append(
+                        walker_bp.get_attribute('speed').recommended_values[1])
+                else:
+                    # running
+                    walker_speeds.append(
+                        walker_bp.get_attribute('speed').recommended_values[2])
+            else:
+                logging.info("Walker has no speed")
+                walker_speeds.append(0.0)
+            commands.append(carla.command.SpawnActor(walker_bp, spawn_point))
+        responses = self._client.apply_batch_sync(commands, True)
+        walker_speeds2 = []
+        self._walkers = []
+        for response, walker_speed, spawn_point in zip(
+                responses, walker_speeds, spawn_points):
+            if response.error:
+                logging.error(
+                    "%s: %s" % (response.error, spawn_point.location))
+                continue
+            walker = self._world.get_actor(response.actor_id)
+            self._walkers.append({"walker": walker})
+            walker_speeds2.append(walker_speed)
+        walker_speeds = walker_speeds2
+
+        # 3. we spawn the walker controller
+        commands = []
+        walker_controller_bp = self._world.get_blueprint_library().find(
+            'controller.ai.walker')
+        for walker in self._walkers:
+            commands.append(
+                carla.command.SpawnActor(walker_controller_bp,
+                                         carla.Transform(),
+                                         walker["walker"].id))
+        responses = self._client.apply_batch_sync(commands, True)
+        for response, walker in zip(responses, self._walkers):
+            if response.error:
+                logging.error(response.error)
+                continue
+            walker["controller"] = self._world.get_actor(response.actor_id)
+
+        # wait for a tick to ensure client receives the last transform of the walkers we have just created
+        self._world.tick()
+
+        # 5. initialize each controller and set target to walk to (list is [controler, actor, controller, actor ...])
+        # set how many pedestrians can cross the road
+        self._world.set_pedestrians_cross_factor(
+            self._percentage_walkers_crossing)
+        for walker, walker_speed in zip(self._walkers, walker_speeds):
+            # start walker
+            walker['controller'].start()
+            # set walk to random point
+            location = self._world.get_random_location_from_navigation()
+            walker['controller'].go_to_location(location)
+            # max speed
+            walker['controller'].set_max_speed(float(walker_speed))
+            self._alf_world.add_actor(walker['walker'])
+            self._alf_world.update_actor_location(walker['walker'].id,
+                                                  location)
 
     def _clear(self):
         if self._world is None:
@@ -1410,6 +980,20 @@ class CarlaEnvironment(AlfEnvironment):
                 if response.error:
                     logging.error(response.error)
             self._players.clear()
+        commands = []
+        for vehicle in self._other_vehicles:
+            commands.append(carla.command.DestroyActor(vehicle))
+        for walker in self._walkers:
+            walker['controller'].stop()
+            commands.append(carla.command.DestroyActor(walker['controller']))
+            commands.append(carla.command.DestroyActor(walker['walker']))
+
+        if commands:
+            for response in self._client.apply_batch_sync(commands, True):
+                if response.error:
+                    logging.error(response.error)
+        self._other_vehicles.clear()
+        self._walkers.clear()
 
     @property
     def batched(self):
@@ -1420,7 +1004,7 @@ class CarlaEnvironment(AlfEnvironment):
         return self._batch_size
 
     def env_info_spec(self):
-        return {}
+        return self._env_info_spec
 
     def observation_spec(self):
         return self._observation_spec
@@ -1462,6 +1046,14 @@ class CarlaEnvironment(AlfEnvironment):
             if response.error:
                 logging.error(response.error)
         self._current_frame = self._world.tick()
+        for vehicle in self._other_vehicles:
+            self._alf_world.update_actor_location(vehicle.id,
+                                                  vehicle.get_location())
+        for walker in self._walkers:
+            actor = walker['walker']
+            self._alf_world.update_actor_location(actor.id,
+                                                  actor.get_location())
+
         return self._get_current_time_step()
 
     def _get_current_time_step(self):

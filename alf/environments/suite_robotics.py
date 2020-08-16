@@ -58,13 +58,14 @@ class SparseReward(gym.Wrapper):
         return ob, reward + 1, done, info
 
 
+@gin.configurable
 class SuccessWrapper(gym.Wrapper):
     """Retrieve the success info from the environment return.
     """
 
-    def __init__(self, env, max_episode_steps):
+    def __init__(self, env, since_episode_steps):
         super().__init__(env)
-        self._max_episode_steps = max_episode_steps
+        self._since_episode_steps = since_episode_steps
 
     def reset(self, **kwargs):
         self._steps = 0
@@ -75,8 +76,8 @@ class SuccessWrapper(gym.Wrapper):
         self._steps += 1
 
         info["success"] = 0.0
-        # only count success at the episode end
-        if self._steps == self._max_episode_steps and info["is_success"] == 1:
+        # only count success after a certain amount of steps
+        if self._steps >= self._since_episode_steps and info["is_success"] == 1:
             info["success"] = 1.0
 
         info.pop("is_success")  # from gym, we remove it here
@@ -111,6 +112,7 @@ def load(environment_name,
          discount=1.0,
          max_episode_steps=None,
          sparse_reward=False,
+         use_success_wrapper=True,
          gym_env_wrappers=(),
          alf_env_wrappers=(),
          wrap_with_process=False):
@@ -121,12 +123,16 @@ def load(environment_name,
 
     Args:
         environment_name: Name for the environment to load.
+        env_id: A scalar ``Tensor`` of the environment ID of the time step.
         discount: Discount to use for the environment.
         max_episode_steps: If None the ``max_episode_steps`` will be set to the default
             step limit defined in the environment's spec. No limit is applied if set
             to 0 or if there is no ``timestep_limit`` set in the environment's spec.
         sparse_reward (bool): If True, the game ends once the goal is achieved.
             Rewards will be added by 1, changed from -1/0 to 0/1.
+        use_success_wrapper (bool): If True, wraps the environment with the
+            SuccessWrapper which will record Success info after a specified
+            amount of timesteps.
         gym_env_wrappers: Iterable with references to wrapper classes to use
             directly on the gym environment.
         alf_env_wrappers: Iterable with references to wrapper classes to use on
@@ -135,6 +141,10 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
+    assert (environment_name.startswith("Fetch")
+            or environment_name.startswith("HandManipulate")), (
+                "This suite only supports OpenAI's Fetch and ShadowHand envs!")
+
     _unwrapped_env_checker_.check_and_update(wrap_with_process)
 
     gym_spec = gym.spec(environment_name)
@@ -165,7 +175,9 @@ def load(environment_name,
         except ImportError:  # for older gym (<=0.15.3)
             from gym.wrappers import FlattenDictWrapper  # pytype:disable=import-error
             env = FlattenDictWrapper(env, keys)
-    env = SuccessWrapper(env, max_episode_steps)
+    if use_success_wrapper:
+        env = SuccessWrapper(env, max_episode_steps)
+    env = ObservationClipWrapper(env)
     if sparse_reward:
         env = SparseReward(env)
 

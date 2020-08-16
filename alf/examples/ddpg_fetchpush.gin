@@ -1,4 +1,2 @@
 include 'ddpg_fetchreach.gin'
 create_environment.env_name='FetchPush-v1'
-
-create_environment.num_parallel_environments=20

@@ -61,7 +61,7 @@ class TrainerTest(alf.test.TestCase):
             time_step = common.get_initial_time_step(env)
             state = alg.get_initial_predict_state(env.batch_size)
             policy_step = alg.rollout_step(time_step, state)
-            logits = policy_step.info.base_dist.logits
+            logits = policy_step.info.logits
             print("logits: ", logits)
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
@@ -74,7 +74,7 @@ class TrainerTest(alf.test.TestCase):
             time_step = common.get_initial_time_step(env)
             state = alg.get_initial_predict_state(env.batch_size)
             policy_step = alg.rollout_step(time_step, state)
-            logits = policy_step.info.base_dist.logits
+            logits = policy_step.info.logits
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 0]))
             self.assertTrue(torch.all(logits[:, 1] > logits[:, 2]))
 
