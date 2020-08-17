@@ -738,6 +738,13 @@ def exe_mode_name():
     return _exe_mode_strs[_exe_mode]
 
 
+def is_eval():
+    """Return a bool value indicating whether the current code belongs to
+    unrolling or training.
+    """
+    return _exe_mode == EXE_MODE_EVAL
+
+
 def is_replay():
     """Return a bool value indicating whether the current code belongs to
     unrolling or training.

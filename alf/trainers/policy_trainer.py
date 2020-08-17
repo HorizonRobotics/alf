@@ -680,7 +680,6 @@ def play(root_dir,
             for m in metrics:
                 m(time_step.cpu())
             time_step = env.reset()
-
     for m in metrics:
         logging.info("%s: %f", m.name, m.result())
     if recorder:
