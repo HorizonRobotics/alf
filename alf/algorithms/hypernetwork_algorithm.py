@@ -62,10 +62,10 @@ def neglogprob(inputs, param_net, loss_type, params):
         raise ValueError("Unsupported loss_type: %s" % loss_type)
 
     param_net.set_parameters(params)
-    particles = params.shape[0]
+    num_particles = params.shape[0]
     data, target = inputs
     output, _ = param_net(data)  # [B, N, D]
-    target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+    target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
                                         *target.shape[1:])
     return loss_func(output, target)
 
@@ -104,7 +104,7 @@ class HyperNetwork(Algorithm):
                  noise_dim=32,
                  hidden_layers=(64, 64),
                  use_fc_bn=False,
-                 particles=10,
+                 num_particles=10,
                  entropy_regularization=1.,
                  loss_type="classification",
                  voting="soft",
@@ -146,7 +146,7 @@ class HyperNetwork(Algorithm):
             noise_dim (int): dimension of noise
             hidden_layers (tuple): size of hidden layers.
             use_fc_bn (bool): whether use batnch normalization for fc layers.
-            particles (int): number of sampling particles
+            num_particles (int): number of sampling particles
             entropy_regularization (float): weight of entropy regularization
 
             Args for training and testing
@@ -206,7 +206,7 @@ class HyperNetwork(Algorithm):
             name=name)
 
         self._param_net = param_net
-        self._particles = particles
+        self._num_particles = num_particles
         self._entropy_regularization = entropy_regularization
         self._train_loader = None
         self._test_loader = None
@@ -231,44 +231,63 @@ class HyperNetwork(Algorithm):
         self._test_loader = test_loader
         self._entropy_regularization = 1 / len(train_loader)
 
-    def set_particles(self, particles):
+    def set_num_particles(self, num_particles):
         """Set the number of particles to sample through one forward
         pass of the hypernetwork. """
-        self._particles = particles
+        self._num_particles = num_particles
 
     @property
-    def particles(self):
-        return self._particles
+    def num_particles(self):
+        """number of sampled particles. """
+        return self._num_particles
 
-    def sample_parameters(self, noise=None, particles=None, training=True):
-        "Sample parameters for an ensemble of networks." ""
-        if noise is None and particles is None:
-            particles = self.particles
+    def sample_parameters(self, noise=None, num_particles=None, training=True):
+        """Sample parameters for an ensemble of networks. 
+        
+        Args:
+            noise (Tensor): input noise to self._generator.
+            num_particles (int): number of sampled particles.
+            training (bool): whether or not training self._generator
+
+        Returns:
+            AlgorithmStep from predict_step of self._generator
+        """
+        if noise is None and num_particles is None:
+            num_particles = self.num_particles
         generator_step = self._generator.predict_step(
-            noise=noise, batch_size=particles, training=training)
+            noise=noise, batch_size=num_particles, training=training)
         return generator_step.output
 
-    def predict_step(self, inputs, params=None, particles=None, state=None):
+    def predict_step(self, inputs, params=None, num_particles=None,
+                     state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
 
         Args:
             inputs (Tensor): inputs to the ensemble of networks.
             params (Tensor): parameters of the ensemble of networks,
                 if None, will resample.
-            particles (int): size of sampled ensemble.
+            num_particles (int): size of sampled ensemble.
             state: not used.
 
         Returns:
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
         if params is None:
-            params = self.sample_parameters(particles=particles)
+            params = self.sample_parameters(num_particles=num_particles)
         self._param_net.set_parameters(params)
         outputs, _ = self._param_net(inputs)
         return AlgStep(output=outputs, state=(), info=())
 
-    def train_iter(self, particles=None, state=None):
-        """Perform one epoch (iteration) of training."""
+    def train_iter(self, num_particles=None, state=None):
+        """Perform one epoch (iteration) of training.
+        
+        Args:
+            num_particles (int): number of sampled particles.
+            state: not used
+
+        Return:
+            mini_batch number
+        """
 
         assert self._train_loader is not None, "Must set data_loader first."
         alf.summary.increment_global_counter()
@@ -280,7 +299,7 @@ class HyperNetwork(Algorithm):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 alg_step = self.train_step((data, target),
-                                           particles=particles,
+                                           num_particles=num_particles,
                                            state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
                 loss += loss_info.extra.generator.loss
@@ -299,14 +318,14 @@ class HyperNetwork(Algorithm):
 
     def train_step(self,
                    inputs,
-                   particles=None,
+                   num_particles=None,
                    entropy_regularization=None,
                    state=None):
         """Perform one batch of training computation.
 
         Args:
             inputs (nested Tensor): input training data. 
-            particles (int): number of sampled particles. 
+            num_particles (int): number of sampled particles. 
             state: not used
 
         Returns:
@@ -314,7 +333,7 @@ class HyperNetwork(Algorithm):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        params = self.sample_parameters(particles=particles)
+        params = self.sample_parameters(num_particles=num_particles)
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
 
@@ -326,14 +345,14 @@ class HyperNetwork(Algorithm):
             entropy_regularization=entropy_regularization,
             state=())
 
-    def evaluate(self, particles=None):
+    def evaluate(self, num_particles=None):
         """Evaluate on a randomly drawn network. """
 
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin testing")
         if self._use_fc_bn:
             self._generator.eval()
-        params = self.sample_parameters(particles=particles)
+        params = self.sample_parameters(num_particles=num_particles)
         self._param_net.set_parameters(params)
         if self._use_fc_bn:
             self._generator.train()
@@ -361,7 +380,7 @@ class HyperNetwork(Algorithm):
 
     def _classification_vote(self, output, target):
         """ensmeble the ooutputs from sampled classifiers."""
-        particles = output.shape[1]
+        num_particles = output.shape[1]
         probs = F.softmax(output, dim=-1)  # [B, N, D]
         if self._voting == 'soft':
             pred = probs.mean(1).cpu()  # [B, D]
@@ -370,17 +389,17 @@ class HyperNetwork(Algorithm):
             pred = probs.argmax(-1).cpu()  # [B, N, 1]
             vote = pred.mode(1)[0]  # [B, 1]
         correct = vote.eq(target.cpu().view_as(vote)).float().cpu().sum()
-        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
                                             *target.shape[1:])
         loss = classification_loss(output.transpose(1, 2), target)
         return loss, correct
 
     def _regression_vote(self, output, target):
         """ensemble the outputs for sampled regressors."""
-        particles = output.shape[1]
+        num_particles = output.shape[1]
         pred = output.mean(1)  # [B, D]
         loss = regression_loss(pred, target)
-        target = target.unsqueeze(1).expand(*target.shape[:1], particles,
+        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
                                             *target.shape[1:])
         total_loss = regression_loss(output, target)
         return loss, total_loss

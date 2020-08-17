@@ -58,7 +58,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'))
     def test_bayesian_linear_regression(self,
                                         par_vi='svgd3',
-                                        particles=256,
+                                        num_particles=256,
                                         train_batch_size=10):
         """
         The hypernetwork is trained to generate the parameter vector for a linear
@@ -111,12 +111,12 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             alg_step = algorithm.train_step(
                 inputs=(train_inputs, train_targets),
                 entropy_regularization=entropy_regularization,
-                particles=particles)
+                num_particles=num_particles)
 
             loss_info, params = algorithm.update_with_gradient(alg_step.info)
 
         def _test(i):
-            params = algorithm.sample_parameters(particles=200)
+            params = algorithm.sample_parameters(num_particles=200)
             computed_mean = params.mean(0)
             computed_cov = self.cov(params)
 
@@ -127,7 +127,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             learned_mean = algorithm._generator._net._fc_layers[0].bias
 
             pred_step = algorithm.predict_step(inputs, params=params)
-            sampled_preds = pred_step.output.squeeze()  # [batch, particles]
+            sampled_preds = pred_step.output.squeeze()  # [batch, n_particles]
 
             computed_preds = inputs @ computed_mean  # [batch]
             predicts = inputs @ learned_mean  # [batch]

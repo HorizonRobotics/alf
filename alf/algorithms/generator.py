@@ -216,6 +216,7 @@ class Generator(Algorithm):
                 Its is ignored if inputs is not None
             training (bool): whether train the generator.
             state: not used
+
         Returns:
             AlgorithmStep: outputs with shape (batch_size, output_dim)
         """
@@ -243,6 +244,7 @@ class Generator(Algorithm):
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None
             state: not used
+
         Returns:
             AlgorithmStep:
                 outputs: Tensor with shape (batch_size, dim)
@@ -386,8 +388,8 @@ class Generator(Algorithm):
         evaluated by splitting half of the sampled batch. 
         """
         assert inputs is None, "\"svgd2\" does not support conditional generator"
-        particles = outputs.shape[0] // 2
-        outputs_i, outputs_j = torch.split(outputs, particles, dim=0)
+        num_particles = outputs.shape[0] // 2
+        outputs_i, outputs_j = torch.split(outputs, num_particles, dim=0)
         loss_inputs = outputs_j
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
@@ -399,7 +401,7 @@ class Generator(Algorithm):
         # [Nj, Ni], [Nj, Ni, D]
         kernel_weight, kernel_grad = self._rbf_func2(outputs_j, outputs_i)
         kernel_logp = torch.matmul(kernel_weight.t(),
-                                   loss_grad) / particles  # [Ni, D]
+                                   loss_grad) / num_particles  # [Ni, D]
         grad = kernel_logp - entropy_regularization * kernel_grad.mean(0)
         loss_propagated = torch.sum(grad.detach() * outputs_i, dim=-1)
         return loss, loss_propagated
@@ -410,8 +412,8 @@ class Generator(Algorithm):
         evaluated by resampled particles of the same batch size. 
         """
         assert inputs is None, "\"svgd3\" does not support conditional generator"
-        particles = outputs.shape[0]
-        outputs2, _ = self._predict(inputs, batch_size=particles)
+        num_particles = outputs.shape[0]
+        outputs2, _ = self._predict(inputs, batch_size=num_particles)
         loss_inputs = outputs2
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
@@ -423,7 +425,7 @@ class Generator(Algorithm):
         # [N2, N], [N2, N, D]
         kernel_weight, kernel_grad = self._rbf_func2(outputs2, outputs)
         kernel_logp = torch.matmul(kernel_weight.t(),
-                                   loss_grad) / particles  # [N, D]
+                                   loss_grad) / num_particles  # [N, D]
         grad = kernel_logp - entropy_regularization * kernel_grad.mean(0)
         loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
