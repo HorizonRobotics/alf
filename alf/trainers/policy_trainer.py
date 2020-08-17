@@ -409,6 +409,10 @@ def play(root_dir,
     episode_reward = 0.
     episode_length = 0
     episodes = 0
+    metrics = [
+        alf.metrics.AverageReturnMetric(buffer_size=num_episodes),
+        alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
+    ]
     while episodes < num_episodes:
         time_step, policy_state = _step(
             algorithm=algorithm,
@@ -416,7 +420,7 @@ def play(root_dir,
             time_step=time_step,
             policy_state=policy_state,
             epsilon_greedy=epsilon_greedy,
-            metrics=[])
+            metrics=metrics)
         episode_length += 1
         if recorder:
             recorder.capture_frame()
@@ -432,8 +436,12 @@ def play(root_dir,
             episode_reward = 0.
             episode_length = 0.
             episodes += 1
+            # observe the last step
+            for m in metrics:
+                m(time_step.cpu())
             time_step = env.reset()
-
+    for m in metrics:
+        logging.info("%s: %f", m.name, m.result())
     if recorder:
         recorder.close()
     env.reset()

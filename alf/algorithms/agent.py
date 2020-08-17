@@ -13,10 +13,9 @@
 # limitations under the License.
 """Agent for integrating multiple algorithms."""
 
+from absl import logging
 from typing import Callable
-
 import gin
-
 import torch
 
 import alf
