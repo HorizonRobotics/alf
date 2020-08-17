@@ -783,8 +783,6 @@ def hindsight_relabel_fn(buffer,
         relabeled_rewards[orig_reward_cond] = result.reward[orig_reward_cond]
 
     result = result._replace(reward=relabeled_rewards)
-    if her_proportion <= 0:
-        return result, info
     result = alf.nest.utils.transform_nest(
         result, desired_goal_field, lambda _: relabed_goal)
     return result, info

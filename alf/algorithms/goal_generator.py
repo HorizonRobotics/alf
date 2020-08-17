@@ -278,6 +278,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 updating it.
             plan_margin (float): how much larger value than baseline does the plan need,
                 to be adopted.
+            min_goal_cost_to_use_plan (float): cost of original goal must be above
+                this threshold for the plan to be accepted.
             name (str): name of the algorithm.
         """
         goal_shape = (action_dim, )
