@@ -113,7 +113,7 @@ class VideoRecorder(GymVideoRecorder):
                  env,
                  img_plot_width=640,
                  value_range=1.,
-                 frames_per_sec=30,
+                 frames_per_sec=None,
                  **kwargs):
         """
         Args:
@@ -122,13 +122,14 @@ class VideoRecorder(GymVideoRecorder):
                 excluding the env frame width
             value_range (float): if quantities plotted as heatmaps, the values
                 will be clipped according to ``[-value_range, value_range]``.
-            frames_per_sec (fps):
+            frames_per_sec (fps): if None, use fps from the env
         """
         super(VideoRecorder, self).__init__(env=env, **kwargs)
         self._img_plot_width = img_plot_width
         self._dist_imgs_per_row = 4
         self._value_range = value_range
-        self.frames_per_sec = frames_per_sec  # overwrite the base class
+        if frames_per_sec is not None:
+            self.frames_per_sec = frames_per_sec  # overwrite the base class
 
     def capture_frame(self, pred_info=None):
         """Render ``self.env`` and add the resulting frame to the video. Also
@@ -250,7 +251,7 @@ class VideoRecorder(GymVideoRecorder):
         img = cv2.putText(
             img,
             string, (0, int(H * 0.8)),
-            fontFace=cv2.FONT_HERSHEY_COMPLEX,
+            fontFace=cv2.FONT_HERSHEY_DUPLEX,
             fontScale=0.5,
             color=(0, 0, 0))
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
@@ -277,9 +278,6 @@ class VideoRecorder(GymVideoRecorder):
             size = 40
             cols = self._img_plot_width // size
             rows = (a.size + cols - 1) // cols
-            #num_acts = cols * rows
-            #if num_acts > len(a):
-            #    a = np.concatenate([a, np.zeros((num_acts - len(a),))])
             return self._plot_heatmap(a, rows, cols, size)
 
         action = alf.nest.flatten(action)
