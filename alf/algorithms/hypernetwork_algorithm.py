@@ -74,7 +74,7 @@ def neglogprob(inputs, param_net, loss_type, params):
 class HyperNetwork(Algorithm):
     """HyperNetwork 
 
-    HyperrNetwork algorithm maintains a generator that generates a set of 
+    HyperNetwork algorithm maintains a generator that generates a set of 
     parameters for a predefined neural network from a random noise input. 
     It is based on the following work:
 
@@ -85,7 +85,7 @@ class HyperNetwork(Algorithm):
 
     Major differences versus the original paper are:
 
-    * A single genrator that generates parameters for all network layers.
+    * A single generator that generates parameters for all network layers.
 
     * Remove the mixer and the distriminator.
 
@@ -164,7 +164,7 @@ class HyperNetwork(Algorithm):
             config (TrainerConfig): configuration for training
             name (str):
         """
-        super().__init__(train_state_spec=(), name=name)
+        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
 
         param_net = ParamNetwork(
             input_tensor_spec=input_tensor_spec,
@@ -202,7 +202,7 @@ class HyperNetwork(Algorithm):
             net=net,
             entropy_regularization=entropy_regularization,
             par_vi=par_vi,
-            optimizer=optimizer,
+            optimizer=None,
             name=name)
 
         self._param_net = param_net
@@ -346,7 +346,7 @@ class HyperNetwork(Algorithm):
             state=())
 
     def evaluate(self, num_particles=None):
-        """Evaluate on a randomly drawn network. """
+        """Evaluate on a randomly drawn ensemble. """
 
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin testing")
@@ -387,7 +387,14 @@ class HyperNetwork(Algorithm):
             vote = pred.argmax(-1)
         elif self._voting == 'hard':
             pred = probs.argmax(-1).cpu()  # [B, N, 1]
-            vote = pred.mode(1)[0]  # [B, 1]
+            vote = []
+            for i in range(pred.shape[0]):
+                values, counts = torch.unique(
+                    pred[i], sorted=False, return_counts=True)
+                modes = (counts == counts.max()).nonzero()
+                label = values[torch.randint(len(modes), (1, ))]
+                vote.append(label)
+            vote = torch.as_tensor(vote)
         correct = vote.eq(target.cpu().view_as(vote)).float().cpu().sum()
         target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
                                             *target.shape[1:])
