@@ -53,23 +53,6 @@ def regression_loss(output, target):
     return HyperNetworkLossInfo(loss=loss, extra=())
 
 
-def neglogprob(inputs, param_net, loss_type, params):
-    if loss_type == 'regression':
-        loss_func = regression_loss
-    elif loss_type == 'classification':
-        loss_func = classification_loss
-    else:
-        raise ValueError("Unsupported loss_type: %s" % loss_type)
-
-    param_net.set_parameters(params)
-    num_particles = params.shape[0]
-    data, target = inputs
-    output, _ = param_net(data)  # [B, N, D]
-    target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
-                                        *target.shape[1:])
-    return loss_func(output, target)
-
-
 @gin.configurable
 class HyperNetwork(Algorithm):
     """HyperNetwork 
@@ -215,12 +198,14 @@ class HyperNetwork(Algorithm):
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
         self._config = config
-        assert (voting in ['soft', 'hard'
-                           ]), ("voting only supports \"soft\" and \"hard\"")
+        assert (voting in ['soft',
+                           'hard']), ('voting only supports "soft" and "hard"')
         self._voting = voting
         if loss_type == 'classification':
+            self._loss_func = classification_loss
             self._vote = self._classification_vote
         elif loss_type == 'regression':
+            self._loss_func = regression_loss
             self._vote = self._regression_vote
         else:
             raise ValueError("Unsupported loss_type: %s" % loss_type)
@@ -250,7 +235,7 @@ class HyperNetwork(Algorithm):
             training (bool): whether or not training self._generator
 
         Returns:
-            AlgorithmStep from predict_step of self._generator
+            AlgStep from predict_step of self._generator
         """
         if noise is None and num_particles is None:
             num_particles = self.num_particles
@@ -270,7 +255,7 @@ class HyperNetwork(Algorithm):
             state: not used.
 
         Returns:
-            AlgorithmStep: outputs with shape (batch_size, output_dim)
+            AlgStep: outputs with shape (batch_size, self._param_net._output_spec.shape[0])
         """
         if params is None:
             params = self.sample_parameters(num_particles=num_particles)
@@ -329,19 +314,19 @@ class HyperNetwork(Algorithm):
             state: not used
 
         Returns:
-            AlgorithmStep:
+            AlgStep:
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        params = self.sample_parameters(num_particles=num_particles)
+        if num_particles is None:
+            num_particles = self._num_particles
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
 
         return self._generator.train_step(
             inputs=None,
-            loss_func=functools.partial(neglogprob, inputs, self._param_net,
-                                        self._loss_type),
-            outputs=params,
+            loss_func=functools.partial(self._neglogprob, inputs),
+            batch_size=num_particles,
             entropy_regularization=entropy_regularization,
             state=())
 
@@ -378,6 +363,15 @@ class HyperNetwork(Algorithm):
             logging.info("Test loss: {}".format(test_loss))
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
 
+    def _neglogprob(self, inputs, params):
+        self._param_net.set_parameters(params)
+        num_particles = params.shape[0]
+        data, target = inputs
+        output, _ = self._param_net(data)  # [B, N, D]
+        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
+                                            *target.shape[1:])
+        return self._loss_func(output, target)
+
     def _classification_vote(self, output, target):
         """ensmeble the ooutputs from sampled classifiers."""
         num_particles = output.shape[1]
@@ -394,11 +388,11 @@ class HyperNetwork(Algorithm):
                 modes = (counts == counts.max()).nonzero()
                 label = values[torch.randint(len(modes), (1, ))]
                 vote.append(label)
-            vote = torch.as_tensor(vote)
+            vote = torch.as_tensor(vote, device='cpu')
         correct = vote.eq(target.cpu().view_as(vote)).float().cpu().sum()
         target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
                                             *target.shape[1:])
-        loss = classification_loss(output.transpose(1, 2), target)
+        loss = classification_loss(output, target)
         return loss, correct
 
     def _regression_vote(self, output, target):

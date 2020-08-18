@@ -113,8 +113,20 @@ class Generator(Algorithm):
                 and [outputs, inputs].
             par_vi (string): ParVI methods, options are
                 [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``],
-                note that for conditional case, i.e., generating from [noise, inputs],
-                only ``svgd`` can be used.
+                * svgd: empirical expectation of SVGD is evaluated by a single 
+                    resampled particle. The main benefit of this choice is it 
+                    supports conditional case, while all other options do not.
+                * svgd2: empirical expectation of SVGD is evaluated by splitting
+                    half of the sampled batch. It is a trade-off between 
+                    computational efficiency and convergence speed.
+                * svgd3: empirical expectation of SVGD is evaluated by 
+                    resampled particles of the same batch size. It has better
+                    convergence but involves resampling, so less efficient
+                    computaionally comparing with svgd2.
+                * gfsf: wasserstein gradient flow with smoothed functions. It 
+                    involves a kernel matrix inversion, so computationally most
+                    expensive, but in some case the convergence seems faster 
+                    than svgd approaches.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -238,11 +250,14 @@ class Generator(Algorithm):
         Args:
             inputs (nested Tensor): if None, the outputs is generated only from
                 noise.
+            outputs (Tensor): generator's output (possibly from previous runs) used
+                for this train_step.
             loss_func (Callable): loss_func([outputs, inputs])
-                (loss_func(outputs) if inputs is None) returns a Tensor with
-                shape [batch_size] as a loss for optimizing the generator
+                (loss_func(outputs) if inputs is None) returns a Tensor or namedtuple
+                of tensors with field `loss`, which is a Tensor of
+                shape [batch_size] a loss term for optimizing the generator.
             batch_size (int): batch_size. Must be provided if inputs is None.
-                Its is ignored if inputs is not None
+                Its is ignored if inputs is not None.
             state: not used
 
         Returns:
@@ -256,7 +271,6 @@ class Generator(Algorithm):
             entropy_regularization = self._entropy_regularization
         loss, loss_propagated = self._grad_func(inputs, outputs, loss_func,
                                                 entropy_regularization)
-
         mi_loss = ()
         if self._mi_estimator is not None:
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
@@ -387,7 +401,7 @@ class Generator(Algorithm):
         Compute particle gradients via SVGD, empirical expectation
         evaluated by splitting half of the sampled batch. 
         """
-        assert inputs is None, "\"svgd2\" does not support conditional generator"
+        assert inputs is None, '"svgd2" does not support conditional generator'
         num_particles = outputs.shape[0] // 2
         outputs_i, outputs_j = torch.split(outputs, num_particles, dim=0)
         loss_inputs = outputs_j
@@ -411,7 +425,7 @@ class Generator(Algorithm):
         Compute particle gradients via SVGD, empirical expectation
         evaluated by resampled particles of the same batch size. 
         """
-        assert inputs is None, "\"svgd3\" does not support conditional generator"
+        assert inputs is None, '"svgd3" does not support conditional generator'
         num_particles = outputs.shape[0]
         outputs2, _ = self._predict(inputs, batch_size=num_particles)
         loss_inputs = outputs2
@@ -433,7 +447,7 @@ class Generator(Algorithm):
 
     def _gfsf_grad(self, inputs, outputs, loss_func, entropy_regularization):
         """Compute particle gradients via GFSF (Stein estimator). """
-        assert inputs is None, "\"gfsf\" does not support conditional generator"
+        assert inputs is None, '"gfsf" does not support conditional generator'
         loss_inputs = outputs
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
