@@ -268,7 +268,11 @@ class Trainer(object):
         checkpoint_interval = math.ceil(
             (self._num_iterations
              or self._num_env_steps) / self._num_checkpoints)
-        time_to_checkpoint = checkpoint_interval
+
+        if self._num_iterations:
+            time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
+        else:
+            time_to_checkpoint = self._trainer_progress._num_env_steps + checkpoint_interval
 
         while True:
             t0 = time.time()
@@ -345,8 +349,9 @@ class Trainer(object):
             self._algorithm.train_iter()
 
         try:
-            recovered_global_step = checkpointer.load()
-        except Exception as e:
+            recovered_global_step = checkpointer.load(
+                strict=self._config.load_checkpoint_strict)
+        except RuntimeError as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
                  "Typically this is caused by using a wrong checkpoint. \n"
@@ -420,7 +425,7 @@ def play(root_dir,
          max_episode_length=0,
          sleep_time_per_step=0.01,
          record_file=None,
-         ignored_parameter_prefixes=['_exp_replayer.']):
+         ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
@@ -449,8 +454,7 @@ def play(root_dir,
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
-            name has one of these prefixes in the checkpoint. This is useful
-            for skipping loading the checkpoint of ReplayBuffer.
+            name has one of these prefixes in the checkpoint.
 """
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
@@ -458,7 +462,10 @@ def play(root_dir,
     ckpt_dir = os.path.join(train_dir, 'algorithm')
     checkpointer = Checkpointer(ckpt_dir=ckpt_dir, algorithm=algorithm)
     checkpointer.load(
-        checkpoint_step, ignored_parameter_prefixes=ignored_parameter_prefixes)
+        checkpoint_step,
+        ignored_parameter_prefixes=ignored_parameter_prefixes,
+        including_optimizer=False,
+        including_replay_buffer=False)
 
     recorder = None
     if record_file is not None:

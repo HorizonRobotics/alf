@@ -712,19 +712,15 @@ class Algorithm(nn.Module):
         """Load state dictionary for the algorithm.
 
         Args:
-            state_dict (dict): a dict containing parameters and
-                persistent buffers.
+            state_dict (dict): a dict containing parameters and persistent buffers.
             strict (bool, optional): whether to strictly enforce that the keys
                 in ``state_dict`` match the keys returned by this module's
                 ``torch.nn.Module.state_dict`` function. If ``strict=True``, will
-                keep lists of missing and unexpected keys and raise error when
-                any of the lists is non-empty; if ``strict=False``, missing/unexpected
-                keys will be omitted and no error will be raised.
-                (Default: ``True``)
+                keep lists of missing and unexpected keys; if ``strict=False``,
+                missing/unexpected keys will be omitted. (Default: ``True``)
 
         Returns:
             namedtuple:
-
             - missing_keys: a list of str containing the missing keys.
             - unexpected_keys: a list of str containing the unexpected keys.
         """
@@ -778,16 +774,6 @@ class Algorithm(nn.Module):
                     unexpected_keys, error_msgs)
 
         _load(self)
-
-        if strict:
-            if len(unexpected_keys) > 0:
-                error_msgs.insert(
-                    0, 'Unexpected key(s) in state_dict: {}. '.format(
-                        ', '.join('"{}"'.format(k) for k in unexpected_keys)))
-            if len(missing_keys) > 0:
-                error_msgs.insert(
-                    0, 'Missing key(s) in state_dict: {}. '.format(', '.join(
-                        '"{}"'.format(k) for k in missing_keys)))
 
         if len(error_msgs) > 0:
             raise RuntimeError(
