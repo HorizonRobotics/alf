@@ -324,7 +324,6 @@ class Generator(Algorithm):
                 dimenseion of each particle
             y (Tensor): set of N particles, shape (Ny x W), where W is the 
                 dimenseion of each particle
-            h_min (float): minimum kernel bandwidth
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
