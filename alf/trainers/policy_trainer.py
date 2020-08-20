@@ -16,7 +16,6 @@
 import abc
 from absl import logging
 import gin
-from alf.utils.video_recorder import VideoRecorder
 import math
 import os
 import pprint
@@ -469,6 +468,7 @@ def play(root_dir,
 
     recorder = None
     if record_file is not None:
+        from alf.utils.video_recorder import VideoRecorder
         recorder = VideoRecorder(env, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
