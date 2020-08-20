@@ -95,7 +95,7 @@ class TrainerTest(alf.test.TestCase):
                 num_checkpoints=1,
                 evaluate=True,
                 eval_interval=1,
-                num_epochs=1)
+                num_iterations=1)
 
             # test train
             trainer = MySLTrainer(conf)
@@ -114,7 +114,7 @@ class TrainerTest(alf.test.TestCase):
                 num_checkpoints=1,
                 evaluate=True,
                 eval_interval=1,
-                num_epochs=2)
+                num_iterations=2)
 
             new_trainer = MySLTrainer(conf2)
             new_trainer._restore_checkpoint()

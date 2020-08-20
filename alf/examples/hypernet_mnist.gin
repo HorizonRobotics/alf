@@ -31,7 +31,7 @@ ParamConvNet.use_bias=True
 
 # training config
 TrainerConfig.algorithm_ctor=@HyperNetwork
-TrainerConfig.num_epochs=1000
+TrainerConfig.num_iterations=1000
 TrainerConfig.num_checkpoints=2
 TrainerConfig.evaluate=True
 TrainerConfig.eval_interval=1

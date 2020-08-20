@@ -25,7 +25,6 @@ class TrainerConfig(object):
                  algorithm_ctor=None,
                  data_transformer_ctor=None,
                  random_seed=None,
-                 num_epochs=2e+5,
                  num_iterations=1000,
                  num_env_steps=0,
                  unroll_length=8,
@@ -71,11 +70,12 @@ class TrainerConfig(object):
                 The data transformer constructed by this can be access as
                 ``TrainerConfig.data_transformer``.
             random_seed (None|int): random seed, a random seed is used if None
-            num_epochs (int): number of training epochs 
-            num_iterations (int): number of update iterations (ignored if 0). Note
-                that for off-policy algorithms, if ``initial_collect_steps>0``,
-                then the first ``initial_collect_steps//(unroll_length*num_envs)``
-                iterations won't perform any training.
+            num_iterations (int): For RL trainer, indicates number of update 
+                iterations (ignored if 0). Note that for off-policy algorithms, if 
+                ``initial_collect_steps>0``, then the first 
+                ``initial_collect_steps//(unroll_length*num_envs)`` iterations 
+                won't perform any training. For SL trainer, indicates the number
+                of training epochs.
             num_env_steps (int): number of environment steps (ignored if 0). The
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
@@ -169,7 +169,6 @@ class TrainerConfig(object):
             data_transformer_ctor=data_transformer_ctor,
             data_transformer=None,  # to be set by Trainer
             random_seed=random_seed,
-            num_epochs=num_epochs,
             num_iterations=num_iterations,
             num_env_steps=num_env_steps,
             unroll_length=unroll_length,

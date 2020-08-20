@@ -196,16 +196,52 @@ class Trainer(object):
         """Closing operations after training. """
         pass
 
+    def _set_summary(self):
+        def _markdownify(paragraph):
+            return "    ".join(
+                (os.linesep + paragraph).splitlines(keepends=True))
+
+        common.summarize_gin_config()
+        alf.summary.text('commandline', ' '.join(sys.argv))
+        alf.summary.text('optimizers',
+                         _markdownify(self._algorithm.get_optimizer_info()))
+        alf.summary.text('revision', git_utils.get_revision())
+        alf.summary.text('diff', _markdownify(git_utils.get_diff()))
+        alf.summary.text('seed', str(self._random_seed))
+
     def _request_checkpoint(self, signum, frame):
         self._checkpoint_requested = True
-
-    def _restore_checkpoint(self):
-        """retore from saved checkpoint."""
-        pass
 
     def _save_checkpoint(self):
         global_step = alf.summary.get_global_counter()
         self._checkpointer.save(global_step=global_step)
+
+    def _restore_checkpoint(self, checkpointer):
+        """retore from saved checkpoint.
+            
+            Args:
+                checkpointer (Checkpointer):
+        """
+        if checkpointer.has_checkpoint():
+            # Some objects (e.g. ReplayBuffer) are constructed lazily in algorithm.
+            # They only appear after one training iteration. So we need to run
+            # train_iter() once before loading the checkpoint
+            self._algorithm.train_iter()
+
+        try:
+            recovered_global_step = checkpointer.load()
+        except Exception as e:
+            raise RuntimeError(
+                ("Checkpoint loading failed from the provided root_dir={}. "
+                 "Typically this is caused by using a wrong checkpoint. \n"
+                 "Please make sure the root_dir is set correctly. "
+                 "Use a new value for it if "
+                 "planning to train from scratch. \n"
+                 "Detailed error message: {}").format(self._root_dir, e))
+        if recovered_global_step != -1:
+            alf.summary.set_global_counter(recovered_global_step)
+
+        self._checkpointer = checkpointer
 
 
 class RLTrainer(Trainer):
@@ -350,20 +386,7 @@ class RLTrainer(Trainer):
                 common.write_gin_configs(self._root_dir, "configured.gin")
 
                 with alf.summary.record_if(lambda: True):
-
-                    def _markdownify(paragraph):
-                        return "    ".join(
-                            (os.linesep + paragraph).splitlines(keepends=True))
-
-                    common.summarize_gin_config()
-                    alf.summary.text('commandline', ' '.join(sys.argv))
-                    alf.summary.text(
-                        'optimizers',
-                        _markdownify(self._algorithm.get_optimizer_info()))
-                    alf.summary.text('revision', git_utils.get_revision())
-                    alf.summary.text('diff',
-                                     _markdownify(git_utils.get_diff()))
-                    alf.summary.text('seed', str(self._random_seed))
+                    self._set_summary()
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
@@ -401,26 +424,7 @@ class RLTrainer(Trainer):
             metrics=nn.ModuleList(self._algorithm.get_metrics()),
             trainer_progress=self._trainer_progress)
 
-        if checkpointer.has_checkpoint():
-            # Some objects (e.g. ReplayBuffer) are constructed lazily in algorithm.
-            # They only appear after one training iteration. So we need to run
-            # train_iter() once before loading the checkpoint
-            self._algorithm.train_iter()
-
-        try:
-            recovered_global_step = checkpointer.load()
-        except Exception as e:
-            raise RuntimeError(
-                ("Checkpoint loading failed from the provided root_dir={}. "
-                 "Typically this is caused by using a wrong checkpoint. \n"
-                 "Please make sure the root_dir is set correctly. "
-                 "Use a new value for it if "
-                 "planning to train from scratch. \n"
-                 "Detailed error message: {}").format(self._root_dir, e))
-        if recovered_global_step != -1:
-            alf.summary.set_global_counter(recovered_global_step)
-
-        self._checkpointer = checkpointer
+        super()._restore_checkpoint(checkpointer)
 
     @common.mark_eval
     def _eval(self):
@@ -467,10 +471,10 @@ class SLTrainer(Trainer):
         """
         super().__init__(config)
 
-        assert config.num_epochs > 0, \
-            "Must provide num_epochs for training!"
+        assert config.num_iterations > 0, \
+            "Must provide num_iterations for training!"
 
-        self._num_epochs = config.num_epochs
+        self._num_epochs = config.num_iterations
         self._trainer_progress.set_termination_criterion(self._num_epochs)
 
         trainset, testset = self._create_dataset()
@@ -515,7 +519,7 @@ class SLTrainer(Trainer):
             logging.info("-" * 68)
             logging.info("Epoch: {}".format(epoch_num + 1))
             with record_time("time/train_iter"):
-                train_steps = self._algorithm.train_iter()
+                self._algorithm.train_iter()
 
             if self._evaluate and (epoch_num + 1) % self._eval_interval == 0:
                 self._algorithm.evaluate()
@@ -526,20 +530,7 @@ class SLTrainer(Trainer):
                 common.write_gin_configs(self._root_dir, "configured.gin")
 
                 with alf.summary.record_if(lambda: True):
-
-                    def _markdownify(paragraph):
-                        return "    ".join(
-                            (os.linesep + paragraph).splitlines(keepends=True))
-
-                    common.summarize_gin_config()
-                    alf.summary.text('commandline', ' '.join(sys.argv))
-                    alf.summary.text(
-                        'optimizers',
-                        _markdownify(self._algorithm.get_optimizer_info()))
-                    alf.summary.text('revision', git_utils.get_revision())
-                    alf.summary.text('diff',
-                                     _markdownify(git_utils.get_diff()))
-                    alf.summary.text('seed', str(self._random_seed))
+                    self._set_summary()
 
             # check termination
             epoch_num += 1
@@ -560,20 +551,7 @@ class SLTrainer(Trainer):
             algorithm=self._algorithm,
             trainer_progress=self._trainer_progress)
 
-        try:
-            recovered_global_step = checkpointer.load()
-        except Exception as e:
-            raise RuntimeError(
-                ("Checkpoint loading failed from the provided root_dir={}. "
-                 "Typically this is caused by using a wrong checkpoint. \n"
-                 "Please make sure the root_dir is set correctly. "
-                 "Use a new value for it if "
-                 "planning to train from scratch. \n"
-                 "Detailed error message: {}").format(self._root_dir, e))
-        if recovered_global_step != -1:
-            alf.summary.set_global_counter(recovered_global_step)
-
-        self._checkpointer = checkpointer
+        super()._restore_checkpoint(checkpointer)
 
 
 @torch.no_grad()

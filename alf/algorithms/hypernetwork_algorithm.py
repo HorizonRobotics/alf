@@ -70,7 +70,7 @@ class HyperNetwork(Algorithm):
 
     * A single generator that generates parameters for all network layers.
 
-    * Remove the mixer and the distriminator.
+    * Remove the mixer and the discriminator.
 
     * The generator is trained with Amortized particle-based variational 
       inference (ParVI) methods, please refer to generator.py for details.
@@ -211,7 +211,12 @@ class HyperNetwork(Algorithm):
             raise ValueError("Unsupported loss_type: %s" % loss_type)
 
     def set_data_loader(self, train_loader, test_loader=None):
-        """Set data loadder for training and testing."""
+        """Set data loadder for training and testing.
+
+        Args:
+            train_loader (torch.utils.data.DataLoader): training data loader
+            test_loader (torch.utils.data.DataLoader): testing data loader
+        """
         self._train_loader = train_loader
         self._test_loader = test_loader
         self._entropy_regularization = 1 / len(train_loader)
@@ -230,12 +235,14 @@ class HyperNetwork(Algorithm):
         """Sample parameters for an ensemble of networks. 
         
         Args:
-            noise (Tensor): input noise to self._generator.
-            num_particles (int): number of sampled particles.
+            noise (Tensor): input noise to self._generator. Default is None.
+            num_particles (int): number of sampled particles. Default is None.
+                If both noise and num_particles are None, self._num_particles
+                will be used as batch_size for self._generator.
             training (bool): whether or not training self._generator
 
         Returns:
-            AlgStep from predict_step of self._generator
+            AlgStep.output from predict_step of self._generator
         """
         if noise is None and num_particles is None:
             num_particles = self.num_particles
@@ -251,7 +258,7 @@ class HyperNetwork(Algorithm):
             inputs (Tensor): inputs to the ensemble of networks.
             params (Tensor): parameters of the ensemble of networks,
                 if None, will resample.
-            num_particles (int): size of sampled ensemble.
+            num_particles (int): size of sampled ensemble. Default is None.
             state: not used.
 
         Returns:
@@ -267,7 +274,7 @@ class HyperNetwork(Algorithm):
         """Perform one epoch (iteration) of training.
         
         Args:
-            num_particles (int): number of sampled particles.
+            num_particles (int): number of sampled particles. Default is None.
             state: not used
 
         Return:
@@ -310,7 +317,9 @@ class HyperNetwork(Algorithm):
 
         Args:
             inputs (nested Tensor): input training data. 
-            num_particles (int): number of sampled particles. 
+            num_particles (int): number of sampled particles. Default is None,
+                in which case self._num_particles will be used for batch_size
+                of self._generator.
             state: not used
 
         Returns:
@@ -331,7 +340,11 @@ class HyperNetwork(Algorithm):
             state=())
 
     def evaluate(self, num_particles=None):
-        """Evaluate on a randomly drawn ensemble. """
+        """Evaluate on a randomly drawn ensemble. 
+
+        Args:
+            num_particles (int): number of sampled particles. Default is None.
+        """
 
         assert self._test_loader is not None, "Must set test_loader first."
         logging.info("==> Begin testing")
