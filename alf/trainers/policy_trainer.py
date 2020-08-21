@@ -196,17 +196,23 @@ class Trainer(object):
         pass
 
     def _summarize_training_setting(self):
-        def _markdownify(paragraph):
-            return "    ".join(
-                (os.linesep + paragraph).splitlines(keepends=True))
+        # We need to wait for one iteration to get the operative args
+        # Right just give a fixed gin file name to store operative args
+        common.write_gin_configs(self._root_dir, "configured.gin")
+        with alf.summary.record_if(lambda: True):
 
-        common.summarize_gin_config()
-        alf.summary.text('commandline', ' '.join(sys.argv))
-        alf.summary.text('optimizers',
-                         _markdownify(self._algorithm.get_optimizer_info()))
-        alf.summary.text('revision', git_utils.get_revision())
-        alf.summary.text('diff', _markdownify(git_utils.get_diff()))
-        alf.summary.text('seed', str(self._random_seed))
+            def _markdownify(paragraph):
+                return "    ".join(
+                    (os.linesep + paragraph).splitlines(keepends=True))
+
+            common.summarize_gin_config()
+            alf.summary.text('commandline', ' '.join(sys.argv))
+            alf.summary.text(
+                'optimizers',
+                _markdownify(self._algorithm.get_optimizer_info()))
+            alf.summary.text('revision', git_utils.get_revision())
+            alf.summary.text('diff', _markdownify(git_utils.get_diff()))
+            alf.summary.text('seed', str(self._random_seed))
 
     def _request_checkpoint(self, signum, frame):
         self._checkpoint_requested = True
@@ -380,11 +386,7 @@ class RLTrainer(Trainer):
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:
                 self._eval()
             if iter_num == begin_iter_num:
-                # We need to wait for one iteration to get the operative args
-                # Right just give a fixed gin file name to store operative args
-                common.write_gin_configs(self._root_dir, "configured.gin")
-                with alf.summary.record_if(lambda: True):
-                    self._summarize_training_setting()
+                self._summarize_training_setting()
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
@@ -523,11 +525,7 @@ class SLTrainer(Trainer):
                 self._algorithm.evaluate()
 
             if epoch_num == begin_epoch_num:
-                # We need to wait for one iteration to get the operative args
-                # Right just give a fixed gin file name to store operative args
-                common.write_gin_configs(self._root_dir, "configured.gin")
-                with alf.summary.record_if(lambda: True):
-                    self._summarize_training_setting()
+                self._summarize_training_setting()
 
             # check termination
             epoch_num += 1
