@@ -32,6 +32,7 @@ class TrainerConfig(object):
                  use_rollout_state=False,
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
+                 load_checkpoint_strict=True,
                  evaluate=False,
                  eval_interval=10,
                  epsilon_greedy=0.1,
@@ -104,6 +105,12 @@ class TrainerConfig(object):
                 ``None``, its value is inferred based on whether the algorithm
                 has RNN state (``True`` if there is RNN state, ``False`` if not).
             num_checkpoints (int): how many checkpoints to save for the training
+            load_checkpoint_strict (bool): whether to strictly enforce that the keys
+                in ``state_dict`` match the keys returned by module's
+                ``torch.nn.Module.state_dict`` function. If True, will
+                keep lists of missing and unexpected keys and raise error when
+                any of the lists is non-empty; if ``strict=False``, missing/unexpected
+                keys will be omitted and no error will be raised.
             evaluate (bool): A bool to evaluate when training
             eval_interval (int): evaluate every so many iteration
             epsilon_greedy (float): a floating value in [0,1], representing the
@@ -176,6 +183,7 @@ class TrainerConfig(object):
             use_rollout_state=use_rollout_state,
             temporally_independent_train_step=temporally_independent_train_step,
             num_checkpoints=num_checkpoints,
+            load_checkpoint_strict=load_checkpoint_strict,
             evaluate=evaluate,
             eval_interval=eval_interval,
             epsilon_greedy=epsilon_greedy,

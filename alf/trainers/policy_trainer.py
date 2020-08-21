@@ -16,7 +16,6 @@
 import abc
 from absl import logging
 import gin
-from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import math
 import os
 import pprint
@@ -368,7 +367,11 @@ class RLTrainer(Trainer):
         checkpoint_interval = math.ceil(
             (self._num_iterations
              or self._num_env_steps) / self._num_checkpoints)
-        time_to_checkpoint = checkpoint_interval
+
+        if self._num_iterations:
+            time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
+        else:
+            time_to_checkpoint = self._trainer_progress._num_env_steps + checkpoint_interval
 
         while True:
             t0 = time.time()
@@ -436,7 +439,7 @@ class RLTrainer(Trainer):
             self._eval_env.batch_size)
         episodes = 0
         while episodes < self._num_eval_episodes:
-            time_step, policy_state, trans_state = _step(
+            time_step, policy_state, trans_state, _ = _step(
                 algorithm=self._algorithm,
                 env=self._eval_env,
                 time_step=time_step,
@@ -562,7 +565,7 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
-    return next_time_step, policy_step.state, trans_state
+    return next_time_step, policy_step.state, trans_state, policy_step.info
 
 
 def play(root_dir,
@@ -574,7 +577,7 @@ def play(root_dir,
          max_episode_length=0,
          sleep_time_per_step=0.01,
          record_file=None,
-         ignored_parameter_prefixes=['_exp_replayer.']):
+         ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
     The following example record the play of a trained model to a mp4 video:
@@ -603,8 +606,7 @@ def play(root_dir,
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
-            name has one of these prefixes in the checkpoint. This is useful
-            for skipping loading the checkpoint of ReplayBuffer.
+            name has one of these prefixes in the checkpoint.
 """
     root_dir = os.path.expanduser(root_dir)
     train_dir = os.path.join(root_dir, 'train')
@@ -612,17 +614,20 @@ def play(root_dir,
     ckpt_dir = os.path.join(train_dir, 'algorithm')
     checkpointer = Checkpointer(ckpt_dir=ckpt_dir, algorithm=algorithm)
     checkpointer.load(
-        checkpoint_step, ignored_parameter_prefixes=ignored_parameter_prefixes)
+        checkpoint_step,
+        ignored_parameter_prefixes=ignored_parameter_prefixes,
+        including_optimizer=False,
+        including_replay_buffer=False)
 
     recorder = None
     if record_file is not None:
+        from alf.utils.video_recorder import VideoRecorder
         recorder = VideoRecorder(env, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
     env.reset()
-    if recorder:
-        recorder.capture_frame()
+
     time_step = common.get_initial_time_step(env)
     algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
@@ -631,7 +636,7 @@ def play(root_dir,
     episode_length = 0
     episodes = 0
     while episodes < num_episodes:
-        time_step, policy_state, trans_state = _step(
+        time_step, policy_state, trans_state, info = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
@@ -641,7 +646,7 @@ def play(root_dir,
             metrics=[])
         episode_length += 1
         if recorder:
-            recorder.capture_frame()
+            recorder.capture_frame(info)
         else:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)

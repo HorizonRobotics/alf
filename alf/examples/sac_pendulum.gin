@@ -45,3 +45,5 @@ TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=True
 TrainerConfig.summary_interval=100
 TrainerConfig.replay_buffer_length=100000
+
+ReplayBuffer.enable_checkpoint=True

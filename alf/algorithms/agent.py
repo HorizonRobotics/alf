@@ -173,10 +173,13 @@ class Agent(OnPolicyAlgorithm):
         """Predict for one step."""
         new_state = AgentState()
         observation = time_step.observation
+        info = AgentInfo()
+
         if self._representation_learner is not None:
             repr_step = self._representation_learner.predict_step(
                 time_step, state.repr)
             new_state = new_state._replace(repr=repr_step.state)
+            info = info._replace(repr=repr_step.info)
             observation = repr_step.output
 
         if self._goal_generator is not None:
@@ -184,14 +187,16 @@ class Agent(OnPolicyAlgorithm):
                 time_step._replace(observation=observation),
                 state.goal_generator, epsilon_greedy)
             new_state = new_state._replace(goal_generator=goal_step.state)
+            info = info._replace(goal_generator=goal_step.info)
             observation = [observation, goal_step.output]
 
         rl_step = self._rl_algorithm.predict_step(
             time_step._replace(observation=observation), state.rl,
             epsilon_greedy)
         new_state = new_state._replace(rl=rl_step.state)
+        info = info._replace(rl=rl_step.info)
 
-        return AlgStep(output=rl_step.output, state=new_state, info=())
+        return AlgStep(output=rl_step.output, state=new_state, info=info)
 
     def rollout_step(self, time_step: TimeStep, state: AgentState):
         """Rollout for one step."""
