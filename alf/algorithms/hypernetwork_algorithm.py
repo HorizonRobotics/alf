@@ -237,8 +237,9 @@ class HyperNetwork(Algorithm):
         Args:
             noise (Tensor): input noise to self._generator. Default is None.
             num_particles (int): number of sampled particles. Default is None.
-                If both noise and num_particles are None, self._num_particles
-                will be used as batch_size for self._generator.
+                If both noise and num_particles are None, num_particles
+                provided to the constructor will be used as batch_size for 
+                self._generator.
             training (bool): whether or not training self._generator
 
         Returns:

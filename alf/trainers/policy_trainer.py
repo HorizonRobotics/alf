@@ -142,8 +142,7 @@ class Trainer(object):
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
 
-        self._random_seed = config.random_seed
-        self._random_seed = common.set_random_seed(self._random_seed)
+        self._random_seed = common.set_random_seed(config.random_seed)
 
     def train(self):
         """Perform training."""
@@ -196,7 +195,7 @@ class Trainer(object):
         """Closing operations after training. """
         pass
 
-    def _set_summary(self):
+    def _summarize_training_setting(self):
         def _markdownify(paragraph):
             return "    ".join(
                 (os.linesep + paragraph).splitlines(keepends=True))
@@ -217,7 +216,7 @@ class Trainer(object):
         self._checkpointer.save(global_step=global_step)
 
     def _restore_checkpoint(self, checkpointer):
-        """retore from saved checkpoint.
+        """Retore from saved checkpoint.
             
             Args:
                 checkpointer (Checkpointer):
@@ -384,9 +383,8 @@ class RLTrainer(Trainer):
                 # We need to wait for one iteration to get the operative args
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
-
                 with alf.summary.record_if(lambda: True):
-                    self._set_summary()
+                    self._summarize_training_setting()
 
             # check termination
             env_steps_metric = self._algorithm.get_step_metrics()[1]
@@ -528,9 +526,8 @@ class SLTrainer(Trainer):
                 # We need to wait for one iteration to get the operative args
                 # Right just give a fixed gin file name to store operative args
                 common.write_gin_configs(self._root_dir, "configured.gin")
-
                 with alf.summary.record_if(lambda: True):
-                    self._set_summary()
+                    self._summarize_training_setting()
 
             # check termination
             epoch_num += 1
