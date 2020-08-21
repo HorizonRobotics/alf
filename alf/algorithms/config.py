@@ -36,6 +36,7 @@ class TrainerConfig(object):
                  evaluate=False,
                  eval_interval=10,
                  epsilon_greedy=0.1,
+                 eval_uncertainty=False,
                  num_eval_episodes=10,
                  summary_interval=50,
                  update_counter_every_mini_batch=False,
@@ -70,10 +71,12 @@ class TrainerConfig(object):
                 The data transformer constructed by this can be access as
                 ``TrainerConfig.data_transformer``.
             random_seed (None|int): random seed, a random seed is used if None
-            num_iterations (int): number of update iterations (ignored if 0). Note
-                that for off-policy algorithms, if ``initial_collect_steps>0``,
-                then the first ``initial_collect_steps//(unroll_length*num_envs)``
-                iterations won't perform any training.
+            num_iterations (int): For RL trainer, indicates number of update 
+                iterations (ignored if 0). Note that for off-policy algorithms, if 
+                ``initial_collect_steps>0``, then the first 
+                ``initial_collect_steps//(unroll_length*num_envs)`` iterations 
+                won't perform any training. For SL trainer, indicates the number
+                of training epochs.
             num_env_steps (int): number of environment steps (ignored if 0). The
                 total number of FRAMES will be (``num_env_steps*frame_skip``) for
                 calculating sample efficiency. See alf/environments/wrappers.py
@@ -114,6 +117,7 @@ class TrainerConfig(object):
                 chance of action sampling instead of taking argmax. This can
                 help prevent a dead loop in some deterministic environment like
                 Breakout. Only used for evaluation.
+            eval_uncertainty (bool): whether to evluate uncertainty after training
             num_eval_episodes (int) : number of episodes for one evaluation
             summary_interval (int): write summary every so many training steps
             update_counter_every_mini_batch (bool): whether to update counter
@@ -183,6 +187,7 @@ class TrainerConfig(object):
             evaluate=evaluate,
             eval_interval=eval_interval,
             epsilon_greedy=epsilon_greedy,
+            eval_uncertainty=eval_uncertainty,
             num_eval_episodes=num_eval_episodes,
             summary_interval=summary_interval,
             update_counter_every_mini_batch=update_counter_every_mini_batch,
