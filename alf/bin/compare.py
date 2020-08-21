@@ -62,7 +62,7 @@ def get_metric(pattern, buffer, log_file):
 
 
 def get_avg(data, metric, i):
-    vs = [float(v["alg{}_{}".format(i, metric)]) for v in data]
+    vs = [float(v["alg{}_{}".format(i + 1, metric)]) for v in data]
     return np.mean(vs)
 
 
