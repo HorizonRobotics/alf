@@ -111,7 +111,8 @@ class TimeStep(
         """Get the cuda version of this data structure."""
         r = getattr(self, "_cuda", None)
         if r is None:
-            r = nest.map_structure(lambda x: x.cuda(), self)
+            r = nest.map_structure(
+                lambda x: x.cuda() if isinstance(x, torch.Tensor) else x, self)
             self._cuda = r
         return r
 
@@ -119,7 +120,8 @@ class TimeStep(
         """Get the cpu version of this data structure."""
         r = getattr(self, "_cpu", None)
         if r is None:
-            r = nest.map_structure(lambda x: x.cpu(), self)
+            r = nest.map_structure(
+                lambda x: x.cpu() if isinstance(x, torch.Tensor) else x, self)
             self._cpu = r
         return r
 

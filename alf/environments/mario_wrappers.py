@@ -19,7 +19,6 @@ import numpy as np
 from PIL import Image
 import gym
 from gym import spaces
-from alf.nest.utils import transform_nest
 
 # See https://github.com/openai/large-scale-curiosity/blob/ \
 #  0c3d179fd61ee46233199d0891c40fbe7964d3aa/wrappers.py#L155-L238
@@ -200,23 +199,3 @@ class FrameFormat(gym.Wrapper):
         if self._transpose:
             return np.transpose(ob, (2, 0, 1))
         return ob
-
-
-class FilterFieldsFromInfo(gym.Wrapper):
-    """
-    Format env_info to let sets go through.
-
-    Args:
-       env: gym env
-    """
-
-    def __init__(self, env, fields):
-        gym.Wrapper.__init__(self, env)
-        self._fields = fields
-
-    def step(self, action):
-        ob, reward, done, info = self.env.step(action)
-        if done:
-            for f in self._fields:
-                info = transform_nest(info, f, lambda _: ())
-        return ob, reward, done, info
