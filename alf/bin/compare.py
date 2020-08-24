@@ -75,7 +75,7 @@ def get_metric(pattern, buffer, log_file):
     match = re.search(pattern, buffer)
     assert match, "{} not found in {}, remove and re-run?".format(
         pattern, log_file)
-    return match.group(1)
+    return "{:.2f}".format(float(match.group(1)))
 
 
 def get_avg(data, metric, i):
@@ -98,6 +98,7 @@ def create_html(data, all_data, metrics):
         <script>
             $(document).ready(function () {
             $('#table_id').DataTable({
+                "autoWidth": false,
                 "aLengthMenu": [ [25, 50, 100, 200, -1], [25, 50, 100, 200, "All"] ], "iDisplayLength": -1,
                 "order": [[""" + '{}, "desc"], [{}, "asc"]]'.format(
         avgreturn_index, seed_index) + r"""
@@ -114,7 +115,7 @@ def create_html(data, all_data, metrics):
     html += "<br>Alg2: {}<br>".format(FLAGS.root_dir2)
     for m in metrics:
         html += "&nbsp;&nbsp;&nbsp;|{}: {}".format(m, get_avg(all_data, m, 1))
-    html += "<br>num_items: {}, have data for: {}<br>".format(
+    html += "<p>\nnum_items: {}, have data for: {}<br>\n".format(
         FLAGS.num_runs, len(all_data))
     percentiles = [.05, .1, .2, .4, .8, .99]
     counts = [0] * len(percentiles)
@@ -129,12 +130,13 @@ def create_html(data, all_data, metrics):
 
     # Table:
     html += """<p>
-    <table id="table_id" class="display">
+    <table id="table_id" class="display" width="50%">
       <thead>
         <tr>"""
     if data:
         for k, _ in data[0].items():
-            html += "          <th>{}</th>\n".format(k)
+            html += ("          <th style='word-break: break-word;'>{}</th>\n"
+                     ).format(k)
     html += """
     </tr>
       </thead>
@@ -203,8 +205,8 @@ def main(_):
                 value = get_metric(r"\] " + metric + r": (\S+)", lines,
                                    log_file)
                 item["alg{}_{}".format(i + 1, metric)] = value
-            item["logfile{}".format(i)] = '<a href="file://{}">{}</a>'.format(
-                log_file, log_file)
+            item["logfile{}".format(
+                i + 1)] = '<a href="file://{}">log_file</a>'.format(log_file)
         for metric in metrics:
             m1 = float(item["alg{}_{}".format(1, metric)])
             m2 = float(item["alg{}_{}".format(2, metric)])
