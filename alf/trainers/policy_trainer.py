@@ -112,7 +112,7 @@ class Trainer(object):
     summary, checkpointing, running training iterations, and evaluating periodically.
     """
 
-    _trainer_progress = _TrainerProgress()
+    _trainer_progress = None
 
     def __init__(self, config: TrainerConfig):
         """
@@ -120,6 +120,7 @@ class Trainer(object):
         Args:
             config (TrainerConfig): configuration used to construct this trainer
         """
+        Trainer._trainer_progress = _TrainerProgress()
         root_dir = os.path.expanduser(config.root_dir)
         os.makedirs(root_dir, exist_ok=True)
         logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
@@ -202,11 +203,11 @@ class Trainer(object):
         Returns:
             float: a number in :math:`[0,1]` indicating the training progress.
         """
-        return RLTrainer._trainer_progress.progress
+        return Trainer._trainer_progress.progress
 
     @staticmethod
     def current_iterations():
-        return RLTrainer._trainer_progress._iter_num
+        return Trainer._trainer_progress._iter_num
 
     @staticmethod
     def current_env_steps():
@@ -263,6 +264,7 @@ class Trainer(object):
 
         try:
             recovered_global_step = checkpointer.load()
+            self._trainer_progress.update()
         except Exception as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
