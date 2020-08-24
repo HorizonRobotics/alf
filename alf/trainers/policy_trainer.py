@@ -183,7 +183,6 @@ class Trainer(object):
             if ans.lower().startswith('y'):
                 self._save_checkpoint()
         finally:
-            self._save_checkpoint()
             self._close()
 
     def _train(self):
