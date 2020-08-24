@@ -19,7 +19,7 @@ import gym
 from alf.environments import suite_gym, alf_wrappers, process_environment
 from alf.environments.gym_wrappers import FrameSkip, FrameStack
 from alf.environments.mario_wrappers import MarioXReward, \
-    LimitedDiscreteActions, ProcessFrame84, FrameFormat
+    LimitedDiscreteActions, ProcessFrame84, FrameFormat, FilterFieldsFromInfo
 from alf.environments.utils import UnwrappedEnvChecker
 
 _unwrapped_env_checker_ = UnwrappedEnvChecker()
@@ -95,6 +95,8 @@ def load(game,
             env = FrameStack(env, stack_size=frame_stack)
         env = FrameFormat(env, data_format=data_format)
         env = LimitedDiscreteActions(env, buttons)
+        if not wrap_with_process:
+            env = FilterFieldsFromInfo(env, ["levels", "retro_episode.levels"])
         return suite_gym.wrap_env(
             env,
             env_id=env_id,
