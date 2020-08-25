@@ -45,6 +45,7 @@ flags.DEFINE_integer('num_videos', 2, 'Record videos for so many top diffs.')
 flags.DEFINE_string(
     'common_gin', '', 'Common config for the two sides, '
     'e.g. "--gin_param=\'GoalTask.random_range=5\'"')
+flags.DEFINE_integer('overwrite', 0, 'Overwrite cached files.')
 
 FLAGS = flags.FLAGS
 
@@ -58,8 +59,14 @@ def return_diff(item):
         abs(float(item["alg2_" + AVG_R_METRIC]))) + 1.e-5)
 
 
+def return_1_larger(item):
+    return float(item["alg1_" + AVG_R_METRIC]) > float(
+        item["alg2_" + AVG_R_METRIC])
+
+
 def file_exists(file):
-    return os.path.isfile(file) and os.stat(file).st_size > 100
+    return (not FLAGS.overwrite and os.path.isfile(file)
+            and os.stat(file).st_size > 100)
 
 
 def play_cmd(root_dir, seed):
@@ -83,58 +90,68 @@ def get_avg(data, metric, i):
     return np.mean(vs)
 
 
-def create_html(data, all_data, metrics):
+def create_html(data, all_data, metrics, abbr):
     """Creates the comparison in html content and return as string."""
     # Column ``AverageReturn_diff`` is after:
     #   one seed column, two sets of metrics, two log_file paths
     avgreturn_index = 2 * len(metrics) + 2 + 1
     seed_index = 0
 
-    html = r"""<html>
-        <script src="https://code.jquery.com/jquery-3.5.1.min.js"
-            integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
-        <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.21/css/jquery.dataTables.css">
-        <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.js"></script>
-        <script>
-            $(document).ready(function () {
+    html = r"""
+<html>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+        integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.21/css/jquery.dataTables.css">
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.js"></script>
+    <script>
+        $(document).ready(function () {
             $('#table_id').DataTable({
                 "autoWidth": false,
                 "aLengthMenu": [ [25, 50, 100, 200, -1], [25, 50, 100, 200, "All"] ], "iDisplayLength": -1,
                 "order": [[""" + '{}, "desc"], [{}, "asc"]]'.format(
         avgreturn_index, seed_index) + r"""
             });
-            });
-        </script>
-        <body>
-        """
+        });
+    </script>
+    <body><h3>Compare difference between algorithms</h3>
+    """
 
     # Summary:
-    html += "Alg1: {}<br>".format(FLAGS.root_dir1)
+    html += "\n<pre>Alg1: {}\n".format(FLAGS.root_dir1)
     for m in metrics:
-        html += "&nbsp;&nbsp;&nbsp;|{}: {}".format(m, get_avg(all_data, m, 0))
-    html += "<br>Alg2: {}<br>".format(FLAGS.root_dir2)
+        html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(m,
+                                                       get_avg(all_data, m, 0))
+    html += "\nAlg2: {}\n".format(FLAGS.root_dir2)
     for m in metrics:
-        html += "&nbsp;&nbsp;&nbsp;|{}: {}".format(m, get_avg(all_data, m, 1))
-    html += "<p>\nnum_items: {}, have data for: {}<br>\n".format(
+        html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(m,
+                                                       get_avg(all_data, m, 1))
+    html += "\nnum_items: {}, have data for: {}\n".format(
         FLAGS.num_runs, len(all_data))
     percentiles = [.05, .1, .2, .4, .8, .99]
     counts = [0] * len(percentiles)
-    html += "propotion_diffs:<br>\n"
+    wins = [0] * len(percentiles)
+    html += "propotion_diffs:\n"
     for item in data:
         diff = return_diff(item)
         for i, p in enumerate(percentiles):
             if diff > p:
                 counts[i] += 1
+                if return_1_larger(item):
+                    wins[i] += 1
     for i, p in enumerate(percentiles):
-        html += "diff > {:.2f}: {}<br>\n".format(p, counts[i] / len(all_data))
+        html += "diff > {:.2f}: {:.2f}, W: {:2d} vs L: {:2d}\n".format(
+            p, counts[i] / len(all_data), wins[i], counts[i] - wins[i])
 
     # Table:
-    html += """<p>
+    html += """</pre><p>
     <table id="table_id" class="display" width="50%">
       <thead>
         <tr>"""
     if data:
         for k, _ in data[0].items():
+            for i, metric in enumerate(metrics):
+                if metric in k:
+                    k = k.replace(metric, abbr[i])
             html += ("          <th style='word-break: break-word;'>{}</th>\n"
                      ).format(k)
     html += """
@@ -153,7 +170,12 @@ def create_html(data, all_data, metrics):
         html += "        </tr>\n"
     html += """
       </tbody>
-    </table>
+    </table>\n"""
+
+    # Column header abbreviations:
+    for i in range(len(metrics)):
+        html += "<br>-- " + abbr[i] + ": " + metrics[i]
+    html += r"""
   </body>
 </html>"""
     return html
@@ -174,6 +196,7 @@ def main(_):
     # generate runs
     dirs = [FLAGS.root_dir1, FLAGS.root_dir2]
     metrics = [AVG_R_METRIC, "AverageEpisodeLength"]
+    abbr = ["R", "L"]
     gin_str = ""
     if FLAGS.common_gin:
         gin_str = tokenize(FLAGS.common_gin)
@@ -246,11 +269,12 @@ def main(_):
     if not output_file:
         output_file = FLAGS.root_dir1 + "/compare{}-{}.html".format(
             gin_str, tokenize(FLAGS.root_dir2))
-    html = create_html(data, all_data, metrics)
+    html = create_html(data, all_data, metrics, abbr)
     f = open(output_file, 'w')
     assert f, "Cannot write to " + output_file
     f.write(html)
     f.close()
+    print("Done: ", output_file)
 
 
 if __name__ == '__main__':
