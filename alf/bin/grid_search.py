@@ -293,11 +293,11 @@ class GridSearch(object):
                 alf.set_default_device("cuda")
             logging.set_verbosity(logging.INFO)
 
-            logging.info("parameters %s" % parameters)
+            logging.info("Search parameters %s" % parameters)
             with gin.unlock_config():
                 gin.parse_config(
                     ['%s=%s' % (k, v) for k, v in parameters.items()])
-            train_eval(root_dir)
+            train_eval(FLAGS.ml_type, root_dir)
 
             device_queue.put(device)
         except Exception as e:
@@ -306,6 +306,7 @@ class GridSearch(object):
 
 
 def main(_):
+    FLAGS.alsologtostderr = True
     GridSearch(FLAGS.search_config).run()
 
 
