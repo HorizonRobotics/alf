@@ -106,11 +106,13 @@ class _TrainerProgress(nn.Module):
 
 
 class Trainer(object):
-    """Base class for trainers. 
+    """Base class for trainers.
 
     Trainer is responsible for creating algorithm and dataset/environment, setting up
     summary, checkpointing, running training iterations, and evaluating periodically.
     """
+
+    _trainer_progress = None
 
     def __init__(self, config: TrainerConfig):
         """
@@ -118,6 +120,7 @@ class Trainer(object):
         Args:
             config (TrainerConfig): configuration used to construct this trainer
         """
+        Trainer._trainer_progress = _TrainerProgress()
         root_dir = os.path.expanduser(config.root_dir)
         os.makedirs(root_dir, exist_ok=True)
         logging.get_absl_handler().use_absl_log_file(log_dir=root_dir)
@@ -153,6 +156,12 @@ class Trainer(object):
         logging.info("Use `kill -%s %s` to request checkpoint during training."
                      % (int(signal.SIGUSR2), os.getpid()))
 
+        self._debug_requested = False
+        signal.signal(signal.SIGUSR1, self._request_debug)
+        logging.info("Use `kill -%s %s` to request debugging." % (int(
+            signal.SIGUSR1), os.getpid()))
+
+        checkpoint_saved = False
         try:
             if self._config.profiling:
                 import cProfile, pstats, io
@@ -178,12 +187,31 @@ class Trainer(object):
 
                 logging.info(s.getvalue())
             self._save_checkpoint()
-        except:
-            ans = input("Do you want to save checkpoint? (y/n): ")
-            if ans.lower().startswith('y'):
-                self._save_checkpoint()
+            checkpoint_saved = True
         finally:
+            if not checkpoint_saved:
+                ans = input("Do you want to save checkpoint? (y/n): ")
+                if ans.lower().startswith('y'):
+                    self._save_checkpoint()
             self._close()
+
+    @staticmethod
+    def progress():
+        """A static method that returns the current training progress, provided
+        that only one trainer will be used for training.
+
+        Returns:
+            float: a number in :math:`[0,1]` indicating the training progress.
+        """
+        return Trainer._trainer_progress.progress
+
+    @staticmethod
+    def current_iterations():
+        return Trainer._trainer_progress._iter_num
+
+    @staticmethod
+    def current_env_steps():
+        return Trainer._trainer_progress._env_step
 
     def _train(self):
         """Perform training according the the learning type. """
@@ -215,13 +243,16 @@ class Trainer(object):
     def _request_checkpoint(self, signum, frame):
         self._checkpoint_requested = True
 
+    def _request_debug(self, signum, frame):
+        self._debug_requested = True
+
     def _save_checkpoint(self):
         global_step = alf.summary.get_global_counter()
         self._checkpointer.save(global_step=global_step)
 
     def _restore_checkpoint(self, checkpointer):
         """Retore from saved checkpoint.
-            
+
             Args:
                 checkpointer (Checkpointer):
         """
@@ -233,6 +264,7 @@ class Trainer(object):
 
         try:
             recovered_global_step = checkpointer.load()
+            self._trainer_progress.update()
         except Exception as e:
             raise RuntimeError(
                 ("Checkpoint loading failed from the provided root_dir={}. "
@@ -249,8 +281,6 @@ class Trainer(object):
 
 class RLTrainer(Trainer):
     """Trainer for reinforcement learning. """
-
-    _trainer_progress = _TrainerProgress()
 
     def __init__(self, config: TrainerConfig):
         """
@@ -336,24 +366,6 @@ class RLTrainer(Trainer):
             env.close()
         self._unwrapped_env.close()
 
-    @staticmethod
-    def progress():
-        """A static method that returns the current training progress, provided
-        that only one trainer will be used for training.
-
-        Returns:
-            float: a number in :math:`[0,1]` indicating the training progress.
-        """
-        return RLTrainer._trainer_progress.progress
-
-    @staticmethod
-    def current_iterations():
-        return RLTrainer._trainer_progress._iter_num
-
-    @staticmethod
-    def current_env_steps():
-        return RLTrainer._trainer_progress._env_step
-
     def _train(self):
         for env in self._envs:
             env.reset()
@@ -415,6 +427,11 @@ class RLTrainer(Trainer):
                 self._save_checkpoint()
                 self._checkpoint_requested = False
 
+            if self._debug_requested:
+                self._debug_requested = False
+                import pdb
+                pdb.set_trace()
+
     def _close(self):
         """Closing operations after training. """
         self._close_envs()
@@ -463,8 +480,6 @@ class RLTrainer(Trainer):
 class SLTrainer(Trainer):
     """Trainer for supervised learning. """
 
-    _trainer_progress = _TrainerProgress()
-
     def __init__(self, config: TrainerConfig):
         """Create a SLTrainer
 
@@ -493,16 +508,6 @@ class SLTrainer(Trainer):
             config=config)
 
         self._algorithm.set_data_loader(trainset, testset)
-
-    @staticmethod
-    def progress():
-        """A static method that returns the current training progress, provided
-        that only one trainer will be used for training.
-
-        Returns:
-            float: a number in :math:`[0,1]` indicating the training progress.
-        """
-        return SLTrainer._trainer_progress.progress
 
     def _create_dataset(self):
         """Create data loaders."""
@@ -541,6 +546,15 @@ class SLTrainer(Trainer):
             if self._num_epochs and epoch_num >= time_to_checkpoint:
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
+            elif self._checkpoint_requested:
+                logging.info("Saving checkpoint upon request...")
+                self._save_checkpoint()
+                self._checkpoint_requested = False
+
+            if self._debug_requested:
+                self._debug_requested = False
+                import pdb
+                pdb.set_trace()
 
     def _restore_checkpoint(self):
         checkpointer = Checkpointer(
