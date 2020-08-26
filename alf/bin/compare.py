@@ -208,6 +208,7 @@ def main(_):
         seed += FLAGS.start_from
         item = collections.OrderedDict()
         item["seed"] = seed
+        vs = ["", ""]
         for i, root_dir in enumerate(dirs):
             mp4_f = root_dir + "/play-seed_{}{}.mp4".format(seed, gin_str)
             log_file = root_dir + "/play-log-seed_{}{}.txt".format(
@@ -221,7 +222,7 @@ def main(_):
                 f.write(command + "\n")
                 f.close()
                 os.system(command)
-            item["video{}".format(i + 1)] = mp4_f
+            vs[i] = mp4_f
 
             # extract values
             f = open(log_file, 'r')
@@ -239,6 +240,8 @@ def main(_):
             m2 = float(item["alg{}_{}".format(2, metric)])
             diff = m1 - m2
             item["{}_diff".format(metric)] = diff
+        item["video1"] = vs[0]
+        item["video2"] = vs[1]
         all_data.append(item)
         if return_diff(item) > 0.05:  # >5% diff
             data.append(item)
