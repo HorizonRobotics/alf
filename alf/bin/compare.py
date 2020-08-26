@@ -71,7 +71,7 @@ def file_exists(file):
 
 def play_cmd(root_dir, seed):
     return ("cd {root_dir} && "
-            "python3 -m alf.bin.play --root_dir={root_dir}"
+            "python3 -m alf.bin.play "
             " --random_seed={seed} --num_episodes=1"
             " --verbosity=1 --root_dir=`pwd` --sleep_time_per_step=0"
             " --epsilon_greedy=0 {g}").format(
@@ -208,16 +208,20 @@ def main(_):
         seed += FLAGS.start_from
         item = collections.OrderedDict()
         item["seed"] = seed
-        for i in range(2):
-            root_dir = dirs[i]
-            log_file = root_dir + "/log-seed_{}{}.txt".format(seed, gin_str)
-            command = play_cmd(root_dir, seed) + " 2>> {}".format(log_file)
-            if not file_exists(log_file):
+        for i, root_dir in enumerate(dirs):
+            mp4_f = root_dir + "/play-seed_{}{}.mp4".format(seed, gin_str)
+            log_file = root_dir + "/play-log-seed_{}{}.txt".format(
+                seed, gin_str)
+            command = play_cmd(root_dir,
+                               seed) + " --record_file={} 2>> {}".format(
+                                   mp4_f, log_file)
+            if not file_exists(mp4_f):
                 f = open(log_file, 'w')
                 assert f, "cannot write to " + log_file
                 f.write(command + "\n")
                 f.close()
                 os.system(command)
+            item["video{}".format(i + 1)] = mp4_f
 
             # extract values
             f = open(log_file, 'r')
@@ -239,30 +243,11 @@ def main(_):
         if return_diff(item) > 0.05:  # >5% diff
             data.append(item)
 
+    # Skipping this section as recording video affects the randomness in gazebo_base.
     # analyze results to record videos
-    abs_avg = [abs(v[AVG_R_DIFF]) for v in data]
-    idx = heapq.nlargest(FLAGS.num_videos, range(len(data)),
-                         abs_avg.__getitem__)
-    for k, item in enumerate(data):
-        vs = ["", ""]
-        seed = item["seed"]
-        if k in idx:
-            for i, root_dir in enumerate(dirs):
-                mp4_f = root_dir + "/play-seed_{}.mp4".format(seed)
-                log_file = root_dir + "/play-log-seed_{}{}.txt".format(
-                    seed, gin_str)
-                command = play_cmd(root_dir,
-                                   seed) + " --record_file={} 2>> {}".format(
-                                       mp4_f, log_file)
-                if not file_exists(mp4_f):
-                    f = open(log_file, 'w')
-                    assert f, "cannot write to " + log_file
-                    f.write(command + "\n")
-                    f.close()
-                    os.system(command)
-                vs[i] = mp4_f
-        item["video1"] = vs[0]
-        item["video2"] = vs[1]
+    # abs_avg = [abs(v[AVG_R_DIFF]) for v in data]
+    # idx = heapq.nlargest(FLAGS.num_videos, range(len(data)),
+    #                      abs_avg.__getitem__)
 
     # create html
     output_file = FLAGS.output_file
