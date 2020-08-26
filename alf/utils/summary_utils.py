@@ -239,7 +239,8 @@ def summarize_action_dist(action_distributions, name="action_dist"):
                                       dist[..., a])
         else:
             dist = dist_utils.get_base_dist(dist)
-            if not isinstance(dist, td.Normal):
+            if not (isinstance(dist, td.Normal)
+                    or isinstance(dist, dist_utils.StableCauchy)):
                 continue
             loc = dist.loc
             log_scale = dist.scale.log()

@@ -87,6 +87,26 @@ class DistributionSpecTest(alf.test.TestCase):
         self.assertRaises(RuntimeError, spec.build_distribution,
                           {'loc': torch.tensor([1., 2.])})
 
+    def test_diag_multivariate_cauchy(self):
+        dist = dist_utils.DiagMultivariateCauchy(
+            torch.tensor([[1., 2.], [2., 2.]]),
+            torch.tensor([[2., 3.], [1., 1.]]))
+        spec = dist_utils.DistributionSpec.from_distribution(dist)
+
+        params1 = {
+            'loc': torch.tensor([[0.5, 1.5], [1.0, 1.0]]),
+            'scale': torch.tensor([[2., 4.], [2., 1.]])
+        }
+        dist1 = spec.build_distribution(params1)
+        self.assertEqual(dist1.event_shape, dist.event_shape)
+        self.assertEqual(type(dist1), dist_utils.DiagMultivariateCauchy)
+        self.assertEqual(type(dist1.base_dist), dist_utils.StableCauchy)
+        self.assertEqual(dist1.base_dist.loc, params1['loc'])
+        self.assertEqual(dist1.base_dist.scale, params1['scale'])
+
+        self.assertRaises(RuntimeError, spec.build_distribution,
+                          {'loc': torch.tensor([1., 2.])})
+
     def test_transformed(self):
         normal_dist = dist_utils.DiagMultivariateNormal(
             torch.tensor([[1., 2.], [2., 2.]]),
