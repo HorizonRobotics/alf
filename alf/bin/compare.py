@@ -41,7 +41,6 @@ flags.DEFINE_string('root_dir2', None, 'Root directory for algorithm two.')
 flags.DEFINE_string('output_file', None, 'output html file.')
 flags.DEFINE_integer('num_runs', 10, 'Compare on so many runs.')
 flags.DEFINE_integer('start_from', 0, 'Start random seeds from here.')
-flags.DEFINE_integer('num_videos', 2, 'Record videos for so many top diffs.')
 flags.DEFINE_string(
     'common_gin', '', 'Common config for the two sides, '
     'e.g. "--gin_param=\'GoalTask.random_range=5\'"')
@@ -53,23 +52,23 @@ AVG_R_METRIC = "AverageReturn"
 AVG_R_DIFF = AVG_R_METRIC + "_diff"
 
 
-def return_diff(item):
+def _return_diff(item):
     return abs(item[AVG_R_DIFF]) / (max(
         abs(float(item["alg1_" + AVG_R_METRIC])),
         abs(float(item["alg2_" + AVG_R_METRIC]))) + 1.e-5)
 
 
-def return_1_larger(item):
+def _return_1_larger(item):
     return float(item["alg1_" + AVG_R_METRIC]) > float(
         item["alg2_" + AVG_R_METRIC])
 
 
-def file_exists(file):
+def _file_exists(file):
     return (not FLAGS.overwrite and os.path.isfile(file)
             and os.stat(file).st_size > 100)
 
 
-def play_cmd(root_dir, seed):
+def _play_cmd(root_dir, seed):
     return ("cd {root_dir} && "
             "python3 -m alf.bin.play "
             " --random_seed={seed} --num_episodes=1"
@@ -78,19 +77,19 @@ def play_cmd(root_dir, seed):
                 root_dir=root_dir, seed=seed, g=FLAGS.common_gin)
 
 
-def get_metric(pattern, buffer, log_file):
+def _get_metric(pattern, buffer, log_file):
     match = re.search(pattern, buffer)
     assert match, "{} not found in {}, remove and re-run?".format(
         pattern, log_file)
     return "{:.2f}".format(float(match.group(1)))
 
 
-def get_avg(data, metric, i):
+def _get_avg(data, metric, i):
     vs = [float(v["alg{}_{}".format(i + 1, metric)]) for v in data]
     return np.mean(vs)
 
 
-def create_html(data, all_data, metrics, abbr):
+def _create_html(data, all_data, metrics, abbr):
     """Creates the comparison in html content and return as string."""
     # Column ``AverageReturn_diff`` is after:
     #   one seed column, two sets of metrics, two log_file paths
@@ -119,12 +118,12 @@ def create_html(data, all_data, metrics, abbr):
     # Summary:
     html += "\n<pre>Alg1: {}\n".format(FLAGS.root_dir1)
     for m in metrics:
-        html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(m,
-                                                       get_avg(all_data, m, 0))
+        html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(
+            m, _get_avg(all_data, m, 0))
     html += "\nAlg2: {}\n".format(FLAGS.root_dir2)
     for m in metrics:
-        html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(m,
-                                                       get_avg(all_data, m, 1))
+        html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(
+            m, _get_avg(all_data, m, 1))
     html += "\nnum_items: {}, have data for: {}\n".format(
         FLAGS.num_runs, len(all_data))
     percentiles = [.05, .1, .2, .4, .8, .99]
@@ -132,11 +131,11 @@ def create_html(data, all_data, metrics, abbr):
     wins = [0] * len(percentiles)
     html += "propotion_diffs:\n"
     for item in data:
-        diff = return_diff(item)
+        diff = _return_diff(item)
         for i, p in enumerate(percentiles):
             if diff > p:
                 counts[i] += 1
-                if return_1_larger(item):
+                if _return_1_larger(item):
                     wins[i] += 1
     for i, p in enumerate(percentiles):
         html += "diff > {:.2f}: {:.2f}, W: {:2d} vs L: {:2d}\n".format(
@@ -181,7 +180,7 @@ def create_html(data, all_data, metrics, abbr):
     return html
 
 
-def tokenize(s):
+def _tokenize(s):
     s = s.replace("--gin_param=", "")
     s = s.replace("'", "")
     s = s.replace('"', "")
@@ -192,14 +191,14 @@ def tokenize(s):
 
 
 def main(_):
-    """main function"""
+    """main function."""
     # generate runs
     dirs = [FLAGS.root_dir1, FLAGS.root_dir2]
     metrics = [AVG_R_METRIC, "AverageEpisodeLength"]
     abbr = ["R", "L"]
     gin_str = ""
     if FLAGS.common_gin:
-        gin_str = tokenize(FLAGS.common_gin)
+        gin_str = _tokenize(FLAGS.common_gin)
         gin_str = "-" + gin_str
 
     data = []  # used for displaying diffs in final HTML
@@ -213,10 +212,10 @@ def main(_):
             mp4_f = root_dir + "/play-seed_{}{}.mp4".format(seed, gin_str)
             log_file = root_dir + "/play-log-seed_{}{}.txt".format(
                 seed, gin_str)
-            command = play_cmd(root_dir,
-                               seed) + " --record_file={} 2>> {}".format(
-                                   mp4_f, log_file)
-            if not file_exists(mp4_f):
+            command = _play_cmd(root_dir,
+                                seed) + " --record_file={} 2>> {}".format(
+                                    mp4_f, log_file)
+            if not _file_exists(mp4_f):
                 f = open(log_file, 'w')
                 assert f, "cannot write to " + log_file
                 f.write(command + "\n")
@@ -230,8 +229,8 @@ def main(_):
             lines = f.read().replace('\n', ' ')
             f.close()
             for metric in metrics:
-                value = get_metric(r"\] " + metric + r": (\S+)", lines,
-                                   log_file)
+                value = _get_metric(r"\] " + metric + r": (\S+)", lines,
+                                    log_file)
                 item["alg{}_{}".format(i + 1, metric)] = value
             item["logfile{}".format(
                 i + 1)] = '<a href="file://{}">log_file</a>'.format(log_file)
@@ -243,7 +242,7 @@ def main(_):
         item["video1"] = vs[0]
         item["video2"] = vs[1]
         all_data.append(item)
-        if return_diff(item) > 0.05:  # >5% diff
+        if _return_diff(item) > 0.05:  # >5% diff
             data.append(item)
 
     # Skipping this section as recording video affects the randomness in gazebo_base.
@@ -256,8 +255,8 @@ def main(_):
     output_file = FLAGS.output_file
     if not output_file:
         output_file = FLAGS.root_dir1 + "/compare{}-{}.html".format(
-            gin_str, tokenize(FLAGS.root_dir2))
-    html = create_html(data, all_data, metrics, abbr)
+            gin_str, _tokenize(FLAGS.root_dir2))
+    html = _create_html(data, all_data, metrics, abbr)
     f = open(output_file, 'w')
     assert f, "Cannot write to " + output_file
     f.write(html)
