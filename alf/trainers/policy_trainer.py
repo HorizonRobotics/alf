@@ -582,6 +582,7 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
     return next_time_step, policy_step.state, trans_state, policy_step.info
 
 
+@common.mark_play
 def play(root_dir,
          env,
          algorithm,

@@ -709,8 +709,10 @@ EXE_MODE_OTHER = 0
 EXE_MODE_ROLLOUT = 1
 # Replay, policy evaluation on experience and training
 EXE_MODE_REPLAY = 2
-# Evaluation / testing or playing a learned model
+# Evaluation / testing a learned model
 EXE_MODE_EVAL = 3
+# Playing a learned model for manual observation or recording
+EXE_MODE_PLAY = 4
 
 # Global execution mode to track where the program is in the RL training process.
 # This is used currently for observation normalization to only update statistics
@@ -718,7 +720,7 @@ EXE_MODE_EVAL = 3
 # network output values, evaluation of the same network during rollout vs eval vs
 # replay will be plotted to different graphs.
 _exe_mode = EXE_MODE_OTHER
-_exe_mode_strs = ["other", "rollout", "replay", "eval"]
+_exe_mode_strs = ["other", "rollout", "replay", "eval", "play"]
 
 
 def set_exe_mode(mode):
@@ -740,21 +742,28 @@ def exe_mode_name():
 
 def is_eval():
     """Return a bool value indicating whether the current code belongs to
-    unrolling or training.
+    evaluation mode or others.
     """
     return _exe_mode == EXE_MODE_EVAL
 
 
+def is_play():
+    """Return a bool value indicating whether the current code belongs to
+    play or other modes.
+    """
+    return _exe_mode == EXE_MODE_PLAY
+
+
 def is_replay():
     """Return a bool value indicating whether the current code belongs to
-    unrolling or training.
+    replay for training or other modes.
     """
     return _exe_mode == EXE_MODE_REPLAY
 
 
 def is_rollout():
     """Return a bool value indicating whether the current code belongs to
-    unrolling or training.
+    unrolling or others.
     """
     return _exe_mode == EXE_MODE_ROLLOUT
 
@@ -770,6 +779,24 @@ def mark_eval(func):
     def _func(*args, **kwargs):
         old_mode = _exe_mode
         set_exe_mode(EXE_MODE_EVAL)
+        ret = func(*args, **kwargs)
+        set_exe_mode(old_mode)
+        return ret
+
+    return _func
+
+
+def mark_play(func):
+    """A decorator that will automatically mark the ``_exe_mode`` flag when
+    entering/exiting a play function.
+
+    Args:
+        func (Callable): a function
+    """
+
+    def _func(*args, **kwargs):
+        old_mode = _exe_mode
+        set_exe_mode(EXE_MODE_PLAY)
         ret = func(*args, **kwargs)
         set_exe_mode(old_mode)
         return ret

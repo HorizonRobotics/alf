@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 import gin
 import numpy as np
 import functools
@@ -378,6 +379,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         alf.summary.scalar(
             "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
             torch.mean(init_costs))
+        if common.is_play():
+            if plan_success[0] > 0:
+                outcome = "plan success: "
+            else:
+                outcome = "plan fail: "
+            logging.info(outcome + "init_cost: " + str(init_costs) +
+                         " plan_cost:" + str(costs) + ", " +
+                         str(observation["achieved_goal"]) + " -> " +
+                         str(goals) + " -> " +
+                         str(observation["desired_goal"]))
         subgoal = torch.where(plan_success, subgoal,
                               observation["desired_goal"])
         return subgoal
