@@ -71,7 +71,10 @@ class OffPolicyAlgorithm(RLAlgorithm):
                 self.summarize_metrics()
 
         self.train()
-        steps = self.train_from_replay_buffer(update_global_counter=True)
+        steps = 0
+        if not self.skip_training():
+            # If a container, we skip the training to save time
+            steps = self.train_from_replay_buffer(update_global_counter=True)
 
         with record_time("time/after_train_iter"):
             train_info = experience.rollout_info

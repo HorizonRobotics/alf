@@ -216,7 +216,7 @@ def convert_device(nests):
         raise NotImplementedError("Unknown device %s" % d)
 
 
-def grad(nested, objective):
+def grad(nested, objective, retain_graph=False):
     """Compute the gradients of an ``objective`` `w.r.t` each variable in
     ``nested``. It will simply call ``torch.autograd.grad`` after flattening the
     nest, and then pack the flat list back to a structure like ``nested``.
@@ -224,9 +224,14 @@ def grad(nested, objective):
     Args:
         nested (nest): a nest of variables that require grads.
         objective (Tensor): a tensor whose gradients will be computed.
+        retain_graph (bool): if True, after autograd the computational graph
+            won't be freed
     """
     return nest.pack_sequence_as(
-        nested, list(torch.autograd.grad(objective, nest.flatten(nested))))
+        nested,
+        list(
+            torch.autograd.grad(
+                objective, nest.flatten(nested), retain_graph=retain_graph)))
 
 
 def zeros_like(nested):

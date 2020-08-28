@@ -723,7 +723,7 @@ def calc_default_target_entropy(spec, min_prob=0.1):
     zeros = np.zeros(spec.shape)
     min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
     cont = spec.is_continuous
-    log_mp = np.log(min_prob)
+    log_mp = np.log(min_prob + 1e-30)
     e = np.sum([(np.log(M - m) + log_mp if cont else _calc_discrete_entropy(
         m, M, log_mp)) for m, M, _ in min_max])
     return e

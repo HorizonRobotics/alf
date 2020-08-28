@@ -449,7 +449,8 @@ class RLAlgorithm(Algorithm):
                                       policy_state)
 
             t0 = time.time()
-            self.observe_for_replay(exp)
+            if not self.skip_training():
+                self.observe_for_replay(exp)
             store_exp_time += time.time() - t0
 
             exp_for_training = Experience(

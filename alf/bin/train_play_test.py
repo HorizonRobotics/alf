@@ -472,6 +472,12 @@ class TrainPlayTest(alf.test.TestCase):
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_dyna_actrepeat_sac_pickplace(self):
+        self._test(
+            gin_file="dyna_actrepeat_sac_pickplace.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_sac_cart_pole(self):
         self._test(
             gin_file='sac_cart_pole.gin',

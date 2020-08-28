@@ -59,6 +59,8 @@ class Agent(OnPolicyAlgorithm):
                  enforce_entropy_target=False,
                  entropy_target_cls=None,
                  optimizer=None,
+                 pass_config_to_rl_algorithm=False,
+                 skip_training=False,
                  debug_summaries=False,
                  name="AgentAlgorithm"):
         """
@@ -95,6 +97,13 @@ class Agent(OnPolicyAlgorithm):
             entropy_target_cls (type): If provided, will be used to dynamically
                 adjust entropy regularization.
             optimizer (tf.optimizers.Optimizer): The optimizer for training
+            pass_config_to_rl_algorithm (bool): whether to pass ``config`` down
+                to ``self._rl_algorithm``. Typically this flag should be ``False``
+                because ``Agent`` class will be responsible for configuring the
+                training. Sometimes if ``self._rl_algorithm`` has its own training
+                procedure then this flag can be set to ``True``.
+            skip_training (bool): If True, ``Agent`` is just a container to hold
+                child algorithms without any training loss.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
             """
@@ -120,10 +129,13 @@ class Agent(OnPolicyAlgorithm):
             ]
 
         ## 2. rl algorithm
-        rl_algorithm = rl_algorithm_cls(
+        rl_kwargs = dict(
             observation_spec=rl_observation_spec,
             action_spec=action_spec,
             debug_summaries=debug_summaries)
+        if pass_config_to_rl_algorithm:
+            rl_kwargs["config"] = config
+        rl_algorithm = rl_algorithm_cls(**rl_kwargs)
         agent_helper.register_algorithm(rl_algorithm, "rl")
         # Whether the agent is on-policy or not depends on its rl algorithm.
         self._is_on_policy = rl_algorithm.is_on_policy()
@@ -160,6 +172,7 @@ class Agent(OnPolicyAlgorithm):
         self._irm = intrinsic_reward_module
         self._goal_generator = goal_generator
         self._agent_helper = agent_helper
+        self._skip_training = skip_training
         # Set ``use_rollout_state``` for all submodules using the setter.
         # Need to make sure that no submodules use ``self._use_rollout_state``
         # before this line.
@@ -167,6 +180,9 @@ class Agent(OnPolicyAlgorithm):
 
     def is_on_policy(self):
         return self._is_on_policy
+
+    def skip_training(self):
+        return self._skip_training
 
     def predict_step(self, time_step: TimeStep, state: AgentState,
                      epsilon_greedy):
