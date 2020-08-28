@@ -637,11 +637,15 @@ def play(root_dir,
     recorder = None
     if record_file is not None:
         recorder = VideoRecorder(env, path=record_file)
+        recorder.capture_frame()
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
     env.reset()
-
+    if recorder:
+        recorder.capture_frame()
+    else:
+        env.render(mode='human')
     time_step = common.get_initial_time_step(env)
     algorithm.eval()
     policy_state = algorithm.get_initial_predict_state(env.batch_size)
