@@ -637,8 +637,10 @@ def play(root_dir,
     recorder = None
     if record_file is not None:
         recorder = VideoRecorder(env, path=record_file)
-    # pybullet_envs need to render() before reset() to enable mode='human'
-    env.render(mode='human')
+        env.render(mode='rgb_array')
+    else:
+        # pybullet_envs need to render() before reset() to enable mode='human'
+        env.render(mode='human')
     env.reset()
     if recorder:
         recorder.capture_frame()
