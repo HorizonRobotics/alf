@@ -62,10 +62,7 @@ def histogram_discrete(name, data, bucket_min, bucket_max, step=None):
     # For N bins, there should be N+1 bin edges
     bin_edges = bins.to(torch.float32) - 0.5
     bin_edges = torch.cat([bin_edges, bin_edges[-1:] + 1.])
-    alf.summary.histogram(name,
-                          data,
-                          step=step,
-                          bins=bin_edges)
+    alf.summary.histogram(name, data, step=step, bins=bin_edges)
 
 
 @_summary_wrapper
@@ -172,6 +169,8 @@ def summarize_loss(loss_info: LossInfo):
     Args:
         loss_info (LossInfo): ``loss_info.extra`` must be a namedtuple
     """
+    if not loss_info.loss:
+        return
     alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
