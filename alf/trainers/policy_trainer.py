@@ -37,6 +37,7 @@ from alf.utils import math_ops
 from alf.utils.checkpoint_utils import Checkpointer
 import alf.utils.datagen as datagen
 from alf.utils.summary_utils import record_time
+from alf.utils.video_recorder import VideoRecorder
 
 
 @gin.configurable
@@ -634,7 +635,6 @@ def play(root_dir,
 
     recorder = None
     if record_file is not None:
-        from alf.utils.video_recorder import VideoRecorder
         recorder = VideoRecorder(env, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
