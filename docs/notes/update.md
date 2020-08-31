@@ -15,8 +15,7 @@ ALF source root, ALF_VERSION to represent the name of the new version (e.g. 0.1.
    cd $ALF_ROOT
    python -m unittest discover -s alf -p "*_test.py" -v
    ```
-2. Modify [setup.py](../../setup.py), [.ci-cd/requirements.txt](../../.ci-cd/requirements.txt) and [.ci-cd/Dockerfile.cpu](../../.ci-cd/Dockerfile.cpu). If you are updating tensorflow, you need update Dockerfile.cpu to use the appropriate
-   tensorflow docker image.
+2. Modify [setup.py](../../setup.py), [.ci-cd/requirements.txt](../../.ci-cd/requirements.txt) and [.ci-cd/Dockerfile.cpu](../../.ci-cd/Dockerfile.cpu). If you are updating pytorch, you need update Dockerfile.cpu to use the appropriate pytorch docker image.
 3. Build the new docker image:
    ```bash
    cd $ALF_ROOT/.ci-cd
