@@ -169,9 +169,8 @@ def summarize_loss(loss_info: LossInfo):
     Args:
         loss_info (LossInfo): ``loss_info.extra`` must be a namedtuple
     """
-    if not loss_info.loss:
-        return
-    alf.summary.scalar('loss', data=loss_info.loss)
+    if loss_info.loss != ():
+        alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
     # Support extra as namedtuple or dict (more flexible)
