@@ -22,8 +22,6 @@ from alf.utils import common
 try:
     import matplotlib.pyplot as plt
 except ImportError:
-    common.warning_once("matplotlib is not installed; prediction info will not"
-                        " be plotted when rendering videos.")
     plt = None
 
 from gym.wrappers.monitoring.video_recorder import VideoRecorder as GymVideoRecorder
@@ -169,8 +167,13 @@ class VideoRecorder(GymVideoRecorder):
                     'path=%s metadata_path=%s', self.path, self.metadata_path)
                 self.broken = True
         else:
-            if pred_info is not None and plt is not None:
-                frame = self._plot_pred_info(frame, pred_info)
+            if pred_info is not None:
+                if plt is not None:
+                    frame = self._plot_pred_info(frame, pred_info)
+                else:
+                    common.warning_once(
+                        "matplotlib is not installed; prediction info will not "
+                        "be plotted when rendering videos.")
 
             self.last_frame = frame
             if self.ansi_mode:
