@@ -27,6 +27,7 @@ setup(
         'fasteners',
         'gin-config@git+https://github.com/HorizonRobotics/gin-config.git',
         'gym == 0.12.5',
+        'pyglet == 1.3.2',  # higher version breaks classic control rendering
         'matplotlib',
         'numpy',
         'opencv-python >= 3.4.1.15',

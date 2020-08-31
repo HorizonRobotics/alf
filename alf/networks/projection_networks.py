@@ -310,3 +310,69 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
             self._means_projection_layer(inputs) * stds)
 
         return self._normal_dist(means, stds), state
+
+
+@gin.configurable
+class CauchyProjectionNetwork(NormalProjectionNetwork):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 squash_median=True,
+                 scale_bias_initializer_value=0.0,
+                 state_dependent_scale=False,
+                 scale_transform=nn.functional.softplus,
+                 **kwargs):
+        """Similar to ``NormalProjectionNetwork`` except that the output
+        distribution is a ``DiagMultivariateCauchy``. Also since Cauchy doesn't
+        have mean or std, we provide parameters for its median and scale instead.
+        But the median and scale will just reuse the code for handling mean and std
+        in ``NormalProjectionNetwork``.
+
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            squash_median (bool): If True, squash the output median to fit the
+                action spec. If ``scale_distribution`` is also True, this value
+                will be ignored.
+            scale_bias_initializer_value (float): Initial value for the bias of the
+                scale projection layer.
+            state_dependent_scale (bool): If True, scale will be generated depending
+                on the current state; otherwise a global scale will be generated
+                regardless of the current state.
+            scale_transform (Callable): Transform to apply to the scale, on top of
+                `activation`.
+        """
+        super(CauchyProjectionNetwork, self).__init__(
+            input_size=input_size,
+            action_spec=action_spec,
+            squash_mean=squash_median,
+            std_bias_initializer_value=scale_bias_initializer_value,
+            state_dependent_std=state_dependent_scale,
+            std_transform=scale_transform,
+            **kwargs)
+
+    def forward(self, inputs, state=()):
+        median = self._mean_transform(self._means_projection_layer(inputs))
+        scale = self._std_transform(self._std_projection_layer(inputs))
+        return self._cauchy_dist(median, scale), state
+
+    def _cauchy_dist(self, median, scale):
+        cauchy_dist = dist_utils.DiagMultivariateCauchy(
+            loc=median, scale=scale)
+        if self._scale_distribution:
+            # The transformed distribution can also do reparameterized sampling
+            # i.e., `.has_rsample=True`
+            # Note that in some cases kl_divergence might no longer work for this
+            # distribution! Assuming the same `transforms`, below will work:
+            # ````
+            # kl_divergence(Independent, Independent)
+            #
+            # kl_divergence(TransformedDistribution(Independent, transforms),
+            #               TransformedDistribution(Independent, transforms))
+            # ````
+            squashed_dist = td.TransformedDistribution(
+                base_distribution=cauchy_dist, transforms=self._transforms)
+            return squashed_dist
+        else:
+            return cauchy_dist
