@@ -181,6 +181,9 @@ class VideoRecorder(GymVideoRecorder):
             else:
                 self._encode_image_frame(frame)
 
+            assert not self.broken, (
+                "The output file is broken! Check warning messages.")
+
     def _plot_prob_curve(self, name, probs, xticks=None):
         if xticks is None:
             xticks = range(len(probs))
