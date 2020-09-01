@@ -455,7 +455,7 @@ class Conv2D(nn.Module):
                  activation=torch.relu_,
                  strides=1,
                  padding=0,
-                 use_bias=True,
+                 use_bias=None,
                  use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -472,7 +472,7 @@ class Conv2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool): whether use bias
+            use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a variance_scaling_initializer with gain as
@@ -483,6 +483,8 @@ class Conv2D(nn.Module):
             bias_init_value (float): a constant
         """
         super(Conv2D, self).__init__()
+        if use_bias is None:
+            use_bias = not use_bn
         self._activation = activation
         self._conv2d = nn.Conv2d(
             in_channels,
@@ -532,7 +534,7 @@ class ParallelConv2D(nn.Module):
                  activation=torch.relu_,
                  strides=1,
                  padding=0,
-                 use_bias=True,
+                 use_bias=None,
                  use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -551,7 +553,7 @@ class ParallelConv2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool): whether use bias
+            use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a ``variance_scaling_initializer`` with gain
@@ -562,6 +564,8 @@ class ParallelConv2D(nn.Module):
             bias_init_value (float): a constant
         """
         super(ParallelConv2D, self).__init__()
+        if use_bias is None:
+            use_bias = not use_bn
         self._activation = activation
         self._n = n
         self._in_channels = in_channels
@@ -682,7 +686,7 @@ class ConvTranspose2D(nn.Module):
                  activation=torch.relu_,
                  strides=1,
                  padding=0,
-                 use_bias=True,
+                 use_bias=None,
                  use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -700,7 +704,7 @@ class ConvTranspose2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool):
+            use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a variance_scaling_initializer with gain as
@@ -711,6 +715,8 @@ class ConvTranspose2D(nn.Module):
             bias_init_value (float): a constant
         """
         super(ConvTranspose2D, self).__init__()
+        if use_bias is None:
+            use_bias = not use_bn
         self._activation = activation
         self._conv_trans2d = nn.ConvTranspose2d(
             in_channels,
@@ -761,7 +767,7 @@ class ParallelConvTranspose2D(nn.Module):
                  activation=torch.relu_,
                  strides=1,
                  padding=0,
-                 use_bias=True,
+                 use_bias=None,
                  use_bn=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
@@ -777,7 +783,7 @@ class ParallelConvTranspose2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool):
+            use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a ``variance_scaling_initializer`` with gain
@@ -788,6 +794,8 @@ class ParallelConvTranspose2D(nn.Module):
             bias_init_value (float): a constant
         """
         super(ParallelConvTranspose2D, self).__init__()
+        if use_bias is None:
+            use_bias = not use_bn
         self._activation = activation
         self._n = n
         self._in_channels = in_channels
@@ -926,7 +934,8 @@ def _conv_transpose_2d(in_channels,
                        out_channels,
                        kernel_size,
                        stride=1,
-                       padding=0):
+                       padding=0,
+                       bias=True):
     # need output_padding so that output_size is stride * input_size
     # See https://pytorch.org/docs/stable/nn.html#torch.nn.ConvTranspose2d
     output_padding = stride + 2 * padding - kernel_size
@@ -936,10 +945,12 @@ def _conv_transpose_2d(in_channels,
         kernel_size,
         stride=stride,
         padding=padding,
-        output_padding=output_padding)
+        output_padding=output_padding,
+        bias=bias)
 
 
-@gin.configurable(whitelist=['v1_5', 'with_batch_normalization'])
+@gin.configurable(
+    whitelist=['v1_5', 'with_batch_normalization', 'keep_conv_bias'])
 class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.
 
@@ -959,7 +970,8 @@ class BottleneckBlock(nn.Module):
                  stride,
                  transpose=False,
                  v1_5=True,
-                 with_batch_normalization=True):
+                 with_batch_normalization=True,
+                 keep_conv_bias=False):
         """
         Args:
             kernel_size (int): the kernel size of middle layer at main path
@@ -973,6 +985,10 @@ class BottleneckBlock(nn.Module):
             v1_5 (bool): whether to use the ResNet V1.5 structure
             with_batch_normalization (bool): whether to include batch normalization.
                 Note that standard ResNet uses batch normalization.
+            keep_conv_bias (bool): by default, if ``with_batch_normalization`` is
+                True, the biases of conv layers are not used because they are useless.
+                This behavior can be overrided by setting ``keep_conv_bias`` to
+                True. The main purpose of this is for loading legacy models.
         Return:
             Output tensor for the block
         """
@@ -981,27 +997,33 @@ class BottleneckBlock(nn.Module):
 
         conv_fn = _conv_transpose_2d if transpose else nn.Conv2d
 
+        bias = not with_batch_normalization or keep_conv_bias
+
         padding = (kernel_size - 1) // 2
         if v1_5:
-            a = conv_fn(in_channels, filters1, 1)
-            b = conv_fn(filters1, filters2, kernel_size, stride, padding)
+            a = conv_fn(in_channels, filters1, 1, bias=bias)
+            b = conv_fn(
+                filters1, filters2, kernel_size, stride, padding, bias=bias)
         else:
-            a = conv_fn(in_channels, filters1, 1, stride)
-            b = conv_fn(filters1, filters2, kernel_size, 1, padding)
+            a = conv_fn(in_channels, filters1, 1, stride, bias=bias)
+            b = conv_fn(filters1, filters2, kernel_size, 1, padding, bias=bias)
+
+        c = conv_fn(filters2, filters3, 1, bias=bias)
 
         nn.init.kaiming_normal_(a.weight.data)
-        nn.init.zeros_(a.bias.data)
         nn.init.kaiming_normal_(b.weight.data)
-        nn.init.zeros_(b.bias.data)
-
-        c = conv_fn(filters2, filters3, 1)
         nn.init.kaiming_normal_(c.weight.data)
-        nn.init.zeros_(c.bias.data)
+
+        if bias:
+            nn.init.zeros_(a.bias.data)
+            nn.init.zeros_(b.bias.data)
+            nn.init.zeros_(c.bias.data)
 
         if stride != 1 or in_channels != filters3:
-            s = conv_fn(in_channels, filters3, 1, stride)
+            s = conv_fn(in_channels, filters3, 1, stride, bias=bias)
             nn.init.kaiming_normal_(s.weight.data)
-            nn.init.zeros_(s.bias.data)
+            if bias:
+                nn.init.zeros_(s.bias.data)
             if with_batch_normalization:
                 shortcut_layers = nn.Sequential(s, nn.BatchNorm2d(filters3))
             else:
