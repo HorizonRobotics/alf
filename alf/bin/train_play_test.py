@@ -231,6 +231,7 @@ class TrainPlayTest(alf.test.TestCase):
               skip_checker=None,
               extra_train_params=None,
               test_play=True,
+              test_video_recording=False,
               extra_play_params=None,
               test_perf=True,
               test_perf_func=None):
@@ -242,6 +243,7 @@ class TrainPlayTest(alf.test.TestCase):
                 exception when the test is not available.
             extra_train_params (list[str]): extra params used for training.
             test_play (bool): A bool for test play.
+            test_video_recording (bool): whether test video recording for play.
             extra_play_params (list[str]): extra param used for play.
             test_perf (bool): A bool for check performance.
             test_perf_func (Callable): called as test_perf_func(episode_returns, episode_lengths)
@@ -262,7 +264,8 @@ class TrainPlayTest(alf.test.TestCase):
         with tempfile.TemporaryDirectory() as root_dir:
             self._test_train(gin_file, extra_train_params, root_dir)
             if test_play:
-                self._test_play(root_dir, extra_play_params)
+                self._test_play(root_dir, extra_play_params,
+                                test_video_recording)
             if test_perf and test_perf_func:
                 self._test_performance(root_dir, test_perf_func)
 
@@ -289,18 +292,22 @@ class TrainPlayTest(alf.test.TestCase):
         cmd.extend(extra_params or [])
         run_cmd(cmd=cmd, cwd=examples_dir)
 
-    def _test_play(self, root_dir, extra_params):
+    def _test_play(self, root_dir, extra_params, test_video_recording):
         """Test if it can play successfully using configuration and checkpoints
         saved in root_dir.
 
         Args:
             root_dir (str): Root directory where configuration and checkpoints are saved
             extra_params (list[str]): extra parameters used for play
+            test_video_recording (bool): if True, also test if a video can be
+                recorded.
         """
         cmd = [
             'python3', '-m', 'alf.bin.play',
             '--root_dir=%s' % root_dir, '--num_episodes=1'
         ]
+        if test_video_recording:
+            cmd.append('--record_file=%s/play.mp4' % root_dir)
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
         cmd.extend(extra_params or [])
@@ -331,7 +338,10 @@ class TrainPlayTest(alf.test.TestCase):
             self.assertGreater(returns[-1], 195)
             self.assertGreater(lengths[-1], 195)
 
-        self._test(gin_file='ac_cart_pole.gin', test_perf_func=_test_func)
+        self._test(
+            gin_file='ac_cart_pole.gin',
+            test_perf_func=_test_func,
+            test_video_recording=True)
 
     def test_ac_simple_navigation(self):
         self._test(

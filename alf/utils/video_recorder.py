@@ -16,7 +16,13 @@ import io
 import cv2
 import gin
 import numpy as np
-import matplotlib.pyplot as plt
+
+from alf.utils import common
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
 
 from gym.wrappers.monitoring.video_recorder import VideoRecorder as GymVideoRecorder
 from gym import error, logger
@@ -162,13 +168,21 @@ class VideoRecorder(GymVideoRecorder):
                 self.broken = True
         else:
             if pred_info is not None:
-                frame = self._plot_pred_info(frame, pred_info)
+                if plt is not None:
+                    frame = self._plot_pred_info(frame, pred_info)
+                else:
+                    common.warning_once(
+                        "matplotlib is not installed; prediction info will not "
+                        "be plotted when rendering videos.")
 
             self.last_frame = frame
             if self.ansi_mode:
                 self._encode_ansi_frame(frame)
             else:
                 self._encode_image_frame(frame)
+
+            assert not self.broken, (
+                "The output file is broken! Check warning messages.")
 
     def _plot_prob_curve(self, name, probs, xticks=None):
         if xticks is None:
