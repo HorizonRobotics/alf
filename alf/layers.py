@@ -553,7 +553,7 @@ class ParallelConv2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool): whether use bias. If None, will use ``not use_bn``
+            use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv layer kernel.
                 If None is provided a ``variance_scaling_initializer`` with gain
@@ -704,7 +704,7 @@ class ConvTranspose2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool): If None, will use ``not use_bn``
+            use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a variance_scaling_initializer with gain as
@@ -783,7 +783,7 @@ class ParallelConvTranspose2D(nn.Module):
             activation (torch.nn.functional):
             strides (int or tuple):
             padding (int or tuple):
-            use_bias (bool): If None, will use ``not use_bn``
+            use_bias (bool|None): If None, will use ``not use_bn``
             use_bn (bool):
             kernel_initializer (Callable): initializer for the conv_trans layer.
                 If None is provided a ``variance_scaling_initializer`` with gain
@@ -987,7 +987,7 @@ class BottleneckBlock(nn.Module):
                 Note that standard ResNet uses batch normalization.
             keep_conv_bias (bool): by default, if ``with_batch_normalization`` is
                 True, the biases of conv layers are not used because they are useless.
-                This behaviour can be overrided by setting ``keep_conv_bias`` to
+                This behavior can be overrided by setting ``keep_conv_bias`` to
                 True. The main purpose of this is for loading legacy models.
         Return:
             Output tensor for the block
