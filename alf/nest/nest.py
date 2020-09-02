@@ -693,6 +693,58 @@ def get_field(nested, field):
     return _traverse(nested=nested, levels=field.split('.') if field else [])
 
 
+def transform_nest(nested, field, func):
+    """Transform the node of a nested structure indicated by ``field`` using
+    ``func``.
+
+    This function can be used to update our ``namedtuple`` structure conveniently,
+    comparing the following two methods:
+
+        .. code-block:: python
+
+            info = info._replace(rl=info.rl._replace(sac=info.rl.sac * 0.5))
+
+    vs.
+
+        .. code-block:: python
+
+            info = transform_nest(info, 'rl.sac', lambda x: x * 0.5)
+
+    The second method is usually shorter, more intuitive, and less error-prone
+    when ``field`` is a long string.
+
+    Args:
+        nested (nested Tensor): the structure to be applied the transformation.
+        field (str): If a string, it's the field to be transformed, multi-level
+            path denoted by "A.B.C". If ``None``, then the root object is
+            transformed.
+        func (Callable): transform func, the function will be called as
+            ``func(nested)`` and should return a new nest.
+    Returns:
+        transformed nest
+    """
+
+    def _traverse_transform(nested, levels):
+        if not levels:
+            return func(nested)
+        level = levels[0]
+        if nest.is_namedtuple(nested):
+            new_val = _traverse_transform(
+                nested=getattr(nested, level), levels=levels[1:])
+            return nested._replace(**{level: new_val})
+        elif isinstance(nested, dict):
+            new_val = nested.copy()
+            new_val[level] = _traverse_transform(
+                nested=nested[level], levels=levels[1:])
+            return new_val
+        else:
+            raise TypeError("If value is a nest, it must be either " +
+                            "a dict or namedtuple!")
+
+    return _traverse_transform(
+        nested=nested, levels=field.split('.') if field else [])
+
+
 def set_field(nested, field, new_value):
     """Set the field in nested to ``new_value``.
 
@@ -710,20 +762,4 @@ def set_field(nested, field, new_value):
             ``new_value``
     """
 
-    def _traverse(nested, levels):
-        if not levels:
-            return new_value
-        level = levels[0]
-        if is_namedtuple(nested):
-            new_val = _traverse(
-                nested=getattr(nested, level), levels=levels[1:])
-            return nested._replace(**{level: new_val})
-        elif isinstance(nested, dict):
-            new_val = nested.copy()
-            new_val[level] = _traverse(nested=nested[level], levels=levels[1:])
-            return new_val
-        else:
-            raise TypeError("If value is a nest, it must be either " +
-                            "a dict or namedtuple!")
-
-    return _traverse(nested=nested, levels=field.split('.') if field else [])
+    return transform_nest(nested, field, lambda _: new_value)

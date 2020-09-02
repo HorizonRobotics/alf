@@ -192,7 +192,7 @@ class FrameStacker(DataTransformer):
 
             spec = alf.nest.get_field(observation_spec, field)
             prev_frames_spec.append([spec] * (self._stack_size - 1))
-            stacked_observation_spec = alf.nest.utils.transform_nest(
+            stacked_observation_spec = alf.nest.transform_nest(
                 stacked_observation_spec, field, self._make_stacked_spec)
 
         super().__init__(
@@ -281,8 +281,8 @@ class FrameStacker(DataTransformer):
 
         observation = time_step.observation
         for i, field in enumerate(self._fields):
-            observation = alf.nest.utils.transform_nest(
-                observation, field, partial(_stack_frame, i=i))
+            observation = alf.nest.transform_nest(observation, field,
+                                                  partial(_stack_frame, i=i))
 
         return (time_step._replace(observation=observation),
                 FrameStackState(steps=steps, prev_frames=prev_frames))
@@ -358,8 +358,8 @@ class FrameStacker(DataTransformer):
 
         observation = experience.observation
         for i, field in enumerate(self._fields):
-            observation = alf.nest.utils.transform_nest(
-                observation, field, partial(_stack_frame, i=i))
+            observation = alf.nest.transform_nest(observation, field,
+                                                  partial(_stack_frame, i=i))
         return experience._replace(observation=observation)
 
 
@@ -436,7 +436,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
                 spec.shape, dtype=torch.float32, minimum=min, maximum=max)
 
         for field in self._fields:
-            new_observation_spec = alf.nest.utils.transform_nest(
+            new_observation_spec = alf.nest.transform_nest(
                 new_observation_spec, field, _transform_spec)
 
         super().__init__(new_observation_spec)
@@ -451,8 +451,8 @@ class ImageScaleTransformer(SimpleDataTransformer):
 
         observation = timestep_or_exp.observation
         for field in self._fields:
-            observation = alf.nest.utils.transform_nest(
-                observation, field, _transform_image)
+            observation = alf.nest.transform_nest(observation, field,
+                                                  _transform_image)
         return timestep_or_exp._replace(observation=observation)
 
 
