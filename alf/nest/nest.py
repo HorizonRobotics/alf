@@ -574,6 +574,10 @@ def find_field(nest, name, ignore_empty=True):
     Returns:
         list
     """
+
+    def _is_empty(x):
+        return isinstance(x, (tuple, list)) and len(x) == 0
+
     ret = []
     if isinstance(nest, list) or is_unnamedtuple(nest):
         for elem in nest:
@@ -582,7 +586,7 @@ def find_field(nest, name, ignore_empty=True):
     elif isinstance(nest, dict) or is_namedtuple(nest):
         for field, elem in extract_fields_from_nest(nest):
             if field == name:
-                if ((elem is not None and elem != () and elem != [])
+                if ((elem is not None and not _is_empty(elem))
                         or not ignore_empty):
                     ret.append(elem)
             elif isinstance(elem, (dict, tuple, list)):

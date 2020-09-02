@@ -16,6 +16,7 @@
 from absl import logging
 from collections import OrderedDict
 import gin
+import numpy as np
 import sys
 import time
 import torch
@@ -491,6 +492,11 @@ class GoEnvironment(AlfEnvironment):
     to play the stone at (action // width, action % width). If it is equal to
     ``height * width``, it means to pass for this round.
     """
+
+    metadata = {
+        'render.modes': ['human', 'rgb_array'],
+        'video.frames_per_second': 1
+    }
 
     def __init__(self,
                  batch_size,
