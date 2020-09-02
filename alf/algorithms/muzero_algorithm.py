@@ -104,6 +104,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             recurrent_gradient_scaling_factor (float): the gradient go through
                 the ``model.recurrent_inference`` is scaled by this factor. This
                 is suggested in Appendix G.
+            reward_normalizer (Normalizer|None): if provided, will be used to
+                normalize reward.
             train_reward_function (bool): whether train reward function. If
                 False, reward should only be given at the last step of an episode.
             train_game_over_function (bool): whether train game over function.
@@ -115,9 +117,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 reanalyzing all the data for one training iteration. If so, provide
                 a number for this so that it will analyzing the data in several
                 batches.
-            data_transformer_ctor (): should be same as TrainerConfig.data_transformer_ctor
-            target_update_tau (float):
-            target_update_period (int):
+            data_transformer_ctor (Callable|list[Callable]): should be same as
+                ``TrainerConfig.data_transformer_ctor``.
+            target_update_tau (float): Factor for soft update of the target
+                networks used for reanalyzing.
+            target_update_period (int): Period for soft update of the target
+                networks used for reanalyzing.
             debug_summaries (bool):
             name (str):
         """
