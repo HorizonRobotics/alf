@@ -27,6 +27,7 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
 from alf.nest.utils import convert_device
 from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
 from alf.utils import common
+from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 FrameStackState = namedtuple('FrameStackState', ['steps', 'prev_frames'])
 
@@ -545,6 +546,23 @@ class RewardClipping(SimpleDataTransformer):
     def _transform(self, timestep_or_exp):
         return timestep_or_exp._replace(
             reward=timestep_or_exp.reward.clamp(*self._minmax))
+
+
+@gin.configurable
+class RewardNormalizer(SimpleDataTransformer):
+    def __init__(self, observation_spec, normalizer=None, clip_value=-1.0):
+        super().__init__(observation_spec)
+        if normalizer is None:
+            normalizer = ScalarAdaptiveNormalizer(auto_update=False)
+        self._normalizer = normalizer
+        self._clip_value = clip_value
+
+    def _transform(self, timestep_or_exp):
+        if common.is_rollout():
+            self._normalizer.update(timestep_or_exp.reward)
+        return timestep_or_exp._replace(
+            reward=self._normalizer.normalize(
+                timestep_or_exp.reward, clip_value=self._clip_value))
 
 
 @gin.configurable

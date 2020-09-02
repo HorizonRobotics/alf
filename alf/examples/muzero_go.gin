@@ -1,0 +1,85 @@
+include 'muzero.gin'
+
+import alf.environments.suite_go
+import alf.examples.muzero_go
+import alf.utils.schedulers
+
+WIDTH=6
+HEIGHT=6
+WINNING_THRESH=4.0
+USE_BN=True
+RESNET_BLOCKS=8
+FILTERS=32
+INIT_LR=2e-3
+NUM_ENVS=512
+
+suite_go.GoEnvironment.winning_thresh=%WINNING_THRESH
+suite_go.GoEnvironment.width=%WIDTH
+suite_go.GoEnvironment.height=%HEIGHT
+create_environment.env_name=""
+create_environment.env_load_fn=@suite_go.load
+create_environment.num_parallel_environments=%NUM_ENVS
+
+alf.layers.Conv2D.use_bn=%USE_BN
+alf.layers.BottleneckBlock.with_batch_normalization=%USE_BN
+
+MCTSAlgorithm.num_simulations=800
+MCTSAlgorithm.discount=1.0
+MCTSAlgorithm.root_dirichlet_alpha=0.03
+MCTSAlgorithm.root_exploration_fraction=0.25
+MCTSAlgorithm.pb_c_init=1.25
+MCTSAlgorithm.pb_c_base=19652
+MCTSAlgorithm.is_two_player_game=True
+MCTSAlgorithm.known_value_bounds=(-1, 1)
+VisitSoftmaxTemperatureByMoves.move_temperature_pairs=[(29, 1.), (1000, 1e-10)]
+MCTSAlgorithm.visit_softmax_temperature_fn=@VisitSoftmaxTemperatureByMoves()
+
+FrameStacker.stack_size=4
+FrameStacker.stack_axis=0
+FrameStacker.fields=['board']
+TrainerConfig.data_transformer_ctor=@FrameStacker
+
+muzero_go.DynamicsNet.num_blocks=%RESNET_BLOCKS
+muzero_go.DynamicsNet.filters=%FILTERS
+muzero_go.RepresentationNet.num_blocks=%RESNET_BLOCKS
+muzero_go.RepresentationNet.filters=%FILTERS
+muzero_go.PredictionNet.filters=%FILTERS
+muzero_go.PredictionNet.initial_game_over_bias=-0.9
+SimpleMCTSModel.encoding_net_ctor=@muzero_go.RepresentationNet
+SimpleMCTSModel.dynamics_net_ctor=@muzero_go.DynamicsNet
+SimpleMCTSModel.prediction_net_ctor=@muzero_go.PredictionNet
+
+MuzeroAlgorithm.mcts_algorithm_ctor=@MCTSAlgorithm
+MuzeroAlgorithm.model_ctor=@SimpleMCTSModel
+MuzeroAlgorithm.num_unroll_steps=5
+MuzeroAlgorithm.td_steps=-1
+MuzeroAlgorithm.data_transformer_ctor=@FrameStacker
+MuzeroAlgorithm.reanalyze_ratio = 0.
+
+MuzeroAlgorithm.train_game_over_function=False
+MuzeroAlgorithm.train_reward_function=False
+SimpleMCTSModel.train_game_over_function=False
+SimpleMCTSModel.train_reward_function=False
+
+LR_SCHEDULE=@ExponentialScheduler(progress_type='iterations', initial_value=%INIT_LR, decay_rate=0.1, decay_time=400e3)
+Agent.optimizer=@SGD(lr=%LR_SCHEDULE, momentum=0.9, weight_decay=1e-4)
+
+# training config
+TrainerConfig.unroll_length=10
+TrainerConfig.mini_batch_size=256
+TrainerConfig.num_updates_per_train_iter=1
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=10000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summary_interval=10
+TrainerConfig.summarize_grads_and_vars=True
+TrainerConfig.replay_buffer_length=100000
+import numpy
+TrainerConfig.initial_collect_steps = int(numpy.multiply(2, numpy.multiply(%NUM_ENVS, numpy.multiply(%HEIGHT, %WIDTH))))
+# ReplayBuffer.enable_checkpoint=True
+
+summarize_gradients.with_histogram=False
+summarize_variables.with_histogram=False

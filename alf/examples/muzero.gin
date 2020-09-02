@@ -8,5 +8,6 @@ Agent.rl_algorithm_cls=@MuzeroAlgorithm
 
 TrainerConfig.algorithm_ctor=@Agent
 TrainerConfig.mini_batch_length=1
+TrainerConfig.use_rollout_state=True
 
 ReplayBuffer.keep_episodic_info=True

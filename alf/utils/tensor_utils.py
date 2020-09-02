@@ -103,7 +103,7 @@ def explained_variance(ypred, y, valid_mask=None):
         return var
 
     vary = _var(y)
-    r = 1 - _var(y - ypred) / (vary + 1e-30)
+    r = torch.where(vary == 0, vary, 1 - _var(y - ypred) / (vary + 1e-30))
     return r
 
 
