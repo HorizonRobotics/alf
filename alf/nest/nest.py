@@ -728,7 +728,7 @@ def transform_nest(nested, field, func):
         if not levels:
             return func(nested)
         level = levels[0]
-        if nest.is_namedtuple(nested):
+        if is_namedtuple(nested):
             new_val = _traverse_transform(
                 nested=getattr(nested, level), levels=levels[1:])
             return nested._replace(**{level: new_val})
