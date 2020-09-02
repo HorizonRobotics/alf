@@ -58,11 +58,11 @@ def histogram_discrete(name, data, bucket_min, bucket_max, step=None):
         step (None|Tensor): step value for this summary. this defaults to
             ``alf.summary.get_global_counter()``
     """
-    alf.summary.histogram(
-        name,
-        data,
-        step=step,
-        bins=torch.arange(bucket_min, bucket_max + 1).cpu())
+    bins = torch.arange(bucket_min, bucket_max + 1).cpu()
+    # For N bins, there should be N+1 bin edges
+    bin_edges = bins.to(torch.float32) - 0.5
+    bin_edges = torch.cat([bin_edges, bin_edges[-1:] + 1.])
+    alf.summary.histogram(name, data, step=step, bins=bin_edges)
 
 
 @_summary_wrapper
@@ -169,7 +169,8 @@ def summarize_loss(loss_info: LossInfo):
     Args:
         loss_info (LossInfo): ``loss_info.extra`` must be a namedtuple
     """
-    alf.summary.scalar('loss', data=loss_info.loss)
+    if loss_info.loss != ():
+        alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
     # Support extra as namedtuple or dict (more flexible)
