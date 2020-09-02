@@ -264,6 +264,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  max_subgoal_steps=10,
                  plan_margin=0.,
                  min_goal_cost_to_use_plan=0.,
+                 use_aux_achieved=False,
+                 aux_dim=0,
                  name="SubgoalPlanningGoalGenerator"):
         """
         Args:
@@ -281,6 +283,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 to be adopted.
             min_goal_cost_to_use_plan (float): cost of original goal must be above
                 this threshold for the plan to be accepted.
+            use_aux_achieved (bool): whether to plan auxiliary achieved states like
+                agent's speed, pose etc. in the field ``aux_achieved``.
+            aux_dim (int): number of dimensions to plan for ``aux_achieved`` field.
             name (str): name of the algorithm.
         """
         goal_shape = (action_dim, )
@@ -311,21 +316,39 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._min_goal_cost_to_use_plan = min_goal_cost_to_use_plan
 
         self._value_state_spec = value_state_spec
+        self._use_aux_achieved = use_aux_achieved
+        if use_aux_achieved:
+            assert "aux_achieved" in observation_spec, (
+                "aux_achieved not in observation_spec. "
+                "Set use_aux_achieved flag in env?")
+            plan_dim = action_dim + aux_dim
+            # aux_dim bounds are assumed to be action_bounds[:][0]
+            for _ in range(aux_dim):
+                action_bounds[0].append(action_bounds[0][0])
+                action_bounds[1].append(action_bounds[1][0])
+        else:
+            plan_dim = action_dim
         self._opt = CEMOptimizer(
             planning_horizon=num_subgoals,
-            action_dim=action_dim,
+            action_dim=plan_dim,
             bounds=action_bounds)
 
         def _costs_agg_dist(time_step, state, samples):
             assert self._value_fn, "no value function provided."
-            (batch_size, pop_size, horizon, action_dim) = samples.shape
+            (batch_size, pop_size, horizon, plan_dim) = samples.shape
+            assert plan_dim == self._action_dim + aux_dim
+            action_dim = self._action_dim
             start = time_step.observation["achieved_goal"].reshape(
                 batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
                                                      action_dim)
             end = time_step.observation["desired_goal"].reshape(
                 batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
                                                      action_dim)
-            samples_e = torch.cat([start, samples, end], dim=2)
+            if use_aux_achieved:
+                ag_samples = samples[:, :, :, :action_dim]
+            else:
+                ag_samples = samples
+            samples_e = torch.cat([start, ag_samples, end], dim=2)
             stack_obs = time_step.observation.copy()
             stack_obs["observation"] = time_step.observation[
                 "observation"].reshape(batch_size, 1, 1, -1).expand(
@@ -335,7 +358,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 batch_size * pop_size * (horizon + 1), -1)
             stack_obs["desired_goal"] = samples_e[:, :, 1:, :].reshape(
                 batch_size * pop_size * (horizon + 1), -1)
-
+            if use_aux_achieved:
+                aux_start = time_step.observation["aux_achieved"].reshape(
+                    batch_size, 1, 1, aux_dim).expand(batch_size, pop_size, 1,
+                                                      aux_dim)
+                stack_obs["aux_achieved"] = torch.cat(
+                    [
+                        aux_start, samples[:, :, :, action_dim:].reshape(
+                            batch_size, pop_size, horizon, -1)
+                    ],
+                    dim=2).reshape(batch_size * pop_size * (horizon + 1), -1)
             if self._value_state_spec != ():
                 raise NotImplementedError()
             values, _unused_value_state = self._value_fn(stack_obs, ())
@@ -364,6 +396,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         init_costs = -values
         goals, costs = self._opt.obtain_solution(ts, ())
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
+        if self._use_aux_achieved:
+            subgoal = subgoal[:, :self._action_dim]
         # Assumes costs are positive, at least later on during training,
         # Otherwise, don't use planner.
         # We also require goal to be > min_goal_cost_to_use_plan away.
@@ -384,9 +418,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 outcome = "plan success: "
             else:
                 outcome = "plan fail: "
+            if self._use_aux_achieved:
+                aux = " " + str(observation["aux_achieved"])
+            else:
+                aux = ""
             logging.info(outcome + "init_cost: " + str(init_costs) +
                          " plan_cost:" + str(costs) + ", " +
-                         str(observation["achieved_goal"]) + " -> " +
+                         str(observation["achieved_goal"]) + aux + " -> " +
                          str(goals) + " -> " +
                          str(observation["desired_goal"]))
         subgoal = torch.where(plan_success, subgoal,

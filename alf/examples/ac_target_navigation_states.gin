@@ -7,7 +7,6 @@ create_environment.env_name='SocialBot-PlayGround-v0'
 
 suite_socialbot.load.gym_env_wrappers=[]
 import alf.utils.math_ops
-Agent.observation_transformer=@math_ops.identity
 
 conv_layer_params=None
 actor/ActorDistributionNetwork.continuous_projection_net_ctor=@NormalProjectionNetwork
@@ -46,6 +45,7 @@ GoalTask.use_full_states=True
 GoalTask.polar_coord=True
 PlayGround.use_image_observation=False
 PlayGround.with_language=False
+TrainerConfig.data_transformer_ctor=None
 
 TrainerConfig.summary_interval=20
 TrainerConfig.num_checkpoints=10

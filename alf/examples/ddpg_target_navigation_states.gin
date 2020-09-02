@@ -32,6 +32,7 @@ observation_spec=@get_observation_spec()
 import alf.algorithms.goal_generator
 SubgoalPlanningGoalGenerator.observation_spec=%observation_spec
 SubgoalPlanningGoalGenerator.action_dim=2
+SubgoalPlanningGoalGenerator.aux_dim=10
 SubgoalPlanningGoalGenerator.action_bounds=[[-10,-10],[10,10]]
 
 # TrainerConfig
