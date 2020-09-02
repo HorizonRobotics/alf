@@ -66,10 +66,10 @@ class ValueNetwork(PreprocessorNetwork):
             activation (nn.functional): activation used for hidden layers. The
                 last layer will not be activated.
             kernel_initializer (Callable): initializer for all the layers but
+                the last layer. If none is provided a default xavier_uniform
+                initializer will be used.
             use_fc_bn (bool): whether use Batch Normalization for the internal
                 FC layers (i.e. FC layers beside the last one).
-            the last layer. If none is provided a default xavier_uniform
-            initializer will be used.
             name (str):
         """
         super().__init__(

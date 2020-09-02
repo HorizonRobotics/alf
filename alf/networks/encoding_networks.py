@@ -697,9 +697,11 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                  fc_layer_params=None,
                  activation=torch.relu_,
                  kernel_initializer=None,
+                 use_fc_bn=False,
                  last_layer_size=None,
                  last_activation=None,
                  last_kernel_initializer=None,
+                 last_use_fc_bn=False,
                  name="ParallelEncodingNetwork"):
         """
         Args:
@@ -724,6 +726,7 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
             kernel_initializer (Callable): initializer for all the layers but
                 the last layer. If None, a variance_scaling_initializer will be
                 used.
+            use_fc_bn (bool): whether use Batch Normalization for fc layers.
             last_layer_size (int): an optional size of an additional layer
                 appended at the very end. Note that if ``last_activation`` is
                 specified, ``last_layer_size`` has to be specified explicitly.
@@ -736,6 +739,8 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                 If None, it will be the same with ``kernel_initializer``. If
                 ``last_layer_size`` is None, ``last_kernel_initializer`` will
                 not be used.
+            last_use_fc_bn (bool): whether use Batch Normalization for the last
+                fc layer.
             name (str):
         """
         super().__init__(
@@ -790,7 +795,8 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                     size,
                     n,
                     activation=activation,
-                    kernel_initializer=kernel_initializer))
+                    kernel_initializer=kernel_initializer,
+                    use_bn=use_fc_bn))
             input_size = size
 
         if last_layer_size is not None or last_activation is not None:
@@ -809,7 +815,8 @@ class ParallelEncodingNetwork(PreprocessorNetwork):
                     last_layer_size,
                     n,
                     activation=last_activation,
-                    kernel_initializer=last_kernel_initializer))
+                    kernel_initializer=last_kernel_initializer,
+                    use_bn=last_use_fc_bn))
             input_size = last_layer_size
         self._output_spec = TensorSpec(
             (n, input_size), dtype=self._processed_input_tensor_spec.dtype)
