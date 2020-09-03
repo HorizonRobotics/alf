@@ -1,0 +1,4 @@
+include 'sarsa_sac_mujoco.gin'
+
+create_environment.env_name="Humanoid-v2"
+TrainerConfig.num_iterations=10000000

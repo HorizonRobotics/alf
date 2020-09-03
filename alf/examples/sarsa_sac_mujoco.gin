@@ -1,0 +1,23 @@
+include 'sarsa_sac.gin'
+
+actor/AdamTF.lr=3e-4
+critic/AdamTF.lr=3e-4
+alpha/AdamTF.lr=3e-4
+SarsaAlgorithm.use_entropy_reward=True
+SarsaAlgorithm.use_parallel_network=True
+
+import alf.algorithms.agent
+Agent.rl_algorithm_cls=@SarsaAlgorithm
+
+TrainerConfig.algorithm_ctor=@Agent
+TrainerConfig.epsilon_greedy=0.0
+TrainerConfig.initial_collect_steps=10000
+TrainerConfig.mini_batch_size=256
+TrainerConfig.replay_buffer_length=1000000
+TrainerConfig.num_iterations=1000000
+TrainerConfig.temporally_independent_train_step=True
+
+import alf.utils.dist_utils
+# 0.184 is chosen so that the target_entropy per each action dimension is -1
+# if the action range is [-1, 1]
+calc_default_target_entropy.min_prob=0.184

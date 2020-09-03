@@ -389,7 +389,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             actor_loss=actor_loss,
             critics=prev_critics,
             neg_entropy=neg_entropy,
-            target_critics=target_critics)
+            target_critics=target_critics.min(dim=1)[0])
 
         rl_state = SarsaState(
             noise=noise_state,
@@ -433,7 +433,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         for i in range(self._num_critic_replicas):
             critic = tensor_utils.tensor_extend_zero(info.critics[..., i])
             target_critic = tensor_utils.tensor_prepend_zero(
-                info.target_critics[..., i])
+                info.target_critics)
             loss_info = self._critic_losses[i](shifted_experience, critic,
                                                target_critic)
             critic_losses.append(nest_map(lambda l: l[:-1], loss_info.loss))
