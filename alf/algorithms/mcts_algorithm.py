@@ -173,7 +173,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
        do the search/learn/act. This can be enabled by setting  ``act_with_exploratin_policy``
        ``search_with_exploratin_policy``, ``learn_with_exploratin_policy`` to True.
        See `Grill et. al. Monte-Carlo tree search as regularized policy optimization
-       <https://arxiv.org/abs/2007.12509>`_for reference.
+       <https://arxiv.org/abs/2007.12509>`_ for reference.
 
     """
 

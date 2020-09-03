@@ -33,9 +33,15 @@ ModelOutput = namedtuple(
         'value',  # [B], value for the player 0
         'reward',  # [B], reward for the player 0
         'game_over',  # [B], whether the game is over
-        'actions',  # [B, K, ...], () for all possible actions. If None, means all available discrete actions
-        'action_probs',  # [B, K], prob of 0 indicate invalid action
-        'state',  # [B, ...]
+
+        # [B, K, ...], candidate actions, () all available discrete actions
+        'actions',
+
+        # [B, K], probabilities of the candidate actions. prob of 0 indicates invalid action
+        'action_probs',
+
+        # [B, ...], latent state
+        'state',
 
         # used by calc_loss
         'action_distribution',
