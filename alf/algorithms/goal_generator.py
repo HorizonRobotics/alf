@@ -415,17 +415,15 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             torch.mean(init_costs))
         if common.is_play():
             if plan_success[0] > 0:
-                outcome = "plan success: "
+                outcome = "plan SUCCESS: "
             else:
                 outcome = "plan fail: "
+            ach = observation["achieved_goal"]
             if self._use_aux_achieved:
-                aux = " " + str(observation["aux_achieved"])
-            else:
-                aux = ""
+                ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
             logging.info(outcome + "init_cost: " + str(init_costs) +
-                         " plan_cost:" + str(costs) + ", " +
-                         str(observation["achieved_goal"]) + aux + " -> " +
-                         str(goals) + " -> " +
+                         " plan_cost:" + str(costs) + ":\n" + str(ach) +
+                         " ->\n" + str(goals) + " ->\n" +
                          str(observation["desired_goal"]))
         subgoal = torch.where(plan_success, subgoal,
                               observation["desired_goal"])
