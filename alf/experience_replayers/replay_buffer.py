@@ -760,7 +760,7 @@ def hindsight_relabel_fn(buffer,
         # assert False, msg
         relabeled_rewards[non_her_indices] = result.reward[non_her_indices]
 
-    result = alf.nest.utils.transform_nest(
+    result = alf.nest.transform_nest(
         result, desired_goal_field, lambda _: relabed_goal)
     result = result._replace(reward=relabeled_rewards)
     return result, info

@@ -1,0 +1,4 @@
+include 'sarsa_sac_mujoco.gin'
+
+create_environment.env_name="Walker2d-v2"
+TrainerConfig.num_iterations=3000000

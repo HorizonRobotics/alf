@@ -58,11 +58,11 @@ def histogram_discrete(name, data, bucket_min, bucket_max, step=None):
         step (None|Tensor): step value for this summary. this defaults to
             ``alf.summary.get_global_counter()``
     """
-    alf.summary.histogram(
-        name,
-        data,
-        step=step,
-        bins=torch.arange(bucket_min, bucket_max + 1).cpu())
+    bins = torch.arange(bucket_min, bucket_max + 1).cpu()
+    # For N bins, there should be N+1 bin edges
+    bin_edges = bins.to(torch.float32) - 0.5
+    bin_edges = torch.cat([bin_edges, bin_edges[-1:] + 1.])
+    alf.summary.histogram(name, data, step=step, bins=bin_edges)
 
 
 @_summary_wrapper
@@ -148,6 +148,7 @@ def summarize_gradients(name_and_params, with_histogram=True):
 alf.summary.histogram = _summary_wrapper(alf.summary.histogram)
 
 
+@_summary_wrapper
 def add_nested_summaries(prefix, data):
     """Add summary of a nest of data.
 
@@ -163,13 +164,15 @@ def add_nested_summaries(prefix, data):
             alf.summary.scalar(name, elem)
 
 
+@_summary_wrapper
 def summarize_loss(loss_info: LossInfo):
     """Add summary about ``loss_info``
 
     Args:
         loss_info (LossInfo): ``loss_info.extra`` must be a namedtuple
     """
-    alf.summary.scalar('loss', data=loss_info.loss)
+    if loss_info.loss != ():
+        alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
     # Support extra as namedtuple or dict (more flexible)
@@ -177,6 +180,15 @@ def summarize_loss(loss_info: LossInfo):
         add_nested_summaries('loss', loss_info.extra)
 
 
+@_summary_wrapper
+def summarize_nest(prefix, nest):
+    def _summarize(tensor, path):
+        add_mean_hist_summary(prefix + "/" + path, tensor)
+
+    alf.nest.py_map_structure_with_path(_summarize, nest)
+
+
+@_summary_wrapper
 def summarize_action(actions, action_specs, name="action"):
     """Generate histogram summaries for actions.
 
@@ -220,6 +232,7 @@ def summarize_action(actions, action_specs, name="action"):
                                    action[:, a].mean())
 
 
+@_summary_wrapper
 def summarize_action_dist(action_distributions, name="action_dist"):
     """Generate summary for action distributions.
 

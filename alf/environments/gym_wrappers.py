@@ -23,7 +23,7 @@ import numpy as np
 import random
 
 import alf
-from alf.nest.utils import transform_nest
+from alf.nest import transform_nest
 
 
 def transform_space(observation_space, field, func):

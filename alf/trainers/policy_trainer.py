@@ -166,7 +166,6 @@ class Trainer(object):
         try:
             if self._config.profiling:
                 import cProfile, pstats, io
-                from pstats import SortKey
                 pr = cProfile.Profile()
                 pr.enable()
 
@@ -180,9 +179,9 @@ class Trainer(object):
             if self._config.profiling:
                 pr.disable()
                 s = io.StringIO()
-                ps = pstats.Stats(pr, stream=s).sort_stats(SortKey.TIME)
+                ps = pstats.Stats(pr, stream=s).sort_stats('time')
                 ps.print_stats()
-                ps = pstats.Stats(pr, stream=s).sort_stats(SortKey.CUMULATIVE)
+                ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
                 ps.print_stats()
                 ps.print_callees()
 

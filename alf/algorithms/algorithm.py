@@ -384,6 +384,7 @@ class Algorithm(nn.Module):
             summary_utils.summarize_gradients(params)
         if self._debug_summaries:
             summary_utils.summarize_loss(loss_info)
+            summary_utils.summarize_nest("observation", experience.observation)
 
     def add_optimizer(self, optimizer: torch.optim.Optimizer,
                       modules_and_params):
