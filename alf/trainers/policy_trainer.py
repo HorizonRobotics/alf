@@ -685,6 +685,7 @@ def play(root_dir,
             time_step = env.reset()
     for m in metrics:
         logging.info("%s: %f", m.name, m.result())
+    logging.flush()
     if recorder:
         recorder.close()
     env.reset()

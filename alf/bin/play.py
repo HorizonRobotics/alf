@@ -99,6 +99,7 @@ def main(_):
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
+        print("closing env.", flush=True)
         env.close()
 
 

@@ -30,11 +30,13 @@ Set the proper DISPLAY variable when recording video.
 from absl import app
 from absl import flags
 from absl import logging
+from subprocess import Popen, TimeoutExpired
 import collections
 import heapq
 import numpy as np
 import os
 import re
+import time
 
 flags.DEFINE_string('root_dir1', None, 'Root directory for algorithm one.')
 flags.DEFINE_string('root_dir2', None, 'Root directory for algorithm two.')
@@ -68,19 +70,22 @@ def _file_exists(file):
             and os.stat(file).st_size > 100)
 
 
-def _play_cmd(root_dir, seed):
-    return ("cd {root_dir} && "
-            "python3 -m alf.bin.play "
-            " --random_seed={seed} --num_episodes=1"
-            " --verbosity=1 --root_dir=`pwd` --sleep_time_per_step=0"
-            " --epsilon_greedy=0 {g}").format(
-                root_dir=root_dir, seed=seed, g=FLAGS.common_gin)
+def _play_cmd(root_dir, seed, mp4_f):
+    cmd = ("python3 -m alf.bin.play "
+           " --random_seed={seed} --num_episodes=1"
+           " --verbosity=1 --root_dir={root_dir} --sleep_time_per_step=0"
+           " --epsilon_greedy=0 --record_file={mp4} {g}").format(
+               root_dir=root_dir, seed=seed, mp4=mp4_f, g=FLAGS.common_gin)
+    cmds = cmd.split(" ")
+    return cmd, cmds
 
 
-def _get_metric(pattern, buffer, log_file):
+def _get_metric(pattern, buffer, log_file=None):
     match = re.search(pattern, buffer)
-    assert match, "{} not found in {}, remove and re-run?".format(
-        pattern, log_file)
+    if log_file:
+        assert match, "{} not found in {}, re-run?".format(pattern, log_file)
+    if not match:
+        return None
     return "{:.2f}".format(float(match.group(1)))
 
 
@@ -212,15 +217,31 @@ def main(_):
             mp4_f = root_dir + "/play-seed_{}{}.mp4".format(seed, gin_str)
             log_file = root_dir + "/play-log-seed_{}{}.txt".format(
                 seed, gin_str)
-            command = _play_cmd(root_dir,
-                                seed) + " --record_file={} 2>> {}".format(
-                                    mp4_f, log_file)
+            command, commands = _play_cmd(root_dir, seed, mp4_f)
+            command += " 2>> " + log_file
             if not _file_exists(mp4_f):
                 f = open(log_file, 'w')
                 assert f, "cannot write to " + log_file
                 f.write(command + "\n")
                 f.close()
-                os.system(command)
+                print(command)
+                lf = open(log_file, 'w+')
+                p = Popen(commands, cwd=root_dir, stderr=lf)
+                while True:
+                    time.sleep(2)
+                    lf.flush()
+                    f = open(log_file, 'r')
+                    assert f, log_file + " cannot be read."
+                    lines = f.read().replace('\n', ' ')
+                    f.close()
+                    if _get_metric(r"\] " + AVG_R_METRIC + r": (\S+)", lines):
+                        try:
+                            p.wait(5)
+                        except TimeoutExpired:
+                            print("killing subprocess..")
+                            p.kill()
+                        break
+                lf.close()
             vs[i] = mp4_f
 
             # extract values
