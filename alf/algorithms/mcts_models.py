@@ -74,12 +74,6 @@ ModelTarget = namedtuple(
     ])
 
 
-def _entropy(events):
-    p = events.to(torch.float32).mean()
-    p = torch.tensor([p, 1 - p])
-    return -(p * (p + 1e-30).log()).sum(), p[0]
-
-
 class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
     """The interface for the model used by MCTSAlgorithm."""
 
@@ -189,6 +183,12 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                             model_output.reward[:, 1:], target.reward[:, 1:]))
 
                 if self._train_game_over_function:
+
+                    def _entropy(events):
+                        p = events.to(torch.float32).mean()
+                        p = torch.tensor([p, 1 - p])
+                        return -(p * (p + 1e-30).log()).sum(), p[0]
+
                     h0, p0 = _entropy(target.game_over[:, 0])
                     alf.summary.scalar("game_over0", p0)
                     h1, p1 = _entropy(target.game_over[:, 1:])
@@ -262,7 +262,7 @@ class SimplePredictionNet(alf.networks.Network):
         Args:
             observation_spec (TensorSpec): describing the observation.
             action_spec (BoundedTensorSpec): describing the action.
-            trunc_net_ctor (Callable): called as ``trunk_net_ctor(input_tensor_spec=observation_spec)``
+            trunk_net_ctor (Callable): called as ``trunk_net_ctor(input_tensor_spec=observation_spec)``
                 to created a network which taks observation as input and output a
                 hidden representation which will be used as input for predicting
                 value, reward, action_distribution and game_over_logit

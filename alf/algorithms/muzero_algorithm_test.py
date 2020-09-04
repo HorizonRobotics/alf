@@ -510,7 +510,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                     [[ 0.,  0.,  0.,  0.,  0.]]])))
         return expected
 
-    def test1(self):
+    def test_bootstrap_return_with_reward_function(self):
         expected = self.get_exptected_info(False)
         expected = expected._replace(target=expected.target._replace(
             value=torch.tensor([
@@ -548,7 +548,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
             reanalyze_ratio=0.,
             expected=expected)
 
-    def test2(self):
+    def test_bootstrap_return_without_reward_function(self):
         expected = self.get_exptected_info(False)
         expected = expected._replace(target=expected.target._replace(
             reward=(),
@@ -587,7 +587,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
             reanalyze_ratio=0.,
             expected=expected)
 
-    def test3(self):
+    def test_monte_carla_return_with_reward_function(self):
         expected = self.get_exptected_info(True)
         expected = expected._replace(target=expected.target._replace(
             value=torch.tensor([
@@ -621,7 +621,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 [[ 3.2500,  3.2500,  3.2500,  3.2500,  3.2500]]])))
         self._test_preprocess_experience(train_reward_function=True, td_steps=-1, reanalyze_ratio=0., expected=expected)
 
-    def test4(self):
+    def test_monte_carla_return_without_reward_function(self):
         expected = self.get_exptected_info(True)
         expected = expected._replace(target=expected.target._replace(
             reward=(),
@@ -654,9 +654,13 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
                 [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                 [[12.0000, 12.0000, 12.0000, 12.0000, 12.0000]],
                 [[ 3.2500,  3.2500,  3.2500,  3.2500,  3.2500]]])))
-        self._test_preprocess_experience(train_reward_function=False, td_steps=-1, reanalyze_ratio=0., expected=expected)
+        self._test_preprocess_experience(
+            train_reward_function=False,
+            td_steps=-1,
+            reanalyze_ratio=0.,
+            expected=expected)
 
-    def test5(self):
+    def test_reanalyze_with_reward_function(self):
         expected = self.get_exptected_info(True)
         expected = expected._replace(
             value=expected.value,
@@ -697,7 +701,7 @@ class MuzeroAlgorithmTest(alf.test.TestCase):
             reanalyze_ratio=1.,
             expected=expected)
 
-    def test6(self):
+    def test_reanalyze_without_reward_function(self):
         expected = self.get_exptected_info(True)
         expected = expected._replace(
             value=expected.value,

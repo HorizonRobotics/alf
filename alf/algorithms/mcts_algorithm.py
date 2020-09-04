@@ -170,8 +170,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     5. We add a game_over field to ModelOutput to indicate the game is over so
        that we won't keep expanding over that branch.
     6. We add support for using a stochastic policy instead of using UCB to
-       do the search/learn/act. This can be enabled by setting  ``act_with_exploratin_policy``
-       ``search_with_exploratin_policy``, ``learn_with_exploratin_policy`` to True.
+       do the search/learn/act. This can be enabled by setting  ``act_with_exploration_policy``
+       ``search_with_exploration_policy``, ``learn_with_exploration_policy`` to True.
        See `Grill et. al. Monte-Carlo tree search as regularized policy optimization
        <https://arxiv.org/abs/2007.12509>`_ for reference.
 
@@ -191,9 +191,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             visit_softmax_temperature_fn: Callable,
             known_value_bounds=None,
             unexpanded_value_score=0.5,
-            act_with_exploratin_policy=False,
-            search_with_exploratin_policy=False,
-            learn_with_exploratin_policy=False,
+            act_with_exploration_policy=False,
+            search_with_exploration_policy=False,
+            learn_with_exploration_policy=False,
             debug_summaries=False,
     ):
         r"""
@@ -201,6 +201,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             observation_spec (nested TensorSpec): if the observation is a dictionary,
                 ``MCTSAlgorithm`` will use the following three fields if they are
                 contained in the dictionary:
+
                 1. valid_action_mask: a bool Tensor to indicate which actions are
                     allowed. It will be used to mask out invalid actions. If not
                     provided, all possible actions are considered.
@@ -210,8 +211,8 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                     correct if the algorithm is used to play against human because
                     it is not used to generate all the moves of both players.
                 3. to_play: int8 Tensor whose elements are 0 or 1 to indicate who
-                    is the player to take the action. If not provided, stesp % 2
-                    wil be used as to_play.
+                    is the player to take the action. If not provided, steps % 2
+                    will be used as to_play.
             action_spec (nested BoundedTensorSpec): representing the actions.
             num_simulations (int): the number of simulations per search (calls to model)
             root_dirichlet_alpha (float): alpha of dirichlet prior for exploration
@@ -236,9 +237,12 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 exploration policy is used, will keep the policy for the unexpanded
                 children same as prior; when exporation is not used, 'none' behaves
                 same as 'min'.
-            act_with_exploratin_policy (bool):
-            search_with_exploratin_policy (bool):
-            learn_with_exploratin_policy (bool):
+            act_with_exploration_policy (bool): If True, a policy calculated using
+                reverse KL divergence will be used for generate action.
+            search_with_exploration_policy (bool): If True, a policy calculated
+                using reverse KL divergence will be used for tree search.
+            learn_with_exploration_policy (bool): If True, a policy calculated
+                using reverse KL divergence will be used for learning.
         """
         assert not nest.is_nested(
             action_spec), "nested action_spec is not supported"
@@ -257,9 +261,9 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
                 "Unsupported unexpanded_value_score=%s" %
                 unexpanded_value_score)
         self._unexpanded_value_score = unexpanded_value_score
-        self._act_with_exploratin_policy = act_with_exploratin_policy
-        self._search_with_exploratin_policy = search_with_exploratin_policy
-        self._learn_with_exploratin_policy = learn_with_exploratin_policy
+        self._act_with_exploration_policy = act_with_exploration_policy
+        self._search_with_exploration_policy = search_with_exploration_policy
+        self._learn_with_exploration_policy = learn_with_exploration_policy
 
         super().__init__(
             observation_spec,
@@ -416,16 +420,16 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
     def _select_action(self, trees, steps):
         roots = (trees.B, trees.root_indices)
 
-        if self._act_with_exploratin_policy or self._learn_with_exploratin_policy:
+        if self._act_with_exploration_policy or self._learn_with_exploration_policy:
             policy = self._calculate_policy(trees, roots)
 
-        if not self._act_with_exploratin_policy or not self._learn_with_exploratin_policy:
+        if not self._act_with_exploration_policy or not self._learn_with_exploration_policy:
             children = trees.children_index[roots]
             children = (trees.B.unsqueeze(1), children)
             visit_counts = trees.visit_count[children]
             visit_counts[children[1] == 0] = 0
 
-        if self._act_with_exploratin_policy:
+        if self._act_with_exploration_policy:
             probs = policy
         else:
             probs = visit_counts
@@ -441,7 +445,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             candidate_actions = ()
             action = action_id
 
-        if not self._learn_with_exploratin_policy:
+        if not self._learn_with_exploration_policy:
             parent_visit_count = (trees.visit_count[roots] - 1.0).unsqueeze(-1)
             policy = visit_counts / parent_visit_count
         info = MCTSInfo(
@@ -452,7 +456,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
         return action, info
 
     def _update_best_child(self, trees: _MCTSTree, parents):
-        if self._search_with_exploratin_policy:
+        if self._search_with_exploration_policy:
             self._sample_child(trees, parents)
         else:
             self._ucb_child(trees, parents)
@@ -629,7 +633,9 @@ def calculate_exploration_policy(value, prior, c, tol=1e-6):
     Notation:
 
         q: prior policy
+
         p: sampling probability
+
         v: value
 
     The exploration policy is found by minimizing the following:
@@ -776,7 +782,7 @@ def create_board_game_mcts(observation_spec,
         # paper pseudocode uses 0.0
         # Current code does not support 0.0, so use a small value, which should
         # not make any difference since a difference of 1e-3 for visit probability
-        # to about exp(1e-3*1e10) probability ratio.
+        # translates to about exp(1e-3*1e10) probability ratio.
         t[num_moves >= 30] = 1e-10
         return t
 

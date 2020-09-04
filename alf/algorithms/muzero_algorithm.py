@@ -287,7 +287,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 game_overs = positions == episode_end_positions
                 discount = replay_buffer.get_field('discount', env_ids,
                                                    positions)
-                # In the case of discount == 0, the game over may not always be correct
+                # In the case of discount != 0, the game over may not always be correct
                 # since the episode is truncated because of TimeLimit or incomplete
                 # last episode in the replay buffer. There is no way to know for sure
                 # the future game overs.
@@ -426,38 +426,14 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 lambda *tensors: torch.cat(tensors), *result)
         return convert_device(result)
 
-    def _reanalyze1(self, replay_buffer: ReplayBuffer, env_ids, positions,
-                    mcts_state_field):
-        """Reanalyze one batch.
-
-        This means:
-        1. Re-plan the policy using MCTS for n1 = 1 + num_unroll_steps to get fresh policy
-        and value target.
-        2. Caluclate the value for following n2 = reanalyze_td_steps so that we have value
-        for a total of 1 + num_unroll_steps + reanalyze_td_steps.
-        3. Use these values and rewards from replay buffer to caculate n2-step
-        bootstraped value target for the first n1 steps.
-
-        In order to do 1 and 2, we need to get the observations for n1 + n2 steps
-        and processs them using data_transformer.
+    def _prepare_reanalyze_data(self, replay_buffer: ReplayBuffer, env_ids,
+                                positions, n1, n2):
+        """
+        Get the n1 + n2 steps of experience indicated by ``positions`` and return
+        as the first n1 as ``exp1`` and the next n2 steps as ``exp2``.
         """
         batch_size = env_ids.shape[0]
-        td_steps = self._reanalyze_td_steps
-        n1 = self._num_unroll_steps + 1
-        n2 = td_steps
         n = n1 + n2
-        env_ids, positions = self._next_n_positions(
-            replay_buffer, env_ids, positions,
-            self._num_unroll_steps + td_steps)
-        # [B, n1]
-        positions1 = positions[:, :n1]
-        game_overs = replay_buffer.get_field('discount', env_ids,
-                                             positions1) == 0.
-
-        steps_to_episode_end = replay_buffer.steps_to_episode_end(
-            positions1, env_ids)
-        bootstrap_n = steps_to_episode_end.clamp(max=td_steps)
-
         flat_env_ids = env_ids.expand_as(positions).reshape(-1)
         flat_positions = positions.reshape(-1)
         exp = replay_buffer.get_field(None, flat_env_ids, flat_positions)
@@ -488,25 +464,62 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             x = x.reshape(batch_size, n, *shape)
             return x[:, n1:, ...].reshape(batch_size * n2, *shape)
 
+        with alf.device(self._device):
+            exp = convert_device(exp)
+            exp1 = alf.nest.map_structure(_split1, exp)
+            exp2 = alf.nest.map_structure(_split2, exp)
+
+        return exp1, exp2
+
+    def _reanalyze1(self, replay_buffer: ReplayBuffer, env_ids, positions,
+                    mcts_state_field):
+        """Reanalyze one batch.
+
+        This means:
+        1. Re-plan the policy using MCTS for n1 = 1 + num_unroll_steps to get fresh policy
+        and value target.
+        2. Caluclate the value for following n2 = reanalyze_td_steps so that we have value
+        for a total of 1 + num_unroll_steps + reanalyze_td_steps.
+        3. Use these values and rewards from replay buffer to caculate n2-step
+        bootstraped value target for the first n1 steps.
+
+        In order to do 1 and 2, we need to get the observations for n1 + n2 steps
+        and processs them using data_transformer.
+        """
+        batch_size = env_ids.shape[0]
+        n1 = self._num_unroll_steps + 1
+        n2 = self._reanalyze_td_steps
+        env_ids, positions = self._next_n_positions(
+            replay_buffer, env_ids, positions, self._num_unroll_steps + n2)
+        # [B, n1]
+        positions1 = positions[:, :n1]
+        game_overs = replay_buffer.get_field('discount', env_ids,
+                                             positions1) == 0.
+
+        steps_to_episode_end = replay_buffer.steps_to_episode_end(
+            positions1, env_ids)
+        bootstrap_n = steps_to_episode_end.clamp(max=n2)
+
+        exp1, exp2 = self._prepare_reanalyze_data(replay_buffer, env_ids,
+                                                  positions, n1, n2)
+
         bootstrap_position = positions1 + bootstrap_n
         discount = replay_buffer.get_field('discount', env_ids,
                                            bootstrap_position)
         sum_reward = self._sum_discounted_reward(
-            replay_buffer, env_ids, positions1, bootstrap_position, td_steps)
+            replay_buffer, env_ids, positions1, bootstrap_position, n2)
 
         if not self._train_reward_function:
             rewards = self._get_reward(replay_buffer, env_ids,
                                        bootstrap_position)
 
         with alf.device(self._device):
-            exp = convert_device(exp)
             bootstrap_n = convert_device(bootstrap_n)
             discount = convert_device(discount)
             sum_reward = convert_device(sum_reward)
             game_overs = convert_device(game_overs)
 
-            exp1 = alf.nest.map_structure(_split1, exp)
-            exp2 = alf.nest.map_structure(_split2, exp)
+            # 1. Reanalyze the first n1 steps to get both the updated value and policy
             self._mcts.set_model(self._target_model)
             mcts_step = self._mcts.predict_step(
                 exp1, alf.nest.get_field(exp1, mcts_state_field))
@@ -520,10 +533,14 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             candidate_action_policy = candidate_action_policy.reshape(
                 batch_size, n1, *candidate_action_policy.shape[1:])
             values1 = mcts_step.info.value.reshape(batch_size, n1)
+
+            # 2. Calulate the value of the next n2 steps so that n2-step return
+            # can be computed.
             model_output = self._target_model.initial_inference(
                 exp2.observation)
             values2 = model_output.value.reshape(batch_size, n2)
 
+            # 3. Calculate n2-step return
             values = torch.cat([values1, values2], dim=1)
             # [B, n1]
             bootstrap_pos = torch.arange(n1).unsqueeze(0) + bootstrap_n

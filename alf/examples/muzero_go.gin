@@ -4,14 +4,14 @@ import alf.environments.suite_go
 import alf.examples.muzero_go
 import alf.utils.schedulers
 
-WIDTH=6
-HEIGHT=6
-WINNING_THRESH=4.0
+WIDTH=19
+HEIGHT=19
+WINNING_THRESH=7.5
 USE_BN=True
-RESNET_BLOCKS=8
-FILTERS=32
-INIT_LR=2e-3
-NUM_ENVS=512
+RESNET_BLOCKS=16
+FILTERS=256
+INIT_LR=1e-2
+NUM_ENVS=128
 
 suite_go.GoEnvironment.winning_thresh=%WINNING_THRESH
 suite_go.GoEnvironment.width=%WIDTH
