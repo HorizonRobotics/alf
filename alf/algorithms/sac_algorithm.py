@@ -130,7 +130,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
        head of the network given :math:`a_{cont}` as the augmented input to
        :math:`s`. Still only an ``ActorDistributionNetwork`` is needed for first
        sampling continuous actions, and then a discrete action is sampled from Q
-       values conditioned on the continuous actions.
+       values conditioned on the continuous actions. See
+       ``alf/docs/notes/sac_with_hybrid_action_types.rst`` for training details.
 
     In addition to the entropy regularization described in the SAC paper, we
     also support KL-Divergence regularization if a prior actor is provided.
