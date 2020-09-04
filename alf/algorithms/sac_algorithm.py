@@ -611,7 +611,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Discrete:
             critics = self._select_q_value(exp.action, critics)
-            target_critics = self._select_q_value(action, target_critics)
+            target_critics = self._select_q_value(
+                action, target_critics.unsqueeze(dim=1))
+
         elif self._act_type == ActionType.Mixed:
             critics = self._select_q_value(exp.action[0], critics)
             discrete_act_dist = action_distribution[0]
