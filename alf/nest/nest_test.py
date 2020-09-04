@@ -23,7 +23,8 @@ import alf.nest as nest
 import cnest
 from alf.data_structures import namedtuple
 from alf.tensor_specs import TensorSpec
-from alf.nest.utils import NestConcat, NestSum, NestMultiply, transform_nest
+from alf.nest.utils import NestConcat, NestSum, NestMultiply
+from alf.nest import transform_nest
 
 NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
 

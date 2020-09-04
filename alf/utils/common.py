@@ -293,7 +293,7 @@ def image_scale_transformer(observation, fields=None, min=-1.0, max=1.0):
 
     fields = fields or [None]
     for field in fields:
-        observation = nest.utils.transform_nest(
+        observation = nest.transform_nest(
             nested=observation, field=field, func=_transform_image)
     return observation
 
