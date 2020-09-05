@@ -193,7 +193,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             time_step = time_step._replace(
                 reward=self._reward_normalizer.normalize(
                     time_step.reward, self._reward_clip_value))
-        return self._mcts.predict_step(time_step, state)
+        alg_step = self._mcts.predict_step(time_step, state)
+        if self._reanalyze_ratio == 1.0:
+            alg_step = alg_step._replace(
+                info=alg_step.info._replace(
+                    candidate_actions=(), candidate_action_policy=()))
+        return alg_step
 
     def train_step(self, exp: TimeStep, state, rollout_info):
         def _hook(grad, name):
@@ -276,23 +281,28 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             beyond_episode_end = positions > episode_end_positions
             positions = torch.min(positions, episode_end_positions)
 
-            if self._td_steps >= 0:
-                values = self._calc_bootstrap_return(replay_buffer, env_ids,
-                                                     positions, value_field)
+            if self._reanalyze_ratio < 1.0:
+                if self._td_steps >= 0:
+                    values = self._calc_bootstrap_return(
+                        replay_buffer, env_ids, positions, value_field)
+                else:
+                    values = self._calc_monte_carlo_return(
+                        replay_buffer, env_ids, positions, value_field)
+
+                candidate_actions = replay_buffer.get_field(
+                    candidate_actions_field, env_ids, positions)
+                candidate_action_policy = replay_buffer.get_field(
+                    candidate_action_policy_field, env_ids, positions)
+
+                if self._reanalyze_ratio > 0:
+                    if candidate_actions is not ():
+                        candidate_actions[r] = r_candidate_actions
+                    candidate_action_policy[r] = r_candidate_action_policy
+                    values[r] = r_values
             else:
-                values = self._calc_monte_carlo_return(replay_buffer, env_ids,
-                                                       positions, value_field)
-
-            candidate_actions = replay_buffer.get_field(
-                candidate_actions_field, env_ids, positions)
-            candidate_action_policy = replay_buffer.get_field(
-                candidate_action_policy_field, env_ids, positions)
-
-            if self._reanalyze_ratio > 0:
-                if candidate_actions is not ():
-                    candidate_actions[r] = r_candidate_actions
-                candidate_action_policy[r] = r_candidate_action_policy
-                values[r] = r_values
+                candidate_actions = r_candidate_actions
+                candidate_action_policy = r_candidate_action_policy
+                values = r_values
 
             game_overs = ()
             if self._train_game_over_function or self._train_reward_function:
