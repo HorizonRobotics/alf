@@ -263,6 +263,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     root_inputs.step_type.shape[0]) < self._reanalyze_ratio
                 r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
                     replay_buffer, env_ids[r], positions[r], mcts_state_field)
+                if self._reanalyze_td_steps < 0:
+                    r_values = self._calc_monte_carlo_return(
+                        replay_buffer, env_ids[r], positions[r], value_field)
 
             # [B]
             steps_to_episode_end = replay_buffer.steps_to_episode_end(
@@ -487,8 +490,12 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
         with alf.device(self._device):
             exp = convert_device(exp)
-            exp1 = alf.nest.map_structure(_split1, exp)
-            exp2 = alf.nest.map_structure(_split2, exp)
+            if n2 > 0:
+                exp1 = alf.nest.map_structure(_split1, exp)
+                exp2 = alf.nest.map_structure(_split2, exp)
+            else:
+                exp1 = exp
+                exp2 = ()
 
         return exp1, exp2
 
@@ -510,6 +517,8 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         batch_size = env_ids.shape[0]
         n1 = self._num_unroll_steps + 1
         n2 = self._reanalyze_td_steps
+        if n2 < 0:
+            n2 = 0
         env_ids, positions = self._next_n_positions(
             replay_buffer, env_ids, positions, self._num_unroll_steps + n2)
         # [B, n1]
@@ -553,28 +562,35 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             candidate_action_policy = mcts_step.info.candidate_action_policy
             candidate_action_policy = candidate_action_policy.reshape(
                 batch_size, n1, *candidate_action_policy.shape[1:])
-            values1 = mcts_step.info.value.reshape(batch_size, n1)
 
-            # 2. Calulate the value of the next n2 steps so that n2-step return
-            # can be computed.
-            model_output = self._target_model.initial_inference(
-                exp2.observation)
-            values2 = model_output.value.reshape(batch_size, n2)
+            values = ()
+            if self._reanalyze_td_steps >= 0:
+                values1 = mcts_step.info.value.reshape(batch_size, n1)
 
-            # 3. Calculate n2-step return
-            values = torch.cat([values1, values2], dim=1)
-            # [B, n1]
-            bootstrap_pos = torch.arange(n1).unsqueeze(0) + bootstrap_n
-            values = values[torch.arange(batch_size).
-                            unsqueeze(-1), bootstrap_pos]
-            values = values * discount * (self._discount**bootstrap_n.to(
-                torch.float32))
-            values = values + sum_reward
-            if not self._train_reward_function:
-                # For this condition, we need to set the value at and after the
-                # last step to be the last reward.
-                values = torch.where(game_overs, convert_device(rewards),
-                                     values)
+                # 2. Calulate the value of the next n2 steps so that n2-step return
+                # can be computed.
+                if n2 > 0:
+                    model_output = self._target_model.initial_inference(
+                        exp2.observation)
+                    values2 = model_output.value.reshape(batch_size, n2)
+                    values = torch.cat([values1, values2], dim=1)
+                else:
+                    values = values1
+
+                # 3. Calculate n2-step return
+                # [B, n1]
+                bootstrap_pos = torch.arange(n1).unsqueeze(0) + bootstrap_n
+                values = values[torch.arange(batch_size).
+                                unsqueeze(-1), bootstrap_pos]
+                values = values * discount * (self._discount**bootstrap_n.to(
+                    torch.float32))
+                values = values + sum_reward
+                if not self._train_reward_function:
+                    # For this condition, we need to set the value at and after the
+                    # last step to be the last reward.
+                    values = torch.where(game_overs, convert_device(rewards),
+                                         values)
+
             return candidate_actions, candidate_action_policy, values
 
     def _next_n_positions(self, replay_buffer, env_ids, positions, n):
