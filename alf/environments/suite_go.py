@@ -76,7 +76,10 @@ class GoBoard(object):
             height (int): height of each board
             width (int): width of each board
             max_num_moves (int): maximum number of moves allowed
-            num_previous_boards (int):
+            num_previous_boards (int): previous so many board situation will be
+                stored. They will be used by ``classify_all_moves()`` to check
+                whether a move will lead to board situation same as one of these
+                previous board situations.
         """
         self._width = width
         self._height = height
@@ -290,6 +293,10 @@ class GoBoard(object):
         expanded_boards = []
         nynxs = [(y + dy, x + dx) for dy, dx in self._dydxs]
         for player in [-1, 1]:
+            # After the loop finish, expanded[b, x, y] == player iff (x, y)
+            # can be reached by one of stones of player in board b. This is achieved
+            # step-by-step by checking wether the neighbor of a location can
+            # be reached. The loop ends until no more new location can be connected.
             expanded = self._board[B]
             area = (expanded == player).sum(dim=(1, 2))
             while True:
@@ -366,8 +373,15 @@ class GoBoard(object):
         if board_indices is None:
             board_indices = self._B
         prev_boards = self._prev_boards[board_indices]
+
+        # We replicate each board to ``height*width`` boards so that we can try
+        # each of ``height*width`` moves independently without interference. The
+        # process is very similar to ``update()``.
+
+        # [B * H * W]
         x = torch.arange(1, self._width + 1).repeat(
             board_indices.shape[0] * self._height)
+        # [B * H * W]
         y = torch.arange(1, self._height + 1).repeat_interleave(
             self._width).repeat(board_indices.shape[0])
         board_indices = board_indices.repeat_interleave(
@@ -375,8 +389,11 @@ class GoBoard(object):
         player = player.repeat_interleave(self._height * self._width)
         opponent = -player
 
+        # [B * H * W, height + 2, width + 2]
         boards = self._board[board_indices]
+        # [B * H * W, height + 2, width + 2]
         cc_ids = self._cc_id[board_indices]
+        # [B * H * W, max_num_ccs]
         cc_qis = self._cc_qi[board_indices]
 
         B = torch.arange(board_indices.shape[0])
@@ -632,6 +649,9 @@ class GoEnvironment(AlfEnvironment):
         return valid
 
     def _step1(self, action):
+        """``_step()`` is used for actually update the board and calculate the
+        reward given the action.
+        """
         prev_game_over = self._game_over
         self._board.reset_board(self._B[prev_game_over])
         current_board = self._board.get_board()
@@ -722,6 +742,12 @@ class GoEnvironment(AlfEnvironment):
             })
 
     def _step(self, action):
+        """When there is a human player, the human player is part of the environment
+        for the computer algorithm. ``_step()`` is the interface for the computer
+        to interact with the environment. So ``_step()`` needs to get the action
+        from the human player and call the underline ``_step1()`` to update the
+        board and calculate reward.
+        """
         if self._human_player is None:
             return self._step1(action)
         if self._num_moves == 0 and self._human_player == 0:
