@@ -196,14 +196,6 @@ class Algorithm(nn.Module):
         """Always returns False for non-RL algorithms."""
         return False
 
-    def skip_training(self):
-        """If True, the algorithm is just a container to hold a child algorithm
-        which has its own training procedure.
-        This function can be used to skip ``train_step`` and ``observe_for_replay``
-        to save time and memory.
-        """
-        return False
-
     @property
     def name(self):
         """The name of this algorithm."""

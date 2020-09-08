@@ -187,6 +187,17 @@ class RLAlgorithm(Algorithm):
         """Return the action spec."""
         return self._action_spec
 
+    @property
+    def train_action_spec(self):
+        """Return the action spec during training. Note that this action spec
+        doesn't have to be the same with ``self._action_spec`` because during
+        training the algorithm no longer interacts with the environment. It can
+        be more complex than the env action spec if some intermediate actions
+        are computed. This is mainly for the purpose of ``summarize_action()``
+        in ``summarize_train()``.
+        """
+        return self._action_spec
+
     def get_step_metrics(self):
         """Get step metrics that used for generating summaries against
 
@@ -261,7 +272,9 @@ class RLAlgorithm(Algorithm):
 
         if self._debug_summaries:
             summary_utils.summarize_action(experience.action,
-                                           self._action_spec)
+                                           self.train_action_spec)
+            if not self.is_on_policy():
+                self.summarize_reward("training_reward", experience.reward)
 
         if self._config.summarize_action_distributions:
             field = alf.nest.find_field(train_info, 'action_distribution')
@@ -449,8 +462,7 @@ class RLAlgorithm(Algorithm):
                                       policy_state)
 
             t0 = time.time()
-            if not self.skip_training():
-                self.observe_for_replay(exp)
+            self.observe_for_replay(exp)
             store_exp_time += time.time() - t0
 
             exp_for_training = Experience(

@@ -1,6 +1,6 @@
 include 'sac_fetchreach.gin'
 
-import alf.algorithms.dynamic_action_repeat_algorithm
+import alf.algorithms.dynamic_action_repeat_agent
 import alf.networks.preprocessors
 
 create_environment.num_parallel_environments=38
@@ -13,16 +13,11 @@ q/QNetwork.preprocessing_combiner=@NestConcat()
 q/QNetwork.fc_layer_params=(256, 256, 256)
 SacAlgorithm.q_network_cls=@q/QNetwork
 
-DynamicActionRepeatAlgorithm.K=%K
-DynamicActionRepeatAlgorithm.rl_algorithm_cls=@SacAlgorithm
-DynamicActionRepeatAlgorithm.gamma=0.98
+DynamicActionRepeatAgent.K=%K
+DynamicActionRepeatAgent.rl_algorithm_cls=@SacAlgorithm
+DynamicActionRepeatAgent.gamma=0.98
+DynamicActionRepeatAgent.optimizer=@AdamTF()
 
-Agent.rl_algorithm_cls=@DynamicActionRepeatAlgorithm
-Agent.pass_config_to_rl_algorithm=True
-Agent.skip_training=True
-
-TrainerConfig.temporally_independent_train_step=True
-TrainerConfig.use_rollout_state=True
+TrainerConfig.algorithm_ctor=@DynamicActionRepeatAgent
 TrainerConfig.unroll_length=25
-TrainerConfig.evaluate=1
 TrainerConfig.replay_buffer_length=20000

@@ -460,6 +460,11 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='sac_bipedal_walker.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_dyna_actrepeat_sac_bipedal_walker(self):
+        self._test(
+            gin_file='dyna_actrepeat_sac_bipedalwalker.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_sac_fetchreach(self):
         self._test(
             gin_file="sac_fetchreach.gin",
