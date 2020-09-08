@@ -533,8 +533,8 @@ class ObservationNormalizer(SimpleDataTransformer):
         else:
             obs = dict([(field, alf.nest.get_field(observation, field))
                         for field in self._fields])
-        if (self._update_mode == "replay" and common.is_replay()
-                or self._update_mode == "rollout" and common.is_rollout()):
+        if ((self._update_mode == "replay" and common.is_replay())
+                or (self._update_mode == "rollout" and common.is_rollout())):
             self._normalizer.update(obs)
         obs = self._normalizer.normalize(obs, self._clipping)
         if self._fields is None:
@@ -570,7 +570,23 @@ class RewardClipping(SimpleDataTransformer):
 
 @gin.configurable
 class RewardNormalizer(SimpleDataTransformer):
-    def __init__(self, observation_spec, normalizer=None, clip_value=-1.0):
+    """Transform reward to be zero-mean and unit-variance."""
+
+    def __init__(self,
+                 observation_spec,
+                 normalizer=None,
+                 clip_value=-1.0,
+                 update_mode="replay"):
+        """
+        Args:
+            observation_spec (nested TensorSpec): describing the observation in
+                timestep
+            normalizer (Normalizer): the normalizer to be used to normalizer the
+                reward. If None, will use ``ScalarAdaptiveNormalizer``.
+            clip_value (float): if > 0, will clip the normalized reward within
+                [-clip_value, clip_value]. Do not clip if ``clip_value`` < 0
+            update_mode (str): update stats during either "replay" or "rollout".
+        """
         super().__init__(observation_spec)
         if normalizer is None:
             normalizer = ScalarAdaptiveNormalizer(auto_update=False)
@@ -578,7 +594,8 @@ class RewardNormalizer(SimpleDataTransformer):
         self._clip_value = clip_value
 
     def _transform(self, timestep_or_exp):
-        if common.is_rollout():
+        if ((self._update_mode == "replay" and common.is_replay())
+                or (self._update_mode == "rollout" and common.is_rollout())):
             self._normalizer.update(timestep_or_exp.reward)
         return timestep_or_exp._replace(
             reward=self._normalizer.normalize(

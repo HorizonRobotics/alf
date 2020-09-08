@@ -19,7 +19,7 @@ TrainerConfig.num_updates_per_train_iter=4
 TrainerConfig.num_iterations=100000
 TrainerConfig.num_checkpoints=5
 
-MCTSAlgorithm.act_with_exploratin_policy=True
-MCTSAlgorithm.learn_with_exploratin_policy=True
-MCTSAlgorithm.search_with_exploratin_policy=True
+MCTSAlgorithm.act_with_exploration_policy=True
+MCTSAlgorithm.learn_with_exploration_policy=True
+MCTSAlgorithm.search_with_exploration_policy=True
 MCTSAlgorithm.unexpanded_value_score='none'
