@@ -20,6 +20,31 @@ import alf
 from alf.utils import math_ops
 
 
+def tensor_extend_new_dim(x, dim, n):
+    """Extending the tensor along a new dimension with a replica of n.
+    Args:
+        x (Tensor): tensor to be extended
+        dim (int): the value indicating the position of the newly
+            inserted dimension
+        n (int): the number of replica along dim
+    Returns:
+        the extended tensor. Its shape is (*x.shape[0:dim], n, *x.shape[dim:])
+    """
+    return x.unsqueeze(dim).expand(*x.shape[0:dim], n, *x.shape[dim:])
+
+
+def reverse_cumsum(x, dim):
+    """Perform cumsum in a reverse order along the dimension specified by dim.
+    Args:
+        x (Tensor): the tensor to compute the reverse cumsum on
+        dim (int): the value indicating the dimension along which to calculate
+            the reverse cumsum
+    Returns:
+        the reverse cumsumed tensor. It has the same shape as x.
+    """
+    return torch.flip(torch.cumsum(torch.flip(x, [dim]), dim), [dim])
+
+
 def tensor_extend(x, y):
     """Extending tensor with new_slice.
 
