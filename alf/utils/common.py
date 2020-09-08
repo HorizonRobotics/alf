@@ -172,9 +172,16 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
                 wt.data.copy_(ws)
 
     def update():
-        for model, target_model in zip(models, target_models):
-            for ws, wt in zip(model.parameters(), target_model.parameters()):
-                wt.data.lerp_(ws, tau)
+        if tau != 1.0:
+            for model, target_model in zip(models, target_models):
+                for ws, wt in zip(model.parameters(),
+                                  target_model.parameters()):
+                    wt.data.lerp_(ws, tau)
+        else:
+            for model, target_model in zip(models, target_models):
+                for ws, wt in zip(model.parameters(),
+                                  target_model.parameters()):
+                    wt.data.copy_(ws)
 
     return Periodically(update, period, 'periodic_update_targets')
 

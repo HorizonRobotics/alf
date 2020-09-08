@@ -95,20 +95,17 @@ class Normalizer(nn.Module):
                 return x
 
             def _summary(name, val):
-                if val.ndim == 0:
-                    alf.summary.scalar(self._name + "." + name + "." + suffix,
-                                       val)
-                elif (val.shape[0] < self.MAX_DIMS_TO_OUTPUT
-                      and alf.summary.should_summarize_output()):
-                    for i in range(val.shape[0]):
-                        alf.summary.scalar(
-                            self._name + "." + name + "_" + str(i) + "." +
-                            suffix, val[i])
-                else:
-                    alf.summary.scalar(
-                        self._name + "." + name + ".min." + suffix, val.min())
-                    alf.summary.scalar(
-                        self._name + "." + name + ".max." + suffix, val.max())
+                with alf.summary.scope(self._name):
+                    if val.ndim == 0:
+                        alf.summary.scalar(name + "." + suffix, val)
+                    elif (val.shape[0] < self.MAX_DIMS_TO_OUTPUT
+                          and alf.summary.should_summarize_output()):
+                        for i in range(val.shape[0]):
+                            alf.summary.scalar(
+                                name + "_" + str(i) + "." + suffix, val[i])
+                    else:
+                        alf.summary.scalar(name + ".min." + suffix, val.min())
+                        alf.summary.scalar(name + ".max." + suffix, val.max())
 
             def _summarize_all(t, m, m2, path):
                 if path:
@@ -236,6 +233,7 @@ class EMNormalizer(Normalizer):
         return EMAverager(self._tensor_spec, self._update_rate)
 
 
+@gin.configurable
 class ScalarEMNormalizer(EMNormalizer):
     def __init__(self,
                  update_rate=1e-3,
@@ -287,6 +285,7 @@ class AdaptiveNormalizer(Normalizer):
             tensor_spec=self._tensor_spec, speed=self._speed)
 
 
+@gin.configurable
 class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
     def __init__(self,
                  speed=8.0,

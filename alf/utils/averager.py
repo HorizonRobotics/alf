@@ -195,10 +195,8 @@ class EMAverager(nn.Module):
             Tensor: the current average
         """
         return alf.nest.map_structure(
-            lambda average: average / torch.max(
-                self._mass.to(average.dtype),
-                torch.as_tensor(self._update_rate, dtype=average.dtype)),
-            self._average)
+            lambda average: average / self._mass.clamp(min=self._update_rate).
+            to(average.dtype), self._average)
 
     def average(self, tensor):
         """Combines ``self.update`` and ``self.get`` in one step. Can be handy

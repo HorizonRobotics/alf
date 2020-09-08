@@ -20,6 +20,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 * [MINE](alf/algorithms/mi_estimator.py): Belghazi et al. "Mutual Information Neural Estimation" [arXiv:1801.04062](https://arxiv.org/abs/1801.04062)
 * [DIAYN](alf/algorithms/diayn_algorithm.py): Eysenbach et al. "Diversity is All You Need: Learning Diverse Skills without a Reward Function" [arXiv:1802.06070](https://arxiv.org/abs/1802.06070)
 * [MISC](alf/algorithms/misc_algorithm.py): Zhao et al. "Mutual Information-based State-Control for Intrinsically Motivated Reinforcement Learning" [arXiv:2002.01963](https://arxiv.org/abs/2002.01963)
+* [MuZero](alf/algorithms/muzero_algorithm.py): Schrittwieser et. al. "Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model" [arXiv:1911.08265](https://arxiv.org/abs/1911.08265)
 
 ## Installation
 
@@ -131,3 +132,8 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
 * [Playground with a red ball](alf/examples/misc_playground.gin) and [with two balls, a red ball and a blue ball](alf/examples/misc_playground_two_balls.gin).  The agent learns to interact with the objects via the MI-based internal drive.
 
   <img src="alf/examples/misc_playground.gif" width = "300" alt="Playground with a red ball"/> <img src="alf/examples/misc_playground_two_balls.gif" width = "300" alt="Playground with two balls"/>
+
+### MuZero
+* [6x6 Go](alf/examples/muzero_go_6x6.gin). It took about a day to train a reasonable agent to play 6x6 go using one GPU.
+
+  <img src="alf/examples/muzero_go_6x6.gif" width = "200" height ="200" alt="6x6-go"/>

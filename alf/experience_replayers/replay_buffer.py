@@ -648,8 +648,7 @@ class ReplayBuffer(RingBuffer):
         env_ids = env_ids[valid]
         positions = positions[valid]
         step_type = alf.nest.get_field(self._buffer, self._step_type_field)
-        step_type[env_ids, self.circular(positions)] = torch.tensor(
-            ds.StepType.LAST)
+        step_type[env_ids, self.circular(positions)] = int(ds.StepType.LAST)
 
 
 @gin.configurable

@@ -41,7 +41,8 @@ function check_style() {
 
 function test() {
     cd alf
-    pip3 install --user -e ./nest/cnest
+    pip3 install -e ./nest/cnest
+    export PYTHONPATH=$PYTHONPATH:`pwd`/nest/cnest
     python3 -m unittest -v \
         alf.algorithms.actor_critic_algorithm_test \
         alf.algorithms.actor_critic_loss_test \
@@ -60,6 +61,7 @@ function test() {
         alf.algorithms.memory_test \
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
+        alf.algorithms.muzero_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.prior_actor_test \
         alf.algorithms.rl_algorithm_test \

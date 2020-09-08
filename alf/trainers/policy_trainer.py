@@ -113,7 +113,7 @@ class Trainer(object):
     summary, checkpointing, running training iterations, and evaluating periodically.
     """
 
-    _trainer_progress = None
+    _trainer_progress = _TrainerProgress()
 
     def __init__(self, config: TrainerConfig):
         """
@@ -424,6 +424,7 @@ class RLTrainer(Trainer):
                 self._save_checkpoint()
                 time_to_checkpoint += checkpoint_interval
             elif self._checkpoint_requested:
+                logging.info("Saving checkpoint upon request...")
                 self._save_checkpoint()
                 self._checkpoint_requested = False
 

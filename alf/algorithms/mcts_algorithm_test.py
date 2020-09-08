@@ -11,10 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+from absl import logging
+import time
 import torch
+import torch.distributions as td
 
 import alf
-from alf.algorithms.mcts_algorithm import MCTSModel, MCTSState, ModelOutput, create_board_game_mcts
+from alf.algorithms.mcts_algorithm import (MCTSModel, MCTSState, ModelOutput,
+                                           MCTSAlgorithm,
+                                           VisitSoftmaxTemperatureByMoves)
+from alf.algorithms.mcts_algorithm import calculate_exploration_policy
 from alf.data_structures import StepType, TimeStep
 
 
@@ -27,7 +34,8 @@ class TicTacToeModel(MCTSModel):
     """
 
     def __init__(self):
-        super().__init__()
+        super().__init__(
+            train_reward_function=True, train_game_over_function=True)
         self._line_x = torch.tensor(
             [[0, 0, 0], [1, 1, 1], [2, 2, 2], [0, 1, 2], [0, 1, 2], [0, 1, 2],
              [0, 1, 2], [0, 1, 2]]).unsqueeze(0)
@@ -99,7 +107,7 @@ class TicTacToeModel(MCTSModel):
 
     def _get_action_probs(self, board):
         p = (board.reshape(board.shape[0], -1) == 0).to(torch.float)
-        return p / (p.sum(dim=1, keepdims=True) + 1e-30)
+        return p / (p.sum(dim=1, keepdim=True) + 1e-30)
 
 
 class TicTacToeModelTest(alf.test.TestCase):
@@ -156,11 +164,6 @@ class MCTSAlgorithmTest(alf.test.TestCase):
                                             dtype=torch.int64,
                                             minimum=0,
                                             maximum=8)
-        mcts = create_board_game_mcts(
-            observation_spec,
-            action_spec,
-            dirichlet_alpha=100.,
-            num_simulations=2000)
         model = TicTacToeModel()
         time_step = TimeStep(step_type=torch.tensor([StepType.MID]))
 
@@ -191,6 +194,21 @@ class MCTSAlgorithmTest(alf.test.TestCase):
         ]
         # yapf: enable
 
+        def _create_mcts(observation_spec, action_spec, num_simulations):
+            return MCTSAlgorithm(
+                observation_spec,
+                action_spec,
+                discount=1.0,
+                root_dirichlet_alpha=100.,
+                root_exploration_fraction=0.25,
+                num_simulations=num_simulations,
+                pb_c_init=1.25,
+                pb_c_base=19652,
+                visit_softmax_temperature_fn=VisitSoftmaxTemperatureByMoves(
+                    [(0, 1.0), (10, 0.0001)]),
+                known_value_bounds=(-1, 1),
+                is_two_player_game=True)
+
         # test case serially
         for observation, action in cases:
             observation = torch.tensor([observation], dtype=torch.float32)
@@ -198,11 +216,8 @@ class MCTSAlgorithmTest(alf.test.TestCase):
             # We use varing num_simulations instead of a fixed large number such
             # as 2000 to make the test faster.
             num_simulations = int((observation == 0).sum().cpu()) * 200
-            mcts = create_board_game_mcts(
-                observation_spec,
-                action_spec,
-                dirichlet_alpha=100.,
-                num_simulations=num_simulations)
+            mcts = _create_mcts(
+                observation_spec, action_spec, num_simulations=num_simulations)
             mcts.set_model(model)
             alg_step = mcts.predict_step(
                 time_step._replace(observation=observation), state)
@@ -216,11 +231,8 @@ class MCTSAlgorithmTest(alf.test.TestCase):
         observation = torch.tensor([case[0] for case in cases],
                                    dtype=torch.float32)
         state = MCTSState(steps=(observation != 0).sum(dim=(1, 2)))
-        mcts = create_board_game_mcts(
-            observation_spec,
-            action_spec,
-            dirichlet_alpha=100.,
-            num_simulations=2000)
+        mcts = _create_mcts(
+            observation_spec, action_spec, num_simulations=2000)
         mcts.set_model(model)
         alg_step = mcts.predict_step(
             time_step._replace(
@@ -231,6 +243,24 @@ class MCTSAlgorithmTest(alf.test.TestCase):
                 self.assertTrue(alg_step.output[i] in action)
             else:
                 self.assertEqual(alg_step.output[i], action)
+
+
+class CalculateExplorationPolicyTest(alf.test.TestCase):
+    def test_calculate_exploration_policy(self):
+        dim = 400
+        batch_size = 1000
+        tol = 1e-6
+
+        dist = td.Dirichlet(torch.full([dim], 0.25))
+        prior = dist.sample((batch_size, ))
+        value = torch.rand([batch_size, dim])
+        c = torch.rand([batch_size, 1]) + 0.01
+        for i in range(10):
+            t = time.time()
+            p, iterations = calculate_exploration_policy(value, prior, c, tol)
+            t = time.time() - t
+            logging.info("time=%s iterations=%s" % (t, iterations))
+        self.assertTrue(((p.sum(dim=1) - 1).abs() < tol).all())
 
 
 if __name__ == '__main__':

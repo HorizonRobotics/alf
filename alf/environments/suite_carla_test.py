@@ -66,7 +66,7 @@ def play(env):
         "observation_desc: %s" % pprint.pformat(env.observation_desc()))
     logging.info("action_spec: %s" % pprint.pformat(env.action_spec()))
     logging.info("action_desc: %s" % pprint.pformat(env.action_desc()))
-    logging.info("Keyboard contorl:" + """
+    logging.info("Keyboard control:" + """
     W/UP         : throttle
     S/DOWN       : brake
     A/LEFT       : steer left

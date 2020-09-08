@@ -181,7 +181,7 @@ def argmin(x):
         row equal to the minimum of the row.
     """
     assert x.ndim == 2
-    m, _ = x.min(dim=1, keepdims=True)
+    m, _ = x.min(dim=1, keepdim=True)
     r, c = torch.nonzero(x == m, as_tuple=True)
     r, num_mins = torch.unique(r, return_counts=True)
     i = torch.cumsum(num_mins, 0)

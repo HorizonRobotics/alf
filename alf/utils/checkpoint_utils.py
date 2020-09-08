@@ -254,7 +254,7 @@ class Checkpointer(object):
         replay_buffer_state = {}
 
         for k, v in state.items():
-            if k.find('_optimizers.') and isinstance(
+            if k.find('_optimizers.') >= 0 and isinstance(
                     v, dict) and 'param_groups' in v:
                 optimizer_state[k] = v
             elif k.startswith('_exp_replayer.'):

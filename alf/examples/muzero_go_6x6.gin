@@ -1,0 +1,25 @@
+include 'muzero_go.gin'
+
+WIDTH=6
+HEIGHT=6
+WINNING_THRESH=4.0
+RESNET_BLOCKS=8
+FILTERS=32
+INIT_LR=1e-2
+NUM_ENVS=512
+
+suite_go.GoEnvironment.allow_suicidal_move=False
+suite_go.GoEnvironment.reward_shaping=True
+MCTSAlgorithm.num_simulations=50
+MCTSAlgorithm.pb_c_init=0.25
+VisitSoftmaxTemperatureByMoves.move_temperature_pairs=[(2, 1.), (100, 1e-5)]
+
+TrainerConfig.mini_batch_size=512
+TrainerConfig.num_updates_per_train_iter=4
+TrainerConfig.num_iterations=100000
+TrainerConfig.num_checkpoints=5
+
+MCTSAlgorithm.act_with_exploration_policy=True
+MCTSAlgorithm.learn_with_exploration_policy=True
+MCTSAlgorithm.search_with_exploration_policy=True
+MCTSAlgorithm.unexpanded_value_score='none'

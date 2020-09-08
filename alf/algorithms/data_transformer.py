@@ -27,6 +27,7 @@ from alf.experience_replayers.replay_buffer import ReplayBuffer, BatchInfo
 from alf.nest.utils import convert_device
 from alf.utils.normalizers import WindowNormalizer, EMNormalizer, AdaptiveNormalizer
 from alf.utils import common
+from alf.utils.normalizers import ScalarAdaptiveNormalizer
 
 FrameStackState = namedtuple('FrameStackState', ['steps', 'prev_frames'])
 
@@ -532,8 +533,8 @@ class ObservationNormalizer(SimpleDataTransformer):
         else:
             obs = dict([(field, alf.nest.get_field(observation, field))
                         for field in self._fields])
-        if (self._update_mode == "replay" and common.is_replay()
-                or self._update_mode == "rollout" and common.is_rollout()):
+        if ((self._update_mode == "replay" and common.is_replay())
+                or (self._update_mode == "rollout" and common.is_rollout())):
             self._normalizer.update(obs)
         obs = self._normalizer.normalize(obs, self._clipping)
         if self._fields is None:
@@ -565,6 +566,40 @@ class RewardClipping(SimpleDataTransformer):
     def _transform(self, timestep_or_exp):
         return timestep_or_exp._replace(
             reward=timestep_or_exp.reward.clamp(*self._minmax))
+
+
+@gin.configurable
+class RewardNormalizer(SimpleDataTransformer):
+    """Transform reward to be zero-mean and unit-variance."""
+
+    def __init__(self,
+                 observation_spec,
+                 normalizer=None,
+                 clip_value=-1.0,
+                 update_mode="replay"):
+        """
+        Args:
+            observation_spec (nested TensorSpec): describing the observation in
+                timestep
+            normalizer (Normalizer): the normalizer to be used to normalizer the
+                reward. If None, will use ``ScalarAdaptiveNormalizer``.
+            clip_value (float): if > 0, will clip the normalized reward within
+                [-clip_value, clip_value]. Do not clip if ``clip_value`` < 0
+            update_mode (str): update stats during either "replay" or "rollout".
+        """
+        super().__init__(observation_spec)
+        if normalizer is None:
+            normalizer = ScalarAdaptiveNormalizer(auto_update=False)
+        self._normalizer = normalizer
+        self._clip_value = clip_value
+
+    def _transform(self, timestep_or_exp):
+        if ((self._update_mode == "replay" and common.is_replay())
+                or (self._update_mode == "rollout" and common.is_rollout())):
+            self._normalizer.update(timestep_or_exp.reward)
+        return timestep_or_exp._replace(
+            reward=self._normalizer.normalize(
+                timestep_or_exp.reward, clip_value=self._clip_value))
 
 
 @gin.configurable
