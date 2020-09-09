@@ -620,8 +620,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
         target_critic = target_critics.reshape(exp.reward.shape)
         entropy_reward = nest.map_structure(lambda la, lp: torch.exp(la) * lp,
                                             self._log_alpha, log_pi)
-        entropy_reward = sum(nest.flatten(entropy_reward))
-        target_critic = (target_critic - entropy_reward).detach()
+        entropy_reward = -sum(nest.flatten(entropy_reward))
+        target_critic = (target_critic + entropy_reward).detach()
 
         state = SacCriticState(
             critics=critics_state, target_critics=target_critics_state)

@@ -19,6 +19,7 @@ import math
 import numpy as np
 
 import alf
+from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.config import TrainerConfig
@@ -26,10 +27,10 @@ from alf.data_structures import TimeStep, Experience, namedtuple, AlgStep
 from alf.data_structures import make_experience, LossInfo
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.utils.conditional_ops import conditional_update
-from alf.utils import common
+from alf.utils import common, summary_utils
 
 ActionRepeatState = namedtuple(
-    "PeriodicActionState",
+    "ActionRepeatState",
     ["rl", "action", "steps", "rl_discount", "rl_reward", "repr"],
     default_value=())
 
@@ -256,12 +257,25 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
     def calc_loss(self, rl_experience, rl_info):
         """Calculate the loss for training ``self._rl``."""
-        with alf.summary.scope(self._name):
-            # summarize_reward will check ``_debug_summaries`` and
-            # ``should_record_summaries()``
-            self.summarize_reward("training_reward", rl_experience.reward)
         return self._rl.calc_loss(rl_experience, rl_info)
 
     def after_update(self, rl_exp, rl_info):
         """Call ``self._rl.after_update()``."""
         self._rl.after_update(rl_exp, rl_info)
+
+    def summarize_train(self, experience, train_info, loss_info, params):
+        """Overwrite the function because the training action spec is
+        different from the rollout action spec.
+        """
+        Algorithm.summarize_train(self, experience, train_info, loss_info,
+                                  params)
+
+        if self._debug_summaries:
+            summary_utils.summarize_action(experience.action,
+                                           self._rl_action_spec)
+            self.summarize_reward("training_reward", experience.reward)
+
+        if self._config.summarize_action_distributions:
+            field = alf.nest.find_field(train_info, 'action_distribution')
+            if len(field) == 1:
+                summary_utils.summarize_action_dist(field[0])
