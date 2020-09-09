@@ -180,7 +180,12 @@ def _is_numpy_array(x):
     return isinstance(x, (np.number, np.ndarray))
 
 
-def restart(observation, action_spec, env_id=None, env_info={}, batched=False):
+def restart(observation,
+            action_spec,
+            env_id=None,
+            env_info={},
+            batched=False,
+            reward_spec=None):
     """Returns a ``TimeStep`` with ``step_type`` set equal to ``StepType.FIRST``.
 
     Called by ``env.reset()``.
@@ -191,6 +196,7 @@ def restart(observation, action_spec, env_id=None, env_info={}, batched=False):
         env_id (batched or scalar torch.int32): (optional) ID of the env.
         env_info (dict): extra info returned by the environment.
         batched (bool): (optional) whether batched envs or not.
+        reward_spec (nested TensorSpec): tensor spec of rewards.
 
     Returns:
         TimeStep:
@@ -202,7 +208,13 @@ def restart(observation, action_spec, env_id=None, env_info={}, batched=False):
         step_type = StepType.FIRST
         if batched:
             batch_size = first_observation[0].shape[0]
-            reward = np.zeros((batch_size, ), dtype=np.float32)
+            if reward_spec is None:
+                reward = np.zeros((batch_size, ), dtype=np.float32)
+            else:
+                reward = nest.map_structure(
+                    lambda spec: spec.numpy_zeros(outer_dims=(batch_size, )),
+                    reward_spec)
+
             discount = np.ones((batch_size, ), dtype=np.float32)
             prev_action = nest.map_structure(
                 lambda spec: spec.numpy_zeros(outer_dims=(batch_size, )),
@@ -210,7 +222,11 @@ def restart(observation, action_spec, env_id=None, env_info={}, batched=False):
             if env_id is None:
                 env_id = np.arrange(batch_size, dtype=np.int32)
         else:
-            reward = np.float32(0.0)
+            if reward_spec is None:
+                reward = np.float32(0.0)
+            else:
+                reward = nest.map_structure(lambda spec: spec.numpy_zeros(),
+                                            reward_spec)
             discount = np.float32(1.0)
             prev_action = nest.map_structure(lambda spec: spec.numpy_zeros(),
                                              action_spec)

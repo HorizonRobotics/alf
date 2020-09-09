@@ -136,12 +136,13 @@ class AlfGymWrapper(AlfEnvironment):
             self._gym_env.observation_space, simplify_box_bounds)
         self._action_spec = tensor_spec_from_gym_space(
             self._gym_env.action_space, simplify_box_bounds)
-        self._reward_spec = TensorSpec(())
+        self._reward_spec = None
+        # _obtain_zero_info also populates _reward_spec
+        self._zero_info = self._obtain_zero_info()
         self._time_step_spec = ds.time_step_spec(
             self._observation_spec, self._action_spec, self._reward_spec)
         self._info = None
         self._done = True
-        self._zero_info = self._obtain_zero_info()
 
         self._env_info_spec = nest.map_structure(TensorSpec.from_array,
                                                  self._zero_info)
@@ -154,11 +155,15 @@ class AlfGymWrapper(AlfEnvironment):
     def _obtain_zero_info(self):
         """Get an env info of zeros only once when the env is created.
         This info will be filled in each ``FIRST`` time step as a placeholder.
+        The function also populates reward_spec when it is not set.
         """
         self._gym_env.reset()
         action = nest.map_structure(lambda spec: spec.numpy_zeros(),
                                     self._action_spec)
-        _, _, _, info = self._gym_env.step(action)
+        _, reward, _, info = self._gym_env.step(action)
+        if self._reward_spec is None:
+            self._reward_spec = nest.map_structure(TensorSpec.from_array,
+                                                   reward)
         self._gym_env.reset()
         info = _as_array(info)
         return nest.map_structure(lambda a: np.zeros_like(a), info)
@@ -183,7 +188,8 @@ class AlfGymWrapper(AlfEnvironment):
             observation=observation,
             action_spec=self._action_spec,
             env_id=self._env_id,
-            env_info=self._zero_info)
+            env_info=self._zero_info,
+            reward_spec=self.reward_spec())
 
     @property
     def done(self):
