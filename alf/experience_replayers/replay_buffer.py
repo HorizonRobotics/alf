@@ -371,7 +371,8 @@ class ReplayBuffer(RingBuffer):
                 if result.reward.ndim > 2:
                     reward_shape = res_reward.shape
                     res_reward = torch.sum(
-                        res_reward[reward_shape[0], reward_shape[1], -1],
+                        res_reward.reshape(reward_shape[0], reward_shape[1],
+                                           -1),
                         dim=2)
                 alf.summary.scalar(
                     "replayer/" + self._name + ".original_reward_mean",

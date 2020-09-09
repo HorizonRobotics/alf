@@ -87,27 +87,21 @@ class TDLoss(nn.Module):
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.
         """
-        exp_reward = experience.reward
-        if exp_reward.ndim > 2:
-            reward_shape = exp_reward.shape
-            exp_reward = torch.sum(
-                exp_reward.reshape(reward_shape[0], reward_shape[1], -1),
-                dim=2)
         if self._lambda == 1.0:
             returns = value_ops.discounted_return(
-                rewards=exp_reward,
+                rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma)
         elif self._lambda == 0.0:
             returns = value_ops.one_step_discounted_return(
-                rewards=exp_reward,
+                rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma)
         else:
             advantages = value_ops.generalized_advantage_estimation(
-                rewards=exp_reward,
+                rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma,

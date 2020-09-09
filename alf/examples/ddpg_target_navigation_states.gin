@@ -13,6 +13,7 @@ import alf.nest.utils
 actor/ActorNetwork.preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
+critic/CriticNetwork.output_tensor_spec=@get_reward_spec()
 
 hidden_layers=(256,256)
 actor/ActorNetwork.fc_layer_params=%hidden_layers
