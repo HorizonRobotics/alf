@@ -648,6 +648,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
 
+        if self._act_type == ActionType.Mixed:
+            # For mixed type, add log_pi separately
+            log_pi = (sum(nest.flatten(log_pi[0])), sum(
+                nest.flatten(log_pi[1])))
+        else:
+            log_pi = sum(nest.flatten(log_pi))
+
         if self._prior_actor is not None:
             prior_step = self._prior_actor.train_step(exp, ())
             log_prior = dist_utils.compute_log_probability(
