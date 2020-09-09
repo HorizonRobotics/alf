@@ -618,9 +618,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 discrete_act_dist.probs * target_critics, dim=-1)
 
         target_critic = target_critics.reshape(exp.reward.shape)
-        entropy_reward = nest.map_structure(lambda la, lp: torch.exp(la) * lp,
+        entropy_reward = nest.map_structure(lambda la, lp: -torch.exp(la) * lp,
                                             self._log_alpha, log_pi)
-        entropy_reward = -sum(nest.flatten(entropy_reward))
+        entropy_reward = sum(nest.flatten(entropy_reward))
         target_critic = (target_critic + entropy_reward).detach()
 
         state = SacCriticState(
@@ -650,8 +650,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
 
         if self._act_type == ActionType.Mixed:
             # For mixed type, add log_pi separately
-            log_pi = (sum(nest.flatten(log_pi[0])), sum(
-                nest.flatten(log_pi[1])))
+            log_pi = type(self._action_spec)((sum(nest.flatten(log_pi[0])),
+                                              sum(nest.flatten(log_pi[1]))))
         else:
             log_pi = sum(nest.flatten(log_pi))
 
