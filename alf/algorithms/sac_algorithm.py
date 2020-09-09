@@ -559,9 +559,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
             discrete_act_dist = action_distribution[0]
             discrete_entropy = discrete_act_dist.entropy()
             # critics is already after min over replicas
-            #assert discrete_act_dist.probs.shape == critics.shape, (
-            #    "Mismatched shapes {} vs. {}".format(discrete_act_dist.probs.shape,
-            #                                         critics.shape))
             weighted_q_value = torch.sum(
                 discrete_act_dist.probs * critics, dim=-1)
             discrete_alpha = torch.exp(self._log_alpha[0]).detach()

@@ -141,13 +141,10 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
         self._repr_learner = repr_learner
         self._rl = rl
-        self._original_observe_for_replay = self.observe_for_replay
-        # Do not observe data at every time step; customized observing
-        self.observe_for_replay = lambda exp: None
 
-    @property
-    def train_action_spec(self):
-        return self._rl_action_spec
+    def observe_for_replay(self, exp):
+        # Do not observe data at every time step; customized observing
+        pass
 
     def _should_switch_action(self, time_step: TimeStep, state):
         repeat_last_step = (state.steps == 0)
@@ -208,9 +205,15 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
             rl_step = self._rl.rollout_step(
                 rl_time_step._replace(observation=observation), state.rl)
-            # store to replay buffer
-            self._original_observe_for_replay(
-                make_experience(rl_time_step, rl_step, state))
+            # Store to replay buffer.
+            super(DynamicActionRepeatAgent, self).observe_for_replay(
+                make_experience(
+                    rl_time_step._replace(
+                        # Store the untransformed observation so that later it will
+                        # be transformed again during training
+                        observation=rl_time_step.untransformed.observation),
+                    rl_step,
+                    state))
             steps, action = rl_step.output
             return ActionRepeatState(
                 action=action,
@@ -253,6 +256,10 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
     def calc_loss(self, rl_experience, rl_info):
         """Calculate the loss for training ``self._rl``."""
+        with alf.summary.scope(self._name):
+            # summarize_reward will check ``_debug_summaries`` and
+            # ``should_record_summaries()``
+            self.summarize_reward("training_reward", rl_experience.reward)
         return self._rl.calc_loss(rl_experience, rl_info)
 
     def after_update(self, rl_exp, rl_info):
