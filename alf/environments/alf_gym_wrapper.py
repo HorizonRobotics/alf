@@ -162,8 +162,8 @@ class AlfGymWrapper(AlfEnvironment):
                                     self._action_spec)
         _, reward, _, info = self._gym_env.step(action)
         if self._reward_spec is None:
-            self._reward_spec = nest.map_structure(TensorSpec.from_array,
-                                                   reward)
+            self._reward_spec = TensorSpec.from_array(
+                np.array(reward, dtype=np.float32))
         self._gym_env.reset()
         info = _as_array(info)
         return nest.map_structure(lambda a: np.zeros_like(a), info)

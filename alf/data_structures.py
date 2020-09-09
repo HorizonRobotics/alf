@@ -211,9 +211,7 @@ def restart(observation,
             if reward_spec is None:
                 reward = np.zeros((batch_size, ), dtype=np.float32)
             else:
-                reward = nest.map_structure(
-                    lambda spec: spec.numpy_zeros(outer_dims=(batch_size, )),
-                    reward_spec)
+                reward = reward_spec.numpy_zeros(outer_dims=(batch_size, ))
 
             discount = np.ones((batch_size, ), dtype=np.float32)
             prev_action = nest.map_structure(
@@ -225,8 +223,7 @@ def restart(observation,
             if reward_spec is None:
                 reward = np.float32(0.0)
             else:
-                reward = nest.map_structure(lambda spec: spec.numpy_zeros(),
-                                            reward_spec)
+                reward = reward_spec.numpy_zeros()
             discount = np.float32(1.0)
             prev_action = nest.map_structure(lambda spec: spec.numpy_zeros(),
                                              action_spec)

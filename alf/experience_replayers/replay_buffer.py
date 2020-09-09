@@ -367,9 +367,15 @@ class ReplayBuffer(RingBuffer):
                                             self._buffer)
 
             if alf.summary.should_record_summaries():
+                res_reward = result.reward[:, :-1]
+                if result.reward.ndim > 2:
+                    reward_shape = res_reward.shape
+                    res_reward = torch.sum(
+                        res_reward[reward_shape[0], reward_shape[1], -1],
+                        dim=2)
                 alf.summary.scalar(
                     "replayer/" + self._name + ".original_reward_mean",
-                    torch.mean(result.reward[:-1]))
+                    torch.mean(res_reward))
 
             if self._postprocess_exp_fn:
                 result, info = self._postprocess_exp_fn(self, result, info)
@@ -750,15 +756,15 @@ def hindsight_relabel_fn(buffer,
 
     # relabel desired goal
     result_desired_goal = alf.nest.get_field(result, desired_goal_field)
-    relabed_goal = result_desired_goal.clone()
+    relabeled_goal = result_desired_goal.clone()
     her_batch_index_tuple = (her_indices.unsqueeze(1),
                              torch.arange(batch_length).unsqueeze(0))
-    relabed_goal[her_batch_index_tuple] = future_ag
+    relabeled_goal[her_batch_index_tuple] = future_ag
 
     # recompute rewards
     result_ag = alf.nest.get_field(result, achieved_goal_field)
     relabeled_rewards = reward_fn(
-        result_ag, relabed_goal, device=buffer._device)
+        result_ag, relabeled_goal, device=buffer._device)
     if alf.summary.should_record_summaries():
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_before_relabel",
@@ -767,12 +773,15 @@ def hindsight_relabel_fn(buffer,
             "replayer/" + buffer._name + ".reward_mean_after_relabel",
             torch.mean(relabeled_rewards[her_indices][:-1]))
     # check reward function is the same as used by the environment.
+    goal_rewards = result.reward
+    if result.reward.ndim > 2:
+        goal_rewards = result.reward[:, :, 0]
     if not torch.allclose(relabeled_rewards[non_her_indices],
-                          result.reward[non_her_indices]):
+                          goal_rewards[non_her_indices]):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
                "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
                ).format(relabeled_rewards[non_her_indices],
-                        result.reward[non_her_indices],
+                        goal_rewards[non_her_indices],
                         result_ag[non_her_indices],
                         result_desired_goal[non_her_indices],
                         env_ids[non_her_indices], start_pos[non_her_indices])
@@ -780,9 +789,15 @@ def hindsight_relabel_fn(buffer,
         orig_reward_cond = non_her_cond
         if use_original_goals_from_info > 0:
             orig_reward_cond &= orig_goal_cond
-        relabeled_rewards[orig_reward_cond] = result.reward[orig_reward_cond]
+        relabeled_rewards[orig_reward_cond] = goal_rewards[orig_reward_cond]
 
-    result = result._replace(reward=relabeled_rewards)
+    final_relabeled_rewards = relabeled_rewards
+    if result.reward.ndim > 2:
+        # multi dimensional reward, first dim is goal related reward.
+        final_relabeled_rewards = result.reward.clone()
+        final_relabeled_rewards[:, :, 0] = relabeled_rewards
+
+    result = result._replace(reward=final_relabeled_rewards)
     result = alf.nest.utils.transform_nest(
-        result, desired_goal_field, lambda _: relabed_goal)
+        result, desired_goal_field, lambda _: relabeled_goal)
     return result, info
