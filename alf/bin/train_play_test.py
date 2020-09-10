@@ -460,6 +460,11 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='sac_bipedal_walker.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_dyna_actrepeat_sac_bipedal_walker(self):
+        self._test(
+            gin_file='dyna_actrepeat_sac_bipedalwalker.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_sac_fetchreach(self):
         self._test(
             gin_file="sac_fetchreach.gin",
@@ -469,6 +474,12 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sac_fetchslide(self):
         self._test(
             gin_file="sac_fetchslide.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_dyna_actrepeat_sac_pickplace(self):
+        self._test(
+            gin_file="dyna_actrepeat_sac_pickplace.gin",
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 

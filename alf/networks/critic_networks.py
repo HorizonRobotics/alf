@@ -35,7 +35,7 @@ def _check_action_specs_for_critic_networks(
     if len(nest.flatten(action_spec)) > 1:
         assert action_preprocessing_combiner is not None, (
             "An action combiner is needed when there are multiple action specs:"
-            " %s" % action_spec)
+            " {}".format(action_spec))
 
     def _check_individual(spec, proc):
         if spec.is_discrete:

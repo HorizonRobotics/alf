@@ -262,6 +262,8 @@ class RLAlgorithm(Algorithm):
         if self._debug_summaries:
             summary_utils.summarize_action(experience.action,
                                            self._action_spec)
+            if not self.is_on_policy():
+                self.summarize_reward("training_reward", experience.reward)
 
         if self._config.summarize_action_distributions:
             field = alf.nest.find_field(train_info, 'action_distribution')

@@ -1047,7 +1047,6 @@ class Algorithm(nn.Module):
             assert len(loss_info.scalar_loss.shape) == 0
             loss_info = loss_info._replace(
                 loss=add_ignore_empty(loss_info.loss, loss_info.scalar_loss))
-        loss = weight * loss_info.loss
 
         unhandled = self._setup_optimizers()
         unhandled = [self._param_to_name[p] for p in unhandled]
@@ -1057,7 +1056,9 @@ class Algorithm(nn.Module):
         for optimizer in optimizers:
             optimizer.zero_grad()
 
-        loss.backward()
+        if loss_info.loss != ():
+            loss = weight * loss_info.loss
+            loss.backward()
 
         all_params = []
         for optimizer in optimizers:

@@ -1,0 +1,23 @@
+include 'sac_fetchreach.gin'
+
+import alf.algorithms.dynamic_action_repeat_agent
+import alf.networks.preprocessors
+
+create_environment.num_parallel_environments=38
+create_environment.env_name='FetchPickAndPlace-v1'
+
+OneStepTDLoss.gamma=1.0
+K=3
+
+q/QNetwork.preprocessing_combiner=@NestConcat()
+q/QNetwork.fc_layer_params=(256, 256, 256)
+SacAlgorithm.q_network_cls=@q/QNetwork
+
+DynamicActionRepeatAgent.K=%K
+DynamicActionRepeatAgent.rl_algorithm_cls=@SacAlgorithm
+DynamicActionRepeatAgent.gamma=0.98
+DynamicActionRepeatAgent.optimizer=@AdamTF()
+
+TrainerConfig.algorithm_ctor=@DynamicActionRepeatAgent
+TrainerConfig.unroll_length=25
+TrainerConfig.replay_buffer_length=20000
