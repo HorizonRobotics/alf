@@ -649,7 +649,7 @@ class GoEnvironment(AlfEnvironment):
         return valid
 
     def _step1(self, action):
-        """``_step()`` is used for actually update the board and calculate the
+        """``_step1()`` is used for actually update the board and calculate the
         reward given the action.
         """
         prev_game_over = self._game_over
