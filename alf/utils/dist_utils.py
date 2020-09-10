@@ -65,6 +65,9 @@ class Softsign(td.Transform):
     bijective = True
     sign = +1
 
+    def __init__(self):
+        super().__init__(cache_size=1)
+
     def __eq__(self, other):
         return isinstance(other, Softsign)
 

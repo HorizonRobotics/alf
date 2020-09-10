@@ -32,6 +32,7 @@ class TrainerConfig(object):
                  use_rollout_state=False,
                  temporally_independent_train_step=None,
                  num_checkpoints=10,
+                 confirm_checkpoint_upon_crash=True,
                  load_checkpoint_strict=True,
                  evaluate=False,
                  eval_interval=10,
@@ -71,10 +72,10 @@ class TrainerConfig(object):
                 The data transformer constructed by this can be access as
                 ``TrainerConfig.data_transformer``.
             random_seed (None|int): random seed, a random seed is used if None
-            num_iterations (int): For RL trainer, indicates number of update 
-                iterations (ignored if 0). Note that for off-policy algorithms, if 
-                ``initial_collect_steps>0``, then the first 
-                ``initial_collect_steps//(unroll_length*num_envs)`` iterations 
+            num_iterations (int): For RL trainer, indicates number of update
+                iterations (ignored if 0). Note that for off-policy algorithms, if
+                ``initial_collect_steps>0``, then the first
+                ``initial_collect_steps//(unroll_length*num_envs)`` iterations
                 won't perform any training. For SL trainer, indicates the number
                 of training epochs.
             num_env_steps (int): number of environment steps (ignored if 0). The
@@ -105,6 +106,8 @@ class TrainerConfig(object):
                 ``None``, its value is inferred based on whether the algorithm
                 has RNN state (``True`` if there is RNN state, ``False`` if not).
             num_checkpoints (int): how many checkpoints to save for the training
+            confirm_checkpoint_upon_crash (bool): whether to prompt for whether
+                do checkpointing after crash.
             load_checkpoint_strict (bool): whether to strictly enforce that the keys
                 in ``state_dict`` match the keys returned by module's
                 ``torch.nn.Module.state_dict`` function. If True, will
@@ -183,6 +186,7 @@ class TrainerConfig(object):
             use_rollout_state=use_rollout_state,
             temporally_independent_train_step=temporally_independent_train_step,
             num_checkpoints=num_checkpoints,
+            confirm_checkpoint_upon_crash=confirm_checkpoint_upon_crash,
             load_checkpoint_strict=load_checkpoint_strict,
             evaluate=evaluate,
             eval_interval=eval_interval,

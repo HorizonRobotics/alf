@@ -171,7 +171,7 @@ def summarize_loss(loss_info: LossInfo):
     Args:
         loss_info (LossInfo): ``loss_info.extra`` must be a namedtuple
     """
-    if loss_info.loss != ():
+    if not isinstance(loss_info.loss, tuple):
         alf.summary.scalar('loss', data=loss_info.loss)
     if not loss_info.extra:
         return
