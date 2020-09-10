@@ -1011,6 +1011,10 @@ class Algorithm(AlgorithmInterface):
             loss = weight * loss_info.loss
             loss.backward()
 
+        for name, p in self.named_parameters():
+            if p.grad is not None:
+                assert torch.isfinite(p.grad).all()
+
         all_params = []
         for optimizer in optimizers:
             params = []

@@ -444,6 +444,8 @@ class SimpleMCTSModel(MCTSModel):
             game_over = ()
             game_over_logit = ()
 
+        assert torch.isfinite(action_probs).all()
+
         return ModelOutput(
             value=value,
             reward=reward,
