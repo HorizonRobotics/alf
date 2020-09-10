@@ -78,6 +78,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                  calculate_priority=False,
                  train_reward_function=True,
                  train_game_over_function=True,
+                 fast_rollout=False,
                  reanalyze_ratio=0.,
                  reanalyze_td_steps=5,
                  reanalyze_batch_size=None,
@@ -115,6 +116,9 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             calculate_priority (bool): whether to calculate priority. This is
                 only useful if priority replay is enabled.
             train_game_over_function (bool): whether train game over function.
+            fast_rollout (bool): If True, do not do MCTS, only use policy network
+                for rollout. This option can make rollout much faster. It needs
+                to bec used with reanalyze.
             reanalyze_ratio (float): float number in [0., 1.]. Reanalyze so much
                 portion of data retrieved from replay buffer. Reanalyzing means
                 using recent model to calculate the value and policy target.
@@ -166,6 +170,17 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
         self._reanalyze_batch_size = reanalyze_batch_size
         self._data_transformer = None
         self._data_transformer_ctor = data_transformer_ctor
+        self._fast_mcts = None
+        if fast_rollout:
+            assert reanalyze_ratio > 0, (
+                "fast_rollout needs to be used with "
+                "reanalyze (i.e. reanalyze_ratio should be greater than 0.")
+            self._fast_mcts = mcts_algorithm_ctor(
+                observation_spec=observation_spec,
+                action_spec=action_spec,
+                num_simulations=0,
+                debug_summaries=debug_summaries)
+            self._fast_mcts.set_model(model)
 
         self._update_target = None
         if reanalyze_ratio > 0:
@@ -178,7 +193,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 period=target_update_period)
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_model']
+        return ['_target_model', '_fast_mcts']
 
     def predict_step(self, time_step: TimeStep, state):
         if self._reward_normalizer is not None:
@@ -193,7 +208,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
             time_step = time_step._replace(
                 reward=self._reward_normalizer.normalize(
                     time_step.reward, self._reward_clip_value))
-        alg_step = self._mcts.predict_step(time_step, state)
+        if self._fast_mcts is not None:
+            alg_step = self._fast_mcts.predict_step(time_step, state)
+        else:
+            alg_step = self._mcts.predict_step(time_step, state)
         if self._reanalyze_ratio == 1.0:
             alg_step = alg_step._replace(
                 info=alg_step.info._replace(
@@ -263,9 +281,6 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                     root_inputs.step_type.shape[0]) < self._reanalyze_ratio
                 r_candidate_actions, r_candidate_action_policy, r_values = self._reanalyze(
                     replay_buffer, env_ids[r], positions[r], mcts_state_field)
-                if self._reanalyze_td_steps < 0:
-                    r_values = self._calc_monte_carlo_return(
-                        replay_buffer, env_ids[r], positions[r], value_field)
 
             # [B]
             steps_to_episode_end = replay_buffer.steps_to_episode_end(
@@ -283,6 +298,10 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
 
             beyond_episode_end = positions > episode_end_positions
             positions = torch.min(positions, episode_end_positions)
+
+            if self._reanalyze_ratio > 0 and self._reanalyze_td_steps < 0:
+                r_values = self._calc_monte_carlo_return(
+                    replay_buffer, env_ids[r], positions[r], value_field)
 
             if self._reanalyze_ratio < 1.0:
                 if self._td_steps >= 0:
