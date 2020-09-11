@@ -13,8 +13,6 @@
 # limitations under the License.
 """Multi-Dimentional Q-Learning Algorithm."""
 
-from absl import logging
-import numpy as np
 import gin
 import functools
 
@@ -165,10 +163,13 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         self._distill_noise = distill_noise
 
     def _predict(self, time_step: TimeStep, state=None, epsilon_greedy=1.):
-        action, _, _ = self._critic_networks.get_action(
+        # Note that here get_action will do greedy sampling only if
+        # epsilon_greedy is 0. This option is provided for evaluation purpose
+        # if greedy sampling is desirable.
+        action, _ = self._critic_networks.get_action(
             time_step.observation,
-            eps=epsilon_greedy,
-            alpha=torch.exp(self._log_alpha).detach())
+            alpha=torch.exp(self._log_alpha).detach(),
+            greedy=(epsilon_greedy == 0))
 
         # slice over action when num_critic_replicas > 1
         # [B, n, d] -> [B, d]
@@ -189,14 +190,13 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         return self._predict(time_step, state, epsilon_greedy=1.0)
 
     def _critic_train_step(self, exp: Experience, state: MdqCriticState,
-                           action, log_pi):
+                           action, log_pi_per_dim):
         alpha = self._log_alpha.exp().detach()
 
         critic_input = (exp.observation, exp.action.to(torch.float32))
-
-        action = action.to(torch.float32)
         target_critic_input = (exp.observation, action.detach())
 
+        # [B, n]
         critic, critic_state = self._critic_networks(
             torch.cat(critic_input, -1),
             alpha=alpha,
@@ -212,16 +212,12 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         critic_distill_input = (exp.observation, noisy_distill_action.detach())
 
+        # [B, n, action_dim]
         critic_adv_form, critic_state = self._critic_networks(
             critic_distill_input,
             alpha=alpha,
             state=state.critic,
             free_form=False)
-        # [B, n, action_dim]
-        critic_adv_form = critic_adv_form.squeeze(3).permute(1, 2, 0)
-
-        # [B, n]
-        critic = critic.squeeze(2)
 
         target_critic_input_new = (tensor_utils.tensor_extend_new_dim(
             target_critic_input[0], dim=1, n=self._num_critic_replicas),
@@ -237,22 +233,19 @@ class MdqAlgorithm(OffPolicyAlgorithm):
             state=state.target_critic,
             free_form=True)
 
+        # Note that in MDQ we distill from the target_critic_network.
         distill_target, _ = self._target_critic_networks(
             torch.cat(distill_critic_input_new, -1),
             alpha=alpha,
             state=state.target_critic,
             free_form=True)
 
-        distill_target = distill_target.reshape(distill_target.shape[0], -1, 1)
-
-        target_critic = target_critic.squeeze(2)
-        distill_target = distill_target.squeeze(2)
-
-        kl_wrt_prior_i = log_pi - self._log_pi_uniform_prior
+        kl_wrt_prior_per_dim = log_pi_per_dim - self._log_pi_uniform_prior
         # keeping the KL of all actions dimensions in case it is useful
         # in some cases in the future, e.g., per-action target correction using
         # the corresponding KL
-        kl_wrt_prior = tensor_utils.reverse_cumsum(kl_wrt_prior_i, dim=-1)
+        kl_wrt_prior = tensor_utils.reverse_cumsum(
+            kl_wrt_prior_per_dim, dim=-1)
         info = MdqCriticInfo(
             critic_free_form=critic,
             target_critic_free_form=target_critic,
@@ -265,13 +258,17 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         return state, info
 
-    def _alpha_train_step(self, log_pi):
-        log_pi_cum = tensor_utils.reverse_cumsum(log_pi, dim=-1)
-        log_pi_full = log_pi_cum[..., 0:1]
+    def _alpha_train_step(self, log_pi_per_dim):
+        """ Adjusting alpha according to target entropy.
+        Args:
+            log_pi_per_dim (torch.Tensor): a tensor of the shape
+                [B, n, action_dim] representing the log_pi for each dimension
+                of the sampled multi-dimensional action
+        """
 
+        log_pi_full = log_pi_per_dim.sum(dim=-1)
         alpha_loss = self._log_alpha * (
             -log_pi_full - self._target_entropy).detach()
-        alpha_loss = alpha_loss.squeeze(-1)
 
         # mean over critic
         alpha_loss = torch.mean(alpha_loss, -1).view(-1)
@@ -287,17 +284,15 @@ class MdqAlgorithm(OffPolicyAlgorithm):
 
         alpha = torch.exp(self._log_alpha).detach()
 
-        action, log_pi, action_values_i = self._critic_networks.get_action(
-            exp.observation, eps=1.0, alpha=alpha)
-        action[:, 1:, :] = action[:, 0:1, :].expand(
-            action.shape[0], action.shape[1] - 1, action.shape[2])
-        log_pi[:, 1:, :] = log_pi[:, 0:1, :].expand(
-            log_pi.shape[0], log_pi.shape[1] - 1, log_pi.shape[2])
+        action, log_pi_per_dim = self._critic_networks.get_action(
+            exp.observation, alpha=alpha, greedy=False)
+        action = action[:, 0:1, :].expand_as(action)
+        log_pi_per_dim = log_pi_per_dim[:, 0:1, :].expand_as(log_pi_per_dim)
 
         critic_state, critic_info = self._critic_train_step(
-            exp, state.critic, action, log_pi)
+            exp, state.critic, action, log_pi_per_dim)
 
-        alpha_info = self._alpha_train_step(log_pi)
+        alpha_info = self._alpha_train_step(log_pi_per_dim)
 
         state = MdqState(critic=critic_state)
         info = MdqInfo(critic=critic_info, alpha=alpha_info)

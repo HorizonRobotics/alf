@@ -491,7 +491,6 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
 
-    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_mdq_pendulum(self):
         self._test(
             gin_file='mdq_pendulum.gin',

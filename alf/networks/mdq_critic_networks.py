@@ -35,7 +35,8 @@ from alf.utils.action_quantizer import ActionQuantizer
 
 @gin.configurable
 class MdqCriticNetwork(Network):
-    """Create an instance of MdqCriticNetwork."""
+    """Create an instance of MdqCriticNetwork for estimating action-value
+    of continuous actions and action sampling used in the MDQ algorithm."""
 
     def __init__(self,
                  input_tensor_spec,
@@ -240,55 +241,56 @@ class MdqCriticNetwork(Network):
 
         self._debug_summaries = debug_summaries
 
-    def get_action(self, inputs, eps, alpha):
+    @torch.no_grad()
+    def get_action(self, inputs, alpha, greedy):
         """Sample action from the distribution induced by the mdq-net.
 
         Args:
             inputs: A tuple of Tensors consistent with `input_tensor_spec`
-            state: empty for API consistent with CriticRNNNetwork
+            alpha: the temperature used for the advantage computation
+            greedy (bool): If True, do greedy sampling by taking the mode of
+                the distribution. If False, do direct sampling from the
+                distribution.
         Returns:
-            actions (torch.Tensor): a tensor of the size [batch_size]
-            log_pi (torch.Tensor): a tensor representing the log_pi of sampled
-                actions
-            state: empty
+            actions (torch.Tensor): a tensor of the shape [B, n, action_dim]
+            log_pi_per_dim (torch.Tensor): a tensor of the shape
+                [B, n, action_dim] representing the log_pi for each dimension
+                of the sampled multi-dimensional action
         """
 
-        with torch.no_grad():
-            observations = inputs
+        observations = inputs
 
-            # [B, n, d]
-            t_shape = (observations.shape[0], self._num_critic_replicas,
-                       self._action_dim)
+        # [B, n, d]
+        t_shape = (observations.shape[0], self._num_critic_replicas,
+                   self._action_dim)
 
-            actions = torch.zeros(t_shape)
-            log_pi = torch.zeros(t_shape)
+        actions = torch.zeros(t_shape)
+        log_pi_per_dim = torch.zeros(t_shape)
 
-            # [B, n, d]
-            encoded_obs, _ = self._obs_encoding_net(observations)
+        # [B, n, d]
+        encoded_obs, _ = self._obs_encoding_net(observations)
 
-            if actions.ndim == 2:
-                actions = tensor_utils.tensor_extend_new_dim(
-                    actions, dim=1, n=self._num_critic_replicas)
+        if actions.ndim == 2:
+            actions = tensor_utils.tensor_extend_new_dim(
+                actions, dim=1, n=self._num_critic_replicas)
 
-            action_padded = torch.zeros(t_shape)
+        action_padded = torch.zeros(t_shape)
 
-            for i in range(self._action_dim):
-                action_padded[..., 0:i] = actions[..., 0:i]
-                joint = torch.cat((encoded_obs, action_padded.detach()), -1)
+        for i in range(self._action_dim):
+            action_padded[..., 0:i] = actions[..., 0:i]
+            joint = torch.cat((encoded_obs, action_padded.detach()), -1)
 
-                action_values_i, _ = self._net_forward_individual(
-                    joint, alpha, i)
+            action_values_i, _ = self._net_forward_individual(joint, alpha, i)
 
-                trans_action_values_i = self._transform_action_value(
-                    action_values_i, alpha)
-                sampled_indices, sampled_log_pi = self._sample_action_from_value(
-                    trans_action_values_i / alpha, alpha, eps)
-                # convert index to action
-                actions[..., i] = self._action_qt.ind_to_action(
-                    sampled_indices)
-                log_pi[..., i] = sampled_log_pi
+            trans_action_values_i = self._transform_action_value(
+                action_values_i, alpha)
+            sampled_indices, sampled_log_pi = self._sample_action_from_value(
+                trans_action_values_i / alpha, alpha, greedy)
+            # convert index to action
+            actions[..., i] = self._action_qt.ind_to_action(sampled_indices)
+            log_pi_per_dim[..., i] = sampled_log_pi
 
-        return actions, log_pi, action_values_i
+        return actions, log_pi_per_dim
 
     def forward(self, inputs, alpha, state=(), free_form=False):
         """Computes action-value given an observation.
@@ -301,12 +303,16 @@ class MdqCriticNetwork(Network):
                 default value is False
 
         Returns:
-            action_value (torch.Tensor): a tensor of the size [batch_size]
+            Q_values (torch.Tensor):
+                - if free_form is True, its shape is [B, n]
+                - if free_form is False, its shape is [B, n, action_dim]
             state: empty
         """
 
         if free_form:
-            return self._free_form_q_net(inputs)
+            Q_values, state = self._free_form_q_net(inputs)
+            Q_values = Q_values.squeeze(2)
+            return Q_values, state
 
         observations, actions = inputs
 
@@ -318,11 +324,10 @@ class MdqCriticNetwork(Network):
             actions = tensor_utils.tensor_extend_new_dim(
                 actions, dim=1, n=self._num_critic_replicas)
 
-        # [B, n, d]
+        # [B, n, action_dim]
         t_shape = (observations.shape[0], self._num_critic_replicas,
                    self._action_dim)
 
-        # Q_values = [None] * self._action_dim
         # [action_dim, B, n, 1]
         Q_values = torch.zeros(self._action_dim, observations.shape[0],
                                self._num_critic_replicas, 1)
@@ -362,6 +367,9 @@ class MdqCriticNetwork(Network):
                 Q_values[i] = Q_values[i - 1] + selected_trans_action_value_i
                 # KL-divergence
                 Q_values[i] = Q_values[i] - alpha * self._log_pi_uniform_prior
+
+        # [action_dim, B, n, 1] -> [B, n, action_dim]
+        Q_values = Q_values.squeeze(3).permute(1, 2, 0)
         return Q_values, state
 
     def _net_forward_individual(self, inputs, alpha, i, state=()):
@@ -438,18 +446,20 @@ class MdqCriticNetwork(Network):
         transformed_value = action_values - v_value
         return transformed_value
 
-    def _sample_action_from_value(self, logits, alpha, eps):
+    def _sample_action_from_value(self, logits, alpha, greedy=False):
         """Sample discrete action from given logits
         Args:
             logits (torch.Tensor): log pi of the discrete distribution with
                 the last dim as the distribution dimension
             alpha: the temperature used for the transformation
-
+            greedy (bool): if True, do greedy sampling by taking the mode
+                of the distribution; otherwise, sample according
+                to the probability of the distribution
         Returns:
             sampled_ind (torch.Tensor): the indices of the sampled action
             sampled_log_pi (torch.Tensor): the log prob of the sampled action
         """
-        if eps == 0:
+        if greedy:
             _, greedy_ind = torch.max(action_values, dim=-1)
             sample_ind = greedy_ind
         else:
