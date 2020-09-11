@@ -297,6 +297,8 @@ class GridSearch(object):
             with gin.unlock_config():
                 gin.parse_config(
                     ['%s=%s' % (k, v) for k, v in parameters.items()])
+                gin.parse_config(
+                    "TrainerConfig.confirm_checkpoint_upon_crash=False")
             train_eval(FLAGS.ml_type, root_dir)
 
             device_queue.put(device)
