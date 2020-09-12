@@ -333,7 +333,7 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         alpha = torch.exp(self._log_alpha).detach()
         kl_wrt_prior = critic_info.kl_wrt_prior
 
-        # [t, B, n, action_dim]
+        # [t, B, n, action_dim] -> [t, B]
         kl_wrt_prior = kl_wrt_prior[..., 0, 0]
 
         target_critic, min_target_ind = torch.min(

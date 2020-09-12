@@ -83,7 +83,6 @@ class ActionQuantizer(object):
 
     def ind_to_action(self, action_ind):
         action = action_ind * self._bin_size + self._LUT_BA[0]
-        action2 = self._LUT_BA[action_ind]
         return action
 
     def action_to_ind(self, action):

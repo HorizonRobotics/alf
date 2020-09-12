@@ -153,11 +153,6 @@ class MdqCriticNetwork(Network):
         last_kernel_initializer = functools.partial(torch.nn.init.uniform_, \
                                 a=-0.003, b=0.003)
 
-        # parallel along both critic and action dims
-        # input: [B, n*action_dim, d]: need to stack over the first dim
-        # output: [B, n*action, d']: need to unstack over the first dim for
-        # splitting over networks
-
         in_size = self._action_dim
 
         self._pre_encoding_nets = nn.ModuleList()
@@ -171,6 +166,12 @@ class MdqCriticNetwork(Network):
                     fc_layer_params=pre_encoding_layer_params,
                     activation=activation,
                     kernel_initializer=kernel_initializer))
+
+        # parallel along both critic and action dims without sharing parameters
+        # for each action dimension.
+        # input: [B, action_dim*n, d]: need to stack over dim1
+        # output: [B, n*action, d']: need to unstack over dim1 for
+        # splitting over networks
         self._pre_encoding_parallel_net = ParallelEncodingNetwork(
             TensorSpec(
                 (self._obs_encoding_net.output_spec.shape[-1] + in_size, )),
@@ -179,6 +180,11 @@ class MdqCriticNetwork(Network):
             activation=activation,
             kernel_initializer=kernel_initializer)
 
+        # parallel along both critic and action dims with sharing parameters
+        # for each action dimension.
+        # input: [action_dim*B, n, d]: need to stack over dim0
+        # output: [action_dim*B, n, d']: need to unstack over dim0 for
+        # splitting over networks
         self._mid_shared_encoding_nets = ParallelEncodingNetwork(
             TensorSpec(
                 (self._pre_encoding_parallel_net.output_spec.shape[-1], )),
@@ -203,8 +209,11 @@ class MdqCriticNetwork(Network):
                     last_activation=last_activation,
                     last_kernel_initializer=last_kernel_initializer))
 
-        # for q value computation and training
-        # self._num_critic_replicas * self._action_dim as replica number
+        # parallel along both critic and action dims without sharing parameters
+        # for each action dimension.
+        # input: [B, action_dim*n, d]: need to stack over dim1
+        # output: [B, n*action, d']: need to unstack over dim1 for
+        # splitting over networks
         self._post_encoding_parallel_net = ParallelEncodingNetwork(
             TensorSpec((out_size, )),
             self._num_critic_replicas * self._action_dim,
@@ -316,11 +325,14 @@ class MdqCriticNetwork(Network):
 
         observations, actions = inputs
 
-        actions = actions.to(torch.float32)
-
+        # observations: [B, d]
+        # encoded_obs: [B, n, d']
+        # Note that when obs_encoding_net is a dummy network
+        # (i.e., layer_params is None), d' is the same as d.
         encoded_obs, _ = self._obs_encoding_net(observations)
 
         if actions.ndim == 2:
+            # [B, action_dim] -> [B, n, action_dim]
             actions = tensor_utils.tensor_extend_new_dim(
                 actions, dim=1, n=self._num_critic_replicas)
 
@@ -336,34 +348,36 @@ class MdqCriticNetwork(Network):
         action_padded = torch.zeros(t_shape)
 
         # prepare parallel-forwarding inputs
+        inputs_per_dim = []
         for i in range(self._action_dim):
             action_padded[..., 0:i] = actions[..., 0:i]
-            # concat action dims to batch dim
-            # [obs, action]
-            joint = torch.cat(
-                (joint, torch.cat(
-                    (encoded_obs, action_padded.detach()), dim=-1)), 0)
+            # concat (obs, action) for each action dimension
+            inputs_per_dim.append(
+                torch.cat((encoded_obs, action_padded.detach()), dim=-1))
 
-        # forward the enlarged batch
-        # input: [action_dim * B, d] (or [action_dim * B, n, d])
-        # output: [action_dim, B, n, d] (d=bin_num)
-        action_values_i, _ = self._net_forward_parallel(
+        # concat per dim input batch to a joint batch along dim1
+        # [B, action_dim*n, d]
+        joint = torch.cat(inputs_per_dim, dim=1)
+
+        # forward the joint batch
+        # action_values_per_dim: [action_dim, B, n, action_bin]
+        action_values_per_dim, _ = self._net_forward_parallel(
             joint, alpha, batch_size=observations.shape[0])
 
-        trans_action_values_i = self._transform_action_value(
-            action_values_i, alpha)
+        trans_action_values_per_dim = self._transform_action_value(
+            action_values_per_dim, alpha)
 
         for i in range(self._action_dim):
             action_ind = self._action_qt.action_to_ind(actions[..., i])
             if i == 0:
                 action_value_i = self._batched_index_select(
-                    action_values_i[i], -1, action_ind.long())
+                    action_values_per_dim[i], -1, action_ind.long())
                 Q_values[i] = action_value_i
                 # KL-divergence
                 Q_values[i] = Q_values[i] - alpha * self._log_pi_uniform_prior
             else:
                 selected_trans_action_value_i = self._batched_index_select(
-                    trans_action_values_i[i], -1, action_ind.long())
+                    trans_action_values_per_dim[i], -1, action_ind.long())
                 Q_values[i] = Q_values[i - 1] + selected_trans_action_value_i
                 # KL-divergence
                 Q_values[i] = Q_values[i] - alpha * self._log_pi_uniform_prior
@@ -375,10 +389,7 @@ class MdqCriticNetwork(Network):
     def _net_forward_individual(self, inputs, alpha, i, state=()):
         """Individiual forwarding for a specified action dims for value computation.
         Args:
-            inputs (torch.Tensor): a tensor of the shape [B*action_dim, d]
-                or [B*action_dim, n, d]
-                with the data for each action dimension concanated along the
-                first dim for parallel computation
+            inputs (torch.Tensor): a tensor of the shape [B, n, d]
             alpha: the temperature used for the advantage computation
             i (int): the specified action dim to perform forwarding
         Returns:
@@ -393,10 +404,9 @@ class MdqCriticNetwork(Network):
     def _net_forward_parallel(self, inputs, alpha, batch_size, state=()):
         """Parallel forwarding across action dims for value computation.
         Args:
-            inputs (torch.Tensor): a tensor of the shape [B*action_dim, d]
-                or [B*action_dim, n, d]
+            inputs (torch.Tensor): a tensor of the shape [B, action_dim*n, d]
                 with the data for each action dimension concanated along the
-                first dim for parallel computation
+                dim1 for parallel computation
             alpha: the temperature used for the advantage computation
             batch_size: the size of the original batch without stacking
                 all action dimensions
@@ -405,30 +415,78 @@ class MdqCriticNetwork(Network):
                 [action_dim, B, n, action_bin]
             state: empty
         """
-
-        inputs, _ = self._pre_encoding_parallel_net(inputs)
-        action_values_mid, state = self._mid_shared_encoding_nets(inputs)
-        out_size = self._mid_shared_encoding_nets.output_spec.shape[-1]
-        # note here use out_size not action_bins; out_size is hidden size
-        # [B*action_dim, n, d] ->  [action_dim, B, n, d]
-        action_values_mid = action_values_mid.view(
-            self._action_dim, batch_size, self._num_critic_replicas, out_size)
-        action_values_final = torch.zeros(self._action_dim, batch_size,
-                                          self._num_critic_replicas,
-                                          self._action_bins)
-
-        #  [action_dim, B, n, d] ->  [B, action_dim, n, d] -> [B, action_dim*n, d]
-        # cannot use view here
-        action_values_mid = action_values_mid.permute(1, 0, 2, 3).reshape(
-            batch_size, -1, out_size)
+        # [B, action_dim*n, d]
+        action_values_pre, _ = self._pre_encoding_parallel_net(inputs)
+        # [B, action_dim*n, d] -> [action_dim*B, n, d]
+        action_values_pre = self._reshape_from_ensemble_to_batch(
+            action_values_pre, batch_size)
+        action_values_mid, state = self._mid_shared_encoding_nets(
+            action_values_pre)
+        # [action_dim*B, n, d] -> [B, action_dim*n, d]
+        action_values_mid = self._reshape_from_batch_to_ensemble(
+            action_values_mid, batch_size)
         action_values_final, _ = self._post_encoding_parallel_net(
             action_values_mid)
-        #  [B, action_dim*n, d]->  [B, action_dim, n, d] -> [action_dim, B, n, d]
+        # [B, action_dim*n, d]->  [B, action_dim, n, d] -> [action_dim, B, n, d]
         action_values = action_values_final.view(batch_size, self._action_dim,
                                                  self._num_critic_replicas,
-                                                 -1).permute(1, 0, 2, 3)
+                                                 -1).transpose(0, 1)
 
         return action_values, state
+
+    def _reshape_from_batch_to_ensemble(self, joint_batch, batch_size):
+        """Reshape the joint batch of the shape [action_dim*B, n, d] to
+            [B, action_dim*n, d], i.e., separate and move the action dimension
+            axis from the batch dimension (dim0) to the ensemble dimension (dim1)
+        Args:
+            joint_batch (torch.Tensor): a tensor of the shape [action_dim*B, n, d]
+                with the data for each action dimension concanated along the
+                batch dimension (dim0)
+            batch_size: the size of the original batch without stacking
+                all action dimensions
+        Returns:
+            reshaped_batch (torch.Tensor): a tensor of the shape
+                [B, action_dim*n, d]
+        """
+        assert len(joint_batch.shape) == 3 and joint_batch.shape[:-1] == \
+                (self._action_dim * batch_size, self._num_critic_replicas)
+
+        d = joint_batch.shape[-1]
+        # [action_dim*B, n, d] -> [action_dim, B, n, d]
+        reshaped_batch = joint_batch.view(self._action_dim, batch_size,
+                                          self._num_critic_replicas, d)
+
+        #  [action_dim, B, n, d] ->  [B, action_dim, n, d] -> [B, action_dim*n, d]
+        reshaped_batch = reshaped_batch.transpose(0, 1).reshape(
+            batch_size, -1, d)
+        return reshaped_batch
+
+    def _reshape_from_ensemble_to_batch(self, joint_batch, batch_size):
+        """Reshape the joint batch of the shape [B, action_dim*n, d] to
+            [action_dim*B, n, d], i.e., separate and move the action dimension
+            axis from the ensemble dimension (dim1) to the batch dimension (dim0)
+        Args:
+            joint_batch (torch.Tensor): a tensor of the shape [B, action_dim*n, d]
+                with the data for each action dimension concanated along the
+                ensemble dimension (dim1)
+            batch_size: the size of the original batch without stacking
+                all action dimensions
+        Returns:
+            reshaped_batch (torch.Tensor): a tensor of the shape
+                [action_dim*B, n, d]
+        """
+        assert len(joint_batch.shape) == 3 and joint_batch.shape[:-1] == \
+                (batch_size, self._action_dim * self._num_critic_replicas)
+
+        d = joint_batch.shape[-1]
+        # [B, action_dim*n, d] -> [B, action_dim, n, d]
+        reshaped_batch = joint_batch.view(batch_size, self._action_dim,
+                                          self._num_critic_replicas, d)
+
+        # [B, action_dim, n, d] -> [action_dim, B, n, d] -> [action_dim*B, n, d]
+        reshaped_batch = reshaped_batch.transpose(0, 1).reshape(
+            -1, self._num_critic_replicas, d)
+        return reshaped_batch
 
     def _transform_action_value(self, action_values, alpha):
         """Transform raw action values to valid alpha * log_pi
