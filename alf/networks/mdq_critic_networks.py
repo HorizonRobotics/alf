@@ -170,7 +170,7 @@ class MdqCriticNetwork(Network):
         # parallel along both critic and action dims without sharing parameters
         # for each action dimension.
         # input: [B, action_dim*n, d]: need to stack over dim1
-        # output: [B, n*action, d']: need to unstack over dim1 for
+        # output: [B, action_dim*n, d']: need to unstack over dim1 for
         # splitting over networks
         self._pre_encoding_parallel_net = ParallelEncodingNetwork(
             TensorSpec(
@@ -212,7 +212,7 @@ class MdqCriticNetwork(Network):
         # parallel along both critic and action dims without sharing parameters
         # for each action dimension.
         # input: [B, action_dim*n, d]: need to stack over dim1
-        # output: [B, n*action, d']: need to unstack over dim1 for
+        # output: [B, action_dim*n, d']: need to unstack over dim1 for
         # splitting over networks
         self._post_encoding_parallel_net = ParallelEncodingNetwork(
             TensorSpec((out_size, )),
