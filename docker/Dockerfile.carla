@@ -91,10 +91,12 @@ RUN apt update && apt install -y --no-install-recommends \
     libopenmpi-dev libcups2-dev libssl-dev \
     python3.7 python3-pip python3.7-dev python3-setuptools
 
+RUN python3.7 -m pip install --upgrade pip
+
 RUN ln -sf /usr/bin/python3.7 /usr/bin/python \
     && ln -sf /usr/bin/python3.7 /usr/bin/python3
 
-COPY ./requirements-carla.txt /tmp/requirements.txt
+COPY ./requirements_carla.txt /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt \
     && rm -rf /tmp/requirements.txt
 
@@ -102,7 +104,8 @@ RUN pip3 install git+https://github.com/HorizonRobotics/gin-config.git@50bbde3
 
 RUN pip3 install torch==1.4.0+cu100 torchvision==0.5.0+cu100 -f https://download.pytorch.org/whl/torch_stable.html
 
-COPY ./set_env.sh /opt/set_env.sh
+# Uncomment below for hobot cluster usage
+#COPY ./set_env.sh /opt/set_env.sh
 
 ######################### Install Carla #########################
 # Adapted from: https://github.com/carla-simulator/carla/blob/master/Util/Docker/Release.Dockerfile
@@ -125,8 +128,11 @@ RUN cd Import && wget https://carla-releases.s3.eu-west-3.amazonaws.com/Linux/Ad
 RUN sh ImportAssets.sh && rm /home/carla/Import/AdditionalMaps_0.9.9.tar.gz
 
 USER root
-RUN cd /home/carla/PythonAPI/carla/dist && easy_install carla-0.9.9-py3.7-linux-x86_64.egg
+RUN cd /home/carla/PythonAPI/carla/dist && python3.7 -m easy_install carla-0.9.9-py3.7-linux-x86_64.egg
 RUN pip3 install -r /home/carla/PythonAPI/carla/requirements.txt
+
+# On desktop we can't run UE4 in root. Comment the line below for cluster usage
+USER carla
 
 ENV SDL_VIDEODRIVER=offscreen
 ENV PYTHONPATH=/home/carla/PythonAPI/carla
