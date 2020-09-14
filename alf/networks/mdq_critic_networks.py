@@ -537,7 +537,7 @@ class MdqCriticNetwork(Network):
         return sampled_ind, sampled_log_pi
 
     def _batched_index_select(self, t, dim, inds):
-        expanded_ind = inds.unsqueeze(-1).expand(*inds.shape, 1)
+        expanded_ind = inds.unsqueeze(-1)
         out = t.gather(dim, expanded_ind)
         return out
 
