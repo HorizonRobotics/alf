@@ -155,7 +155,7 @@ class MdqCriticNetwork(Network):
 
         in_size = self._action_dim
 
-        self._pre_encoding_nets = nn.ModuleList()
+        self._pre_encoding_nets = []
         for i in range(self._action_dim):
             # output_spec.shape: [n, d]
             self._pre_encoding_nets.append(
@@ -196,7 +196,7 @@ class MdqCriticNetwork(Network):
 
         post_enc_out_size = self._action_qt.action_bins
 
-        self._post_encoding_nets = nn.ModuleList()
+        self._post_encoding_nets = []
         for i in range(self._action_dim):
             self._post_encoding_nets.append(
                 ParallelEncodingNetwork(

@@ -334,11 +334,16 @@ class MdqAlgorithm(OffPolicyAlgorithm):
         kl_wrt_prior = critic_info.kl_wrt_prior
 
         # [t, B, n, action_dim] -> [t, B]
+        # note that currently the kl_wrt_prior is independent of ensembles,
+        # we therefore slice over ensemble by taking the first element;
+        # for the aciton dimension, the first element is the full KL
         kl_wrt_prior = kl_wrt_prior[..., 0, 0]
 
+        # [t, B, n] -> [t, B]
         target_critic, min_target_ind = torch.min(
             target_critic_free_form, dim=2)
 
+        # [t, B, n] -> [t, B]
         distill_target, _ = torch.min(distill_target, dim=2)
 
         target_critic_corrected = target_critic - alpha * kl_wrt_prior
