@@ -101,7 +101,9 @@ class Agent(OnPolicyAlgorithm):
             """
         agent_helper = AgentHelper(AgentState)
 
-        rl_observation_spec = observation_spec.copy()
+        rl_observation_spec = observation_spec
+        if isinstance(observation_spec, dict):
+            rl_observation_spec = observation_spec.copy()
 
         ## 0. representation learner
         representation_learner = None
