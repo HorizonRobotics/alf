@@ -363,3 +363,14 @@ class Agent(OnPolicyAlgorithm):
         return new_exp._replace(
             rollout_info=exp.rollout_info._replace(rl=new_exp.rollout_info),
             rollout_info_field=exp.rollout_info_field)
+
+    def summarize_rollout(self, experience):
+        """First call ``RLAlgorithm.summarize_rollout()`` to summarize basic
+        rollout statisics. If the rl algorithm has overridden this function,
+        then also call its customized version.
+        """
+        super(Agent, self).summarize_rollout(experience)
+        if (super(Agent, self).summarize_rollout.__func__ !=
+                self._rl_algorithm.summarize_rollout.__func__):
+            self._rl_algorithm.summarize_rollout(
+                experience._replace(rollout_info=experience.rollout_info.rl))
