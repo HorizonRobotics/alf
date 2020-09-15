@@ -3,7 +3,7 @@ include 'ddpg.gin'
 
 # Goal conditioned task setup
 GoalTask.success_with_angle_requirement=False
-PlayGround.goal_conditioned=True
+GazeboAgent.goal_conditioned=True
 GoalTask.goal_conditioned=True
 
 suite_gym.wrap_env.image_channel_first=False
