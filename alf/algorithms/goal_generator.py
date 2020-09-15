@@ -170,6 +170,8 @@ class ConditionalGoalGenerator(RLAlgorithm):
             goal = exp.rollout_info.goal
         elif self._train_with_goal == 'exp':
             goal = exp.observation["desired_goal"]
+            if "aux_desired" in exp.observation:
+                goal = torch.cat((goal, exp.observation["aux_desired"]), dim=1)
         elif self._train_with_goal == 'orig':
             goal = exp.rollout_info.original_goal
         else:
@@ -266,6 +268,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  min_goal_cost_to_use_plan=0.,
                  use_aux_achieved=False,
                  aux_dim=0,
+                 control_aux=False,
                  name="SubgoalPlanningGoalGenerator"):
         """
         Args:
@@ -286,9 +289,15 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             use_aux_achieved (bool): whether to plan auxiliary achieved states like
                 agent's speed, pose etc. in the field ``aux_achieved``.
             aux_dim (int): number of dimensions to plan for ``aux_achieved`` field.
+            control_aux (bool): whether to output aux_achieved as part of goal,
+                in which case, goal generator needs to output aux_desired as part of
+                observation.
             name (str): name of the algorithm.
         """
-        goal_shape = (action_dim, )
+        goal_dim = action_dim
+        if control_aux:
+            goal_dim += aux_dim
+        goal_shape = (goal_dim, )
         goal_spec = TensorSpec(goal_shape)
         steps_spec = TensorSpec((), dtype=torch.int32)
         train_state_spec = GoalState(
@@ -323,20 +332,31 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 "Set use_aux_achieved flag in env?")
             plan_dim = action_dim + aux_dim
             # aux_dim bounds are assumed to be action_bounds[:][0]
-            for _ in range(aux_dim):
-                action_bounds[0].append(action_bounds[0][0])
-                action_bounds[1].append(action_bounds[1][0])
+            if isinstance(action_bounds[0], list):
+                for _ in range(aux_dim):
+                    action_bounds[0].append(action_bounds[0][0])
+                    action_bounds[1].append(action_bounds[1][0])
         else:
             plan_dim = action_dim
+        plan_horizon = num_subgoals
+        self.control_aux = control_aux
+        if control_aux:
+            assert use_aux_achieved
+            plan_dim = action_dim + aux_dim
+            # part of last subgoal is used to generate final goal state's aux_achieved
+            plan_horizon = num_subgoals + 1
         self._opt = CEMOptimizer(
-            planning_horizon=num_subgoals,
+            planning_horizon=plan_horizon,
             action_dim=plan_dim,
             bounds=action_bounds)
 
         def _costs_agg_dist(time_step, state, samples):
             assert self._value_fn, "no value function provided."
             (batch_size, pop_size, horizon, plan_dim) = samples.shape
-            assert plan_dim == self._action_dim + aux_dim
+            if control_aux:
+                horizon -= 1
+            assert plan_dim == self._action_dim + aux_dim, "{} != {} + {}".format(
+                plan_dim, self._action_dim, aux_dim)
             action_dim = self._action_dim
             start = time_step.observation["achieved_goal"].reshape(
                 batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
@@ -344,35 +364,49 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             end = time_step.observation["desired_goal"].reshape(
                 batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
                                                      action_dim)
-            if use_aux_achieved:
+            if use_aux_achieved or control_aux:
                 ag_samples = samples[:, :, :, :action_dim]
+                if control_aux:
+                    # remove last step which is only used for control_aux
+                    ag_samples = ag_samples[:, :, :-1, :]
             else:
                 ag_samples = samples
-            samples_e = torch.cat([start, ag_samples, end], dim=2)
+            if horizon > 0:
+                samples_e = torch.cat([start, ag_samples, end], dim=2)
+            else:
+                samples_e = torch.cat([start, end], dim=2)
             stack_obs = time_step.observation.copy()
             stack_obs["observation"] = time_step.observation[
                 "observation"].reshape(batch_size, 1, 1, -1).expand(
                     batch_size, pop_size, horizon + 1, -1).reshape(
                         batch_size * pop_size * (horizon + 1), -1)
             stack_obs["achieved_goal"] = samples_e[:, :, :-1, :].reshape(
-                batch_size * pop_size * (horizon + 1), -1)
+                batch_size * pop_size * (horizon + 1), action_dim)
             stack_obs["desired_goal"] = samples_e[:, :, 1:, :].reshape(
-                batch_size * pop_size * (horizon + 1), -1)
+                batch_size * pop_size * (horizon + 1), action_dim)
             if use_aux_achieved:
                 aux_start = time_step.observation["aux_achieved"].reshape(
                     batch_size, 1, 1, aux_dim).expand(batch_size, pop_size, 1,
                                                       aux_dim)
-                stack_obs["aux_achieved"] = torch.cat(
-                    [
-                        aux_start, samples[:, :, :, action_dim:].reshape(
-                            batch_size, pop_size, horizon, -1)
+                if horizon > 0:
+                    aux_start = torch.cat([
+                        aux_start,
+                        samples[:, :, :horizon, action_dim:].reshape(
+                            batch_size, pop_size, horizon, aux_dim)
                     ],
-                    dim=2).reshape(batch_size * pop_size * (horizon + 1), -1)
+                                          dim=2)
+                stack_obs["aux_achieved"] = aux_start.reshape(
+                    batch_size * pop_size * (horizon + 1), aux_dim)
+                if control_aux:
+                    stack_obs[
+                        "aux_desired"] = samples[:, :, :, action_dim:].reshape(
+                            batch_size * pop_size * (horizon + 1), aux_dim)
             if self._value_state_spec != ():
                 raise NotImplementedError()
             values, _unused_value_state = self._value_fn(stack_obs, ())
-            dists = -values.reshape(batch_size, pop_size, horizon + 1)
-            agg_dist = torch.sum(dists, dim=2)
+            dists = -values.reshape(batch_size, pop_size, horizon + 1, -1)
+            # values can be multi dimensional
+            agg_dist = alf.math.sum_to_leftmost(dists, dim=2)
             return agg_dist
 
         self._opt.set_cost(_costs_agg_dist)
@@ -392,41 +426,60 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         """
         ts = TimeStep(observation=observation)
         assert self._value_fn, "set_value_fn before generate_goal"
-        values, _v_state = self._value_fn(observation, ())
-        init_costs = -values
         goals, costs = self._opt.obtain_solution(ts, ())
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
-        if self._use_aux_achieved:
+        if self._use_aux_achieved and not self.control_aux:
             subgoal = subgoal[:, :self._action_dim]
-        # Assumes costs are positive, at least later on during training,
-        # Otherwise, don't use planner.
-        # We also require goal to be > min_goal_cost_to_use_plan away.
-        # If goal is within the min_cost range, just use original goal.
-        plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
-            costs > 0) & (init_costs > costs * (1. + self._plan_margin))
-        alf.summary.scalar(
-            "planner/plan_adoption_rate" + "." + common.exe_mode_name(),
-            torch.mean(plan_success.float()))
+        if self._use_aux_achieved and self.control_aux:
+            observation["aux_desired"] = goals[:, -1, self._action_dim:]
+        if not self.control_aux:
+            # _value_fn relies on calling Q function with predicted action, but
+            # with aux_control, lower level policy's input doesn't contain
+            # aux_desired, and cannot predict action.
+            # Properly handle this case of init_costs would probably add
+            # another CEM process to predict goal aux dimensions first,
+            # maximizing value_fn.
+            values, _v_state = self._value_fn(observation, ())
+            init_costs = -values
+            # Assumes costs are positive, at least later on during training,
+            # Otherwise, don't use planner.
+            # We also require goal to be > min_goal_cost_to_use_plan away.
+            # If goal is within the min_cost range, just use original goal.
+            plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
+                costs > 0) & (init_costs > costs * (1. + self._plan_margin))
+            alf.summary.scalar(
+                "planner/plan_adoption_rate" + "." + common.exe_mode_name(),
+                torch.mean(plan_success.float()))
+            alf.summary.scalar(
+                "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
+                torch.mean(init_costs))
         alf.summary.scalar(
             "planner/cost_mean_planned" + "." + common.exe_mode_name(),
             torch.mean(costs))
-        alf.summary.scalar(
-            "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
-            torch.mean(init_costs))
         if common.is_play():
-            if plan_success[0] > 0:
-                outcome = "plan SUCCESS: "
-            else:
-                outcome = "plan fail: "
+            outcome, init_costs_str = "", ""
+            if not self.control_aux:
+                if plan_success[0] > 0:
+                    outcome = "plan SUCCESS: "
+                else:
+                    outcome = "plan fail: "
+                init_costs_str = "init_cost: " + str(init_costs)
             ach = observation["achieved_goal"]
             if self._use_aux_achieved:
                 ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
-            logging.info(outcome + "init_cost: " + str(init_costs) +
-                         " plan_cost:" + str(costs) + ":\n" + str(ach) +
-                         " ->\n" + str(goals) + " ->\n" +
-                         str(observation["desired_goal"]))
-        subgoal = torch.where(plan_success, subgoal,
-                              observation["desired_goal"])
+            desire = observation["desired_goal"]
+            plan_horizon = goals.shape[1]
+            if self.control_aux:
+                desire = torch.cat((desire, goals[:, -1, self._action_dim:]),
+                                   dim=1)
+                plan_horizon -= 1
+            logging.info(outcome + init_costs_str + " plan_cost:" +
+                         str(costs) + ":\n" + str(ach) + " ->\n" +
+                         str(goals[:, :plan_horizon, :]) + " ->\n" +
+                         str(desire))
+        if not self.control_aux:
+            subgoal = torch.where(plan_success, subgoal,
+                                  observation["desired_goal"])
         return subgoal
 
     def update_condition(self, observation, step_type, state):
@@ -446,7 +499,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         steps_since_last_goal = torch.where(
             step_type == StepType.FIRST,
             torch.as_tensor(10000, dtype=torch.int32), inc_steps)
-        if torch.all(steps_since_last_goal > self._max_subgoal_steps):
+        if torch.all(steps_since_last_goal > self._max_subgoal_steps
+                     ) or self.control_aux:
             # This is an efficiency trick so planning only happens for all envs
             # together.
             state = state._replace(

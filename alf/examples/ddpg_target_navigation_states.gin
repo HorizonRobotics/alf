@@ -34,7 +34,7 @@ import alf.algorithms.goal_generator
 SubgoalPlanningGoalGenerator.observation_spec=%observation_spec
 SubgoalPlanningGoalGenerator.action_dim=2
 SubgoalPlanningGoalGenerator.aux_dim=10
-SubgoalPlanningGoalGenerator.action_bounds=[[-10,-10],[10,10]]
+SubgoalPlanningGoalGenerator.action_bounds=[-10, 10]
 
 # TrainerConfig
 TrainerConfig.initial_collect_steps=10000

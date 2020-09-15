@@ -679,6 +679,10 @@ def hindsight_relabel_fn(buffer,
                          use_original_goals_from_info=0.,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
+                         control_aux=False,
+                         aux_achieved_field="observation.aux_achieved",
+                         aux_desired_field="observation.aux_desired",
+                         action_dim=0,
                          reward_fn=l2_dist_close_reward_fn):
     """Randomly get `batch_size` hindsight relabeled trajectories.
 
@@ -701,10 +705,12 @@ def hindsight_relabel_fn(buffer,
             goal is ``use_original_goals_from_info * (1 - her_proportion)``, and using
             rollout goals and recomputed rewards is
             ``(1 - use_original_goals_from_info) * (1 - her_proportion)``.
+        control_aux (bool): whether input contains aux_desired field.
         achieved_goal_field (str): path to the achieved_goal field in
             exp nest.
         desired_goal_field (str): path to the desired_goal field in the
             exp nest.
+        action_dim (int): dimensions of real action when control_aux is True.
         reward_fn (Callable): function to recompute reward based on
             achieve_goal and desired_goal.  Default gives reward 0 when
             L2 distance less than 0.05 and -1 otherwise, same as is done in
@@ -730,7 +736,17 @@ def hindsight_relabel_fn(buffer,
         orig_goal = alf.nest.get_field(
             result, "rollout_info.goal_generator.original_goal")
         result_goals = alf.nest.get_field(result, desired_goal_field)
-        result_goals[orig_goal_cond] = orig_goal[orig_goal_cond]
+        if control_aux:
+            assert action_dim > 0
+            result_goals[orig_goal_cond] = orig_goal[
+                orig_goal_cond][:, :, :action_dim]
+            aux_desired = alf.nest.get_field(result, aux_desired_field)
+            aux_desired[orig_goal_cond] = orig_goal[
+                orig_goal_cond][:, :, action_dim:]
+            result = alf.nest.utils.transform_nest(
+                result, aux_desired_field, lambda _: aux_desired)
+        else:
+            result_goals[orig_goal_cond] = orig_goal[orig_goal_cond]
         result = alf.nest.utils.transform_nest(
             result, desired_goal_field, lambda _: result_goals)
 
@@ -761,11 +777,22 @@ def hindsight_relabel_fn(buffer,
     her_batch_index_tuple = (her_indices.unsqueeze(1),
                              torch.arange(batch_length).unsqueeze(0))
     relabeled_goal[her_batch_index_tuple] = future_ag
+    if control_aux:
+        relabeled_aux = alf.nest.get_field(result, aux_desired_field).clone()
+        result_achaux = alf.nest.get_field(result, aux_achieved_field)
+        achieved_aux = alf.nest.get_field(buffer._buffer, aux_achieved_field)
+        future_aux = achieved_aux[(last_env_ids, future_idx)].unsqueeze(1)
+        relabeled_aux[her_batch_index_tuple] = future_aux
 
     # recompute rewards
     result_ag = alf.nest.get_field(result, achieved_goal_field)
+    if control_aux:
+        _result_ag = torch.cat((result_ag, result_achaux), dim=2)
+        _relabeled_goal = torch.cat((relabeled_goal, relabeled_aux), dim=2)
+    else:
+        _result_ag, _relabeled_goal = result_ag, relabeled_goal
     relabeled_rewards = reward_fn(
-        result_ag, relabeled_goal, device=buffer._device)
+        _result_ag, _relabeled_goal, device=buffer._device)
     if alf.summary.should_record_summaries():
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_before_relabel",
@@ -777,14 +804,15 @@ def hindsight_relabel_fn(buffer,
     goal_rewards = result.reward
     if result.reward.ndim > 2:
         goal_rewards = result.reward[:, :, 0]
-    if not torch.allclose(relabeled_rewards[non_her_indices],
-                          goal_rewards[non_her_indices]):
+    if (not control_aux and
+            not torch.allclose(relabeled_rewards[non_her_indices][:, 1:, ...],
+                               goal_rewards[non_her_indices][:, 1:, ...])):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
                "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
-               ).format(relabeled_rewards[non_her_indices],
-                        goal_rewards[non_her_indices],
-                        result_ag[non_her_indices],
-                        result_desired_goal[non_her_indices],
+               ).format(relabeled_rewards[non_her_indices][:, 1:, ...],
+                        goal_rewards[non_her_indices][:, 1:, ...],
+                        result_ag[non_her_indices][:, 1:, ...],
+                        result_desired_goal[non_her_indices][:, 1:, ...],
                         env_ids[non_her_indices], start_pos[non_her_indices])
         logging.warning(msg)
         orig_reward_cond = non_her_cond

@@ -429,6 +429,8 @@ class RLAlgorithm(Algorithm):
             transformed_time_step = transformed_time_step._replace(
                 untransformed=time_step)
             t0 = time.time()
+            # Contents of the transformed_time_step if contains dicts can be modified
+            # during rollout, e.g. observation["aux_desired"] can be added.
             policy_step = self.rollout_step(transformed_time_step,
                                             policy_state)
             policy_step_time += time.time() - t0
@@ -450,6 +452,12 @@ class RLAlgorithm(Algorithm):
             else:
                 exp = make_experience(time_step.cpu(), policy_step,
                                       policy_state)
+            if (isinstance(transformed_time_step.observation, dict)
+                    and "aux_desired" in transformed_time_step.observation):
+                observation_with_aux_desired = exp.observation
+                observation_with_aux_desired["aux_desired"] = (
+                    transformed_time_step.observation["aux_desired"])
+                exp = exp._replace(observation=observation_with_aux_desired)
 
             t0 = time.time()
             self.observe_for_replay(exp)

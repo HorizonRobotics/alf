@@ -101,7 +101,7 @@ class Agent(OnPolicyAlgorithm):
             """
         agent_helper = AgentHelper(AgentState)
 
-        rl_observation_spec = observation_spec
+        rl_observation_spec = observation_spec.copy()
 
         ## 0. representation learner
         representation_learner = None
@@ -122,6 +122,11 @@ class Agent(OnPolicyAlgorithm):
                 rl_observation_spec = [
                     rl_observation_spec, goal_generator.action_spec
                 ]
+            if (isinstance(rl_observation_spec, dict)
+                    and "aux_achieved" in rl_observation_spec
+                    and self._control_aux(goal_generator)):
+                rl_observation_spec["aux_desired"] = rl_observation_spec[
+                    "aux_achieved"]
 
         ## 2. rl algorithm
         rl_algorithm = rl_algorithm_cls(
@@ -185,6 +190,13 @@ class Agent(OnPolicyAlgorithm):
         # before this line.
         self.use_rollout_state = self.use_rollout_state
 
+    def _control_aux(self, goal_generator):
+        """Whether goal generator will output aux_desired to guide rl.
+        """
+        return (goal_generator is not None
+                and isinstance(goal_generator, SubgoalPlanningGoalGenerator)
+                and goal_generator.control_aux)
+
     def is_on_policy(self):
         return self._is_on_policy
 
@@ -192,11 +204,21 @@ class Agent(OnPolicyAlgorithm):
         if isinstance(observation, dict) and "desired_goal" in observation:
             if info:
                 # Put original goal into info to be stored in ReplayBuffer
+                original_goal = observation["desired_goal"]
+                if self._control_aux(self._goal_generator):
+                    original_goal = torch.cat((observation["desired_goal"],
+                                               observation["aux_desired"]),
+                                              dim=1)
                 info = info._replace(
                     goal_generator=info.goal_generator._replace(
-                        original_goal=observation["desired_goal"]))
+                        original_goal=original_goal))
             # Set generated goal as desired_goal, also goes into ReplayBuffer
-            observation["desired_goal"] = goal_step.output
+            if self._control_aux(self._goal_generator):
+                action_dim = self._goal_generator._action_dim
+                observation["aux_desired"] = goal_step.output[:, action_dim:]
+            else:
+                action_dim = goal_step.output.shape[1]
+            observation["desired_goal"] = goal_step.output[:, :action_dim]
         else:
             observation = [observation, goal_step.output]
         return observation, info
