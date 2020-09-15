@@ -352,6 +352,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             planning_horizon=plan_horizon,
             action_dim=plan_dim,
             bounds=action_bounds)
+        self._normalizer = None
         if normalize_goals:
             self._normalizer = alf.utils.normalizers.EMNormalizer(
                 observation_spec, name="planner/observation_normalizer")
