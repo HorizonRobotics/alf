@@ -55,7 +55,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('svgd2', True))
+    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('svgd2', True),
+                              ('gfsf', True))
     def test_bayesian_linear_regression(self,
                                         par_vi='svgd3',
                                         function_vi=False,
