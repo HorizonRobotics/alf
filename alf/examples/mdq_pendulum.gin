@@ -1,0 +1,68 @@
+import alf.utils.math_ops
+import alf.algorithms.agent
+import alf.algorithms.mdq_algorithm
+
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+# environment config
+NUM_PARALLEL_ENVIRONMENTS=1
+create_environment.env_name="Pendulum-v0"
+create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+
+num_bins=21
+ent_cnt=%num_bins # the actual number used for ent calculation
+ActionQuantizer.rep_mode="center"
+ActionQuantizer.action_spec=%action_spec
+ActionQuantizer.sampling_method="uniform"
+ActionQuantizer.action_bins=%num_bins
+
+critic/MdqCriticNetwork.num_critic_replicas=2
+critic/MdqCriticNetwork.debug_summaries=0
+critic/MdqCriticNetwork.input_tensor_spec=(%observation_spec, %action_spec)
+
+critic/MdqCriticNetwork.post_encoding_layer_params=(256, 256)
+critic/MdqCriticNetwork.free_form_fc_layer_params=(256, 256)
+
+critic/MdqCriticNetwork.action_qt=@ActionQuantizer()
+critic/Adam.lr=1e-3
+alpha/Adam.lr=1e-3
+
+MdqAlgorithm.initial_log_alpha=0.0
+
+MdqAlgorithm.critic_network=@critic/MdqCriticNetwork()
+MdqAlgorithm.critic_optimizer=@critic/Adam()
+MdqAlgorithm.alpha_optimizer=@alpha/Adam()
+
+calc_default_target_entropy_quantized.ent_per_action_dim=-1.0 # min_prob 0.183
+calc_default_target_entropy_quantized.num_bins=%ent_cnt
+MdqAlgorithm.target_entropy=@calc_default_target_entropy_quantized
+
+
+MdqAlgorithm.target_update_tau=0.005
+MdqAlgorithm.target_update_period=1
+
+OneStepTDLoss.td_error_loss_fn=@element_wise_squared_loss
+
+
+# training config
+TrainerConfig.initial_collect_steps=1000
+TrainerConfig.mini_batch_length=2
+TrainerConfig.unroll_length=1
+TrainerConfig.mini_batch_size=1024
+TrainerConfig.num_updates_per_train_iter=1
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=10000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=0
+TrainerConfig.epsilon_greedy=0.0
+TrainerConfig.eval_interval=500
+TrainerConfig.debug_summaries=False
+TrainerConfig.summarize_grads_and_vars=False
+TrainerConfig.summary_interval=100
+TrainerConfig.replay_buffer_length=10000
+TrainerConfig.algorithm_ctor=@MdqAlgorithm
+
+

@@ -502,6 +502,17 @@ class TrainPlayTest(alf.test.TestCase):
 
         self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
 
+    def test_mdq_pendulum(self):
+        self._test(
+            gin_file='mdq_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_mdq_halfcheetah(self):
+        self._test(
+            gin_file="mdq_halfcheetah.gin",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sarsa_pendulum(self):
         self._test(

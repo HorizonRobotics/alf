@@ -1,0 +1,9 @@
+include 'mdq_mujoco.gin'
+
+# environment config
+env_name='HalfCheetah-v2'
+
+# alg config
+num_bins=21
+MdqAlgorithm.distill_noise=0.01
+TrainerConfig.initial_collect_steps=1000

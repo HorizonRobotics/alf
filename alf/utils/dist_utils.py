@@ -732,6 +732,39 @@ def calc_default_target_entropy(spec, min_prob=0.1):
     return e
 
 
+@gin.configurable
+def calc_default_target_entropy_quantized(spec,
+                                          num_bins,
+                                          ent_per_action_dim=-1.0):
+    """Calc default target entropy for quantized continuous action.
+    Args:
+        spec (TensorSpec): action spec
+        num_bins (int): number of quantization bins used to represent the
+            continuous action
+        ent_per_action_dim (int): desired entropy per action dimension
+            for the non-quantized continuous action; default value is -1.0
+            as suggested by the SAC paper.
+    Returns:
+        target entropy for quantized representation
+    """
+
+    zeros = np.zeros(spec.shape)
+    min_max = np.broadcast(spec.minimum, spec.maximum, zeros)
+
+    cont = spec.is_continuous
+    assert cont, "only support continuous action-based computation"
+
+    log_Mn = np.log(spec.maximum - spec.minimum)
+    log_mp = ent_per_action_dim - log_Mn
+    log_B = np.log(num_bins)
+
+    ents = [log_mp + log_B for i in range(spec.shape[0])]
+    e = np.sum(ents)
+
+    assert e > 0, "wrong target entropy for discrete distribution {}".format(e)
+    return e
+
+
 def calc_default_max_entropy(spec, fraction=0.8):
     """Calc default max entropy.
     Args:
