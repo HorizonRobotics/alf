@@ -261,6 +261,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  num_subgoals,
                  action_dim,
                  action_bounds,
+                 normalize_goals=False,
                  value_fn=None,
                  value_state_spec=(),
                  max_subgoal_steps=10,
@@ -277,6 +278,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             action_dim (int): number of dimensions of the (goal) action.
             action_bounds (pair of float Tensors or lists): min and max bounds of
                 each action dimension.
+            normalize_goals (bool): whether to use normalizer to record stats for goal
+                dimensions, and sample only within observed stats.
             value_fn (Callable or None): value function to measure distance between states.
                 When value_fn is None, it can also be set via set_value_fn.
             value_state_spec (nested TensorSpec): spec of the state of value function.
@@ -349,6 +352,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             planning_horizon=plan_horizon,
             action_dim=plan_dim,
             bounds=action_bounds)
+        if normalize_goals:
+            self._normalizer = alf.utils.normalizers.EMNormalizer(
+                observation_spec, name="planner/observation_normalizer")
 
         def _costs_agg_dist(time_step, state, samples):
             assert self._value_fn, "no value function provided."
@@ -424,6 +430,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         Returns:
             Tensor: a batch of goal tensors.
         """
+        if common.is_rollout() and self._normalizer:
+            self._normalizer.update(observation)
+        if self._normalizer:
+            means = self._normalizer._mean_averager.get()
+            m2s = self._normalizer._m2_averager.get()
+            mean = means["desired_goal"]
+            m2 = m2s["desired_goal"]
+            if self._use_aux_achieved:
+                mean = torch.cat((mean, means["aux_achieved"]))
+                m2 = torch.cat((m2, m2s["aux_achieved"]))
+            self._opt.set_initial_distributions(mean, m2)
         ts = TimeStep(observation=observation)
         assert self._value_fn, "set_value_fn before generate_goal"
         goals, costs = self._opt.obtain_solution(ts, ())
@@ -457,6 +474,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             "planner/cost_mean_planned" + "." + common.exe_mode_name(),
             torch.mean(costs))
         if common.is_play():
+            torch.set_printoptions(precision=2)
             outcome, init_costs_str = "", ""
             if not self.control_aux:
                 if plan_success[0] > 0:
@@ -473,10 +491,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 desire = torch.cat((desire, goals[:, -1, self._action_dim:]),
                                    dim=1)
                 plan_horizon -= 1
+            if plan_horizon > 0:
+                subgoal_str = str(goals[:, :plan_horizon, :]) + " ->\n"
+            else:
+                subgoal_str = ""
             logging.info(outcome + init_costs_str + " plan_cost:" +
                          str(costs) + ":\n" + str(ach) + " ->\n" +
-                         str(goals[:, :plan_horizon, :]) + " ->\n" +
-                         str(desire))
+                         subgoal_str + str(desire))
         if not self.control_aux:
             subgoal = torch.where(plan_success, subgoal,
                                   observation["desired_goal"])

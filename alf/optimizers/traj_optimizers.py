@@ -163,6 +163,17 @@ class CEMOptimizer(TrajOptimizer):
                         bounds[1].expand(1, 1, planning_horizon, action_dim))
         assert self._top_percent * self._population_size > 1, "too few samples"
 
+    def set_initial_distributions(self, mean, m2):
+        """Use the stats in normalizer to re-initialize the distributions before obtain_solution.
+
+        Args:
+            normalizer (Normalizer): to compute a running average of mean and std.
+        """
+        self._init_mean = mean
+        self._init_var = alf.nest.map_structure(
+            lambda _m, _m2: _m2 - alf.utils.math_ops.square(_m) + 1.e-4, mean,
+            m2)
+
     def _init_distr(self, batch_size):
         means = self._init_mean.expand(batch_size, self._planning_horizon,
                                        self._action_dim) + torch.zeros(
