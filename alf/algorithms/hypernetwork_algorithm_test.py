@@ -55,9 +55,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'))
+    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('svgd2', True))
     def test_bayesian_linear_regression(self,
                                         par_vi='svgd3',
+                                        function_vi=False,
                                         num_particles=256,
                                         train_batch_size=10):
         """
@@ -89,10 +90,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             last_layer_param=(output_dim, False),
             last_activation=math_ops.identity,
             noise_dim=noise_dim,
-            # hidden_layers=(16, ),
             hidden_layers=None,
             loss_type='regression',
             par_vi=par_vi,
+            function_vi=function_vi,
             optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))

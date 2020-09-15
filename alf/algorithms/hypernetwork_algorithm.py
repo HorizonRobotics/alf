@@ -92,6 +92,7 @@ class HyperNetwork(Algorithm):
                  loss_type="classification",
                  voting="soft",
                  par_vi="svgd",
+                 function_vi=False,
                  optimizer=None,
                  logging_network=False,
                  logging_training=False,
@@ -140,6 +141,7 @@ class HyperNetwork(Algorithm):
                 types are [``soft``, ``hard``]
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``]
+            function_vi (str): whether to use funciton value based par_vi.
             optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
@@ -177,7 +179,10 @@ class HyperNetwork(Algorithm):
             logging.info(net)
 
         if par_vi == 'svgd':
-            par_vi = 'svgd3'
+            if function_vi:
+                par_vi = 'svgd2'
+            else:
+                par_vi = 'svgd3'
 
         self._generator = Generator(
             gen_output_dim,
@@ -195,6 +200,7 @@ class HyperNetwork(Algorithm):
         self._test_loader = None
         self._use_fc_bn = use_fc_bn
         self._loss_type = loss_type
+        self._function_vi = function_vi
         self._logging_training = logging_training
         self._logging_evaluate = logging_evaluate
         self._config = config
@@ -333,9 +339,39 @@ class HyperNetwork(Algorithm):
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
 
+        if self._function_vi:
+            return self._function_vi_train_step(inputs, num_particles,
+                                                entropy_regularization)
+        else:
+            return self._generator.train_step(
+                inputs=None,
+                loss_func=functools.partial(self._neglogprob, inputs),
+                batch_size=num_particles,
+                entropy_regularization=entropy_regularization,
+                state=())
+
+    def _function_vi_train_step(self,
+                                inputs,
+                                num_particles,
+                                entropy_regularization,
+                                state=None):
+        assert self._function_vi, (
+            "_function_vi_train_step should only be called when self._function_vi is true."
+        )
+
+        predict_step = self._generator.predict_step(batch_size=num_particles)
+        params = predict_step.output
+        self._param_net.set_parameters(params)
+        data, target = inputs
+        outputs, _ = self._param_net(data)  # [B, P, D]
+        outputs = outputs.transpose(0, 1)
+        outputs = outputs.view(num_particles, -1)  # [P, B * D]
+
         return self._generator.train_step(
             inputs=None,
-            loss_func=functools.partial(self._neglogprob, inputs),
+            outputs=outputs,
+            loss_func=functools.partial(self._function_neglogprob,
+                                        target.view(-1)),
             batch_size=num_particles,
             entropy_regularization=entropy_regularization,
             state=())
@@ -376,6 +412,12 @@ class HyperNetwork(Algorithm):
                 logging.info("Test acc: {}".format(test_acc * 100))
             logging.info("Test loss: {}".format(test_loss))
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
+
+    def _function_neglogprob(self, targets, outputs):
+        num_particles = outputs.shape[0]
+        targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
+
+        return self._loss_func(outputs, targets)
 
     def _neglogprob(self, inputs, params):
         self._param_net.set_parameters(params)

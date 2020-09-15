@@ -317,29 +317,33 @@ class Generator(Algorithm):
     def _rbf_func2(self, x, y):
         r"""
         Compute the rbf kernel and its gradient w.r.t. first entry 
-        :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2.
+        :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2 and svgd_grad3. 
 
         Args:
-            x (Tensor): set of N particles, shape (Nx x W), where W is the 
-                dimenseion of each particle
-            y (Tensor): set of N particles, shape (Ny x W), where W is the 
-                dimenseion of each particle
+            x (Tensor): set of N particles, shape (Nx, ...), where Nx is the 
+                number of particles.
+            y (Tensor): set of N particles, shape (Ny, ...), where Ny is the 
+                number of particles.
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
             :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
             
         """
-        Nx, Dx = x.shape
-        Ny, Dy = y.shape
+        Nx = x.shape[0]
+        Ny = y.shape[0]
+        x = x.view(Nx, -1)
+        y = y.view(Ny, -1)
+        Dx = x.shape[1]
+        Dy = y.shape[1]
         assert Dx == Dy
-        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
+        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, D]
         dist_sq = torch.sum(diff**2, -1)  # [Nx, Ny]
         h = self._kernel_width(dist_sq.view(-1))
 
         kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
         kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
-                                  -2 * diff / h)  # [Nx, Ny, W]
+                                  -2 * diff / h)  # [Nx, Ny, D]
         return kappa, kappa_grad
 
     def _score_func(self, x, alpha=1e-5):
