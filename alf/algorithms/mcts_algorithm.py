@@ -456,6 +456,33 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
             value=trees.calc_value(roots),
             candidate_action_policy=policy,
         )
+        if trees.B.shape[0] == 1:
+            value_score, child_visit_count = self._value_score(trees, roots)
+            value_score[trees.prior[roots] == 0] = 0
+            h, w = trees.model_state.shape[-2:]
+            import numpy
+            numpy.set_printoptions(precision=6, linewidth=120)
+            msg = "value: %s\n" % float(info.value[0].cpu().numpy())
+            if trees.reward is not None:
+                msg += "reward: %s\n" % float(
+                    trees.reward[roots][0].cpu().numpy())
+            if trees.game_over is not None:
+                msg += "game_over: %s\n" % bool(
+                    trees.game_over[roots][0].cpu().numpy())
+            msg += "value score:\n%s\n" % value_score[0][:-1].reshape(
+                h, w).cpu().numpy()
+            msg += "pass: %s\n" % float(value_score[0][-1].cpu().numpy())
+            msg += "visit count: \n%s\n" % child_visit_count[0][0:-1].reshape(
+                h, w).cpu().numpy()
+            msg += "pass: %s\n" % int(child_visit_count[0][-1].cpu().numpy())
+            msg += "prior probability: \n%s\n" % trees.prior[roots][0][
+                0:-1].reshape(h, w).cpu().numpy()
+            msg += "pass: %s\n" % float(
+                trees.prior[roots][0][-1].cpu().numpy())
+            msg += "policy: \n%s\n" % policy[0][:-1].reshape(h,
+                                                             w).cpu().numpy()
+            msg += "pass: \n%s\n" % float(policy[0][-1].cpu().numpy())
+            print(msg)
         return action, info
 
     def _update_best_child(self, trees: _MCTSTree, parents):

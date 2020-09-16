@@ -140,6 +140,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
             policy_loss = -(target.action_policy *
                             model_output.action_distribution.logits).sum(dim=2)
         else:
+            # target_action.shape is [B, unroll_steps+1, num_candidate, ...]
+            # log_prob needs sample shape (i.e. num_candidates) in the beginning
             action = target.action.permute(2, 0, 1,
                                            *list(range(3, target.action.ndim)))
             action_log_probs = model_output.action_distribution.log_prob(
@@ -213,6 +215,8 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
                 summary_utils.add_mean_hist_summary(
                     "td_error", target.value - model_output.value)
 
+        assert torch.isfinite(loss).all()
+
         return LossInfo(
             loss=loss,
             extra=dict(
@@ -284,6 +288,7 @@ class SimplePredictionNet(alf.networks.Network):
                 action_spec=action_spec,
                 state_dependent_std=True,
                 scale_distribution=True,
+                # max_std=100.0,
                 dist_squashing_transform=dist_utils.Softsign())
         else:
             self._action_net = CategoricalProjectionNetwork(
@@ -426,10 +431,12 @@ class SimpleMCTSModel(MCTSModel):
             # [num_sampled_actions, B, ...]
             actions = action_distribution.rsample(
                 (self._num_sampled_actions, ))
-            # [B, num_sampled_actions]
-            log_probs = action_distribution.log_prob(actions).transpose(0, 1)
-            action_probs = F.softmax(log_probs, dim=1)
+            # # [B, num_sampled_actions]
+            # log_probs = action_distribution.log_prob(actions).transpose(0, 1)
+            # action_probs = F.softmax(log_probs, dim=1)
             actions = actions.transpose(0, 1)
+            action_probs = torch.full(actions.shape[:2],
+                                      1. / self._num_sampled_actions)
         else:
             action_probs = action_distribution.probs
             if self._num_sampled_actions is None:
