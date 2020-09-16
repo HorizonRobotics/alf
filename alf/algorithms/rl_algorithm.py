@@ -138,7 +138,8 @@ class RLAlgorithm(Algorithm):
 
         env = self._env
         if env is not None:
-            metric_buf_size = max(10, self._env.batch_size)
+            metric_buf_size = max(self._config.metric_min_buffer_size,
+                                  self._env.batch_size)
             self._metrics = [
                 alf.metrics.NumberOfEpisodes(),
                 alf.metrics.EnvironmentSteps(),
