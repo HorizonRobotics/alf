@@ -110,6 +110,7 @@ class ConditionalGoalGenerator(RLAlgorithm):
         if new_goal_mask is not None:
             generated_goal = self.generate_goal(observation, state)
             new_goal = torch.where(new_goal_mask, generated_goal, state.goal)
+            state = state._replace(goal=new_goal)
             return new_goal, state
         else:
             return state.goal, state
@@ -521,8 +522,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         steps_since_last_goal = torch.where(
             step_type == StepType.FIRST,
             torch.as_tensor(10000, dtype=torch.int32), inc_steps)
-        if torch.all(steps_since_last_goal > self._max_subgoal_steps
-                     ) or self.control_aux:
+        update_cond = steps_since_last_goal > self._max_subgoal_steps
+        if torch.all(update_cond) or (self.control_aux
+                                      and torch.any(update_cond)):
             # This is an efficiency trick so planning only happens for all envs
             # together.
             state = state._replace(
@@ -530,8 +532,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             return torch.ones(
                 step_type.shape, dtype=torch.uint8).unsqueeze(-1), state
         else:
-            goals = torch.where((step_type == StepType.FIRST).unsqueeze(-1),
-                                observation["desired_goal"], state.goal)
+            if self.control_aux:
+                # We can safely assume there are no FIRST steps due to
+                # the if condition above.
+                goals = state.goal
+                # Populate aux_desired from the existing plan.
+                observation["aux_desired"] = goals[:, self._action_dim:]
+            else:
+                goals = torch.where(
+                    (step_type == StepType.FIRST).unsqueeze(-1),
+                    observation["desired_goal"], state.goal)
             state = state._replace(
                 steps_since_last_goal=steps_since_last_goal, goal=goals)
             return None, state

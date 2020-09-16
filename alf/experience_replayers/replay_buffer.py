@@ -795,11 +795,23 @@ def hindsight_relabel_fn(buffer,
         _result_ag, _relabeled_goal, device=buffer._device)
     if alf.summary.should_record_summaries():
         alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_before_relabel",
+            "replayer/" + buffer._name + ".reward_mean_her_before_relabel",
             torch.mean(result.reward[her_indices][:-1]))
         alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_after_relabel",
+            "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
             torch.mean(relabeled_rewards[her_indices][:-1]))
+        if use_original_goals_from_info > 0:
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".reward_mean_orig_nonher",
+                torch.mean(relabeled_rewards[orig_goal_cond
+                                             & non_her_cond][:-1]))
+            rollout_cond = torch.logical_not(orig_goal_cond) & non_her_cond
+        else:
+            rollout_cond = non_her_cond
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
+            torch.mean(relabeled_rewards[rollout_cond][:-1]))
+
     # check reward function is the same as used by the environment.
     goal_rewards = result.reward
     if result.reward.ndim > 2:

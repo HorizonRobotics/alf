@@ -171,7 +171,7 @@ class CEMOptimizer(TrajOptimizer):
         """
         self._init_mean = mean
         self._init_var = alf.nest.map_structure(
-            lambda _m, _m2: _m2 - alf.utils.math_ops.square(_m) + 1.e-4, mean,
+            lambda _m, _m2: _m2 - alf.utils.math_ops.square(_m) + 1e-8, mean,
             m2)
 
     def _init_distr(self, batch_size):

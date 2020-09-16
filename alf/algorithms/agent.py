@@ -192,9 +192,11 @@ class Agent(OnPolicyAlgorithm):
         # before this line.
         self.use_rollout_state = self.use_rollout_state
 
-    def _control_aux(self, goal_generator):
+    def _control_aux(self, goal_generator=None):
         """Whether goal generator will output aux_desired to guide rl.
         """
+        if goal_generator is None:
+            goal_generator = self._goal_generator
         return (goal_generator is not None
                 and isinstance(goal_generator, SubgoalPlanningGoalGenerator)
                 and goal_generator.control_aux)
@@ -207,7 +209,7 @@ class Agent(OnPolicyAlgorithm):
             if info:
                 # Put original goal into info to be stored in ReplayBuffer
                 original_goal = observation["desired_goal"]
-                if self._control_aux(self._goal_generator):
+                if self._control_aux():
                     original_goal = torch.cat((observation["desired_goal"],
                                                observation["aux_desired"]),
                                               dim=1)
@@ -215,7 +217,7 @@ class Agent(OnPolicyAlgorithm):
                     goal_generator=info.goal_generator._replace(
                         original_goal=original_goal))
             # Set generated goal as desired_goal, also goes into ReplayBuffer
-            if self._control_aux(self._goal_generator):
+            if self._control_aux():
                 action_dim = self._goal_generator._action_dim
                 observation["aux_desired"] = goal_step.output[:, action_dim:]
             else:
