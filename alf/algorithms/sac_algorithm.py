@@ -184,9 +184,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
                 given that the action is discrete. Its output spec must be consistent with
                 the discrete action in ``action_spec``.
-            reward_weights (list[float]): this is only used when the reward is
+            reward_weights (None|list[float]): this is only used when the reward is
                 multidimensional. In that case, the weighted sum of the q values
-                is used for training the actor.
+                is used for training the actor if reward_weights is not None.
+                Otherwise, the sum of the q values is used.
             use_entropy_reward (bool): whether to include entropy as reward
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
@@ -254,6 +255,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if reward_weights:
             assert reward_dim > 1, (
                 "reward_weights cannot be used for one dimensional reward")
+            assert len(reward_weights) == reward_dim, (
+                "Mismatch between len(reward_weights)=%s and reward_dim=%s" %
+                (len(reward_weights), reward_dim))
             self._reward_weights = torch.tensor(
                 reward_weights, dtype=torch.float32)
 
