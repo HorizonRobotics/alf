@@ -30,8 +30,8 @@ class TDLoss(nn.Module):
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
                  debug_summaries=False,
-                 name="MultiStepTDLoss"):
-        r"""Create a MultiStepTDLoss object.
+                 name="TDLoss"):
+        r"""Create a TDLoss object.
 
         Let :math:`G_{t:T}` be the bootstaped return from t to T:
             :math:`G_{t:T} = \sum_{i=t+1}^T \gamma^{t-i-1}R_i + \gamma^{T-t} V(s_T)`

@@ -146,6 +146,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                  actor_network_cls=ActorDistributionNetwork,
                  critic_network_cls=CriticNetwork,
                  q_network_cls=QNetwork,
+                 reward_weights=None,
+                 use_entropy_reward=True,
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
@@ -182,6 +184,10 @@ class SacAlgorithm(OffPolicyAlgorithm):
             q_network (Callable): is used to construct QNetwork for estimating ``Q(s,a)``
                 given that the action is discrete. Its output spec must be consistent with
                 the discrete action in ``action_spec``.
+            reward_weights (list[float]): this is only used when the reward is
+                multidimensional. In that case, the weighted sum of the q values
+                is used for training the actor.
+            use_entropy_reward (bool): whether to include entropy as reward
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             num_critic_replicas (int): number of critics to be used. Default is 2.
@@ -230,9 +236,26 @@ class SacAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._use_parallel_network = use_parallel_network
 
-        critic_networks, actor_network, self._act_type = self._make_networks(
+        critic_networks, actor_network, self._act_type, reward_dim = self._make_networks(
             observation_spec, action_spec, actor_network_cls,
             critic_network_cls, q_network_cls)
+
+        self._use_entropy_reward = use_entropy_reward
+
+        if reward_dim > 1:
+            assert not use_entropy_reward, (
+                "use_entropy_reward=True is not supported for multidimensional reward"
+            )
+            assert self._act_type == ActionType.Continuous, (
+                "Only continuous action is supported for multidimensional reward"
+            )
+
+        self._reward_weights = None
+        if reward_weights:
+            assert reward_dim > 1, (
+                "reward_weights cannot be used for one dimensional reward")
+            self._reward_weights = torch.tensor(
+                reward_weights, dtype=torch.float32)
 
         def _init_log_alpha():
             return nn.Parameter(torch.tensor(float(initial_log_alpha)))
@@ -368,6 +391,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
             continuous_action_spec = action_spec
 
         actor_network = None
+        reward_dim = 1
         if continuous_action_spec:
             assert continuous_actor_network_cls is not None, (
                 "If there are continuous actions, then a ActorDistributionNetwork "
@@ -383,9 +407,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 critic_network = critic_network_cls(
                     input_tensor_spec=(observation_spec,
                                        continuous_action_spec))
+                reward_dim = critic_network.output_spec.numel
                 critic_networks = _make_parallel(critic_network)
 
         if discrete_action_spec:
+            assert reward_dim == 1, (
+                "Discrete action is not supported for multidimensional reward")
             act_type = ActionType.Discrete
             assert len(alf.nest.flatten(discrete_action_spec)) == 1, (
                 "Only support at most one discrete action currently! "
@@ -405,7 +432,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     action_spec=action_spec)
             critic_networks = _make_parallel(q_network)
 
-        return critic_networks, actor_network, act_type
+        return critic_networks, actor_network, act_type, reward_dim
 
     def _predict_action(self,
                         observation,
@@ -550,6 +577,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
                 self._critic_networks, exp.observation, action, state)
+            if critics.ndim == 3:
+                # Multidimensional reward: [B, num_criric_replicas, reward_dim]
+                if self._reward_weights is None:
+                    critics = critics.sum(dim=2)
+                else:
+                    critics = torch.tensordot(
+                        critics, self._reward_weights, dims=1)
+
             target_q_value = critics.min(dim=1)[0]
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
@@ -618,10 +653,13 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 discrete_act_dist.probs * target_critics, dim=-1)
 
         target_critic = target_critics.reshape(exp.reward.shape)
-        entropy_reward = nest.map_structure(lambda la, lp: -torch.exp(la) * lp,
-                                            self._log_alpha, log_pi)
-        entropy_reward = sum(nest.flatten(entropy_reward))
-        target_critic = (target_critic + entropy_reward).detach()
+        if self._use_entropy_reward:
+            entropy_reward = nest.map_structure(
+                lambda la, lp: -torch.exp(la) * lp, self._log_alpha, log_pi)
+            entropy_reward = sum(nest.flatten(entropy_reward))
+            target_critic = target_critic + entropy_reward
+
+        target_critic = target_critic.detach()
 
         state = SacCriticState(
             critics=critics_state, target_critics=target_critics_state)
@@ -714,7 +752,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         for i, l in enumerate(self._critic_losses):
             critic_losses.append(
                 l(experience=experience,
-                  value=critic_info.critics[..., i],
+                  value=critic_info.critics[:, :, i, ...],
                   target_value=critic_info.target_critic).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
