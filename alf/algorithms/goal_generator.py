@@ -468,13 +468,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
             costs > 0) & (init_costs > costs * (1. + self._plan_margin))
         alf.summary.scalar(
-            "planner/plan_adoption_rate" + "." + common.exe_mode_name(),
+            "planner/adoption_rate_planning" + "." + common.exe_mode_name(),
             torch.mean(plan_success.float()))
         alf.summary.scalar(
             "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
             torch.mean(init_costs))
         alf.summary.scalar(
-            "planner/cost_mean_planned" + "." + common.exe_mode_name(),
+            "planner/cost_mean_planning" + "." + common.exe_mode_name(),
             torch.mean(costs))
         orig_desired = observation["desired_goal"]
         if self.control_aux:

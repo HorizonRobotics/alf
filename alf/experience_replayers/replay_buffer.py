@@ -367,13 +367,10 @@ class ReplayBuffer(RingBuffer):
                                             self._buffer)
 
             if alf.summary.should_record_summaries():
-                res_reward = result.reward[:, :-1]
+                res_reward = result.reward
                 if result.reward.ndim > 2:
-                    reward_shape = res_reward.shape
-                    res_reward = torch.sum(
-                        res_reward.reshape(reward_shape[0], reward_shape[1],
-                                           -1),
-                        dim=2)
+                    res_reward = alf.math.sum_to_leftmost(res_reward, dim=2)
+                res_reward = result.reward[:, 1:]
                 alf.summary.scalar(
                     "replayer/" + self._name + ".original_reward_mean",
                     torch.mean(res_reward))
@@ -794,37 +791,40 @@ def hindsight_relabel_fn(buffer,
     relabeled_rewards = reward_fn(
         _result_ag, _relabeled_goal, device=buffer._device)
     if alf.summary.should_record_summaries():
+        res_reward = result.reward
+        if result.reward.ndim > 2:
+            res_reward = alf.math.sum_to_leftmost(res_reward, dim=2)
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_her_before_relabel",
-            torch.mean(result.reward[her_indices][:-1]))
+            torch.mean(res_reward[her_indices][1:]))
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
-            torch.mean(relabeled_rewards[her_indices][:-1]))
+            torch.mean(relabeled_rewards[her_indices][1:]))
         if use_original_goals_from_info > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_orig_nonher",
                 torch.mean(relabeled_rewards[orig_goal_cond
-                                             & non_her_cond][:-1]))
+                                             & non_her_cond][1:]))
             rollout_cond = torch.logical_not(orig_goal_cond) & non_her_cond
         else:
             rollout_cond = non_her_cond
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
-            torch.mean(relabeled_rewards[rollout_cond][:-1]))
+            torch.mean(relabeled_rewards[rollout_cond][1:]))
 
     # check reward function is the same as used by the environment.
     goal_rewards = result.reward
     if result.reward.ndim > 2:
         goal_rewards = result.reward[:, :, 0]
-    if (not control_aux and
-            not torch.allclose(relabeled_rewards[non_her_indices][:, 1:, ...],
-                               goal_rewards[non_her_indices][:, 1:, ...])):
+    if (not control_aux
+            and not torch.allclose(relabeled_rewards[non_her_indices][:, 1:],
+                                   goal_rewards[non_her_indices][:, 1:])):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
                "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
-               ).format(relabeled_rewards[non_her_indices][:, 1:, ...],
-                        goal_rewards[non_her_indices][:, 1:, ...],
-                        result_ag[non_her_indices][:, 1:, ...],
-                        result_desired_goal[non_her_indices][:, 1:, ...],
+               ).format(relabeled_rewards[non_her_indices][:, 1:],
+                        goal_rewards[non_her_indices][:, 1:],
+                        result_ag[non_her_indices][:, 1:],
+                        result_desired_goal[non_her_indices][:, 1:],
                         env_ids[non_her_indices], start_pos[non_her_indices])
         logging.warning(msg)
         orig_reward_cond = non_her_cond

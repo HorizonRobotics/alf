@@ -41,7 +41,6 @@ GoalTask.increase_range_by_percent=0.1
 GoalTask.percent_full_range_in_curriculum=0.2
 
 # Observation
-GoalTask.use_full_states=True
 GoalTask.polar_coord=True
 PlayGround.use_image_observation=False
 PlayGround.with_language=False
