@@ -451,47 +451,47 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             subgoal = subgoal[:, :self._action_dim]
         if self._use_aux_achieved and self.control_aux:
             observation["aux_desired"] = goals[:, -1, self._action_dim:]
-        if not self.control_aux:
-            # _value_fn relies on calling Q function with predicted action, but
-            # with aux_control, lower level policy's input doesn't contain
-            # aux_desired, and cannot predict action.
-            # Properly handle this case of init_costs would probably add
-            # another CEM process to predict goal aux dimensions first,
-            # maximizing value_fn.
-            values, _v_state = self._value_fn(observation, ())
-            init_costs = -values
-            # Assumes costs are positive, at least later on during training,
-            # Otherwise, don't use planner.
-            # We also require goal to be > min_goal_cost_to_use_plan away.
-            # If goal is within the min_cost range, just use original goal.
-            plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
-                costs > 0) & (init_costs > costs * (1. + self._plan_margin))
-            alf.summary.scalar(
-                "planner/plan_adoption_rate" + "." + common.exe_mode_name(),
-                torch.mean(plan_success.float()))
-            alf.summary.scalar(
-                "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
-                torch.mean(init_costs))
+        # _value_fn relies on calling Q function with predicted action, but
+        # with aux_control, lower level policy's input doesn't contain
+        # aux_desired, and cannot predict action.
+        # Properly handle this case of init_costs would probably add
+        # another CEM process to predict goal aux dimensions first,
+        # maximizing value_fn.
+        values, _v_state = self._value_fn(observation, ())
+        init_costs = -values
+        # to deal with multi dim reward case
+        init_costs = alf.math.sum_to_leftmost(init_costs, dim=2)
+        # Assumes costs are positive, at least later on during training,
+        # Otherwise, don't use planner.
+        # We also require goal to be > min_goal_cost_to_use_plan away.
+        # If goal is within the min_cost range, just use original goal.
+        plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
+            costs > 0) & (init_costs > costs * (1. + self._plan_margin))
+        alf.summary.scalar(
+            "planner/plan_adoption_rate" + "." + common.exe_mode_name(),
+            torch.mean(plan_success.float()))
+        alf.summary.scalar(
+            "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
+            torch.mean(init_costs))
         alf.summary.scalar(
             "planner/cost_mean_planned" + "." + common.exe_mode_name(),
             torch.mean(costs))
+        orig_desired = observation["desired_goal"]
+        if self.control_aux:
+            orig_desired = torch.cat(
+                (orig_desired, goals[:, -1, self._action_dim:]), dim=1)
         if common.is_play():
             torch.set_printoptions(precision=2)
-            outcome, init_costs_str = "", ""
-            if not self.control_aux:
-                if plan_success[0] > 0:
-                    outcome = "plan SUCCESS: "
-                else:
-                    outcome = "plan fail: "
-                init_costs_str = "init_cost: " + str(init_costs)
+            if plan_success[0] > 0:
+                outcome = "plan SUCCESS: "
+            else:
+                outcome = "plan fail: "
+            init_costs_str = "init_cost: " + str(init_costs)
             ach = observation["achieved_goal"]
             if self._use_aux_achieved:
                 ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
-            desire = observation["desired_goal"]
             plan_horizon = goals.shape[1]
             if self.control_aux:
-                desire = torch.cat((desire, goals[:, -1, self._action_dim:]),
-                                   dim=1)
                 plan_horizon -= 1
             if plan_horizon > 0:
                 subgoal_str = str(goals[:, :plan_horizon, :]) + " ->\n"
@@ -499,10 +499,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 subgoal_str = ""
             logging.info(outcome + init_costs_str + " plan_cost:" +
                          str(costs) + ":\n" + str(ach) + " ->\n" +
-                         subgoal_str + str(desire))
-        if not self.control_aux:
-            subgoal = torch.where(plan_success, subgoal,
-                                  observation["desired_goal"])
+                         subgoal_str + str(orig_desired))
+        subgoal = torch.where(plan_success, subgoal, orig_desired)
         return subgoal
 
     def update_condition(self, observation, step_type, state):
