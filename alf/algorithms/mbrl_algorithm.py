@@ -209,11 +209,11 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         return AlgStep(action, state, info)
 
     def calc_loss(self, experience, training_info: MbrlInfo):
-        loss = training_info.dynamics.loss
-
+        loss_dynamics = self._dynamics_module.calc_loss(training_info.dynamics)
+        loss = loss_dynamics.loss
         loss = add_ignore_empty(loss, training_info.reward)
         loss = add_ignore_empty(loss, training_info.planner)
-        return LossInfo(loss=loss.loss, extra=(loss.loss))
+        return LossInfo(loss=loss, scalar_loss=loss_dynamics.scalar_loss)
 
     def after_update(self, experience, training_info):
         self._planner_module.after_update(

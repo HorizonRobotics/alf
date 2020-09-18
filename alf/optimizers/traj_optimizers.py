@@ -14,6 +14,8 @@
 
 import numpy as np
 import torch
+
+import alf
 from alf.data_structures import TimeStep
 from alf.utils import tensor_utils
 
@@ -89,3 +91,115 @@ class RandomOptimizer(TrajOptimizer):
         # solutions [B, pop_size, sol_dim] -> [B, sol_dim]
         solution = solutions[(torch.arange(batch_size), min_ind)]
         return solution
+
+
+class CEMOptimizer(TrajOptimizer):
+    def __init__(self,
+                 solution_dim,
+                 population_size,
+                 upper_bound,
+                 lower_bound,
+                 elite_size=50,
+                 max_iter_num=5,
+                 epsilon=0.01,
+                 tau=0.9,
+                 min_var=1e-5):
+        """Creates a CEM Optimizer
+
+        Args:
+            solution_dim (int): the dimensionality of the problem space
+            population_size (int): the number of candidate solutions to be
+                sampled at every iteration
+            upper_bound (float|Tensor): upper bounds for elements in solution
+            lower_bound (float|Tensor): lower bounds for elements in solution
+            elite_size (int): the number of elites selected in each round
+            max_iter_num (int|Tensor): the maximum number of CEM iterations
+            epsilon (float): a minimum variance threshold. If the variance of
+                the population falls below it, the CEM iteration will stop.
+            tau (float): a value in (0, 1) for softly updating the population
+                mean and variance:
+                    mean = (1 - tau) * mean + tau * new_mean
+                    var = (1 - tau) * var + tau * new_var
+            min_var (float): minimum value of the variance for the Gaussian
+                distribution to sample from
+        """
+        super().__init__()
+        self._solution_dim = solution_dim
+        self._population_size = population_size
+        self._upper_bound = upper_bound
+        self._lower_bound = lower_bound
+        self._elite_size = elite_size
+        self._max_iter_num = max_iter_num
+        self._epsilon = epsilon
+        self._tau = tau
+        self._min_var = min_var
+
+    def obtain_solution(self,
+                        time_step: TimeStep,
+                        state,
+                        init_mean=None,
+                        init_var=None):
+        """Minimize the cost function provided by using the CEM method.
+
+        Args:
+            time_step (TimeStep): the initial time_step to start rollout
+            state: the initial state to start rollout
+            init_mean (None|Tensor): initial mean of the population
+            init_var (None|Tensor): initial variance of the population
+        """
+        init_obs = time_step.observation
+        batch_size = init_obs.shape[0]
+
+        if init_mean is None:
+            # [B, 1, solution_dim]
+            init_mean = torch.zeros(batch_size, 1, self._solution_dim)
+        else:
+            assert init_mean.shape == (batch_size, 1, self._solution_dim)
+
+        if init_var is None:
+            init_var = torch.ones(batch_size, 1, self._solution_dim)
+        else:
+            assert init_var.shape == (batch_size, 1, self._solution_dim)
+
+        i = 0
+        pop_mean = init_mean
+        pop_var = init_var
+
+        # [B, population, solution_dim]
+        trunc_normal_samples = torch.zeros(batch_size, self._population_size,
+                                           self._solution_dim)
+
+        while i < self._max_iter_num and pop_var.view(
+                -1).max() > self._epsilon:
+            # compute the distance to lower and upper bound
+            distance_to_lb = pop_mean - self._lower_bound
+            distance_to_ub = self._upper_bound - pop_mean
+
+            # compute the constrained var based on the computed distance
+            constrained_var = torch.min(
+                torch.min((distance_to_lb / 2.0)**2, (distance_to_ub / 2.0)
+                          **2), pop_var)
+            constrained_var = constrained_var.clamp(min=self._min_var)
+
+            trunc_normal_samples = alf.initializers.trunc_normal_(
+                trunc_normal_samples)
+            samples = trunc_normal_samples * torch.sqrt(
+                constrained_var) + pop_mean
+
+            costs = self.cost_function(time_step, state, samples.clone())
+
+            # select elite set from the population
+            ind = torch.topk(-costs, self._elite_size)[1]
+            # samples: [batch, population, horizon]
+            elites = samples.index_select(1, ind.view(-1))
+
+            # update mean and var based on the elite set
+            new_mean = torch.mean(elites, dim=1, keepdim=True)
+            new_var = torch.var(elites, dim=1, keepdim=True)
+
+            pop_mean = (1 - self._tau) * pop_mean + self._tau * new_mean
+            pop_var = (1 - self._tau) * pop_var + self._tau * new_var
+            i = i + 1
+
+        # [B, 1, solution_dim] -> [B, solution_dim]
+        return pop_mean.squeeze(1)
