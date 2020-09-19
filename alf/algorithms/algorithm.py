@@ -1056,7 +1056,7 @@ class Algorithm(nn.Module):
         for optimizer in optimizers:
             optimizer.zero_grad()
 
-        if loss_info.loss != ():
+        if isinstance(loss_info.loss, torch.Tensor):
             loss = weight * loss_info.loss
             loss.backward()
 
