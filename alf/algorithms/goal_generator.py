@@ -263,6 +263,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  action_dim,
                  action_bounds,
                  normalize_goals=False,
+                 bound_goals=False,
                  value_fn=None,
                  value_state_spec=(),
                  max_subgoal_steps=10,
@@ -281,6 +282,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 each action dimension.
             normalize_goals (bool): whether to use normalizer to record stats for goal
                 dimensions, and sample only within observed stats.
+            bound_goals (bool): whether to use normalizer stats to bound planned goals.
             value_fn (Callable or None): value function to measure distance between states.
                 When value_fn is None, it can also be set via set_value_fn.
             value_state_spec (nested TensorSpec): spec of the state of value function.
@@ -356,9 +358,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._normalizer = None
         if normalize_goals:
             self._normalizer = alf.utils.normalizers.EMNormalizer(
-                observation_spec, name="planner/observation_normalizer")
+                observation_spec, name="observation/goal_gen_obs_normalizer")
+        self._bound_goals = bound_goals
+        if bound_goals:
+            assert normalize_goals
 
-        def _costs_agg_dist(time_step, state, samples):
+        def _costs_agg_dist(time_step, state, samples, info=None):
             assert self._value_fn, "no value function provided."
             (batch_size, pop_size, horizon, plan_dim) = samples.shape
             if control_aux:
@@ -413,7 +418,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 raise NotImplementedError()
             values, _unused_value_state = self._value_fn(stack_obs, ())
             dists = -values.reshape(batch_size, pop_size, horizon + 1, -1)
-            # values can be multi dimensional
+            # values can be multi dimensional, need to sum to dim 3.
+            if info is not None:
+                info["all_population_costs"] = alf.math.sum_to_leftmost(
+                    dists, dim=3)
             agg_dist = alf.math.sum_to_leftmost(dists, dim=2)
             return agg_dist
 
@@ -421,6 +429,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
     def set_value_fn(self, value_fn):
         self._value_fn = value_fn
+
+    def _summarize_tensor_dims(self, name, t):
+        for i in range(t.shape[1]):
+            alf.summary.scalar(
+                "{}_{}_mean.{}".format(name, i, common.exe_mode_name()),
+                torch.mean(t[:, i]))
 
     def generate_goal(self, observation, state):
         """Generate new goals.
@@ -442,11 +456,36 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if self._use_aux_achieved:
                 mean = torch.cat((mean, means["aux_achieved"]))
                 m2 = torch.cat((m2, m2s["aux_achieved"]))
-            self._opt.set_initial_distributions(mean, m2)
+            self._opt.set_initial_distributions(mean, m2, self._bound_goals)
         ts = TimeStep(observation=observation)
         assert self._value_fn, "set_value_fn before generate_goal"
-        goals, costs = self._opt.obtain_solution(ts, ())
+        info = {}
+        goals, costs = self._opt.obtain_solution(ts, (), info)
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
+        if self._num_subgoals > 0:
+            if "segment_costs" in info:
+                self._summarize_tensor_dims("planner/segment_cost",
+                                            info["segment_costs"])
+            full_dist = torch.norm(
+                observation["desired_goal"] - observation["achieved_goal"],
+                dim=1)
+            alf.summary.scalar(
+                "planner/distance_full." + common.exe_mode_name(), full_dist)
+            alf.summary.scalar(
+                "planner/distance_ag_to_subgoal." + common.exe_mode_name(),
+                torch.mean(
+                    torch.norm(
+                        subgoal[:, :self._action_dim] -
+                        observation["achieved_goal"],
+                        dim=1) / full_dist))
+            alf.summary.scalar(
+                "planner/distance_subgoal_to_goal." + common.exe_mode_name(),
+                torch.mean(
+                    torch.norm(
+                        subgoal[:, :self._action_dim] -
+                        observation["desired_goal"],
+                        dim=1) / full_dist))
+
         if self._use_aux_achieved and not self.control_aux:
             subgoal = subgoal[:, :self._action_dim]
         if self._use_aux_achieved and self.control_aux:
@@ -468,18 +507,21 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
             costs > 0) & (init_costs > costs * (1. + self._plan_margin))
         alf.summary.scalar(
-            "planner/adoption_rate_planning" + "." + common.exe_mode_name(),
+            "planner/adoption_rate_planning." + common.exe_mode_name(),
             torch.mean(plan_success.float()))
         alf.summary.scalar(
-            "planner/cost_mean_orig_goal" + "." + common.exe_mode_name(),
+            "planner/cost_mean_orig_goal." + common.exe_mode_name(),
             torch.mean(init_costs))
         alf.summary.scalar(
-            "planner/cost_mean_planning" + "." + common.exe_mode_name(),
+            "planner/cost_mean_planning." + common.exe_mode_name(),
             torch.mean(costs))
         orig_desired = observation["desired_goal"]
         if self.control_aux:
             orig_desired = torch.cat(
                 (orig_desired, goals[:, -1, self._action_dim:]), dim=1)
+        self._summarize_tensor_dims("planner/planned_subgoal", subgoal)
+        self._summarize_tensor_dims("planner/planned_orig_desired",
+                                    orig_desired)
         if common.is_play():
             torch.set_printoptions(precision=2)
             if plan_success[0] > 0:

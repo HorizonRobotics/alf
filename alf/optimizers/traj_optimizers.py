@@ -77,7 +77,7 @@ class RandomOptimizer(TrajOptimizer):
         self._upper_bound = upper_bound
         self._lower_bound = lower_bound
 
-    def obtain_solution(self, time_step: TimeStep, state):
+    def obtain_solution(self, time_step: TimeStep, state, info=None):
         """Minimize the cost function provided
 
         Args:
@@ -163,16 +163,19 @@ class CEMOptimizer(TrajOptimizer):
                         bounds[1].expand(1, 1, planning_horizon, action_dim))
         assert self._top_percent * self._population_size > 1, "too few samples"
 
-    def set_initial_distributions(self, mean, m2):
+    def set_initial_distributions(self, mean, m2, set_bounds=False):
         """Use the stats in normalizer to re-initialize the distributions before obtain_solution.
 
         Args:
             normalizer (Normalizer): to compute a running average of mean and std.
         """
         self._init_mean = mean
-        self._init_var = alf.nest.map_structure(
-            lambda _m, _m2: _m2 - alf.utils.math_ops.square(_m) + 1e-8, mean,
-            m2)
+        self._init_var = m2 - alf.utils.math_ops.square(mean) + 1e-8
+        if set_bounds:
+            self._bounds = ((mean - 5 * torch.sqrt(self._init_var)).expand(
+                1, 1, self._planning_horizon, self._action_dim), (
+                    mean + 5 * torch.sqrt(self._init_var).expand(
+                        1, 1, self._planning_horizon, self._action_dim)))
 
     def _init_distr(self, batch_size):
         means = self._init_mean.expand(batch_size, self._planning_horizon,
@@ -184,12 +187,13 @@ class CEMOptimizer(TrajOptimizer):
                 batch_size, self._planning_horizon, self._action_dim)
         return means, torch.sqrt(std)
 
-    def obtain_solution(self, time_step: TimeStep, state):
+    def obtain_solution(self, time_step: TimeStep, state, info=None):
         """Minimize the cost function provided
 
         Args:
             time_step (TimeStep): the initial ``time_step`` to start planning
             state: input state to start planning
+            info (dict): if not None, populate with costs per segment.
 
         Returns:
             - solution (Tensor): shape (``batch_size``, ``planning_horizon``, ``action_dim``)
@@ -210,7 +214,7 @@ class CEMOptimizer(TrajOptimizer):
             samples = _clamp(
                 distr.sample((self._population_size, )),
                 *self._bounds).transpose(0, 1)
-            costs = self.cost_function(time_step, state, samples)
+            costs = self.cost_function(time_step, state, samples, info)
             assert costs.shape == samples.shape[:2], "bad cost function"
             min_inds = torch.topk(
                 costs,
@@ -229,6 +233,9 @@ class CEMOptimizer(TrajOptimizer):
             if i == self._iterations - 1:
                 min_ind = torch.argmin(costs, dim=1).long()
                 solution = samples[(torch.arange(batch_size), min_ind)]
+                if info is not None:
+                    info["segment_costs"] = info["all_population_costs"][(
+                        torch.arange(batch_size), min_ind)]
                 break
             else:
                 means = torch.mean(tops, dim=1)

@@ -5,6 +5,17 @@ include 'ddpg.gin'
 GoalTask.success_with_angle_requirement=False
 GazeboAgent.goal_conditioned=True
 GoalTask.goal_conditioned=True
+GoalTask.distraction_penalty_distance_thresh=0.4
+GoalTask.end_episode_after_success=0
+GoalTask.end_on_hitting_distraction=0
+GoalTask.goal_name="target_ball"
+GoalTask.max_steps=50
+GoalTask.move_goal_during_episode=0
+GoalTask.multi_dim_reward=True
+GoalTask.reset_time_limit_on_success=0
+GoalTask.use_aux_achieved=True
+GoalTask.use_curriculum_training=0
+PlayGround.max_steps=50
 
 suite_gym.wrap_env.image_channel_first=False
 
