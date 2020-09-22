@@ -214,7 +214,7 @@ class CEMOptimizer(TrajOptimizer):
             samples = _clamp(
                 distr.sample((self._population_size, )),
                 *self._bounds).transpose(0, 1)
-            costs = self.cost_function(time_step, state, samples, info)
+            costs = self.cost_function(time_step, state, samples, info=info)
             assert costs.shape == samples.shape[:2], "bad cost function"
             min_inds = torch.topk(
                 costs,
