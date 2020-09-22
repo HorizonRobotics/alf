@@ -215,6 +215,13 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         loss = add_ignore_empty(loss, training_info.planner)
         return LossInfo(loss=loss.loss, extra=(loss.loss))
 
+    @torch.no_grad()
+    def preprocess_experience(self, experience: Experience):
+        experience = self._dynamics_module.preprocess_experience(experience)
+        experience = self._reward_module.preprocess_experience(experience)
+        experience = self._planner_module.preprocess_experience(experience)
+        return experience
+
     def after_update(self, experience, training_info):
         self._planner_module.after_update(
             training_info._replace(planner=training_info.planner))

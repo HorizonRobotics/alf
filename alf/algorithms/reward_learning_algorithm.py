@@ -63,6 +63,12 @@ class RewardEstimationAlgorithm(Algorithm):
         """
         pass
 
+    @torch.no_grad()
+    def preprocess_experience(self, experience: Experience):
+        """Preprocess experience.
+        """
+        pass
+
 
 @gin.configurable
 class FixedRewardFunction(RewardEstimationAlgorithm):

@@ -55,6 +55,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
                 action_spec.maximum will be used if not specified
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
+            particles_per_replica (int): number of particles used for each replica
         """
         super().__init__(
             feature_spec,
@@ -130,6 +131,12 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """
         pass
 
+    @torch.no_grad()
+    def preprocess_experience(self, experience: Experience):
+        """Preprocess experience.
+        """
+        pass
+
 
 @gin.configurable
 class RandomShootingAlgorithm(PlanAlgorithm):
@@ -139,22 +146,23 @@ class RandomShootingAlgorithm(PlanAlgorithm):
     def __init__(self,
                  feature_spec,
                  action_spec,
-                 population_size,
-                 planning_horizon,
+                 population_size=1000,
+                 num_replicas=1,
+                 particles_per_replica=1,
+                 planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
-                 hidden_size=256,
                  name="RandomShootingAlgorithm"):
         """Create a RandomShootingAlgorithm.
 
         Args:
             population_size (int): the size of polulation for random shooting
+            particles_per_replica (int): number of particles for each replica
             planning_horizon (int): planning horizon in terms of time steps
             upper_bound (int): upper bound for elements in solution;
                 action_spec.maximum will be used if not specified
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
-            hidden_size (int|tuple): size of hidden layer(s)
         """
         super().__init__(
             feature_spec=feature_spec,
@@ -173,13 +181,33 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         assert len(flat_feature_spec) == 1, ("RandomShootingAlgorithm doesn't "
                                              "support nested feature_spec")
 
+        self._num_replicas = num_replicas
         self._population_size = population_size
+        self._particles_per_replica = particles_per_replica
+
         solution_size = self._planning_horizon * self._num_actions
         self._plan_optimizer = RandomOptimizer(
             solution_size,
             self._population_size,
             upper_bound=action_spec.maximum,
             lower_bound=action_spec.minimum)
+
+    def _expand_to_particles(self, inputs):
+        # inputs [B n d]
+        if inputs.ndim == 2:
+            # [B, d] -> [n*p, B, d]
+            inputs = inputs.unsqueeze(0).expand(
+                self._num_replicas * self._particles_per_replica,
+                *inputs.shape)
+            # [n*p, B, d] -> [n, p, B, d]
+            inputs = inputs.view(self._num_replicas,
+                                 self._particles_per_replica,
+                                 *inputs.shape[1:])
+            # [n, p, B, d] -> [B, p, n, d]
+            inputs = inputs.permute(2, 1, 0, 3)
+            # [B, p, n, d] -> [B*p, n, d]
+            inputs = inputs.reshape(-1, inputs.shape[2], inputs.shape[3])
+        return inputs
 
     def train_step(self, time_step: TimeStep, state):
         """
@@ -203,8 +231,13 @@ class RandomShootingAlgorithm(PlanAlgorithm):
 
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
         opt_action = self._plan_optimizer.obtain_solution(time_step, state)
+
+        # [B, horizon * action_dim] -> [B, horizon, action_dim]
+        opt_action = torch.reshape(
+            opt_action,
+            [opt_action.shape[0], self._planning_horizon, self._num_actions])
+
         action = opt_action[:, 0]
-        action = torch.reshape(action, [time_step.observation.shape[0], -1])
         return action
 
     def _expand_to_population(self, data):
@@ -241,6 +274,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             ac_seqs,
             [batch_size, self._population_size, self._planning_horizon, -1])
 
+        # merge population with batch
         ac_seqs = ac_seqs.permute(2, 0, 1, 3)
         ac_seqs = torch.reshape(
             ac_seqs, (self._planning_horizon, -1, self._num_actions))
@@ -253,18 +287,47 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         cost = 0
         for i in range(ac_seqs.shape[0]):
             action = ac_seqs[i]
-            time_step = time_step._replace(prev_action=action)
+            if i == 0:
+                # first update observation
+                time_step = time_step._replace(observation=obs)
+                # the first step, all the observations
+                # are replicated
+                ens_obs = self._expand_to_particles(time_step.observation)
+                ens_step_type = self._expand_to_particles(time_step.step_type)
+                ens_ac = self._expand_to_particles(action)
+                action = ens_ac
+                time_step = time_step._replace(
+                    observation=ens_obs,
+                    prev_action=ens_ac,
+                    step_type=ens_step_type)
+                state = state._replace(
+                    dynamics=state.dynamics._replace(feature=ens_obs))
+            else:
+                ens_step_type = self._expand_to_particles(time_step.step_type)
+                ens_ac = self._expand_to_particles(action)
+                action = ens_ac
+                time_step = time_step._replace(
+                    prev_action=ens_ac, step_type=ens_step_type)
             time_step, state = self._dynamics_func(time_step, state)
             next_obs = time_step.observation
+
             # Note: currently using (next_obs, action), might need to
             # consider (obs, action) in order to be more compatible
             # with the conventional definition of the reward function
+            action = action.view(-1, self._num_replicas, self._num_actions)
             reward_step, state = self._reward_func(next_obs, action, state)
             cost = cost - reward_step
             obs = next_obs
 
+        # reshape cost
+        # [B*par, n] -> [B, par*n]
+        cost = cost.reshape(-1,
+                            self._particles_per_replica * self._num_replicas)
+        cost = cost.mean(-1)
+
         # reshape cost back to [batch size, population_size]
         cost = torch.reshape(cost, [batch_size, -1])
+
         return cost
 
     def after_update(self, training_info):
