@@ -18,6 +18,7 @@ import gin
 import math
 import numpy as np
 import weakref
+import threading
 
 try:
     import carla
@@ -130,6 +131,7 @@ class CollisionSensor(SensorBase):
         self._empty_impulse = np.zeros([max_num_collisions, 3],
                                        dtype=np.float32)
         self._collisions = []
+        self._lock = threading.Lock()
 
     @staticmethod
     def _on_collision(weak_self, event):
@@ -137,8 +139,9 @@ class CollisionSensor(SensorBase):
         if not self:
             return
         impulse = event.normal_impulse
-        self._collisions.append([impulse.x, impulse.y, impulse.z])
         self._frame = event.frame
+        with self._lock:
+            self._collisions.append([impulse.x, impulse.y, impulse.z])
 
     def observation_spec(self):
         return alf.TensorSpec([self._max_num_collisions, 3])
@@ -172,7 +175,10 @@ class CollisionSensor(SensorBase):
             "Cannot get frames %d older than previously cached one %d!" %
             (current_frame, self._prev_cached_frame))
 
-        impulses = np.array(self._collisions, dtype=np.float32)
+        with self._lock:
+            impulses = np.array(self._collisions, dtype=np.float32)
+            self._collisions = []
+
         n = impulses.shape[0]
         if n == 0:
             impulses = self._empty_impulse
@@ -187,7 +193,6 @@ class CollisionSensor(SensorBase):
 
         self._cached_impulse = impulses
         self._prev_cached_frame = current_frame
-        self._collisions = []
         return impulses
 
 
@@ -391,11 +396,16 @@ class RadarSensor(SensorBase):
         self._prev_cached_frame = -1
         self._cached_points = None
 
+        self._lock = threading.Lock()
+
     @staticmethod
     def _Radar_callback(weak_self, radar_data):
         self = weak_self()
         if not self:
             return
+
+        self._frame = radar_data.frame
+
         points = np.frombuffer(radar_data.raw_data, dtype=np.float32)
         points = np.reshape(points, (len(radar_data), 4))
         n = len(radar_data)
@@ -407,8 +417,9 @@ class RadarSensor(SensorBase):
                                     axis=0)
         elif n > self._max_num_detections:
             points = points[-self._max_num_detections:, :]
-        self._detected_points = points
-        self._frame = radar_data.frame
+
+        with self._lock:
+            self._detected_points = points
 
     def observation_spec(self):
         return alf.TensorSpec([self._max_num_detections, 4])
@@ -444,9 +455,11 @@ class RadarSensor(SensorBase):
             "Cannot get frames %d older than previously cached one %d!" %
             (current_frame, self._prev_cached_frame))
 
-        self._cached_points = self._detected_points
+        with self._lock:
+            self._cached_points = self._detected_points
+            self._detected_points = self._empty_points
+
         self._prev_cached_frame = current_frame
-        self._detected_points = self._empty_points
         return self._cached_points
 
 
