@@ -668,6 +668,12 @@ def play(root_dir,
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
 
+        if time_step.reward.numel() > 1:
+            # use sum of individual rewards when a vector reward is provided
+            time_step_reward = time_step.reward.sum()
+        else:
+            time_step_reward = time_step.reward
+
         episode_reward += float(time_step.reward)
 
         if time_step.is_last() or episode_length >= max_episode_length > 0:
