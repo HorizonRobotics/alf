@@ -490,12 +490,15 @@ class ResnetEncodingNetwork(alf.networks.Network):
                  input_tensor_spec,
                  output_size=500,
                  output_activation=torch.tanh,
+                 use_fc_bn=False,
                  name='ResnetEncodingNetwork'):
         """
         Args:
             input_tensor_spec (nested TensorSpec): input observations spec.
             output_size (int): dimension of the encoding result
             output_activation (Callable): activation for the output
+            use_fc_bn (bool): whether to use batch normalization for the final
+                ``FC`` layer.
         """
         super().__init__(input_tensor_spec, name=name)
 
@@ -518,6 +521,7 @@ class ResnetEncodingNetwork(alf.networks.Network):
             alf.layers.FC(
                 input_size=int(np.prod(shape)),
                 output_size=output_size,
+                use_bn=use_fc_bn,
                 activation=output_activation)
         ])
 

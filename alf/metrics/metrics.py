@@ -237,15 +237,25 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
     def __init__(self,
                  name='AverageReturn',
                  prefix='Metrics',
+                 reward_shape=(),
                  dtype=torch.float32,
+                 reward_weights=None,
                  batch_size=1,
                  buffer_size=10):
+        if reward_shape == ():
+            example_metric_value = torch.zeros((), device='cpu')
+        else:
+            example_metric_value = torch.zeros(
+                reward_shape, device='cpu').reshape(-1)
+            example_metric_value = list(example_metric_value)
+
         super(AverageReturnMetric, self).__init__(
             name=name,
             dtype=dtype,
             prefix=prefix,
             batch_size=batch_size,
-            buffer_size=buffer_size)
+            buffer_size=buffer_size,
+            example_metric_value=example_metric_value)
 
     def _extract_metric_values(self, time_step):
         """Accumulate immediate rewards to get episodic return."""
@@ -253,7 +263,8 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
         if time_step.reward.ndim == ndim:
             return time_step.reward
         else:
-            return alf.math.sum_to_leftmost(time_step.reward, ndim)
+            reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
+            return [reward[..., i] for i in range(reward.shape[-1])]
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):

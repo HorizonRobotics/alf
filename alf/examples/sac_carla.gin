@@ -13,14 +13,19 @@ actor/StableNormalProjectionNetwork.squash_mean=False
 actor/StableNormalProjectionNetwork.scale_distribution=True
 actor/StableNormalProjectionNetwork.min_std=1e-3
 actor/StableNormalProjectionNetwork.max_std=10.
+actor/ActorDistributionNetwork.fc_layer_params=%fc_layers_params
+actor/ActorDistributionNetwork.activation=%activation
+actor/ActorDistributionNetwork.use_fc_bn=%use_batch_normalization
 actor/ActorDistributionNetwork.continuous_projection_net_ctor=@actor/StableNormalProjectionNetwork
 
-critic/CriticNetwork.observation_preprocessing_combiner=@NestSum(activation=%activation, average=True)
 critic/CriticNetwork.joint_fc_layer_params=%fc_layers_params
 critic/CriticNetwork.activation=%activation
+critic/CriticNetwork.use_fc_bn=%use_batch_normalization
+critic/CriticNetwork.output_tensor_spec=@TensorSpec((%CarlaEnvironment.REWARD_DIMENSION,))
 
-calc_default_target_entropy.min_prob=0.5
-Adam.lr=2e-4
+Adam.lr=1e-4
+#Adam.eps=1e-12
+
 SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
 SacAlgorithm.critic_network_cls=@critic/CriticNetwork
 SacAlgorithm.actor_optimizer=@Adam()
@@ -31,17 +36,21 @@ SacAlgorithm.target_entropy=@sac/calc_default_target_entropy
 SacAlgorithm.target_update_tau=0.005
 SacAlgorithm.critic_loss_ctor=@TDLoss
 SacAlgorithm.use_parallel_network=True
+SacAlgorithm.use_entropy_reward=False
+SacAlgorithm.reward_weights=[1, 0., 0., 0.]
 
 encoder/EncodingNetwork.input_preprocessors=%input_preprocessors
 encoder/EncodingNetwork.preprocessing_combiner=@NestSum(activation=%activation, average=True)
 encoder/EncodingNetwork.activation=%activation
 encoder/EncodingNetwork.fc_layer_params=%fc_layers_params
 encoder/EncodingAlgorithm.encoder_cls=@encoder/EncodingNetwork
+ReprLearner=@encoder/EncodingAlgorithm
+
 TrainerConfig.data_transformer_ctor=@agent/ImageScaleTransformer
-Agent.representation_learner_cls=@encoder/EncodingAlgorithm
+Agent.representation_learner_cls=%ReprLearner
 Agent.optimizer=@Adam()
 agent/ImageScaleTransformer.min=0.0
-agent/ImageScaleTransformer.fields=['camera']
+agent/ImageScaleTransformer.fields=['observation.camera']
 
 # Not yet able to successfully train with sparse reward.
 suite_carla.Player.sparse_reward=False
@@ -62,6 +71,6 @@ TrainerConfig.num_checkpoints=20
 TrainerConfig.evaluate=False
 TrainerConfig.debug_summaries=True
 TrainerConfig.summarize_grads_and_vars=True
-TrainerConfig.summary_interval=10
-TrainerConfig.replay_buffer_length=100000
+TrainerConfig.summary_interval=100
+TrainerConfig.replay_buffer_length=90000
 TrainerConfig.summarize_action_distributions=True
