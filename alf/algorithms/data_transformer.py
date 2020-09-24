@@ -466,6 +466,7 @@ class ObservationNormalizer(SimpleDataTransformer):
                  window_size=10000,
                  update_rate=1e-4,
                  speed=8.0,
+                 zero_mean=True,
                  update_mode="replay",
                  mode="adaptive"):
         """Create an observation normalizer with optional value clipping to be
@@ -509,16 +510,19 @@ class ObservationNormalizer(SimpleDataTransformer):
                 tensor_spec=observation_spec,
                 speed=float(speed),
                 auto_update=False,
+                zero_mean=zero_mean,
                 name="observations/adaptive_normalizer")
         elif mode == "window":
             self._normalzier = WindowNormalizer(
                 tensor_spec=observation_spec,
                 window_size=int(window_size),
+                zero_mean=zero_mean,
                 auto_update=False)
         elif mode == "em":
             self._normalizer = EMNormalizer(
                 tensor_spec=observation_spec,
                 update_rate=float(update_rate),
+                zero_mean=zero_mean,
                 auto_update=False)
         else:
             raise ValueError("Unsupported mode: " + mode)
