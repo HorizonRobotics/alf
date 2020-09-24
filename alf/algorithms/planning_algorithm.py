@@ -64,6 +64,10 @@ class PlanAlgorithm(OffPolicyAlgorithm):
             train_state_spec=train_state_spec,
             name=name)
 
+        assert (() == action_spec.maximum.shape) and \
+                (() == action_spec.minimum.shape), \
+                    "Only support scalar action maximum and minimum bound"
+
         flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"
 
@@ -81,10 +85,10 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._action_spec = action_spec
         self._feature_spec = feature_spec
         self._planning_horizon = planning_horizon
-        self._upper_bound = action_spec.maximum if upper_bound is None \
-                                                else upper_bound
-        self._lower_bound = action_spec.minimum if lower_bound is None \
-                                                else lower_bound
+        self._upper_bound = np.asscalar(action_spec.maximum) \
+                        if upper_bound is None else upper_bound
+        self._lower_bound = np.asscalar(action_spec.minimum) \
+                        if lower_bound is None else lower_bound
 
         self._reward_func = None
         self._dynamics_func = None
@@ -136,6 +140,13 @@ class PlanAlgorithm(OffPolicyAlgorithm):
 @gin.configurable
 class RandomShootingAlgorithm(PlanAlgorithm):
     """Random Shooting-based planning method.
+
+    This method uses a Random Shooting approach to optimize an action
+    trajectory by minimizing a given cost function. The optimized action
+    trajectory is termed as a 'plan' which can be used by other components
+    such as a MPC-based controller. It has been used in `Neural Network Dynamics
+    for Model-Based Deep Reinforcement Learning with Model-Free Fine-Tuning
+    <https://arxiv.org/abs/1708.02596>`_
     """
 
     def __init__(self,
@@ -177,15 +188,11 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         solution_size = self._planning_horizon * self._num_actions
         self._solution_size = solution_size
 
-        assert (() == action_spec.maximum.shape) and \
-                (() == action_spec.minimum.shape), \
-                    "Only support scalar action maximum and minimum bound"
-
         self._plan_optimizer = RandomOptimizer(
             solution_size,
             self._population_size,
-            upper_bound=np.asscalar(action_spec.maximum),
-            lower_bound=np.asscalar(action_spec.minimum))
+            upper_bound=self._upper_bound,
+            lower_bound=self._lower_bound)
 
     def train_step(self, time_step: TimeStep, state):
         """
@@ -280,6 +287,18 @@ class RandomShootingAlgorithm(PlanAlgorithm):
 @gin.configurable
 class CEMPlanAlgorithm(RandomShootingAlgorithm):
     """CEM-based planning method.
+
+    This method uses a Cross-Entropy Method (CEM) to optimize an action
+    trajectory by minimizing a given cost function. The optimized action
+    trajectory is termed as a 'plan' which can be used by other components
+    such as a MPC-based controller. This has been used by some MBRL works
+    such as `Deep Reinforcement Learning in a Handful of Trials using
+    Probabilistic Dynamics Models <https://arxiv.org/abs/1805.12114>`_
+
+    To speedup, when possible, we have used the plan obtained at the previous
+    time step to initialize the the mean of the plan distribution at the current
+    time step, after proper shifting and padding. This, however, makes the
+    current implementation no longer thread-safe.
     """
 
     def __init__(self,
@@ -291,6 +310,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
                  max_iter_num=5,
                  epsilon=0.01,
                  tau=0.9,
+                 scalar_var=None,
                  upper_bound=None,
                  lower_bound=None,
                  name="CEMPlanAlgorithm"):
@@ -307,6 +327,10 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
                 mean and variance:
                     mean = (1 - tau) * mean + tau * new_mean
                     var = (1 - tau) * var + tau * new_var
+            scalar_var (None|float): the value that will be used to construct
+                the initial diagonal covariance matrix of the multi-dimensional
+                Gaussian used by the CEM optimizer. If value is None,
+                0.5 * (upper_bound - lower_bound) is used.
             upper_bound (int): upper bound for elements in solution;
                 action_spec.maximum will be used if not specified
             lower_bound (int): lower bound for elements in solution;
@@ -322,15 +346,11 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
 
         solution_size = planning_horizon * self._num_actions
 
-        assert (() == action_spec.maximum.shape) and \
-                (() == action_spec.minimum.shape), \
-                    "Only support scalar action maximum and minimum bound"
-
         self._plan_optimizer = CEMOptimizer(
             solution_size,
             self._population_size,
-            upper_bound=np.asscalar(action_spec.maximum),
-            lower_bound=np.asscalar(action_spec.minimum),
+            upper_bound=self._upper_bound,
+            lower_bound=self._lower_bound,
             elite_size=elite_size,
             max_iter_num=max_iter_num,
             epsilon=epsilon,
@@ -338,6 +358,10 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
 
         self._default_solution = None
         self._prev_solution = None
+        if scalar_var is None:
+            self._scalar_var = (self._upper_bound - self._lower_bound) / 2.
+        else:
+            self._scalar_var = scalar_var
 
     def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
         assert self._reward_func is not None, ("specify reward function "
@@ -363,16 +387,17 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             time_step,
             state,
             init_mean=init_mean,
-            init_var=torch.ones_like(init_mean) * 1)
+            init_var=torch.ones_like(init_mean) * self._scalar_var)
 
-        # [B, pop_size=1, horizon * action_dim] -> [B, horizon, action_dim]
+        # [B, horizon * action_dim] -> [B, horizon, action_dim]
         opt_action = torch.reshape(
             opt_action,
             [opt_action.shape[0], self._planning_horizon, self._num_actions])
 
         # [B, horizon, action_dim]
         self._prev_solution = torch.cat(
-            (opt_action[:, 1:], torch.zeros_like(opt_action[:, 0:1])), 1)
+            (opt_action[:, 1:], opt_action.mean(
+                dim=(0, 1), keepdim=True).expand(batch_size, 1, -1)), 1)
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         self._prev_solution = self._prev_solution.reshape(
             self._prev_solution.shape[0], -1)
