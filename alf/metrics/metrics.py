@@ -239,7 +239,6 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
                  prefix='Metrics',
                  reward_shape=(),
                  dtype=torch.float32,
-                 reward_weights=None,
                  batch_size=1,
                  buffer_size=10):
         if reward_shape == ():

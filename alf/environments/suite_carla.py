@@ -645,6 +645,8 @@ class Player(object):
         if self._camera_sensor:
             self._camera_sensor.render(self._surface)
         obs = self._current_time_step.observation
+        np_precision = np.get_printoptions()['precision']
+        np.set_printoptions(precision=1)
         info_text = [
             'FPS: %6.2f' % self._clock.get_fps(),
             'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
@@ -661,8 +663,9 @@ class Player(object):
             'Brake:    %4.2f' % self._control.brake,
             'Steer:    %4.2f' % self._control.steer,
             'Reverse:  %4s' % self._control.reverse,
-            'Reward: %.1f' % float(self._current_time_step.reward.sum()),
+            'Reward: (%s)' % self._current_time_step.reward,
         ]
+        np.set_printoptions(precision=np_precision)
         self._draw_text(info_text)
 
         if mode == 'human':
