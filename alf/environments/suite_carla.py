@@ -1081,7 +1081,7 @@ class CarlaEnvironment(AlfEnvironment):
 
 @gin.configurable(whitelist=['wrappers'])
 def load(map_name, batch_size, wrappers=[]):
-    """Load CaraEnvironment
+    """Load CarlaEnvironment
 
     Args:
         map_name (str): name of the map. Currently available maps are:

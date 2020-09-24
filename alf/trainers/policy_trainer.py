@@ -668,7 +668,9 @@ def play(root_dir,
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
 
-        episode_reward += float(time_step.reward)
+        time_step_reward = time_step.reward.view(-1).float().cpu().numpy()
+
+        episode_reward += time_step_reward
 
         if time_step.is_last() or episode_length >= max_episode_length > 0:
             logging.info("episode_length=%s episode_reward=%s" %
