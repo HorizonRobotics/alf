@@ -143,8 +143,8 @@ def play(env):
 
 def main():
     FLAGS(sys.argv)
-    if not FLAGS.manual:
-        return False
+    #if not FLAGS.manual:
+    #    return False
 
     logging.use_absl_handler()
     logging.set_verbosity(logging.INFO)
