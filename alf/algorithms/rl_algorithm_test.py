@@ -94,6 +94,9 @@ class MyEnv(object):
     def action_spec(self):
         return self._action_spec
 
+    def reward_spec(self):
+        return alf.TensorSpec(())
+
     def reset(self):
         self._prev_action = torch.zeros(self._batch_size, dtype=torch.int64)
         self._current_time_step = TimeStep(
