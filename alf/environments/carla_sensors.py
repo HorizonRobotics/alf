@@ -36,6 +36,7 @@ if carla is not None:
         carla = None
 
 import alf
+from alf.data_structures import namedtuple
 
 MINIMUM_RENDER_WIDTH = 640
 MINIMUM_RENDER_HEIGHT = 240
@@ -617,8 +618,175 @@ class CameraSensor(SensorBase):
         return self._image
 
 
+NumpyWaypoint = namedtuple(
+    "NumpyWaypoint",
+    [
+        'id',  # int
+        'location',  # [3] (x, y, z)
+        'rotation',  # [3] (pitch, yaw, rolll)
+        'road_id',  # int
+        'section_id',  # int
+        'lane_id',  # int
+        'is_junction',  # bool
+        'lane_width',  # float
+        'lane_change',  # int (carla.LaneChange) whether lane change is allowed. 0: None, 1: Right, 2: Left, 3: Both
+        'lane_type',  # int (carla.LaneType)
+        'right_lane_marking',  # int (carla.LaneMarking)
+        'left_lane_marking',  # int (carla.LaneMarking)
+    ])
+
+
+def _to_numpy_loc(loc: carla.Location):
+    return np.array([loc.x, loc.y, loc.z], dtype=np.float)
+
+
+def _to_numpy_rot(rot: carla.Rotation):
+    """
+    Returns:
+        3D np.array [pitch, yaw, roll] in radians
+    """
+    return np.radians(np.array([rot.pitch, rot.yaw, rot.roll], dtype=np.float))
+
+
+NumpyLaneMarking = namedtuple("NumpyLaneMarking",
+                              ['color', 'lane_change', 'type', 'width'])
+
+dummy_lane_marking = NumpyLaneMarking(
+    color=np.int(-1),
+    lane_change=np.int(-1),
+    type=np.int(-1),
+    width=np.float(0.),
+)
+
+
+def _to_numpy_lane_marking(lane_marking: carla.LaneMarking):
+    return NumpyLaneMarking(
+        color=np.int(lane_marking.color),
+        lane_change=np.int(lane_marking.lane_change),
+        type=np.int(lane_marking.type),
+        width=np.float(lane_marking.width))
+
+
+def _to_numpy_waypoint(wp: carla.Waypoint):
+    return NumpyWaypoint(
+        id=np.int(wp.id),
+        location=_to_numpy_loc(wp.transform.location),
+        rotation=_to_numpy_rot(wp.transform.rotation),
+        road_id=np.int(wp.road_id),
+        section_id=np.int(wp.section_id),
+        lane_id=np.int(wp.lane_id),
+        is_junction=np.bool(wp.is_junction),
+        lane_width=np.float(wp.lane_width),
+        lane_change=np.int(wp.lane_change),
+        lane_type=np.int(wp.lane_type),
+        right_lane_marking=_to_numpy_lane_marking(wp.right_lane_marking),
+        left_lane_marking=_to_numpy_lane_marking(wp.left_lane_marking))
+
+
+def _get_forward_vector(rotation):
+    """Computes the vector pointing forward according to the orientation of each axis.
+
+    Adapted from Math::GetForwardVector() in https://github.com/carla-simulator/carla/blob/dev/LibCarla/source/carla/geom/Math.cpp
+
+    Args:
+        rotation (np.array): rotation[:, 0], rotation[:, 1], rotation[:, 2] are
+            pitch, yaw, roll in radians
+    Returns:
+        np.array: forward vector(s)
+    """
+    c = np.cos(rotation)
+    s = np.sin(rotation)
+    return np.stack([c[:, 1] * c[:, 0], s[:, 1] * c[:, 0], s[:, 0]], axis=-1)
+
+
+def _rotate_point(point: carla.Vector3D, angle):
+    """Rotate a given point by a given angle
+
+    Args:
+        point (carla.Location):
+        angle (float): in degrees
+    Returns:
+        carla.Vector3D
+    """
+    x_ = math.cos(math.radians(angle)) * point.x - math.sin(
+        math.radians(angle)) * point.y
+    y_ = math.sin(math.radians(angle)) * point.x + math.cos(
+        math.radians(angle)) * point.y
+    return carla.Vector3D(x_, y_, point.z)
+
+
+def _rotate_np_point(point, angle):
+    """Rotate a given point by a given angle
+
+    Args:
+        point (np.ndarray): batch of points of shape [n, 3]
+        angle (np.ndarray): in radians of shape [n]
+    Returns:
+        np.ndarray of shape [n, 3]
+    """
+    c = np.cos(angle)
+    s = np.sin(angle)
+    x = c * point[:, 0] - s * point[:, 1]
+    y = s * point[:, 0] + c * point[:, 1]
+    return np.stack([x, y, point[:, 2]], axis=-1)
+
+
+def _is_segments_intersecting(seg1, seg2):
+    """Check whether two batched segments intersect.
+
+    Based on the answer by Norbu Tsering at
+    https://stackoverflow.com/questions/3252194/numpy-and-line-intersections
+
+    Args:
+        seg1 (tuple[ndarray]): ``seg1[0]`` and seg1[1] are [1, 3] or [n,3] arrays.
+        seg2 (tuple[ndarray]): ``seg2[0]`` and seg2[1] are [1, 3] or [n,3] arrays
+    Returns:
+        bool ndarray of shape [n] indicating wether each segment in ``seg1``
+            intersects with the corresponding segment in ``seg2``
+    """
+    seg1 = np.copy(seg1[0]), np.copy(seg1[1])
+    seg2 = np.copy(seg2[0]), np.copy(seg2[1])
+    seg1[0][:, 2] = 1
+    seg1[1][:, 2] = 1
+    seg2[0][:, 2] = 1
+    seg2[1][:, 2] = 1
+    l1 = np.cross(seg1[0], seg1[1])
+    l2 = np.cross(seg2[0], seg2[1])
+    xyz = np.cross(l1, l2)
+    z = np.expand_dims(xyz[:, 2], -1)
+    parallel = np.abs(z) < 1e-10
+    z = np.where(parallel, 1e-10, z)
+
+    # xyz is the intersection of the two lines
+    xyz = xyz / z
+
+    # If seg1 intersects with seg2, xyz should be inside each segments.
+    inside_seg1 = np.sum((xyz - seg1[0]) * (xyz - seg1[1]), axis=-1) < 0
+    inside_seg2 = np.sum((xyz - seg2[0]) * (xyz - seg2[1]), axis=-1) < 0
+    return ~parallel & inside_seg1 & inside_seg2
+
+
+dummy_waypoint = NumpyWaypoint(
+    id=np.int(-1),
+    location=np.zeros(3),
+    rotation=np.zeros(3),
+    road_id=np.int(-1),
+    section_id=np.int(-1),
+    lane_id=np.int(-1),
+    is_junction=np.bool(False),
+    lane_width=np.float(0),
+    lane_change=np.int(0),
+    lane_type=np.int(0),
+    right_lane_marking=dummy_lane_marking,
+    left_lane_marking=dummy_lane_marking,
+)
+
+
 class World(object):
     """Keeping data for the world."""
+
+    # only consider a car for running red light if it is within such distance
+    DISTANCE_LIGHT = 10  # m
 
     def __init__(self, world: carla.World, route_resolution=1.0):
         """
@@ -638,6 +806,7 @@ class World(object):
             world.get_map(), sampling_resolution=route_resolution)
         self._global_route_planner = GlobalRoutePlanner(dao)
         self._global_route_planner.setup()
+        self._prepare_traffic_light_data()
 
     @property
     def route_resolution(self):
@@ -704,6 +873,164 @@ class World(object):
         """
         loc = self._map.transform_to_geolocation(location)
         return np.array([loc.latitude, loc.longitude, loc.altitude])
+
+    def _prepare_traffic_light_data(self):
+        # Adapted from RunningRedLightTest.__init__() in
+        # https://github.com/carla-simulator/scenario_runner/blob/master/srunner/scenariomanager/scenarioatomics/atomic_criteria.py
+
+        actors = self._world.get_actors()
+        self._traffic_light_actors = []
+        traffic_light_centers = []
+        traffic_light_waypoints = []
+        max_num_traffic_light_waypoints = 0
+        for actor in actors:
+            if 'traffic_light' in actor.type_id:
+                center, waypoints = self._get_traffic_light_waypoints(actor)
+                self._traffic_light_actors.append(actor)
+                traffic_light_centers.append(_to_numpy_loc(center))
+                waypoints = [_to_numpy_waypoint(wp) for wp in waypoints]
+                traffic_light_waypoints.append(waypoints)
+                if len(waypoints) > max_num_traffic_light_waypoints:
+                    max_num_traffic_light_waypoints = len(waypoints)
+
+        logging.info(
+            "Found %d traffic lights" % len(self._traffic_light_actors))
+
+        self._traffic_light_centers = np.array(traffic_light_centers,
+                                               np.float32)
+        np_traffic_light_waypoints = []
+        for waypoints in traffic_light_waypoints:
+            pad = max_num_traffic_light_waypoints - len(waypoints)
+            if pad > 0:
+                waypoints.extend([dummy_waypoint] * pad)
+            np_traffic_light_waypoints.append(
+                alf.nest.map_structure(lambda *x: np.stack(x), *waypoints))
+
+        self._traffic_light_waypoints = alf.nest.map_structure(
+            lambda *x: np.stack(x), *np_traffic_light_waypoints)
+
+        self._traffic_light_centers = np.array(traffic_light_centers)
+
+    def on_tick(self):
+        """Should be called after every world tick() to update data."""
+        self._traffic_light_states = np.array(
+            [a.state for a in self._traffic_light_actors], dtype=np.int)
+
+    def _get_traffic_light_waypoints(self, traffic_light):
+        # Copied from RunningRedLightTest.get_traffic_light_waypoints() in
+        # https://github.com/carla-simulator/scenario_runner/blob/master/srunner/scenariomanager/scenarioatomics/atomic_criteria.py
+        base_transform = traffic_light.get_transform()
+        base_rot = base_transform.rotation.yaw
+        area_loc = base_transform.transform(
+            traffic_light.trigger_volume.location)
+
+        # Discretize the trigger box into points
+        area_ext = traffic_light.trigger_volume.extent
+        x_values = np.arange(-0.9 * area_ext.x, 0.9 * area_ext.x,
+                             1.0)  # 0.9 to avoid crossing to adjacent lanes
+
+        area = []
+        for x in x_values:
+            point = _rotate_point(carla.Vector3D(x, 0, area_ext.z), base_rot)
+            point_location = area_loc + carla.Location(x=point.x, y=point.y)
+            area.append(point_location)
+
+        # Get the waypoints of these points, removing duplicates
+        ini_wps = []
+        for pt in area:
+            wpx = self._map.get_waypoint(pt)
+            # As x_values are arranged in order, only the last one has to be checked
+            if not ini_wps or ini_wps[-1].road_id != wpx.road_id or ini_wps[
+                    -1].lane_id != wpx.lane_id:
+                ini_wps.append(wpx)
+
+        # Advance them until the intersection
+        wps = []
+        for wpx in ini_wps:
+            while not wpx.is_intersection:
+                next_wp = wpx.next(0.5)[0]
+                if next_wp and not next_wp.is_intersection:
+                    wpx = next_wp
+                else:
+                    break
+            wps.append(wpx)
+
+        # self._draw_waypoints(wps, vertical_shift=1.0, persistency=50000.0)
+
+        return area_loc, wps
+
+    def is_running_red_light(self, actor):
+        """Whether actor is running red light.
+
+        Adapted from RunningRedLightTest.update() in https://github.com/carla-simulator/scenario_runner/blob/master/srunner/scenariomanager/scenarioatomics/atomic_criteria.py
+
+        Args:
+            actor (carla.Actor): the vehicle actor
+        Returns:
+            red light id if running red light, None otherwise
+        """
+        veh_transform = actor.get_transform()
+        veh_location = veh_transform.location
+
+        veh_extent = actor.bounding_box.extent.x
+        tail_close_pt = _rotate_point(
+            carla.Vector3D(-0.8 * veh_extent, 0.0, veh_location.z),
+            veh_transform.rotation.yaw)
+        tail_close_pt = veh_location + carla.Location(tail_close_pt)
+
+        tail_far_pt = _rotate_point(
+            carla.Vector3D(-veh_extent - 1, 0.0, veh_location.z),
+            veh_transform.rotation.yaw)
+        tail_far_pt = veh_location + carla.Location(tail_far_pt)
+        tail_far_wp = self._map.get_waypoint(tail_far_pt)
+
+        veh_seg = (np.expand_dims(_to_numpy_loc(tail_close_pt), axis=0),
+                   np.expand_dims(_to_numpy_loc(tail_far_pt), axis=0))
+
+        is_red = self._traffic_light_states == carla.TrafficLightState.Red
+        dist = self._traffic_light_centers - _to_numpy_loc(veh_location)
+        dist = np.linalg.norm(dist, axis=-1)
+
+        candidate_light_index = np.nonzero(is_red &
+                                           (dist <= self.DISTANCE_LIGHT))[0]
+        ve_dir = _to_numpy_loc(veh_transform.get_forward_vector())
+
+        waypoints = self._traffic_light_waypoints
+        for index in candidate_light_index:
+            wp_dir = _get_forward_vector(waypoints.rotation[index])
+            dot_ve_wp = (ve_dir * wp_dir).sum(axis=-1)
+
+            same_lane = ((tail_far_wp.road_id == waypoints.road_id[index])
+                         & (tail_far_wp.lane_id == waypoints.lane_id[index])
+                         & (dot_ve_wp > 0))
+
+            yaw_wp = waypoints.rotation[index][:, 1]
+            lane_width = waypoints.lane_width[index]
+            location_wp = waypoints.location[index]
+
+            d = np.stack([
+                0.4 * lane_width,
+                np.zeros_like(lane_width), location_wp[:, 2]
+            ],
+                         axis=-1)
+            left_lane_wp = _rotate_np_point(d, yaw_wp + 0.5 * math.pi)
+            left_lane_wp = location_wp + left_lane_wp
+            right_lane_wp = _rotate_np_point(d, yaw_wp - 0.5 * math.pi)
+            right_lane_wp = location_wp + right_lane_wp
+            if np.any(same_lane & _is_segments_intersecting(
+                    veh_seg, (left_lane_wp, right_lane_wp))):
+                return self._traffic_light_actors[index].id
+        return None
+
+    def _draw_waypoints(self, waypoints, vertical_shift, persistency=-1):
+        """Draw a list of waypoints at a certain height given in vertical_shift."""
+        for wp in waypoints:
+            loc = wp.transform.location + carla.Location(z=vertical_shift)
+
+            size = 0.2
+            color = carla.Color(255, 0, 0)
+            self._world.debug.draw_point(
+                loc, size=size, color=color, life_time=persistency)
 
 
 class NavigationSensor(SensorBase):
