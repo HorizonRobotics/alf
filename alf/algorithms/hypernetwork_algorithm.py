@@ -94,6 +94,7 @@ class HyperNetwork(Algorithm):
                  par_vi="svgd",
                  function_vi=False,
                  optimizer=None,
+                 critic_optimizer=None,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -184,13 +185,20 @@ class HyperNetwork(Algorithm):
             else:
                 par_vi = 'svgd3'
 
+        if function_vi:
+            critic_input_dim = last_layer_param[0]
+        else:
+            critic_input_dim = gen_output_dim
+
         self._generator = Generator(
             gen_output_dim,
             noise_dim=noise_dim,
             net=net,
             entropy_regularization=entropy_regularization,
             par_vi=par_vi,
+            critic_input_dim=critic_input_dim,
             optimizer=None,
+            critic_optimizer=critic_optimizer,
             name=name)
 
         self._param_net = param_net

@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ import gin
 import numpy as np
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
@@ -28,6 +29,82 @@ from alf.utils.averager import AdaptiveAverager
 
 GeneratorLossInfo = namedtuple("GeneratorLossInfo",
                                ["generator", "mi_estimator"])
+
+
+@gin.configurable
+class CriticAlgorithm(Algorithm):
+    """Wrap a critic network as an Algorithm for flexible gradient updates
+    called by the Generator.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 output_dim=None,
+                 hidden_layers=(3, 3),
+                 activation=torch.relu_,
+                 net: Network = None,
+                 spectral_norm=False,
+                 optimizer=None,
+                 name="CriticAlgorithm"):
+        """Create a CriticAlgorithm.
+
+        Args:
+            input_tensor_spec (TensorSpec): spec of inputs. 
+            output_dim (int): dimension of output, default value is input_dim.
+            hidden_layers (tuple): size of hidden layers.
+            net (Network): network for predicting outputs from inputs.
+                If None, a default one with hidden_layers will be created
+            spectral_norm (bool): whether or not apply spectral norm on net.
+            optimizer (torch.optim.Optimizer): (optional) optimizer for training.
+            name (str): name of this CriticAlgorithm.
+        """
+        if optimizer is None:
+            optimizer = alf.optimizers.Adam(lr=1e-3)
+        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+
+        self._output_dim = output_dim
+        if output_dim is None:
+            self._output_dim = input_tensor_spec.shape[0]
+        if net is None:
+            net = EncodingNetwork(
+                input_tensor_spec=input_tensor_spec,
+                fc_layer_params=hidden_layers,
+                activation=activation,
+                last_layer_size=self._output_dim,
+                last_activation=math_ops.identity,
+                name='Critic')
+        # if spectral_norm:
+        #     net.apply(self._spectral_norm)
+
+        self._net = net
+
+    # def _spectral_norm(self, module):
+    #     if 'weight' in module._parameters:
+    #         torch.nn.utils.spectral_norm(module)
+
+    def _reset_parameters(self, module):
+        if hasattr(module, '_reset_parameters'):
+            module._reset_parameters()
+
+    def reset_net_parameters(self):
+        # self._net.apply(self._reset_parameters)
+        for fc in self._net._fc_layers:
+            fc.reset_parameters()
+
+    def predict_step(self, inputs, state=None):
+        """Predict for one step of inputs.
+
+        Args:
+            inputs (Tensor): inputs for prediction.
+            state: not used.
+
+        Returns:
+            AlgStep:
+            - output (Tensor): predictions.
+            - state: not used.
+        """
+        outputs = self._net(inputs)[0]
+        return AlgStep(output=outputs, state=(), info=())
 
 
 @gin.configurable
@@ -90,8 +167,14 @@ class Generator(Algorithm):
                  entropy_regularization=0.,
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
-                 par_vi="gfsf",
+                 par_vi=None,
+                 critic_input_dim=None,
+                 critic_hidden_layers=(100, 100),
+                 critic_l2_weight=10.,
+                 critic_spectral_norm=False,
+                 num_critic_iter=5,
                  optimizer=None,
+                 critic_optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
 
@@ -131,6 +214,7 @@ class Generator(Algorithm):
             name (str): name of this generator
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        self._output_dim = output_dim
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
         self._par_vi = par_vi
@@ -145,6 +229,18 @@ class Generator(Algorithm):
                 self._grad_func = self._svgd_grad2
             elif par_vi == 'svgd3':
                 self._grad_func = self._svgd_grad3
+            elif par_vi == 'minmax':
+                if critic_input_dim is None:
+                    critic_input_dim = output_dim
+                self._grad_func = self._minmax_grad
+                self._num_critic_iter = num_critic_iter
+                self._critic_spectral_norm = critic_spectral_norm
+                self._critic_l2_weight = critic_l2_weight
+                self._critic = CriticAlgorithm(
+                    TensorSpec(shape=(critic_input_dim, )),
+                    hidden_layers=critic_hidden_layers,
+                    spectral_norm=critic_spectral_norm,
+                    optimizer=critic_optimizer)
             else:
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
@@ -328,7 +424,7 @@ class Generator(Algorithm):
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
             :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
-            
+
         """
         Nx = x.shape[0]
         Ny = y.shape[0]
@@ -360,7 +456,7 @@ class Generator(Algorithm):
 
         Returns:
             :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
-            
+
         """
         N, D = x.shape
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
@@ -372,7 +468,7 @@ class Generator(Algorithm):
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
         kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
 
-        return kappa_inv @ kappa_grad
+        return -kappa_inv @ kappa_grad
 
     def _svgd_grad(self, inputs, outputs, loss_func, entropy_regularization):
         """
@@ -460,10 +556,64 @@ class Generator(Algorithm):
         loss_grad = torch.autograd.grad(neglogp.sum(), outputs)[0]  # [N2, D]
 
         logq_grad = self._score_func(outputs)
-        grad = loss_grad - entropy_regularization * logq_grad
+        grad = loss_grad + entropy_regularization * logq_grad
         loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
 
         return loss, loss_propagated
+
+    def _jacobian_trace(self, fx, x):
+        """Hutchinson's trace Jacobian estimator O(1) call to autograd,
+            used by "\"minmax\" method"""
+        eps = torch.randn_like(fx)
+        jvp = torch.autograd.grad(
+            fx, x, grad_outputs=eps, retain_graph=True, create_graph=True)[0]
+        if eps.shape[-1] == jvp.shape[-1]:
+            tr_jvp = torch.einsum('bi,bi->b', jvp, eps)
+        else:
+            tr_jvp = torch.einsum('bi,bj->b', jvp, eps)
+        return tr_jvp
+
+    def _critic_train_step(self, inputs, loss_func, entropy_regularization=1.):
+        loss = loss_func(inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), inputs)[0]  # [N, D]
+
+        outputs = self._critic.predict_step(inputs).output
+        f_loss_grad = (loss_grad.detach() * outputs).sum(1)  # [N, D]
+        tr_gradf = self._jacobian_trace(outputs, inputs)  # [N]
+        loss_stein = f_loss_grad - entropy_regularization * tr_gradf.unsqueeze(
+            1)  # [N x 1]
+
+        l2_penalty = (outputs * outputs).sum(1).mean() * self._critic_l2_weight
+        critic_loss = loss_stein.mean() + l2_penalty
+
+        return critic_loss
+
+    def _minmax_grad(self, inputs, outputs, loss_func, entropy_regularization):
+        """
+        Compute particle gradients via minmax svgd. 
+        """
+        assert inputs is None, '"minmax" does not support conditional generator'
+
+        # optimize the critic using resampled particles
+        num_particles = outputs.shape[0]
+        for i in range(self._num_critic_iter):
+            # critic_inputs, _ = self._predict(inputs, batch_size=num_particles)
+            critic_inputs = outputs.detach().clone()
+            critic_inputs.requires_grad = True
+            critic_loss = self._critic_train_step(critic_inputs, loss_func,
+                                                  entropy_regularization)
+            self._critic.update_with_gradient(LossInfo(loss=critic_loss))
+
+        # compute amortized svgd
+        # loss = loss_func(outputs.detach())
+        critic_outputs = self._critic.predict_step(outputs).output
+        loss_propagated = torch.sum(-critic_outputs.detach() * outputs, dim=-1)
+
+        return (), loss_propagated
 
     def after_update(self, training_info):
         if self._predict_net:

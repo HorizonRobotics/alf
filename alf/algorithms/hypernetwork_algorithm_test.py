@@ -55,10 +55,10 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('svgd2', True),
-                              ('gfsf', True))
+    # @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('svgd2', True),
+    #                           ('gfsf', True))
     def test_bayesian_linear_regression(self,
-                                        par_vi='svgd3',
+                                        par_vi='minmax',
                                         function_vi=False,
                                         num_particles=256,
                                         train_batch_size=10):
@@ -95,7 +95,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             loss_type='regression',
             par_vi=par_vi,
             function_vi=function_vi,
-            optimizer=alf.optimizers.Adam(lr=1e-3))
+            optimizer=alf.optimizers.Adam(lr=2e-4),
+            critic_optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))
         print("ground truth cov norm: {}".format(true_cov.norm()))
@@ -156,7 +157,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             print("train_iter {}: cov err {}".format(i, cov_err))
             print("learned_cov norm: {}".format(learned_cov.norm()))
 
-        train_iter = 5000
+        train_iter = 30000
         for i in range(train_iter):
             _train()
             if i % 1000 == 0:

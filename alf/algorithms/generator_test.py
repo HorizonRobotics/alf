@@ -67,12 +67,13 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dict(entropy_regularization=1.0, par_vi='svgd'),
         dict(entropy_regularization=1.0, par_vi='svgd2'),
         dict(entropy_regularization=1.0, par_vi='svgd3'),
+        dict(entropy_regularization=1.0, par_vi='minmax'),
         dict(entropy_regularization=0.0),
         dict(entropy_regularization=0.0, mi_weight=1),
     )
     def test_generator_unconditional(self,
-                                     entropy_regularization=0.0,
-                                     par_vi=None,
+                                     entropy_regularization=1.0,
+                                     par_vi='minmax',
                                      mi_weight=None):
         """
         The generator is trained to match(STEIN)/maximize(ML) the likelihood
@@ -92,7 +93,8 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             net=net,
             mi_weight=mi_weight,
             par_vi=par_vi,
-            optimizer=alf.optimizers.AdamTF(lr=1e-3))
+            optimizer=alf.optimizers.AdamTF(lr=1e-3),
+            critic_optimizer=alf.optimizers.AdamTF(lr=1e-3))
 
         var = torch.tensor([1, 4], dtype=torch.float32)
         precision = 1. / var
