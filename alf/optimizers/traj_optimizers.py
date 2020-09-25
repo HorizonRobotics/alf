@@ -185,38 +185,31 @@ class CEMOptimizer(TrajOptimizer):
         pop_var = init_var
 
         # [B, population, solution_dim]
-        trunc_normal_samples = torch.zeros(batch_size, self._population_size,
-                                           self._solution_dim)
+        samples_size = (batch_size, self._population_size, self._solution_dim)
 
         while i < self._max_iter_num and pop_var.max() > self._epsilon:
-            # compute the distance to lower and upper bound
-            distance_to_lb = pop_mean - self._lower_bound
-            distance_to_ub = self._upper_bound - pop_mean
+            pop_var = pop_var.clamp(min=self._min_var)
+            samples = torch.randn(samples_size) * torch.sqrt(
+                pop_var) + pop_mean
 
-            # compute the constrained var based on the computed distance
-            constrained_var = torch.min(
-                torch.min((distance_to_lb / 2.0)**2, (distance_to_ub / 2.0)
-                          **2), pop_var)
-            constrained_var = constrained_var.clamp(min=self._min_var)
-
-            trunc_normal_samples = alf.initializers.trunc_normal_(
-                trunc_normal_samples)
-            samples = trunc_normal_samples * torch.sqrt(
-                constrained_var) + pop_mean
-
-            costs = self.cost_function(time_step, state, samples.clone())
+            # use bounded samples for evaluation
+            bounded_samples = samples.clamp(
+                min=self._lower_bound, max=self._upper_bound)
+            costs = self.cost_function(time_step, state, bounded_samples)
 
             # select elite set from the population
             ind = torch.topk(-costs, self._elite_size)[1]
             # samples: [batch, population, solution_dim]
             elites = samples[torch.arange(batch_size).unsqueeze(-1), ind]
 
-            # update mean and var based on the elite set
+            # update mean and var based on the elite set selected from the
+            # unbounded samples
             new_mean = torch.mean(elites, dim=1, keepdim=True)
             new_var = torch.var(elites, dim=1, keepdim=True)
 
             pop_mean = (1 - self._tau) * pop_mean + self._tau * new_mean
             pop_var = (1 - self._tau) * pop_var + self._tau * new_var
+
             i = i + 1
 
         # [B, 1, solution_dim] -> [B, solution_dim]

@@ -37,9 +37,10 @@ CEMPlanAlgorithm.action_spec=%action_spec
 CEMPlanAlgorithm.population_size=400
 CEMPlanAlgorithm.planning_horizon=25
 CEMPlanAlgorithm.elite_size=40
-CEMPlanAlgorithm.max_iter_num=50
+CEMPlanAlgorithm.max_iter_num=5
 CEMPlanAlgorithm.epsilon=0.01
-CEMPlanAlgorithm.tau=1.0
+CEMPlanAlgorithm.tau=0.9
+CEMPlanAlgorithm.scalar_var=1.0
 
 # model-based RL algo config
 MbrlAlgorithm.feature_spec=%observation_spec

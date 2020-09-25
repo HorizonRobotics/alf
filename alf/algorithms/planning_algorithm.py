@@ -26,11 +26,12 @@ from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
                                  TimeStep, StepType)
 from alf.nest import nest
 from alf.optimizers.traj_optimizers import RandomOptimizer, CEMOptimizer
+from alf.tensor_specs import TensorSpec
 from alf.utils import common
 
-PlannerState = namedtuple("PlannerState", ["policy"], default_value=())
-PlannerInfo = namedtuple("PlannerInfo", ["policy"])
-PlannerLossInfo = namedtuple('PlannerLossInfo', ["policy"])
+PlannerState = namedtuple("PlannerState", ["prev_plan"], default_value=())
+PlannerInfo = namedtuple("PlannerInfo", ["planner"])
+PlannerLossInfo = namedtuple('PlannerLossInfo', ["planner"])
 
 
 @gin.configurable
@@ -44,7 +45,6 @@ class PlanAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  feature_spec,
                  action_spec,
-                 train_state_spec,
                  planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
@@ -61,7 +61,9 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             feature_spec,
             action_spec,
-            train_state_spec=train_state_spec,
+            train_state_spec=PlannerState(
+                prev_plan=TensorSpec((planning_horizon,
+                                      action_spec.shape[-1]))),
             name=name)
 
         assert (() == action_spec.maximum.shape) and \
@@ -170,7 +172,6 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         super().__init__(
             feature_spec=feature_spec,
             action_spec=action_spec,
-            train_state_spec=(),
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
             lower_bound=lower_bound,
@@ -205,7 +206,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """
-        return AlgStep(output=(), state=(), info=())
+        return AlgStep(output=(), state=state, info=())
 
     def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
         assert self._reward_func is not None, ("specify reward function "
@@ -218,7 +219,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         opt_action = self._plan_optimizer.obtain_solution(time_step, state)
         action = opt_action[:, 0]
         action = torch.reshape(action, [time_step.observation.shape[0], -1])
-        return action
+        return action, state
 
     def _expand_to_population(self, data):
         """Expand the input tensor to a population of replications
@@ -297,8 +298,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
 
     To speedup, when possible, we have used the plan obtained at the previous
     time step to initialize the the mean of the plan distribution at the current
-    time step, after proper shifting and padding. This, however, makes the
-    current implementation no longer thread-safe.
+    time step, after proper shifting and padding.
     """
 
     def __init__(self,
@@ -356,8 +356,6 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             epsilon=epsilon,
             tau=tau)
 
-        self._default_solution = None
-        self._prev_solution = None
         if scalar_var is None:
             self._scalar_var = (self._upper_bound - self._lower_bound) / 2.
         else:
@@ -370,20 +368,13 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         assert self._dynamics_func is not None, ("specify dynamics function "
                                                  "before planning")
 
-        # init prev_solution and reset if necessary
         batch_size = time_step.observation.shape[0]
-        if self._prev_solution is None:
-            self._prev_solution = torch.ones(batch_size, self._solution_size) \
-                * (self._upper_bound + self._lower_bound) / 2.
-            self._default_solution = self._prev_solution.clone()
-        else:
-            self._prev_solution = common.reset_state_if_necessary(
-                self._prev_solution, self._default_solution,
-                time_step.step_type == StepType.FIRST)
 
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
 
-        init_mean = self._prev_solution.unsqueeze(1)
+        prev_plan = state.planner.prev_plan
+        # [B, horizon, action_dim] -> [B, 1, horizon*action_dim]
+        init_mean = prev_plan.reshape(prev_plan.shape[0], 1, -1)
         opt_action = self._plan_optimizer.obtain_solution(
             time_step,
             state,
@@ -396,12 +387,12 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             [opt_action.shape[0], self._planning_horizon, self._num_actions])
 
         # [B, horizon, action_dim]
-        self._prev_solution = torch.cat(
+        temporally_shifted_plan = torch.cat(
             (opt_action[:, 1:], opt_action.mean(
                 dim=(0, 1), keepdim=True).expand(batch_size, 1, -1)), 1)
-        # [B, horizon, action_dim] -> [B, horizon*action_dim]
-        self._prev_solution = self._prev_solution.reshape(
-            self._prev_solution.shape[0], -1)
 
         action = opt_action[:, 0]
-        return action
+        new_state = state._replace(
+            planner=state.planner._replace(prev_plan=temporally_shifted_plan))
+
+        return action, new_state
