@@ -73,7 +73,7 @@ class StepMetric(nn.Module):
         if not (isinstance(result, dict) or alf.nest.is_namedtuple(result)):
             result = {self.name: result}
 
-        def _gen_summary(name, res):
+        def _gen_summary(res, name):
             tag = os.path.join(prefix, name)
             if train_step is not None:
                 alf.summary.scalar(name=tag, data=res, step=train_step)
@@ -86,11 +86,4 @@ class StepMetric(nn.Module):
                 step = step_metric.result().to(torch.int64)
                 alf.summary.scalar(name=step_tag, data=res, step=step)
 
-        def _gen_nested(res):
-            for field, elem in alf.nest.extract_fields_from_nest(res):
-                if isinstance(elem, dict) or alf.nest.is_namedtuple(elem):
-                    _gen_nested(elem)
-                elif isinstance(elem, torch.Tensor):
-                    _gen_summary(field, elem)
-
-        _gen_nested(result)
+        alf.nest.py_map_structure_with_path(_gen_summary, result)
