@@ -1196,13 +1196,15 @@ class CarlaScalarRewardWrapper(AlfEnvironmentBaseWrapper):
         """
         Args:
             env (CarlaEnvironment): A CarlaEnvironment instance to wrap.
-            reward_weights (list[float]): a list of weights for the rewards; if
-                None, then the overall reward will be used.
+            reward_weights (list[float] | tuple[float]): a list/tuple of weights
+                for the rewards; if None, then the overall reward will be used.
         """
         super(CarlaScalarRewardWrapper, self).__init__(env)
         if reward_weights is None:
             reward_weights = [0.] * Player.REWARD_DIMENSION
             reward_weights[Player.REWARD_OVERALL] = 1.
+        assert (isinstance(reward_weights, (list, tuple))
+                and len(reward_weights) == Player.REWARD_DIMENSION)
         self._reward_weights = torch.tensor(reward_weights)
 
     def _step(self, action):
