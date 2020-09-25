@@ -126,7 +126,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """
         self._dynamics_func = dynamics_func
 
-    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
         """Compute the plan based on the provided observation and action
         Args:
             time_step (TimeStep): input data for next step prediction
@@ -208,7 +208,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         """
         return AlgStep(output=(), state=state, info=())
 
-    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
         assert self._reward_func is not None, ("specify reward function "
                                                "before planning")
 
@@ -361,9 +361,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         else:
             self._scalar_var = scalar_var
 
-        self._default_solution = None
-
-    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
         assert self._reward_func is not None, ("specify reward function "
                                                "before planning")
 
@@ -378,14 +376,10 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
 
-        if self._default_solution is None:
-            self._default_solution = torch.ones(batch_size, self._solution_size) \
-                    * (self._upper_bound + self._lower_bound) / 2.
-
-        # reset to default solution at the beginning of an episode
-        prev_solution = common.reset_state_if_necessary(
-            prev_solution, self._default_solution,
-            time_step.step_type == StepType.FIRST)
+        prev_solution = prev_solution.clone()
+        prev_solution[time_step.step_type == StepType.FIRST] = torch.full(
+            (self._solution_size, ),
+            (self._upper_bound + self._lower_bound) / 2.)
 
         init_mean = prev_solution.unsqueeze(1)
 

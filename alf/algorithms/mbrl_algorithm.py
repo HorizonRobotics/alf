@@ -174,7 +174,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
     def _predict_with_planning(self, time_step: TimeStep, state,
                                epsilon_greedy):
         # full state in
-        action, state = self._planner_module.generate_plan(
+        action, state = self._planner_module.predict_plan(
             time_step, state, epsilon_greedy)
         dynamics_state = self._dynamics_module.update_state(
             time_step, state.dynamics)
