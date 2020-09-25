@@ -305,7 +305,7 @@ def add_mean_summary(name, value):
     alf.summary.scalar(name, value.mean())
 
 
-def safe_mean_summary(name, value):
+def safe_mean_summary(name, value, mask=None):
     """Generate mean summary of ``value``.
 
     It skips the summary if ``value`` is empty.
@@ -313,7 +313,11 @@ def safe_mean_summary(name, value):
     Args:
         name (str): name of the summary
         value (Tensor): tensor to be summarized
+        mask (bool Tensor): optional mask to indicate which element of value
+            to use. Its shape needs to be same as that of ``value``
     """
+    if mask is not None:
+        value = value[mask]
     if np.prod(value.shape) > 0:
         add_mean_summary(name, value)
 

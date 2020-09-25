@@ -249,7 +249,7 @@ class Agent(OnPolicyAlgorithm):
         observation = exp.observation
 
         if self._representation_learner is not None:
-            repr_step = self._representation_learner.predict_step(
+            repr_step = self._representation_learner.train_step(
                 exp._replace(rollout_info=exp.rollout_info.repr), state.repr)
             new_state = new_state._replace(repr=repr_step.state)
             info = info._replace(repr=repr_step.info)
@@ -355,9 +355,19 @@ class Agent(OnPolicyAlgorithm):
         algorithm.
         """
         reward = self.calc_training_reward(exp.reward, exp.rollout_info)
+        exp = exp._replace(reward=reward)
+
+        if self._representation_learner:
+            new_exp = self._representation_learner.preprocess_experience(
+                exp._replace(
+                    rollout_info=exp.rollout_info.repr,
+                    rollout_info_field=exp.rollout_info_field + '.repr'))
+            exp = new_exp._replace(
+                rollout_info=exp.rollout_info._replace(
+                    repr=new_exp.rollout_info))
+
         new_exp = self._rl_algorithm.preprocess_experience(
             exp._replace(
-                reward=reward,
                 rollout_info=exp.rollout_info.rl,
                 rollout_info_field=exp.rollout_info_field + '.rl'))
         return new_exp._replace(
