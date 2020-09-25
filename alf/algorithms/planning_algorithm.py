@@ -361,6 +361,8 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         else:
             self._scalar_var = scalar_var
 
+        self._default_solution = None
+
     def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
         assert self._reward_func is not None, ("specify reward function "
                                                "before planning")
@@ -373,8 +375,20 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
 
         prev_plan = state.planner.prev_plan
-        # [B, horizon, action_dim] -> [B, 1, horizon*action_dim]
-        init_mean = prev_plan.reshape(prev_plan.shape[0], 1, -1)
+        # [B, horizon, action_dim] -> [B, horizon*action_dim]
+        prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
+
+        if self._default_solution is None:
+            self._default_solution = torch.ones(batch_size, self._solution_size) \
+                    * (self._upper_bound + self._lower_bound) / 2.
+
+        # reset to default solution at the beginning of an episode
+        prev_solution = common.reset_state_if_necessary(
+            prev_solution, self._default_solution,
+            time_step.step_type == StepType.FIRST)
+
+        init_mean = prev_solution.unsqueeze(1)
+
         opt_action = self._plan_optimizer.obtain_solution(
             time_step,
             state,
