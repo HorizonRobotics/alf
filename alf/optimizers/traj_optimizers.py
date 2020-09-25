@@ -158,7 +158,8 @@ class CEMOptimizer(TrajOptimizer):
             time_step (TimeStep): the initial time_step to start rollout
             state: the initial state to start rollout
             init_mean (None|Tensor): initial mean of the population. If None,
-                the mean is initialized as zeros.
+                the mean is initialized to have value as
+                0.5 * (self._upper_bound + self._lower_bound).
             init_var (None|Tensor): initial variance of the population. If None,
                 the variance is initialized to have value as
                 0.5 * (upper_bound - lower_bound).
@@ -168,7 +169,8 @@ class CEMOptimizer(TrajOptimizer):
 
         if init_mean is None:
             # [B, 1, solution_dim]
-            init_mean = torch.zeros(batch_size, 1, self._solution_dim)
+            init_mean = torch.ones(batch_size, 1, self._solution_dim) * \
+                    (self._upper_bound + self._lower_bound) / 2.
         else:
             assert init_mean.shape == (batch_size, 1, self._solution_dim)
 

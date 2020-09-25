@@ -373,7 +373,8 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         # init prev_solution and reset if necessary
         batch_size = time_step.observation.shape[0]
         if self._prev_solution is None:
-            self._prev_solution = torch.zeros(batch_size, self._solution_size)
+            self._prev_solution = torch.ones(batch_size, self._solution_size) \
+                * (self._upper_bound + self._lower_bound) / 2.
             self._default_solution = self._prev_solution.clone()
         else:
             self._prev_solution = common.reset_state_if_necessary(
