@@ -19,7 +19,7 @@ from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.data_structures import TimeStep, AlgStep, namedtuple
-from alf.utils import dist_utils
+from alf.utils import common, dist_utils
 from .config import TrainerConfig
 
 ActorCriticState = namedtuple(
@@ -118,8 +118,13 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         value, value_state = self._value_network(
             time_step.observation, state=state.value)
 
+        # We detach exp.observation here so that in the case that exp.observation
+        # is calculated by some other trainable module, the training of that
+        # module will not be affected by the gradient back-propagated from the
+        # actor. However, the gradient from critic will still affect the training
+        # of that module.
         action_distribution, actor_state = self._actor_network(
-            time_step.observation, state=state.actor)
+            common.detach(time_step.observation), state=state.actor)
 
         action = dist_utils.sample_action_distribution(action_distribution)
         return AlgStep(

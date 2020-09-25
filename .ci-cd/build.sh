@@ -63,6 +63,7 @@ function test() {
         alf.algorithms.mi_estimator_test \
         alf.algorithms.muzero_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
+        alf.algorithms.predictive_representation_learner_test \
         alf.algorithms.prior_actor_test \
         alf.algorithms.rl_algorithm_test \
         alf.algorithms.sarsa_algorithm_test \

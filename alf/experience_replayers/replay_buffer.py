@@ -612,8 +612,8 @@ class ReplayBuffer(RingBuffer):
         """Get stored data of field from the replay buffer by ``env_ids`` and ``positions``.
 
         Args:
-            field_name (str): indicate the path to the field with '.' separating
-                the field name at different level
+            field_name (str | nest of str): indicate the path to the field with
+                '.' separating the field name at different level
             env_ids (Tensor): 1-D int64 Tensor.
             positions (Tensor): 1-D int64 Tensor with same shape as ``env_ids``.
                 These positions should be obtained from the BatchInfo returned
@@ -625,7 +625,8 @@ class ReplayBuffer(RingBuffer):
         assert torch.all(positions < current_pos), "Invalid positions"
         assert torch.all(
             positions >= current_pos - self._max_length), "Invalid positions"
-        field = alf.nest.get_field(self._buffer, field_name)
+        field = alf.nest.map_structure(
+            lambda name: alf.nest.get_field(self._buffer, name), field_name)
         indices = (env_ids, self.circular(positions))
         result = alf.nest.map_structure(lambda x: x[indices], field)
         return convert_device(result)
