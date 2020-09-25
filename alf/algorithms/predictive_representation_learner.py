@@ -22,7 +22,6 @@ from alf.data_structures import AlgStep, TimeStep, Experience, LossInfo, namedtu
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.nest.utils import convert_device
 from alf.networks import Network, LSTMEncodingNetwork
-from alf.utils.losses import element_wise_squared_loss, element_wise_huber_loss
 from alf.utils import dist_utils, spec_utils, tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
 
@@ -45,7 +44,7 @@ PredictiveRepresentationLearnerInfo = namedtuple(
 
 @gin.configurable
 class SimpleDecoder(Algorithm):
-    """Simple decoder with elementwise loss between target value and predicted value.
+    """A simple decoder with elementwise loss between the target and the predicted value.
 
     It is used to predict the target value from the given representation. Its
     loss can be used to train the representation.
@@ -154,11 +153,14 @@ class SimpleDecoder(Algorithm):
 class PredictiveRepresentationLearner(Algorithm):
     """Learn representation based on the prediction of future values.
 
-    ``PredictiveRepresentationLearner`` contains 3 ``Network``s:
-    * encoding_net: it is used to encode the raw observation to a latent vector.
-    * dynamics_net: it is used to generate the future latent states from the
-        current latent state.
-    * decoder: it is used to decode the target values and calcuate the loss.
+    ``PredictiveRepresentationLearner`` contains 3 ``Module``s:
+
+    * encoding_net: it is a ``Network`` that encodes the raw observation to a
+      latent vector.
+    * dynamics_net: it is a ``Network`` that generates the future latent states
+      from the current latent state.
+    * decoder: it is an ``Algorithm`` that decode the target values from the
+      latent state and calcuate the loss.
     """
 
     def __init__(self,
@@ -181,7 +183,7 @@ class PredictiveRepresentationLearner(Algorithm):
                 construct the decoder algorithm. It should follow the ``Algorithm``
                 interface. In addition to the interface of ``Algorithm``, it should
                 also implement a member function ``get_target_fields()``, which
-                returns a nest of the name of target fields. See ``SimpleDecoder``
+                returns a nest of the names of target fields. See ``SimpleDecoder``
                 for an example of decoder.
             encoding_net_ctor (Callable): called as ``encoding_net_ctor(observation_spec)``
                 to construct the encoding ``Network``. The network takes raw observation
