@@ -60,10 +60,10 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
         return getattr(self._env, 'batch_size', None)
 
     def _reset(self):
-        return self._env.reset()
+        return self._env._reset()
 
     def _step(self, action):
-        return self._env.step(action)
+        return self._env._step(action)
 
     def get_info(self):
         return self._env.get_info()

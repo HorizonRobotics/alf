@@ -62,6 +62,7 @@ from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
                             IMUSensor, LaneInvasionSensor, NavigationSensor,
                             RadarSensor, World, MINIMUM_RENDER_WIDTH,
                             MINIMUM_RENDER_HEIGHT)
+from .alf_wrappers import AlfEnvironmentBaseWrapper
 
 
 def is_available():
@@ -1185,6 +1186,35 @@ class CarlaEnvironment(AlfEnvironment):
                 logging.error(response.error)
         self._current_frame = self._world.tick()
         return self._get_current_time_step()
+
+
+@gin.configurable
+class CarlaSingleRewardWrapper(AlfEnvironmentBaseWrapper):
+    """A wrapper that only takes the overall CARLA reward."""
+
+    def __init__(self, env):
+        """
+        Args:
+            env (CarlaEnvironment): A CarlaEnvironment instance to wrap.
+        """
+        super(CarlaSingleRewardWrapper, self).__init__(env)
+
+    def _step(self, action):
+        time_step = self._env._step(action)
+        reward = time_step.reward[:, Player.REWARD_OVERALL]
+        return time_step._replace(reward=reward)
+
+    def _reset(self):
+        time_step = self._env._reset()
+        reward = time_step.reward[:, Player.REWARD_OVERALL]
+        return time_step._replace(reward=reward)
+
+    def reward_spec(self):
+        return alf.TensorSpec(())
+
+    def time_step_spec(self):
+        spec = self._env.time_step_spec()
+        return spec._replace(reward=self.reward_spec())
 
 
 @gin.configurable(whitelist=['wrappers'])
