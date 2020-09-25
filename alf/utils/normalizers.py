@@ -165,9 +165,8 @@ class Normalizer(nn.Module):
             return t
 
         if self._mean_averager:
-            return alf.nest.map_structure(_normalize,
-                                          self._mean_averager.get(),
-                                          self._m2_averager.get(), tensor)
+            return alf.nest.map_structure(_normalize, self._m2_averager.get(),
+                                          tensor, self._mean_averager.get())
         else:
             return alf.nest.map_structure(_normalize, self._m2_averager.get(),
                                           tensor)
