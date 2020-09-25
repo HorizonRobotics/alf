@@ -1189,24 +1189,30 @@ class CarlaEnvironment(AlfEnvironment):
 
 
 @gin.configurable
-class CarlaSingleRewardWrapper(AlfEnvironmentBaseWrapper):
-    """A wrapper that only takes the overall CARLA reward."""
+class CarlaScalarRewardWrapper(AlfEnvironmentBaseWrapper):
+    """A wrapper that averages all rewards by a weight vector."""
 
-    def __init__(self, env):
+    def __init__(self, env, reward_weights=None):
         """
         Args:
             env (CarlaEnvironment): A CarlaEnvironment instance to wrap.
+            reward_weights (list[float]): a list of weights for the rewards; if
+                None, then the overall reward will be used.
         """
-        super(CarlaSingleRewardWrapper, self).__init__(env)
+        super(CarlaScalarRewardWrapper, self).__init__(env)
+        if reward_weights is None:
+            reward_weights = [0.] * Player.REWARD_DIMENSION
+            reward_weights[Player.REWARD_OVERALL] = 1.
+        self._reward_weights = torch.tensor(reward_weights)
 
     def _step(self, action):
         time_step = self._env._step(action)
-        reward = time_step.reward[:, Player.REWARD_OVERALL]
+        reward = torch.sum(time_step.reward * self._reward_weights, dim=-1)
         return time_step._replace(reward=reward)
 
     def _reset(self):
         time_step = self._env._reset()
-        reward = time_step.reward[:, Player.REWARD_OVERALL]
+        reward = torch.sum(time_step.reward * self._reward_weights, dim=-1)
         return time_step._replace(reward=reward)
 
     def reward_spec(self):
