@@ -492,6 +492,7 @@ class ObservationNormalizer(SimpleDataTransformer):
             window_size (int): the window size of ``WindowNormalizer``.
             update_rate (float): the update rate of ``EMNormalizer``.
             speed (float): the speed of updating for ``AdaptiveNormalizer``.
+            zero_mean (bool): whether to make the normalized value be zero-mean
             update_mode (str): update stats during either "replay" or "rollout".
             mode (str): a value in ["adaptive", "window", "em"] indicates which
                 normalizer to use.

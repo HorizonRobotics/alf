@@ -61,7 +61,7 @@ class Normalizer(nn.Module):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
-            zero_mean (bool): whether to make the normalized value be zero-meane
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epsilon (float): a small value added to std for normalizing
             name (str):
         """
@@ -124,7 +124,7 @@ class Normalizer(nn.Module):
                     _summary(path + "mean", m)
                     _summary(path + "var", m2 - math_ops.square(m))
                 else:
-                    _summary(path + "var", m2)
+                    _summary(path + "second_moment", m2)
 
             if self._mean_averager:
                 alf.nest.py_map_structure_with_path(_summarize_all, tensor,
@@ -191,7 +191,7 @@ class WindowNormalizer(Normalizer):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
-            zero_mean (bool): whether to make the normalized value be zero-meane
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
@@ -245,7 +245,7 @@ class EMNormalizer(Normalizer):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
-            zero_mean (bool): whether to make the normalized value be zero-meane
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
@@ -301,7 +301,7 @@ class AdaptiveNormalizer(Normalizer):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
-            zero_mean (bool): whether to make the normalized value be zero-meane
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
