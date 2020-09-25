@@ -113,7 +113,7 @@ class Normalizer(nn.Module):
                         alf.summary.scalar(name + ".min." + suffix, val.min())
                         alf.summary.scalar(name + ".max." + suffix, val.max())
 
-            def _summarize_all(t, m2, path, m=None):
+            def _summarize_all(path, t, m2, m=None):
                 if path:
                     path += "."
                 _summary(path + "tensor.batch_min",
@@ -128,8 +128,8 @@ class Normalizer(nn.Module):
 
             if self._mean_averager:
                 alf.nest.py_map_structure_with_path(_summarize_all, tensor,
-                                                    self._mean_averager.get(),
-                                                    self._m2_averager.get())
+                                                    self._m2_averager.get(),
+                                                    self._mean_averager.get())
             else:
                 alf.nest.py_map_structure_with_path(_summarize_all, tensor,
                                                     self._m2_averager.get())
