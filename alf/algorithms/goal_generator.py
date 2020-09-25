@@ -462,7 +462,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         info = {}
         goals, costs = self._opt.obtain_solution(ts, (), info)
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
-        if self._num_subgoals > 0:
+        if self._num_subgoals > 0 and alf.summary.should_record_summaries():
             if "segment_costs" in info:
                 self._summarize_tensor_dims("planner/segment_cost",
                                             info["segment_costs"])
@@ -470,21 +470,20 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 observation["desired_goal"] - observation["achieved_goal"],
                 dim=1)
             alf.summary.scalar(
-                "planner/distance_full." + common.exe_mode_name(), full_dist)
+                "planner/distance_full." + common.exe_mode_name(),
+                torch.mean(full_dist))
+            dist_ag_subgoal = torch.norm(
+                subgoal[:, :self._action_dim] - observation["achieved_goal"],
+                dim=1)
             alf.summary.scalar(
                 "planner/distance_ag_to_subgoal." + common.exe_mode_name(),
-                torch.mean(
-                    torch.norm(
-                        subgoal[:, :self._action_dim] -
-                        observation["achieved_goal"],
-                        dim=1) / full_dist))
+                torch.mean(dist_ag_subgoal / full_dist))
+            dist_subgoal_g = torch.norm(
+                subgoal[:, :self._action_dim] - observation["desired_goal"],
+                dim=1)
             alf.summary.scalar(
                 "planner/distance_subgoal_to_goal." + common.exe_mode_name(),
-                torch.mean(
-                    torch.norm(
-                        subgoal[:, :self._action_dim] -
-                        observation["desired_goal"],
-                        dim=1) / full_dist))
+                torch.mean(dist_subgoal_g / full_dist))
 
         if self._use_aux_achieved and not self.control_aux:
             subgoal = subgoal[:, :self._action_dim]
@@ -506,15 +505,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         # If goal is within the min_cost range, just use original goal.
         plan_success = (init_costs > self._min_goal_cost_to_use_plan) & (
             costs > 0) & (init_costs > costs * (1. + self._plan_margin))
-        alf.summary.scalar(
-            "planner/adoption_rate_planning." + common.exe_mode_name(),
-            torch.mean(plan_success.float()))
-        alf.summary.scalar(
-            "planner/cost_mean_orig_goal." + common.exe_mode_name(),
-            torch.mean(init_costs))
-        alf.summary.scalar(
-            "planner/cost_mean_planning." + common.exe_mode_name(),
-            torch.mean(costs))
+        if alf.summary.should_record_summaries():
+            alf.summary.scalar(
+                "planner/adoption_rate_planning." + common.exe_mode_name(),
+                torch.mean(plan_success.float()))
+            alf.summary.scalar(
+                "planner/cost_mean_orig_goal." + common.exe_mode_name(),
+                torch.mean(init_costs))
+            alf.summary.scalar(
+                "planner/cost_mean_planning." + common.exe_mode_name(),
+                torch.mean(costs))
         orig_desired = observation["desired_goal"]
         if self.control_aux:
             orig_desired = torch.cat(
@@ -542,6 +542,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             logging.info(outcome + init_costs_str + " plan_cost:" +
                          str(costs) + ":\n" + str(ach) + " ->\n" +
                          subgoal_str + str(orig_desired))
+            if self._num_subgoals > 0:
+                logging.info("full_dist = {}, ag_sg = {}, sg_g = {}".format(
+                    full_dist, dist_ag_subgoal, dist_subgoal_g))
         subgoal = torch.where(plan_success, subgoal, orig_desired)
         return subgoal
 

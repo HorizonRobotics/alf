@@ -841,4 +841,7 @@ def hindsight_relabel_fn(buffer,
     result = result._replace(reward=final_relabeled_rewards)
     result = alf.nest.utils.transform_nest(
         result, desired_goal_field, lambda _: relabeled_goal)
+    if control_aux:
+        result = alf.nest.utils.transform_nest(
+            result, aux_desired_field, lambda _: relabeled_aux)
     return result, info

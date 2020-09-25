@@ -114,13 +114,16 @@ class TDLoss(nn.Module):
             mask = experience.step_type[:-1] != StepType.LAST
             with alf.summary.scope(self._name):
 
-                def _summarize(v, r, td, suffix):
+                def _summarize(v, r, td, suffix, new_mask=None):
+                    m = mask
+                    if new_mask is not None:
+                        m = new_mask
                     alf.summary.scalar(
                         "explained_variance_of_return_by_value" + suffix,
-                        tensor_utils.explained_variance(v, r, mask))
-                    safe_mean_hist_summary('values' + suffix, v, mask)
-                    safe_mean_hist_summary('returns' + suffix, r, mask)
-                    safe_mean_hist_summary("td_error" + suffix, td, mask)
+                        tensor_utils.explained_variance(v, r, m))
+                    safe_mean_hist_summary('values' + suffix, v, m)
+                    safe_mean_hist_summary('returns' + suffix, r, m)
+                    safe_mean_hist_summary("td_error" + suffix, td, m)
 
                 if value.ndim == 2:
                     _summarize(value, returns, returns - value, '')
@@ -130,6 +133,29 @@ class TDLoss(nn.Module):
                         suffix = '/' + str(i)
                         _summarize(value[..., i], returns[..., i], td[..., i],
                                    suffix)
+                        observation = experience.observation
+                        if (isinstance(observation, dict)
+                                and "aux_desired" in observation):
+                            # take first n - 1 time steps for judging
+                            o = torch.abs(observation["aux_desired"][:-1, ...])
+                            aux_realistic = torch.norm(
+                                torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
+                                dim=2) < 0.5
+                            real_rate = torch.mean(aux_realistic.float())
+                            alf.summary.scalar("realistic_rate" + suffix,
+                                               real_rate)
+                            if real_rate > 0:
+                                _summarize(value[..., i][aux_realistic],
+                                           returns[..., i][aux_realistic],
+                                           td[..., i][aux_realistic],
+                                           suffix + "/real",
+                                           mask[aux_realistic])
+                            if real_rate < 1:
+                                _summarize(value[..., i][~aux_realistic],
+                                           returns[..., i][~aux_realistic],
+                                           td[..., i][~aux_realistic],
+                                           suffix + "/unreal",
+                                           mask[~aux_realistic])
 
         loss = self._td_error_loss_fn(returns.detach(), value)
 
