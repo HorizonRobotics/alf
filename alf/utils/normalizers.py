@@ -31,6 +31,7 @@ class Normalizer(nn.Module):
     def __init__(self,
                  tensor_spec,
                  auto_update=True,
+                 zero_mean=True,
                  variance_epsilon=1e-10,
                  name="Normalizer"):
         """Create a base normalizer using a first-moment and a second-moment
@@ -60,6 +61,7 @@ class Normalizer(nn.Module):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epsilon (float): a small value added to std for normalizing
             name (str):
         """
@@ -68,7 +70,10 @@ class Normalizer(nn.Module):
         self._auto_update = auto_update
         self._variance_epsilon = variance_epsilon
         self._tensor_spec = tensor_spec
-        self._mean_averager = self._create_averager()
+        if zero_mean:
+            self._mean_averager = self._create_averager()
+        else:
+            self._mean_averager = None
         self._m2_averager = self._create_averager()
 
     @abstractmethod
@@ -81,7 +86,8 @@ class Normalizer(nn.Module):
     def update(self, tensor):
         """Update the statistics given a new tensor.
         """
-        self._mean_averager.update(tensor)
+        if self._mean_averager:
+            self._mean_averager.update(tensor)
         sqr_tensor = alf.nest.map_structure(math_ops.square, tensor)
         self._m2_averager.update(sqr_tensor)
         if alf.summary.should_record_summaries():
@@ -107,19 +113,26 @@ class Normalizer(nn.Module):
                         alf.summary.scalar(name + ".min." + suffix, val.min())
                         alf.summary.scalar(name + ".max." + suffix, val.max())
 
-            def _summarize_all(t, m, m2, path):
+            def _summarize_all(path, t, m2, m=None):
                 if path:
                     path += "."
                 _summary(path + "tensor.batch_min",
-                         _reduce_along_batch_dims(t, m, torch.min))
+                         _reduce_along_batch_dims(t, m2, torch.min))
                 _summary(path + "tensor.batch_max",
-                         _reduce_along_batch_dims(t, m, torch.max))
-                _summary(path + "mean", m)
-                _summary(path + "var", m2 - math_ops.square(m))
+                         _reduce_along_batch_dims(t, m2, torch.max))
+                if m is not None:
+                    _summary(path + "mean", m)
+                    _summary(path + "var", m2 - math_ops.square(m))
+                else:
+                    _summary(path + "second_moment", m2)
 
-            alf.nest.py_map_structure_with_path(_summarize_all, tensor,
-                                                self._mean_averager.get(),
-                                                self._m2_averager.get())
+            if self._mean_averager:
+                alf.nest.py_map_structure_with_path(_summarize_all, tensor,
+                                                    self._m2_averager.get(),
+                                                    self._mean_averager.get())
+            else:
+                alf.nest.py_map_structure_with_path(_summarize_all, tensor,
+                                                    self._m2_averager.get())
 
     def normalize(self, tensor, clip_value=-1.0):
         """
@@ -137,18 +150,26 @@ class Normalizer(nn.Module):
         if self._auto_update:
             self.update(tensor)
 
-        def _normalize(m, m2, t):
+        def _normalize(m2, t, m=None):
             # in some extreme cases, due to floating errors, var might be a very
             # large negative value (close to 0)
-            var = torch.relu(m2 - math_ops.square(m))
+            if m is not None:
+                var = torch.relu(m2 - math_ops.square(m))
+            else:
+                var = m2
+                m = torch.zeros_like(m2)
             t = alf.layers.normalize_along_batch_dims(
                 t, m, var, variance_epsilon=self._variance_epsilon)
             if clip_value > 0:
                 t = torch.clamp(t, -clip_value, clip_value)
             return t
 
-        return alf.nest.map_structure(_normalize, self._mean_averager.get(),
-                                      self._m2_averager.get(), tensor)
+        if self._mean_averager:
+            return alf.nest.map_structure(_normalize, self._m2_averager.get(),
+                                          tensor, self._mean_averager.get())
+        else:
+            return alf.nest.map_structure(_normalize, self._m2_averager.get(),
+                                          tensor)
 
 
 class WindowNormalizer(Normalizer):
@@ -159,6 +180,7 @@ class WindowNormalizer(Normalizer):
                  tensor_spec,
                  window_size=1000,
                  auto_update=True,
+                 zero_mean=True,
                  variance_epsilon=1e-10,
                  name="WindowNormalizer"):
         """
@@ -169,6 +191,7 @@ class WindowNormalizer(Normalizer):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
@@ -176,6 +199,7 @@ class WindowNormalizer(Normalizer):
         super(WindowNormalizer, self).__init__(
             tensor_spec=tensor_spec,
             auto_update=auto_update,
+            zero_mean=zero_mean,
             variance_epsilon=variance_epsilon,
             name=name)
 
@@ -189,12 +213,14 @@ class ScalarWindowNormalizer(WindowNormalizer):
     def __init__(self,
                  window_size=1000,
                  auto_update=True,
+                 zero_mean=True,
                  variance_epsilon=1e-10,
                  name="ScalarWindowNormalizer"):
         super(ScalarWindowNormalizer, self).__init__(
             tensor_spec=TensorSpec((), dtype='float32'),
             window_size=window_size,
             auto_update=auto_update,
+            zero_mean=zero_mean,
             variance_epsilon=variance_epsilon,
             name=name)
 
@@ -208,6 +234,7 @@ class EMNormalizer(Normalizer):
                  tensor_spec,
                  update_rate=1e-3,
                  auto_update=True,
+                 zero_mean=True,
                  variance_epsilon=1e-10,
                  name="EMNormalizer"):
         """
@@ -218,6 +245,7 @@ class EMNormalizer(Normalizer):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
@@ -225,6 +253,7 @@ class EMNormalizer(Normalizer):
         super(EMNormalizer, self).__init__(
             tensor_spec=tensor_spec,
             auto_update=auto_update,
+            zero_mean=zero_mean,
             variance_epsilon=variance_epsilon,
             name=name)
 
@@ -239,11 +268,13 @@ class ScalarEMNormalizer(EMNormalizer):
                  update_rate=1e-3,
                  auto_update=True,
                  variance_epsilon=1e-10,
+                 zero_mean=True,
                  name="ScalarEMNormalizer"):
         super(ScalarEMNormalizer, self).__init__(
             tensor_spec=TensorSpec((), dtype='float32'),
             update_rate=update_rate,
             auto_update=auto_update,
+            zero_mean=zero_mean,
             variance_epsilon=variance_epsilon,
             name=name)
 
@@ -254,6 +285,7 @@ class AdaptiveNormalizer(Normalizer):
                  tensor_spec,
                  speed=8.0,
                  auto_update=True,
+                 zero_mean=True,
                  variance_epsilon=1e-10,
                  name="AdaptiveNormalizer"):
         """This normalizer gives higher weight to more recent samples for
@@ -269,6 +301,7 @@ class AdaptiveNormalizer(Normalizer):
             auto_update (bool): If True, automatically update mean and variance
               for each call to `normalize()`. Otherwise, the user needs to call
               `update()`
+            zero_mean (bool): whether to make the normalized value be zero-mean
             variance_epislon (float): a small value added to std for normalizing
             name (str):
         """
@@ -277,6 +310,7 @@ class AdaptiveNormalizer(Normalizer):
             tensor_spec=tensor_spec,
             auto_update=auto_update,
             variance_epsilon=variance_epsilon,
+            zero_mean=zero_mean,
             name=name)
 
     def _create_averager(self):
@@ -290,11 +324,13 @@ class ScalarAdaptiveNormalizer(AdaptiveNormalizer):
     def __init__(self,
                  speed=8.0,
                  auto_update=True,
+                 zero_mean=True,
                  variance_epsilon=1e-10,
                  name="ScalarAdaptiveNormalizer"):
         super(ScalarAdaptiveNormalizer, self).__init__(
             tensor_spec=TensorSpec((), dtype='float32'),
             speed=speed,
             auto_update=auto_update,
+            zero_mean=zero_mean,
             variance_epsilon=variance_epsilon,
             name=name)

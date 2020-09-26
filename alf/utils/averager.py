@@ -182,8 +182,8 @@ class EMAverager(nn.Module):
         alf.nest.map_structure(
             lambda average, t, spec: average.add_(
                 torch.as_tensor(self._update_rate, dtype=t.dtype) * (
-                    average_outer_dims(t, spec) - average)), self._average,
-            tensor.detach(), self._tensor_spec)
+                    average_outer_dims(t.detach(), spec) - average)),
+            self._average, tensor, self._tensor_spec)
         self._mass.add_(
             torch.as_tensor(self._update_rate, dtype=torch.float64) *
             (1 - self._mass))

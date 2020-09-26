@@ -332,7 +332,7 @@ class TestTransformNest(alf.test.TestCase):
         tuples = [("a", 12), ("b", 13)]
         nested = collections.OrderedDict(tuples)
 
-        def _check_path(e, path):
+        def _check_path(path, e):
             self.assertEqual(nested[path], e)
 
         res = nest.py_map_structure_with_path(_check_path, nested)

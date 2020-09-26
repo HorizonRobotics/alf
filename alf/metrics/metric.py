@@ -73,7 +73,7 @@ class StepMetric(nn.Module):
         if not (isinstance(result, dict) or alf.nest.is_namedtuple(result)):
             result = {self.name: result}
 
-        def _gen_summary(res, name):
+        def _gen_summary(name, res):
             tag = os.path.join(prefix, name)
             if train_step is not None:
                 alf.summary.scalar(name=tag, data=res, step=train_step)

@@ -182,7 +182,7 @@ def summarize_loss(loss_info: LossInfo):
 
 @_summary_wrapper
 def summarize_nest(prefix, nest):
-    def _summarize(tensor, path):
+    def _summarize(path, tensor):
         add_mean_hist_summary(prefix + "/" + path, tensor)
 
     alf.nest.py_map_structure_with_path(_summarize, nest)

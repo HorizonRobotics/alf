@@ -339,7 +339,7 @@ def py_assert_same_structure(nest1, nest2):
 
 def py_map_structure_with_path(func, *nests):
     """Applies func to each entry in structure and returns a new structure.
-    This function gives func access to one additional parameter:
+    This function gives func access to one additional parameter as its first argument:
     the symbolic string of the path to the element currently supplied.
     List elements will be index by the ordinal position of the element in the list.
     """
@@ -349,7 +349,7 @@ def py_map_structure_with_path(func, *nests):
 
     def _map(*nests, path=""):
         if not is_nested(nests[0]):
-            return func(*nests, path)
+            return func(path, *nests)
         if isinstance(nests[0], list) or is_unnamedtuple(nests[0]):
             ret = type(nests[0])([
                 _map(
