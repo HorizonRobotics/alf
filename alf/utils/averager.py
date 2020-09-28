@@ -71,8 +71,8 @@ class WindowAverager(nn.Module):
         """
         alf.nest.map_structure(
             lambda buf, t, spec: buf.add_batch(
-                average_outer_dims(t, spec).unsqueeze(0)), self._buf,
-            tensor.detach(), self._tensor_spec)
+                average_outer_dims(t.detach(), spec).unsqueeze(0)), self._buf,
+            tensor, self._tensor_spec)
 
     def get(self):
         """Get the current average.

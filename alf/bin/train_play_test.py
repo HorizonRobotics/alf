@@ -581,6 +581,11 @@ class TrainPlayTest(alf.test.TestCase):
             conf_file='sarsa_sac_pendulum.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    def test_tasac_bipedal_walker(self):
+        self._test(
+            conf_file='tasac_bipedal_walker_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_breakout(self):
         self._test(

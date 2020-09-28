@@ -354,7 +354,7 @@ class Agent(OnPolicyAlgorithm):
 
         return self._agent_helper.accumulate_algorithm_rewards(
             *zip(*rewards),
-            summary_prefix="reward",
+            summary_prefix="calc_training_reward/reward",
             summarize_fn=self.summarize_reward)
 
     def calc_loss(self, experience, train_info: AgentInfo):
