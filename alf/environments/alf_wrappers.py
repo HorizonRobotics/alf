@@ -436,17 +436,20 @@ class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
             reward_weights = [1.] + [0.] * (rewards_n - 1)
         assert (isinstance(reward_weights, (list, tuple))
                 and len(reward_weights) == rewards_n)
-        self._reward_weights = torch.tensor(reward_weights)
+        self._reward_weights = torch.tensor(reward_weights).unsqueeze(0)
+
+    def _average_rewards(self, time_step):
+        reward = torch.tensordot(
+            time_step.reward, self._reward_weights, dims=1)
+        return time_step._replace(reward=reward.squeeze(-1))
 
     def _step(self, action):
         time_step = self._env._step(action)
-        reward = torch.sum(time_step.reward * self._reward_weights, dim=-1)
-        return time_step._replace(reward=reward)
+        return self._average_rewards(time_step)
 
     def _reset(self):
         time_step = self._env._reset()
-        reward = torch.sum(time_step.reward * self._reward_weights, dim=-1)
-        return time_step._replace(reward=reward)
+        return self._average_rewards(time_step)
 
     def reward_spec(self):
         return alf.TensorSpec(())
