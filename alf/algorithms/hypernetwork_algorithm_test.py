@@ -55,13 +55,13 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    # @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('svgd2', True),
-    #                           ('gfsf', True))
+    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('minmax'),
+                              ('gfsf', True), ('svgd2', True), ('svgd3', True))
     def test_bayesian_linear_regression(self,
                                         par_vi='minmax',
                                         function_vi=False,
-                                        num_particles=256,
-                                        train_batch_size=10):
+                                        train_batch_size=10,
+                                        num_particles=128):
         """
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where 
@@ -77,6 +77,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         input_spec = TensorSpec((input_size, ), torch.float32)
         output_dim = 1
         batch_size = 100
+        hidden_size = output_dim * batch_size
         inputs = input_spec.randn(outer_dims=(batch_size, ))
         beta = torch.rand(input_size, output_dim) + 5.
         print("beta: {}".format(beta))
@@ -95,7 +96,9 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             loss_type='regression',
             par_vi=par_vi,
             function_vi=function_vi,
-            optimizer=alf.optimizers.Adam(lr=2e-4),
+            function_bs=train_batch_size,
+            critic_hidden_layers=(hidden_size, hidden_size),
+            optimizer=alf.optimizers.Adam(lr=1e-3),
             critic_optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))
@@ -118,46 +121,47 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
 
             loss_info, params = algorithm.update_with_gradient(alg_step.info)
 
-        def _test(i):
-            params = algorithm.sample_parameters(num_particles=200)
-            computed_mean = params.mean(0)
-            computed_cov = self.cov(params)
-
+        def _test(i, sampled_predictive=False):
             print("-" * 68)
             weight = algorithm._generator._net._fc_layers[0].weight
-            print("norm of generator weight: {}".format(weight.norm()))
             learned_cov = weight @ weight.t()
+            print("norm of generator weight: {}".format(weight.norm()))
+            print("norm of learned_cov: {}".format(learned_cov.norm()))
+
             learned_mean = algorithm._generator._net._fc_layers[0].bias
-
-            pred_step = algorithm.predict_step(inputs, params=params)
-            sampled_preds = pred_step.output.squeeze()  # [batch, n_particles]
-
-            computed_preds = inputs @ computed_mean  # [batch]
             predicts = inputs @ learned_mean  # [batch]
-
-            spred_err = torch.norm((sampled_preds - targets).mean(1))
             pred_err = torch.norm(predicts - targets.squeeze())
-
-            smean_err = torch.norm(computed_mean - true_mean.squeeze())
-            smean_err = smean_err / torch.norm(true_mean)
+            print("train_iter {}: pred err {}".format(i, pred_err))
 
             mean_err = torch.norm(learned_mean - true_mean.squeeze())
             mean_err = mean_err / torch.norm(true_mean)
-
-            scov_err = torch.norm(computed_cov - true_cov)
-            scov_err = scov_err / torch.norm(true_cov)
+            print("train_iter {}: mean err {}".format(i, mean_err))
 
             cov_err = torch.norm(learned_cov - true_cov)
             cov_err = cov_err / torch.norm(true_cov)
-            print("train_iter {}: pred err {}".format(i, pred_err))
-            print("train_iter {}: sampled pred err {}".format(i, spred_err))
-            print("train_iter {}: mean err {}".format(i, mean_err))
-            print("train_iter {}: sampled mean err {}".format(i, smean_err))
-            print("train_iter {}: sampled cov err {}".format(i, scov_err))
             print("train_iter {}: cov err {}".format(i, cov_err))
-            print("learned_cov norm: {}".format(learned_cov.norm()))
 
-        train_iter = 30000
+            if sampled_predictive:
+                params = algorithm.sample_parameters(num_particles=200)
+                pred_step = algorithm.predict_step(inputs, params=params)
+                sampled_preds = pred_step.output.squeeze(
+                )  # [batch, n_particles]
+                spred_err = torch.norm((sampled_preds - targets).mean(1))
+                print("train_iter {}: sampled pred err {}".format(
+                    i, spred_err))
+
+                computed_mean = params.mean(0)
+                smean_err = torch.norm(computed_mean - true_mean.squeeze())
+                smean_err = smean_err / torch.norm(true_mean)
+                print("train_iter {}: sampled mean err {}".format(
+                    i, smean_err))
+
+                computed_cov = self.cov(params)
+                scov_err = torch.norm(computed_cov - true_cov)
+                scov_err = scov_err / torch.norm(true_cov)
+                print("train_iter {}: sampled cov err {}".format(i, scov_err))
+
+        train_iter = 5000
         for i in range(train_iter):
             _train()
             if i % 1000 == 0:

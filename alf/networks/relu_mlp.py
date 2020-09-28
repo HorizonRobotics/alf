@@ -14,87 +14,79 @@
 
 import gin
 import torch
-from torch.autograd.functional import jvp
 import torch.nn as nn
-from torch.nn.utils import parameters_to_vector
+from torch.nn.utils import spectral_norm
 
 import alf
-from alf.algorithms.hypernetwork_layers import ParamFC
-from alf.algorithms.hypernetwork_networks import ParamNetwork
-from alf.initializers import variance_scaling_init
 from alf.layers import FC
 from alf.networks import Network
 from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import identity
 
+# @gin.configurable
+# class SimpleFC(FC):
+#     def __init__(self,
+#                  input_size,
+#                  output_size,
+#                  activation=identity,
+#                  kernel_initializer=None):
+#         """A fully connected layer that's also responsible for activation and
+#         customized weights initialization. An auto gain calculation might depend
+#         on the activation following the linear layer. Suggest using this wrapper
+#         module instead of ``nn.Linear`` if you really care about weight std after
+#         init.
+#         Args:
+#             input_size (int): input size
+#             output_size (int): output size
+#             activation (torch.nn.functional):
+#             kernel_initializer (Callable): initializer for the FC layer kernel.
+#                 If none is provided a ``variance_scaling_initializer`` with gain as
+#                 ``kernel_init_gain`` will be used.
+#         """
+#         super().__init__(input_size,
+#                          output_size,
+#                          activation=activation,
+#                          use_bias=True,
+#                          use_bn=False,
+#                          kernel_initializer=kernel_initializer)
 
-class SimpleFC(nn.Module):
-    def __init__(self,
-                 input_size,
-                 output_size,
-                 activation=torch.relu_,
-                 use_bias=False):
+#         self._hidden_neurons = None
 
-        super(SimpleFC, self).__init__()
-        self._input_size = input_size
-        self._output_size = output_size
+#     @property
+#     def hidden_neurons(self):
+#         return self._hidden_neurons
+
+#     def forward(self, inputs):
+#         self._hidden_neurons = super().forward(inputs)
+#         return self._hidden_neurons
+
+
+@gin.configurable
+class SimpleFC(nn.Linear):
+    def __init__(self, input_size, output_size, activation=identity):
+        super().__init__(input_size, output_size)
         self._activation = activation
-        self._weight_length = output_size * input_size
-        self._bias_length = 0
-        self._bias = None
         self._hidden_neurons = None
-
-    @property
-    def weight(self):
-        """Get stored weight tensor or batch of weight tensors."""
-        return self._weight
-
-    @property
-    def bias(self):
-        """Get stored bias tensor or batch of bias tensors."""
-        return self._bias
-
-    @property
-    def weight_length(self):
-        """Get the n_element of a single weight tensor. """
-        return self._weight_length
-
-    @property
-    def bias_length(self):
-        """Get the n_element of a single bias tensor. """
-        return self._bias_length
-
-    def set_weight(self, weight):
-        """Store a weight tensor or batch of weight tensors."""
-        # weight = weight.view(-1)
-        assert (weight.ndim == 1 and len(weight) == self._weight_length), (
-            "Input weight has wrong shape %s. Expecting shape (%d,)" %
-            (weight.shape, self._weight_length))
-        self._weight = weight.view(self._output_size, self._input_size)
 
     @property
     def hidden_neurons(self):
         return self._hidden_neurons
 
     def forward(self, inputs):
-        self._hidden_neurons = self._activation(inputs.matmul(self.weight.t()))
-        return self._hidden_neurons
+        self._hidden_neurons = super().forward(inputs)
+        return self._activation(self._hidden_neurons)
 
 
 @gin.configurable
-class ReluMLP(ParamNetwork):
-    """Creates an instance of ``ReluMLP`` with one bottleneck layer.
-    """
-
-    def __init__(self,
-                 input_tensor_spec,
-                 hidden_layers=((64, False), ),
-                 activation=torch.relu_,
-                 initializer=None,
-                 kernel_initializer=torch.nn.init.normal_,
-                 kernel_init_gain=1.0,
-                 name="ReluMLP"):
-        r"""Create a ReluMLP.
+class ReluMLP(Network):
+    def __init__(
+            self,
+            input_tensor_spec,
+            hidden_layers=(64, 64),
+            activation=torch.relu_,
+            kernel_initializer=None,  # torch.nn.init.normal_,
+            name="ReluMLP"):
+        """Create a ReluMLP.
 
         Args:
             input_tensor_spec (TensorSpec):
@@ -102,44 +94,48 @@ class ReluMLP(ParamNetwork):
             activation (nn.functional):
             name (str):
         """
+        assert len(input_tensor_spec.shape) == 1, \
+            ("The input shape {} should be a 1-d vector!".format(
+                input_tensor_spec.shape
+            ))
+
+        super().__init__(input_tensor_spec, name=name)
+
         self._input_size = input_tensor_spec.shape[0]
         self._output_size = self._input_size
+        self._hidden_layers = hidden_layers
         self._n_hidden_layers = len(hidden_layers)
         self._kernel_initializer = kernel_initializer
-        self._kernel_init_gain = kernel_init_gain
 
-        super().__init__(
-            input_tensor_spec,
-            fc_layer_params=hidden_layers,
-            fc_layer_ctor=SimpleFC,
-            activation=activation,
-            last_layer_param=(self._output_size, False),
-            last_activation=identity,
-            name=name)
+        self._fc_layers = nn.ModuleList()
+        input_size = self._input_size
+        for size in hidden_layers:
+            fc = SimpleFC(input_size, size, activation=activation)
+            # kernel_initializer=kernel_initializer)
+            self._fc_layers.append(fc)
+            input_size = size
 
-        self.set_parameters(torch.randn(self.param_length))
+        last_fc = SimpleFC(input_size, self._output_size, activation=identity)
+        # kernel_initializer=kernel_initializer)
+        self._fc_layers.append(last_fc)
 
-    @property
-    def params(self):
-        return self._params
+    def forward(self, inputs, state=(), requires_jac_diag=False):
+        """
+        Args:
+            inputs (Tensor)
+            state: not used
+        """
+        inputs = inputs.squeeze()
+        assert inputs.shape[-1] == self._input_size, \
+            ("inputs should has shape {}!".format(self._input_size))
 
-    def set_parameters(self, params=None):
-        if params is None:
-            self._kernel_initializer(self._params)
-            self._params = self._params / 8
-        else:
-            assert (params.ndim == 1 and len(params) == self.param_length)
-            params.requires_grad = True
-            self._params = params
-        pos = 0
-        for fc_l in self._fc_layers:
-            weight_length = fc_l.weight_length
-            fc_l.set_weight(self.params[pos:pos + weight_length])
-            pos = pos + weight_length
-            if fc_l.bias is not None:
-                bias_length = fc_l.bias_length
-                fc_l.set_bias(self.params[pos:pos + bias_length])
-                pos = pos + bias_length
+        z = inputs
+        for fc in self._fc_layers:
+            z = fc(z)
+        if requires_jac_diag:
+            z = (z, self._compute_jac_diag())
+
+        return z, state
 
     def compute_jac_diag(self, inputs):
         """Compute diagonals of the input-output jacobian. """
@@ -171,42 +167,3 @@ class ReluMLP(ParamNetwork):
                              self._fc_layers[0].weight)  # [B, n]
 
         return J
-
-    def ntk_svgd(self, inputs, loss_func, temperature=1.0):
-        """Compute the ntk logp and ntk_grad
-
-        """
-        assert inputs.ndim == 2 and inputs.shape[-1] == self._input_size, \
-            ("inputs should has shape (batch, {})!".format(self._input_size))
-
-        num_particles = inputs.shape[0] // 2
-        inputs_i, inputs_j = torch.split(inputs, num_particles, dim=0)
-
-        def _param_forward_i(params):
-            params.requires_grad = True
-            self.set_parameters(params)
-            return self.forward(inputs_i.detach().clone())[0]
-
-        # prepare for the first term: ntk_logp
-        loss_inputs = inputs_j
-        loss = loss_func(loss_inputs)
-        if isinstance(loss, tuple):
-            neglogp = loss.loss
-        else:
-            neglogp = loss
-        loss_grad = torch.autograd.grad(neglogp.sum(),
-                                        inputs_j)[0].detach()  # [bj, n]
-
-        # prepare for the second term: grad of ntk
-        outputs_j, _ = self.forward(inputs_j)  # [bj, n]
-        jac_diag_j = self._compute_jac_diag()  # [bj, n]
-
-        # combine both 'vector' to apply jvp
-        combined_loss = (
-            outputs_j * loss_grad).sum() - temperature * jac_diag_j.sum()
-        combined_grad_j = torch.autograd.grad(combined_loss, self.params)[0]
-        combined_vec_j = combined_grad_j.detach() / num_particles
-        ntk_grad = jvp(_param_forward_i, self.params,
-                       combined_vec_j)[1]  # [bi, n]
-
-        return ntk_grad, inputs_i, loss

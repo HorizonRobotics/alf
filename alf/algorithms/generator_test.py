@@ -86,6 +86,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
         dim = 2
         batch_size = 512
         net = Net(dim)
+        hidden_size = 10
         generator = Generator(
             dim,
             noise_dim=3,
@@ -93,6 +94,7 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
             net=net,
             mi_weight=mi_weight,
             par_vi=par_vi,
+            critic_hidden_layers=(hidden_size, hidden_size),
             optimizer=alf.optimizers.AdamTF(lr=1e-3),
             critic_optimizer=alf.optimizers.AdamTF(lr=1e-3))
 

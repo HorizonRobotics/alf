@@ -93,8 +93,10 @@ class HyperNetwork(Algorithm):
                  voting="soft",
                  par_vi="svgd",
                  function_vi=False,
+                 function_bs=None,
                  optimizer=None,
                  critic_optimizer=None,
+                 critic_hidden_layers=(100, 100),
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -180,13 +182,12 @@ class HyperNetwork(Algorithm):
             logging.info(net)
 
         if par_vi == 'svgd':
-            if function_vi:
-                par_vi = 'svgd2'
-            else:
-                par_vi = 'svgd3'
+            par_vi = 'svgd3'
 
         if function_vi:
-            critic_input_dim = last_layer_param[0]
+            assert function_bs is not None, (
+                "need to specify batch_size of function outputs.")
+            critic_input_dim = function_bs * last_layer_param[0]
         else:
             critic_input_dim = gen_output_dim
 
@@ -197,6 +198,7 @@ class HyperNetwork(Algorithm):
             entropy_regularization=entropy_regularization,
             par_vi=par_vi,
             critic_input_dim=critic_input_dim,
+            critic_hidden_layers=critic_hidden_layers,
             optimizer=None,
             critic_optimizer=critic_optimizer,
             name=name)
@@ -247,7 +249,7 @@ class HyperNetwork(Algorithm):
 
     def sample_parameters(self, noise=None, num_particles=None, training=True):
         """Sample parameters for an ensemble of networks. 
-        
+
         Args:
             noise (Tensor): input noise to self._generator. Default is None.
             num_particles (int): number of sampled particles. Default is None.
@@ -287,7 +289,7 @@ class HyperNetwork(Algorithm):
 
     def train_iter(self, num_particles=None, state=None):
         """Perform one epoch (iteration) of training.
-        
+
         Args:
             num_particles (int): number of sampled particles. Default is None.
             state: not used
@@ -348,8 +350,18 @@ class HyperNetwork(Algorithm):
             entropy_regularization = self._entropy_regularization
 
         if self._function_vi:
-            return self._function_vi_train_step(inputs, num_particles,
-                                                entropy_regularization)
+            # return self._function_vi_train_step(inputs, num_particles,
+            #                                     entropy_regularization)
+            data, target = inputs
+            return self._generator.train_step(
+                inputs=None,
+                loss_func=functools.partial(self._function_neglogprob,
+                                            target.view(-1)),
+                batch_size=num_particles,
+                entropy_regularization=entropy_regularization,
+                transform_func=functools.partial(self._function_transform,
+                                                 data),
+                state=())
         else:
             return self._generator.train_step(
                 inputs=None,
@@ -358,31 +370,55 @@ class HyperNetwork(Algorithm):
                 entropy_regularization=entropy_regularization,
                 state=())
 
-    def _function_vi_train_step(self,
-                                inputs,
-                                num_particles,
-                                entropy_regularization,
-                                state=None):
-        assert self._function_vi, (
-            "_function_vi_train_step should only be called when self._function_vi is true."
-        )
+    # def _function_vi_train_step(self,
+    #                             inputs,
+    #                             num_particles,
+    #                             entropy_regularization,
+    #                             state=None):
+    #     assert self._function_vi, (
+    #         "_function_vi_train_step should only be called when self._function_vi is true."
+    #     )
 
-        predict_step = self._generator.predict_step(batch_size=num_particles)
-        params = predict_step.output
+    #     predict_step = self._generator.predict_step(batch_size=num_particles)
+    #     params = predict_step.output
+    #     self._param_net.set_parameters(params)
+    #     data, target = inputs
+    #     outputs, _ = self._param_net(data)  # [B, P, D]
+    #     outputs = outputs.transpose(0, 1)
+    #     outputs = outputs.view(num_particles, -1)  # [P, B * D]
+
+    #     return self._generator.train_step(
+    #         inputs=None,
+    #         outputs=outputs,
+    #         loss_func=functools.partial(self._function_neglogprob,
+    #                                     target.view(-1)),
+    #         batch_size=num_particles,
+    #         entropy_regularization=entropy_regularization,
+    #         state=())
+
+    def _function_transform(self, data, params):
+        num_particles = params.shape[0]
         self._param_net.set_parameters(params)
-        data, target = inputs
         outputs, _ = self._param_net(data)  # [B, P, D]
         outputs = outputs.transpose(0, 1)
         outputs = outputs.view(num_particles, -1)  # [P, B * D]
 
-        return self._generator.train_step(
-            inputs=None,
-            outputs=outputs,
-            loss_func=functools.partial(self._function_neglogprob,
-                                        target.view(-1)),
-            batch_size=num_particles,
-            entropy_regularization=entropy_regularization,
-            state=())
+        return outputs
+
+    def _function_neglogprob(self, targets, outputs):
+        num_particles = outputs.shape[0]
+        targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
+
+        return self._loss_func(outputs, targets)
+
+    def _neglogprob(self, inputs, params):
+        self._param_net.set_parameters(params)
+        num_particles = params.shape[0]
+        data, target = inputs
+        output, _ = self._param_net(data)  # [B, P, D]
+        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
+                                            *target.shape[1:])
+        return self._loss_func(output, target)
 
     def evaluate(self, num_particles=None):
         """Evaluate on a randomly drawn ensemble. 
@@ -420,21 +456,6 @@ class HyperNetwork(Algorithm):
                 logging.info("Test acc: {}".format(test_acc * 100))
             logging.info("Test loss: {}".format(test_loss))
         alf.summary.scalar(name='eval/test_loss', data=test_loss)
-
-    def _function_neglogprob(self, targets, outputs):
-        num_particles = outputs.shape[0]
-        targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
-
-        return self._loss_func(outputs, targets)
-
-    def _neglogprob(self, inputs, params):
-        self._param_net.set_parameters(params)
-        num_particles = params.shape[0]
-        data, target = inputs
-        output, _ = self._param_net(data)  # [B, N, D]
-        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
-                                            *target.shape[1:])
-        return self._loss_func(output, target)
 
     def _classification_vote(self, output, target):
         """ensmeble the ooutputs from sampled classifiers."""
