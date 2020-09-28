@@ -410,3 +410,50 @@ class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
             observation=dict(
                 observation=time_step.observation,
                 prev_action=time_step.prev_action))
+
+
+@gin.configurable
+class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
+    """A wrapper that converts a vector reward to a scalar reward by averaging
+    reward dims with a weight vector."""
+
+    def __init__(self, env, reward_weights=None):
+        """
+        Args:
+            env (AlfEnvironment): An AlfEnvironment instance to be wrapped.
+            reward_weights (list[float] | tuple[float]): a list/tuple of weights
+                for the rewards; if None, then the first dimension will be 1 and
+                the other dimensions will be 0s.
+        """
+        super(ScalarRewardWrapper, self).__init__(env)
+        reward_spec = env.reward_spec()
+        assert reward_spec.ndim == 1, (
+            "This wrapper only supports vector rewards! Reward tensor rank: %d"
+            % reward_spec.ndim)
+
+        rewards_n = reward_spec.shape[0]
+        if reward_weights is None:
+            reward_weights = [1.] + [0.] * (rewards_n - 1)
+        assert (isinstance(reward_weights, (list, tuple))
+                and len(reward_weights) == rewards_n)
+        self._reward_weights = torch.tensor(reward_weights)
+
+    def _average_rewards(self, time_step):
+        reward = torch.tensordot(
+            time_step.reward, self._reward_weights, dims=1)
+        return time_step._replace(reward=reward)
+
+    def _step(self, action):
+        time_step = self._env._step(action)
+        return self._average_rewards(time_step)
+
+    def _reset(self):
+        time_step = self._env._reset()
+        return self._average_rewards(time_step)
+
+    def reward_spec(self):
+        return alf.TensorSpec(())
+
+    def time_step_spec(self):
+        spec = self._env.time_step_spec()
+        return spec._replace(reward=self.reward_spec())
