@@ -14,7 +14,7 @@ create_environment.num_parallel_environments=4
 
 use_batch_normalization=False
 BottleneckBlock.with_batch_normalization=%use_batch_normalization
-preproc_bn=True
+preproc_bn=False
 
 suite_carla.Player.with_gnss_sensor=False
 

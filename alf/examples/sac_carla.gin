@@ -65,12 +65,17 @@ ReplayBuffer.keep_episodic_info=True
 
 # Change to `ReprLearner=@encoder/EncodingAlgorithm` to use EncodingAlgorithm
 ReprLearner=@PredictiveRepresentationLearner
+# ReprLearner=@encoder/EncodingAlgorithm
 
+TrainerConfig.data_transformer_ctor=[@agent/FrameStacker, @agent/ImageScaleTransformer, @agent/ObservationNormalizer]
 TrainerConfig.data_transformer_ctor=@agent/ImageScaleTransformer
-Agent.representation_learner_cls=%ReprLearner
-Agent.optimizer=@Adam()
 agent/ImageScaleTransformer.min=0.0
 agent/ImageScaleTransformer.fields=['observation.camera']
+agent/FrameStacker.fields=['observation.camera', 'observation.radar', 'observation.collision', 'observation.imu', 'observation.velocity', 'prev_action']
+agent/ObservationNormalizer.fields=None
+agent/ObservationNormalizer.clipping=5.
+Agent.representation_learner_cls=%ReprLearner
+Agent.optimizer=@Adam()
 
 # Not yet able to successfully train with sparse reward.
 suite_carla.Player.sparse_reward=False
