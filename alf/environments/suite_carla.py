@@ -62,7 +62,6 @@ from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
                             IMUSensor, LaneInvasionSensor, NavigationSensor,
                             RadarSensor, World, MINIMUM_RENDER_WIDTH,
                             MINIMUM_RENDER_HEIGHT)
-from .alf_wrappers import AlfEnvironmentBaseWrapper
 
 
 def is_available():
@@ -1186,43 +1185,6 @@ class CarlaEnvironment(AlfEnvironment):
                 logging.error(response.error)
         self._current_frame = self._world.tick()
         return self._get_current_time_step()
-
-
-@gin.configurable
-class CarlaScalarRewardWrapper(AlfEnvironmentBaseWrapper):
-    """A wrapper that averages all rewards by a weight vector."""
-
-    def __init__(self, env, reward_weights=None):
-        """
-        Args:
-            env (CarlaEnvironment): A CarlaEnvironment instance to wrap.
-            reward_weights (list[float] | tuple[float]): a list/tuple of weights
-                for the rewards; if None, then the overall reward will be used.
-        """
-        super(CarlaScalarRewardWrapper, self).__init__(env)
-        if reward_weights is None:
-            reward_weights = [0.] * Player.REWARD_DIMENSION
-            reward_weights[Player.REWARD_OVERALL] = 1.
-        assert (isinstance(reward_weights, (list, tuple))
-                and len(reward_weights) == Player.REWARD_DIMENSION)
-        self._reward_weights = torch.tensor(reward_weights)
-
-    def _step(self, action):
-        time_step = self._env._step(action)
-        reward = torch.sum(time_step.reward * self._reward_weights, dim=-1)
-        return time_step._replace(reward=reward)
-
-    def _reset(self):
-        time_step = self._env._reset()
-        reward = torch.sum(time_step.reward * self._reward_weights, dim=-1)
-        return time_step._replace(reward=reward)
-
-    def reward_spec(self):
-        return alf.TensorSpec(())
-
-    def time_step_spec(self):
-        spec = self._env.time_step_spec()
-        return spec._replace(reward=self.reward_spec())
 
 
 @gin.configurable(whitelist=['wrappers'])
