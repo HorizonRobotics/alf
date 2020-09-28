@@ -124,8 +124,11 @@ class SimpleDecoder(Algorithm):
                     _summarize1(pred[0], tgt[0], loss[0], mask[0],
                                 suffix + "/current")
                     if pred.shape[0] > 1:
-                        _summarize1(pred[1:], tgt[1:], loss[1:], mask[1:],
-                                    suffix + "/future")
+                        _summarize1(pred[-1:], tgt[-1:], loss[-1:], mask[-1:],
+                                    suffix + "/far_future")
+                        if pred.shape[0] > 2:
+                            _summarize1(pred[1:-1], tgt[1:-1], loss[1:-1],
+                                        mask[1:-1], suffix + "/future")
 
                 if loss.ndim == 2:
                     _summarize(predicted, target, loss, mask, '')
