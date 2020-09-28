@@ -210,9 +210,7 @@ class Agent(OnPolicyAlgorithm):
                 # Put original goal into info to be stored in ReplayBuffer
                 original_goal = observation["desired_goal"]
                 if self._control_aux():
-                    original_goal = torch.cat((observation["desired_goal"],
-                                               observation["aux_desired"]),
-                                              dim=1)
+                    original_goal = goal_step.state.full_plan[:, -1, :]
                 info = info._replace(
                     goal_generator=info.goal_generator._replace(
                         original_goal=original_goal))
