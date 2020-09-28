@@ -23,43 +23,6 @@ from alf.networks import Network
 from alf.tensor_specs import TensorSpec
 from alf.utils.math_ops import identity
 
-# @gin.configurable
-# class SimpleFC(FC):
-#     def __init__(self,
-#                  input_size,
-#                  output_size,
-#                  activation=identity,
-#                  kernel_initializer=None):
-#         """A fully connected layer that's also responsible for activation and
-#         customized weights initialization. An auto gain calculation might depend
-#         on the activation following the linear layer. Suggest using this wrapper
-#         module instead of ``nn.Linear`` if you really care about weight std after
-#         init.
-#         Args:
-#             input_size (int): input size
-#             output_size (int): output size
-#             activation (torch.nn.functional):
-#             kernel_initializer (Callable): initializer for the FC layer kernel.
-#                 If none is provided a ``variance_scaling_initializer`` with gain as
-#                 ``kernel_init_gain`` will be used.
-#         """
-#         super().__init__(input_size,
-#                          output_size,
-#                          activation=activation,
-#                          use_bias=True,
-#                          use_bn=False,
-#                          kernel_initializer=kernel_initializer)
-
-#         self._hidden_neurons = None
-
-#     @property
-#     def hidden_neurons(self):
-#         return self._hidden_neurons
-
-#     def forward(self, inputs):
-#         self._hidden_neurons = super().forward(inputs)
-#         return self._hidden_neurons
-
 
 @gin.configurable
 class SimpleFC(nn.Linear):
@@ -111,12 +74,10 @@ class ReluMLP(Network):
         input_size = self._input_size
         for size in hidden_layers:
             fc = SimpleFC(input_size, size, activation=activation)
-            # kernel_initializer=kernel_initializer)
             self._fc_layers.append(fc)
             input_size = size
 
         last_fc = SimpleFC(input_size, self._output_size, activation=identity)
-        # kernel_initializer=kernel_initializer)
         self._fc_layers.append(last_fc)
 
     def forward(self, inputs, state=(), requires_jac_diag=False):

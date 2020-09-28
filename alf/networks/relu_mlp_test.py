@@ -43,14 +43,14 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLessEqual(float(torch.max(abs(x - y))), eps)
 
     @parameterized.parameters(
-        # dict(hidden_layers=(2, )),
+        dict(hidden_layers=(2, )),
         dict(hidden_layers=(2, 3)),
         dict(hidden_layers=(2, 3, 4)),
     )
     def test_compute_jac_diag(self, hidden_layers=(2, ), input_size=5):
         batch_size = 2
         spec = TensorSpec((input_size, ))
-        mlp = ReluMLP(spec, hidden_layers=hidden_layers, use_sn=True)
+        mlp = ReluMLP(spec, hidden_layers=hidden_layers)
 
         # compute jac diag using direct approach
         x = torch.randn(batch_size, input_size, requires_grad=True)

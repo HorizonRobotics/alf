@@ -86,12 +86,7 @@ class CriticAlgorithm(Algorithm):
                     name='Critic')
         self._net = net
 
-    def _reset_parameters(self, module):
-        if hasattr(module, '_reset_parameters'):
-            module._reset_parameters()
-
     def reset_net_parameters(self):
-        # self._net.apply(self._reset_parameters)
         for fc in self._net._fc_layers:
             fc.reset_parameters()
 
@@ -680,11 +675,11 @@ class Generator(Algorithm):
             self._critic.update_with_gradient(LossInfo(loss=critic_loss))
 
         # compute amortized svgd
-        # loss = loss_func(outputs.detach())
+        loss = loss_func(outputs.detach())
         critic_outputs = self._critic.predict_step(outputs.detach()).output
         loss_propagated = torch.sum(-critic_outputs.detach() * outputs, dim=-1)
 
-        return (), loss_propagated
+        return loss, loss_propagated
 
     def after_update(self, training_info):
         if self._predict_net:

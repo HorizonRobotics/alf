@@ -350,8 +350,6 @@ class HyperNetwork(Algorithm):
             entropy_regularization = self._entropy_regularization
 
         if self._function_vi:
-            # return self._function_vi_train_step(inputs, num_particles,
-            #                                     entropy_regularization)
             data, target = inputs
             return self._generator.train_step(
                 inputs=None,
@@ -369,32 +367,6 @@ class HyperNetwork(Algorithm):
                 batch_size=num_particles,
                 entropy_regularization=entropy_regularization,
                 state=())
-
-    # def _function_vi_train_step(self,
-    #                             inputs,
-    #                             num_particles,
-    #                             entropy_regularization,
-    #                             state=None):
-    #     assert self._function_vi, (
-    #         "_function_vi_train_step should only be called when self._function_vi is true."
-    #     )
-
-    #     predict_step = self._generator.predict_step(batch_size=num_particles)
-    #     params = predict_step.output
-    #     self._param_net.set_parameters(params)
-    #     data, target = inputs
-    #     outputs, _ = self._param_net(data)  # [B, P, D]
-    #     outputs = outputs.transpose(0, 1)
-    #     outputs = outputs.view(num_particles, -1)  # [P, B * D]
-
-    #     return self._generator.train_step(
-    #         inputs=None,
-    #         outputs=outputs,
-    #         loss_func=functools.partial(self._function_neglogprob,
-    #                                     target.view(-1)),
-    #         batch_size=num_particles,
-    #         entropy_regularization=entropy_regularization,
-    #         state=())
 
     def _function_transform(self, data, params):
         num_particles = params.shape[0]
