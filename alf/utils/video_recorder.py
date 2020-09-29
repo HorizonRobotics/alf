@@ -20,6 +20,8 @@ import numpy as np
 from alf.utils import common
 
 try:
+    import matplotlib
+    matplotlib.use('Agg')  # Required to resolve the TKinter error
     import matplotlib.pyplot as plt
 except ImportError:
     plt = None
@@ -34,7 +36,7 @@ import alf
 from alf.utils import dist_utils
 
 
-def _get_img_from_fig(fig, dpi=216):
+def _get_img_from_fig(fig, dpi=216, height=128, width=128):
     """Returns an image as numpy array from figure.
 
     Args:
@@ -51,6 +53,7 @@ def _get_img_from_fig(fig, dpi=216):
     buf.close()
     img = cv2.imdecode(img_arr, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = _resize_image(img, width=width, height=height)
     return img
 
 
