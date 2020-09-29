@@ -70,13 +70,16 @@ class TDLoss(nn.Module):
         self._lambda = td_lambda
         self._debug_summaries = debug_summaries
 
-    def forward(self, experience, value, target_value):
+    def forward(self, experience, value, target_value,train_info = None):
         """Cacluate the loss.
 
         The first dimension of all the tensors is time dimension and the second
         dimesion is the batch dimension.
 
         Args:
+            train_info (sac_info or sarsa_info): in order to calculate the importance ratio
+                from info.action_distribution. If no input of train info and lambda is not 
+                0 and 1,it will use multistep method instead of retrace
             experience (Experience): experience collected from ``unroll()`` or
                 a replay buffer. All tensors are time-major.
             value (torch.Tensor): the time-major tensor for the value at each time
@@ -99,7 +102,7 @@ class TDLoss(nn.Module):
                 values=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma)
-        else:
+        elif train_info == None:
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=experience.reward,
                 values=target_value,
@@ -107,7 +110,29 @@ class TDLoss(nn.Module):
                 discounts=experience.discount * self._gamma,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
-
+        else:
+            scope = alf.summary.scope(self.__class__.__name__)       
+            importance_ratio,importance_ratio_clipped = value_ops.action_importance_ratio(
+                action_distribution=train_info.action_distribution,
+                collect_action_distribution=experience.rollout_info.action_distribution,
+                action=experience.action,
+                clipping_mode='capping',
+                importance_ratio_clipping= 0.0,
+                log_prob_clipping= 0.0,
+                scope=scope,
+                check_numerics=False,
+                debug_summaries=True)
+            advantages = value_ops.generalized_advantage_estimation_retrace(
+                importance_ratio = importance_ratio_clipped,
+                rewards=experience.reward,
+                values= value,
+                target_value = target_value,
+                step_types=experience.step_type,
+                discounts=experience.discount * self._gamma,
+                time_major = True,
+                td_lambda=self._lambda)
+            returns = advantages + value[:-1]
+            returns = returns.detach()
         value = value[:-1]
 
         if self._debug_summaries and alf.summary.should_record_summaries():
