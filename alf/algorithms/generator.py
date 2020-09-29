@@ -34,8 +34,9 @@ GeneratorLossInfo = namedtuple("GeneratorLossInfo",
 
 @gin.configurable
 class CriticAlgorithm(Algorithm):
-    """Wrap a critic network as an Algorithm for flexible gradient updates
-    called by the Generator.
+    """
+    Wrap a critic network as an Algorithm for flexible gradient updates
+    called by the Generator when par_vi is 'minmax'.
     """
 
     def __init__(self,
@@ -54,8 +55,12 @@ class CriticAlgorithm(Algorithm):
             input_tensor_spec (TensorSpec): spec of inputs. 
             output_dim (int): dimension of output, default value is input_dim.
             hidden_layers (tuple): size of hidden layers.
+            activation (nn.functional): activation used for all critic layers.
             net (Network): network for predicting outputs from inputs.
                 If None, a default one with hidden_layers will be created
+            use_relu_mlp (bool): whether use ReluMLP as default net constrctor.
+                Diagonals of Jacobian can be explicitly computed for ReluMLP.
+            use_bn (bool): whether use batch norm for each critic layers.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training.
             name (str): name of this CriticAlgorithm.
         """
@@ -94,13 +99,14 @@ class CriticAlgorithm(Algorithm):
         """Predict for one step of inputs.
 
         Args:
-            inputs (Tensor): inputs for prediction.
+            inputs (torch.Tensor): inputs for prediction.
             state: not used.
-            requires_jac_trace (bool): whether outputs trace of jacobian.
+            requires_jac_trace (bool): whether outputs diagonals of Jacobian.
 
         Returns:
             AlgStep:
-            - output (Tensor): predictions.
+            - output (torch.Tensor): predictions or (predictions, diag_jacobian)
+                if requires_jac_diag is True.
             - state: not used.
         """
         if self._use_relu_mlp:
@@ -113,7 +119,7 @@ class CriticAlgorithm(Algorithm):
 
 @gin.configurable
 class Generator(Algorithm):
-    """Generator
+    r"""Generator
 
     Generator generates outputs given `inputs` (can be None) by transforming
     a random noise and input using `net`:
@@ -139,7 +145,7 @@ class Generator(Algorithm):
       minimizing loss_func(net([noise, inputs]))
 
     * entropy_regularization > 0: the minimization is achieved using amortized
-      particle-based variational inference (ParVI), in particular, two ParVI
+      particle-based variational inference (ParVI), in particular, three ParVI
       methods are implemented:
 
         1. amortized Stein Variational Gradient Descent (SVGD):
@@ -151,6 +157,10 @@ class Generator(Algorithm):
 
         Liu, Chang, et al. "Understanding and accelerating particle-based 
         variational inference." International Conference on Machine Learning. 2019.
+
+        3. amortized Fisher Neural Sampler with Hutchinson's estimator (MINMAX):
+
+        Hu et at. "Stein Neural Sampler." https://arxiv.org/abs/1810.03545, 2018.
 
     It also supports an additional optional objective of maximizing the mutual
     information between [noise, inputs] and outputs by using mi_estimator to
@@ -179,8 +189,8 @@ class Generator(Algorithm):
                  critic_relu_mlp=False,
                  critic_use_bn=True,
                  minmax_resample=True,
-                 optimizer=None,
                  critic_optimizer=None,
+                 optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
 
@@ -189,14 +199,15 @@ class Generator(Algorithm):
             noise_dim (int): dimension of noise
             input_tensor_spec (nested TensorSpec): spec of inputs. If there is
                 no inputs, this should be None.
-            hidden_layers (tuple): size of hidden layers.
+            hidden_layers (tuple): sizes of hidden layers.
             net (Network): network for generating outputs from [noise, inputs]
                 or noise (if inputs is None). If None, a default one with
                 hidden_layers will be created
             net_moving_average_rate (float): If provided, use a moving average
                 version of net to do prediction. This has been shown to be
                 effective for GAN training (arXiv:1907.02544, arXiv:1812.04948).
-            entropy_regularization (float): weight of entropy regularization
+            entropy_regularization (float): weight of entropy regularization.
+            mi_weight (float): weight of mutual information loss.
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
@@ -216,6 +227,24 @@ class Generator(Algorithm):
                     involves a kernel matrix inversion, so computationally most
                     expensive, but in some case the convergence seems faster 
                     than svgd approaches.
+                * minmax: Fisher Neural Sampler, optimal descent direction of
+                    the Stein discrepancy is solved by an inner optimization
+                    procedure in the space of L2 neural networks.
+            critic_input_dim (int): dimension of critic input, used for ``minmax``.
+            critic_hidden_layers (tuple): sizes of hidden layers of the critic,
+                used for ``minmax``.
+            critic_l2_weight (float): weight of L2 regularization in training 
+                the critic, used for ``minmax``.
+            critic_iter_num (int): number of critic updates for each generator
+                train_step, used for ``minmax``.
+            critic_relu_mlp (bool): whether use ReluMLP as the critic constructor,
+                used for ``minmax``.
+            critic_use_bn (book): whether use batch norm for each layers of the
+                critic, used for ``minmax``.
+            minmax_resample (bool): whether resample the generator for each 
+                critic update, used for ``minmax``.
+            critic_optimizer (torch.optim.Optimizer): Optimizer for training the
+                critic, used for ``minmax``.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -363,6 +392,10 @@ class Generator(Algorithm):
                 shape [batch_size] a loss term for optimizing the generator.
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None.
+            transform_func (Callable): transform_func(outputs) transforms the 
+                generator outputs to its corresponding function values evaluated
+                on current training batch.
+            entropy_regularization (float): weight of entropy regularization.
             state: not used
 
         Returns:
@@ -619,6 +652,9 @@ class Generator(Algorithm):
         return tr_jvp
 
     def _critic_train_step(self, inputs, loss_func, entropy_regularization=1.):
+        """
+        Compute the loss for critic training.
+        """
         loss = loss_func(inputs)
         if isinstance(loss, tuple):
             neglogp = loss.loss
@@ -650,7 +686,7 @@ class Generator(Algorithm):
                      entropy_regularization,
                      transform_func=None):
         """
-        Compute particle gradients via minmax svgd. 
+        Compute particle gradients via minmax svgd (Fisher Neural Sampler). 
         """
         assert inputs is None, '"minmax" does not support conditional generator'
 

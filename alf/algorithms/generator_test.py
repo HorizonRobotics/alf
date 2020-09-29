@@ -75,8 +75,8 @@ class GeneratorTest(parameterized.TestCase, alf.test.TestCase):
                                      entropy_regularization=1.0,
                                      par_vi='minmax',
                                      mi_weight=None):
-        """
-        The generator is trained to match(STEIN)/maximize(ML) the likelihood
+        r"""
+        The generator is trained to match (STEIN) / maximize (ML) the likelihood
         of a Gaussian distribution with zero mean and diagonal variance :math:`(1, 4)`.
         After training, :math:`w^T w` is the variance of the distribution implied by the
         generator. So it should be :math:`diag(1,4)` for STEIN and 0 for 'ML'.

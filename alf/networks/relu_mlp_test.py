@@ -48,6 +48,11 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         dict(hidden_layers=(2, 3, 4)),
     )
     def test_compute_jac_diag(self, hidden_layers=(2, ), input_size=5):
+        """
+        Check that the diagonal of input-output Jacobian computed by
+        the direct (autograd-free) approach is consistent with the one
+        computed by calling autograd.
+        """
         batch_size = 2
         spec = TensorSpec((input_size, ))
         mlp = ReluMLP(spec, hidden_layers=hidden_layers)

@@ -26,7 +26,22 @@ from alf.utils.math_ops import identity
 
 @gin.configurable
 class SimpleFC(nn.Linear):
+    """
+    A simple FC layer that record its output before activation.
+    It is for used in the ReluMLP to enable explicit computation
+    of diagonals of input-output Jacobian.
+    """
+
     def __init__(self, input_size, output_size, activation=identity):
+        """
+        Initialize a SimpleFC layer.
+
+        Args:
+            input_size (int): input dimension.
+            output_size (int): output dimension.
+            activation (nn.functional): activation used for this layer.
+                Default is math_ops.identity.
+        """
         super().__init__(input_size, output_size)
         self._activation = activation
         self._hidden_neurons = None
@@ -42,19 +57,22 @@ class SimpleFC(nn.Linear):
 
 @gin.configurable
 class ReluMLP(Network):
-    def __init__(
-            self,
-            input_tensor_spec,
-            hidden_layers=(64, 64),
-            activation=torch.relu_,
-            kernel_initializer=None,  # torch.nn.init.normal_,
-            name="ReluMLP"):
+    """
+    A MLP with relu activations. Diagonals of input-output Jacobian
+    can be computed directly without calling autograd.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 hidden_layers=(64, 64),
+                 activation=torch.relu_,
+                 name="ReluMLP"):
         """Create a ReluMLP.
 
         Args:
             input_tensor_spec (TensorSpec):
             hidden_layers (tuple): size of hidden layers.
-            activation (nn.functional):
+            activation (nn.functional): activation used for each layer.
             name (str):
         """
         assert len(input_tensor_spec.shape) == 1, \
@@ -68,7 +86,6 @@ class ReluMLP(Network):
         self._output_size = self._input_size
         self._hidden_layers = hidden_layers
         self._n_hidden_layers = len(hidden_layers)
-        self._kernel_initializer = kernel_initializer
 
         self._fc_layers = nn.ModuleList()
         input_size = self._input_size
@@ -83,8 +100,9 @@ class ReluMLP(Network):
     def forward(self, inputs, state=(), requires_jac_diag=False):
         """
         Args:
-            inputs (Tensor)
+            inputs (torch.Tensor)
             state: not used
+            requires_jac_diag (bool): whetheer outputs diagonals of Jacobian.
         """
         inputs = inputs.squeeze()
         assert inputs.shape[-1] == self._input_size, \
@@ -99,7 +117,7 @@ class ReluMLP(Network):
         return z, state
 
     def compute_jac_diag(self, inputs):
-        """Compute diagonals of the input-output jacobian. """
+        """Compute diagonals of the input-output Jacobian. """
 
         inputs = inputs.squeeze()
         assert inputs.shape[-1] == self._input_size, \
@@ -110,7 +128,7 @@ class ReluMLP(Network):
         return self._compute_jac_diag()
 
     def _compute_jac_diag(self):
-        """Compute diagonals of the input-output jacobian. """
+        """Compute diagonals of the input-output Jacobian. """
 
         mask = (self._fc_layers[-2].hidden_neurons > 0).float()
         if self._n_hidden_layers == 1:

@@ -62,7 +62,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                         function_vi=False,
                                         train_batch_size=10,
                                         num_particles=128):
-        """
+        r"""
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where 
         :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
@@ -70,7 +70,8 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
         For a linear generator with weight W and bias b, and takes standard Gaussian 
         noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should 
-        match the posterior :math:`p(\beta|X,y)` for both svgd and gfsf.
+        match the posterior :math:`p(\beta|X,y)` for both ``svgd``, ``gfsf``, and
+        ``minmax``.
         
         """
         input_size = 3

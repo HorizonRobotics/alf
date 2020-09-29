@@ -93,10 +93,10 @@ class HyperNetwork(Algorithm):
                  voting="soft",
                  par_vi="svgd",
                  function_vi=False,
-                 function_bs=None,
                  optimizer=None,
                  critic_optimizer=None,
                  critic_hidden_layers=(100, 100),
+                 function_bs=None,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
@@ -136,6 +136,13 @@ class HyperNetwork(Algorithm):
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of entropy regularization
 
+            Args for the critic (used when par_vi is 'minmax')
+            ====================================================================
+            critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
+            critic_hidden_layers (tuple): sizes of critic hidden layeres. 
+            function_bs (int): mini batch size for par_vi training. 
+                Needed for critic initialization when function_vi is True. 
+
             Args for training and testing
             ====================================================================
             loss_type (str): loglikelihood type for the generated functions,
@@ -144,8 +151,8 @@ class HyperNetwork(Algorithm):
                 types are [``soft``, ``hard``]
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``]
-            function_vi (str): whether to use funciton value based par_vi.
-            optimizer (torch.optim.Optimizer): The optimizer for training.
+            function_vi (bool): whether to use funciton value based par_vi.
+            optimizer (torch.optim.Optimizer): The optimizer for training generator.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
@@ -369,6 +376,18 @@ class HyperNetwork(Algorithm):
                 state=())
 
     def _function_transform(self, data, params):
+        """
+        Transform the generator outputs to its corresponding function values
+        evaluated on the training batch. Used when function_vi is True.
+
+        Args:
+            data (torch.Tensor): training batch input.
+            params (torch.Tensor): sampled outputs from the generator.
+
+        Returns:
+            outputs (torch.Tensor): outputs of param_net under params
+                evaluated on data.
+        """
         num_particles = params.shape[0]
         self._param_net.set_parameters(params)
         outputs, _ = self._param_net(data)  # [B, P, D]
@@ -378,12 +397,34 @@ class HyperNetwork(Algorithm):
         return outputs
 
     def _function_neglogprob(self, targets, outputs):
+        """
+        Function computing negative log_prob loss for function outputs.
+        Used when function_vi is True.
+
+        Args:
+            targets (torch.Tensor): target values of the training batch.
+            outputs (torch.Tensor): function outputs to evaluate the loss.
+
+        Returns:
+            negative log_prob for outputs evaluated on current training batch.
+        """
         num_particles = outputs.shape[0]
         targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
 
         return self._loss_func(outputs, targets)
 
     def _neglogprob(self, inputs, params):
+        """
+        Function computing negative log_prob loss for generator outputs.
+        Used when function_vi is False.
+
+        Args:
+            inputs (torch.Tensor): (data, target) of training batch.
+            params (torch.Tensor): generator outputs to evaluate the loss.
+
+        Returns:
+            negative log_prob for params evaluated on current training batch.
+        """
         self._param_net.set_parameters(params)
         num_particles = params.shape[0]
         data, target = inputs
