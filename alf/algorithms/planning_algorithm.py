@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections import namedtuple
+from functools import partial
 import gin
 import numpy as np
 
@@ -92,9 +93,8 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._lower_bound = np.asscalar(action_spec.minimum) \
                         if lower_bound is None else lower_bound
 
-        self._reward_func = None
-        self._dynamics_func = None
-        self._step_eval_func = None  # per step evaluation function
+        self._action_seq_eval_func = None  # action sequence evaluation function
+        self._action_seq_eval_func_w_init_step = None
 
     def train_step(self, time_step: TimeStep, state: PlannerState):
         """
@@ -109,22 +109,19 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """
         pass
 
-    def set_reward_func(self, reward_func):
-        """Set per-time-step reward function used for planning
+    def set_action_sequence_eval_func(self, action_seq_eval_func):
+        """Set a function for evaluating the action sequences for planning
         Args:
-            reward_func (Callable): the reward function to be used for planning.
-            reward_func takes (obs, action) as input
+            action_seq_eval_func (Callable): reward function to be used for planning.
+            action_seq_eval_func takes action sequences of the shape
+            [B, population, unroll_steps, action_dim] as input and returns
+            the accumulated cost along the unrolled trojectory
         """
-        self._reward_func = reward_func
+        self._action_seq_eval_func = action_seq_eval_func
 
-    def set_dynamics_func(self, dynamics_func):
-        """Set the dynamics function for planning
-        Args:
-            dynamics_func (Callable): reward function to be used for planning.
-            dynamics_func takes (time_step, state) as input and returns
-            next_time_step (TimeStep) and the next_state
-        """
-        self._dynamics_func = dynamics_func
+    def _bind_initial_time_step(self, time_step):
+        self._action_seq_eval_func_w_init_step = \
+            partial(self._action_seq_eval_func, time_step)
 
     def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
         """Compute the plan based on the provided observation and action
@@ -209,74 +206,35 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         return AlgStep(output=(), state=state, info=())
 
     def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
-        assert self._reward_func is not None, ("specify reward function "
-                                               "before planning")
+        assert self._action_seq_eval_func is not None, (
+            "specify "
+            "action sequence evaluation function before planning")
 
-        assert self._dynamics_func is not None, ("specify dynamics function "
-                                                 "before planning")
-
+        self._bind_initial_time_step(time_step)
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
-        opt_action = self._plan_optimizer.obtain_solution(time_step, state)
+
+        batch_size = time_step.observation.shape[0]
+        opt_action = self._plan_optimizer.obtain_solution(batch_size)
         action = opt_action[:, 0]
         action = torch.reshape(action, [time_step.observation.shape[0], -1])
         return action, state
 
-    def _expand_to_population(self, data):
-        """Expand the input tensor to a population of replications
-        Args:
-            data (Tensor): input data with shape [batch_size, ...]
-        Returns:
-            data_population (Tensor) with shape
-                                    [batch_size * self._population_size, ...].
-            For example data tensor [[a, b], [c, d]] and a population_size of 2,
-            we have the following data_population tensor as output
-                                    [[a, b], [a, b], [c, d], [c, d]]
-        """
-        data_population = torch.repeat_interleave(
-            data, self._population_size, dim=0)
-        return data_population
-
-    def _calc_cost_for_action_sequence(self, time_step: TimeStep, state,
-                                       ac_seqs):
+    def _calc_cost_for_action_sequence(self, ac_seqs):
         """
         Args:
-            time_step (TimeStep): input data for next step prediction
-            state (MbrlState): input state for next step prediction
             ac_seqs: action_sequence (Tensor) of shape [batch_size,
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
         Returns:
             cost (Tensor) with shape [batch_size, population_size]
         """
-        obs = time_step.observation
-        batch_size = obs.shape[0]
-
-        ac_seqs = torch.reshape(
-            ac_seqs,
-            [batch_size, self._population_size, self._planning_horizon, -1])
-
-        ac_seqs = ac_seqs.permute(2, 0, 1, 3)
-        ac_seqs = torch.reshape(
-            ac_seqs, (self._planning_horizon, -1, self._num_actions))
-
-        state = state._replace(dynamics=state.dynamics._replace(feature=obs))
-        init_obs = self._expand_to_population(obs)
-        state = nest.map_structure(self._expand_to_population, state)
-
-        obs = init_obs
-        cost = 0
-        for i in range(ac_seqs.shape[0]):
-            action = ac_seqs[i]
-            time_step = time_step._replace(prev_action=action)
-            time_step, state = self._dynamics_func(time_step, state)
-            next_obs = time_step.observation
-            # Note: currently using (next_obs, action), might need to
-            # consider (obs, action) in order to be more compatible
-            # with the conventional definition of the reward function
-            reward_step, state = self._reward_func(next_obs, action, state)
-            cost = cost - reward_step
-            obs = next_obs
-
+        batch_size = ac_seqs.shape[0]
+        ac_seqs = ac_seqs.reshape(*ac_seqs.shape[0:2], self._planning_horizon,
+                                  -1)
+        assert self._action_seq_eval_func_w_init_step is not None, (
+            "need to bind the first time step using function "
+            "_bind_initial_time_step first")
+        cost = self._action_seq_eval_func_w_init_step(ac_seqs)
         # reshape cost back to [batch size, population_size]
         cost = torch.reshape(cost, [batch_size, -1])
         return cost
@@ -362,17 +320,16 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             self._scalar_var = scalar_var
 
     def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
-        assert self._reward_func is not None, ("specify reward function "
-                                               "before planning")
-
-        assert self._dynamics_func is not None, ("specify dynamics function "
-                                                 "before planning")
+        assert self._action_seq_eval_func is not None, (
+            "specify "
+            "action sequence evaluation function before planning")
 
         batch_size = time_step.observation.shape[0]
 
+        self._bind_initial_time_step(time_step)
         self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
 
-        prev_plan = state.planner.prev_plan
+        prev_plan = state.prev_plan
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
 
@@ -384,8 +341,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         init_mean = prev_solution.unsqueeze(1)
 
         opt_action = self._plan_optimizer.obtain_solution(
-            time_step,
-            state,
+            batch_size,
             init_mean=init_mean,
             init_var=torch.ones_like(init_mean) * self._scalar_var)
 
@@ -400,7 +356,6 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
                 dim=(0, 1), keepdim=True).expand(batch_size, 1, -1)), 1)
 
         action = opt_action[:, 0]
-        new_state = state._replace(
-            planner=state.planner._replace(prev_plan=temporally_shifted_plan))
+        new_state = state._replace(prev_plan=temporally_shifted_plan)
 
         return action, new_state

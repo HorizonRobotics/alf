@@ -74,19 +74,13 @@ class RandomOptimizer(TrajOptimizer):
         self._upper_bound = upper_bound
         self._lower_bound = lower_bound
 
-    def obtain_solution(self, time_step: TimeStep, state):
+    def obtain_solution(self, batch_size):
         """Minimize the cost function provided
-
-        Args:
-            time_step (TimeStep): the initial time_step to start rollout
-            state: input state to start rollout
         """
-        init_obs = time_step.observation
-        batch_size = init_obs.shape[0]
         solutions = torch.rand(
             batch_size, self._population_size, self._solution_dim
         ) * (self._upper_bound - self._lower_bound) + self._lower_bound * 1.0
-        costs = self.cost_function(time_step, state, solutions)
+        costs = self.cost_function(solutions)
         min_ind = torch.argmin(costs, dim=-1).long()
         # solutions [B, pop_size, sol_dim] -> [B, sol_dim]
         solution = solutions[(torch.arange(batch_size), min_ind)]
@@ -147,11 +141,7 @@ class CEMOptimizer(TrajOptimizer):
         self._tau = tau
         self._min_var = min_var
 
-    def obtain_solution(self,
-                        time_step: TimeStep,
-                        state,
-                        init_mean=None,
-                        init_var=None):
+    def obtain_solution(self, batch_size, init_mean=None, init_var=None):
         """Minimize the cost function provided by using the CEM method.
 
         Args:
@@ -164,8 +154,6 @@ class CEMOptimizer(TrajOptimizer):
                 the variance is initialized to have value as
                 0.5 * (upper_bound - lower_bound).
         """
-        init_obs = time_step.observation
-        batch_size = init_obs.shape[0]
 
         if init_mean is None:
             # [B, 1, solution_dim]
@@ -195,7 +183,7 @@ class CEMOptimizer(TrajOptimizer):
             # use bounded samples for evaluation
             bounded_samples = samples.clamp(
                 min=self._lower_bound, max=self._upper_bound)
-            costs = self.cost_function(time_step, state, bounded_samples)
+            costs = self.cost_function(bounded_samples)
 
             # select elite set from the population
             ind = torch.topk(-costs, self._elite_size)[1]
