@@ -25,11 +25,14 @@ import numpy as np
 import random
 import six
 
-from alf.data_structures import StepType, TimeStep
+import torch
+
+from alf.data_structures import StepType, TimeStep, _is_numpy_array
 from alf.environments.alf_environment import AlfEnvironment
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils import spec_utils
+from alf.utils.tensor_utils import to_tensor
 
 
 class AlfEnvironmentBaseWrapper(AlfEnvironment):
@@ -436,11 +439,16 @@ class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
             reward_weights = [1.] + [0.] * (rewards_n - 1)
         assert (isinstance(reward_weights, (list, tuple))
                 and len(reward_weights) == rewards_n)
-        self._reward_weights = torch.tensor(reward_weights)
+        self._np_reward_weights = np.array(reward_weights)
+        self._tensor_reward_weights = to_tensor(reward_weights)
 
     def _average_rewards(self, time_step):
-        reward = torch.tensordot(
-            time_step.reward, self._reward_weights, dims=1)
+        if _is_numpy_array(time_step.reward):
+            reward = np.tensordot(
+                time_step.reward, self._np_reward_weights, axes=1)
+        else:
+            reward = torch.tensordot(
+                time_step.reward, self._tensor_reward_weights, dims=1)
         return time_step._replace(reward=reward)
 
     def _step(self, action):
@@ -452,7 +460,7 @@ class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
         return self._average_rewards(time_step)
 
     def reward_spec(self):
-        return alf.TensorSpec(())
+        return ts.TensorSpec(())
 
     def time_step_spec(self):
         spec = self._env.time_step_spec()
