@@ -29,12 +29,15 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         dict(n=2, act=torch.relu, use_bias=False, parallel_x=True),
         dict(
             n=2, act=torch.relu, use_bias=False, use_bn=True, parallel_x=True),
+        dict(
+            n=2, act=torch.relu, use_bias=False, use_ln=True, parallel_x=True),
     )
     def test_parallel_fc(self,
                          n=2,
                          act=math_ops.identity,
                          use_bias=True,
                          use_bn=False,
+                         use_ln=False,
                          parallel_x=True):
         batch_size = 3
         x_dim = 4

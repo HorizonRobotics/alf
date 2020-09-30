@@ -491,6 +491,7 @@ class ResnetEncodingNetwork(alf.networks.Network):
                  output_size=500,
                  output_activation=torch.tanh,
                  use_fc_bn=False,
+                 norm_layer=None,
                  name='ResnetEncodingNetwork'):
         """
         Args:
@@ -499,6 +500,7 @@ class ResnetEncodingNetwork(alf.networks.Network):
             output_activation (Callable): activation for the output
             use_fc_bn (bool): whether to use batch normalization for the final
                 ``FC`` layer.
+            norm_layer (nn.Module|None): optional additional layer for normalization.
         """
         super().__init__(input_tensor_spec, name=name)
 
@@ -524,6 +526,9 @@ class ResnetEncodingNetwork(alf.networks.Network):
                 use_bn=use_fc_bn,
                 activation=output_activation)
         ])
+
+        if norm_layer:
+            enc_layers.append(norm_layer)
 
         self._model = nn.Sequential(*enc_layers)
 
