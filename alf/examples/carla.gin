@@ -14,7 +14,6 @@ create_environment.num_parallel_environments=4
 
 use_batch_normalization=False
 BottleneckBlock.with_batch_normalization=%use_batch_normalization
-preproc_bn=True
 
 suite_carla.Player.with_gnss_sensor=False
 
@@ -28,20 +27,21 @@ velocity_spec = alf.nest.get_field(%observation_spec, "observation.velocity")
 navigation_spec = alf.nest.get_field(%observation_spec, "observation.navigation")
 prev_action_spec = alf.nest.get_field(%observation_spec, "prev_action")
 
+preproc_normalizer = @AdaptiveNormalizer(tensor_spec=alf.TensorSpec([%encoding_dim]))
 observation_preprocessors = {
-    "camera": @ResnetEncodingNetwork(input_tensor_spec=%camera_spec, output_size=%encoding_dim, output_activation=alf.math.identity, use_fc_bn=%preproc_bn),
-    "radar": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%radar_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
-    "collision": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%collision_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
-    #"gnss": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%gnss_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
-    "imu": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%imu_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
-    "goal": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%goal_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
-    "velocity": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%velocity_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
-    "navigation": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%navigation_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
+    "camera": @ResnetEncodingNetwork(input_tensor_spec=%camera_spec, output_size=%encoding_dim, output_activation=alf.math.identity, use_fc_bn=%preproc_bn, norm_layer=%preproc_normalizer),
+    "radar": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%radar_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
+    "collision": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%collision_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
+    #"gnss": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%gnss_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
+    "imu": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%imu_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
+    "goal": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%goal_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
+    "velocity": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%velocity_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
+    "navigation": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%navigation_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
 }
 
 input_preprocessors={
     'observation': %observation_preprocessors,
-    'prev_action': torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%prev_action_spec), %encoding_dim, use_bias=False, use_bn=%preproc_bn)),
+    'prev_action': torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%prev_action_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
 }
 
 
