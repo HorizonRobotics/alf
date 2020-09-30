@@ -99,11 +99,11 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            state (PlannerState): input planner state
         Returns:
             AlgStep:
                 output: empty tuple ()
-                state (PlannerState): state for training
+                state (PlannerState): updated planner state
                 info (PlannerInfo):
         """
         pass
@@ -119,13 +119,12 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """
         self._action_seq_cost_func = action_seq_cost_func
 
-    def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epsilon_greedy):
         """Compute the plan based on the provided observation and action
         Args:
             time_step (TimeStep): input data for next step prediction
-            state (MbrlState): input state for next step prediction. It will
-                be used by the next step prediction function set by
-                ```set_dynamics_func```.
+            state (PlannerState): input planner state
         Returns:
             action: planned action for the given inputs
         """
@@ -202,7 +201,8 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         """
         return AlgStep(output=(), state=state, info=())
 
-    def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epsilon_greedy):
         assert self._action_seq_cost_func is not None, (
             "specify "
             "action sequence cost function before planning")
@@ -313,7 +313,8 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         else:
             self._scalar_var = scalar_var
 
-    def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epsilon_greedy):
         prev_plan = state.prev_plan
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)

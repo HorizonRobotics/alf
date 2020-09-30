@@ -172,7 +172,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
 
     @torch.no_grad()
     def _predict_multi_step_cost(self, observation, actions):
-        """Predict the next step on the current time step
+        """Compute the total cost by unrolling multiple steps according to
+            the given initial observation and multi-step actions.
         Args:
             observation: the current observation for predicting quantities of
                 future time steps
