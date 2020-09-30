@@ -33,28 +33,13 @@ class TrajOptimizer(object):
     def reset(self):
         pass
 
-    def set_cost(self, cost_function):
-        """Set cost function for miminizing.
-        cost_function (Callable): the cost function to be minimized. It
-            takes as input:
-            (1) time_step (TimeStep) for next step prediction
-            (2) state: input state for next step prediction
-            (3) action_sequence (Tensor of shape [batch_size,
-                population_size, solution_dim])
-            and returns a cost Tensor of shape [batch_size, population_size]
-        """
-        self.cost_function = cost_function
-
     def obtain_solution(self, *args, **kwargs):
         pass
 
 
 class RandomOptimizer(TrajOptimizer):
-    def __init__(self,
-                 solution_dim,
-                 population_size,
-                 upper_bound=None,
-                 lower_bound=None):
+    def __init__(self, solution_dim, population_size, cost_func, upper_bound,
+                 lower_bound):
         """Random Trajectory Optimizer
 
         This module conducts trajectory optimization via random-shooting-based
@@ -65,22 +50,30 @@ class RandomOptimizer(TrajOptimizer):
             solution_dim (int): The dimensionality of the problem space
             population_size (int): The number of candidate solutions to be
                 sampled at every iteration
-            upper_bound (int|Tensor): upper bounds for elements in solution
-            lower_bound (int|Tensor): lower bounds for elements in solution
+            cost_func (Callable): the cost function to be minimized. It
+                takes as input: 1) init observation 2) action_sequence with
+                the shape of [batch_size, population_size, solution_dim])
+            and returns a cost Tensor of shape [batch_size, population_size]
+            upper_bound (float|Tensor): upper bounds for elements in solution
+            lower_bound (float|Tensor): lower bounds for elements in solution
         """
         super().__init__()
         self._solution_dim = solution_dim
         self._population_size = population_size
         self._upper_bound = upper_bound
         self._lower_bound = lower_bound
+        self._cost_func = cost_func
 
-    def obtain_solution(self, batch_size):
+    def obtain_solution(self, observation):
         """Minimize the cost function provided
+        Args:
+            observation (Tensor): the initial observation for cost calculation
         """
+        batch_size = observation.shape[0]
         solutions = torch.rand(
-            batch_size, self._population_size, self._solution_dim
-        ) * (self._upper_bound - self._lower_bound) + self._lower_bound * 1.0
-        costs = self.cost_function(solutions)
+            batch_size, self._population_size, self._solution_dim) * (
+                self._upper_bound - self._lower_bound) + self._lower_bound
+        costs = self._cost_func(observation, solutions)
         min_ind = torch.argmin(costs, dim=-1).long()
         # solutions [B, pop_size, sol_dim] -> [B, sol_dim]
         solution = solutions[(torch.arange(batch_size), min_ind)]
@@ -91,6 +84,7 @@ class CEMOptimizer(TrajOptimizer):
     def __init__(self,
                  solution_dim,
                  population_size,
+                 cost_func,
                  upper_bound,
                  lower_bound,
                  elite_size=50,
@@ -112,6 +106,9 @@ class CEMOptimizer(TrajOptimizer):
             solution_dim (int): the dimensionality of the problem space
             population_size (int): the number of candidate solutions to be
                 sampled at every iteration
+            cost_func (Callable): the cost function to be minimized. It
+                takes as input: 1) init observation 2) action_sequence with
+                the shape of [batch_size, population_size, solution_dim])
             upper_bound (float|Tensor): upper bounds for elements in solution
             lower_bound (float|Tensor): lower bounds for elements in solution
             elite_size (int): the number of elites selected in each round.
@@ -135,18 +132,18 @@ class CEMOptimizer(TrajOptimizer):
         self._population_size = population_size
         self._upper_bound = upper_bound
         self._lower_bound = lower_bound
+        self._cost_func = cost_func
         self._elite_size = elite_size
         self._max_iter_num = max_iter_num
         self._epsilon = epsilon
         self._tau = tau
         self._min_var = min_var
 
-    def obtain_solution(self, batch_size, init_mean=None, init_var=None):
+    def obtain_solution(self, observation, init_mean=None, init_var=None):
         """Minimize the cost function provided by using the CEM method.
 
         Args:
-            time_step (TimeStep): the initial time_step to start rollout
-            state: the initial state to start rollout
+            observation (Tensor): the initial observation for cost calculation
             init_mean (None|Tensor): initial mean of the population. If None,
                 the mean is initialized to have value as
                 0.5 * (self._upper_bound + self._lower_bound).
@@ -155,6 +152,7 @@ class CEMOptimizer(TrajOptimizer):
                 0.5 * (upper_bound - lower_bound).
         """
 
+        batch_size = observation.shape[0]
         if init_mean is None:
             # [B, 1, solution_dim]
             init_mean = torch.ones(batch_size, 1, self._solution_dim) * \
@@ -183,7 +181,7 @@ class CEMOptimizer(TrajOptimizer):
             # use bounded samples for evaluation
             bounded_samples = samples.clamp(
                 min=self._lower_bound, max=self._upper_bound)
-            costs = self.cost_function(bounded_samples)
+            costs = self._cost_func(observation, bounded_samples)
 
             # select elite set from the population
             ind = torch.topk(-costs, self._elite_size)[1]

@@ -93,8 +93,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._lower_bound = np.asscalar(action_spec.minimum) \
                         if lower_bound is None else lower_bound
 
-        self._action_seq_eval_func = None  # action sequence evaluation function
-        self._action_seq_eval_func_w_init_step = None
+        self._action_seq_cost_func = None
 
     def train_step(self, time_step: TimeStep, state: PlannerState):
         """
@@ -109,19 +108,16 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         """
         pass
 
-    def set_action_sequence_eval_func(self, action_seq_eval_func):
+    def set_action_sequence_cost_func(self, action_seq_cost_func):
         """Set a function for evaluating the action sequences for planning
         Args:
-            action_seq_eval_func (Callable): reward function to be used for planning.
-            action_seq_eval_func takes action sequences of the shape
-            [B, population, unroll_steps, action_dim] as input and returns
-            the accumulated cost along the unrolled trojectory
+            action_seq_cost_func (Callable): cost function to be used for planning.
+            action_seq_cost_func takes initial observation and action sequences
+            of the shape [B, population, unroll_steps, action_dim] as input
+            and returns the accumulated cost along the unrolled trajectory, with
+            the shape of [B, population]
         """
-        self._action_seq_eval_func = action_seq_eval_func
-
-    def _bind_initial_time_step(self, time_step):
-        self._action_seq_eval_func_w_init_step = \
-            partial(self._action_seq_eval_func, time_step)
+        self._action_seq_cost_func = action_seq_cost_func
 
     def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
         """Compute the plan based on the provided observation and action
@@ -190,7 +186,8 @@ class RandomShootingAlgorithm(PlanAlgorithm):
             solution_size,
             self._population_size,
             upper_bound=self._upper_bound,
-            lower_bound=self._lower_bound)
+            lower_bound=self._lower_bound,
+            cost_func=self._calc_cost_for_action_sequence)
 
     def train_step(self, time_step: TimeStep, state):
         """
@@ -206,37 +203,33 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         return AlgStep(output=(), state=state, info=())
 
     def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
-        assert self._action_seq_eval_func is not None, (
+        assert self._action_seq_cost_func is not None, (
             "specify "
-            "action sequence evaluation function before planning")
+            "action sequence cost function before planning")
 
-        self._bind_initial_time_step(time_step)
-        self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
-
-        batch_size = time_step.observation.shape[0]
-        opt_action = self._plan_optimizer.obtain_solution(batch_size)
+        opt_action = self._plan_optimizer.obtain_solution(
+            time_step.observation)
+        # [B, horizon * action_dim] -> [B, horizon, action_dim]
+        opt_action = torch.reshape(
+            opt_action,
+            [opt_action.shape[0], self._planning_horizon, self._num_actions])
         action = opt_action[:, 0]
-        action = torch.reshape(action, [time_step.observation.shape[0], -1])
         return action, state
 
-    def _calc_cost_for_action_sequence(self, ac_seqs):
+    def _calc_cost_for_action_sequence(self, obs, ac_seqs):
         """
         Args:
-            ac_seqs: action_sequence (Tensor) of shape [batch_size,
+            obs (Tensor): initial observation to start the rollout for the
+                evaluation of ac_seqs.
+            ac_seqs(Tensor): action_sequence of shape [batch_size,
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
         Returns:
             cost (Tensor) with shape [batch_size, population_size]
         """
-        batch_size = ac_seqs.shape[0]
         ac_seqs = ac_seqs.reshape(*ac_seqs.shape[0:2], self._planning_horizon,
                                   -1)
-        assert self._action_seq_eval_func_w_init_step is not None, (
-            "need to bind the first time step using function "
-            "_bind_initial_time_step first")
-        cost = self._action_seq_eval_func_w_init_step(ac_seqs)
-        # reshape cost back to [batch size, population_size]
-        cost = torch.reshape(cost, [batch_size, -1])
+        cost = self._action_seq_cost_func(obs, ac_seqs)
         return cost
 
     def after_update(self, training_info):
@@ -309,6 +302,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             self._population_size,
             upper_bound=self._upper_bound,
             lower_bound=self._lower_bound,
+            cost_func=self._calc_cost_for_action_sequence,
             elite_size=elite_size,
             max_iter_num=max_iter_num,
             epsilon=epsilon,
@@ -320,15 +314,6 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
             self._scalar_var = scalar_var
 
     def predict_plan(self, time_step: TimeStep, state, epsilon_greedy):
-        assert self._action_seq_eval_func is not None, (
-            "specify "
-            "action sequence evaluation function before planning")
-
-        batch_size = time_step.observation.shape[0]
-
-        self._bind_initial_time_step(time_step)
-        self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
-
         prev_plan = state.prev_plan
         # [B, horizon, action_dim] -> [B, horizon*action_dim]
         prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
@@ -341,7 +326,7 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         init_mean = prev_solution.unsqueeze(1)
 
         opt_action = self._plan_optimizer.obtain_solution(
-            batch_size,
+            time_step.observation,
             init_mean=init_mean,
             init_var=torch.ones_like(init_mean) * self._scalar_var)
 
@@ -353,7 +338,8 @@ class CEMPlanAlgorithm(RandomShootingAlgorithm):
         # [B, horizon, action_dim]
         temporally_shifted_plan = torch.cat(
             (opt_action[:, 1:], opt_action.mean(
-                dim=(0, 1), keepdim=True).expand(batch_size, 1, -1)), 1)
+                dim=(0, 1), keepdim=True).expand(opt_action.shape[0], 1, -1)),
+            1)
 
         action = opt_action[:, 0]
         new_state = state._replace(prev_plan=temporally_shifted_plan)

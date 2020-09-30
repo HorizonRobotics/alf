@@ -134,6 +134,8 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         self._dynamics_module = dynamics_module
         self._reward_module = reward_module
         self._planner_module = planner_module
+        self._planner_module.set_action_sequence_cost_func(
+            self._predict_multi_step_cost)
 
     def _predict_next_step(self, time_step, dynamics_state):
         """Predict the next step (observation and state) based on the current
@@ -169,24 +171,22 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         return data_population
 
     @torch.no_grad()
-    def _predict_multi_step_cost(self, time_step, actions, state=None):
+    def _predict_multi_step_cost(self, observation, actions):
         """Predict the next step on the current time step
         Args:
-            time_step (TimeStep): the current time step for predicting the
-                latent representation of the next time step
-            actions (Tensor): [B, population, unroll_steps, action_dim]
-            state (MbrlState): an Mbrl state. For the dynamics part,
-                here we only leverage its structure and use the current
-                observation from time_step to re-initialize the initial
-                state of state.dynamics.
+            observation: the current observation for predicting quantities of
+                future time steps
+            actions (Tensor): a set of action sequences to
+                shape [B, population, unroll_steps, action_dim]
         Returns:
-            reward (Tensor): accumulated predicted reward
+            cost (Tensor): negation of accumulated predicted reward, with
+                the shape of [B, population]
         """
-        population_size = actions.shape[1]
-        num_unroll_steps = actions.shape[2]
+        batch_size, population_size, num_unroll_steps = actions.shape[0:3]
 
-        obs = time_step.observation
-        dyn_state = state.dynamics._replace(feature=obs)
+        state = self.get_initial_predict_state(batch_size)
+        time_step = TimeStep()
+        dyn_state = state.dynamics._replace(feature=observation)
         dyn_state = nest.map_structure(
             partial(
                 self._expand_to_population, population_size=population_size),
@@ -205,8 +205,10 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             reward_step, reward_state = self._calc_step_reward(
                 next_obs, action, reward_state)
             reward = reward + reward_step
-            obs = next_obs
-        return -reward
+        cost = -reward
+        #[B, population_size]
+        cost = torch.reshape(cost, [batch_size, -1])
+        return cost
 
     def _calc_step_reward(self, obs, action, reward_state):
         """Calculate the step reward based on the given observation, action
@@ -226,14 +228,11 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
     def _predict_with_planning(self, time_step: TimeStep, state: MbrlState,
                                epsilon_greedy):
 
-        self._planner_module.set_action_sequence_eval_func(
-            partial(self._predict_multi_step_cost, state=state))
+        action, planner_state = self._planner_module.predict_plan(
+            time_step, state.planner, epsilon_greedy)
 
         dynamics_state = self._dynamics_module.update_state(
             time_step, state.dynamics)
-
-        action, planner_state = self._planner_module.predict_plan(
-            time_step, state.planner, epsilon_greedy)
 
         return AlgStep(
             output=action,
