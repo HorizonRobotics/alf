@@ -23,6 +23,7 @@ from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.nest.utils import convert_device
 from alf.networks import Network, LSTMEncodingNetwork
 from alf.utils import dist_utils, spec_utils, tensor_utils
+from alf.utils.normalizers import AdaptiveNormalizer
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
 
 PredictiveRepresentationLearnerInfo = namedtuple(
@@ -58,6 +59,7 @@ class SimpleDecoder(Algorithm):
                  loss_weight=1.0,
                  summarize_each_dimension=False,
                  optimizer=None,
+                 normalize_target=False,
                  debug_summaries=False,
                  name="SimpleDecoder"):
         """
@@ -75,6 +77,7 @@ class SimpleDecoder(Algorithm):
             loss_weight (float): weight for the loss.
             optimizer (Optimzer|None): if provided, it will be used to optimize
                 the parameter of decoder_net
+            normalize_target (bool): whether to normalize target.
             debug_summaries (bool): whether to generate debug summaries
             name (str): name of this instance
         """
@@ -88,6 +91,13 @@ class SimpleDecoder(Algorithm):
         self._target_field = target_field
         self._loss = loss
         self._loss_weight = loss_weight
+        if normalize_target:
+            self._target_normalizer = AdaptiveNormalizer(
+                self._decoder_net.output_spec,
+                auto_update=False,
+                name=name + ".target_normalizer")
+        else:
+            self._target_normalizer = None
 
     def get_target_fields(self):
         return self._target_field
@@ -108,6 +118,11 @@ class SimpleDecoder(Algorithm):
         Returns:
             LossInfo
         """
+        if self._target_normalizer:
+            self._target_normalizer.update(target)
+            target = self._target_normalizer.normalize(target)
+            predicted = self._target_normalizer.normalize(predicted)
+
         loss = self._loss(predicted, target)
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -149,7 +164,7 @@ class SimpleDecoder(Algorithm):
         if mask is not None:
             loss = loss * mask
 
-        return LossInfo(loss=loss * self._loss_weight)
+        return LossInfo(loss=loss * self._loss_weight, extra=loss)
 
 
 @gin.configurable
