@@ -55,6 +55,16 @@ def normalize_along_batch_dims(x, mean, variance, variance_epsilon):
     return x
 
 
+class Identity(nn.Module):
+    """A layer that simply returns its argument as result."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return x
+
+
 class BatchSquash(object):
     """Facilitates flattening and unflattening batch dims of a tensor. Copied
     from `tf_agents`.
@@ -240,6 +250,7 @@ class FC(nn.Module):
                  activation=identity,
                  use_bias=True,
                  use_bn=False,
+                 use_ln=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -254,6 +265,7 @@ class FC(nn.Module):
             activation (torch.nn.functional):
             use_bias (bool): whether use bias
             use_bn (bool): whether use batch normalization.
+            use_ln (bool): whether use layer normalization
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain as
                 ``kernel_init_gain`` will be used.
@@ -281,10 +293,15 @@ class FC(nn.Module):
         self._bias_init_value = bias_init_value
         self._use_bias = use_bias
         self._use_bn = use_bn
+        self._use_ln = use_ln
         if use_bn:
             self._bn = nn.BatchNorm1d(output_size)
         else:
             self._bn = None
+        if use_ln:
+            self._ln = nn.LayerNorm(output_size)
+        else:
+            self._ln = None
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -299,6 +316,8 @@ class FC(nn.Module):
         if self._use_bias:
             nn.init.constant_(self._bias.data, self._bias_init_value)
 
+        if self._use_ln:
+            self._ln.reset_parameters()
         if self._use_bn:
             self._bn.reset_parameters()
 
@@ -309,6 +328,10 @@ class FC(nn.Module):
             y = inputs.matmul(self._weight.t())
             if self._use_bias:
                 y += self._bias
+        if self._use_ln:
+            if not self._use_bias:
+                self._ln.bias.data.zero_()
+            y = self._ln(y)
         if self._use_bn:
             if not self._use_bias:
                 self._bn.bias.data.zero_()
@@ -339,6 +362,7 @@ class ParallelFC(nn.Module):
                  activation=identity,
                  use_bias=True,
                  use_bn=False,
+                 use_ln=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
@@ -353,6 +377,7 @@ class ParallelFC(nn.Module):
             n (int): n independent ``FC`` layers
             activation (torch.nn.functional):
             use_bn (bool): whether use Batch Normalization.
+            use_ln (bool): whether use layer normalization
             use_bias (bool): whether use bias
             kernel_initializer (Callable): initializer for the FC layer kernel.
                 If none is provided a ``variance_scaling_initializer`` with gain
@@ -386,6 +411,11 @@ class ParallelFC(nn.Module):
         else:
             self._bn = None
 
+        if use_ln:
+            self._ln = nn.GroupNorm(n, n * output_size)
+        else:
+            self._ln = None
+
     def forward(self, inputs):
         """Forward
 
@@ -415,6 +445,12 @@ class ParallelFC(nn.Module):
         else:
             y = torch.bmm(inputs, self._weight.transpose(1, 2))  # [n, B, k]
         y = y.transpose(0, 1)  # [B, n, k]
+        if self._ln is not None:
+            if self._bias is None:
+                self._ln.bias.data.zero_()
+            y1 = y.reshape(-1, n * k)
+            y = self._ln(y1)
+            y = y1.view(-1, n, k)
         if self._bn is not None:
             if self._bias is None:
                 self._bn.bias.data.zero_()

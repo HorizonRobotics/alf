@@ -149,7 +149,9 @@ class Normalizer(nn.Module):
         """
         if self._auto_update:
             self.update(tensor)
+        return self._normalize(tensor, clip_value)
 
+    def _normalize(self, tensor, clip_value=-1.0):
         def _normalize(m2, t, m=None):
             # in some extreme cases, due to floating errors, var might be a very
             # large negative value (close to 0)
@@ -170,6 +172,12 @@ class Normalizer(nn.Module):
         else:
             return alf.nest.map_structure(_normalize, self._m2_averager.get(),
                                           tensor)
+
+    def forward(self, input):
+        if self.training:
+            with alf.summary.record_if(lambda: False):
+                self.update(input)
+        return self._normalize(input)
 
 
 class WindowNormalizer(Normalizer):
