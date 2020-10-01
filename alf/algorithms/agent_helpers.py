@@ -134,7 +134,9 @@ class AgentHelper(object):
                     loss=add_ignore_empty(loss_info.loss, new_loss_info.loss),
                     scalar_loss=add_ignore_empty(loss_info.scalar_loss,
                                                  new_loss_info.scalar_loss),
-                    extra=loss_info.extra)
+                    extra=loss_info.extra,
+                    priority=add_ignore_empty(loss_info.priority,
+                                              new_loss_info.priority))
 
         loss_info = None
         for alg in algorithms:
