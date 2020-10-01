@@ -29,7 +29,7 @@ prev_action_spec = alf.nest.get_field(%observation_spec, "prev_action")
 
 preproc_normalizer = @AdaptiveNormalizer(tensor_spec=alf.TensorSpec([%encoding_dim]))
 observation_preprocessors = {
-    "camera": @ResnetEncodingNetwork(input_tensor_spec=%camera_spec, output_size=%encoding_dim, output_activation=alf.math.identity, use_fc_bn=%preproc_bn, norm_layer=%preproc_normalizer),
+    "camera": @ResnetEncodingNetwork(input_tensor_spec=%camera_spec, output_size=%encoding_dim, output_activation=alf.math.identity, norm_layer=%preproc_normalizer),
     "radar": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%radar_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
     "collision": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%collision_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
     #"gnss": torch.nn.Sequential(alf.layers.Reshape([-1]), alf.layers.FC(@flattened_size(%gnss_spec), %encoding_dim, use_bias=False), %preproc_normalizer),
