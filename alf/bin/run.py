@@ -22,6 +22,10 @@ python -m alf.bin.run \
   --cluster=None \
   --path=~/tmp \  # path to store output logs
   --play
+
+# Play deterministically:
+run hertargetnavst-curri_0-goalgen_@SubgoalPlanningGoalGeneratorLPRP-auxach_1-xyaux-auxdim_4-sgmargin_0.2-msgsteps_2-goalgensrc_exp-herorigg_0.5-herk_0.6-numsg_1-cempopu_1000-cemiters_100-gmincost_10-hitpenal_100-iters_2000 \
+  --play --seed=17 --ckpt=1000 --episodes=1
 ```
 
 Use '--' to replace '-', and '__' to replace '_' in argument values.
@@ -53,9 +57,12 @@ flags.DEFINE_string("path", os.path.join(os.path.expanduser("~"), "tmp"),
                     "Root directory for all runs and all root_dir's.")
 flags.DEFINE_string('cluster', None, 'idc, us or None for local.')
 flags.DEFINE_bool('play', False, 'Whether to play the model.')
+flags.DEFINE_integer('episodes', 0, 'Number of episodes to play.')
 flags.DEFINE_string('mp4_file', '', 'Output to mp4 file')
 flags.DEFINE_integer('ckpt', 0, 'checkpoint file number')
 flags.DEFINE_float('sleep', 0, 'number of seconds to sleep between steps')
+
+flags.DEFINE_integer('seed', 0, 'random seed')
 flags.DEFINE_bool('log_to_file', None, 'Whether to log to file or stdout.')
 flags.DEFINE_string('network_to_debug', '',
                     'actor or value network to plot attention and debug')
@@ -69,19 +76,35 @@ VALUE_SEP = "_"
 # Gin configs:
 
 TARGET_NAV_GIN_TAGS = [
-    'actargetnav', 'actargetnavst', 'actargetnavattn', 'ppotargetnav',
-    'ddpgtargetnav', 'ddpgtargetnavst', 'hertargetnavst', 'sactargetnav'
+    'actargetnav',
+    'actargetnavst',
+    'actargetnavattn',
+    'ppotargetnav',
+    'ddpgtargetnav',
+    'sactargetnav',
 ]
 
-SOCIAL_BOT_GIN_TAGS = TARGET_NAV_GIN_TAGS + ['offsimplenav', 'simplenav']
+SOCIAL_BOT_GIN_TAGS = TARGET_NAV_GIN_TAGS + [
+    'offsimplenav', 'simplenav', 'ddpgtargetnavst', 'hertargetnavst',
+    'sactargetnavst', "hersactargetnavst", "hertargetnavstgoalgen"
+]
 
 GYM_GIN_TAGS = [
-    'acbreakout', 'offpolicyacbreakout', 'acbreakoutvtrace', 'accartpole'
+    'acbreakout',
+    'offpolicyacbreakout',
+    'acbreakoutvtrace',
+    'accartpole',
 ]
 
 MJC_GIN_TAGS = [
-    "sacfetchreach", "sacfetchpush", "sacfetchslide", "ddpgfetchreach",
-    "ddpgfetchpush", "herfetchpush", "ddpgfetchslide", "herfetchslide"
+    "sacfetchreach",
+    "sacfetchpush",
+    "sacfetchslide",
+    "ddpgfetchreach",
+    "ddpgfetchpush",
+    "herfetchpush",
+    "ddpgfetchslide",
+    "herfetchslide",
 ]
 
 
@@ -94,7 +117,10 @@ def get_gin_file(gin_file_tag):
         "ddpgtargetnav": "ddpg_target_navigation",
         "ddpgtargetnavst": "ddpg_target_navigation_states",
         "hertargetnavst": "her_target_navigation_states",
+        "hertargetnavstgoalgen": "her_target_navigation_states_goalgen",
         "sactargetnav": "sac_target_navigation",
+        "sactargetnavst": "sac_target_navigation_states",
+        "hersactargetnavst": "her_sac_target_navigation_states",
         "acbreakout": "ac_breakout",
         "offpolicyacbreakout": "off_policy_ac_breakout",
         "offsimplenav": "off_policy_ac_simple_navigation",
@@ -110,6 +136,7 @@ def get_gin_file(gin_file_tag):
         "herfetchpush": "her_fetchpush",
         "ddpgfetchslide": "ddpg_fetchslide",
         "herfetchslide": "her_fetchslide",
+        "mbpendu": "mbrl_pendulum",
     }
     return switcher.get(gin_file_tag,
                         "no_such_gin_file_tag_" + gin_file_tag) + ".gin"
@@ -178,12 +205,12 @@ def gen_args(named_tags, task="NO_TASK", load_fn="NO_LOAD_FN", gin_file=""):
         args.append(
             "--gin_param='critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()'"
         )
-    if 'obnorm' in named_tags:
-        args.append("--gin_param='Agent.observation_transformer=[]'")
+    # if 'obnorm' in named_tags:
+    #     args.append("--gin_param='Agent.observation_transformer=[]'")
 
     if 'image' not in m_arg_value and gin_file in TARGET_NAV_GIN_FILES:
         args.append("--gin_param='image_scale_transformer.fields=[]'")
-        args.append("--gin_param='Agent.observation_transformer=[]'")
+        # args.append("--gin_param='Agent.observation_transformer=[]'")
     if FLAGS.network_to_debug:
         args.append(
             "--gin_param='get_ac_networks.network_to_debug=\"{}\"'".format(
@@ -196,11 +223,14 @@ def gen_args(named_tags, task="NO_TASK", load_fn="NO_LOAD_FN", gin_file=""):
         args.append(
             "--gin_param='ActorCriticLoss.entropy_regularization=None'")
     args.sort()
-    print('\n'.join(args))
+    print('gin_params:\n' + '\n'.join(args))
     print("========================================")
-    for name in remaining_args:
-        print('* Warning: parameter name {} not understood by parser.'.format(
-            name))
+    if len(remaining_args) > 0:
+        for name in remaining_args:
+            print(
+                '* Warning: parameter name \033[91m{}\033[00m not understood by parser.'
+                .format(name))
+        print("========================================")
     return ' '.join(args), m_arg_value
 
 
@@ -251,6 +281,44 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'DdpgAlgorithm.rollout_random_action',
         'herk':
             'hindsight_relabel_fn.her_proportion',
+        'herorigg':
+            'hindsight_relabel_fn.use_original_goals_from_info',
+        'goalgen':
+            'Agent.goal_generator',  #@SubgoalPlanningGoalGenerator()
+        'numsg':
+            'SubgoalPlanningGoalGenerator.num_subgoals',
+        'nextgoalonsucc':
+            'SubgoalPlanningGoalGenerator.next_goal_on_success',
+        'normg':
+            'SubgoalPlanningGoalGenerator.normalize_goals',
+        'normbg': [
+            'SubgoalPlanningGoalGenerator.normalize_goals',
+            'SubgoalPlanningGoalGenerator.bound_goals'
+        ],
+        'msgsteps':
+            'SubgoalPlanningGoalGenerator.max_subgoal_steps',
+        'mplansteps':
+            'SubgoalPlanningGoalGenerator.max_replan_steps',
+        'adoptplan':
+            'SubgoalPlanningGoalGenerator.always_adopt_plan',
+        'sgmargin':
+            'SubgoalPlanningGoalGenerator.plan_margin',
+        'gmincost':
+            'SubgoalPlanningGoalGenerator.min_goal_cost_to_use_plan',
+        'auxach': [
+            'SubgoalPlanningGoalGenerator.use_aux_achieved',
+            task + '.use_aux_achieved'
+        ],
+        'xyaux':
+            task + '.xy_only_aux',
+        'auxdim':
+            'SubgoalPlanningGoalGenerator.aux_dim',
+        'ctrlaux': [
+            'SubgoalPlanningGoalGenerator.control_aux',
+            'hindsight_relabel_fn.control_aux'
+        ],
+        'goalgensrc':
+            'ConditionalGoalGenerator.train_with_goal',
         'collect':
             'TrainerConfig.initial_collect_steps',
         'vtrace':
@@ -272,16 +340,40 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             parent_task + '.step_time',
         'mepisteps':
             load_fn + '.max_episode_steps',
+        'fskip':
+            'FrameSkip.skip',
         'endsucc':
-            task + '.end_on_success',
+            task + '.end_episode_after_success',
         'endhit':
             task + '.end_on_hitting_distraction',
+        'mdimr':
+            task + '.multi_dim_reward',
+        'mvgoalinepi':
+            task + '.move_goal_during_episode',
+        'resetclockonsucc':
+            task + '.reset_time_limit_on_success',
         'gymwrap':
             load_fn + '.gym_env_wrappers',
+        'succwrap':
+            load_fn + '.use_success_wrapper',
+        'succwrapsteps':
+            'SuccessWrapper.since_episode_steps',
         'aclipmin':
             'ContinuousActionClip.min_v',
         'aclipmax':
             'ContinuousActionClip.max_v',
+        'shootopt':
+            'RandomShootingAlgorithm.plan_optimizer',
+        'cemiters':
+            'CEMOptimizer.iterations',
+        'iters':
+            'TrainerConfig.num_iterations',
+        'shoothoriz':
+            'RandomShootingAlgorithm.planning_horizon',
+        'shootpopu':
+            'RandomShootingAlgorithm.population_size',
+        'cempopu':
+            'CEMOptimizer.population_size',
         'randgoal':
             task + '.random_goal',
         'goalname':
@@ -304,6 +396,10 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             task + '.distraction_penalty_distance_thresh',
         'hitpenal':
             task + '.distraction_penalty',
+        'randagentpp': [
+            task + '.random_agent_orientation',
+            task + '.random_agent_position',
+        ],
         'world':
             parent_task + '.world_name',
         'imgobs':
@@ -331,9 +427,9 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             task + '.egocentric_perception_range',
             'get_ac_networks.angle_limit'
         ],
-        'orderobjbyview': [
-            task + '.order_obj_by_view', 'get_ac_networks.has_obj_id'
-        ],
+        # 'orderobjbyview': [
+        #     task + '.order_obj_by_view', 'get_ac_networks.has_obj_id'
+        # ],
         'rnn':
             'get_ac_networks.rnn',
         'lstm': [
@@ -354,8 +450,7 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
             'DdpgAlgorithm.ou_stddev',
         'obnorm':
             'TrainerConfig.normalize_observations',  # branch obn: gsp
-        'obtrans':
-            'Agent.observation_transformer',
+        # 'obtrans': 'Agent.observation_transformer',
         'actl2':
             'DdpgAlgorithm.action_l2',
         'normeps':
@@ -371,6 +466,8 @@ def get_arg_name(name, task="NO_TASK", load_fn="NO_LOAD_FN"):
         'initalpha':
             'EntropyTargetAlgorithm.initial_alpha',
         # curriculum learning:
+        'curri':
+            task + '.use_curriculum_training',
         'startr':
             task + '.start_range',
         'mixfull':
@@ -392,6 +489,8 @@ def tokenize(v, quoted=False):
     v = v.replace('^', VALUE_SEP)
     v = v.replace('+', VALUE_SEP)
     v = v.replace('=', ARG_SEP)
+    v = v.replace('LP', '(')
+    v = v.replace('RP', ')')
     if quoted:
         v = '"' + v + '"'
     return v
@@ -407,7 +506,7 @@ def map_list_value(value, quoted=False):
 def brace_map_list_value(value):
     if value in ('None', '0', 'False'):
         return "()"
-    return '(' + map_list_value(value) + ')'
+    return '(' + map_list_value(value) + ',)'
 
 
 def maybe_map_value(key, value=None):
@@ -423,6 +522,8 @@ def maybe_map_value(key, value=None):
         'world': tokenize(value, quoted=True),
         'asyncreplay': tokenize(value, quoted=True),
         'rmf': tokenize(value, quoted=True),
+        'shootopt': tokenize(value, quoted=True),
+        'goalgensrc': tokenize(value, quoted=True),
         # 'obtrans': tokenize(value, quoted=True),
     }
     return switcher.get(key, map_list_value(value))
@@ -486,13 +587,19 @@ def main(argv):
         log_to_file = FLAGS.log_to_file
 
     if log_to_file:
-        log_cmd = " 2> {log_file}".format(log_file=log_file)
+        log_cmd = " 2> {log_file} > {log_file}.out".format(log_file=log_file)
     else:
         log_cmd = ""
     if FLAGS.play:
         # additional_flag += " --epsilon_greedy=0.1"
+        additional_flag += " --random_seed={}".format(FLAGS.seed)
         if not FLAGS.mp4_file:
-            additional_flag += " --num_episodes=100"
+            if FLAGS.episodes:
+                additional_flag += " --num_episodes={}".format(FLAGS.episodes)
+                if FLAGS.episodes == 1:
+                    additional_flag += " --epsilon_greedy=0"
+            else:
+                additional_flag += " --num_episodes=100"
         if FLAGS.mp4_file:
             additional_flag += " --record_file='{}'".format(FLAGS.mp4_file)
         if FLAGS.ckpt:
@@ -502,6 +609,7 @@ def main(argv):
             additional_flag += " --gin_param='{}.max_steps=100'".format(
                 parent_task)
             additional_flag += " --gin_param='suite_socialbot.load.max_episode_steps=1000'"
+        if gin_file_tag in TARGET_NAV_GIN_TAGS or FLAGS.verbosity > 0:
             additional_flag += " --verbosity=1"
         if FLAGS.sleep:
             additional_flag += " --sleep_time_per_step={}".format(FLAGS.sleep)
