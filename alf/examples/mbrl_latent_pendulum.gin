@@ -1,0 +1,85 @@
+import torch
+import alf.algorithms.agent
+import alf.algorithms.encoding_algorithm
+import alf.algorithms.mbrl_algorithm
+import alf.optimizers.traj_optimizers
+import alf.algorithms.predictive_representation_learner
+
+env_name='Pendulum-v0'
+
+NUM_PARALLEL_ENVIRONMENTS=1
+create_environment.env_load_fn=@suite_gym.load
+create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+create_environment.env_name=%env_name
+
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+encoding_dim = 100
+fc_layers_params = (100, 100)
+activation = torch.relu_
+reward_dim=1
+unroll_length_train=20
+unroll_length_predict=20
+
+Adam.lr=1e-3
+
+
+encoder/EncodingNetwork.activation=%activation
+encoder/EncodingNetwork.fc_layer_params=%fc_layers_params
+
+
+decoder/EncodingNetwork.fc_layer_params=%fc_layers_params
+decoder/EncodingNetwork.last_layer_size=%reward_dim
+decoder/EncodingNetwork.last_activation=@identity
+decoder/EncodingNetwork.last_kernel_initializer=torch.nn.init.zeros_
+SimpleDecoder.decoder_net_ctor=@decoder/EncodingNetwork
+SimpleDecoder.target_field='reward'
+SimpleDecoder.summarize_each_dimension=True
+
+PredictiveRepresentationLearner.observation_spec=%observation_spec
+PredictiveRepresentationLearner.action_spec=%action_spec
+PredictiveRepresentationLearner.num_unroll_steps=%unroll_length_train
+
+PredictiveRepresentationLearner.encoding_net_ctor=@encoder/EncodingNetwork
+PredictiveRepresentationLearner.decoder_ctor=@SimpleDecoder
+
+dynamics/LSTMEncodingNetwork.hidden_size=(%encoding_dim, %encoding_dim)
+PredictiveRepresentationLearner.dynamics_net_ctor=@dynamics/LSTMEncodingNetwork
+
+ReplayBuffer.keep_episodic_info=True
+
+
+RandomShootingAlgorithm.feature_spec=%observation_spec
+RandomShootingAlgorithm.action_spec=%action_spec
+RandomShootingAlgorithm.population_size=50
+RandomShootingAlgorithm.planning_horizon=%unroll_length_predict
+
+LatentMbrlAlgorithm.action_spec=%action_spec
+LatentMbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
+
+
+Agent.optimizer=@Adam()
+Agent.representation_learner_cls=@PredictiveRepresentationLearner
+Agent.rl_algorithm_cls=@LatentMbrlAlgorithm
+
+
+# training config
+TrainerConfig.algorithm_ctor=@Agent
+
+TrainerConfig.initial_collect_steps=200
+TrainerConfig.mini_batch_length=4
+TrainerConfig.unroll_length=1
+TrainerConfig.mini_batch_size=32
+TrainerConfig.num_updates_per_train_iter=2
+TrainerConfig.whole_replay_buffer_training=False
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.num_iterations=10000
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=False
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=False
+TrainerConfig.summary_interval=100
+TrainerConfig.replay_buffer_length=100000
+TrainerConfig.summarize_action_distributions=False

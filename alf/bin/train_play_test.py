@@ -564,6 +564,11 @@ class TrainPlayTest(alf.test.TestCase):
         self._test(
             gin_file='mbrl_pendulum.gin', extra_train_params=MBRL_TRAIN_PARAMS)
 
+    def test_mbrl_latent_pendulum(self):
+        self._test(
+            gin_file='mbrl_latent_pendulum.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
     def test_muzero_tic_tac_toe(self):
         self._test(
             gin_file='muzero_tic_tac_toe.gin',

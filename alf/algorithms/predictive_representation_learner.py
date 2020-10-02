@@ -20,6 +20,7 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, TimeStep, Experience, LossInfo, namedtuple
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
+from alf.nest import nest
 from alf.nest.utils import convert_device
 from alf.networks import Network, LSTMEncodingNetwork
 from alf.utils import dist_utils, spec_utils, tensor_utils
@@ -265,6 +266,44 @@ class PredictiveRepresentationLearner(Algorithm):
         latent, state = self._encoding_net(time_step.observation, state)
         return AlgStep(output=latent, state=state)
 
+    def predict_multi_step(self, init_rep, actions, state=None):
+        """Perform multi-step predictions based on the initial latent
+            representation and actions sequences.
+        Args:
+            init_rep (Tensor): the latent representation for the initial
+                step of the prediction
+            actions (Tensor): [B, unroll_steps, action_dim]
+            state:
+        Returns:
+            prediction (Tensor): predicted quantity of shape
+                [B, unroll_steps, d], where d is the dimension of
+                the predicted quantity
+        """
+        num_unroll_steps = actions.shape[1]
+
+        assert num_unroll_steps > 0
+
+        latent = init_rep
+
+        # do not store latent of the current time step, only predict future
+        sim_latents = []
+
+        if self._latent_to_dstate_fc is not None:
+            dstate = self._latent_to_dstate_fc(latent)
+            dstate = dstate.split(self._dynamics_state_dims, dim=1)
+            dstate = alf.nest.pack_sequence_as(self._dynamics_net.state_spec,
+                                               dstate)
+        else:
+            dstate = state
+
+        for i in range(num_unroll_steps):
+            sim_latent, dstate = self._dynamics_net(actions[:, i, ...], dstate)
+            sim_latents.append(sim_latent)
+
+        sim_latent = torch.cat(sim_latents, dim=0)
+        prediction = self._decoder.train_step(sim_latent).info
+        return prediction
+
     def train_step(self, exp: TimeStep, state):
         # [B, num_unroll_steps + 1]
         info = exp.rollout_info
@@ -347,9 +386,13 @@ class PredictiveRepresentationLearner(Algorithm):
             # [B, T, unroll_steps+1]
             positions = torch.min(positions, episode_end_positions)
 
-            # [B, T, unroll_steps+1]
+            # [B, T, unroll_steps+1, ...], for the scalar case, the shape is
+            # [B, T, unroll_steps+1, 1]
             target = replay_buffer.get_field(self._target_fields, env_ids,
                                              positions)
+            # scalar target case
+            if target.dim() == 3:
+                target = target.unsqueeze(3)
 
             # [B, T, unroll_steps+1]
             action = replay_buffer.get_field('action', env_ids, positions)
