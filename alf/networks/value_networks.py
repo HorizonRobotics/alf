@@ -122,7 +122,7 @@ class ValueRNNNetwork(PreprocessorNetwork):
 
     def __init__(self,
                  input_tensor_spec,
-                 output_tensor_spec,
+                 output_tensor_spec=TensorSpec(()),
                  input_preprocessors=None,
                  preprocessing_combiner=None,
                  conv_layer_params=None,
