@@ -458,6 +458,12 @@ class RLAlgorithm(Algorithm):
                 observation_with_aux_desired["aux_desired"] = (
                     transformed_time_step.observation["aux_desired"])
                 exp = exp._replace(observation=observation_with_aux_desired)
+            if (isinstance(transformed_time_step.observation, dict)
+                    and "desired_goal" in transformed_time_step.observation):
+                observation_with_desired = exp.observation
+                observation_with_desired["desired_goal"] = (
+                    transformed_time_step.observation["desired_goal"])
+                exp = exp._replace(observation=observation_with_desired)
 
             t0 = time.time()
             self.observe_for_replay(exp)

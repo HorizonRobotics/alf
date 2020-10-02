@@ -141,6 +141,10 @@ class TDLoss(nn.Module):
                             aux_realistic = torch.norm(
                                 torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
                                 dim=2) < 0.5
+                            aux_realistic &= torch.abs(
+                                observation["desired_goal"][0, :, 0]) < 5
+                            aux_realistic &= torch.abs(
+                                observation["desired_goal"][0, :, 1]) < 5
                             real_rate = torch.mean(aux_realistic.float())
                             alf.summary.scalar("realistic_rate" + suffix,
                                                real_rate)

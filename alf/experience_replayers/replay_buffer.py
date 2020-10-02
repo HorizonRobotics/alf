@@ -733,25 +733,23 @@ def hindsight_relabel_fn(buffer,
         orig_goal = alf.nest.get_field(
             result, "rollout_info.goal_generator.original_goal")
         result_goals = alf.nest.get_field(result, desired_goal_field)
+        result_goals = result_goals.clone()
+        result_goals[orig_goal_cond][:, :, :action_dim] = orig_goal[
+            orig_goal_cond][:, :, :action_dim]
         if control_aux:
             assert action_dim > 0
-            result_goals[orig_goal_cond] = orig_goal[
-                orig_goal_cond][:, :, :action_dim]
             aux_desired = alf.nest.get_field(result, aux_desired_field)
             aux_desired[orig_goal_cond] = orig_goal[
                 orig_goal_cond][:, :, action_dim:]
             result = alf.nest.utils.transform_nest(
                 result, aux_desired_field, lambda _: aux_desired)
-        else:
-            result_goals[orig_goal_cond] = orig_goal[orig_goal_cond]
         result = alf.nest.utils.transform_nest(
             result, desired_goal_field, lambda _: result_goals)
 
     # relabel only these sampled indices
     her_cond = torch.rand(batch_size) < her_proportion
-    non_her_cond = torch.logical_not(her_cond)
+    non_her_cond = ~her_cond
     (her_indices, ) = torch.where(her_cond)
-    (non_her_indices, ) = torch.where(non_her_cond)
 
     last_step_pos = start_pos[her_indices] + batch_length - 1
     last_env_ids = env_ids[her_indices]
@@ -790,6 +788,12 @@ def hindsight_relabel_fn(buffer,
         _result_ag, _relabeled_goal = result_ag, relabeled_goal
     relabeled_rewards = reward_fn(
         _result_ag, _relabeled_goal, device=buffer._device)
+    if use_original_goals_from_info > 0:
+        rollout_cond = ~orig_goal_cond & non_her_cond
+        orig_reward_cond = orig_goal_cond & non_her_cond
+    else:
+        rollout_cond = non_her_cond
+        orig_reward_cond = non_her_cond
     if alf.summary.should_record_summaries():
         res_reward = result.reward
         if result.reward.ndim > 2:
@@ -803,11 +807,7 @@ def hindsight_relabel_fn(buffer,
         if use_original_goals_from_info > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_orig_nonher",
-                torch.mean(relabeled_rewards[orig_goal_cond
-                                             & non_her_cond][1:]))
-            rollout_cond = torch.logical_not(orig_goal_cond) & non_her_cond
-        else:
-            rollout_cond = non_her_cond
+                torch.mean(relabeled_rewards[orig_reward_cond][1:]))
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
             torch.mean(relabeled_rewards[rollout_cond][1:]))
@@ -817,19 +817,16 @@ def hindsight_relabel_fn(buffer,
     if result.reward.ndim > 2:
         goal_rewards = result.reward[:, :, 0]
     if (not control_aux
-            and not torch.allclose(relabeled_rewards[non_her_indices][:, 1:],
-                                   goal_rewards[non_her_indices][:, 1:])):
+            and not torch.allclose(relabeled_rewards[orig_reward_cond][:, 1:],
+                                   goal_rewards[orig_reward_cond][:, 1:])):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
                "env_reward\n{}\nag:\n{}\ndg:\n{}\nenv_ids:\n{}\nstart_pos:\n{}"
-               ).format(relabeled_rewards[non_her_indices][:, 1:],
-                        goal_rewards[non_her_indices][:, 1:],
-                        result_ag[non_her_indices][:, 1:],
-                        result_desired_goal[non_her_indices][:, 1:],
-                        env_ids[non_her_indices], start_pos[non_her_indices])
+               ).format(relabeled_rewards[orig_reward_cond][:, 1:],
+                        goal_rewards[orig_reward_cond][:, 1:],
+                        result_ag[orig_reward_cond][:, 1:],
+                        result_desired_goal[orig_reward_cond][:, 1:],
+                        env_ids[orig_reward_cond], start_pos[orig_reward_cond])
         logging.warning(msg)
-        orig_reward_cond = non_her_cond
-        if use_original_goals_from_info > 0:
-            orig_reward_cond &= orig_goal_cond
         relabeled_rewards[orig_reward_cond] = goal_rewards[orig_reward_cond]
 
     final_relabeled_rewards = relabeled_rewards

@@ -428,6 +428,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 alf.summary.scalar(
                     "{}_{}_mean.{}".format(name, i, common.exe_mode_name()),
                     torch.mean(t[:, i]))
+                alf.summary.scalar(
+                    "{}_{}_var.{}".format(name, i, common.exe_mode_name()),
+                    torch.var(t[:, i]))
 
     def _costs_agg_dist(self, time_step, state, samples, info=None):
         assert self._value_fn, "no value function provided."
