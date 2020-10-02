@@ -204,7 +204,7 @@ class Player(object):
             max_collision_penalty (float): the maximum penalty (i.e. negative reward)
                 for collision. We don't want the collision penalty to be too large
                 if the player cannot even get enough positive moving reward. So the
-                panalty is capped at ``Player.PENALTY_RATE_COLLISION * max(0., episode_reward))``.
+                penalty is capped at ``Player.PENALTY_RATE_COLLISION * max(0., episode_reward))``.
                 Note that this reward is only given once at the first step of
                 contiguous collisions.
             max_stuck_at_collision_seconds (float): the episode will end and is
@@ -214,9 +214,9 @@ class Player(object):
                 stuck at the collision if it is within such distance of the first
                 collision location.
             max_red_light_penalty (float): the maximum penalty (i.e. negative reward)
-                for red light violation. We don't want the collision penalty to
+                for red light violation. We don't want the red light penalty to
                 be too large if the player cannot even get enough positive moving
-                reward. So the panalty is capped at ``Player.PENALTY_RATE_RED_LIGHT * max(0., episode_reward))``.
+                reward. So the penalty is capped at ``Player.PENALTY_RATE_RED_LIGHT * max(0., episode_reward))``.
                 Note that this reward is only given once at the first step of
                 contiguous red light violation.
             sparse_reward (bool): If False, the distance reward is given at every

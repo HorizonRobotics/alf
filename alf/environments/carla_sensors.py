@@ -703,7 +703,7 @@ def _rotate_point(point: carla.Vector3D, angle):
     """Rotate a given point by a given angle
 
     Args:
-        point (carla.Location):
+        point (carla.Vector3D):
         angle (float): in degrees
     Returns:
         carla.Vector3D
@@ -738,8 +738,8 @@ def _is_segments_intersecting(seg1, seg2):
     https://stackoverflow.com/questions/3252194/numpy-and-line-intersections
 
     Args:
-        seg1 (tuple[ndarray]): ``seg1[0]`` and seg1[1] are [1, 3] or [n,3] arrays.
-        seg2 (tuple[ndarray]): ``seg2[0]`` and seg2[1] are [1, 3] or [n,3] arrays
+        seg1 (tuple[ndarray]): ``seg1[0]`` and ``seg1[1]`` are [1, 3] or [n,3] arrays.
+        seg2 (tuple[ndarray]): ``seg2[0]`` and ``seg2[1]`` are [1, 3] or [n,3] arrays
     Returns:
         bool ndarray of shape [n] indicating wether each segment in ``seg1``
             intersects with the corresponding segment in ``seg2``
@@ -786,7 +786,7 @@ class World(object):
     """Keeping data for the world."""
 
     # only consider a car for running red light if it is within such distance
-    DISTANCE_LIGHT = 10  # m
+    RED_LIGHT_ENFORCE_DISTANCE = 10  # m
 
     def __init__(self, world: carla.World, route_resolution=1.0):
         """
@@ -881,6 +881,8 @@ class World(object):
         actors = self._world.get_actors()
         self._traffic_light_actors = []
         traffic_light_centers = []
+        # traffic_light_waypoints are the waypoints which enter into the intersection
+        # covered by the traffic light
         traffic_light_waypoints = []
         max_num_traffic_light_waypoints = 0
         for actor in actors:
@@ -991,8 +993,8 @@ class World(object):
         dist = self._traffic_light_centers - _to_numpy_loc(veh_location)
         dist = np.linalg.norm(dist, axis=-1)
 
-        candidate_light_index = np.nonzero(is_red &
-                                           (dist <= self.DISTANCE_LIGHT))[0]
+        candidate_light_index = np.nonzero(
+            is_red & (dist <= self.RED_LIGHT_ENFORCE_DISTANCE))[0]
         ve_dir = _to_numpy_loc(veh_transform.get_forward_vector())
 
         waypoints = self._traffic_light_waypoints
@@ -1019,6 +1021,9 @@ class World(object):
             right_lane_wp = location_wp + right_lane_wp
             if np.any(same_lane & _is_segments_intersecting(
                     veh_seg, (left_lane_wp, right_lane_wp))):
+                # If veh_seg intersets with (left_lane_wp, right_lane_wp), that
+                # means the vehicle is crossing the line dividing intersection
+                # and the outside area.
                 return self._traffic_light_actors[index].id
         return None
 
