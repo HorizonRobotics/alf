@@ -1021,7 +1021,7 @@ class World(object):
             right_lane_wp = location_wp + right_lane_wp
             if np.any(same_lane & _is_segments_intersecting(
                     veh_seg, (left_lane_wp, right_lane_wp))):
-                # If veh_seg intersets with (left_lane_wp, right_lane_wp), that
+                # If veh_seg intersects with (left_lane_wp, right_lane_wp), that
                 # means the vehicle is crossing the line dividing intersection
                 # and the outside area.
                 return self._traffic_light_actors[index].id
