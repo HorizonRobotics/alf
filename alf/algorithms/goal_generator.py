@@ -579,13 +579,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 dim=1)
             alf.summary.scalar(
                 "planner/distance_ag_to_subgoal." + common.exe_mode_name(),
-                torch.mean(dist_ag_subgoal / full_dist))
+                torch.mean(dist_ag_subgoal))
             dist_subgoal_g = torch.norm(
                 subgoal[:, :self._action_dim] - observation["desired_goal"],
                 dim=1)
             alf.summary.scalar(
                 "planner/distance_subgoal_to_goal." + common.exe_mode_name(),
-                torch.mean(dist_subgoal_g / full_dist))
+                torch.mean(dist_subgoal_g))
 
         if self._use_aux_achieved and not self.control_aux:
             subgoal = subgoal[:, :self._action_dim]
