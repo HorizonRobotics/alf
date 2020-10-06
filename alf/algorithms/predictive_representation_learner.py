@@ -94,14 +94,22 @@ class SimpleDecoder(Algorithm):
         return self._target_field
 
     def train_step(self, repr, state=()):
-        predicted_reward = self._decoder_net(repr)[0]
+        predicted_target = self._decoder_net(repr)[0]
+        # when the predicted target is a scalar, remove the
+        # singleton dimension to match the shape of target
+        if predicted_target.ndim == 2 and predicted_target.shape[1] == 1:
+            predicted_target = predicted_target.squeeze(1)
         return AlgStep(
-            output=predicted_reward, state=state, info=predicted_reward)
+            output=predicted_target, state=state, info=predicted_target)
 
     def predict_step(self, repr, state=()):
-        predicted_reward = self._decoder_net(repr)[0]
+        predicted_target = self._decoder_net(repr)[0]
+        # when the predicted target is a scalar, remove the
+        # singleton dimension to match the shape of target
+        if predicted_target.ndim == 2 and predicted_target.shape[1] == 1:
+            predicted_target = predicted_target.squeeze(1)
         return AlgStep(
-            output=predicted_reward, state=state, info=predicted_reward)
+            output=predicted_target, state=state, info=predicted_target)
 
     def calc_loss(self, target, predicted, mask=None):
         """Calculate the loss between ``target`` and ``predicted``.
@@ -114,7 +122,6 @@ class SimpleDecoder(Algorithm):
         Returns:
             LossInfo
         """
-        target = target.view_as(predicted)
         loss = self._loss(predicted, target)
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -289,10 +296,9 @@ class PredictiveRepresentationLearner(Algorithm):
 
         assert num_unroll_steps > 0
 
-        sim_latents = self._multi_step_latent_rollout(
+        sim_latent = self._multi_step_latent_rollout(
             init_latent, num_unroll_steps, actions, state)
 
-        sim_latent = torch.cat(sim_latents, dim=0)
         prediction = self._decoder.predict_step(sim_latent).info
         return prediction
 
@@ -306,15 +312,14 @@ class PredictiveRepresentationLearner(Algorithm):
             actions (Tensor): [B, unroll_steps, action_dim]
             state:
         Returns:
-            sim_latent (list[Tensor]): list of latent representation of length
-                unroll_steps + 1, including the input initial latent
-                represenataion
+            sim_latent (Tensor): a tensor of the shape [(unroll_steps+1)*B, ...],
+                obtained by concataning all the latent states during rollout,
+                including the input initial latent represenataion
         """
 
         sim_latents = [init_latent]
 
         if num_unroll_steps > 0:
-
             if self._latent_to_dstate_fc is not None:
                 dstate = self._latent_to_dstate_fc(init_latent)
                 dstate = dstate.split(self._dynamics_state_dims, dim=1)
@@ -327,7 +332,8 @@ class PredictiveRepresentationLearner(Algorithm):
             sim_latent, dstate = self._dynamics_net(actions[:, i, ...], dstate)
             sim_latents.append(sim_latent)
 
-        return sim_latents
+        sim_latent = torch.cat(sim_latents, dim=0)
+        return sim_latent
 
     def train_step(self, exp: TimeStep, state):
         # [B, num_unroll_steps + 1]
@@ -335,10 +341,8 @@ class PredictiveRepresentationLearner(Algorithm):
         batch_size = exp.step_type.shape[0]
         latent, state = self._encoding_net(exp.observation, state)
 
-        sim_latents = self._multi_step_latent_rollout(
+        sim_latent = self._multi_step_latent_rollout(
             latent, self._num_unroll_steps, info.action, state)
-
-        sim_latent = torch.cat(sim_latents, dim=0)
 
         # [num_unroll_steps + 1)*B, ...]
         train_info = self._decoder.train_step(sim_latent).info
@@ -397,7 +401,7 @@ class PredictiveRepresentationLearner(Algorithm):
             # [B, T, unroll_steps+1]
             positions = torch.min(positions, episode_end_positions)
 
-            # [B, T, unroll_steps+1]
+            # [B, T, unroll_steps+1, ...]
             target = replay_buffer.get_field(self._target_fields, env_ids,
                                              positions)
 
