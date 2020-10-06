@@ -414,6 +414,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             assert normalize_goals
 
     @property
+    def num_subgoals(self):
+        """Number of subgoals to plan.
+        """
+        return self._num_subgoals
+
+    @property
     def control_aux(self):
         """Whether auxiliary dimensions are also planned.
         """

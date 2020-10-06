@@ -24,7 +24,8 @@ import gin
 
 import alf
 from alf.algorithms.algorithm import Algorithm
-from alf.data_structures import AlgStep, Experience, make_experience, TimeStep
+from alf.data_structures import AlgStep, Experience, make_experience, \
+    StepType, TimeStep
 from alf.utils import common, dist_utils, summary_utils, math_ops
 from .config import TrainerConfig
 
@@ -464,6 +465,26 @@ class RLAlgorithm(Algorithm):
                 observation_with_desired["desired_goal"] = (
                     transformed_time_step.observation["desired_goal"])
                 exp = exp._replace(observation=observation_with_desired)
+            if (isinstance(transformed_time_step.observation, dict)
+                    and "aux_desired" in transformed_time_step.observation
+                    and hasattr(self, "_goal_generator")
+                    and hasattr(self._goal_generator, "num_subgoals")
+                    and self._goal_generator.num_subgoals > 0):
+                advance_subgoal = (
+                    (policy_state.goal_generator.steps_since_last_goal == 1) &
+                    (policy_state.goal_generator.subgoals_index > 0) &
+                    (policy_state.goal_generator.subgoals_index <=
+                     self._goal_generator.num_subgoals)).cpu()
+                step_type = torch.where(
+                    advance_subgoal,
+                    torch.as_tensor(StepType.LAST, device="cpu"),
+                    exp.step_type.cpu())
+                exp = exp._replace(step_type=step_type)
+                discount = torch.where(
+                    advance_subgoal,
+                    torch.zeros((), dtype=torch.float32, device="cpu"),
+                    exp.discount)
+                exp = exp._replace(discount=discount)
 
             t0 = time.time()
             self.observe_for_replay(exp)

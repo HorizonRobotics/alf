@@ -728,10 +728,10 @@ def hindsight_relabel_fn(buffer,
     # TODO: add support for batch_length > 2.
     assert batch_length == 2, shape
 
+    orig_goal = alf.nest.get_field(
+        result, "rollout_info.goal_generator.original_goal")
     if use_original_goals_from_info > 0:
         orig_goal_cond = torch.rand(batch_size) < use_original_goals_from_info
-        orig_goal = alf.nest.get_field(
-            result, "rollout_info.goal_generator.original_goal")
         result_goals = alf.nest.get_field(result, desired_goal_field)
         result_goals = result_goals.clone()
         result_goals[orig_goal_cond][:, :, :action_dim] = orig_goal[
@@ -788,6 +788,22 @@ def hindsight_relabel_fn(buffer,
         _result_ag, _relabeled_goal = result_ag, relabeled_goal
     relabeled_rewards = reward_fn(
         _result_ag, _relabeled_goal, device=buffer._device)
+
+    if control_aux:  # and num_subgoals > 0 for efficiency improvement
+        # If subgoal (not final goal) is reached, set discount to 0, StepType to ``LAST``.
+        reward_achieved = relabeled_rewards >= 0
+        goal_original = torch.min(
+            torch.isclose(_relabeled_goal, orig_goal), dim=2) == 1
+        subgoal_achieved = reward_achieved & ~goal_original
+        # don't overwrite first step in batch_length.
+        subgoal_achieved[:, 0] = torch.tensor(False)
+        discount = torch.where(subgoal_achieved, torch.tensor(0.),
+                               result.discount)
+        step_type = torch.where(subgoal_achieved, torch.tensor(
+            ds.StepType.LAST), result.step_type)
+        result = result._replace(discount=discount)
+        result = result._replace(step_type=step_type)
+
     if use_original_goals_from_info > 0:
         rollout_cond = ~orig_goal_cond & non_her_cond
         orig_reward_cond = orig_goal_cond & non_her_cond
