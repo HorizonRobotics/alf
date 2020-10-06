@@ -96,12 +96,12 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
 
         """
         train_state_spec = MbrlState(
-            dynamics=dynamics_module.train_state_spec \
-                    if dynamics_module is not None else (),
-            reward=reward_module.train_state_spec \
-                    if reward_module is not None else (),
+            dynamics=dynamics_module.train_state_spec
+            if dynamics_module is not None else (),
+            reward=reward_module.train_state_spec
+            if reward_module is not None else (),
             planner=planner_module.train_state_spec
-                if planner_module is not None else ())
+            if planner_module is not None else ())
 
         super().__init__(
             feature_spec,
@@ -308,7 +308,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         predictive representation module should have a function
         ``predict_multi_step`` for performing multi-step imagined rollout.
         Currently it is assumed that the training of the latent representation
-        module is outside of the ``LatentMbrlAlgorithm``, althrough the
+        module is outside of the ``LatentMbrlAlgorithm``, although the
         ``LatentMbrlAlgorithm`` can also contribute to its training by using
         the latent representation in loss calculation.
 
@@ -385,10 +385,12 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         pred_rewards = self._latent_pred_rep_module.predict_multi_step(
             init_rep, actions)
 
-        pred_rewards = pred_rewards.view(num_unroll_steps, batch_size,
+        pred_rewards = pred_rewards.view(num_unroll_steps + 1, batch_size,
                                          population_size, -1)
         # [B, population, unroll_steps, reward_dim]
-        pred_rewards = pred_rewards.permute(1, 2, 0, 3)
+        # here we remove the predicted reward of the current step,
+        # which is irrelevant to the optimization of future actions
+        pred_rewards = pred_rewards[1:].permute(1, 2, 0, 3)
 
         # currently assume the first dimension is the overall reward
         # [B, population, unroll_steps]
@@ -405,7 +407,9 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         return AlgStep(output=action, state=state, info=MbrlInfo())
 
     def train_step(self, exp: Experience, state: MbrlState):
+        # overwrite the behavior of base class ``train_step``
         return AlgStep(output=(), state=state, info=MbrlInfo())
 
     def calc_loss(self, experience, training_info: MbrlInfo):
+        # overwrite the behavior of base class ``calc_loss``
         return LossInfo()

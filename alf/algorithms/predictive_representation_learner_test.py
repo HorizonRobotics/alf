@@ -209,7 +209,7 @@ class PredictiveRepresentationLearnerTest(alf.test.TestCase):
                 [[10., 11., 12., 12., 12.]],
                 [[11., 12., 12., 12., 12.]],
                 [[12., 12., 12., 12., 12.]],
-                [[13., 13., 13., 13., 13.]]]).unsqueeze(-1))
+                [[13., 13., 13., 13., 13.]]]))
         # yapf: enable
 
         alf.nest.map_structure(lambda x, y: self.assertEqual(x, y),

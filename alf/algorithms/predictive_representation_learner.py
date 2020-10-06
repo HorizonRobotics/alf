@@ -98,6 +98,11 @@ class SimpleDecoder(Algorithm):
         return AlgStep(
             output=predicted_reward, state=state, info=predicted_reward)
 
+    def predict_step(self, repr, state=()):
+        predicted_reward = self._decoder_net(repr)[0]
+        return AlgStep(
+            output=predicted_reward, state=state, info=predicted_reward)
+
     def calc_loss(self, target, predicted, mask=None):
         """Calculate the loss between ``target`` and ``predicted``.
 
@@ -109,7 +114,7 @@ class SimpleDecoder(Algorithm):
         Returns:
             LossInfo
         """
-        loss = self._loss(predicted, target)
+        loss = self._loss(predicted.view_as(target), target)
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
 
@@ -266,56 +271,51 @@ class PredictiveRepresentationLearner(Algorithm):
         latent, state = self._encoding_net(time_step.observation, state)
         return AlgStep(output=latent, state=state)
 
-    def predict_multi_step(self, init_rep, actions, state=None):
+    def predict_multi_step(self, init_latent, actions, state=None):
         """Perform multi-step predictions based on the initial latent
             representation and actions sequences.
         Args:
-            init_rep (Tensor): the latent representation for the initial
+            init_latent (Tensor): the latent representation for the initial
                 step of the prediction
             actions (Tensor): [B, unroll_steps, action_dim]
             state:
         Returns:
-            prediction (Tensor): predicted quantity of shape
-                [B, unroll_steps, d], where d is the dimension of
-                the predicted quantity
+            prediction (Tensor): predicted target of shape
+                [B, unroll_steps + 1, d], where d is the dimension of
+                the predicted target.
         """
         num_unroll_steps = actions.shape[1]
 
         assert num_unroll_steps > 0
 
-        latent = init_rep
-
-        # do not store latent of the current time step, only predict future
-        sim_latents = []
-
-        if self._latent_to_dstate_fc is not None:
-            dstate = self._latent_to_dstate_fc(latent)
-            dstate = dstate.split(self._dynamics_state_dims, dim=1)
-            dstate = alf.nest.pack_sequence_as(self._dynamics_net.state_spec,
-                                               dstate)
-        else:
-            dstate = state
-
-        for i in range(num_unroll_steps):
-            sim_latent, dstate = self._dynamics_net(actions[:, i, ...], dstate)
-            sim_latents.append(sim_latent)
+        sim_latents = self._multi_step_latent_rollout(
+            init_latent, num_unroll_steps, actions, state)
 
         sim_latent = torch.cat(sim_latents, dim=0)
-        prediction = self._decoder.train_step(sim_latent).info
+        prediction = self._decoder.predict_step(sim_latent).info
         return prediction
 
-    def train_step(self, exp: TimeStep, state):
-        # [B, num_unroll_steps + 1]
-        info = exp.rollout_info
-        batch_size = exp.step_type.shape[0]
-        latent, state = self._encoding_net(exp.observation, state)
+    def _multi_step_latent_rollout(self, init_latent, num_unroll_steps,
+                                   actions, state):
+        """Perform multi-step latent rollout based on the initial latent
+            representation and action sequences.
+        Args:
+            init_latent (Tensor): the latent representation for the initial
+                step of the prediction
+            actions (Tensor): [B, unroll_steps, action_dim]
+            state:
+        Returns:
+            sim_latent (list[Tensor]): list of latent representation of length
+                unroll_steps + 1, including the input initial latent
+                represenataion
+        """
 
-        sim_latents = [latent]
+        sim_latents = [init_latent]
 
-        if self._num_unroll_steps > 0:
+        if num_unroll_steps > 0:
 
             if self._latent_to_dstate_fc is not None:
-                dstate = self._latent_to_dstate_fc(latent)
+                dstate = self._latent_to_dstate_fc(init_latent)
                 dstate = dstate.split(self._dynamics_state_dims, dim=1)
                 dstate = alf.nest.pack_sequence_as(
                     self._dynamics_net.state_spec, dstate)
@@ -323,9 +323,19 @@ class PredictiveRepresentationLearner(Algorithm):
                 dstate = state
 
         for i in range(self._num_unroll_steps):
-            sim_latent, dstate = self._dynamics_net(info.action[:, i, ...],
-                                                    dstate)
+            sim_latent, dstate = self._dynamics_net(actions[:, i, ...], dstate)
             sim_latents.append(sim_latent)
+
+        return sim_latents
+
+    def train_step(self, exp: TimeStep, state):
+        # [B, num_unroll_steps + 1]
+        info = exp.rollout_info
+        batch_size = exp.step_type.shape[0]
+        latent, state = self._encoding_net(exp.observation, state)
+
+        sim_latents = self._multi_step_latent_rollout(
+            latent, self._num_unroll_steps, info.action, state)
 
         sim_latent = torch.cat(sim_latents, dim=0)
 
@@ -386,13 +396,9 @@ class PredictiveRepresentationLearner(Algorithm):
             # [B, T, unroll_steps+1]
             positions = torch.min(positions, episode_end_positions)
 
-            # [B, T, unroll_steps+1, ...], for the scalar case, the shape is
-            # [B, T, unroll_steps+1, 1]
+            # [B, T, unroll_steps+1]
             target = replay_buffer.get_field(self._target_fields, env_ids,
                                              positions)
-            # scalar target case
-            if target.dim() == 3:
-                target = target.unsqueeze(3)
 
             # [B, T, unroll_steps+1]
             action = replay_buffer.get_field('action', env_ids, positions)
