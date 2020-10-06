@@ -597,6 +597,7 @@ class RewardNormalizer(SimpleDataTransformer):
             normalizer = ScalarAdaptiveNormalizer(auto_update=False)
         self._normalizer = normalizer
         self._clip_value = clip_value
+        self._update_mode = update_mode
 
     def _transform(self, timestep_or_exp):
         if ((self._update_mode == "replay" and common.is_replay())
