@@ -21,6 +21,7 @@ from alf.data_structures import LossInfo, StepType
 from alf.utils.losses import element_wise_squared_loss
 from alf.utils import tensor_utils, value_ops
 from alf.utils.summary_utils import safe_mean_hist_summary
+from alf.utils.normalizers import AdaptiveNormalizer
 
 
 @gin.configurable
@@ -29,6 +30,7 @@ class TDLoss(nn.Module):
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
+                 normalize_target=False,
                  debug_summaries=False,
                  name="TDLoss"):
         r"""Create a TDLoss object.
@@ -59,6 +61,9 @@ class TDLoss(nn.Module):
                 loss. This function takes as input the target and the estimated
                 Q values and returns the loss for each element of the batch.
             td_lambda (float): Lambda parameter for TD-lambda computation.
+            normalize_target (bool): whether to normalize target.
+                Note that the effect of this is to change the loss. The critic
+                value itself is not normalized.
             debug_summaries (bool): True if debug summaries should be created.
             name (str): The name of this loss.
         """
@@ -69,6 +74,8 @@ class TDLoss(nn.Module):
         self._td_error_loss_fn = td_error_loss_fn
         self._lambda = td_lambda
         self._debug_summaries = debug_summaries
+        self._normalize_target = normalize_target
+        self._target_normalizer = None
 
     def forward(self, experience, value, target_value):
         """Cacluate the loss.
@@ -109,6 +116,17 @@ class TDLoss(nn.Module):
             returns = advantages + target_value[:-1]
 
         value = value[:-1]
+        if self._normalize_target:
+            if self._target_normalizer is None:
+                self._target_normalizer = AdaptiveNormalizer(
+                    alf.TensorSpec(value.shape[2:]),
+                    auto_update=False,
+                    debug_summaries=self._debug_summaries,
+                    name=self._name + ".target_normalizer")
+
+            self._target_normalizer.update(returns)
+            returns = self._target_normalizer.normalize(returns)
+            value = self._target_normalizer.normalize(value)
 
         if self._debug_summaries and alf.summary.should_record_summaries():
             mask = experience.step_type[:-1] != StepType.LAST
