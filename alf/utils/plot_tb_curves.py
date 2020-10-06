@@ -16,6 +16,8 @@ from tensorboard.backend.event_processing.event_accumulator import EventAccumula
 import numpy as np
 import os
 import glob
+from scipy.interpolate import interp1d
+from scipy.signal import savgol_filter
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -26,7 +28,7 @@ from alf.data_structures import namedtuple
 HOME = os.getenv("HOME")
 
 MeanCurve = namedtuple(
-    "MeanCurve", ['y', 'min_y', 'max_y', 'name'], default_value=())
+    "MeanCurve", ['x', 'y', 'min_y', 'max_y', 'name'], default_value=())
 
 
 class MeanCurveReader(object):
@@ -36,7 +38,7 @@ class MeanCurveReader(object):
         'compressedHistograms': 10,
         'images': 0,
         'scalars':
-            100,  # sampled points will even distribute over the training time
+            100,  # sampled points will evenly distribute over the training time
         'histograms': 1
     }
 
@@ -53,7 +55,9 @@ class MeanCurveReader(object):
         Args:
             event_file (str|list[str]): a string or a list of strings where
                 each should point to a valid TB dir, e.g., ending with
-                "eval/" or "train/".
+                "eval/" or "train/". The curves of these files will be averaged.
+                It's the user's responsibility to ensure that it's meaningful to
+                group these event files and show their mean and variance.
             name (str): name of the mean curve.
             smoothing (int): if None, no smoothing is applied; otherwise this
                 is the window width of a Savitzky-Golay filter
@@ -71,69 +75,86 @@ class MeanCurveReader(object):
         if max_n_scalars is not None:
             self._SIZE_GUIDANCE['scalars'] = max_n_scalars
 
-        curves = []
+        x, ys = None, []
         for ef in event_file:
             event_acc = EventAccumulator(ef, self._SIZE_GUIDANCE)
             event_acc.Reload()
-            # show all tags in the log file
-            print("Event file {} has scalar tags: {}".format(
-                ef,
-                event_acc.Tags()['scalars']))
-
             # 'scalar_events' is a list of ScalarEvent(wall_time, step, value),
             # with a maximal length specified by _SIZE_GUIDANCE
             scalar_events = event_acc.Scalars(self._get_metric_name())
-            values = [se.value for se in scalar_events]
-            curve = self._interpolate_and_smooth_if_necessary(
-                values, smoothing)
-            curves.append(curve)
+            steps, values = zip(*[(se.step, se.value) for se in scalar_events])
+            if x is None:
+                x = np.array(steps)
+            else:
+                assert len(steps) == len(x), (
+                    "All curves should have the same number of values!")
+            new_x, y = self._interpolate_and_smooth_if_necessary(
+                steps, values, x[0], x[-1], smoothing)
+            ys.append(y)
 
-        y = np.array(list(map(np.mean, zip(*curves))))
-        if len(curves) == 1:
-            self._mean_curve = MeanCurve(y=y, min_y=y, max_y=y, name=name)
+        x = new_x
+        y = np.array(list(map(np.mean, zip(*ys))))
+        if len(ys) == 1:
+            self._mean_curve = MeanCurve(x=x, y=y, min_y=y, max_y=y, name=name)
         else:
             # compute mean and variance
             if variance_mode == "std":
-                std = np.array(list(map(np.std, zip(*curves))))
+                std = np.array(list(map(np.std, zip(*ys))))
                 min_y, max_y = y - std, y + std
             elif variance_mode == "minmax":
-                min_y = np.array(list(map(np.min, zip(*curves))))
-                max_y = np.array(list(map(np.max, zip(*curves))))
+                min_y = np.array(list(map(np.min, zip(*ys))))
+                max_y = np.array(list(map(np.max, zip(*ys))))
             else:
                 raise ValueError("Invalid variance mode: %s" % variance_mode)
             self._mean_curve = MeanCurve(
-                y=y, min_y=min_y, max_y=max_y, name=name)
+                x=x, y=y, min_y=min_y, max_y=max_y, name=name)
 
     def __call__(self):
         return self._mean_curve
 
-    def _interpolate_and_smooth_if_necessary(self, curve, smoothing=None):
-        """First linearly interpolate the curve if the number of scalars is less
-        than the number in _SIZE_GUIDANCE. Second apply a smoothing to the curve
-        if a smoothing factor is specified.
+    def _interpolate_and_smooth_if_necessary(self,
+                                             steps,
+                                             values,
+                                             min_step,
+                                             max_step,
+                                             smoothing=None,
+                                             kind="nearest"):
+        """First interpolate the ``(steps, values)`` pair to get a
+        function. Then for the specified steps ``_SIZE_GUIDANCE["scalars"]``,
+        compute the values using the fitted function. Lastly apply a smoothing
+        to the curve if a smoothing factor is specified.
+
+        The reason why we have the first two steps is that for some metrics,
+        the x steps are not always the same for multiple random runs (e.g.,
+        environment steps). So we need to first adjust x steps according to
+        some reference minmax steps.
 
         Args:
-            curve (list): a scalar curve
+            steps (list[int]): x values
+            values (list[float]): y values
+            min_step (float): min_x after interpolation
+            max_step (float): max_x after interpolation
             smoothing (int): if None, no smoothing is applied; otherwise this
                 is the window width of a Savitzky-Golay filter
+            kind (str): Interpolation type. Common options: "linear", "nearest",
+                "cubic", "quadratic", etc. For a complete list, see
+                ``scipy.interpolate.interp1d()``.
 
         Returns:
-            list: a new curve
+            list: a list of values
         """
+        # Also allow extrapolation if needed
+        func = interp1d(steps, values, kind=kind, fill_value='extrapolate')
+
         n_scalars = self._SIZE_GUIDANCE["scalars"]
-        if len(curve) < n_scalars:
-            from scipy.interpolate import interp1d
-            x = np.arange(len(curve))
-            func = interp1d(x, np.array(curve))
-            delta_x = (x[-1] - x[0]) / (n_scalars - 1)
-            new_x = np.arange(n_scalars) * delta_x + x[0]
-            curve = func(new_x)
+        delta_x = (max_step - min_step) / (n_scalars - 1)
+        new_x = np.arange(n_scalars) * delta_x + min_step
+        new_values = func(new_x)
 
         if smoothing is not None:
-            from scipy.signal import savgol_filter
-            curve = savgol_filter(curve, smoothing, polyorder=1)
+            new_values = savgol_filter(new_values, smoothing, polyorder=1)
 
-        return curve
+        return new_x, new_values
 
 
 class EnvironmentStepsReturnReader(MeanCurveReader):
@@ -162,14 +183,19 @@ class CurvesPlotter(object):
                  x_range=None,
                  x_label=None,
                  y_label=None,
+                 x_scaled_and_aligned=True,
                  title=None):
         """
         Args:
             mean_curves (MeanCurve|list[MeanCurve]):
             x_range (tuple[float]): a tuple of (min_x, max_x) for showing on
-                the figure. If None, then (0, 1) will be used.
+                the figure. If None, then (0, 1) will be used. This argument is
+                only used when ``x_scaled_and_aligned==True``.
             x_label (str): shown besides x-axis
             y_label (str): shown besides y-axis
+            x_scaled_and_aligned (bool): If True, the x axes of all MeanCurves
+                will be scaled and aligned to ``x_range``; otherwise, the x axes
+                will be plot according to ``x`` of each MeanCurve.
             title (str): title of the figure
         """
         self._fig, ax = plt.subplots(1)
@@ -177,15 +203,22 @@ class CurvesPlotter(object):
         if not isinstance(mean_curves, list):
             mean_curves = [mean_curves]
 
-        if x_range is None:
-            x_range = (0., 1.)
+        if x_scaled_and_aligned:
+            if x_range is None:
+                x_range = (0., 1.)
 
-        n_points = len(mean_curves[0].y)
-        delta_x = (x_range[-1] - x_range[0]) / (n_points - 1)
-        x = np.arange(n_points) * delta_x + x_range[0]
+            n_points = len(mean_curves[0].y)
+            # check n_points are all the same
+            for mc in mean_curves:
+                assert n_points == len(
+                    mc.y), ("All curves must have the same number of points!")
+
+            delta_x = (x_range[-1] - x_range[0]) / (n_points - 1)
+            scaled_x = np.arange(n_points) * delta_x + x_range[0]
 
         for i, c in enumerate(mean_curves):
             color = self._COLORS[i % len(self._COLORS)]
+            x = (scaled_x if x_scaled_and_aligned else c.x)
             ax.plot(x, c.y, color=color, lw=self._LINE_WIDTH, label=c.name)
             ax.fill_between(x, c.max_y, c.min_y, facecolor=color, alpha=0.3)
 
@@ -219,22 +252,28 @@ def _get_curve_path(dir):
 
 
 if __name__ == "__main__":
-    """A plotting example."""
-    event_files = glob.glob(_get_curve_path("sac_kickball_gs/*/eval"))
-    mean_curve_reader = EnvironmentStepsReturnReader(
-        event_file=event_files, name="sac_kickball", smoothing=3)
-
-    mean_curve_reader1 = EnvironmentStepsReturnReader(
-        event_file=[
-            _get_curve_path("tasac_carla/train"),
-            _get_curve_path("tasac_carla_1td/train")
-        ],
-        name="tasac_carla",
+    """Plotting examples."""
+    mean_curve_reader = EnvironmentStepsSuccessReader(
+        event_file=glob.glob(_get_curve_path("sac_kickball_gs/*/eval")),
+        name="sac_kickball",
+        smoothing=3)
+    mean_curve_reader1 = EnvironmentStepsSuccessReader(
+        event_file=glob.glob(_get_curve_path("ddpg_navigation_gs/*/eval")),
+        name="ddpg_navigation",
         smoothing=5)
 
+    # Scale and align x-axis of the two curves
     plotter = CurvesPlotter(
         [mean_curve_reader(), mean_curve_reader1()],
         x_label="Env frames",
         y_label="Average Return",
         x_range=(0, 5000000))
-    plotter.plot(output_path="/tmp/test.pdf")
+    plotter.plot(output_path="/tmp/test1.pdf")
+
+    # Plot the curves without alignment
+    plotter = CurvesPlotter(
+        [mean_curve_reader(), mean_curve_reader1()],
+        x_label="Env frames",
+        y_label="Average Return",
+        x_scaled_and_aligned=False)
+    plotter.plot(output_path="/tmp/test2.pdf")
