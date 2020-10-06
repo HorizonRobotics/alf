@@ -114,7 +114,8 @@ class SimpleDecoder(Algorithm):
         Returns:
             LossInfo
         """
-        loss = self._loss(predicted.view_as(target), target)
+        target = target.view_as(predicted)
+        loss = self._loss(predicted, target)
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
 

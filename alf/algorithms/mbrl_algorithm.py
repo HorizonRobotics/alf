@@ -270,7 +270,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             planner=plan_step.info)
         return AlgStep(action, state, info)
 
-    def calc_loss(self, experience, training_info: MbrlInfo):
+    def calc_loss(self, experience, training_info):
         loss_dynamics = self._dynamics_module.calc_loss(training_info.dynamics)
         loss = loss_dynamics.loss
         loss = add_ignore_empty(loss, training_info.reward)
