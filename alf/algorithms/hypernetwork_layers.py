@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,9 +29,9 @@ class ParamFC(nn.Module):
                  activation=torch.relu_,
                  use_bias=True):
         """A fully connected layer that does not maintain its own weight and bias,
-        but accepts both from users. If the given parameter (weight and bias) 
+        but accepts both from users. If the given parameter (weight and bias)
         tensor has an extra batch dimension (first dimension), it performs
-        parallel FC operation. 
+        parallel FC operation.
 
         Args:
             input_size (int): input size
@@ -110,13 +110,13 @@ class ParamFC(nn.Module):
         """Forward
 
         Args:
-            inputs (torch.Tensor): with shape ``[B, D] (groups=1)`` 
+            inputs (torch.Tensor): with shape ``[B, D] (groups=1)``
                                         or ``[B, n, D] (groups=n)``
                 where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``n``: number of replicas
-                - ``D``: input dimension 
-                When the shape of inputs is ``[B, D]``, all the n linear 
+                - ``D``: input dimension
+                When the shape of inputs is ``[B, D]``, all the n linear
                 operations will take inputs as the same shared inputs.
                 When the shape of inputs is ``[B, n, D]``, each linear operator
                 will have its own input data by slicing inputs.
@@ -178,9 +178,9 @@ class ParamConv2D(nn.Module):
                  padding=0,
                  use_bias=False):
         """A 2D conv layer that does not maintain its own weight and bias,
-        but accepts both from users. If the given parameter (weight and bias) 
+        but accepts both from users. If the given parameter (weight and bias)
         tensor has an extra batch dimension (first dimension), it performs
-        parallel FC operation. 
+        parallel FC operation.
 
         Args:
             in_channels (int): channels of the input image
@@ -273,7 +273,7 @@ class ParamConv2D(nn.Module):
         """Forward
 
         Args:
-            img (torch.Tensor): with shape ``[B, C, H, W] (groups=1)`` 
+            img (torch.Tensor): with shape ``[B, C, H, W] (groups=1)``
                                         or ``[B, n, C, H, W] (groups=n)``
                 where the meaning of the symbols are:
                 - ``B``: batch size

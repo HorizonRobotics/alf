@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -55,15 +55,15 @@ def regression_loss(output, target):
 
 @gin.configurable
 class HyperNetwork(Algorithm):
-    """HyperNetwork 
+    """HyperNetwork
 
-    HyperNetwork algorithm maintains a generator that generates a set of 
-    parameters for a predefined neural network from a random noise input. 
+    HyperNetwork algorithm maintains a generator that generates a set of
+    parameters for a predefined neural network from a random noise input.
     It is based on the following work:
 
     https://github.com/neale/HyperGAN
 
-    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, 
+    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse,
     Performant Neural Networks." International Conference on Machine Learning. 2019.
 
     Major differences versus the original paper are:
@@ -72,7 +72,7 @@ class HyperNetwork(Algorithm):
 
     * Remove the mixer and the discriminator.
 
-    * The generator is trained with Amortized particle-based variational 
+    * The generator is trained with Amortized particle-based variational
       inference (ParVI) methods, please refer to generator.py for details.
 
     """
@@ -106,18 +106,18 @@ class HyperNetwork(Algorithm):
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where 
+                takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
             activation (nn.functional): activation used for all the layers but
                 the last layer.
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end. 
-                Note that if ``last_activation`` is specified, 
+                it appends an additional layer at the very end.
+                Note that if ``last_activation`` is specified,
                 ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
@@ -232,13 +232,13 @@ class HyperNetwork(Algorithm):
         return self._num_particles
 
     def sample_parameters(self, noise=None, num_particles=None, training=True):
-        """Sample parameters for an ensemble of networks. 
-        
+        """Sample parameters for an ensemble of networks.
+
         Args:
             noise (Tensor): input noise to self._generator. Default is None.
             num_particles (int): number of sampled particles. Default is None.
                 If both noise and num_particles are None, num_particles
-                provided to the constructor will be used as batch_size for 
+                provided to the constructor will be used as batch_size for
                 self._generator.
             training (bool): whether or not training self._generator
 
@@ -273,7 +273,7 @@ class HyperNetwork(Algorithm):
 
     def train_iter(self, num_particles=None, state=None):
         """Perform one epoch (iteration) of training.
-        
+
         Args:
             num_particles (int): number of sampled particles. Default is None.
             state: not used
@@ -317,7 +317,7 @@ class HyperNetwork(Algorithm):
         """Perform one batch of training computation.
 
         Args:
-            inputs (nested Tensor): input training data. 
+            inputs (nested Tensor): input training data.
             num_particles (int): number of sampled particles. Default is None,
                 in which case self._num_particles will be used for batch_size
                 of self._generator.
@@ -341,7 +341,7 @@ class HyperNetwork(Algorithm):
             state=())
 
     def evaluate(self, num_particles=None):
-        """Evaluate on a randomly drawn ensemble. 
+        """Evaluate on a randomly drawn ensemble.
 
         Args:
             num_particles (int): number of sampled particles. Default is None.
