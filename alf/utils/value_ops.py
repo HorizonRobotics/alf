@@ -255,3 +255,33 @@ def generalized_advantage_estimation(rewards,
         advs = advs.transpose(0, 1)
 
     return advs.detach()
+
+####### add for the retrace method
+def generalized_advantage_estimation_retrace(importance_ratio, discounts, rewards, td_lambda, time_major, values, target_value,step_types):
+    #importance_ratio = torch.min(importance_ratio, torch.tensor(1.))
+    if not time_major:
+        discounts = discounts.transpose(0, 1)
+        rewards = rewards.transpose(0, 1)
+        values = values.transpose(0, 1)
+        step_types = step_types.transpose(0, 1)
+        importance_ratio = importance_ratio.transpose(0,1)
+        target_value = target_value.transpose(0,1)
+
+    assert values.shape[0] >= 2, ("The sequence length needs to be "
+                                  "at least 2. Got {s}".format(
+                                      s=values.shape[0]))
+    advs = torch.zeros_like(values)
+    is_lasts = (step_types == StepType.LAST).to(dtype=torch.float32)
+    delta = (rewards[1:] + discounts[1:] * target_value[1:] - values[:-1])
+
+           
+    weighted_discounts = discounts[1:] * td_lambda * importance_ratio
+    with torch.no_grad():
+        for t in reversed(range(rewards.shape[0] - 1)):
+            advs[t] = (1 - is_lasts[t]) * \
+                      (delta[t] + weighted_discounts[t] * advs[t + 1])
+        advs = advs[:-1]
+    if not time_major:
+        advs = advs.transpose(0, 1)
+
+    return advs.detach()

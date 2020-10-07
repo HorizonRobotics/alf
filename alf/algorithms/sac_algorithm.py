@@ -757,7 +757,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
             critic_losses.append(
                 l(experience=experience,
                   value=critic_info.critics[:, :, i, ...],
-                  target_value=critic_info.target_critic).loss)
+                  target_value=critic_info.target_critic,
+                  train_info = train_info).loss)
 
         critic_loss = math_ops.add_n(critic_losses)
 
