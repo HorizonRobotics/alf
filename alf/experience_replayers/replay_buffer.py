@@ -31,7 +31,7 @@ from alf.utils import checkpoint_utils
 from .segment_tree import SumSegmentTree, MaxSegmentTree, MinSegmentTree
 
 BatchInfo = namedtuple(
-    "BatchInfo", ["env_ids", "positions", "importance_weights"],
+    "BatchInfo", ["env_ids", "positions", "importance_weights", "her"],
     default_value=())
 
 
@@ -728,8 +728,9 @@ def hindsight_relabel_fn(buffer,
     # TODO: add support for batch_length > 2.
     assert batch_length == 2, shape
 
-    orig_goal = alf.nest.get_field(
-        result, "rollout_info.goal_generator.original_goal")
+    if control_aux or use_original_goals_from_info > 0:
+        orig_goal = alf.nest.get_field(
+            result, "rollout_info.goal_generator.original_goal")
     if use_original_goals_from_info > 0:
         orig_goal_cond = torch.rand(batch_size) < use_original_goals_from_info
         result_goals = alf.nest.get_field(result, desired_goal_field)
@@ -748,6 +749,7 @@ def hindsight_relabel_fn(buffer,
 
     # relabel only these sampled indices
     her_cond = torch.rand(batch_size) < her_proportion
+    info = info._replace(her=her_cond)
     non_her_cond = ~her_cond
     (her_indices, ) = torch.where(her_cond)
 
@@ -758,7 +760,7 @@ def hindsight_relabel_fn(buffer,
     if alf.summary.should_record_summaries():
         alf.summary.scalar(
             "replayer/" + buffer._name + ".mean_steps_to_episode_end",
-            torch.mean(dist.type(torch.float32)))
+            torch.mean(dist.float()))
 
     # get random future state
     future_idx = buffer.circular(last_step_pos + (torch.rand(*dist.shape) *
@@ -810,23 +812,33 @@ def hindsight_relabel_fn(buffer,
     else:
         rollout_cond = non_her_cond
         orig_reward_cond = non_her_cond
-    if alf.summary.should_record_summaries():
-        res_reward = result.reward
-        if result.reward.ndim > 2:
-            res_reward = alf.math.sum_to_leftmost(res_reward, dim=2)
+
+    def _summary(res_reward, i=None):
+        if i is not None:
+            i_str = "/" + str(i)
+        else:
+            i_str = ""
         alf.summary.scalar(
-            "replayer/" + buffer._name + ".reward_mean_her_before_relabel",
-            torch.mean(res_reward[her_indices][1:]))
+            "replayer/" + buffer._name + ".reward_mean_her_before_relabel" +
+            i_str, torch.mean(res_reward[her_indices][:, 1:]))
+
+    if alf.summary.should_record_summaries():
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_her_after_relabel",
-            torch.mean(relabeled_rewards[her_indices][1:]))
+            torch.mean(relabeled_rewards[her_indices][:, 1:]))
         if use_original_goals_from_info > 0:
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".reward_mean_orig_nonher",
-                torch.mean(relabeled_rewards[orig_reward_cond][1:]))
+                torch.mean(relabeled_rewards[orig_reward_cond][:, 1:]))
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
-            torch.mean(relabeled_rewards[rollout_cond][1:]))
+            torch.mean(relabeled_rewards[rollout_cond][:, 1:]))
+        res_reward = result.reward
+        if res_reward.ndim > 2:
+            for i in range(res_reward.shape[2]):
+                _summary(res_reward[:, :, i], i)
+        else:
+            _summary(res_reward)
 
     # check reward function is the same as used by the environment.
     goal_rewards = result.reward

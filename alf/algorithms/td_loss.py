@@ -133,6 +133,19 @@ class TDLoss(nn.Module):
                         suffix = '/' + str(i)
                         _summarize(value[..., i], returns[..., i], td[..., i],
                                    suffix)
+                        if experience.batch_info.her != ():
+                            her_cond = experience.batch_info.her.unsqueeze(0)
+                            alf.summary.scalar("her_rate" + suffix,
+                                               torch.mean(her_cond.float()))
+                            non_her = ~her_cond
+                            _summarize(value[..., i][her_cond],
+                                       returns[..., i][her_cond],
+                                       td[..., i][her_cond], suffix + "/her",
+                                       mask[her_cond])
+                            _summarize(value[..., i][non_her],
+                                       returns[..., i][non_her],
+                                       td[..., i][non_her], suffix + "/nonher",
+                                       mask[non_her])
                         observation = experience.observation
                         if (isinstance(observation, dict)
                                 and "aux_desired" in observation):
@@ -142,9 +155,9 @@ class TDLoss(nn.Module):
                                 torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
                                 dim=2) < 0.5
                             aux_realistic &= torch.abs(
-                                observation["desired_goal"][0, :, 0]) < 5
+                                observation["desired_goal"][0, :, 0]) < 5.7
                             aux_realistic &= torch.abs(
-                                observation["desired_goal"][0, :, 1]) < 5
+                                observation["desired_goal"][0, :, 1]) < 5.7
                             real_rate = torch.mean(aux_realistic.float())
                             alf.summary.scalar("realistic_rate" + suffix,
                                                real_rate)
@@ -155,11 +168,18 @@ class TDLoss(nn.Module):
                                            suffix + "/real",
                                            mask[aux_realistic])
                             if real_rate < 1:
-                                _summarize(value[..., i][~aux_realistic],
-                                           returns[..., i][~aux_realistic],
-                                           td[..., i][~aux_realistic],
-                                           suffix + "/unreal",
-                                           mask[~aux_realistic])
+                                non_real = ~aux_realistic
+                                _summarize(value[..., i][non_real],
+                                           returns[..., i][non_real],
+                                           td[..., i][non_real],
+                                           suffix + "/unreal", mask[non_real])
+                                if experience.batch_info.her != ():
+                                    nr_nonher = non_real & non_her
+                                    _summarize(value[..., i][nr_nonher],
+                                               returns[..., i][nr_nonher],
+                                               td[..., i][nr_nonher],
+                                               suffix + "/unreal-nonher",
+                                               mask[nr_nonher])
 
         loss = self._td_error_loss_fn(returns.detach(), value)
 
