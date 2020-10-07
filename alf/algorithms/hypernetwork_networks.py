@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -42,7 +42,7 @@ class ParamConvNet(Network):
             input_channels (int): number of channels in the input image
             input_size (int or tuple): the input image size (height, width)
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             same_padding (bool): similar to TF's conv2d ``same`` padding mode. If
@@ -143,9 +143,9 @@ class ParamNetwork(Network):
                  last_layer_param=None,
                  last_activation=None,
                  name="ParamNetwork"):
-        """A network with Fc and conv2D layers that does not maintain its own 
-        network parameters, but accepts them from users. If the given parameter 
-        tensor has an extra batch dimension (first dimension), it performs 
+        """A network with Fc and conv2D layers that does not maintain its own
+        network parameters, but accepts them from users. If the given parameter
+        tensor has an extra batch dimension (first dimension), it performs
         parallel operations.
 
         Args:
@@ -153,17 +153,17 @@ class ParamNetwork(Network):
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
-                tuple takes a format 
+                tuple takes a format
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
                 where ``padding`` and ``pooling_kernel`` are optional.
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
-                takes a format ``(FC layer sizes. use_bias)``, where 
+                takes a format ``(FC layer sizes. use_bias)``, where
                 ``use_bias`` is optional.
             activation (torch.nn.functional): activation for all the layers
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
-                it appends an additional layer at the very end. 
-                Note that if ``last_activation`` is specified, 
+                it appends an additional layer at the very end.
+                Note that if ``last_activation`` is specified,
                 ``last_layer_param`` has to be specified explicitly.
             last_activation (nn.functional): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
