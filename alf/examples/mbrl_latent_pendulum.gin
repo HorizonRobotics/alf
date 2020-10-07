@@ -34,6 +34,7 @@ decoder/EncodingNetwork.fc_layer_params=%fc_layers_params
 decoder/EncodingNetwork.last_layer_size=%reward_dim
 decoder/EncodingNetwork.last_activation=@identity
 decoder/EncodingNetwork.last_kernel_initializer=torch.nn.init.zeros_
+decoder/EncodingNetwork.output_tensor_spec=@TensorSpec(())
 SimpleDecoder.decoder_net_ctor=@decoder/EncodingNetwork
 SimpleDecoder.target_field='reward'
 SimpleDecoder.summarize_each_dimension=True

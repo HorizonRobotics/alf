@@ -95,19 +95,11 @@ class SimpleDecoder(Algorithm):
 
     def train_step(self, repr, state=()):
         predicted_target = self._decoder_net(repr)[0]
-        # when the predicted target is a scalar, remove the
-        # singleton dimension to match the shape of target
-        if predicted_target.ndim == 2 and predicted_target.shape[1] == 1:
-            predicted_target = predicted_target.squeeze(1)
         return AlgStep(
             output=predicted_target, state=state, info=predicted_target)
 
     def predict_step(self, repr, state=()):
         predicted_target = self._decoder_net(repr)[0]
-        # when the predicted target is a scalar, remove the
-        # singleton dimension to match the shape of target
-        if predicted_target.ndim == 2 and predicted_target.shape[1] == 1:
-            predicted_target = predicted_target.squeeze(1)
         return AlgStep(
             output=predicted_target, state=state, info=predicted_target)
 
