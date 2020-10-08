@@ -22,8 +22,9 @@ from alf.data_structures import AlgStep, TimeStep, Experience, LossInfo, namedtu
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.nest import nest
 from alf.nest.utils import convert_device
-from alf.networks import Network, LSTMEncodingNetwork
-from alf.utils import dist_utils, spec_utils, tensor_utils
+from alf.networks import Network, EncodingNetwork, LSTMEncodingNetwork
+from alf.tensor_specs import TensorSpec
+from alf.utils import dist_utils, math_ops, spec_utils, tensor_utils
 from alf.utils.normalizers import AdaptiveNormalizer
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
 
@@ -212,15 +213,24 @@ class PredictiveRepresentationLearner(Algorithm):
                 to construct the encoding ``Network``. The network takes raw observation
                 as input and output the latent representation. encoding_net can
                 be an RNN.
-            dynamics_net_ctor (Callable): called as ``dynamics_net_ctor(action_spec)``
-                to construct the dynamics ``Network``. It must be an RNN. The
-                constructed network takes action as input and outputs the future
+            dynamics_net_ctor (Callable): It can be a constructor for a
+                Feedforward Network or an RNN. In the case of RNN,
+                it is called as ``dynamics_net_ctor(action_spec)``
+                to construct the dynamics ``Network``. The constructed network
+                takes action as input and outputs the future
                 latent representation. If the state_spec of the dynamics net is
                 exactly same as the state_spec of the encoding net, the current
-                state of the encoding net will be used as the initial state of the
-                dynamics net. Otherwise, a linear projection will be used to
-                convert the current latent represenation to the initial state for
-                the dynamics net.
+                state of the encoding net will be used as the initial state of
+                the dynamics net. Otherwise, a linear projection will be used to
+                convert the current latent represenation to the initial state
+                for the dynamics net.
+                In the case of Feedforward Network, it is called as
+                ``dynamics_net_ctor(
+                    TensorSpec((representation_dim +
+                                num_unroll_steps * action_dim, )))``.
+                The constructed network takes the current latent representation
+                concanated with the multi-step actions as input and outputs the
+                future latent representation.
             encoding_optimizer (Optimizer|None): if provided, will be used to optimize
                 the parameter for the encoding net.
             dynamics_optimizer (Optimizer|None): if provided, will be used to optimize
@@ -247,31 +257,48 @@ class PredictiveRepresentationLearner(Algorithm):
         self._output_spec = repr_spec
 
         if num_unroll_steps > 0:
-            self._dynamics_net = dynamics_net_ctor(action_spec)
-            self._dynamics_state_dims = alf.nest.map_structure(
-                lambda spec: spec.numel,
-                alf.nest.flatten(self._dynamics_net.state_spec))
-            assert sum(
-                self._dynamics_state_dims) > 0, ("dynamics_net should be RNN")
-            compatible_state = True
+            dynamics_net = dynamics_net_ctor(action_spec)
+            # TODO: add support to other types of RNNs
+            if isinstance(dynamics_net, LSTMEncodingNetwork):
+                self._recurrent_dynamics = True
+                self._dynamics_net = dynamics_net
+                self._dynamics_state_dims = alf.nest.map_structure(
+                    lambda spec: spec.numel,
+                    alf.nest.flatten(self._dynamics_net.state_spec))
+                assert sum(self._dynamics_state_dims) > 0, (
+                    "dynamics_net should be RNN")
+                compatible_state = True
 
-            try:
-                alf.nest.assert_same_structure(self._dynamics_net.state_spec,
-                                               self._encoding_net.state_spec)
-                compatible_state = all(
-                    alf.nest.flatten(
-                        alf.nest.map_structure(lambda s1, s2: s1 == s2,
-                                               self._dynamics_net.state_spec,
-                                               self._encoding_net.state_spec)))
-            except Exception:
-                compatible_state = False
+                try:
+                    alf.nest.assert_same_structure(
+                        self._dynamics_net.state_spec,
+                        self._encoding_net.state_spec)
+                    compatible_state = all(
+                        alf.nest.flatten(
+                            alf.nest.map_structure(
+                                lambda s1, s2: s1 == s2,
+                                self._dynamics_net.state_spec,
+                                self._encoding_net.state_spec)))
+                except Exception:
+                    compatible_state = False
 
-            self._latent_to_dstate_fc = None
-            modules = [self._dynamics_net]
-            if not compatible_state:
-                self._latent_to_dstate_fc = alf.layers.FC(
-                    repr_spec.numel, sum(self._dynamics_state_dims))
-                modules.append(self._latent_to_dstate_fc)
+                self._latent_to_dstate_fc = None
+                modules = [self._dynamics_net]
+                if not compatible_state:
+                    self._latent_to_dstate_fc = alf.layers.FC(
+                        repr_spec.numel, sum(self._dynamics_state_dims))
+                    modules.append(self._latent_to_dstate_fc)
+            elif isinstance(dynamics_net, EncodingNetwork):
+                self._recurrent_dynamics = False
+                self._dynamics_net = dynamics_net_ctor(
+                    TensorSpec((repr_spec.numel +
+                                num_unroll_steps * action_spec.numel, )),
+                    last_layer_size=(num_unroll_steps + 1) * repr_spec.numel,
+                    last_activation=math_ops.identity)
+                modules = [self._dynamics_net]
+            else:
+                raise NotImplementedError("The provided type of dynamics "
+                                          "network is not supported.")
 
             if dynamics_optimizer is not None:
                 self.add_optimizer(dynamics_optimizer, modules)
@@ -325,6 +352,9 @@ class PredictiveRepresentationLearner(Algorithm):
                 obtained by concataning all the latent states during rollout,
                 including the input initial latent represenataion
         """
+        if not self._recurrent_dynamics:
+            return self._multi_step_latent_rollout_feedforward(
+                init_latent, num_unroll_steps, actions, state)
 
         sim_latents = [init_latent]
 
@@ -342,6 +372,32 @@ class PredictiveRepresentationLearner(Algorithm):
             sim_latents.append(sim_latent)
 
         sim_latent = torch.cat(sim_latents, dim=0)
+
+        return sim_latent
+
+    def _multi_step_latent_rollout_feedforward(
+            self, init_latent, num_unroll_steps, actions, state):
+        """Perform multi-step latent rollout using a feedforward network
+            based on the initial latent representation and action sequences.
+        Args:
+            init_latent (Tensor): the latent representation for the initial
+                step of the prediction
+            actions (Tensor): [B, unroll_steps, action_dim]
+            state:
+        Returns:
+            sim_latent (Tensor): a tensor of the shape [(unroll_steps+1)*B, ...],
+                obtained obtained from the feedforward network.
+        """
+
+        batch_size = init_latent.shape[0]
+        inputs = torch.cat([init_latent, actions.view(batch_size, -1)], dim=1)
+
+        sim_latent, state = self._dynamics_net(inputs, state)
+
+        sim_latent = sim_latent.view(batch_size, num_unroll_steps + 1, -1)
+        sim_latent = sim_latent.transpose(0, 1).reshape(
+            (num_unroll_steps + 1) * batch_size, -1)
+
         return sim_latent
 
     def train_step(self, exp: TimeStep, state):
@@ -350,8 +406,12 @@ class PredictiveRepresentationLearner(Algorithm):
         batch_size = exp.step_type.shape[0]
         latent, state = self._encoding_net(exp.observation, state)
 
+        # info.actions is of the shape [B, unroll_steps+1, action_dim]
+        # [B, unroll_steps+1, action_dim] -> [B, unroll_steps, action_dim]
+        actions = info.action[:, 0:self._num_unroll_steps, ...]
+
         sim_latent = self._multi_step_latent_rollout(
-            latent, self._num_unroll_steps, info.action, state)
+            latent, self._num_unroll_steps, actions, state)
 
         # [num_unroll_steps + 1)*B, ...]
         train_info = self._decoder.train_step(sim_latent).info
