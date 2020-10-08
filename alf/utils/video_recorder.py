@@ -140,12 +140,17 @@ class VideoRecorder(GymVideoRecorder):
         if frames_per_sec is not None:
             self.frames_per_sec = frames_per_sec  # overwrite the base class
 
-    def capture_frame(self, pred_info=None):
+        self._frame_buffer = []
+
+    def capture_frame(self, pred_info=None, encode_frame=True):
         """Render ``self.env`` and add the resulting frame to the video. Also
         plot information in ``pred_info``.
 
         Args:
             pred_info (nested): a nest
+            encode_frame (bool): whether encode the frame into video.
+                If False, will not do encoding and save the captured frame into
+                a buffer.
         """
         if not self.functional: return
         logger.debug('Capturing video frame: path=%s', self.path)
@@ -179,13 +184,57 @@ class VideoRecorder(GymVideoRecorder):
                         "be plotted when rendering videos.")
 
             self.last_frame = frame
+            if encode_frame:
+                if self.ansi_mode:
+                    self._encode_ansi_frame(frame)
+                else:
+                    self._encode_image_frame(frame)
+            else:
+                self._frame_buffer.append(frame)
+
+            assert not self.broken, (
+                "The output file is broken! Check warning messages.")
+
+    def encode_frames_in_buffer(self):
+        # can be extended to encode frames of multiple images
+        for frame in self._frame_buffer:
             if self.ansi_mode:
                 self._encode_ansi_frame(frame)
             else:
                 self._encode_image_frame(frame)
+        # clear frame buffer after encoding all
+        self._frame_buffer = []
 
-            assert not self.broken, (
-                "The output file is broken! Check warning messages.")
+    def encode_frames_in_buffer_with_external(self, set_of_external_frames):
+        """ Encode joinly internal and external frames
+        Args:
+            set_of_external_frames (list[list]): list where each element itself
+                is a list of frames to be encoded. Each element of
+                ``set_of_external_frames`` need to be of the same length,
+                which is also the same as the length of the internal frames,
+                i.e., they are synchronized in time.
+        """
+
+        set_of_external_frames = [e for e in set_of_external_frames if e]
+        assert len(set_of_external_frames) > 0, ("set of external frames " \
+                                                "should not be empty")
+        nframes = len(set_of_external_frames[0])
+
+        assert all((len(e) == nframes for e in set_of_external_frames)), \
+                "external frames for different info should have the same length"
+        assert len(self._frame_buffer) == nframes, (
+            "external frames should "
+            "have the same length as internal frame buffer")
+        for i, xframes in enumerate(zip(*set_of_external_frames)):
+            xframe = self._stack_imgs(xframes, horizontal=True)
+            frame = self._frame_buffer[i]
+            cat_frame = self._stack_imgs([frame, xframe], horizontal=False)
+            if self.ansi_mode:
+                self._encode_ansi_frame(cat_frame)
+            else:
+                self._encode_image_frame(cat_frame)
+        # clear frame buffer after encoding all
+        self._frame_buffer = []
 
     def _plot_prob_curve(self, name, probs, xticks=None):
         if xticks is None:
@@ -314,6 +363,35 @@ class VideoRecorder(GymVideoRecorder):
         """To be implemented. Might plot dynamic value curves as a function of
         steps."""
         return
+
+    def _plot_value_curve(self,
+                          values,
+                          legends,
+                          size=6,
+                          linewidth=2,
+                          name="value_curve",
+                          xticks=None):
+        """Generate the value curve for elements in values.
+        Args:
+            values (list[np.array]): each element from the list corresponding
+                to one curve in the generated figure.
+            legends (list[np.array]): name for each element from values
+            size (int): the size of the figure
+            name (str):
+            xticks:
+        """
+
+        if xticks is None:
+            xticks = range(len(values[0]))
+        fig, ax = plt.subplots(figsize=(size, size))
+        for value in values:
+            ax.plot(xticks, value, linewidth=linewidth)
+        plt.legend(legends)
+        ax.set_title(name)
+
+        img = _get_img_from_fig(fig, dpi=216, height=300, width=300)
+        plt.close(fig)
+        return img
 
     def _plot_pred_info(self, env_frame, pred_info):
         act_dist = alf.nest.find_field(pred_info, "action_distribution")
