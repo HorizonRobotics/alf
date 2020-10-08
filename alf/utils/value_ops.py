@@ -258,7 +258,7 @@ def generalized_advantage_estimation(rewards,
 
 ####### add for the retrace method
 def generalized_advantage_estimation_retrace(importance_ratio, discounts, rewards, td_lambda, time_major, values, target_value,step_types):
-    #importance_ratio = torch.min(importance_ratio, torch.tensor(1.))
+    
     if not time_major:
         discounts = discounts.transpose(0, 1)
         rewards = rewards.transpose(0, 1)
