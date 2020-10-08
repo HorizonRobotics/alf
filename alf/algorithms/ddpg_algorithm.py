@@ -37,7 +37,9 @@ from alf.utils import losses, common, dist_utils, math_ops, spec_utils
 
 DdpgCriticState = namedtuple("DdpgCriticState",
                              ['critics', 'target_actor', 'target_critics'])
-DdpgCriticInfo = namedtuple("DdpgCriticInfo", ["q_values", "target_q_values"])
+DdpgCriticInfo = namedtuple(
+    "DdpgCriticInfo", ["q_values", "goal_values", "target_q_values"],
+    default_value=())
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
 DdpgInfo = namedtuple(
@@ -60,6 +62,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  action_spec: BoundedTensorSpec,
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
+                 goal_value_net_ctor=None,
+                 control_aux=False,
                  use_parallel_network=False,
                  reward_weights=None,
                  env=None,
@@ -90,6 +94,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 which is a tuple of ``(observation_spec, action_spec)``. The
                 constructed network will be called with
                 ``forward((observation, action), state)``.
+            goal_value_net_ctor (Callable or None): if not None, it used to construct
+                the network to predict value based on goal input only.
+            control_aux (bool): whether auxiliary dimensions are part of goal.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             reward_weights (list[float]): this is only used when the reward is
@@ -132,6 +139,14 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             input_tensor_spec=(observation_spec, action_spec))
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
+        goal_net = None
+        if goal_value_net_ctor is not None:
+            input_tensor_spec = observation_spec.copy()
+            for k, _ in observation_spec.items():
+                if k not in ("desired_goal", "aux_desired"):
+                    input_tensor_spec.pop(k, None)
+            goal_net = goal_value_net_ctor(input_tensor_spec=input_tensor_spec)
+        self._control_aux = control_aux
         if use_parallel_network:
             critic_networks = critic_network.make_parallel(num_critic_replicas)
         else:
@@ -165,6 +180,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._actor_network = actor_network
         self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
+        self._goal_net = goal_net
 
         self._reward_weights = None
         if reward_weights:
@@ -186,6 +202,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         for i in range(num_critic_replicas):
             self._critic_losses[i] = critic_loss_ctor(
                 name=("critic_loss" + str(i)))
+        if goal_net:
+            self._goal_value_loss = critic_loss_ctor(name="goal_value_loss")
 
         self._ou_process = common.create_ou_process(action_spec, ou_stddev,
                                                     ou_damping)
@@ -268,6 +286,14 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         info = DdpgCriticInfo(
             q_values=q_values, target_q_values=target_q_values)
 
+        if self._goal_net:
+            goal_input = exp.observation.copy()
+            for k, _ in exp.observation.items():
+                if k not in ("desired_goal", "aux_desired"):
+                    goal_input.pop(k, None)
+            goal_values, _ = self._goal_net(goal_input, state=())
+            info = info._replace(goal_values=goal_values)
+
         return state, info
 
     def _actor_train_step(self, exp: Experience, state: DdpgActorState):
@@ -329,6 +355,12 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_value=train_info.critic.target_q_values).loss
 
         critic_loss = math_ops.add_n(critic_losses)
+
+        if self._goal_net:
+            critic_loss += self._goal_value_loss(
+                experience=experience,
+                value=train_info.critic.goal_values,
+                target_value=train_info.critic.goal_values.detach()).loss
 
         if (experience.batch_info != ()
                 and experience.batch_info.importance_weights != ()):

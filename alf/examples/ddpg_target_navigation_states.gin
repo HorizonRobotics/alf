@@ -26,6 +26,10 @@ critic/CriticNetwork.observation_preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.action_preprocessing_combiner=@NestConcat()
 critic/CriticNetwork.output_tensor_spec=@get_reward_spec()
 
+value/ValueNetwork.preprocessing_combiner=@NestConcat()
+value/ValueNetwork.output_tensor_spec=@get_reward_spec()
+DdpgAlgorithm.goal_value_net_ctor=@value/ValueNetwork
+
 hidden_layers=(256,256)
 actor/ActorNetwork.fc_layer_params=%hidden_layers
 critic/CriticNetwork.joint_fc_layer_params=%hidden_layers
