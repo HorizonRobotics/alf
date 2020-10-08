@@ -25,7 +25,10 @@ from alf.algorithms.agent_helpers import AgentHelper
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm
 from alf.algorithms.icm_algorithm import ICMAlgorithm
+from alf.algorithms.mbrl_algorithm import LatentMbrlAlgorithm
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
+from alf.algorithms.predictive_representation_learner import \
+                            PredictiveRepresentationLearner
 from alf.algorithms.rl_algorithm import RLAlgorithm
 from alf.data_structures import AlgStep, Experience
 from alf.data_structures import TimeStep, namedtuple
@@ -127,6 +130,14 @@ class Agent(OnPolicyAlgorithm):
         agent_helper.register_algorithm(rl_algorithm, "rl")
         # Whether the agent is on-policy or not depends on its rl algorithm.
         self._is_on_policy = rl_algorithm.is_on_policy()
+
+        if isinstance(rl_algorithm, LatentMbrlAlgorithm):
+            assert isinstance(representation_learner,
+                              PredictiveRepresentationLearner), (
+                                  "need to use "
+                                  "PredictiveRepresentationLearner")
+            rl_algorithm.set_latent_predictive_representation_module(
+                representation_learner)
 
         ## 3. intrinsic motivation module
         if intrinsic_reward_module is not None:

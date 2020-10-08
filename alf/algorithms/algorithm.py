@@ -1013,8 +1013,8 @@ class Algorithm(nn.Module):
         Args:
             loss_info (LossInfo): loss with shape :math:`(T, B)` (except for
                 ``loss_info.scalar_loss``)
-            valid_masks (tf.Tensor): masks indicating which samples are valid.
-                (``shape=(T, B), dtype=tf.float32``)
+            valid_masks (Tensor): masks indicating which samples are valid.
+                (``shape=(T, B), dtype=torch.float32``)
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
             batch_info (BatchInfo): information about this batch returned by

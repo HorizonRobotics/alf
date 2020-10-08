@@ -93,8 +93,15 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(output_shape, network.output_spec.shape)
         self.assertEqual(output_shape, tuple(output.size()[1:]))
 
-    @parameterized.parameters((None, None), (200, None), (50, torch.relu))
-    def test_encoding_network_nonimg(self, last_layer_size, last_activation):
+    @parameterized.parameters(
+        (None, None, None),
+        (200, None, None),
+        (50, torch.relu, None),
+        (None, None, TensorSpec((5, 10), torch.float32)),
+        (50, torch.relu, TensorSpec((5, 10), torch.float32)),
+    )
+    def test_encoding_network_nonimg(self, last_layer_size, last_activation,
+                                     output_tensor_spec):
         input_spec = TensorSpec((100, ), torch.float32)
         embedding = input_spec.zeros(outer_dims=(1, ))
 
@@ -103,6 +110,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             with self.assertRaises(AssertionError):
                 network = EncodingNetwork(
                     input_tensor_spec=input_spec,
+                    output_tensor_spec=output_tensor_spec,
                     fc_layer_params=(30, 40, 50),
                     activation=torch.tanh,
                     last_layer_size=last_layer_size,
@@ -110,6 +118,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         else:
             network = EncodingNetwork(
                 input_tensor_spec=input_spec,
+                output_tensor_spec=output_tensor_spec,
                 fc_layer_params=(30, 40, 50),
                 activation=torch.tanh,
                 last_layer_size=last_layer_size,
@@ -126,12 +135,19 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                  last_activation)
 
             output, _ = network(embedding)
-            if last_layer_size is None:
-                self.assertEqual(output.size()[1], 50)
+
+            if output_tensor_spec is None:
+                if last_layer_size is None:
+                    self.assertEqual(output.size()[1], 50)
+                else:
+                    self.assertEqual(output.size()[1], last_layer_size)
+                self.assertEqual(network.output_spec.shape,
+                                 tuple(output.size()[1:]))
             else:
-                self.assertEqual(output.size()[1], last_layer_size)
-            self.assertEqual(network.output_spec.shape,
-                             tuple(output.size()[1:]))
+                self.assertEqual(
+                    tuple(output.size()[1:]), output_tensor_spec.shape)
+                self.assertEqual(network.output_spec.shape,
+                                 output_tensor_spec.shape)
 
     def test_encoding_network_img(self):
         input_spec = TensorSpec((3, 80, 80), torch.float32)
@@ -211,7 +227,12 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             self.assertEqual(network.output_spec, TensorSpec((500, )))
             self.assertEqual(output.size()[-1], 500)
 
-    def test_make_parallel(self):
+    @parameterized.parameters(
+        None,
+        TensorSpec((), torch.float32),
+        TensorSpec((1, ), torch.float32),
+    )
+    def test_make_parallel(self, output_spec):
         batch_size = 128
         input_spec = TensorSpec((1, 10, 10), torch.float32)
 
@@ -219,6 +240,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         fc_layer_params = (256, 256)
         network = EncodingNetwork(
             input_tensor_spec=input_spec,
+            output_tensor_spec=output_spec,
             conv_layer_params=conv_layer_params,
             fc_layer_params=fc_layer_params,
             activation=torch.relu_,
@@ -238,8 +260,14 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
             o = math_ops.add_n(outputs).sum()
             logging.info("%s time=%s %s" % (name, time.time() - t0, float(o)))
 
-            self.assertEqual(output.shape, (batch_size, replicas, 1))
-            self.assertEqual(pnet.output_spec.shape, (replicas, 1))
+            if output_spec is None:
+                self.assertEqual(output.shape, (batch_size, replicas, 1))
+                self.assertEqual(pnet.output_spec.shape, (replicas, 1))
+            else:
+                self.assertEqual(output.shape,
+                                 (batch_size, replicas, *output_spec.shape))
+                self.assertEqual(pnet.output_spec.shape,
+                                 (replicas, *output_spec.shape))
 
         pnet = network.make_parallel(replicas)
         self.assertTrue(isinstance(pnet, ParallelEncodingNetwork))

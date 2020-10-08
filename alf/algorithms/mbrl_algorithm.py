@@ -37,6 +37,8 @@ from alf.utils.math_ops import add_ignore_empty
 from alf.algorithms.dynamics_learning_algorithm import DynamicsLearningAlgorithm
 from alf.algorithms.reward_learning_algorithm import RewardEstimationAlgorithm
 from alf.algorithms.planning_algorithm import PlanAlgorithm
+from alf.algorithms.predictive_representation_learner import \
+                                    PredictiveRepresentationLearner
 
 MbrlState = namedtuple("MbrlState", ["dynamics", "reward", "planner"])
 MbrlInfo = namedtuple(
@@ -70,7 +72,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         3) learnable/fixed planner module
 
         Args:
-            action_spec (nested BoundedTensorSpec): representing the actions.
+            action_spec (BoundedTensorSpec): representing the actions.
             dynamics_module (DynamicsLearningAlgorithm): module for learning to
                 predict the next feature based on the previous feature and action.
                 It should accept input with spec [feature_spec,
@@ -94,9 +96,12 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
 
         """
         train_state_spec = MbrlState(
-            dynamics=dynamics_module.train_state_spec,
-            reward=reward_module.train_state_spec,
-            planner=planner_module.train_state_spec)
+            dynamics=dynamics_module.train_state_spec
+            if dynamics_module is not None else (),
+            reward=reward_module.train_state_spec
+            if reward_module is not None else (),
+            planner=planner_module.train_state_spec
+            if planner_module is not None else ())
 
         super().__init__(
             feature_spec,
@@ -265,7 +270,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             planner=plan_step.info)
         return AlgStep(action, state, info)
 
-    def calc_loss(self, experience, training_info: MbrlInfo):
+    def calc_loss(self, experience, training_info):
         loss_dynamics = self._dynamics_module.calc_loss(training_info.dynamics)
         loss = loss_dynamics.loss
         loss = add_ignore_empty(loss, training_info.reward)
@@ -275,3 +280,136 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
     def after_update(self, experience, training_info):
         self._planner_module.after_update(
             training_info._replace(planner=training_info.planner))
+
+
+@gin.configurable
+class LatentMbrlAlgorithm(MbrlAlgorithm):
+    """Model-based RL algorithm in a latent space.
+    """
+
+    def __init__(self,
+                 observation_spec,
+                 action_spec,
+                 planner_module: PlanAlgorithm,
+                 env=None,
+                 config: TrainerConfig = None,
+                 planner_optimizer=None,
+                 debug_summaries=False,
+                 name="LatentMbrlAlgorithm"):
+        """Create an LatentMbrlAlgorithm.
+        The LatentMbrlAlgorithm takes as input a planner module for
+        making decisions on actions based on the latent representation of the
+        current observation as well as a latent dynamics model.
+
+        The latent representation as well as the latent dynamics is provided by
+        a latent predictive representation module, which is an instance of
+        ``PredictiveRepresentationLearner``. It is set through the
+        ``set_latent_predictive_representation_module()`` function. The latent
+        predictive representation module should have a function
+        ``predict_multi_step`` for performing multi-step imagined rollout.
+        Currently it is assumed that the training of the latent representation
+        module is outside of the ``LatentMbrlAlgorithm``, although the
+        ``LatentMbrlAlgorithm`` can also contribute to its training by using
+        the latent representation in loss calculation.
+
+        Args:
+            action_spec (BoundedTensorSpec): representing the actions.
+            planner_module (PlanAlgorithm): module for generating planned action
+                based on specified reward function and dynamics function
+            env (Environment): The environment to interact with. env is a batched
+                environment, which means that it runs multiple simulations
+                simultateously. env only needs to be provided to the root
+                Algorithm.
+            config (TrainerConfig): config for training. config only needs to be
+                provided to the algorithm which performs `train_iter()` by
+                itself.
+            debug_summaries (bool): True if debug summaries should be created.
+            name (str): The name of this algorithm.
+
+        """
+
+        super().__init__(
+            observation_spec,
+            feature_spec=observation_spec,
+            action_spec=action_spec,
+            dynamics_module=None,
+            reward_module=None,
+            planner_module=planner_module,
+            planner_optimizer=planner_optimizer,
+            env=env,
+            config=config,
+            debug_summaries=debug_summaries,
+            name=name)
+
+        flat_action_spec = nest.flatten(action_spec)
+        action_spec = flat_action_spec[0]
+
+        assert action_spec.is_continuous, "only support \
+                                                    continious control"
+
+        num_actions = action_spec.shape[-1]
+
+        self._action_spec = action_spec
+        self._num_actions = num_actions
+
+        self._latent_pred_rep_module = None  # set it later
+
+    def set_latent_predictive_representation_module(
+            self, latent_pred_rep_module: PredictiveRepresentationLearner):
+        self._latent_pred_rep_module = latent_pred_rep_module
+
+    def _trainable_attributes_to_ignore(self):
+        return ['_latent_pred_rep_module']
+
+    @torch.no_grad()
+    def _predict_multi_step_cost(self, init_rep, actions):
+        """Compute the total cost by unrolling multiple steps according to
+            the given initial observation and multi-step actions.
+        Args:
+            init_rep: the current observation for predicting quantities of
+                future time steps of shape [B, d]
+            actions (Tensor): a set of action sequences to
+                shape [B, population, unroll_steps, action_dim]
+        Returns:
+            cost (Tensor): negation of accumulated predicted reward, with
+                the shape of [B, population]
+        """
+        batch_size, population_size, num_unroll_steps = actions.shape[0:3]
+
+        init_rep = self._expand_to_population(init_rep, population_size)
+
+        # merge batch with population
+        # [B, population, unroll_steps, ...] -> [B*population, unroll_steps, ...]
+        actions = torch.reshape(actions, (-1, *actions.shape[2:]))
+
+        pred_rewards = self._latent_pred_rep_module.predict_multi_step(
+            init_rep, actions)
+
+        pred_rewards = pred_rewards.view(num_unroll_steps + 1, batch_size,
+                                         population_size, -1)
+        # [B, population, unroll_steps, reward_dim]
+        # here we remove the predicted reward of the current step,
+        # which is irrelevant to the optimization of future actions
+        pred_rewards = pred_rewards[1:].permute(1, 2, 0, 3)
+
+        # currently assume the first dimension is the overall reward
+        # [B, population, unroll_steps]
+        pred_rewards = pred_rewards[..., 0]
+        cost = -pred_rewards
+        cost = cost.sum(2)
+        return cost
+
+    def _predict_with_planning(self, time_step: TimeStep, state,
+                               epsilon_greedy):
+        action, state = self._planner_module.predict_plan(
+            time_step, state, epsilon_greedy)
+
+        return AlgStep(output=action, state=state, info=MbrlInfo())
+
+    def train_step(self, exp: Experience, state: MbrlState):
+        # overwrite the behavior of base class ``train_step``
+        return AlgStep(output=(), state=state, info=MbrlInfo())
+
+    def calc_loss(self, experience, training_info: MbrlInfo):
+        # overwrite the behavior of base class ``calc_loss``
+        return LossInfo()
