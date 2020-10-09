@@ -21,6 +21,8 @@ from scipy.signal import savgol_filter
 
 import matplotlib
 import matplotlib.pyplot as plt
+# Style gallery: https://tonysyu.github.io/raw_content/matplotlib-style-gallery/gallery.html
+plt.style.use('seaborn-colorblind')
 
 import alf.nest as nest
 from alf.data_structures import namedtuple
@@ -43,6 +45,14 @@ class MeanCurveReader(object):
     }
 
     def _get_metric_name(self):
+        raise NotImplementedError()
+
+    @property
+    def x_label(self):
+        raise NotImplementedError()
+
+    @property
+    def y_label(self):
         raise NotImplementedError()
 
     def __init__(self,
@@ -71,6 +81,8 @@ class MeanCurveReader(object):
         """
         if not isinstance(event_file, list):
             event_file = [event_file]
+        else:
+            assert len(event_file) > 0, "Empty event file list!"
 
         if max_n_scalars is not None:
             self._SIZE_GUIDANCE['scalars'] = max_n_scalars
@@ -163,12 +175,58 @@ class EnvironmentStepsReturnReader(MeanCurveReader):
     def _get_metric_name(self):
         return "Metrics_vs_EnvironmentSteps/AverageReturn"
 
+    @property
+    def x_label(self):
+        return "Environment Steps"
+
+    @property
+    def y_label(self):
+        return "Average Episodic Return"
+
 
 class EnvironmentStepsSuccessReader(MeanCurveReader):
     """Create a mean curve reader that reads Success rates."""
 
     def _get_metric_name(self):
         return "Metrics_vs_EnvironmentSteps/success"
+
+    @property
+    def x_label(self):
+        return "Environment Steps"
+
+    @property
+    def y_label(self):
+        return "Success Rate"
+
+
+class IterationsReturnReader(MeanCurveReader):
+    """Create a mean curve reader that reads AverageReturn values."""
+
+    def _get_metric_name(self):
+        return "Metrics/AverageReturn"
+
+    @property
+    def x_label(self):
+        return "Training Iterations"
+
+    @property
+    def y_label(self):
+        return "Average Episodic Return"
+
+
+class IterationsSuccessReader(MeanCurveReader):
+    """Create a mean curve reader that reads Success rates."""
+
+    def _get_metric_name(self):
+        return "Metrics/success"
+
+    @property
+    def x_label(self):
+        return "Training Iterations"
+
+    @property
+    def y_label(self):
+        return "Success Rate"
 
 
 class CurvesPlotter(object):
@@ -181,6 +239,8 @@ class CurvesPlotter(object):
     def __init__(self,
                  mean_curves,
                  x_range=None,
+                 y_range=None,
+                 y_clipping=None,
                  x_label=None,
                  y_label=None,
                  x_scaled_and_aligned=True,
@@ -188,9 +248,15 @@ class CurvesPlotter(object):
         """
         Args:
             mean_curves (MeanCurve|list[MeanCurve]):
-            x_range (tuple[float]): a tuple of (min_x, max_x) for showing on
-                the figure. If None, then (0, 1) will be used. This argument is
+            x_range (tuple[float]): a tuple of ``(min_x, max_x)`` for showing on
+                the figure. If None, then ``(0, 1)`` will be used. This argument is
                 only used when ``x_scaled_and_aligned==True``.
+            y_range (tuple[float]): a tuple of ``(min_y, max_y)`` for showing on
+                the figure. If None, then it will be decided according to the
+                y values.
+            y_clipping (tuple[float]): the y values will be clipped to this range
+                if not None. Because of smoothing in ``MeanCurveReader`` and/or
+                std region, the input y values might be out of this range.
             x_label (str): shown besides x-axis
             y_label (str): shown besides y-axis
             x_scaled_and_aligned (bool): If True, the x axes of all MeanCurves
@@ -216,15 +282,31 @@ class CurvesPlotter(object):
             delta_x = (x_range[-1] - x_range[0]) / (n_points - 1)
             scaled_x = np.arange(n_points) * delta_x + x_range[0]
 
+        def _clip_y(y):
+            return np.clip(y, y_clipping[0],
+                           y_clipping[1]) if y_clipping else y
+
         for i, c in enumerate(mean_curves):
             color = self._COLORS[i % len(self._COLORS)]
             x = (scaled_x if x_scaled_and_aligned else c.x)
-            ax.plot(x, c.y, color=color, lw=self._LINE_WIDTH, label=c.name)
-            ax.fill_between(x, c.max_y, c.min_y, facecolor=color, alpha=0.3)
+            ax.plot(
+                x,
+                _clip_y(c.y),
+                color=color,
+                lw=self._LINE_WIDTH,
+                label=c.name)
+            ax.fill_between(
+                x,
+                _clip_y(c.max_y),
+                _clip_y(c.min_y),
+                facecolor=color,
+                alpha=0.3)
 
-        ax.legend(loc='upper left')
+        ax.legend(loc='best')
         ax.grid(linestyle='--')
 
+        if y_range:
+            ax.set_ylim(y_range)
         if x_label:
             ax.set_xlabel(x_label)
         if y_label:
@@ -265,15 +347,16 @@ if __name__ == "__main__":
     # Scale and align x-axis of the two curves
     plotter = CurvesPlotter(
         [mean_curve_reader(), mean_curve_reader1()],
-        x_label="Env frames",
-        y_label="Average Return",
+        x_label=mean_curve_reader.x_label,
+        y_label=mean_curve_reader.y_label,
+        y_range=(0, 1.0),
         x_range=(0, 5000000))
     plotter.plot(output_path="/tmp/test1.pdf")
 
     # Plot the curves without alignment
     plotter = CurvesPlotter(
         [mean_curve_reader(), mean_curve_reader1()],
-        x_label="Env frames",
-        y_label="Average Return",
+        x_label=mean_curve_reader.x_label,
+        y_label=mean_curve_reader.y_label,
         x_scaled_and_aligned=False)
     plotter.plot(output_path="/tmp/test2.pdf")
