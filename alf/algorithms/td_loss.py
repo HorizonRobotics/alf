@@ -146,6 +146,21 @@ class TDLoss(nn.Module):
                                        returns[..., i][non_her],
                                        td[..., i][non_her], suffix + "/nonher",
                                        mask[non_her])
+                        if isinstance(
+                                experience.observation, dict
+                        ) and "final_goal" in experience.observation:
+                            _cond = experience.observation["final_goal"][
+                                1:].squeeze(2) > 0
+                            alf.summary.scalar("final_goal_rate" + suffix,
+                                               torch.mean(_cond.float()))
+                            _non = ~_cond
+                            _summarize(value[..., i][_cond],
+                                       returns[..., i][_cond],
+                                       td[..., i][_cond],
+                                       suffix + "/final_goal", mask[_cond])
+                            _summarize(value[..., i][_non],
+                                       returns[..., i][_non], td[..., i][_non],
+                                       suffix + "/non_final", mask[_non])
                         observation = experience.observation
                         if (isinstance(observation, dict)
                                 and "aux_desired" in observation):

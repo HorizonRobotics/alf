@@ -680,6 +680,7 @@ def hindsight_relabel_fn(buffer,
                          aux_achieved_field="observation.aux_achieved",
                          aux_desired_field="observation.aux_desired",
                          action_dim=0,
+                         relabel_final_goal=0.,
                          reward_fn=l2_dist_close_reward_fn):
     """Randomly get `batch_size` hindsight relabeled trajectories.
 
@@ -708,6 +709,7 @@ def hindsight_relabel_fn(buffer,
         desired_goal_field (str): path to the desired_goal field in the
             exp nest.
         action_dim (int): dimensions of real action when control_aux is True.
+        relabel_final_goal (float): percent of exp to relabel the final_goal field.
         reward_fn (Callable): function to recompute reward based on
             achieve_goal and desired_goal.  Default gives reward 0 when
             L2 distance less than 0.05 and -1 otherwise, same as is done in
@@ -791,11 +793,23 @@ def hindsight_relabel_fn(buffer,
     relabeled_rewards = reward_fn(
         _result_ag, _relabeled_goal, device=buffer._device)
 
+    if relabel_final_goal > 0:
+        # NOTE: both original and HER experience are being relabeled
+        relabel_final_g_cond = torch.rand(batch_size) < relabel_final_goal
+        result_f = alf.nest.get_field(
+            result, "rollout_info.goal_generator.final_goal")
+        result_f = result_f.clone().float()
+        result_f[relabel_final_g_cond] = torch.ones(())
+        result = alf.nest.utils.transform_nest(
+            result, "observation.final_goal", lambda _: result_f)
+
     if control_aux:  # and num_subgoals > 0 for efficiency improvement
         # If subgoal (not final goal) is reached, set discount to 0, StepType to ``LAST``.
         reward_achieved = relabeled_rewards >= 0
         goal_original = torch.min(
-            torch.isclose(_relabeled_goal, orig_goal), dim=2) == 1
+            torch.isclose(_relabeled_goal, orig_goal), dim=2)[0] == 1
+        if relabel_final_goal > 0:
+            goal_original |= (relabel_final_g_cond).unsqueeze(1)
         subgoal_achieved = reward_achieved & ~goal_original
         # don't overwrite first step in batch_length.
         subgoal_achieved[:, 0] = torch.tensor(False)

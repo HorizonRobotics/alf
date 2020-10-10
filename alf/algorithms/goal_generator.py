@@ -31,11 +31,12 @@ import alf.utils.common as common
 GoalState = namedtuple(
     "GoalState", [
         "goal", "full_plan", "steps_since_last_plan", "subgoals_index",
-        "steps_since_last_goal"
+        "steps_since_last_goal", "final_goal"
     ],
     default_value=())
 GoalInfo = namedtuple(
-    "GoalInfo", ["goal", "original_goal", "loss"], default_value=())
+    "GoalInfo", ["goal", "original_goal", "final_goal", "loss"],
+    default_value=())
 
 
 @gin.configurable
@@ -161,10 +162,11 @@ class ConditionalGoalGenerator(RLAlgorithm):
             state=GoalState(
                 goal=new_goal,
                 full_plan=state.full_plan,
+                final_goal=state.final_goal,
                 steps_since_last_goal=state.steps_since_last_goal,
                 subgoals_index=state.subgoals_index,
                 steps_since_last_plan=state.steps_since_last_plan),
-            info=GoalInfo(goal=new_goal))
+            info=GoalInfo(goal=new_goal, final_goal=state.final_goal))
 
     def rollout_step(self, time_step: TimeStep, state):
         return self._step(time_step, state)
@@ -198,11 +200,17 @@ class ConditionalGoalGenerator(RLAlgorithm):
             goal = exp.observation["desired_goal"]
             if "aux_desired" in exp.observation:
                 goal = torch.cat((goal, exp.observation["aux_desired"]), dim=1)
+            if self._final_goal:
+                state = state._replace(
+                    final_goal=exp.observation["final_goal"])
         elif self._train_with_goal == 'orig':
             goal = exp.rollout_info.original_goal
         else:
             raise NotImplementedError()
-        return AlgStep(output=goal, state=state, info=GoalInfo(goal=goal))
+        return AlgStep(
+            output=goal,
+            state=state,
+            info=GoalInfo(goal=goal, final_goal=state.final_goal))
 
     def calc_loss(self, experience, info: GoalInfo):
         return LossInfo()
@@ -291,6 +299,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  action_bounds,
                  always_adopt_plan=False,
                  next_goal_on_success=False,
+                 final_goal=False,
                  reward_fn=l2_dist_close_reward_fn,
                  max_subgoal_steps=50,
                  normalize_goals=False,
@@ -317,6 +326,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 current subgoal is achieved.  When True, if max_subgoal_steps
                 is reached, re-plan and switch to the next goal regardless of whether
                 current subgoal is achieved or not.
+            final_goal (bool): put whether current goal is final into observation.
             reward_fn (Callable): arguments: (achieved_goal, goal, device="cpu"), returns
                 reward -1 or 0.  Arguments are supposed to be of shape
                 ``(batch_size, batch_length, action_dim)``, so it can be the same as
@@ -349,6 +359,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._next_goal_on_success = next_goal_on_success
         if next_goal_on_success:
             assert always_adopt_plan, "TODO: replan after achieving subgoal."
+        self._final_goal = final_goal
         self._max_subgoal_steps = max_subgoal_steps
         self._action_dim = action_dim
         self._max_replan_steps = max_replan_steps
@@ -367,10 +378,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         plan_horizon = self._compute_plan_horizon()
         full_plan_shape = (plan_horizon, goal_dim)
         full_plan_spec = TensorSpec(full_plan_shape)
+        final_goal_spec = TensorSpec((1, ))
         steps_spec = TensorSpec((), dtype=torch.int32)
         train_state_spec = GoalState(
             goal=goal_spec,
             full_plan=full_plan_spec,
+            final_goal=final_goal_spec,
             steps_since_last_plan=steps_spec,
             subgoals_index=steps_spec,
             steps_since_last_goal=steps_spec)
@@ -474,6 +487,11 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             batch_size * pop_size * (horizon + 1), action_dim)
         stack_obs["desired_goal"] = samples_e[:, :, 1:, :].reshape(
             batch_size * pop_size * (horizon + 1), action_dim)
+        if self._final_goal:
+            stack_obs["final_goal"] = torch.zeros(batch_size, pop_size,
+                                                  horizon + 1)
+            stack_obs["final_goal"][:, :, -1] = torch.ones(())
+            stack_obs["final_goal"] = stack_obs["final_goal"].reshape(-1, 1)
         if self._use_aux_achieved:
             aux_start = time_step.observation["aux_achieved"].reshape(
                 batch_size, 1, 1, self._aux_dim).expand(
@@ -597,6 +615,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             subgoal = subgoal[:, :self._action_dim]
         if self._use_aux_achieved and self.control_aux:
             observation["aux_desired"] = goals[:, -1, self._action_dim:]
+        if self._final_goal:
+            observation["final_goal"] = (
+                state.subgoals_index >=
+                self._num_subgoals).float().unsqueeze(1)
         # _value_fn relies on calling Q function with predicted action, but
         # with aux_control, lower level policy's input doesn't contain
         # aux_desired, and cannot predict action.
@@ -717,6 +739,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def post_process(self, observation, state, step_type):
         """Post process after update_condition and generate_goal calls.
 
+        This is needed because generate_goal isn't always called for every update_condition call.
+
         Args:
             observation (nested Tensor): the observation at the current time step
             state (nested Tensor): state of this goal generator, with state.goal being the new goal
@@ -727,7 +751,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             - state (nest).
         """
         new_goal = state.goal
+        final_goal = torch.zeros(new_goal.shape[0])
         if self._next_goal_on_success:
+            final_goal = (state.subgoals_index >= self._num_subgoals)
             # Judge whether we reached the subgoal
             first_steps = step_type == StepType.FIRST
             goal_achieved = self._goal_achieved(observation, new_goal)
@@ -820,6 +846,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar(
                 "planner/steps_since_last_plan." + common.exe_mode_name(),
                 torch.mean(state.steps_since_last_plan.float()))
+        state = state._replace(final_goal=final_goal.float().unsqueeze(1))
         # Populate aux_desired into observation, very important for agent to see!
         if self.control_aux:
             observation["aux_desired"] = new_goal[:, self._action_dim:]

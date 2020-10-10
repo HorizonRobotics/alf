@@ -115,8 +115,12 @@ class Agent(OnPolicyAlgorithm):
             rl_observation_spec = representation_learner.output_spec
             agent_helper.register_algorithm(representation_learner, "repr")
 
+        self._final_goal = False
         ## 1. goal generator
         if goal_generator is not None:
+            self._final_goal = (isinstance(goal_generator,
+                                           SubgoalPlanningGoalGenerator)
+                                and goal_generator._final_goal)
             agent_helper.register_algorithm(goal_generator, "goal_generator")
             if not isinstance(
                     rl_observation_spec,
@@ -129,6 +133,9 @@ class Agent(OnPolicyAlgorithm):
                     and self._control_aux(goal_generator)):
                 rl_observation_spec["aux_desired"] = rl_observation_spec[
                     "aux_achieved"]
+            if (isinstance(rl_observation_spec, dict) and self._final_goal):
+                rl_observation_spec["final_goal"] = (
+                    goal_generator.rollout_state_spec.final_goal)
 
         ## 2. rl algorithm
         rl_algorithm = rl_algorithm_cls(
@@ -204,7 +211,7 @@ class Agent(OnPolicyAlgorithm):
     def is_on_policy(self):
         return self._is_on_policy
 
-    def _goal_observation(self, observation, goal_step, info=None):
+    def _goal_observation(self, observation, goal_step, info):
         if isinstance(observation, dict) and "desired_goal" in observation:
             if info:
                 # Put original goal into info to be stored in ReplayBuffer
@@ -214,6 +221,9 @@ class Agent(OnPolicyAlgorithm):
                 info = info._replace(
                     goal_generator=info.goal_generator._replace(
                         original_goal=original_goal))
+                if self._final_goal:
+                    observation[
+                        "final_goal"] = info.goal_generator.final_goal.float()
             # Set generated goal as desired_goal, also goes into ReplayBuffer
             if self._control_aux():
                 action_dim = self._goal_generator._action_dim
