@@ -200,7 +200,7 @@ class ConditionalGoalGenerator(RLAlgorithm):
             goal = exp.observation["desired_goal"]
             if "aux_desired" in exp.observation:
                 goal = torch.cat((goal, exp.observation["aux_desired"]), dim=1)
-            if self._final_goal:
+            if "final_goal" in exp.observation:
                 state = state._replace(
                     final_goal=exp.observation["final_goal"])
         elif self._train_with_goal == 'orig':
@@ -378,7 +378,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         plan_horizon = self._compute_plan_horizon()
         full_plan_shape = (plan_horizon, goal_dim)
         full_plan_spec = TensorSpec(full_plan_shape)
-        final_goal_spec = TensorSpec((1, ))
+        final_goal_spec = ()
+        if final_goal:
+            final_goal_spec = TensorSpec((1, ))
         steps_spec = TensorSpec((), dtype=torch.int32)
         train_state_spec = GoalState(
             goal=goal_spec,
@@ -751,9 +753,11 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             - state (nest).
         """
         new_goal = state.goal
-        final_goal = torch.zeros(new_goal.shape[0])
+        if self._final_goal:
+            final_goal = torch.zeros(new_goal.shape[0])
         if self._next_goal_on_success:
-            final_goal = (state.subgoals_index >= self._num_subgoals)
+            if self._final_goal:
+                final_goal = (state.subgoals_index >= self._num_subgoals)
             # Judge whether we reached the subgoal
             first_steps = step_type == StepType.FIRST
             goal_achieved = self._goal_achieved(observation, new_goal)
@@ -846,7 +850,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar(
                 "planner/steps_since_last_plan." + common.exe_mode_name(),
                 torch.mean(state.steps_since_last_plan.float()))
-        state = state._replace(final_goal=final_goal.float().unsqueeze(1))
+        if self._final_goal:
+            state = state._replace(final_goal=final_goal.float().unsqueeze(1))
         # Populate aux_desired into observation, very important for agent to see!
         if self.control_aux:
             observation["aux_desired"] = new_goal[:, self._action_dim:]

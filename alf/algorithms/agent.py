@@ -287,7 +287,6 @@ class Agent(OnPolicyAlgorithm):
             info = info._replace(goal_generator=goal_step.info)
             observation, info = self._goal_observation(observation, goal_step,
                                                        info)
-
         rl_step = self._rl_algorithm.rollout_step(
             time_step._replace(observation=observation), state.rl)
         new_state = new_state._replace(rl=rl_step.state)
