@@ -15,6 +15,7 @@
 from .actor_distribution_networks import *
 from .actor_networks import *
 from .critic_networks import *
+from .dynamics_networks import *
 from .encoding_networks import *
 from .mdq_critic_networks import *
 from .network import Network, NaiveParallelNetwork, SequentialNetwork

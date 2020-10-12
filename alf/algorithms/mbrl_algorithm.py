@@ -55,6 +55,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                  dynamics_module: DynamicsLearningAlgorithm,
                  reward_module: RewardEstimationAlgorithm,
                  planner_module: PlanAlgorithm,
+                 particles_per_replica=1,
                  env=None,
                  config: TrainerConfig = None,
                  dynamics_optimizer=None,
@@ -82,6 +83,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 the reward, i.e.,  evaluating the reward for a (s, a) pair
             planner_module (PlanAlgorithm): module for generating planned action
                 based on specified reward function and dynamics function
+            particles_per_replica (int): number of particles for each replica
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -136,6 +138,9 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         self._planner_module = planner_module
         self._planner_module.set_action_sequence_cost_func(
             self._predict_multi_step_cost)
+        if dynamics_module is not None:
+            self._num_dynamics_replicas = dynamics_module._num_replicas
+        self._particles_per_replica = particles_per_replica
 
     def _predict_next_step(self, time_step, dynamics_state):
         """Predict the next step (observation and state) based on the current
@@ -170,6 +175,23 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         data_population = torch.repeat_interleave(data, population_size, dim=0)
         return data_population
 
+    def _expand_to_particles(self, inputs):
+        # inputs [B, n, d]
+        if inputs.ndim == 2:
+            # [B, d] -> [n*p, B, d]
+            inputs = inputs.unsqueeze(0).expand(
+                self._num_dynamics_replicas * self._particles_per_replica,
+                *inputs.shape)
+            # [n*p, B, d] -> [n, p, B, d]
+            inputs = inputs.view(self._num_dynamics_replicas,
+                                 self._particles_per_replica,
+                                 *inputs.shape[1:])
+            # [n, p, B, d] -> [B, p, n, d]
+            inputs = inputs.permute(2, 1, 0, 3)
+            # [B, p, n, d] -> [B*p, n, d]
+            inputs = inputs.reshape(-1, inputs.shape[2], inputs.shape[3])
+        return inputs
+
     @torch.no_grad()
     def _predict_multi_step_cost(self, observation, actions):
         """Compute the total cost by unrolling multiple steps according to
@@ -192,10 +214,14 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             partial(
                 self._expand_to_population, population_size=population_size),
             dyn_state)
+
+        # expand to particles
+        dyn_state = nest.map_structure(self._expand_to_particles, dyn_state)
         reward_state = state.reward
         reward = 0
         for i in range(num_unroll_steps):
             action = actions[:, :, i, ...].view(-1, actions.shape[3])
+            action = self._expand_to_particles(action)
             time_step = time_step._replace(prev_action=action)
             time_step, dyn_state = self._predict_next_step(
                 time_step, dyn_state)
@@ -207,8 +233,15 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
                 next_obs, action, reward_state)
             reward = reward + reward_step
         cost = -reward
-        #[B, population_size]
+        # reshape cost
+        # [B*par, n] -> [B, par*n]
+        cost = cost.reshape(
+            -1, self._particles_per_replica * self._num_dynamics_replicas)
+        cost = cost.mean(-1)
+
+        # reshape cost back to [batch size, population_size]
         cost = torch.reshape(cost, [batch_size, -1])
+
         return cost
 
     def _calc_step_reward(self, obs, action, reward_state):

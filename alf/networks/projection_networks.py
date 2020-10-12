@@ -202,6 +202,140 @@ class NormalProjectionNetwork(Network):
         stds = self._std_transform(self._std_projection_layer(inputs))
         return self._normal_dist(means, stds), state
 
+    def make_parallel(self, n):
+        """Create a ``ParallelNormalProjectionNetwork`` using ``n``
+        replicas of ``self``. The initialized layer parameters will
+        be different.
+        """
+        parallel_proj_net_args = dict(**self.saved_args)
+        parallel_proj_net_args.update(n=n, name="parallel_" + self.name)
+        return ParallelNormalProjectionNetwork(**parallel_proj_net_args)
+
+
+@gin.configurable
+class ParallelNormalProjectionNetwork(Network):
+    def __init__(self,
+                 input_size,
+                 action_spec,
+                 n,
+                 activation=math_ops.identity,
+                 projection_output_init_gain=0.3,
+                 std_bias_initializer_value=0.0,
+                 squash_mean=True,
+                 state_dependent_std=False,
+                 std_transform=nn.functional.softplus,
+                 scale_distribution=False,
+                 dist_squashing_transform=dist_utils.StableTanh(),
+                 name="ParallelNormalProjectionNetwork"):
+        """Creates an instance of ParallelNormalProjectionNetwork.
+
+
+        Args:
+            input_size (int): input vector dimension
+            action_spec (TensorSpec): a tensor spec containing the information
+                of the output distribution.
+            activation (torch.nn.Functional): activation function to use in
+                dense layers.
+            projection_output_init_gain (float): Output gain for initializing
+                action means and std weights.
+            std_bias_initializer_value (float): Initial value for the bias of the
+                `std_projection_layer`.
+            squash_mean (bool): If True, squash the output mean to fit the
+                action spec. If `scale_distribution` is also True, this value
+                will be ignored.
+            state_dependent_std (bool): If True, std will be generated depending
+                on the current state; otherwise a global std will be generated
+                regardless of the current state.
+            std_transform (Callable): Transform to apply to the std, on top of
+                `activation`.
+            scale_distribution (bool): Whether or not to scale the output
+                distribution to ensure that the output aciton fits within the
+                `action_spec`. Note that this is different from `mean_transform`
+                which merely squashes the mean to fit within the spec.
+            dist_squashing_transform (td.Transform):  A distribution Transform
+                which transform values to fall in (-1, 1). Default to `dist_utils.StableTanh()`
+            name (str): name of this network.
+        """
+        super(ParallelNormalProjectionNetwork, self).__init__(
+            input_tensor_spec=TensorSpec((input_size, )), name=name)
+
+        assert isinstance(action_spec, TensorSpec)
+        assert len(action_spec.shape) == 1, "Only support 1D action spec!"
+
+        self._action_spec = action_spec
+        self._mean_transform = math_ops.identity
+        self._scale_distribution = scale_distribution
+
+        if squash_mean or scale_distribution:
+            assert isinstance(action_spec, BoundedTensorSpec), \
+                ("When squashing the mean or scaling the distribution, bounds "
+                 + "are required for the action spec!")
+
+            action_high = torch.as_tensor(action_spec.maximum)
+            action_low = torch.as_tensor(action_spec.minimum)
+            self._action_means = (action_high + action_low) / 2
+            self._action_magnitudes = (action_high - action_low) / 2
+            # Do not transform mean if scaling distribution
+            if not scale_distribution:
+                self._mean_transform = (
+                    lambda inputs: self._action_means + self._action_magnitudes
+                    * inputs.tanh())
+            else:
+                self._transforms = [
+                    dist_squashing_transform,
+                    dist_utils.AffineTransform(
+                        loc=self._action_means, scale=self._action_magnitudes)
+                ]
+
+        self._std_transform = math_ops.identity
+        if std_transform is not None:
+            self._std_transform = std_transform
+
+        self._means_projection_layer = layers.ParallelFC(
+            input_size,
+            action_spec.shape[0],
+            n,
+            activation=activation,
+            kernel_init_gain=projection_output_init_gain)
+
+        if state_dependent_std:
+            self._std_projection_layer = layers.ParallelFC(
+                input_size,
+                action_spec.shape[0],
+                n,
+                activation=activation,
+                kernel_init_gain=projection_output_init_gain,
+                bias_init_value=std_bias_initializer_value)
+        else:
+            self._std = nn.Parameter(
+                action_spec.constant(std_bias_initializer_value),
+                requires_grad=True)
+            self._std_projection_layer = lambda _: self._std
+
+    def _normal_dist(self, means, stds):
+        normal_dist = dist_utils.DiagMultivariateNormal(loc=means, scale=stds)
+        if self._scale_distribution:
+            # The transformed distribution can also do reparameterized sampling
+            # i.e., `.has_rsample=True`
+            # Note that in some cases kl_divergence might no longer work for this
+            # distribution! Assuming the same `transforms`, below will work:
+            # ````
+            # kl_divergence(Independent, Independent)
+            #
+            # kl_divergence(TransformedDistribution(Independent, transforms),
+            #               TransformedDistribution(Independent, transforms))
+            # ````
+            squashed_dist = td.TransformedDistribution(
+                base_distribution=normal_dist, transforms=self._transforms)
+            return squashed_dist
+        else:
+            return normal_dist
+
+    def forward(self, inputs, state=()):
+        means = self._mean_transform(self._means_projection_layer(inputs))
+        stds = self._std_transform(self._std_projection_layer(inputs))
+        return self._normal_dist(means, stds), state
+
 
 @gin.configurable
 class StableNormalProjectionNetwork(NormalProjectionNetwork):
