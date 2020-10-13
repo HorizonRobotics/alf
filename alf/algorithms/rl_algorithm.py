@@ -466,6 +466,7 @@ class RLAlgorithm(Algorithm):
                     transformed_time_step.observation["desired_goal"])
                 exp = exp._replace(observation=observation_with_desired)
             if (hasattr(exp.rollout_info, "goal_generator")
+                    and hasattr(exp.rollout_info.goal_generator, "final_goal")
                     and exp.rollout_info.goal_generator.final_goal != ()):
                 observation_with_f = exp.observation
                 observation_with_f["final_goal"] = (
