@@ -29,6 +29,7 @@ class TDLoss(nn.Module):
                  gamma=0.99,
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
+                 normalize_target=False,
                  use_retrace=0,
                  debug_summaries=False,
                  name="TDLoss"):
@@ -70,6 +71,8 @@ class TDLoss(nn.Module):
         self._td_error_loss_fn = td_error_loss_fn
         self._lambda = td_lambda
         self._debug_summaries = debug_summaries
+        self._normalize_target = normalize_target
+        self._target_normalizer = None
         self._use_retrace = use_retrace
     def forward(self, experience, value, target_value, train_info):
         """Cacluate the loss.
