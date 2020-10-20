@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,9 @@
 # limitations under the License.
 
 from collections import namedtuple
+from functools import partial
 import gin
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -22,13 +24,15 @@ from typing import Callable
 
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
-                                 TimeStep)
+                                 TimeStep, StepType)
 from alf.nest import nest
-from alf.optimizers.traj_optimizers import RandomOptimizer
+from alf.optimizers.traj_optimizers import RandomOptimizer, CEMOptimizer
+from alf.tensor_specs import TensorSpec
+from alf.utils import common
 
-PlannerState = namedtuple("PlannerState", ["policy"], default_value=())
-PlannerInfo = namedtuple("PlannerInfo", ["policy"])
-PlannerLossInfo = namedtuple('PlannerLossInfo', ["policy"])
+PlannerState = namedtuple("PlannerState", ["prev_plan"], default_value=())
+PlannerInfo = namedtuple("PlannerInfo", ["planner"])
+PlannerLossInfo = namedtuple('PlannerLossInfo', ["planner"])
 
 
 @gin.configurable
@@ -42,7 +46,6 @@ class PlanAlgorithm(OffPolicyAlgorithm):
     def __init__(self,
                  feature_spec,
                  action_spec,
-                 train_state_spec,
                  planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
@@ -59,15 +62,13 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         super().__init__(
             feature_spec,
             action_spec,
-            train_state_spec=train_state_spec,
+            train_state_spec=PlannerState(
+                prev_plan=TensorSpec((planning_horizon,
+                                      action_spec.shape[-1]))),
             name=name)
 
         flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"
-
-        flat_feature_spec = nest.flatten(feature_spec)
-        assert len(
-            flat_feature_spec) == 1, "doesn't support nested feature_spec"
 
         action_spec = flat_action_spec[0]
 
@@ -79,52 +80,44 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._action_spec = action_spec
         self._feature_spec = feature_spec
         self._planning_horizon = planning_horizon
-        self._upper_bound = action_spec.maximum if upper_bound is None \
-                                                else upper_bound
-        self._lower_bound = action_spec.minimum if lower_bound is None \
-                                                else lower_bound
 
-        self._reward_func = None
-        self._dynamics_func = None
-        self._step_eval_func = None  # per step evaluation function
+        self._upper_bound = torch.Tensor(action_spec.maximum) \
+                        if upper_bound is None else upper_bound
+        self._lower_bound = torch.Tensor(action_spec.minimum) \
+                        if lower_bound is None else lower_bound
+
+        self._action_seq_cost_func = None
 
     def train_step(self, time_step: TimeStep, state: PlannerState):
         """
         Args:
             time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            state (PlannerState): input planner state
         Returns:
             AlgStep:
                 output: empty tuple ()
-                state (PlannerState): state for training
+                state (PlannerState): updated planner state
                 info (PlannerInfo):
         """
         pass
 
-    def set_reward_func(self, reward_func):
-        """Set per-time-step reward function used for planning
+    def set_action_sequence_cost_func(self, action_seq_cost_func):
+        """Set a function for evaluating the action sequences for planning
         Args:
-            reward_func (Callable): the reward function to be used for planning.
-            reward_func takes (obs, action) as input
+            action_seq_cost_func (Callable): cost function to be used for planning.
+            action_seq_cost_func takes initial observation and action sequences
+            of the shape [B, population, unroll_steps, action_dim] as input
+            and returns the accumulated cost along the unrolled trajectory, with
+            the shape of [B, population]
         """
-        self._reward_func = reward_func
+        self._action_seq_cost_func = action_seq_cost_func
 
-    def set_dynamics_func(self, dynamics_func):
-        """Set the dynamics function for planning
-        Args:
-            dynamics_func (Callable): reward function to be used for planning.
-            dynamics_func takes (time_step, state) as input and returns
-            next_time_step (TimeStep) and the next_state
-        """
-        self._dynamics_func = dynamics_func
-
-    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epsilon_greedy):
         """Compute the plan based on the provided observation and action
         Args:
             time_step (TimeStep): input data for next step prediction
-            state (MbrlState): input state for next step prediction. It will
-                be used by the next step prediction function set by
-                ```set_dynamics_func```.
+            state (PlannerState): input planner state
         Returns:
             action: planned action for the given inputs
         """
@@ -134,6 +127,13 @@ class PlanAlgorithm(OffPolicyAlgorithm):
 @gin.configurable
 class RandomShootingAlgorithm(PlanAlgorithm):
     """Random Shooting-based planning method.
+
+    This method uses a Random Shooting approach to optimize an action
+    trajectory by minimizing a given cost function. The optimized action
+    trajectory is termed as a 'plan' which can be used by other components
+    such as a MPC-based controller. It has been used in `Neural Network Dynamics
+    for Model-Based Deep Reinforcement Learning with Model-Free Fine-Tuning
+    <https://arxiv.org/abs/1708.02596>`_
     """
 
     def __init__(self,
@@ -143,7 +143,6 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                  planning_horizon,
                  upper_bound=None,
                  lower_bound=None,
-                 hidden_size=256,
                  name="RandomShootingAlgorithm"):
         """Create a RandomShootingAlgorithm.
 
@@ -154,12 +153,10 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                 action_spec.maximum will be used if not specified
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
-            hidden_size (int|tuple): size of hidden layer(s)
         """
         super().__init__(
             feature_spec=feature_spec,
             action_spec=action_spec,
-            train_state_spec=(),
             planning_horizon=planning_horizon,
             upper_bound=upper_bound,
             lower_bound=lower_bound,
@@ -169,17 +166,22 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         assert len(flat_action_spec) == 1, ("RandomShootingAlgorithm doesn't "
                                             "support nested action_spec")
 
-        flat_feature_spec = nest.flatten(feature_spec)
-        assert len(flat_feature_spec) == 1, ("RandomShootingAlgorithm doesn't "
-                                             "support nested feature_spec")
-
         self._population_size = population_size
         solution_size = self._planning_horizon * self._num_actions
+        self._solution_size = solution_size
+
+        # expand action bound to solution bound
+        solution_upper_bound = self._upper_bound.unsqueeze(0).expand(
+            planning_horizon, *self._upper_bound.shape).reshape(-1)
+        solution_lower_bound = self._lower_bound.unsqueeze(0).expand(
+            planning_horizon, *self._lower_bound.shape).reshape(-1)
+
         self._plan_optimizer = RandomOptimizer(
             solution_size,
             self._population_size,
-            upper_bound=action_spec.maximum,
-            lower_bound=action_spec.minimum)
+            upper_bound=solution_upper_bound,
+            lower_bound=solution_lower_bound,
+            cost_func=self._calc_cost_for_action_sequence)
 
     def train_step(self, time_step: TimeStep, state):
         """
@@ -192,80 +194,150 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                 state (DynamicsState): state for training
                 info (DynamicsInfo):
         """
-        return AlgStep(output=(), state=(), info=())
+        return AlgStep(output=(), state=state, info=())
 
-    def generate_plan(self, time_step: TimeStep, state, epsilon_greedy):
-        assert self._reward_func is not None, ("specify reward function "
-                                               "before planning")
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epsilon_greedy):
+        assert self._action_seq_cost_func is not None, (
+            "specify "
+            "action sequence cost function before planning")
 
-        assert self._dynamics_func is not None, ("specify dynamics function "
-                                                 "before planning")
-
-        self._plan_optimizer.set_cost(self._calc_cost_for_action_sequence)
-        opt_action = self._plan_optimizer.obtain_solution(time_step, state)
+        opt_action = self._plan_optimizer.obtain_solution(
+            time_step.observation)
+        # [B, horizon * action_dim] -> [B, horizon, action_dim]
+        opt_action = torch.reshape(
+            opt_action,
+            [opt_action.shape[0], self._planning_horizon, self._num_actions])
         action = opt_action[:, 0]
-        action = torch.reshape(action, [time_step.observation.shape[0], -1])
-        return action
+        return action, state
 
-    def _expand_to_population(self, data):
-        """Expand the input tensor to a population of replications
-        Args:
-            data (Tensor): input data with shape [batch_size, ...]
-        Returns:
-            data_population (Tensor) with shape
-                                    [batch_size * self._population_size, ...].
-            For example data tensor [[a, b], [c, d]] and a population_size of 2,
-            we have the following data_population tensor as output
-                                    [[a, b], [a, b], [c, d], [c, d]]
-        """
-        data_population = torch.repeat_interleave(
-            data, self._population_size, dim=0)
-        return data_population
-
-    def _calc_cost_for_action_sequence(self, time_step: TimeStep, state,
-                                       ac_seqs):
+    def _calc_cost_for_action_sequence(self, obs, ac_seqs):
         """
         Args:
-            time_step (TimeStep): input data for next step prediction
-            state (MbrlState): input state for next step prediction
-            ac_seqs: action_sequence (Tensor) of shape [batch_size,
+            obs (Tensor): initial observation to start the rollout for the
+                evaluation of ac_seqs.
+            ac_seqs(Tensor): action_sequence of shape [batch_size,
                     population_size, solution_dim]), where
                     solution_dim = planning_horizon * num_actions
         Returns:
             cost (Tensor) with shape [batch_size, population_size]
         """
-        obs = time_step.observation
-        batch_size = obs.shape[0]
-
-        ac_seqs = torch.reshape(
-            ac_seqs,
-            [batch_size, self._population_size, self._planning_horizon, -1])
-
-        ac_seqs = ac_seqs.permute(2, 0, 1, 3)
-        ac_seqs = torch.reshape(
-            ac_seqs, (self._planning_horizon, -1, self._num_actions))
-
-        state = state._replace(dynamics=state.dynamics._replace(feature=obs))
-        init_obs = self._expand_to_population(obs)
-        state = nest.map_structure(self._expand_to_population, state)
-
-        obs = init_obs
-        cost = 0
-        for i in range(ac_seqs.shape[0]):
-            action = ac_seqs[i]
-            time_step = time_step._replace(prev_action=action)
-            time_step, state = self._dynamics_func(time_step, state)
-            next_obs = time_step.observation
-            # Note: currently using (next_obs, action), might need to
-            # consider (obs, action) in order to be more compatible
-            # with the conventional definition of the reward function
-            reward_step, state = self._reward_func(next_obs, action, state)
-            cost = cost - reward_step
-            obs = next_obs
-
-        # reshape cost back to [batch size, population_size]
-        cost = torch.reshape(cost, [batch_size, -1])
+        ac_seqs = ac_seqs.reshape(*ac_seqs.shape[0:2], self._planning_horizon,
+                                  -1)
+        cost = self._action_seq_cost_func(obs, ac_seqs)
         return cost
 
     def after_update(self, training_info):
         pass
+
+
+@gin.configurable
+class CEMPlanAlgorithm(RandomShootingAlgorithm):
+    """CEM-based planning method.
+
+    This method uses a Cross-Entropy Method (CEM) to optimize an action
+    trajectory by minimizing a given cost function. The optimized action
+    trajectory is termed as a 'plan' which can be used by other components
+    such as a MPC-based controller. This has been used by some MBRL works
+    such as `Deep Reinforcement Learning in a Handful of Trials using
+    Probabilistic Dynamics Models <https://arxiv.org/abs/1805.12114>`_
+
+    To speedup, when possible, we have used the plan obtained at the previous
+    time step to initialize the the mean of the plan distribution at the current
+    time step, after proper shifting and padding.
+    """
+
+    def __init__(self,
+                 feature_spec,
+                 action_spec,
+                 population_size,
+                 planning_horizon,
+                 elite_size=50,
+                 max_iter_num=5,
+                 epsilon=0.01,
+                 tau=0.9,
+                 scalar_var=None,
+                 upper_bound=None,
+                 lower_bound=None,
+                 name="CEMPlanAlgorithm"):
+        """Create a CEMPlanAlgorithm.
+
+        Args:
+            population_size (int): the size of polulation for optimization
+            planning_horizon (int): planning horizon in terms of time steps
+            elite_size (int): the number of elites selected in each round
+            max_iter_num (int|Tensor): the maximum number of CEM iterations
+            epsilon (float): a minimum variance threshold. If the variance of
+                the population falls below it, the CEM iteration will stop.
+            tau (float): a value in (0, 1) for softly updating the population
+                mean and variance:
+                    mean = (1 - tau) * mean + tau * new_mean
+                    var = (1 - tau) * var + tau * new_var
+            scalar_var (None|float): the value that will be used to construct
+                the initial diagonal covariance matrix of the multi-dimensional
+                Gaussian used by the CEM optimizer. If value is None,
+                0.5 * (upper_bound - lower_bound) is used.
+            upper_bound (int): upper bound for elements in solution;
+                action_spec.maximum will be used if not specified
+            lower_bound (int): lower bound for elements in solution;
+                action_spec.minimum will be used if not specified
+        """
+        super().__init__(
+            feature_spec=feature_spec,
+            action_spec=action_spec,
+            planning_horizon=planning_horizon,
+            upper_bound=upper_bound,
+            lower_bound=lower_bound,
+            name=name)
+
+        solution_size = planning_horizon * self._num_actions
+
+        self._plan_optimizer = CEMOptimizer(
+            solution_size,
+            self._population_size,
+            upper_bound=self._upper_bound,
+            lower_bound=self._lower_bound,
+            cost_func=self._calc_cost_for_action_sequence,
+            elite_size=elite_size,
+            max_iter_num=max_iter_num,
+            epsilon=epsilon,
+            tau=tau)
+
+        if scalar_var is None:
+            self._scalar_var = (self._upper_bound - self._lower_bound) / 2.
+        else:
+            self._scalar_var = scalar_var
+
+    def predict_plan(self, time_step: TimeStep, state: PlannerState,
+                     epsilon_greedy):
+        prev_plan = state.prev_plan
+        # [B, horizon, action_dim] -> [B, horizon*action_dim]
+        prev_solution = prev_plan.reshape(prev_plan.shape[0], -1)
+
+        prev_solution = prev_solution.clone()
+        prev_solution[time_step.step_type == StepType.FIRST] = torch.full(
+            (self._solution_size, ),
+            (self._upper_bound + self._lower_bound) / 2.)
+
+        init_mean = prev_solution.unsqueeze(1)
+
+        opt_action = self._plan_optimizer.obtain_solution(
+            time_step.observation,
+            init_mean=init_mean,
+            init_var=torch.ones_like(init_mean) * self._scalar_var)
+
+        # [B, horizon * action_dim] -> [B, horizon, action_dim]
+        opt_action = torch.reshape(
+            opt_action,
+            [opt_action.shape[0], self._planning_horizon, self._num_actions])
+
+        # [B, horizon, action_dim]
+        temporally_shifted_plan = torch.cat(
+            (opt_action[:, 1:], opt_action.mean(
+                dim=(0, 1), keepdim=True).expand(opt_action.shape[0], 1, -1)),
+            1)
+
+        action = opt_action[:, 0]
+        new_state = state._replace(prev_plan=temporally_shifted_plan)
+
+        return action, new_state

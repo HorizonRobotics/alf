@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -150,7 +150,7 @@ class DynamicsLearningAlgorithm(Algorithm):
         # Here we take mean over the loss to avoid undesired additional
         # masking from base algorithm's ``update_with_gradient``.
         scalar_loss = nest.map_structure(torch.mean, info.loss)
-        return LossInfo(scalar_loss=scalar_loss, extra=loss.extra)
+        return LossInfo(scalar_loss=scalar_loss.loss, extra=scalar_loss.loss)
 
 
 @gin.configurable

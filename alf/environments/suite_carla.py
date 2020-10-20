@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -167,17 +167,25 @@ class Player(object):
     # 0/1 valued indicating reaching goal
     REWARD_SUCCESS = 3
 
+    # 0/1 valued indicating red light violation
+    REWARD_RED_LIGHT = 4
+
     # dimension of the reward vector
-    REWARD_DIMENSION = 4
+    REWARD_DIMENSION = 5
+
+    # See https://leaderboard.carla.org/#driving-score for reference
+    PENALTY_RATE_COLLISION = 0.50
+    PENALTY_RATE_RED_LIGHT = 0.30
 
     def __init__(self,
                  actor,
                  alf_world,
                  success_reward=100.,
                  success_distance_thresh=5.0,
-                 max_collision_penalty=100.,
+                 max_collision_penalty=20.,
                  max_stuck_at_collision_seconds=5.0,
                  stuck_at_collision_distance=1.0,
+                 max_red_light_penalty=10.,
                  sparse_reward=False,
                  sparse_reward_interval=10.,
                  allow_negative_distance_reward=True,
@@ -196,14 +204,21 @@ class Player(object):
             max_collision_penalty (float): the maximum penalty (i.e. negative reward)
                 for collision. We don't want the collision penalty to be too large
                 if the player cannot even get enough positive moving reward. So the
-                panalty is capped at ``max(0., episode_reward))``. Note that this
-                reward is only given once at the first step of contiguous collisions.
+                penalty is capped at ``Player.PENALTY_RATE_COLLISION * max(0., episode_reward))``.
+                Note that this reward is only given once at the first step of
+                contiguous collisions.
             max_stuck_at_collision_seconds (float): the episode will end and is
                 considerred as failure if the car is stuck at the collision for
                 so many seconds,
             stuck_at_collision_distance (float): the car is considerred as being
                 stuck at the collision if it is within such distance of the first
                 collision location.
+            max_red_light_penalty (float): the maximum penalty (i.e. negative reward)
+                for red light violation. We don't want the red light penalty to
+                be too large if the player cannot even get enough positive moving
+                reward. So the penalty is capped at ``Player.PENALTY_RATE_RED_LIGHT * max(0., episode_reward))``.
+                Note that this reward is only given once at the first step of
+                contiguous red light violation.
             sparse_reward (bool): If False, the distance reward is given at every
                 step based on how much it moves along the navigation route. If
                 True, the distance reward is only given after moving ``sparse_reward_distance``.
@@ -269,6 +284,9 @@ class Player(object):
         self._max_collision_penalty = max_collision_penalty
         self._max_stuck_at_collision_frames = max_stuck_at_collision_seconds / self._delta_seconds
         self._stuck_at_collision_distance = stuck_at_collision_distance
+
+        self._max_red_light_penalty = max_red_light_penalty
+
         self._sparse_reward = sparse_reward
         self._sparse_reward_index_interval = int(
             max(1, sparse_reward_interval // self._alf_world.route_resolution))
@@ -362,6 +380,8 @@ class Player(object):
         self._prev_collision = False  # whether there is collision in the previous frame
         self._collision = False  # whether there is colliion in the current frame
         self._collision_loc = None  # the location of the car when it starts to have collition
+
+        self._prev_violated_red_light_id = None
 
         # The intermediate goal for sparse reward
         self._intermediate_goal_index = min(self._sparse_reward_index_interval,
@@ -498,8 +518,9 @@ class Player(object):
             # We don't want the collision penalty to be too large if the player
             # cannot even get enough positive moving reward. So we cap the penalty
             # at ``max(0., self._episode_reward)``
-            reward -= min(self._max_collision_penalty,
-                          max(0., self._episode_reward))
+            reward -= min(
+                self._max_collision_penalty,
+                Player.PENALTY_RATE_COLLISION * max(0., self._episode_reward))
             reward_vector[Player.REWARD_COLLISION] = 1.
 
         if self._max_frame is None:
@@ -568,6 +589,16 @@ class Player(object):
             else:
                 self._unrecorded_distance_reward = 0
         reward += distance_reward
+
+        red_light_id = self._alf_world.is_running_red_light(self._actor)
+        if red_light_id is not None and red_light_id != self._prev_violated_red_light_id:
+            logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
+                                                          current_frame))
+            reward_vector[Player.REWARD_RED_LIGHT] = 1.
+            reward -= min(
+                self._max_red_light_penalty,
+                Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
+        self._prev_violated_red_light_id = red_light_id
 
         obs['navigation'] = _calculate_relative_position(
             self._actor.get_transform(), obs['navigation'])
@@ -1154,6 +1185,7 @@ class CarlaEnvironment(AlfEnvironment):
             if response.error:
                 logging.error(response.error)
         self._current_frame = self._world.tick()
+        self._alf_world.on_tick()
         for vehicle in self._other_vehicles:
             self._alf_world.update_actor_location(vehicle.id,
                                                   vehicle.get_location())
@@ -1184,6 +1216,7 @@ class CarlaEnvironment(AlfEnvironment):
             if response.error:
                 logging.error(response.error)
         self._current_frame = self._world.tick()
+        self._alf_world.on_tick()
         return self._get_current_time_step()
 
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -597,6 +597,7 @@ class RewardNormalizer(SimpleDataTransformer):
             normalizer = ScalarAdaptiveNormalizer(auto_update=False)
         self._normalizer = normalizer
         self._clip_value = clip_value
+        self._update_mode = update_mode
 
     def _transform(self, timestep_or_exp):
         if ((self._update_mode == "replay" and common.is_replay())

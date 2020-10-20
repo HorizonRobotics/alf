@@ -910,7 +910,7 @@ class Algorithm(nn.Module):
 
     @common.add_method(nn.Module)
     def _repr(self, visited=None):
-        """Adapted from __repr__() in torch/nn/modules/module.nn. to handle cycles"""
+        """Adapted from __repr__() in torch/nn/modules/module.nn. to handle cycles."""
 
         if visited is None:
             visited = [self]
@@ -1013,8 +1013,8 @@ class Algorithm(nn.Module):
         Args:
             loss_info (LossInfo): loss with shape :math:`(T, B)` (except for
                 ``loss_info.scalar_loss``)
-            valid_masks (tf.Tensor): masks indicating which samples are valid.
-                (``shape=(T, B), dtype=tf.float32``)
+            valid_masks (Tensor): masks indicating which samples are valid.
+                (``shape=(T, B), dtype=torch.float32``)
             weight (float): weight for this batch. Loss will be multiplied with
                 this weight before calculating gradient.
             batch_info (BatchInfo): information about this batch returned by
@@ -1444,6 +1444,12 @@ class Algorithm(nn.Module):
                         + self._config.priority_replay_eps)
             self._exp_replayer.update_priority(batch_info.env_ids,
                                                batch_info.positions, priority)
+            if self._debug_summaries and alf.summary.should_record_summaries():
+                with alf.summary.scope("PriorityReplay"):
+                    summary_utils.add_mean_hist_summary(
+                        "new_priority", priority)
+                    summary_utils.add_mean_hist_summary(
+                        "old_importance_weight", batch_info.importance_weights)
 
         if self.is_rl():
             valid_masks = (experience.step_type != StepType.LAST).to(

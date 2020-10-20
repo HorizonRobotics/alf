@@ -25,10 +25,22 @@ DeterministicDynamicsAlgorithm.hidden_size=(500, 500, 500)
 FixedRewardFunction.reward_func=@reward_function_for_pendulum
 
 # ----------------------planner config---------------------------------
+# random-shooting planner
 RandomShootingAlgorithm.feature_spec=%observation_spec
 RandomShootingAlgorithm.action_spec=%action_spec
 RandomShootingAlgorithm.population_size=5000
 RandomShootingAlgorithm.planning_horizon=25
+
+# CEM-based planner
+CEMPlanAlgorithm.feature_spec=%observation_spec
+CEMPlanAlgorithm.action_spec=%action_spec
+CEMPlanAlgorithm.population_size=400
+CEMPlanAlgorithm.planning_horizon=25
+CEMPlanAlgorithm.elite_size=40
+CEMPlanAlgorithm.max_iter_num=5
+CEMPlanAlgorithm.epsilon=0.01
+CEMPlanAlgorithm.tau=0.9
+CEMPlanAlgorithm.scalar_var=1.0
 
 # model-based RL algo config
 MbrlAlgorithm.feature_spec=%observation_spec
@@ -36,6 +48,8 @@ MbrlAlgorithm.action_spec=%action_spec
 MbrlAlgorithm.dynamics_module=@DeterministicDynamicsAlgorithm()
 MbrlAlgorithm.reward_module=@FixedRewardFunction()
 MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
+# uncomment to use CEM-planner
+# MbrlAlgorithm.planner_module=@CEMPlanAlgorithm()
 
 # agent config
 Mbrl/AdamW.weight_decay=0.0001
@@ -54,10 +68,10 @@ TrainerConfig.clear_replay_buffer=False
 TrainerConfig.algorithm_ctor=@MbrlAlgorithm
 TrainerConfig.num_iterations=50 # num of interactions of unroll_length with env
 TrainerConfig.num_checkpoints=5
-TrainerConfig.evaluate=1
+TrainerConfig.evaluate=0
 TrainerConfig.eval_interval=5
 TrainerConfig.debug_summaries=True
-TrainerConfig.summarize_grads_and_vars=1
+TrainerConfig.summarize_grads_and_vars=0
 TrainerConfig.summary_interval=1
 TrainerConfig.use_rollout_state=True
 TrainerConfig.replay_buffer_length=100000

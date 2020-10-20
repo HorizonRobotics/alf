@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,8 @@ import numpy as np
 from alf.utils import common
 
 try:
+    import matplotlib
+    matplotlib.use('Agg')  # Required to resolve the TKinter error
     import matplotlib.pyplot as plt
 except ImportError:
     plt = None
@@ -34,7 +36,7 @@ import alf
 from alf.utils import dist_utils
 
 
-def _get_img_from_fig(fig, dpi=216):
+def _get_img_from_fig(fig, dpi=216, height=128, width=128):
     """Returns an image as numpy array from figure.
 
     Args:
@@ -51,6 +53,7 @@ def _get_img_from_fig(fig, dpi=216):
     buf.close()
     img = cv2.imdecode(img_arr, 1)
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    img = _resize_image(img, width=width, height=height)
     return img
 
 
