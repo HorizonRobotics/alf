@@ -139,7 +139,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         self._planner_module.set_action_sequence_cost_func(
             self._predict_multi_step_cost)
         if dynamics_module is not None:
-            self._num_dynamics_replicas = dynamics_module._num_replicas
+            self._num_dynamics_replicas = dynamics_module.num_replicas
         self._particles_per_replica = particles_per_replica
 
     def _predict_next_step(self, time_step, dynamics_state):
@@ -176,20 +176,18 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         return data_population
 
     def _expand_to_particles(self, inputs):
-        # inputs [B, n, d]
-        if inputs.ndim == 2:
-            # [B, d] -> [n*p, B, d]
-            inputs = inputs.unsqueeze(0).expand(
-                self._num_dynamics_replicas * self._particles_per_replica,
-                *inputs.shape)
-            # [n*p, B, d] -> [n, p, B, d]
-            inputs = inputs.view(self._num_dynamics_replicas,
-                                 self._particles_per_replica,
-                                 *inputs.shape[1:])
-            # [n, p, B, d] -> [B, p, n, d]
-            inputs = inputs.permute(2, 1, 0, 3)
-            # [B, p, n, d] -> [B*p, n, d]
-            inputs = inputs.reshape(-1, inputs.shape[2], inputs.shape[3])
+        """Expand the inputs of shape [B, ...] to [B*p, n, ...] if n > 1,
+            or to [B*p, ...] if n = 1, where n is the number of replicas
+            and p is the number of particles per replica.
+        """
+        # [B, ...] -> [B*p, ...]
+        inputs = torch.repeat_interleave(
+            inputs, self._particles_per_replica, dim=0)
+        if self._num_dynamics_replicas > 1:
+            # [B*p, ...] -> [B*p, n, ...]
+            inputs = inputs.unsqueeze(1).expand(
+                -1, self._num_dynamics_replicas, *inputs.shape[1:])
+
         return inputs
 
     @torch.no_grad()

@@ -20,7 +20,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import (AlgStep, Experience, LossInfo, namedtuple,
                                  StepType, TimeStep)
 from alf.nest import nest
-from alf.nest.utils import NestConcat
+from alf.nest.utils import NestConcat, get_outer_rank
 from alf.networks import Network, EncodingNetwork, DynamicsNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import dist_utils, losses, math_ops, spec_utils, tensor_utils
@@ -90,7 +90,15 @@ class DynamicsLearningAlgorithm(Algorithm):
                 fc_layer_params=hidden_size,
                 output_tensor_spec=flat_feature_spec[0])
 
-        self._dynamics_network = dynamics_network.make_parallel(num_replicas)
+        if num_replicas > 1:
+            self._dynamics_network = dynamics_network.make_parallel(
+                num_replicas)
+        else:
+            self._dynamics_network = dynamics_network
+
+    @property
+    def num_replicas(self):
+        return self._num_replicas
 
     def _encode_action(self, action):
         if self._action_spec.is_discrete:
@@ -184,8 +192,11 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         if dynamics_network is not None:
             dynamics_network_state_spec = dynamics_network.state_spec
 
-        ens_feature_spec = TensorSpec((num_replicas, feature_spec.shape[0]),
-                                      dtype=torch.float32)
+        if num_replicas > 1:
+            ens_feature_spec = TensorSpec(
+                (num_replicas, feature_spec.shape[0]), dtype=torch.float32)
+        else:
+            ens_feature_spec = feature_spec
 
         super().__init__(
             train_state_spec=DynamicsState(
@@ -197,13 +208,25 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
             dynamics_network=dynamics_network,
             name=name)
 
-    def _expand_to_replica(self, inputs):
-        # inputs [B n l]
-        if inputs.ndim == 2:
-            inputs = inputs.unsqueeze(0).expand(self._num_replicas,
-                                                *inputs.shape)
-            inputs = inputs.transpose(0, 1)  # [B n l]
-        return inputs
+    def _expand_to_replica(self, inputs, spec):
+        """Expand the inputs of shape [B, ...] to [B, n, ...] if n > 1,
+            where n is the number of replicas. When n = 1, the unexpanded
+            inputs will be returned.
+        Args:
+            inputs (Tensor): the input tensor to be expanded
+            spec (TensorSpec): the spec of the unexpanded inputs. It is used to
+                determine whether the inputs is already an expanded one. If it
+                is already expanded, inputs will be returned without any
+                further processing.
+        Returns:
+            Tensor: the expaneded inputs or the original inputs.
+        """
+        outer_rank = get_outer_rank(inputs, spec)
+        if outer_rank == 1 and self._num_replicas > 1:
+            return inputs.unsqueeze(1).expand(-1, self._num_replicas,
+                                              *inputs.shape[1:])
+        else:
+            return inputs
 
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
         """Predict the current observation using ``time_step.prev_action``
@@ -214,8 +237,8 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         obs = state.feature
 
         # perform preprocessing
-        observations = self._expand_to_replica(obs)
-        actions = self._expand_to_replica(action)
+        observations = self._expand_to_replica(obs, self._feature_spec)
+        actions = self._expand_to_replica(action, self._action_spec)
 
         forward_deltas, network_state = self._dynamics_network(
             (observations, actions), state=state.network)
@@ -243,7 +266,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         else:
             # feature [B, d], state.feature: [B, n, d]
             updated_state = state._replace(
-                feature=self._expand_to_replica(feature))
+                feature=self._expand_to_replica(feature, self._feature_spec))
         return updated_state
 
     def train_step(self, time_step: TimeStep, state: DynamicsState):
@@ -258,14 +281,17 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
                 info (DynamicsInfo):
         """
         feature = time_step.observation
-        feature = self._expand_to_replica(feature)
+        feature = self._expand_to_replica(feature, self._feature_spec)
         dynamics_step = self.predict_step(time_step, state)
         forward_pred = dynamics_step.output
         forward_loss = (feature - forward_pred)**2
 
-        # [B, n, obs_dim]
-        forward_loss = 0.5 * forward_loss.mean(
-            list(range(2, forward_loss.ndim))).sum(1)
+        if forward_loss.ndim > 2:
+            # [B, n, ...] -> [B, ...]
+            forward_loss = forward_loss.sum(1)
+        if forward_loss.ndim > 1:
+            forward_loss = 0.5 * forward_loss.mean(
+                list(range(1, forward_loss.ndim)))
 
         # we mask out FIRST as its state is invalid
         valid_masks = (time_step.step_type != StepType.FIRST).to(torch.float32)
@@ -326,24 +352,17 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
         obs = state.feature
 
         # perform preprocessing
-        observations = self._expand_to_replica(obs)
-        actions = self._expand_to_replica(action)
+        observations = self._expand_to_replica(obs, self._feature_spec)
+        actions = self._expand_to_replica(action, self._action_spec)
 
-        out, network_states = self._dynamics_network((observations, actions),
-                                                     state=state.network)
+        dist, network_states = self._dynamics_network((observations, actions),
+                                                      state=state.network)
 
-        # assume Diagonal Multidimensional Normal distribution
-        assert isinstance(out, dist_utils.DiagMultivariateNormal), \
-            "only DiagMultivariateNormal distribution is supported"
-        forward_deltas_mean = out.mean
-        forward_deltas = forward_deltas_mean + torch.randn_like(
-            forward_deltas_mean) * out.stddev
-
-        logvar = (out.stddev**2).log()
+        forward_deltas = dist.sample()
 
         forward_preds = observations + forward_deltas
         state = state._replace(feature=forward_preds, network=network_states)
-        return AlgStep(output=forward_preds, state=state, info=logvar)
+        return AlgStep(output=forward_preds, state=state, info=dist)
 
     def train_step(self, time_step: TimeStep, state: DynamicsState):
         """
@@ -358,18 +377,17 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
         """
 
         feature = time_step.observation
-        feature = self._expand_to_replica(feature)
+        feature = self._expand_to_replica(feature, self._feature_spec)
         dynamics_step = self.predict_step(time_step, state)
 
-        forward_pred = dynamics_step.output
-        logvar = dynamics_step.info
-        inv_var = torch.exp(-logvar)
+        dist = dynamics_step.info
+        forward_loss = -dist.log_prob(feature - state.feature)
 
-        forward_loss = (feature - forward_pred)**2 * inv_var + logvar
-
-        # [B, n, obs_dim]
-        forward_loss = forward_loss.mean(list(range(2,
-                                                    forward_loss.ndim))).sum(1)
+        if forward_loss.ndim > 2:
+            # [B, n, ...] -> [B, ...]
+            forward_loss = forward_loss.sum(1)
+        if forward_loss.ndim > 1:
+            forward_loss = forward_loss.mean(list(range(1, forward_loss.ndim)))
 
         valid_masks = (time_step.step_type != StepType.FIRST).to(torch.float32)
 
