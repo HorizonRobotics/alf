@@ -22,5 +22,5 @@ SacAlgorithm.target_entropy=(
 TrainerConfig.algorithm_ctor=@DynamicActionRepeatAgent
 TrainerConfig.debug_summaries=True
 
-RewardNormalizer.clip_value=1.0
+RewardNormalizer.clip_value=5.0
 DynamicActionRepeatAgent.reward_normalizer_ctor=@RewardNormalizer

@@ -80,8 +80,8 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 calculate the representation from the original observation as
                 the observation for downstream algorithms such as ``rl_algorithm``.
                 We assume that the representation is trained by ``rl_algorithm``.
-            reward_normalizer (SimpleDataTransformer): if not None, environment
-                rewards will be normalized for training.
+            reward_normalizer_ctor (Callable): if not None, environment rewards
+                will be normalized for training.
             gamma (float): the reward discount to be applied when accumulating
                 ``k`` steps' rewards for a repeated action. Note that this value
                 should be equal to the gamma used by the critic loss for target
@@ -210,20 +210,15 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             rl_discount=state.rl_discount * time_step.discount * self._gamma,
             k=state.k + 1)
 
-        def _update_sample_rewards(time_step, state):
-            return state._replace(sample_rewards=time_step.reward)
-
         if self._reward_normalizer is not None:
             # The probability of a reward at step k being kept till K steps is:
             # 1/k * k/(k+1) * .. * (K-1)/K = 1/K. This provides enough randomness
             # to make the normalizer unbiased.
-            state = conditional_update(
-                target=state,
-                cond=(torch.rand_like(state.sample_rewards) <
-                      1. / state.k.to(torch.float32)),
-                func=_update_sample_rewards,
-                time_step=time_step,
-                state=state)
+            state = state._replace(
+                sample_rewards=torch.where((
+                    torch.rand_like(state.sample_rewards) < 1. /
+                    state.k.to(torch.float32)
+                ), time_step.reward, state.sample_rewards))
 
         @torch.no_grad()
         def _generate_new_action(time_step, state):
