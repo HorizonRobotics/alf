@@ -3,7 +3,6 @@ include 'sac_bipedal_walker.gin'
 import alf.algorithms.dynamic_action_repeat_agent
 import alf.networks.preprocessors
 
-OneStepTDLoss.gamma=1.0
 K=5
 
 q/QNetwork.preprocessing_combiner=@NestConcat()
@@ -22,4 +21,6 @@ SacAlgorithm.target_entropy=(
 
 TrainerConfig.algorithm_ctor=@DynamicActionRepeatAgent
 TrainerConfig.debug_summaries=True
-TrainerConfig.unroll_length=2
+
+RewardNormalizer.clip_value=5.0
+DynamicActionRepeatAgent.reward_normalizer_ctor=@RewardNormalizer

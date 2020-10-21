@@ -45,6 +45,18 @@ def reverse_cumsum(x, dim):
     return torch.flip(torch.cumsum(torch.flip(x, [dim]), dim), [dim])
 
 
+def reverse_cumprod(x, dim):
+    """Perform cumprod in a reverse order along the dimension specified by dim.
+    Args:
+        x (Tensor): the tensor to compute the reverse cumprod on
+        dim (int): the value indicating the dimension along which to calculate
+            the reverse cumprod
+    Returns:
+        the reverse cumprod tensor. It has the same shape as x.
+    """
+    return torch.flip(torch.cumprod(torch.flip(x, [dim]), dim), [dim])
+
+
 def tensor_extend(x, y):
     """Extending tensor with new_slice.
 
