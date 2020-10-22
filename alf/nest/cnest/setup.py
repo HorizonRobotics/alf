@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -123,7 +123,7 @@ class BuildExt(build_ext):
 
 setup(
     name="cnest",
-    setup_requires=['pybind11>=2.5.0'],
+    setup_requires=['pybind11==2.5.0'],
     ext_modules=ext_modules,
     cmdclass={'build_ext': BuildExt},
 )

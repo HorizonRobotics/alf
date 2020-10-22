@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,16 +68,8 @@ class PlanAlgorithm(OffPolicyAlgorithm):
                                       action_spec.shape[-1]))),
             name=name)
 
-        assert (() == action_spec.maximum.shape) and \
-                (() == action_spec.minimum.shape), \
-                    "Only support scalar action maximum and minimum bound"
-
         flat_action_spec = nest.flatten(action_spec)
         assert len(flat_action_spec) == 1, "doesn't support nested action_spec"
-
-        flat_feature_spec = nest.flatten(feature_spec)
-        assert len(
-            flat_feature_spec) == 1, "doesn't support nested feature_spec"
 
         action_spec = flat_action_spec[0]
 
@@ -89,9 +81,10 @@ class PlanAlgorithm(OffPolicyAlgorithm):
         self._action_spec = action_spec
         self._feature_spec = feature_spec
         self._planning_horizon = planning_horizon
-        self._upper_bound = np.asscalar(action_spec.maximum) \
+
+        self._upper_bound = torch.Tensor(action_spec.maximum) \
                         if upper_bound is None else upper_bound
-        self._lower_bound = np.asscalar(action_spec.minimum) \
+        self._lower_bound = torch.Tensor(action_spec.minimum) \
                         if lower_bound is None else lower_bound
 
         self._action_seq_cost_func = None
@@ -174,20 +167,22 @@ class RandomShootingAlgorithm(PlanAlgorithm):
         assert len(flat_action_spec) == 1, ("RandomShootingAlgorithm doesn't "
                                             "support nested action_spec")
 
-        flat_feature_spec = nest.flatten(feature_spec)
-        assert len(flat_feature_spec) == 1, ("RandomShootingAlgorithm doesn't "
-                                             "support nested feature_spec")
-
         self._population_size = population_size
 
         solution_size = self._planning_horizon * self._num_actions
         self._solution_size = solution_size
 
+        # expand action bound to solution bound
+        solution_upper_bound = self._upper_bound.unsqueeze(0).expand(
+            planning_horizon, *self._upper_bound.shape).reshape(-1)
+        solution_lower_bound = self._lower_bound.unsqueeze(0).expand(
+            planning_horizon, *self._lower_bound.shape).reshape(-1)
+
         self._plan_optimizer = RandomOptimizer(
             solution_size,
             self._population_size,
-            upper_bound=self._upper_bound,
-            lower_bound=self._lower_bound,
+            upper_bound=solution_upper_bound,
+            lower_bound=solution_lower_bound,
             cost_func=self._calc_cost_for_action_sequence)
 
     def train_step(self, time_step: TimeStep, state):

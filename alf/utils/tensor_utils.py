@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +43,18 @@ def reverse_cumsum(x, dim):
         the reverse cumsumed tensor. It has the same shape as x.
     """
     return torch.flip(torch.cumsum(torch.flip(x, [dim]), dim), [dim])
+
+
+def reverse_cumprod(x, dim):
+    """Perform cumprod in a reverse order along the dimension specified by dim.
+    Args:
+        x (Tensor): the tensor to compute the reverse cumprod on
+        dim (int): the value indicating the dimension along which to calculate
+            the reverse cumprod
+    Returns:
+        the reverse cumprod tensor. It has the same shape as x.
+    """
+    return torch.flip(torch.cumprod(torch.flip(x, [dim]), dim), [dim])
 
 
 def tensor_extend(x, y):

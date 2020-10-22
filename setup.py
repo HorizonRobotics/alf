@@ -30,7 +30,7 @@ setup(
         'pyglet == 1.3.2',  # higher version breaks classic control rendering
         'matplotlib',
         'numpy',
-        'opencv-python >= 3.4.1.15',
+        'opencv-python >=4.0, <=4.2',
         'pathos == 0.2.4',
         'pillow',
         'psutil',

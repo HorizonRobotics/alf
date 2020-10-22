@@ -193,7 +193,7 @@ class GridSearch(object):
                            parameters,
                            id,
                            repeat,
-                           token_len=6,
+                           token_len=20,
                            max_len=255):
         """Generate a run name by writing abbr parameter key-value pairs in it,
         for an easy curve comparison between different search runs without going

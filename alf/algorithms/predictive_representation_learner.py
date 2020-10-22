@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,9 +20,11 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, TimeStep, Experience, LossInfo, namedtuple
 from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
+from alf.nest import nest
 from alf.nest.utils import convert_device
 from alf.networks import Network, LSTMEncodingNetwork
 from alf.utils import dist_utils, spec_utils, tensor_utils
+from alf.utils.normalizers import AdaptiveNormalizer
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
 
 PredictiveRepresentationLearnerInfo = namedtuple(
@@ -58,6 +60,7 @@ class SimpleDecoder(Algorithm):
                  loss_weight=1.0,
                  summarize_each_dimension=False,
                  optimizer=None,
+                 normalize_target=False,
                  debug_summaries=False,
                  name="SimpleDecoder"):
         """
@@ -75,6 +78,9 @@ class SimpleDecoder(Algorithm):
             loss_weight (float): weight for the loss.
             optimizer (Optimzer|None): if provided, it will be used to optimize
                 the parameter of decoder_net
+            normalize_target (bool): whether to normalize target.
+                Note that the effect of this is to change the loss. The predicted
+                value itself is not normalized.
             debug_summaries (bool): whether to generate debug summaries
             name (str): name of this instance
         """
@@ -88,14 +94,26 @@ class SimpleDecoder(Algorithm):
         self._target_field = target_field
         self._loss = loss
         self._loss_weight = loss_weight
+        if normalize_target:
+            self._target_normalizer = AdaptiveNormalizer(
+                self._decoder_net.output_spec,
+                auto_update=False,
+                name=name + ".target_normalizer")
+        else:
+            self._target_normalizer = None
 
     def get_target_fields(self):
         return self._target_field
 
     def train_step(self, repr, state=()):
-        predicted_reward = self._decoder_net(repr)[0]
+        predicted_target = self._decoder_net(repr)[0]
         return AlgStep(
-            output=predicted_reward, state=state, info=predicted_reward)
+            output=predicted_target, state=state, info=predicted_target)
+
+    def predict_step(self, repr, state=()):
+        predicted_target = self._decoder_net(repr)[0]
+        return AlgStep(
+            output=predicted_target, state=state, info=predicted_target)
 
     def calc_loss(self, target, predicted, mask=None):
         """Calculate the loss between ``target`` and ``predicted``.
@@ -108,6 +126,11 @@ class SimpleDecoder(Algorithm):
         Returns:
             LossInfo
         """
+        if self._target_normalizer:
+            self._target_normalizer.update(target)
+            target = self._target_normalizer.normalize(target)
+            predicted = self._target_normalizer.normalize(predicted)
+
         loss = self._loss(predicted, target)
         if self._debug_summaries and alf.summary.should_record_summaries():
             with alf.summary.scope(self._name):
@@ -146,7 +169,7 @@ class SimpleDecoder(Algorithm):
         if mask is not None:
             loss = loss * mask
 
-        return LossInfo(loss=loss * self._loss_weight)
+        return LossInfo(loss=loss * self._loss_weight, extra=loss)
 
 
 @gin.configurable
@@ -265,18 +288,49 @@ class PredictiveRepresentationLearner(Algorithm):
         latent, state = self._encoding_net(time_step.observation, state)
         return AlgStep(output=latent, state=state)
 
-    def train_step(self, exp: TimeStep, state):
-        # [B, num_unroll_steps + 1]
-        info = exp.rollout_info
-        batch_size = exp.step_type.shape[0]
-        latent, state = self._encoding_net(exp.observation, state)
+    def predict_multi_step(self, init_latent, actions, state=None):
+        """Perform multi-step predictions based on the initial latent
+            representation and actions sequences.
+        Args:
+            init_latent (Tensor): the latent representation for the initial
+                step of the prediction
+            actions (Tensor): [B, unroll_steps, action_dim]
+            state:
+        Returns:
+            prediction (Tensor): predicted target of shape
+                [B, unroll_steps + 1, d], where d is the dimension of
+                the predicted target.
+        """
+        num_unroll_steps = actions.shape[1]
 
-        sim_latents = [latent]
+        assert num_unroll_steps > 0
 
-        if self._num_unroll_steps > 0:
+        sim_latent = self._multi_step_latent_rollout(
+            init_latent, num_unroll_steps, actions, state)
 
+        prediction = self._decoder.predict_step(sim_latent).info
+        return prediction
+
+    def _multi_step_latent_rollout(self, init_latent, num_unroll_steps,
+                                   actions, state):
+        """Perform multi-step latent rollout based on the initial latent
+            representation and action sequences.
+        Args:
+            init_latent (Tensor): the latent representation for the initial
+                step of the prediction
+            actions (Tensor): [B, unroll_steps, action_dim]
+            state:
+        Returns:
+            sim_latent (Tensor): a tensor of the shape [(unroll_steps+1)*B, ...],
+                obtained by concataning all the latent states during rollout,
+                including the input initial latent represenataion
+        """
+
+        sim_latents = [init_latent]
+
+        if num_unroll_steps > 0:
             if self._latent_to_dstate_fc is not None:
-                dstate = self._latent_to_dstate_fc(latent)
+                dstate = self._latent_to_dstate_fc(init_latent)
                 dstate = dstate.split(self._dynamics_state_dims, dim=1)
                 dstate = alf.nest.pack_sequence_as(
                     self._dynamics_net.state_spec, dstate)
@@ -284,11 +338,20 @@ class PredictiveRepresentationLearner(Algorithm):
                 dstate = state
 
         for i in range(self._num_unroll_steps):
-            sim_latent, dstate = self._dynamics_net(info.action[:, i, ...],
-                                                    dstate)
+            sim_latent, dstate = self._dynamics_net(actions[:, i, ...], dstate)
             sim_latents.append(sim_latent)
 
         sim_latent = torch.cat(sim_latents, dim=0)
+        return sim_latent
+
+    def train_step(self, exp: TimeStep, state):
+        # [B, num_unroll_steps + 1]
+        info = exp.rollout_info
+        batch_size = exp.step_type.shape[0]
+        latent, state = self._encoding_net(exp.observation, state)
+
+        sim_latent = self._multi_step_latent_rollout(
+            latent, self._num_unroll_steps, info.action, state)
 
         # [num_unroll_steps + 1)*B, ...]
         train_info = self._decoder.train_step(sim_latent).info
@@ -347,7 +410,7 @@ class PredictiveRepresentationLearner(Algorithm):
             # [B, T, unroll_steps+1]
             positions = torch.min(positions, episode_end_positions)
 
-            # [B, T, unroll_steps+1]
+            # [B, T, unroll_steps+1, ...]
             target = replay_buffer.get_field(self._target_fields, env_ids,
                                              positions)
 

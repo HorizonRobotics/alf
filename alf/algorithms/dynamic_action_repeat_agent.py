@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,11 +27,13 @@ from alf.data_structures import TimeStep, Experience, namedtuple, AlgStep
 from alf.data_structures import make_experience, LossInfo
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.utils.conditional_ops import conditional_update
-from alf.utils import common, summary_utils
+from alf.utils import common, summary_utils, tensor_utils
 
 ActionRepeatState = namedtuple(
-    "ActionRepeatState",
-    ["rl", "action", "steps", "rl_discount", "rl_reward", "repr"],
+    "ActionRepeatState", [
+        "rl", "action", "steps", "k", "rl_discount", "rl_reward",
+        "sample_rewards", "repr"
+    ],
     default_value=())
 
 
@@ -53,6 +55,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                  K=5,
                  rl_algorithm_cls=SacAlgorithm,
                  representation_learner_cls=None,
+                 reward_normalizer_ctor=None,
                  gamma=0.99,
                  optimizer=None,
                  debug_summaries=False,
@@ -77,8 +80,12 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 calculate the representation from the original observation as
                 the observation for downstream algorithms such as ``rl_algorithm``.
                 We assume that the representation is trained by ``rl_algorithm``.
+            reward_normalizer_ctor (Callable): if not None, environment rewards
+                will be normalized for training.
             gamma (float): the reward discount to be applied when accumulating
-                ``k`` steps' rewards for a repeated action.
+                ``k`` steps' rewards for a repeated action. Note that this value
+                should be equal to the gamma used by the critic loss for target
+                values.
             optimizer (None|Optimizer): The default optimizer for
                 training. See comments above for detail.
             debug_summaries (bool): True if debug summaries should be created.
@@ -116,7 +123,9 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         rollout_state_spec = predict_state_spec._replace(
             rl=rl.rollout_state_spec,
             rl_discount=TensorSpec(()),
-            rl_reward=TensorSpec(()))
+            rl_reward=TensorSpec(()),
+            k=TensorSpec((), dtype='int64'),
+            sample_rewards=TensorSpec(()))
 
         train_state_spec = ActionRepeatState(rl=rl.train_state_spec)
 
@@ -141,7 +150,12 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             name=name)
 
         self._repr_learner = repr_learner
+        self._reward_normalizer = None
+        if reward_normalizer_ctor is not None:
+            self._reward_normalizer = reward_normalizer_ctor(
+                observation_spec=())
         self._rl = rl
+        self._K = K
 
     def observe_for_replay(self, exp):
         # Do not observe data at every time step; customized observing
@@ -188,14 +202,31 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
     def rollout_step(self, time_step: TimeStep, state: ActionRepeatState):
         switch_action = self._should_switch_action(time_step, state)
+
+        # state.k is the current step index over K steps
         state = state._replace(
-            rl_reward=state.rl_reward + state.rl_discount * time_step.reward,
-            rl_discount=state.rl_discount * time_step.discount * self._gamma)
+            rl_reward=state.rl_reward + torch.pow(
+                self._gamma, state.k.to(torch.float32)) * time_step.reward,
+            rl_discount=state.rl_discount * time_step.discount * self._gamma,
+            k=state.k + 1)
+
+        if self._reward_normalizer is not None:
+            # The probability of a reward at step k being kept till K steps is:
+            # 1/k * k/(k+1) * .. * (K-1)/K = 1/K. This provides enough randomness
+            # to make the normalizer unbiased.
+            state = state._replace(
+                sample_rewards=torch.where((
+                    torch.rand_like(state.sample_rewards) < 1. /
+                    state.k.to(torch.float32)
+                ), time_step.reward, state.sample_rewards))
 
         @torch.no_grad()
         def _generate_new_action(time_step, state):
             rl_time_step = time_step._replace(
-                reward=state.rl_reward, discount=state.rl_discount)
+                reward=state.rl_reward,
+                # To keep consistent with other algorithms, we choose to multiply
+                # discount with gamma once more in td_loss.py
+                discount=state.rl_discount / self._gamma)
 
             observation, repr_state = rl_time_step.observation, ()
             if self._repr_learner is not None:
@@ -206,6 +237,8 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
             rl_step = self._rl.rollout_step(
                 rl_time_step._replace(observation=observation), state.rl)
+            rl_step = rl_step._replace(
+                info=(rl_step.info, state.k, state.sample_rewards))
             # Store to replay buffer.
             super(DynamicActionRepeatAgent, self).observe_for_replay(
                 make_experience(
@@ -219,9 +252,11 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             return ActionRepeatState(
                 action=action,
                 steps=steps + 1,  # [0, K-1] -> [1, K]
+                k=torch.zeros_like(state.k),
                 repr=repr_state,
                 rl=rl_step.state,
                 rl_reward=torch.zeros_like(state.rl_reward),
+                sample_rewards=torch.zeros_like(state.sample_rewards),
                 rl_discount=torch.ones_like(state.rl_discount))
 
         new_state = conditional_update(
@@ -279,3 +314,39 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             field = alf.nest.find_field(train_info, 'action_distribution')
             if len(field) == 1:
                 summary_utils.summarize_action_dist(field[0])
+
+    def preprocess_experience(self, rl_exp):
+        """Normalize training rewards if a reward normalizer is provided. Shape
+        of ``rl_exp`` is ``[B, T, ...]``. The statistics of the normalizer is
+        updated by random sample rewards.
+        """
+        reward = rl_exp.reward
+        # repeats might be zero for StepType.FIRST
+        rl_info, repeats, sample_rewards = rl_exp.rollout_info
+
+        if self._reward_normalizer is not None:
+            normalizer = self._reward_normalizer._normalizer
+            normalizer.update(sample_rewards)
+
+            # compute current variance
+            m = normalizer._mean_averager.get()
+            m2 = normalizer._m2_averager.get()
+            var = torch.relu(m2 - m**2)
+
+            # compute accumulated mean over ``repeats`` steps
+            acc_mean = ((1 - torch.pow(self._gamma, repeats.to(torch.float32)))
+                        / (1 - self._gamma) * m)
+
+            reward -= acc_mean
+            reward = alf.layers.normalize_along_batch_dims(
+                reward,
+                torch.zeros_like(var),
+                var,
+                variance_epsilon=normalizer._variance_epsilon)
+
+            clip = self._reward_normalizer._clip_value
+            if clip > 0:
+                reward = torch.clamp(reward, -clip, clip)
+
+        rl_exp = rl_exp._replace(reward=reward, rollout_info=rl_info)
+        return self._rl.preprocess_experience(rl_exp)

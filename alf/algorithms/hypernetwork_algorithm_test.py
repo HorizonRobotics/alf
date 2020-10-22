@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         """Estimate a covariance matrix given data.
 
         Args:
-            data (tensor): A 1-D or 2-D tensor containing multiple observations 
+            data (tensor): A 1-D or 2-D tensor containing multiple observations
                 of multiple dimentions. Each row of ``mat`` represents a
                 dimension of the observation, and each column a single
                 observation.
@@ -62,14 +62,14 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                                         train_batch_size=10):
         """
         The hypernetwork is trained to generate the parameter vector for a linear
-        regressor. The target linear regressor is :math:`y = X\beta + e`, where 
-        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
-        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
+        regressor. The target linear regressor is :math:`y = X\beta + e`, where
+        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix,
+        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
-        For a linear generator with weight W and bias b, and takes standard Gaussian 
-        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should 
+        For a linear generator with weight W and bias b, and takes standard Gaussian
+        noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should
         match the posterior :math:`p(\beta|X,y)` for both svgd and gfsf.
-        
+
         """
         input_size = 3
         input_spec = TensorSpec((input_size, ), torch.float32)
