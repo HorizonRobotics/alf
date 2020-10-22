@@ -27,7 +27,7 @@ from alf.utils import dist_utils, losses, math_ops, spec_utils, tensor_utils
 
 DynamicsState = namedtuple(
     "DynamicsState", ["feature", "network"], default_value=())
-DynamicsInfo = namedtuple("DynamicsInfo", ["loss"])
+DynamicsInfo = namedtuple("DynamicsInfo", ["loss", "dist"])
 
 
 @gin.configurable
@@ -229,9 +229,37 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
             return inputs
 
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
-        """Predict the current observation using ``time_step.prev_action``
-            and the feature of the previous observation from ``state``.
-            Note that time_step.observation is not used for the prediction.
+        """Predict the next observation given the current time_step.
+                The next step is predicted using the ``prev_action`` from
+                time_step and the ``feature`` from state.
+        Args:
+            time_step (TimeStep): time step structure. The ``prev_action`` from
+                time_step will be used for predicting feature of the next step.
+                It should be a Tensor of the shape [B, ...], or [B, n, ...] when
+                n > 1, where n denotes the number of dynamics network replicas.
+                When the input tensor has the shape of [B, ...] and n > 1,
+                it will be first expanded to [B, n, ...] to match the number of
+                dynamics network replicas.
+            state (DynamicsState): state for dynamics learning with the
+                following fields:
+                - feature (Tensor): features of the previous observation of the
+                    shape [B, ...], or [B, n, ...] when n > 1. When
+                    ``state.feature`` has the shape of [B, ...] and n > 1,
+                    it will be first expanded to [B, n, ...] to match the
+                    number of dynamics network replicas.
+                    It is used for predicting the feature of the next step
+                    together with ``time_step.prev_action``.
+                - network: the input state of the dynamics network
+        Returns:
+            AlgStep:
+                outputs (Tensor): predicted feature of the next step, of the
+                    shape [B, ...], or [B, n, ...] when n > 1.
+                state (DynamicsState): with the following fields
+                    - feature (Tensor): [B, n, ...] (or [B, n, ...] when n > 1)
+                        shape tensor representing
+                        the predicted feature of the next step
+                    - network: the updated state of the dynamics network
+                info: empty tuple ()
         """
         action = self._encode_action(time_step.prev_action)
         obs = state.feature
@@ -272,13 +300,33 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
     def train_step(self, time_step: TimeStep, state: DynamicsState):
         """
         Args:
-            time_step (TimeStep): input data for dynamics learning
-            state (DynamicsState): state for dynamics learning (previous observation)
+            time_step (TimeStep): time step structure. The ``prev_action`` from
+                time_step will be used for predicting feature of the next step.
+                It should be a Tensor of the shape [B, ...] or [B, n, ...] when
+                n > 1, where n denotes the number of dynamics network replicas.
+                When the input tensor has the shape of [B, ...] and n > 1, it
+                will be first expanded to [B, n, ...] to match the number of
+                dynamics network replicas.
+            state (DynamicsState): state for dynamics learning with the
+                following fields:
+                - feature (Tensor): features of the previous observation of the
+                    shape [B, ...] or [B, n, ...] when n > 1. When
+                    ``state.feature`` has the shape of [B, ...] and n > 1, it
+                    will be first expanded to [B, n, ...] to match the number
+                    of dynamics network replicas.
+                    It is used for predicting the feature of the next step
+                    together with ``time_step.prev_action``.
+                - network: the input state of the dynamics network
         Returns:
             AlgStep:
-                output: empty tuple ()
-                state (DynamicsState): state for training
-                info (DynamicsInfo):
+                outputs: empty tuple ()
+                state (DynamicsState): with the following fields
+                    - feature (Tensor): [B, ...] (or [B, n, ...] when n > 1)
+                        shape tensor representing the predicted feature of
+                        the next step
+                    - network: the updated state of the dynamics network
+                info (DynamicsInfo): with the following fields being updated:
+                    - loss (LossInfo):
         """
         feature = time_step.observation
         feature = self._expand_to_replica(feature, self._feature_spec)
@@ -335,7 +383,7 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
                 For continuous action, encoded action is the original action.
         """
 
-        assert dynamics_network._prob, "should use probabistic network"
+        assert dynamics_network._prob, "should use probabilistic network"
         super().__init__(
             action_spec=action_spec,
             feature_spec=feature_spec,
@@ -345,8 +393,38 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
 
     def predict_step(self, time_step: TimeStep, state: DynamicsState):
         """Predict the next observation given the current time_step.
-                The next step is predicted using the prev_action from time_step
-                and the feature from state.
+                The next step is predicted using the ``prev_action`` from
+                time_step and the ``feature`` from state.
+        Args:
+            time_step (TimeStep): time step structure. The ``prev_action`` from
+                time_step will be used for predicting feature of the next step.
+                It should be a Tensor of the shape [B, ...], or [B, n, ...] when
+                n > 1, where n denotes the number of dynamics network replicas.
+                When the input tensor has the shape of [B, ...] and n > 1,
+                it will be first expanded to [B, n, ...] to match the number of
+                dynamics network replicas.
+            state (DynamicsState): state for dynamics learning with the
+                following fields:
+                - feature (Tensor): features of the previous observation of the
+                    shape [B, ...], or [B, n, ...] when n > 1. When
+                    ``state.feature`` has the shape of [B, ...] and n > 1,
+                    it will be first expanded to [B, n, ...] to match the
+                    number of dynamics network replicas.
+                    It is used for predicting the feature of the next step
+                    together with ``time_step.prev_action``.
+                - network: the input state of the dynamics network
+        Returns:
+            AlgStep:
+                outputs (Tensor): predicted feature of the next step, of the
+                    shape [B, ...], or [B, n, ...] when n > 1.
+                state (DynamicsState): with the following fields
+                    - feature (Tensor): [B, n, ...] (or [B, n, ...] when n > 1)
+                        shape tensor representing
+                        the predicted feature of the next step
+                    - network: the updated state of the dynamics network
+                info (DynamicsInfo): with the following fields being updated:
+                    - dist (td.Distribution): the predictive distribution which
+                        can be used for further calculation or summarization.
         """
         action = self._encode_action(time_step.prev_action)
         obs = state.feature
@@ -362,25 +440,48 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
 
         forward_preds = observations + forward_deltas
         state = state._replace(feature=forward_preds, network=network_states)
-        return AlgStep(output=forward_preds, state=state, info=dist)
+        return AlgStep(
+            output=forward_preds, state=state, info=DynamicsInfo(dist=dist))
 
     def train_step(self, time_step: TimeStep, state: DynamicsState):
         """
         Args:
-            time_step (TimeStep): input data for dynamics learning
-            state (Tensor): state for dynamics learning (previous observation)
+            time_step (TimeStep): time step structure. The ``prev_action`` from
+                time_step will be used for predicting feature of the next step.
+                It should be a Tensor of the shape [B, ...] or [B, n, ...] when
+                n > 1, where n denotes the number of dynamics network replicas.
+                When the input tensor has the shape of [B, ...] and n > 1, it
+                will be first expanded to [B, n, ...] to match the number of
+                dynamics network replicas.
+            state (DynamicsState): state for dynamics learning with the
+                following fields:
+                - feature (Tensor): features of the previous observation of the
+                    shape [B, ...] or [B, n, ...] when n > 1. When
+                    ``state.feature`` has the shape of [B, ...] and n > 1, it
+                    will be first expanded to [B, n, ...] to match the number
+                    of dynamics network replicas.
+                    It is used for predicting the feature of the next step
+                    together with ``time_step.prev_action``.
+                - network: the input state of the dynamics network
         Returns:
-            TrainStep:
+            AlgStep:
                 outputs: empty tuple ()
-                state (DynamicsState): state for training
-                info (DynamicsInfo):
+                state (DynamicsState): with the following fields
+                    - feature (Tensor): [B, ...] (or [B, n, ...] when n > 1)
+                        shape tensor representing the predicted feature of
+                        the next step
+                    - network: the updated state of the dynamics network
+                info (DynamicsInfo): with the following fields being updated:
+                    - loss (LossInfo):
+                    - dist (td.Distribution): the predictive distribution which
+                        can be used for further calculation or summarization.
         """
 
         feature = time_step.observation
         feature = self._expand_to_replica(feature, self._feature_spec)
         dynamics_step = self.predict_step(time_step, state)
 
-        dist = dynamics_step.info
+        dist = dynamics_step.info.dist
         forward_loss = -dist.log_prob(feature - state.feature)
 
         if forward_loss.ndim > 2:
@@ -395,7 +496,8 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
 
         info = DynamicsInfo(
             loss=LossInfo(
-                loss=forward_loss, extra=dict(forward_loss=forward_loss)))
+                loss=forward_loss, extra=dict(forward_loss=forward_loss)),
+            dist=dist)
         state = state._replace(feature=feature)
 
         return AlgStep(output=(), state=state, info=info)
