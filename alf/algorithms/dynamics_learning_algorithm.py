@@ -27,7 +27,7 @@ from alf.utils import dist_utils, losses, math_ops, spec_utils, tensor_utils
 
 DynamicsState = namedtuple(
     "DynamicsState", ["feature", "network"], default_value=())
-DynamicsInfo = namedtuple("DynamicsInfo", ["loss", "dist"])
+DynamicsInfo = namedtuple("DynamicsInfo", ["loss", "dist"], default_value=())
 
 
 @gin.configurable
