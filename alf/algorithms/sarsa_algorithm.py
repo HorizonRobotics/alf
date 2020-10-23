@@ -435,7 +435,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
             target_critic = tensor_utils.tensor_prepend_zero(
                 info.target_critics)
             loss_info = self._critic_losses[i](shifted_experience, critic,
-                                               target_critic)
+                                               target_critic, info)
             critic_losses.append(nest_map(lambda l: l[:-1], loss_info.loss))
 
         critic_loss = math_ops.add_n(critic_losses)
