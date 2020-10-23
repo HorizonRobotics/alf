@@ -16,10 +16,30 @@ create_environment.env_name=%env_name
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
+num_dynamics_replicas=1
+particles_per_replica=1
+
 # --------------------dynamics learning config------------------------
+dynamics/DynamicsNetwork.input_tensor_spec=(%observation_spec, %action_spec)
+dynamics/DynamicsNetwork.output_tensor_spec=%observation_spec
+dynamics/DynamicsNetwork.activation=@swish
+dynamics/DynamicsNetwork.joint_fc_layer_params=(500, 500, 500)
+dynamics/DynamicsNetwork.kernel_initializer=@variance_scaling_init
+NormalProjectionNetwork.std_transform=@clipped_exp
+
+# determinstic dynamics learning algorithm
+DeterministicDynamicsAlgorithm.num_replicas=%num_dynamics_replicas
 DeterministicDynamicsAlgorithm.action_spec=%action_spec
 DeterministicDynamicsAlgorithm.feature_spec=%observation_spec
-DeterministicDynamicsAlgorithm.hidden_size=(500, 500, 500)
+dynamics/DynamicsNetwork.prob=0
+DeterministicDynamicsAlgorithm.dynamics_network=@dynamics/DynamicsNetwork()
+
+# stochastic dynamics learning algorithm
+# StochasticDynamicsAlgorithm.num_replicas=%num_dynamics_replicas
+# StochasticDynamicsAlgorithm.action_spec=%action_spec
+# StochasticDynamicsAlgorithm.feature_spec=%observation_spec
+# dynamics/DynamicsNetwork.prob=1
+# StochasticDynamicsAlgorithm.dynamics_network=@dynamics/DynamicsNetwork()
 
 # -------------------reward learning config----------------------------
 FixedRewardFunction.reward_func=@reward_function_for_pendulum
@@ -42,12 +62,16 @@ CEMPlanAlgorithm.epsilon=0.01
 CEMPlanAlgorithm.tau=0.9
 CEMPlanAlgorithm.scalar_var=1.0
 
+
+
 # model-based RL algo config
 MbrlAlgorithm.feature_spec=%observation_spec
 MbrlAlgorithm.action_spec=%action_spec
 MbrlAlgorithm.dynamics_module=@DeterministicDynamicsAlgorithm()
+# MbrlAlgorithm.dynamics_module=@StochasticDynamicsAlgorithm()
 MbrlAlgorithm.reward_module=@FixedRewardFunction()
 MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
+MbrlAlgorithm.particles_per_replica=%particles_per_replica
 # uncomment to use CEM-planner
 # MbrlAlgorithm.planner_module=@CEMPlanAlgorithm()
 

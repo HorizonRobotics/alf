@@ -58,6 +58,7 @@ class PlanAlgorithm(OffPolicyAlgorithm):
                 action_spec.maximum will be used if not specified
             lower_bound (int): lower bound for elements in solution;
                 action_spec.minimum will be used if not specified
+            particles_per_replica (int): number of particles used for each replica
         """
         super().__init__(
             feature_spec,
@@ -140,7 +141,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                  feature_spec,
                  action_spec,
                  population_size,
-                 planning_horizon,
+                 planning_horizon=25,
                  upper_bound=None,
                  lower_bound=None,
                  name="RandomShootingAlgorithm"):
@@ -167,6 +168,7 @@ class RandomShootingAlgorithm(PlanAlgorithm):
                                             "support nested action_spec")
 
         self._population_size = population_size
+
         solution_size = self._planning_horizon * self._num_actions
         self._solution_size = solution_size
 
