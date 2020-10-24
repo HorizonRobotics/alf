@@ -31,10 +31,7 @@ class TDLoss(nn.Module):
                  td_error_loss_fn=element_wise_squared_loss,
                  td_lambda=0.95,
                  normalize_target=False,
- some-feature-retrace
-                 use_retrace=0,
-
- pytorch
+                 use_retrace=False,
                  debug_summaries=False,
                  name="TDLoss"):
         r"""Create a TDLoss object.
@@ -51,6 +48,7 @@ class TDLoss(nn.Module):
         where the generalized advantage estimation is defined as:
             :math:`\hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))`
         use_retrace = 0 means one step or multi_step loss, use_retrace = 1 means retrace loss
+            :math:`\mathcal{R} Q(x, a):=Q(x, a)+\mathbb{E}_{\mu}\left[\sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)\left(r_{t}+\gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)\right)\right]`
         References:
 
         Schulman et al. `High-Dimensional Continuous Control Using Generalized Advantage Estimation
@@ -58,6 +56,9 @@ class TDLoss(nn.Module):
 
         Sutton et al. `Reinforcement Learning: An Introduction
         <http://incompleteideas.net/book/the-book.html>`_, Chapter 12, 2018
+
+        Remi Munos et al. `Safe and efficient off-policy reinforcement learning
+        <https://arxiv.org/pdf/1606.02647.pdf>`_
 
         Args:
             gamma (float): A discount factor for future rewards.
@@ -80,13 +81,9 @@ class TDLoss(nn.Module):
         self._debug_summaries = debug_summaries
         self._normalize_target = normalize_target
         self._target_normalizer = None
- some-feature-retrace
         self._use_retrace = use_retrace
+
     def forward(self, experience, value, target_value, train_info):
-
-
-    def forward(self, experience, value, target_value):
- pytorch
         """Cacluate the loss.
 
         The first dimension of all the tensors is time dimension and the second
@@ -117,7 +114,7 @@ class TDLoss(nn.Module):
                 values=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma)
-        elif self._use_retrace == 0:
+        elif self._use_retrace == False:
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=experience.reward,
                 values=target_value,
@@ -126,25 +123,26 @@ class TDLoss(nn.Module):
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
         else:
-            scope = alf.summary.scope(self.__class__.__name__)       
-            importance_ratio,importance_ratio_clipped = value_ops.action_importance_ratio(
+            scope = alf.summary.scope(self.__class__.__name__)
+            importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
                 action_distribution=train_info.action_distribution,
-                collect_action_distribution=experience.rollout_info.action_distribution,
+                collect_action_distribution=experience.rollout_info.
+                action_distribution,
                 action=experience.action,
                 clipping_mode='capping',
-                importance_ratio_clipping= 0.0,
-                log_prob_clipping= 0.0,
+                importance_ratio_clipping=0.0,
+                log_prob_clipping=0.0,
                 scope=scope,
                 check_numerics=False,
                 debug_summaries=True)
             advantages = value_ops.generalized_advantage_estimation_retrace(
-                importance_ratio = importance_ratio_clipped,
+                importance_ratio=importance_ratio_clipped,
                 rewards=experience.reward,
-                values= value,
-                target_value = target_value,
+                values=value,
+                target_value=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma,
-                time_major = True,
+                time_major=True,
                 td_lambda=self._lambda)
             returns = advantages + value[:-1]
             returns = returns.detach()

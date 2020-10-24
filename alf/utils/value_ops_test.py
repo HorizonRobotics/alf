@@ -170,7 +170,8 @@ class GeneralizedAdvantageTest(unittest.TestCase):
             discounts=discounts,
             td_lambda=td_lambda,
             expected=expected)
-        
+
+
 class GeneralizedAdvantage_retrace_Test(unittest.TestCase):
     """Tests for alf.utils.value_ops
     """
@@ -180,22 +181,25 @@ class GeneralizedAdvantage_retrace_Test(unittest.TestCase):
         step_types = torch.tensor([[StepType.MID] * 4], dtype=torch.int64)
         rewards = torch.tensor([[3.] * 4], dtype=torch.float32)
         discounts = torch.tensor([[0.9] * 4], dtype=torch.float32)
-        td_lambda = 0.6/0.9
+        td_lambda = 0.6 / 0.9
         target_value = torch.tensor([[3.] * 4], dtype=torch.float32)
         importance_ratio = torch.tensor([[0.8] * 3], dtype=torch.float32)
-        d = 3 * 0.9+ 3 - 2
-        expected = torch.tensor([[  (d * 0.6 * 0.8 ) *0.6 * 0.8+ 0.6 * 0.8 * d + d, d * 0.6 * 0.8 + d, d]],                    
-                                dtype=torch.float32)
+        d = 3 * 0.9 + 3 - 2
+        expected = torch.tensor(
+            [[(d * 0.6 * 0.8) * 0.6 * 0.8 + 0.6 * 0.8 * d + d,
+              d * 0.6 * 0.8 + d, d]],
+            dtype=torch.float32)
         np.testing.assert_array_almost_equal(
             value_ops.generalized_advantage_estimation_retrace(
                 rewards=rewards,
                 values=values,
-                target_value = target_value,
+                target_value=target_value,
                 step_types=step_types,
                 discounts=discounts,
                 td_lambda=td_lambda,
-                importance_ratio = importance_ratio,
+                importance_ratio=importance_ratio,
                 time_major=False), expected)
+
 
 if __name__ == '__main__':
     unittest.main()
