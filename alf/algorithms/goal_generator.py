@@ -308,6 +308,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  value_state_spec=(),
                  max_replan_steps=10,
                  plan_margin=0.,
+                 plan_cost_ln_norm=1,
+                 goal_speed_zero=False,
                  min_goal_cost_to_use_plan=0.,
                  use_aux_achieved=False,
                  aux_dim=0,
@@ -341,6 +343,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 replanning.
             plan_margin (float): how much larger value than baseline does the plan need,
                 to be adopted.
+            plan_cost_ln_norm (int): ln norm applied to segment costs before adding
+                segment costs to form the full plan cost.
             min_goal_cost_to_use_plan (float): cost of original goal must be above
                 this threshold for the plan to be accepted.
             use_aux_achieved (bool): whether to plan auxiliary achieved states like
@@ -364,6 +368,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._action_dim = action_dim
         self._max_replan_steps = max_replan_steps
         self._plan_margin = plan_margin
+        self._plan_cost_ln_norm = plan_cost_ln_norm
+        self._goal_speed_zero = goal_speed_zero
         self._min_goal_cost_to_use_plan = min_goal_cost_to_use_plan
         self._use_aux_achieved = use_aux_achieved
         self._aux_dim = aux_dim
@@ -507,6 +513,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             stack_obs["aux_achieved"] = aux_start.reshape(
                 batch_size * pop_size * (horizon + 1), self._aux_dim)
             if self.control_aux:
+                if self._goal_speed_zero:
+                    samples[:, :, -1, action_dim:action_dim +
+                            2] = 0  # x, y speed
+                    # samples[:, :, -1, action_dim + 5] = 0  # yaw speed
                 stack_obs[
                     "aux_desired"] = samples[:, :, :, action_dim:].reshape(
                         batch_size * pop_size * (horizon + 1), self._aux_dim)
@@ -518,6 +528,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if info is not None:
             info["all_population_costs"] = alf.math.sum_to_leftmost(
                 dists, dim=3)
+        if self._plan_cost_ln_norm > 1:
+            dists = alf.math.sum_to_leftmost(dists, dim=3)
+            if self._plan_cost_ln_norm < 10:
+                dists = dists**self._plan_cost_ln_norm
+            else:
+                dists = torch.max(dists, dim=2)[0]  # L-inf norm
         agg_dist = alf.math.sum_to_leftmost(dists, dim=2)
         return agg_dist
 
@@ -568,6 +584,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         assert self._value_fn, "set_value_fn before generate_goal"
         info = {}
         goals, costs = opt.obtain_solution(ts, (), info)
+        batch_size = goals.shape[0]
         if self.control_aux:
             # This portion of the CEM samples were never used in the
             # _costs_agg_dist function, and were filled with desired_goal.
@@ -586,7 +603,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 torch.as_tensor(self._num_subgoals, dtype=torch.int32),
                 state.subgoals_index)
 
-            subgoal = goals[(torch.arange(goals.shape[0]),
+            subgoal = goals[(torch.arange(batch_size),
                              cap_subgoals_index.squeeze().long())]
 
         if self._num_subgoals > 0 and (alf.summary.should_record_summaries()
@@ -615,18 +632,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
         if self._use_aux_achieved and not self.control_aux:
             subgoal = subgoal[:, :self._action_dim]
-        if self._use_aux_achieved and self.control_aux:
-            observation["aux_desired"] = goals[:, -1, self._action_dim:]
-        if self._final_goal:
-            observation["final_goal"] = (
-                state.subgoals_index >=
-                self._num_subgoals).float().unsqueeze(1)
         # _value_fn relies on calling Q function with predicted action, but
         # with aux_control, lower level policy's input doesn't contain
         # aux_desired, and cannot predict action.
         # Properly handle this case of init_costs would probably add
         # another CEM process to predict goal aux dimensions first,
         # maximizing value_fn.
+        if self._use_aux_achieved and self.control_aux:
+            observation["aux_desired"] = goals[:, -1, self._action_dim:]
+        if self._final_goal:
+            # To compute overall cost of base policy, all goals are final.
+            observation["final_goal"] = torch.ones((batch_size, 1))
         values, _v_state = self._value_fn(observation, ())
         init_costs = -values
         # to deal with multi dim reward case
@@ -656,7 +672,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._summarize_tensor_dims("observation/planned_orig_desired",
                                     orig_desired)
         if common.is_play():
-            torch.set_printoptions(precision=2)
+            torch.set_printoptions(
+                precision=2, sci_mode=False, linewidth=110, profile="full")
             if plan_success[0] > 0:
                 outcome = "plan SUCCESS:"
             else:
@@ -668,13 +685,15 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if self.control_aux:
                 plan_horizon -= 1
             if plan_horizon > 0:
-                subgoal_str = "subg: " + str(
-                    goals[:, :plan_horizon, :]) + " ->\n"
+                subgoal_str = "subg: " + "\n      ".join(
+                    [str(goals[:, i, :])
+                     for i in range(plan_horizon)]) + " ->\n"
             else:
                 subgoal_str = ""
             logging.info(
-                "%s init_cost: %f plan_cost: %f:\nachv: %s ->\n%sgoal: %s",
-                outcome, init_costs, costs, str(ach), subgoal_str,
+                "%s init_cost: %f plan_cost: %f:\nobs: %s\nachv: %s ->\n"
+                "%sgoal: %s", outcome, init_costs, costs,
+                str(observation["observation"]), str(ach), subgoal_str,
                 str(orig_desired))
             if self._num_subgoals > 0 and "segment_costs" in info:
                 logging.info(

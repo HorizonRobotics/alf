@@ -63,7 +63,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
                  goal_value_net_ctor=None,
-                 control_aux=False,
                  use_parallel_network=False,
                  reward_weights=None,
                  env=None,
@@ -96,7 +95,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 ``forward((observation, action), state)``.
             goal_value_net_ctor (Callable or None): if not None, it used to construct
                 the network to predict value based on goal input only.
-            control_aux (bool): whether auxiliary dimensions are part of goal.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             reward_weights (list[float]): this is only used when the reward is
@@ -146,7 +144,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 if k not in ("desired_goal", "aux_desired"):
                     input_tensor_spec.pop(k, None)
             goal_net = goal_value_net_ctor(input_tensor_spec=input_tensor_spec)
-        self._control_aux = control_aux
         if use_parallel_network:
             critic_networks = critic_network.make_parallel(num_critic_replicas)
         else:

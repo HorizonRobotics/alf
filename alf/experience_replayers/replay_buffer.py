@@ -809,7 +809,7 @@ def hindsight_relabel_fn(buffer,
         goal_original = torch.min(
             torch.isclose(_relabeled_goal, orig_goal), dim=2)[0] == 1
         if relabel_final_goal > 0:
-            goal_original |= (relabel_final_g_cond).unsqueeze(1)
+            goal_original |= relabel_final_g_cond.unsqueeze(1)
         subgoal_achieved = reward_achieved & ~goal_original
         # don't overwrite first step in batch_length.
         subgoal_achieved[:, 0] = torch.tensor(False)
@@ -847,6 +847,18 @@ def hindsight_relabel_fn(buffer,
         alf.summary.scalar(
             "replayer/" + buffer._name + ".reward_mean_rollout_nonher",
             torch.mean(relabeled_rewards[rollout_cond][:, 1:]))
+        if relabel_final_goal > 0:
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".relabel_final_goal_rate",
+                torch.mean(relabel_final_g_cond.float()))
+        if control_aux:
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".subgoal_achieved_rate",
+                torch.mean(subgoal_achieved[:, 1].float()))
+            fingoal_achieved = reward_achieved & goal_original
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".final_goal_achieved_rate",
+                torch.mean(fingoal_achieved[:, 1].float()))
         res_reward = result.reward
         if res_reward.ndim > 2:
             for i in range(res_reward.shape[2]):

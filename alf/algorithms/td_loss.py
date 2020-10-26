@@ -168,11 +168,12 @@ class TDLoss(nn.Module):
                             o = torch.abs(observation["aux_desired"][:-1, ...])
                             aux_realistic = torch.norm(
                                 torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
-                                dim=2) < 0.5
+                                dim=2) < 0.6
+                            dist_th = 5.7 + 0.5
                             aux_realistic &= torch.abs(
-                                observation["desired_goal"][0, :, 0]) < 5.7
+                                observation["desired_goal"][0, :, 0]) < dist_th
                             aux_realistic &= torch.abs(
-                                observation["desired_goal"][0, :, 1]) < 5.7
+                                observation["desired_goal"][0, :, 1]) < dist_th
                             real_rate = torch.mean(aux_realistic.float())
                             alf.summary.scalar("realistic_rate" + suffix,
                                                real_rate)
