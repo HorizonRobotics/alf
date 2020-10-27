@@ -25,15 +25,10 @@ def reward_function_for_pendulum(obs, action):
         (1) observation (Tensor of shape [batch_size, observation_dim])
         (2) action (Tensor of shape [batch_size, num_actions])
         and returns a reward Tensor of shape [batch_size].
-
-        Note that in the planning module, (next_obs, action) is currently used
-        as the input to this function. Might need to consider (obs, action)
-        on the caller side in order to be more compatible with the conventional
-        definition of the reward function.
     """
 
     def _observation_cost(obs):
-        c_theta, s_theta, d_theta = obs[:, :1], obs[:, 1:2], obs[:, 2:3]
+        c_theta, s_theta, d_theta = obs[..., :1], obs[..., 1:2], obs[..., 2:3]
         theta = torch.atan2(s_theta, c_theta)
         cost = theta**2 + 0.1 * d_theta**2
         cost = torch.sum(cost, dim=1)
@@ -42,7 +37,7 @@ def reward_function_for_pendulum(obs, action):
         return cost
 
     def _action_cost(action):
-        return 0.001 * torch.sum(action**2, dim=1)
+        return 0.001 * torch.sum(action**2, dim=-1)
 
     cost = _observation_cost(obs) + _action_cost(action)
     # negative cost as reward
