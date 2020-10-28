@@ -192,8 +192,22 @@ def get_outer_rank(tensors, specs):
     return outer_rank
 
 
-def convert_device(nests):
-    """Convert the device of the tensors in nests to default device."""
+def convert_device(nests, device=None):
+    """Convert the device of the tensors in nests to the specified
+        or the default device.
+    Args:
+        nests (nested Tensors): Nested list/tuple/dict of Tensors.
+        device (None|str): the target device, should either be `cuda` or `cpu`.
+            If None, then the default device will be used as the target device.
+    Returns:
+        nests (nested Tensors): Nested list/tuple/dict of Tensors after device
+            conversion.
+
+    Raises:
+        NotImplementedError: If the target device is not one of
+            None, `cpu` or `cuda`.
+
+    """
 
     def _convert_cuda(tensor):
         if tensor.device.type != 'cuda':
@@ -207,7 +221,11 @@ def convert_device(nests):
         else:
             return tensor
 
-    d = alf.get_default_device()
+    if device is None:
+        d = alf.get_default_device()
+    else:
+        d = device
+
     if d == 'cpu':
         return nest.map_structure(_convert_cpu, nests)
     elif d == 'cuda':
