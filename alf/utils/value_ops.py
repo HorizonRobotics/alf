@@ -257,7 +257,7 @@ def generalized_advantage_estimation(rewards,
     return advs.detach()
 
 
-####### add for the retrace method
+# add for the retrace method
 def generalized_advantage_estimation_retrace(importance_ratio, discounts,
                                              rewards, td_lambda, time_major,
                                              values, target_value, step_types):
@@ -266,7 +266,7 @@ def generalized_advantage_estimation_retrace(importance_ratio, discounts,
     importance ratio
 
     Args:
-        importance_ratio: shape is [T], scalar between [0,1]. representing importance ratio
+        importance_ratio: shape is [T], scalar between [0,1]. Representing importance ratio
         rewards (Tensor): shape is [T, B] (or [T]) representing rewards.
         values (Tensor): shape is [T,B] (or [T]) representing values.
         step_types (Tensor): shape is [T,B] (or [T]) representing step types.

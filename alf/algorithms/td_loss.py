@@ -47,7 +47,7 @@ class TDLoss(nn.Module):
             :math:`G_t^\lambda = \hat{A}^{GAE}_t + V(s_t)`
         where the generalized advantage estimation is defined as:
             :math:`\hat{A}^{GAE}_t = \sum_{i=t}^{T-1}(\gamma\lambda)^{i-t}(R_{i+1} + \gamma V(s_{i+1}) - V(s_i))`
-        use_retrace = 0 means one step or multi_step loss, use_retrace = 1 means retrace loss
+        use_retrace = False means one step or multi_step loss, use_retrace = True means retrace loss
             :math:`\mathcal{R} Q(x, a):=Q(x, a)+\mathbb{E}_{\mu}\left[\sum_{t \geq 0} \gamma^{t}\left(\prod_{s=1}^{t} c_{s}\right)\left(r_{t}+\gamma \mathbb{E}_{\pi} Q\left(x_{t+1}, \cdot\right)-Q\left(x_{t}, a_{t}\right)\right)\right]`
         References:
 
@@ -97,8 +97,11 @@ class TDLoss(nn.Module):
             target_value (torch.Tensor): the time-major tensor for the value at
                 each time step. This is used to calculate return. ``target_value``
                 can be same as ``value``.
-            train_info (sarsa info, sac info): information used to calcuate importance_ratio
-                or importance_ratio_clipped
+            train_info : train_info includes action distrbution, actor, critic and
+                other information. Different algorithm may have different info inside.
+                For the retrace method, we can use SarsaInfo, SacInfo or DdpgInfo as train_info 
+                for Sac, Sarsa or Ddpg algorithm. Adding train_info to calculate importance_ratio
+                and importance_ratio_clipped.               
         Returns:
             LossInfo: with the ``extra`` field same as ``loss``.
         """
@@ -124,7 +127,8 @@ class TDLoss(nn.Module):
             returns = advantages + target_value[:-1]
         else:
             scope = alf.summary.scope(self.__class__.__name__)
-            importance_ratio, importance_ratio_clipped = value_ops.action_importance_ratio(
+            importance_ratio, importance_ratio_clipped = value_ops. \
+            action_importance_ratio(
                 action_distribution=train_info.action_distribution,
                 collect_action_distribution=experience.rollout_info.
                 action_distribution,
@@ -134,7 +138,7 @@ class TDLoss(nn.Module):
                 log_prob_clipping=0.0,
                 scope=scope,
                 check_numerics=False,
-                debug_summaries=True)
+                debug_summaries=self._debug_summaries)
             advantages = value_ops.generalized_advantage_estimation_retrace(
                 importance_ratio=importance_ratio_clipped,
                 rewards=experience.reward,
