@@ -194,7 +194,7 @@ def get_outer_rank(tensors, specs):
 
 def convert_device(nests, device=None):
     """Convert the device of the tensors in nests to the specified
-        or the default device.
+        or to the default device.
     Args:
         nests (nested Tensors): Nested list/tuple/dict of Tensors.
         device (None|str): the target device, should either be `cuda` or `cpu`.
@@ -228,7 +228,7 @@ def convert_device(nests, device=None):
 
     if d == 'cpu':
         return nest.map_structure(_convert_cpu, nests)
-    elif d == 'cuda':
+    elif d == 'cuda' and torch.cuda.is_available():
         return nest.map_structure(_convert_cuda, nests)
     else:
         raise NotImplementedError("Unknown device %s" % d)
