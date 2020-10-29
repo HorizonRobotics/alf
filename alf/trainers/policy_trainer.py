@@ -695,8 +695,11 @@ def play(root_dir,
             time_step = env.reset()
 
     for m in metrics:
-        logging.info("%s: %s", m.name,
-                     map_structure(lambda x: x.numpy().item(), m.result()))
+        logging.info(
+            "%s: %s", m.name,
+            map_structure(
+                lambda x: x.numpy().item() if x.ndim == 0 else x.numpy(),
+                m.result()))
     if recorder:
         recorder.close()
     env.reset()

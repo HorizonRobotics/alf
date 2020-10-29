@@ -204,8 +204,10 @@ def convert_device(nests, device=None):
             conversion.
 
     Raises:
-        NotImplementedError: If the target device is not one of
-            None, `cpu` or `cuda`.
+        NotImplementedError if the target device is not one of
+            None, `cpu` or `cuda` when cuda is available, or AssertionError
+            if target device is `cuda` but cuda is unavailable.
+
 
     """
 
@@ -228,7 +230,8 @@ def convert_device(nests, device=None):
 
     if d == 'cpu':
         return nest.map_structure(_convert_cpu, nests)
-    elif d == 'cuda' and torch.cuda.is_available():
+    elif d == 'cuda':
+        assert torch.cuda.is_available(), "cuda is unavailable"
         return nest.map_structure(_convert_cuda, nests)
     else:
         raise NotImplementedError("Unknown device %s" % d)
