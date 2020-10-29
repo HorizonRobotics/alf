@@ -657,15 +657,25 @@ class ReplayBuffer(RingBuffer):
 
 
 @gin.configurable
-def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
+def l2_dist_close_reward_fn(achieved_goal,
+                            goal,
+                            threshold=.05,
+                            multi_dim_goal_reward=False,
+                            device="cpu"):
     if goal.dim() == 2:  # when goals are 1-dimentional
         assert achieved_goal.dim() == goal.dim()
         achieved_goal = achieved_goal.unsqueeze(2)
         goal = goal.unsqueeze(2)
-    return torch.where(
-        torch.norm(achieved_goal - goal, dim=2) < threshold,
-        torch.zeros(1, dtype=torch.float32, device=device),
-        -torch.ones(1, dtype=torch.float32, device=device))
+    if multi_dim_goal_reward:
+        return torch.where(
+            torch.abs(achieved_goal - goal) < threshold,
+            torch.zeros(1, dtype=torch.float32, device=device),
+            -torch.ones(1, dtype=torch.float32, device=device))
+    else:
+        return torch.where(
+            torch.norm(achieved_goal - goal, dim=2) < threshold,
+            torch.zeros(1, dtype=torch.float32, device=device),
+            -torch.ones(1, dtype=torch.float32, device=device))
 
 
 @gin.configurable
@@ -676,6 +686,7 @@ def hindsight_relabel_fn(buffer,
                          use_original_goals_from_info=0.,
                          achieved_goal_field="observation.achieved_goal",
                          desired_goal_field="observation.desired_goal",
+                         multi_dim_goal_reward=False,
                          control_aux=False,
                          aux_achieved_field="observation.aux_achieved",
                          aux_desired_field="observation.aux_desired",
@@ -703,6 +714,7 @@ def hindsight_relabel_fn(buffer,
             goal is ``use_original_goals_from_info * (1 - her_proportion)``, and using
             rollout goals and recomputed rewards is
             ``(1 - use_original_goals_from_info) * (1 - her_proportion)``.
+        multi_dim_goal_reward (bool): whether to output goal reward in multiple dimensions.
         control_aux (bool): whether input contains aux_desired field.
         achieved_goal_field (str): path to the achieved_goal field in
             exp nest.
@@ -791,7 +803,10 @@ def hindsight_relabel_fn(buffer,
     else:
         _result_ag, _relabeled_goal = result_ag, relabeled_goal
     relabeled_rewards = reward_fn(
-        _result_ag, _relabeled_goal, device=buffer._device)
+        _result_ag,
+        _relabeled_goal,
+        multi_dim_goal_reward=multi_dim_goal_reward,
+        device=buffer._device)
 
     if relabel_final_goal > 0:
         # NOTE: both original and HER experience are being relabeled
@@ -806,6 +821,9 @@ def hindsight_relabel_fn(buffer,
     if control_aux:  # and num_subgoals > 0 for efficiency improvement
         # If subgoal (not final goal) is reached, set discount to 0, StepType to ``LAST``.
         reward_achieved = relabeled_rewards >= 0
+        if multi_dim_goal_reward:
+            # If multi dim goal reward, all dims have to achieve.
+            reward_achieved = torch.min(reward_achieved, dim=2)[0]
         goal_original = torch.min(
             torch.isclose(_relabeled_goal, orig_goal), dim=2)[0] == 1
         if relabel_final_goal > 0:
@@ -870,7 +888,7 @@ def hindsight_relabel_fn(buffer,
     goal_rewards = result.reward
     if result.reward.ndim > 2:
         goal_rewards = result.reward[:, :, 0]
-    if (not control_aux
+    if (not control_aux and not multi_dim_goal_reward
             and not torch.allclose(relabeled_rewards[orig_reward_cond][:, 1:],
                                    goal_rewards[orig_reward_cond][:, 1:])):
         msg = ("hindsight_relabel_fn:\nrelabeled_reward\n{}\n!=\n" +
@@ -885,9 +903,13 @@ def hindsight_relabel_fn(buffer,
 
     final_relabeled_rewards = relabeled_rewards
     if result.reward.ndim > 2:
-        # multi dimensional reward, first dim is goal related reward.
+        # multi dimensional env reward, first dim is goal related reward.
         final_relabeled_rewards = result.reward.clone()
-        final_relabeled_rewards[:, :, 0] = relabeled_rewards
+        if multi_dim_goal_reward:
+            final_relabeled_rewards = torch.cat(
+                (relabeled_rewards, final_relabeled_rewards[:, :, 1:]), dim=2)
+        else:
+            final_relabeled_rewards[:, :, 0] = relabeled_rewards
 
     result = result._replace(reward=final_relabeled_rewards)
     result = alf.nest.utils.transform_nest(

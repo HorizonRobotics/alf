@@ -314,6 +314,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  use_aux_achieved=False,
                  aux_dim=0,
                  control_aux=False,
+                 multi_dim_goal_reward=False,
                  name="SubgoalPlanningGoalGenerator"):
         """
         Args:
@@ -356,6 +357,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 (of ``action_dim``) and ``aux_desired`` (of ``aux_dim``) to output
                 ``state.goal`` (``action_dim + aux_dim``). When ``control_aux`` is
                 ``False``, ``state.goal`` is of shape ``(batch_size, action_dim)``.
+            multi_dim_goal_reward (bool): number of dimensions of goal reward.
             name (str): name of the algorithm.
         """
         self._num_subgoals = num_subgoals
@@ -376,13 +378,14 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._control_aux = control_aux
         if control_aux:
             assert use_aux_achieved
-        goal_dim = action_dim
+        self._multi_dim_goal_reward = multi_dim_goal_reward
+        self._goal_dim = action_dim
         if control_aux:
-            goal_dim += aux_dim
-        goal_shape = (goal_dim, )
+            self._goal_dim += aux_dim
+        goal_shape = (self._goal_dim, )
         goal_spec = TensorSpec(goal_shape)
         plan_horizon = self._compute_plan_horizon()
-        full_plan_shape = (plan_horizon, goal_dim)
+        full_plan_shape = (plan_horizon, self._goal_dim)
         full_plan_spec = TensorSpec(full_plan_shape)
         final_goal_spec = ()
         if final_goal:
@@ -409,9 +412,18 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                     dtype=torch.float32)).item()),
             train_state_spec=train_state_spec,
             name=name)
-        self._goal_achieved_fn = lambda achieved, goal: reward_fn(
-            achieved.unsqueeze(1), goal.unsqueeze(1), device=goal.device
-        ).squeeze(1) >= 0
+
+        def _goal_ach_fn(achieved, goal):
+            ach = reward_fn(
+                achieved.unsqueeze(1),
+                goal.unsqueeze(1),
+                multi_dim_goal_reward=multi_dim_goal_reward,
+                device=goal.device).squeeze(1) >= 0
+            if multi_dim_goal_reward:
+                ach = torch.min(ach, dim=1)[0]
+            return ach
+
+        self._goal_achieved_fn = _goal_ach_fn
         if value_fn:
             self._value_fn = value_fn
 
@@ -433,6 +445,25 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._bound_goals = bound_goals
         if bound_goals:
             assert normalize_goals
+
+    def goal_dim(self):
+        """Number of dimensions of a goal.
+        """
+        return self._goal_dim
+
+    @gin.configurable
+    def reward_spec(self, env_reward_spec=None):
+        if env_reward_spec is None:
+            env_reward_spec = common.get_reward_spec()
+        if self._multi_dim_goal_reward:
+            env_dim = 1
+            if env_reward_spec.shape:
+                env_dim = env_reward_spec.shape[0]
+            goal_shape = (self.goal_dim() + env_dim - 1, )
+            reward_spec = TensorSpec(goal_shape)
+            return reward_spec
+        else:
+            return env_reward_spec
 
     @property
     def num_subgoals(self):
@@ -783,6 +814,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             # Judge whether we reached max subgoal steps, and need to skip current subgoal
             # Even at the first step of a new plan, goal may be achieved.
             sg_steps = state.steps_since_last_goal
+            # NOTE: when index < num_subgoals, it's a subgoal; when index == num_subgoals,
+            # it's the final goal; when index == num_subgoals + 1, final goal has been achieved;
+            # when index == num_subgoals + 2, exited final goal region.
             current_subgoal_index = state.subgoals_index
             max_subgoal_steps_reached = sg_steps > self._max_subgoal_steps
             curr_goal_skipped = (max_subgoal_steps_reached & ~goal_achieved
@@ -798,6 +832,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 torch.as_tensor(self._num_subgoals, dtype=torch.int32),
                 subgoals_index)
             advanced_goal = subgoals_index > current_subgoal_index
+            exit_goal = ~goal_achieved & (
+                current_subgoal_index == self._num_subgoals + 1)
+            subgoals_index += exit_goal
+
             # Get the subgoal from full plan
             batch_size = step_type.shape[0]
             new_goal = state.full_plan[(torch.arange(batch_size),
@@ -859,12 +897,21 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                         common.exe_mode_name(), reached_fg_steps_sum /
                         torch.sum(fgoal_achieved.float()))
             if common.is_play():
+                ach = observation["achieved_goal"]
+                if self.control_aux:
+                    ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
                 if goal_achieved & advanced_goal:
-                    logging.info("REACHED GOAL:%d in %d steps",
-                                 current_subgoal_index, sg_steps)
+                    logging.info(
+                        "REACHED GOAL:%d in %d steps at actual\nachv: %s",
+                        current_subgoal_index, sg_steps, str(ach))
+                    if current_subgoal_index[0] < self._num_subgoals:
+                        logging.info("New Goal:\ngoal: %s", str(new_goal))
                 elif curr_goal_skipped & advanced_goal:
                     logging.info("Skipped GOAL:%d in %d steps",
                                  current_subgoal_index, sg_steps)
+                elif ~goal_achieved & (
+                        current_subgoal_index == self._num_subgoals + 1):
+                    logging.info("Exiting final goal at\nachv: %s", str(ach))
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "planner/steps_since_last_plan." + common.exe_mode_name(),
