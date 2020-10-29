@@ -206,13 +206,13 @@ class VideoRecorder(GymVideoRecorder):
         self._frame_buffer = []
 
     def encode_frames_in_buffer_with_external(self, set_of_external_frames):
-        """ Encode joinly internal and external frames
+        """ Encode jointly internal and external frames
         Args:
             set_of_external_frames (list[list]): list where each element itself
                 is a list of frames to be encoded. Each element of
                 ``set_of_external_frames`` need to be of the same length,
-                which is also the same as the length of the internal frames,
-                i.e., they are synchronized in time.
+                which is should be no larger the length of the internal frames.
+
         """
 
         set_of_external_frames = [e for e in set_of_external_frames if e]
@@ -222,9 +222,9 @@ class VideoRecorder(GymVideoRecorder):
 
         assert all((len(e) == nframes for e in set_of_external_frames)), \
                 "external frames for different info should have the same length"
-        assert len(self._frame_buffer) == nframes, (
-            "external frames should "
-            "have the same length as internal frame buffer")
+        assert len(self._frame_buffer) >= nframes, (
+            "the number of external frames should be no larger "
+            "than the the number of frames from the internal frame buffer")
         for i, xframes in enumerate(zip(*set_of_external_frames)):
             xframe = self._stack_imgs(xframes, horizontal=True)
             frame = self._frame_buffer[i]
@@ -233,8 +233,8 @@ class VideoRecorder(GymVideoRecorder):
                 self._encode_ansi_frame(cat_frame)
             else:
                 self._encode_image_frame(cat_frame)
-        # clear frame buffer after encoding all
-        self._frame_buffer = []
+        # remove the frames that have already been encoded
+        del self._frame_buffer[:i + 1]
 
     def _plot_prob_curve(self, name, probs, xticks=None):
         if xticks is None:
@@ -375,14 +375,21 @@ class VideoRecorder(GymVideoRecorder):
         Args:
             values (list[np.array]): each element from the list corresponding
                 to one curve in the generated figure.
-            legends (list[np.array]): name for each element from values
+            legends (list[str]): name for each element from values
             size (int): the size of the figure
-            name (str):
-            xticks:
+            linewidth (int): the width of the line used in the plot
+            name (str): the name of the plot
+            xticks (None|np.array): values for the x-axis of the plot. If None,
+                a default value of ``range(len(values[0]))`` will be used.
         """
 
         if xticks is None:
             xticks = range(len(values[0]))
+        else:
+            assert len(xticks) == len(
+                values[0]), ("xticks should have the "
+                             "same length as the elements of values")
+
         fig, ax = plt.subplots(figsize=(size, size))
         for value in values:
             ax.plot(xticks, value, linewidth=linewidth)

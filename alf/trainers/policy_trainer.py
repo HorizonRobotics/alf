@@ -465,7 +465,7 @@ class RLTrainer(Trainer):
             self._eval_env.batch_size)
         episodes = 0
         while episodes < self._num_eval_episodes:
-            time_step, policy_state, trans_state, _, _ = _step(
+            time_step, policy_step, trans_state = _step(
                 algorithm=self._algorithm,
                 env=self._eval_env,
                 time_step=time_step,
@@ -473,6 +473,8 @@ class RLTrainer(Trainer):
                 trans_state=trans_state,
                 epsilon_greedy=self._config.epsilon_greedy,
                 metrics=self._eval_metrics)
+            policy_state = policy_step.state
+
             if time_step.is_last():
                 episodes += 1
 
@@ -588,8 +590,7 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
-    return next_time_step, policy_step.state, trans_state, \
-                policy_step.info, policy_step.output
+    return next_time_step, policy_step, trans_state
 
 
 def play(root_dir,
@@ -637,9 +638,9 @@ def play(root_dir,
             This defer mode is potentially useful to display for each frame
             some information that expands beyond a single time step to the future.
             Currently this mode only support offline rendering, i.e. rendering
-            and save the video to ``record_file``. If a non-positive value is
-            provided, it is treated as not using the defer mode and only the
-            information from the current step will be displayed.
+            and saving the video to ``record_file``. If a non-positive value is
+            provided, it is treated as not using the defer mode and the plots
+            for displaying future information will not be displayed.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
@@ -689,7 +690,7 @@ def play(root_dir,
         transformed_time_step, trans_state = algorithm.transform_timestep(
             time_step, trans_state)
 
-        time_step, policy_state, trans_state, info, action = _step(
+        time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
@@ -697,6 +698,9 @@ def play(root_dir,
             trans_state=trans_state,
             epsilon_greedy=epsilon_greedy,
             metrics=metrics)
+        policy_state = policy_step.state
+        action = policy_step.output
+        info = policy_step.info
 
         if defer_mode:
             observations.append(transformed_time_step.observation)
@@ -714,16 +718,31 @@ def play(root_dir,
 
         episode_reward += time_step_reward
 
+        # start defer encoding
+        if defer_mode and (episode_length > future_steps):
+            _record_future_info(
+                recorder,
+                observations,
+                actions,
+                rewards,
+                future_steps=future_steps)
+            observations.pop(0)
+            actions.pop(0)
+            rewards.pop(0)
+
         if time_step.is_last() or episode_length >= max_episode_length > 0:
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
+
+            # defer encoding all the rest till the end
             if defer_mode:
-                _record_episodic_info(
+                _record_future_info(
                     recorder,
                     observations,
                     actions,
                     rewards,
-                    future_steps=future_steps)
+                    future_steps=future_steps,
+                    encode_all=True)
                 observations = []
                 actions = []
                 rewards = []
@@ -743,13 +762,14 @@ def play(root_dir,
     env.reset()
 
 
-def _record_episodic_info(recorder,
-                          observations,
-                          actions,
-                          rewards,
-                          info_func=None,
-                          future_steps=5):
-    """Record episodic information and encode with the recoder.
+def _record_future_info(recorder,
+                        observations,
+                        actions,
+                        rewards,
+                        info_func=None,
+                        future_steps=5,
+                        encode_all=False):
+    """Record future information and encode with the recoder.
     This function extracts some information of ``future_steps`` into
     the future, based on the input observations/actions/rewards.
     By default, the reward and actions from the current time step
@@ -773,14 +793,23 @@ def _record_episodic_info(recorder,
             Currently only support displaying scalar predictive information
             returned from info_func.
         future_steps (int): number of future steps to show.
+        encode_all (bool): whether to encode all the steps in the episode
+            buffer (i.e. the list of observations/actions/rewards).
+            - If False, only encode one step. In this case, ``future_steps``
+                should be no larger than the length of the episode buffer.
+            - If True, encode all the steps in episode_buffer. In this case,
+                the actual ``future_steps`` is upper-bounded by the
+                length of the episode buffer - 1.
     """
-    # [episode_length, reward_dim]
+    # [episode_buffer_length, reward_dim]
     rewards = torch.cat(rewards, dim=0)
-    episode_length = rewards.shape[0]
-    assert future_steps < episode_length, (
-        "future steps should be smaller than "
-        "the episode length {a}, but got {b}".format(
-            a=episode_length, b=future_steps))
+    episode_buffer_length = rewards.shape[0]
+
+    if not encode_all:
+        assert future_steps < episode_buffer_length, (
+            "future steps should be smaller than "
+            "the episode buffer length {a}, but got {b}".format(
+                a=episode_buffer_length, b=future_steps))
 
     if rewards.ndim > 1:
         # slice the multi-dimensional rewards
@@ -795,19 +824,20 @@ def _record_episodic_info(recorder,
     action_curve_set = []
     predictive_curve_set = []
 
-    for t in range(episode_length):
-        H = min(num_steps, episode_length - t - 1)  # future steps
+    encoding_steps = episode_buffer_length if encode_all else 1
+    for t in range(encoding_steps):
+        H = min(num_steps, episode_buffer_length - t)  # total display steps
         if H > 0:
             t_actions = actions[t:t + H]
-            t_rewards = rewards[t + 1:t + 1 + H]
+            t_rewards = rewards[t:t + H]
 
             if info_func is not None:
                 predictions = info_func(observations[t], t_actions)
-                assert predtions.ndim == 1 or predictions.shape[1] == 1, \
+                assert predictions.ndim == 1 or predictions.shape[1] == 1, \
                     "only support displaying scalar predictive information"
-                predtions = predtions.view(-1).detach().cpu().numpy()
+                predictions = predictions.view(-1).detach().cpu().numpy()
 
-                pred_curve = recorder._plot_value_curve([predtions],
+                pred_curve = recorder._plot_value_curve([predictions],
                                                         legends=["Prediction"],
                                                         size=6,
                                                         linewidth=5,
@@ -830,10 +860,6 @@ def _record_episodic_info(recorder,
                 size=6,
                 linewidth=5,
                 name="actions")
-            action_curve_set.append(action_curve)
-        else:
-            # append one more for the last time step
-            reward_curve_set.append(reward_curve)
             action_curve_set.append(action_curve)
 
     # encode all frames
