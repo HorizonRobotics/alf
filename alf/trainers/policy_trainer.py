@@ -29,6 +29,7 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
+from alf.data_structures import StepType
 from alf.environments.utils import create_environment
 from alf.nest import map_structure
 from alf.tensor_specs import TensorSpec
@@ -634,8 +635,9 @@ def play(root_dir,
             instead of shown on the screen.
         future_steps (int): whether to encode some information from future steps
             into the current frame. If future_steps is larger than zero,
-            then the episodic information will be cached and the encoding of
-            them to video frames is deferred to the end of an episode.
+            then the related information (e.g. observation, reward, action etc.)
+            will be cached and the encoding of them to video frames is deferred
+            to the time when ``future_steps`` of future frames are available.
             This defer mode is potentially useful to display for each frame
             some information that expands beyond a single time step to the future.
             Currently this mode only support offline rendering, i.e. rendering
@@ -658,7 +660,8 @@ def play(root_dir,
 
     recorder = None
     if record_file is not None:
-        recorder = VideoRecorder(env, path=record_file)
+        recorder = VideoRecorder(
+            env, future_steps=future_steps, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
@@ -677,14 +680,6 @@ def play(root_dir,
         alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
     ]
 
-    if future_steps > 0:
-        defer_mode = True
-        observations = []
-        rewards = []
-        actions = []
-    else:
-        defer_mode = False
-
     while episodes < num_episodes:
 
         # transform time step
@@ -700,17 +695,17 @@ def play(root_dir,
             epsilon_greedy=epsilon_greedy,
             metrics=metrics)
         policy_state = policy_step.state
-        action = policy_step.output
-        info = policy_step.info
-
-        if defer_mode:
-            observations.append(transformed_time_step.observation)
-            rewards.append(transformed_time_step.reward)
-            actions.append(action)
 
         episode_length += 1
+
+        is_last_step = time_step.is_last() or (episode_length >=
+                                               max_episode_length > 0)
+
         if recorder:
-            recorder.capture_frame(info, encode_frame=not defer_mode)
+            recorder.capture_frame(
+                transformed_time_step._replace(step_type=StepType.LAST) \
+                        if is_last_step else transformed_time_step,
+                policy_step)
         else:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
@@ -719,34 +714,9 @@ def play(root_dir,
 
         episode_reward += time_step_reward
 
-        # start defer encoding
-        if defer_mode and (episode_length > future_steps):
-            _record_future_info(
-                recorder,
-                observations,
-                actions,
-                rewards,
-                future_steps=future_steps)
-            observations.pop(0)
-            actions.pop(0)
-            rewards.pop(0)
-
-        if time_step.is_last() or episode_length >= max_episode_length > 0:
+        if is_last_step:
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
-
-            # defer encoding all the rest till the end
-            if defer_mode:
-                _record_future_info(
-                    recorder,
-                    observations,
-                    actions,
-                    rewards,
-                    future_steps=future_steps,
-                    encode_all=True)
-                observations = []
-                actions = []
-                rewards = []
 
             episode_reward = 0.
             episode_length = 0.
@@ -765,108 +735,3 @@ def play(root_dir,
     if recorder:
         recorder.close()
     env.reset()
-
-
-def _record_future_info(recorder,
-                        observations,
-                        actions,
-                        rewards,
-                        info_func=None,
-                        future_steps=5,
-                        encode_all=False):
-    """Record future information and encode with the recoder.
-    This function extracts some information of ``future_steps`` into
-    the future, based on the input observations/actions/rewards.
-    By default, the reward and actions from the current time step
-    to the next ``future_steps`` will be displayed for each frame.
-    User can use ``info_func`` to add customized predictive quantities
-    to be shown in the video frames.
-
-    Args:
-        recorder (VideoRecorder):
-        observations (list[Tensor]): list of observations captured in an episode.
-            It can be used as the input to some algorithms to get the information
-            to be displayed in the video, e.g. a predictive algorithm predicting
-            future observations/rewards/values.
-        actions (list[Tensor]): list of actions captured in an episode.
-        rewards (list[Tensor]: list of rewards captured in an episode.
-        info_func (None|callable): a callable for calculating some customized
-            information (e.g. predicted future reward) based on the observation
-            at each time step and action sequences from the current time step
-            to the next ``future_steps`` steps (if available). It is called
-            as ``pred_info=info_func(current_observation, action_sequences)``.
-            Currently only support displaying scalar predictive information
-            returned from info_func.
-        future_steps (int): number of future steps to show.
-        encode_all (bool): whether to encode all the steps in the episode
-            buffer (i.e. the list of observations/actions/rewards).
-            - If False, only encode one step. In this case, ``future_steps``
-                should be no larger than the length of the episode buffer.
-            - If True, encode all the steps in episode_buffer. In this case,
-                the actual ``future_steps`` is upper-bounded by the
-                length of the episode buffer - 1.
-    """
-    # [episode_buffer_length, reward_dim]
-    rewards = torch.cat(rewards, dim=0)
-    episode_buffer_length = rewards.shape[0]
-
-    if not encode_all:
-        assert future_steps < episode_buffer_length, (
-            "future steps should be smaller than "
-            "the episode buffer length {a}, but got {b}".format(
-                a=episode_buffer_length, b=future_steps))
-
-    if rewards.ndim > 1:
-        # slice the multi-dimensional rewards
-        # assume the first dimension is the overall reward
-        rewards = rewards[..., 0]
-
-    actions = torch.cat(actions, dim=0)
-
-    num_steps = future_steps + 1
-
-    reward_curve_set = []
-    action_curve_set = []
-    predictive_curve_set = []
-
-    encoding_steps = episode_buffer_length if encode_all else 1
-    for t in range(encoding_steps):
-        H = min(num_steps, episode_buffer_length - t)  # total display steps
-        if H > 0:
-            t_actions = actions[t:t + H]
-            t_rewards = rewards[t:t + H]
-
-            if info_func is not None:
-                predictions = info_func(observations[t], t_actions)
-                assert predictions.ndim == 1 or predictions.shape[1] == 1, \
-                    "only support displaying scalar predictive information"
-                predictions = predictions.view(-1).detach().cpu().numpy()
-
-                pred_curve = recorder._plot_value_curve([predictions],
-                                                        legends=["Prediction"],
-                                                        size=6,
-                                                        linewidth=5,
-                                                        name="prediction")
-                predictive_curve_set.append(pred_curve)
-
-            reward_gt = t_rewards.view(-1).cpu().numpy()
-            action_cpu = t_actions.detach().cpu().numpy()
-
-            reward_curve = recorder._plot_value_curve([reward_gt],
-                                                      legends=["GroundTruth"],
-                                                      size=6,
-                                                      linewidth=5,
-                                                      name="rewards")
-            reward_curve_set.append(reward_curve)
-
-            action_curve = recorder._plot_value_curve(
-                [action_cpu[..., i] for i in range(action_cpu.shape[-1])],
-                legends=["a" + str(i) for i in range(action_cpu.shape[-1])],
-                size=6,
-                linewidth=5,
-                name="actions")
-            action_curve_set.append(action_curve)
-
-    # encode all frames
-    recorder.encode_frames_in_buffer_with_external(
-        [reward_curve_set, action_curve_set, predictive_curve_set])
