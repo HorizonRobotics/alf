@@ -419,6 +419,7 @@ class RLAlgorithm(Algorithm):
         trans_state = self._current_transform_state
 
         experience_list = []
+        original_reward_list = []
         initial_state = self.get_initial_rollout_state(self._env.batch_size)
 
         env_step_time = 0.
@@ -470,11 +471,16 @@ class RLAlgorithm(Algorithm):
                 env_id=transformed_time_step.env_id)
 
             experience_list.append(exp_for_training)
+            original_reward_list.append(time_step.reward)
             time_step = next_time_step
             policy_state = policy_step.state
 
         alf.summary.scalar("time/unroll_env_step", env_step_time)
         alf.summary.scalar("time/unroll_store_exp", store_exp_time)
+        original_reward = alf.nest.utils.stack_nests(original_reward_list)
+        self.summarize_reward("rollout_reward/original_reward",
+                              original_reward)
+
         experience = alf.nest.utils.stack_nests(experience_list)
         experience = experience._replace(
             rollout_info=dist_utils.params_to_distributions(
