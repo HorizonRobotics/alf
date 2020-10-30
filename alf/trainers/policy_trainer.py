@@ -30,6 +30,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 from alf.environments.utils import create_environment
+from alf.nest import map_structure
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils import git_utils
@@ -694,7 +695,11 @@ def play(root_dir,
             time_step = env.reset()
 
     for m in metrics:
-        logging.info("%s: %f", m.name, m.result())
+        logging.info(
+            "%s: %s", m.name,
+            map_structure(
+                lambda x: x.numpy().item() if x.ndim == 0 else x.numpy(),
+                m.result()))
     if recorder:
         recorder.close()
     env.reset()
