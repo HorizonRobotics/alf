@@ -104,7 +104,7 @@ class RecorderBuffer(object):
     """
 
     def __init__(self, buffer_fields):
-        """
+        """The init function of RecorderBuffer.
         Args:
             buffer_fields (str|list[str]): the names used for representing
                 the corresponding fields of the buffer.
@@ -114,7 +114,7 @@ class RecorderBuffer(object):
         self._create_buffer_for_each_fields()
 
     def _create_buffer_for_each_fields(self):
-        """Create buffer for  each field in ``buffer_fields``.
+        """Create buffer for each field in ``buffer_fields``.
         """
         for buffer_field in self._buffer_fields:
             self._field_to_buffer_mapping[buffer_field] = []
@@ -160,21 +160,17 @@ class RecorderBuffer(object):
 @gin.configurable(
     whitelist=['img_plot_width', 'value_range', 'frames_per_sec'])
 class VideoRecorder(GymVideoRecorder):
-    """A video recorder that supports plotting prediciton info in addition to
-    rendering frames.
-
-    Suppors the following data types:
-
+    """A video recorder that renders frames and encodes them into a video file.
+    Besides rendering frames, it also supports plotting prediction info.
+    Currently suppors the following data types:
     * action distribution: plotted as a probability curve. For a discrete
     distribution, the probabilities are directly plotted. For a continuous
     distribution, the curve will be approximated by sampled points for each
     action dimension.
     * action: plotted as heatmaps. Long type actions will be first
     converted to one-hot encodings.
-
-    ``env_frame`` is a ``numpy.ndarray`` with shape ``(x, y, 3)``,
-    representing RGB values for an x-by-y pixel image, output from
-    ``env.render('rgb_array')``.
+    Furthermore, it supports displaying in the current frame some information
+    from future steps. This is encabled when ``future_steps``>0.
     """
 
     def __init__(self,
@@ -620,6 +616,20 @@ class VideoRecorder(GymVideoRecorder):
         return
 
     def _plot_pred_info(self, env_frame, pred_info):
+        """Generate plots for fields in ``pred_info`` and stack them
+            horizontally with ``env_frame``.
+        Args:
+            env_frame (numpy.ndarray): ``numpy.ndarray`` with shape
+                ``(x, y, 3)``, representing RGB values for an x-by-y pixel image,
+                output from ``env.render('rgb_array')``.
+            pred_info (nested): a nest. Currently suppors the following data types:
+                - action distribution: plotted as a probability curve. For a
+                discrete distribution, the probabilities are directly plotted.
+                For a continuous distribution, the curve will be approximated by
+                sampled points for each action dimension.
+                - action: plotted as heatmaps. Long type actions will be first
+                converted to one-hot encodings.
+        """
         act_dist = alf.nest.find_field(pred_info, "action_distribution")
         act_dist_img = None
         if len(act_dist) == 1:
