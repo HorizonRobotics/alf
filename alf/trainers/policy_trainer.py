@@ -29,7 +29,6 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
-from alf.data_structures import StepType
 from alf.environments.utils import create_environment
 from alf.nest import map_structure
 from alf.tensor_specs import TensorSpec
@@ -679,13 +678,7 @@ def play(root_dir,
             buffer_size=num_episodes, reward_shape=env.reward_spec().shape),
         alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
     ]
-
     while episodes < num_episodes:
-
-        # transform time step
-        transformed_time_step, trans_state = algorithm.transform_timestep(
-            time_step, trans_state)
-
         time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
@@ -695,17 +688,13 @@ def play(root_dir,
             epsilon_greedy=epsilon_greedy,
             metrics=metrics)
         policy_state = policy_step.state
-
         episode_length += 1
 
         is_last_step = time_step.is_last() or (episode_length >=
                                                max_episode_length > 0)
 
         if recorder:
-            recorder.capture_frame(
-                transformed_time_step._replace(step_type=StepType.LAST) \
-                        if is_last_step else transformed_time_step,
-                policy_step)
+            recorder.capture_frame(time_step, policy_step, is_last_step)
         else:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
@@ -717,7 +706,6 @@ def play(root_dir,
         if is_last_step:
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
-
             episode_reward = 0.
             episode_length = 0.
             episodes += 1

@@ -98,6 +98,65 @@ def _generate_img_matrix(imgs, cols, img_width):
     return ret_img
 
 
+class RecorderBuffer(object):
+    """A simple buffer for caching frames, observations, rewards, actions etc,
+        with some helper operations such as get, append and pop by field names.
+    """
+
+    def __init__(self, buffer_fields):
+        """
+        Args:
+            buffer_fields (str|list[str]): the names used for representing
+                the corresponding fields of the buffer.
+        """
+        self._field_to_buffer_mapping = dict()
+        self._buffer_fields = common.as_list(buffer_fields)
+        self._create_buffer_for_each_fields()
+
+    def _create_buffer_for_each_fields(self):
+        """Create buffer for  each field in ``buffer_fields``.
+        """
+        for buffer_field in self._buffer_fields:
+            self._field_to_buffer_mapping[buffer_field] = []
+
+    def get_buffer(self, field):
+        """Get the corresponding buffer specified by field.
+        Args:
+            field (str): the name representing the field of the buffer to be
+                retrived.
+        """
+        return self._field_to_buffer_mapping[field]
+
+    def pop_fields(self, fields):
+        """Pop elements from buffers specified by the names in fields.
+        Args:
+            fields (str|list[str]): the names used for representing
+                the corresponding fields of the buffer.
+        """
+        for field in common.as_list(fields):
+            self._field_to_buffer_mapping[field].pop()
+
+    def append_fields(self, fields, elements):
+        """Append items from elements to buffers specified by the names in fields.
+        Args:
+            fields (str|list[str]): the names used for representing
+                the corresponding fields of the buffer.
+            elements (list): items to be appended to the corresponding buffer
+        """
+        for field, e in zip(common.as_list(fields), common.as_list(elements)):
+            self._field_to_buffer_mapping[field].append(e)
+
+    def popn_fields(self, fields, n):
+        """Pop n elements from buffers for each field specified by fields.
+        Args:
+            fields (str|list[str]): the names used for representing
+                the corresponding fields of the buffer.
+            n (int): the number of elements to pop
+        """
+        for field in common.as_list(fields):
+            del self._field_to_buffer_mapping[field][:n]
+
+
 @gin.configurable(
     whitelist=['img_plot_width', 'value_range', 'frames_per_sec'])
 class VideoRecorder(GymVideoRecorder):
@@ -153,15 +212,22 @@ class VideoRecorder(GymVideoRecorder):
             self.frames_per_sec = frames_per_sec  # overwrite the base class
 
         self._future_steps = future_steps
-        self._frame_buffer = []
-        self._observation_buffer = []
-        self._reward_buffer = []
-        self._action_buffer = []
+        self._fields = ["frame", "observation", "reward", "action"]
+        self._recorder_buffer = RecorderBuffer(self._fields)
 
-    def capture_frame(self, time_step=None, policy_step=None, info_func=None):
+    def capture_frame(self,
+                      time_step=None,
+                      policy_step=None,
+                      is_last_step=False,
+                      info_func=None):
         """Render ``self.env`` and add the resulting frame to the video. Also
         plot information extracted from time step and policy step depending on
         the rendering mode.
+
+        When future_steps >0, the related information (e.g. observation, reward,
+        action etc.) will be cached in a recorder buffer and the encoding of
+        them to video frames is deferred to the time when ``future_steps``
+        of future frames are available.
 
         Args:
             time_step (None|TimeStep): not used when future_steps <= 0. When
@@ -170,6 +236,11 @@ class VideoRecorder(GymVideoRecorder):
                 information for displaying:
                 - info: if not None, it wil be displayed in the frame
                 - action: it will be displayed when future_steps > 0
+            is_last_step (bool): whether the current time step is the last
+                step of the episode, either due to game over or time limits.
+                It is used in the defer mode to properly handle the last few
+                frames before the episode end by encoding all the frames left
+                in the buffer.
             info_func (None|callable): a callable for calculating some customized
                 information (e.g. predicted future reward) to be plotted based
                 on the observation at each time step and action sequences from
@@ -222,12 +293,12 @@ class VideoRecorder(GymVideoRecorder):
 
             self.last_frame = frame
             if defer_mode:
-                self._frame_buffer.append(frame)
-                self._observation_buffer.append(time_step.observation)
-                self._reward_buffer.append(time_step.reward)
-                self._action_buffer.append(policy_step.output)
+                self._recorder_buffer.append_fields(self._fields, [
+                    frame, time_step.observation, time_step.reward,
+                    policy_step.output
+                ])
                 self._encode_with_future_info(
-                    info_func=info_func, encode_all=time_step.is_last())
+                    info_func=info_func, encode_all=is_last_step)
             else:
                 if self.ansi_mode:
                     self._encode_ansi_frame(frame)
@@ -237,7 +308,13 @@ class VideoRecorder(GymVideoRecorder):
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")
 
-    def _encode_with_future_info(self, info_func=None, encode_all=False):
+    def _encode_with_future_info(self,
+                                 info_func=None,
+                                 encode_all=False,
+                                 fig_size=6,
+                                 linewidth=5,
+                                 height=300,
+                                 width=300):
         """Record future information and encode with the recoder.
         This function extracts some information of ``future_steps`` into
         the future, based on the input observations/actions/rewards.
@@ -262,9 +339,15 @@ class VideoRecorder(GymVideoRecorder):
                 - If True, encode all the steps in episode_buffer. In this case,
                     the actual ``future_steps`` is upper-bounded by the
                     length of the episode buffer - 1.
+            fig_size (int): size of the figure for generating future info plot
+            linewidth (int): the width of the line used in the future info plot
+            height (int): the height of the rendered future info plot image in
+                terms of pixels
+            width (int): the width of the rendered future info plot image in
+                terms of pixels
         """
         # [episode_buffer_length, reward_dim]
-        rewards = torch.cat(self._reward_buffer, dim=0)
+        rewards = torch.cat(self._recorder_buffer.get_buffer("reward"), dim=0)
         episode_buffer_length = rewards.shape[0]
 
         if not encode_all and self._future_steps >= episode_buffer_length:
@@ -276,7 +359,7 @@ class VideoRecorder(GymVideoRecorder):
             # assume the first dimension is the overall reward
             rewards = rewards[..., 0]
 
-        actions = torch.cat(self._action_buffer, dim=0)
+        actions = torch.cat(self._recorder_buffer.get_buffer("action"), dim=0)
 
         num_steps = self._future_steps + 1
 
@@ -293,8 +376,9 @@ class VideoRecorder(GymVideoRecorder):
                 t_rewards = rewards[t:t + H]
 
                 if info_func is not None:
-                    predictions = info_func(self._observation_buffer[t],
-                                            t_actions)
+                    predictions = info_func(
+                        self._recorder_buffer.get_buffer("observation")[t],
+                        t_actions)
                     assert predictions.ndim == 1 or predictions.shape[1] == 1, \
                         "only support displaying scalar predictive information"
                     predictions = predictions.view(-1).detach().cpu().numpy()
@@ -302,10 +386,10 @@ class VideoRecorder(GymVideoRecorder):
                     pred_curve = self._plot_value_curve(
                         "prediction", [predictions],
                         legends=["Prediction"],
-                        fig_size=6,
-                        height=300,
-                        width=300,
-                        linewidth=5)
+                        fig_size=fig_size,
+                        height=height,
+                        width=width,
+                        linewidth=linewidth)
                     predictive_curve_set.append(pred_curve)
 
                 reward_gt = t_rewards.view(-1).cpu().numpy()
@@ -314,10 +398,10 @@ class VideoRecorder(GymVideoRecorder):
                 reward_curve = self._plot_value_curve(
                     "rewards", [reward_gt],
                     legends=["GroundTruth"],
-                    fig_size=6,
-                    height=300,
-                    width=300,
-                    linewidth=5)
+                    fig_size=fig_size,
+                    height=height,
+                    width=width,
+                    linewidth=linewidth)
                 reward_curve_set.append(reward_curve)
 
                 action_curve = self._plot_value_curve(
@@ -326,50 +410,52 @@ class VideoRecorder(GymVideoRecorder):
                     legends=[
                         "a" + str(i) for i in range(action_cpu.shape[-1])
                     ],
-                    fig_size=6,
-                    height=300,
-                    width=300,
-                    linewidth=5)
+                    fig_size=fig_size,
+                    height=height,
+                    width=width,
+                    linewidth=linewidth)
                 action_curve_set.append(action_curve)
 
-            self._observation_buffer.pop(0)
-            self._reward_buffer.pop(0)
-            self._action_buffer.pop(0)
+            self._recorder_buffer.pop_fields(
+                ["observation", "reward", "action"])
 
         # encode all frames
-        self._encode_frames_in_buffer_with_external(
+        self._encode_frames_with_future_info_plots(
             [reward_curve_set, action_curve_set, predictive_curve_set])
 
-    def _encode_frames_in_buffer_with_external(self, set_of_external_frames):
-        """ Encode jointly internal and external frames
+    def _encode_frames_with_future_info_plots(self, set_of_future_info_plots):
+        """Encode frames in the frame buffer with plots contained in
+            ``set_of_future_info_plots``.
         Args:
-            set_of_external_frames (list[list]): list where each element itself
-                is a list of frames to be encoded. Each element of
-                ``set_of_external_frames`` need to be of the same length,
-                which is should be no larger the length of the internal frames.
-
+            set_of_future_info_plots (list[list]): list where each element itself
+                is a list of temporally consecutive plots to be encoded.
+                Each element of ``set_of_future_info_plots`` need to be of the
+                same length (n), which is should be no larger the length of the
+                frames.
         """
 
-        set_of_external_frames = [e for e in set_of_external_frames if e]
-        assert len(set_of_external_frames) > 0, ("set of external frames " \
+        set_of_future_info_plots = [e for e in set_of_future_info_plots if e]
+        assert len(set_of_future_info_plots) > 0, ("set of future info plots " \
                                                 "should not be empty")
-        nframes = len(set_of_external_frames[0])
+        nframes = len(set_of_future_info_plots[0])
 
-        assert all((len(e) == nframes for e in set_of_external_frames)), \
+        assert all((len(e) == nframes for e in set_of_future_info_plots)), \
                 "external frames for different info should have the same length"
-        assert len(self._frame_buffer) >= nframes, (
+
+        frame_buffer = self._recorder_buffer.get_buffer("frame")
+        assert len(frame_buffer) >= nframes, (
             "the number of external frames should be no larger "
             "than the the number of frames from the internal frame buffer")
-        for i, xframes in enumerate(zip(*set_of_external_frames)):
+        for i, xframes in enumerate(zip(*set_of_future_info_plots)):
             xframe = self._stack_imgs(xframes, horizontal=True)
-            frame = self._frame_buffer[i]
+            frame = frame_buffer[i]
             cat_frame = self._stack_imgs([frame, xframe], horizontal=False)
             if self.ansi_mode:
                 self._encode_ansi_frame(cat_frame)
             else:
                 self._encode_image_frame(cat_frame)
         # remove the frames that have already been encoded
-        del self._frame_buffer[:i + 1]
+        self._recorder_buffer.popn_fields("frame", i + 1)
 
     def _plot_value_curve(self,
                           name,
