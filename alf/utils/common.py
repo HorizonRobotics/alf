@@ -625,11 +625,18 @@ def write_gin_configs(root_dir, gin_file):
 def warning_once(msg, *args):
     """Generate warning message once.
 
+    Note that the current implementation resembles that of the ``log_every_n()```
+    function in ``logging`` but reduces the calling stack by one to ensure
+    the multiple warning once messages generated at difference places can be
+    displayed correctly.
+
     Args:
         msg: str, the message to be logged.
         *args: The args to be substitued into the msg.
     """
-    logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
+    caller = logging.get_absl_logger().findCaller()
+    count = logging._get_next_log_count_per_token(caller)
+    logging.log_if(logging.WARNING, msg, not (count % (1 << 62)), *args)
 
 
 def set_random_seed(seed):
