@@ -547,7 +547,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 if self._goal_speed_zero:
                     samples[:, :, -1, action_dim:action_dim +
                             2] = 0  # x, y speed
-                    # samples[:, :, -1, action_dim + 5] = 0  # yaw speed
+                    samples[:, :, -1, action_dim + 5] = 0  # yaw speed
                 stack_obs[
                     "aux_desired"] = samples[:, :, :, action_dim:].reshape(
                         batch_size * pop_size * (horizon + 1), self._aux_dim)
@@ -900,18 +900,18 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 ach = observation["achieved_goal"]
                 if self.control_aux:
                     ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
+                ach_str = str(ach)
                 if goal_achieved & advanced_goal:
-                    logging.info(
-                        "REACHED GOAL:%d in %d steps at actual\nachv: %s",
-                        current_subgoal_index, sg_steps, str(ach))
+                    logging.info("REACHED GOAL:%d in %d steps at\nachv: %s",
+                                 current_subgoal_index, sg_steps, ach_str)
                     if current_subgoal_index[0] < self._num_subgoals:
                         logging.info("New Goal:\ngoal: %s", str(new_goal))
                 elif curr_goal_skipped & advanced_goal:
-                    logging.info("Skipped GOAL:%d in %d steps",
-                                 current_subgoal_index, sg_steps)
+                    logging.info("Skipped Goal:%d in %d steps at\nachv: %s",
+                                 current_subgoal_index, sg_steps, ach_str)
                 elif ~goal_achieved & (
                         current_subgoal_index == self._num_subgoals + 1):
-                    logging.info("Exiting final goal at\nachv: %s", str(ach))
+                    logging.info("Exiting Final Goal at\nachv: %s", ach_str)
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "planner/steps_since_last_plan." + common.exe_mode_name(),

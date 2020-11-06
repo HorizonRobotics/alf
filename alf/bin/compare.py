@@ -225,7 +225,7 @@ def main(_):
                 f.write(command + "\n")
                 f.close()
                 print(command)
-                lf = open(log_file, 'w+')
+                lf = open(log_file, 'a')
                 p = Popen(commands, cwd=root_dir, stderr=lf)
                 while True:
                     time.sleep(2)
