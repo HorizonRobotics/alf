@@ -308,6 +308,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  value_state_spec=(),
                  max_replan_steps=10,
                  plan_margin=0.,
+                 plan_with_goal_value_only=False,
                  plan_cost_ln_norm=1,
                  goal_speed_zero=False,
                  min_goal_cost_to_use_plan=0.,
@@ -370,6 +371,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._action_dim = action_dim
         self._max_replan_steps = max_replan_steps
         self._plan_margin = plan_margin
+        self._plan_with_goal_value_only = plan_with_goal_value_only
         self._plan_cost_ln_norm = plan_cost_ln_norm
         self._goal_speed_zero = goal_speed_zero
         self._min_goal_cost_to_use_plan = min_goal_cost_to_use_plan
@@ -560,7 +562,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             info["all_population_costs"] = alf.math.sum_to_leftmost(
                 dists, dim=3)
         if self._plan_cost_ln_norm > 1:
-            dists = alf.math.sum_to_leftmost(dists, dim=3)
+            if self._plan_with_goal_value_only:
+                dists = dists[:, :, :, 0]
+            else:
+                dists = alf.math.sum_to_leftmost(dists, dim=3)
             if self._plan_cost_ln_norm < 10:
                 dists = dists**self._plan_cost_ln_norm
             else:
