@@ -121,7 +121,10 @@ def _create_html(data, all_data, metrics, abbr):
     """
 
     # Summary:
-    html += "\n<pre>Alg1: {}\n".format(FLAGS.root_dir1)
+    html += "\n<pre>"
+    if FLAGS.common_gin:
+        html += "common_args: {}\n".format(FLAGS.common_gin)
+    html += "Alg1: {}\n".format(FLAGS.root_dir1)
     for m in metrics:
         html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(
             m, _get_avg(all_data, m, 0))
@@ -134,7 +137,7 @@ def _create_html(data, all_data, metrics, abbr):
     percentiles = [.05, .1, .2, .4, .8, .99]
     counts = [0] * len(percentiles)
     wins = [0] * len(percentiles)
-    html += "propotion_diffs:\n"
+    html += "proportion_diffs:\n"
     for item in data:
         diff = _return_diff(item)
         for i, p in enumerate(percentiles):

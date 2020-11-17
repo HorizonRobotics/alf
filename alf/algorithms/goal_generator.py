@@ -50,7 +50,7 @@ class ConditionalGoalGenerator(RLAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
-                 train_with_goal="rollout",
+                 train_with_goal="exp",
                  train_state_spec=(),
                  name="ConditionalGoalGenerator"):
         """
@@ -301,6 +301,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  next_goal_on_success=False,
                  final_goal=False,
                  reward_fn=l2_dist_close_reward_fn,
+                 sparse_reward=False,
                  max_subgoal_steps=50,
                  normalize_goals=False,
                  bound_goals=False,
@@ -335,6 +336,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 reward -1 or 0.  Arguments are supposed to be of shape
                 ``(batch_size, batch_length, action_dim)``, so it can be the same as
                 hindsight relabeler's reward_fn.
+            sparse_reward (bool): Whether to accept 0/1 reward as input.  Requires
+                the planning algorithm to take logarithm before summing segment costs.
             normalize_goals (bool): whether to use normalizer to record stats for goal
                 dimensions, and sample only within observed stats.
             bound_goals (bool): whether to use normalizer stats to bound planned goals.
@@ -367,6 +370,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if next_goal_on_success:
             assert always_adopt_plan, "TODO: replan after achieving subgoal."
         self._final_goal = final_goal
+        self._sparse_reward = sparse_reward
         self._max_subgoal_steps = max_subgoal_steps
         self._action_dim = action_dim
         self._max_replan_steps = max_replan_steps
@@ -447,6 +451,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._bound_goals = bound_goals
         if bound_goals:
             assert normalize_goals
+        if not self._normalizer:
+            alf.utils.checkpoint_utils.enable_checkpoint(self, False)
 
     def goal_dim(self):
         """Number of dimensions of a goal.
@@ -468,6 +474,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             return env_reward_spec
 
     @property
+    def sparse_reward(self):
+        """Using 0/1 reward
+        """
+        return self._sparse_reward
+
+    @property
     def num_subgoals(self):
         """Number of subgoals to plan.
         """
@@ -481,6 +493,32 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
     def set_value_fn(self, value_fn):
         self._value_fn = value_fn
+
+    def _wrapped_value_fn(self, obs, state):
+        values, state = self._value_fn(obs, state)
+        if self.sparse_reward:
+            # 0/1 reward, value cannot be negative, or too close to zero.
+            # Sum all dims before taking log:
+            obs_dim = len(alf.nest.get_nest_shape(obs))
+            values = alf.math.sum_to_leftmost(values, dim=obs_dim)
+            values = torch.log(torch.max(values, torch.tensor(1.e-10)))
+            # Multiply all dims (sum after log):
+            # mdim = obs_dim < values.ndim
+            # if mdim:
+            #     # multi dim reward
+            #     goal_v = values[..., :-1]  # last dim is distraction reward
+            # else:
+            #     goal_v = values
+            # goal_v = torch.max(goal_v, torch.tensor(1.e-10))
+            # goal_v = torch.log(goal_v)
+            # if mdim:
+            #     values[..., :-1] = goal_v
+            # else:
+            #     values = goal_v
+        else:
+            # -1/0 reward, value cannot be positive.
+            values = torch.min(values, torch.tensor([0.]))
+        return values, state
 
     def _summarize_tensor_dims(self, name, t):
         if alf.summary.should_record_summaries():
@@ -555,17 +593,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                         batch_size * pop_size * (horizon + 1), self._aux_dim)
         if self._value_state_spec != ():
             raise NotImplementedError()
-        values, _unused_value_state = self._value_fn(stack_obs, ())
+        values, _unused_value_state = self._wrapped_value_fn(stack_obs, ())
         dists = -values.reshape(batch_size, pop_size, horizon + 1, -1)
         # values can be multi dimensional, need to sum to dim 3.
         if info is not None:
             info["all_population_costs"] = alf.math.sum_to_leftmost(
                 dists, dim=3)
+        if self._plan_with_goal_value_only:
+            dists = dists[:, :, :, 0]
+        else:
+            dists = alf.math.sum_to_leftmost(dists, dim=3)
         if self._plan_cost_ln_norm > 1:
-            if self._plan_with_goal_value_only:
-                dists = dists[:, :, :, 0]
-            else:
-                dists = alf.math.sum_to_leftmost(dists, dim=3)
             if self._plan_cost_ln_norm < 10:
                 dists = dists**self._plan_cost_ln_norm
             else:
@@ -626,8 +664,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             # _costs_agg_dist function, and were filled with desired_goal.
             goals[:, -1, :self._action_dim] = observation["desired_goal"]
         else:
-            goals = torch.cat(
-                (goals, observation["desired_goal"].unsqueeze(1)), dim=1)
+            goals = torch.cat((goals[:, :, :self._action_dim],
+                               observation["desired_goal"].unsqueeze(1)),
+                              dim=1)
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
         if self._next_goal_on_success:
             # In reality, subgoals_index can be different for different ENVs.  Here,
@@ -679,7 +718,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if self._final_goal:
             # To compute overall cost of base policy, all goals are final.
             observation["final_goal"] = torch.ones((batch_size, 1))
-        values, _v_state = self._value_fn(observation, ())
+        values, _v_state = self._wrapped_value_fn(observation, ())
         init_costs = -values
         # to deal with multi dim reward case
         init_costs = alf.math.sum_to_leftmost(init_costs, dim=2)
@@ -906,6 +945,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 if self.control_aux:
                     ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
                 ach_str = str(ach)
+                if torch.any(abs(ach[0:2]) > 5.7 + 0.5) or torch.norm(
+                        torch.cat((ach[2:5], ach[6:9]))) >= 0.6:
+                    logging.info("Reached Unreal: %s", ach_str)
                 if goal_achieved & advanced_goal:
                     logging.info("REACHED GOAL:%d in %d steps at\nachv: %s",
                                  current_subgoal_index, sg_steps, ach_str)

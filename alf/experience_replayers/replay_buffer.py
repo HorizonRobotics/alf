@@ -23,6 +23,7 @@ import torch.nn as nn
 import alf
 from alf import data_structures as ds
 from alf.data_structures import namedtuple
+from alf.environments import suite_socialbot
 from alf.nest.utils import convert_device
 from alf.utils.common import warning_once
 from alf.utils.data_buffer import atomic, RingBuffer
@@ -692,6 +693,7 @@ def hindsight_relabel_fn(buffer,
                          aux_desired_field="observation.aux_desired",
                          action_dim=0,
                          relabel_final_goal=0.,
+                         sparse_reward=False,
                          reward_fn=l2_dist_close_reward_fn):
     """Randomly get `batch_size` hindsight relabeled trajectories.
 
@@ -722,6 +724,7 @@ def hindsight_relabel_fn(buffer,
             exp nest.
         action_dim (int): dimensions of real action when control_aux is True.
         relabel_final_goal (float): percent of exp to relabel the final_goal field.
+        sparse_reward (bool): Whether to transform reward from -1/0 to 0/1.
         reward_fn (Callable): function to recompute reward based on
             achieve_goal and desired_goal.  Default gives reward 0 when
             L2 distance less than 0.05 and -1 otherwise, same as is done in
@@ -831,12 +834,27 @@ def hindsight_relabel_fn(buffer,
         subgoal_achieved = reward_achieved & ~goal_original
         # don't overwrite first step in batch_length.
         subgoal_achieved[:, 0] = torch.tensor(False)
-        discount = torch.where(subgoal_achieved, torch.tensor(0.),
-                               result.discount)
-        step_type = torch.where(subgoal_achieved, torch.tensor(
-            ds.StepType.LAST), result.step_type)
+        if sparse_reward:
+            # Cut off episode for any goal reached.
+            end = reward_achieved
+        else:
+            end = subgoal_achieved
+        discount = torch.where(end, torch.tensor(0.), result.discount)
+        step_type = torch.where(end, torch.tensor(ds.StepType.LAST),
+                                result.step_type)
+        if alf.summary.should_record_summaries():
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".discount_mean_before_relabel",
+                torch.mean(result.discount[:, 1:]))
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".discount_mean_after_relabel",
+                torch.mean(discount[:, 1:]))
         result = result._replace(discount=discount)
         result = result._replace(step_type=step_type)
+
+    if sparse_reward:
+        relabeled_rewards = suite_socialbot.transform_reward_tensor(
+            relabeled_rewards)
 
     if use_original_goals_from_info > 0:
         rollout_cond = ~orig_goal_cond & non_her_cond

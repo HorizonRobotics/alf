@@ -157,8 +157,7 @@ class Agent(OnPolicyAlgorithm):
                     ts, state=state, epsilon_greedy=0)
                 act = policy_step.output
                 v, s = rl_algorithm._critic_networks((obs, act), state=())
-                # Value cannot be positive.
-                return torch.min(v, torch.tensor([0.])), s
+                return v, s
 
             goal_generator.set_value_fn(_value)
 

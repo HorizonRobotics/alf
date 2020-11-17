@@ -1,0 +1,13 @@
+include 'her_target_navigation_states.gin'
+
+goal_gen=@SubgoalPlanningGoalGenerator()
+Agent.goal_generator=%goal_gen
+SubgoalPlanningGoalGenerator.min_goal_cost_to_use_plan=10
+SubgoalPlanningGoalGenerator.num_subgoals=1
+SubgoalPlanningGoalGenerator.plan_margin=0.2
+
+CEMOptimizer.iterations=20
+CEMOptimizer.population_size=1000
+
+critic/CriticNetwork.output_tensor_spec=@SubgoalPlanningGoalGenerator/reward_spec(%goal_gen)
+value/ValueNetwork.output_tensor_spec=@SubgoalPlanningGoalGenerator/reward_spec(%goal_gen)
