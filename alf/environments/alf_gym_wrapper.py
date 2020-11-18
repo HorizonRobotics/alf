@@ -71,11 +71,14 @@ def tensor_spec_from_gym_space(space, simplify_box_bounds=True):
         if simplify_box_bounds:
             minimum = try_simplify_array_to_value(minimum)
             maximum = try_simplify_array_to_value(maximum)
+        dtype = space.dtype.name
+        if dtype.startswith("float"):
+            # Hard-code the floating type to be float32, to avoid type incompatibility
+            # issues between "float16", "float32", and, "float64" in PyTorch. Newer
+            # Gym versions could generate float64 observations with float32 actions.
+            dtype = "float32"
         return BoundedTensorSpec(
-            shape=space.shape,
-            dtype=space.dtype.name,
-            minimum=minimum,
-            maximum=maximum)
+            shape=space.shape, dtype=dtype, minimum=minimum, maximum=maximum)
     elif isinstance(space, gym.spaces.Tuple):
         return tuple([tensor_spec_from_gym_space(s) for s in space.spaces])
     elif isinstance(space, gym.spaces.Dict):
