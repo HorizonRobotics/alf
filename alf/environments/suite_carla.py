@@ -312,7 +312,9 @@ class Player(object):
         self._observation_desc[
             'velocity'] = "3D Velocity relative to self coordinate in m/s"
         self._info_spec = OrderedDict(
-            success=alf.TensorSpec(()), collision=alf.TensorSpec(()))
+            success=alf.TensorSpec(()),
+            collision=alf.TensorSpec(()),
+            red_light=alf.TensorSpec(()))
 
         self._control = carla.VehicleControl()
         self.reset()
@@ -499,7 +501,10 @@ class Player(object):
         reward_vector = np.zeros(Player.REWARD_DIMENSION, np.float32)
         reward = 0.
         discount = 1.0
-        info = OrderedDict(success=np.float32(0.0), collision=np.float32(0.0))
+        info = OrderedDict(
+            success=np.float32(0.0),
+            collision=np.float32(0.0),
+            red_light=np.float32(0.0))
 
         # When the previous episode ends because of stucking at a collision with
         # another vehicle, it may get an additional collision event in the new frame
@@ -595,6 +600,7 @@ class Player(object):
             logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
                                                           current_frame))
             reward_vector[Player.REWARD_RED_LIGHT] = 1.
+            info['red_light'] = np.float32(1.0)
             reward -= min(
                 self._max_red_light_penalty,
                 Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))

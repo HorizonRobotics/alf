@@ -640,6 +640,10 @@ def _to_numpy_loc(loc: carla.Location):
     return np.array([loc.x, loc.y, loc.z], dtype=np.float)
 
 
+def _to_carla_loc(loc):
+    return carla.Location(float(loc[0]), float(loc[1]), float(loc[2]))
+
+
 def _to_numpy_rot(rot: carla.Rotation):
     """
     Returns:
@@ -786,7 +790,7 @@ class World(object):
     """Keeping data for the world."""
 
     # only consider a car for running red light if it is within such distance
-    RED_LIGHT_ENFORCE_DISTANCE = 10  # m
+    RED_LIGHT_ENFORCE_DISTANCE = 15  # m
 
     def __init__(self, world: carla.World, route_resolution=1.0):
         """
@@ -911,8 +915,6 @@ class World(object):
         self._traffic_light_waypoints = alf.nest.map_structure(
             lambda *x: np.stack(x), *np_traffic_light_waypoints)
 
-        self._traffic_light_centers = np.array(traffic_light_centers)
-
     def on_tick(self):
         """Should be called after every world tick() to update data."""
         self._traffic_light_states = np.array(
@@ -955,6 +957,15 @@ class World(object):
                     wpx = next_wp
                 else:
                     break
+            if wpx.transform.location.distance(
+                    area_loc) >= self.RED_LIGHT_ENFORCE_DISTANCE - 2:
+                # if area_loc is too far from wpx, when the vehicle is going over
+                # wpx, it is already too far from area_loc. And red light will not
+                # be detected.
+                logging.fatal(
+                    "traffic light center is too far from traffic light "
+                    "waypoint: %s. Need to increase RED_LIGHT_ENFORCE_DISTANCE"
+                    % wpx.transform.location.distance(area_loc))
             wps.append(wpx)
 
         # self._draw_waypoints(wps, vertical_shift=1.0, persistency=50000.0)
