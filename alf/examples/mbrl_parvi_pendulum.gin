@@ -1,0 +1,109 @@
+import alf.algorithms.mbrl_algorithm
+import alf.algorithms.dynamics_particle_vi_algorithm
+import alf.algorithms.reward_learning_algorithm
+import alf.algorithms.planning_algorithm
+import alf.examples.mbrl_pendulum
+import alf.utils.math_ops
+
+# environment config
+env_name='Pendulum-v0'
+NUM_PARALLEL_ENVIRONMENTS=1
+create_environment.env_load_fn=@suite_gym.load
+create_environment.num_parallel_environments=%NUM_PARALLEL_ENVIRONMENTS
+create_environment.env_name=%env_name
+
+
+observation_spec=@get_observation_spec()
+action_spec=@get_action_spec()
+
+particles_per_replica=1
+num_particles=10
+
+# dynamics/AdamW.weight_decay=0.0001
+# dynamics/AdamW.lr=1e-3
+# dynamics_optimizer=@dynamics/AdamW()
+
+dynamics/Adam.lr=1e-3
+# dynamics/Adam.weight_decay=1e-4
+dynamics_optimizer=@dynamics/Adam()
+
+# --------------------dynamics parvi config------------------------
+# dynamics/DynamicsNetwork.input_tensor_spec=(%observation_spec, %action_spec)
+# dynamics/DynamicsNetwork.output_tensor_spec=%observation_spec
+# dynamics/DynamicsNetwork.activation=@swish
+# dynamics/DynamicsNetwork.joint_fc_layer_params=(500, 500, 500)
+# dynamics/DynamicsNetwork.kernel_initializer=@variance_scaling_init
+# NormalProjectionNetwork.std_transform=@clipped_exp
+# 
+# # determinstic dynamics learning algorithm
+# DeterministicDynamicsAlgorithm.num_replicas=%num_dynamics_replicas
+# DeterministicDynamicsAlgorithm.action_spec=%action_spec
+# DeterministicDynamicsAlgorithm.feature_spec=%observation_spec
+# dynamics/DynamicsNetwork.prob=0
+# DeterministicDynamicsAlgorithm.dynamics_network=@dynamics/DynamicsNetwork()
+
+DynamicsParVIAlgorithm.action_spec=%action_spec
+DynamicsParVIAlgorithm.feature_spec=%observation_spec
+DynamicsParVIAlgorithm.num_particles=%num_particles
+DynamicsParVIAlgorithm.fc_layer_params=((500,), (500,), (500,))
+DynamicsParVIAlgorithm.activation=@swish
+DynamicsParVIAlgorithm.par_vi='svgd'
+DynamicsParVIAlgorithm.function_vi=False
+DynamicsParVIAlgorithm.debug_summaries=True
+# DynamicsParVIAlgorithm.optimizer=%dynamics_optimizer
+
+# -------------------reward learning config----------------------------
+FixedRewardFunction.reward_func=@reward_function_for_pendulum
+
+# ----------------------planner config---------------------------------
+# random-shooting planner
+RandomShootingAlgorithm.feature_spec=%observation_spec
+RandomShootingAlgorithm.action_spec=%action_spec
+RandomShootingAlgorithm.population_size=5000
+RandomShootingAlgorithm.planning_horizon=25
+
+# CEM-based planner
+CEMPlanAlgorithm.feature_spec=%observation_spec
+CEMPlanAlgorithm.action_spec=%action_spec
+CEMPlanAlgorithm.population_size=400
+CEMPlanAlgorithm.planning_horizon=25
+CEMPlanAlgorithm.elite_size=40
+CEMPlanAlgorithm.max_iter_num=5
+CEMPlanAlgorithm.epsilon=0.01
+CEMPlanAlgorithm.tau=0.9
+CEMPlanAlgorithm.scalar_var=1.0
+
+# model-based RL algo config
+MbrlAlgorithm.feature_spec=%observation_spec
+MbrlAlgorithm.action_spec=%action_spec
+MbrlAlgorithm.dynamics_module=@DynamicsParVIAlgorithm()
+MbrlAlgorithm.reward_module=@FixedRewardFunction()
+MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
+MbrlAlgorithm.particles_per_replica=%particles_per_replica
+# uncomment to use CEM-planner
+# MbrlAlgorithm.planner_module=@CEMPlanAlgorithm()
+
+# agent config
+Mbrl/AdamW.weight_decay=0.0001
+Mbrl/AdamW.lr=1e-3
+opt=@Mbrl/AdamW()
+MbrlAlgorithm.dynamics_optimizer=%dynamics_optimizer
+
+# training config
+TrainerConfig.initial_collect_steps=200
+TrainerConfig.mini_batch_length=1
+TrainerConfig.unroll_length=200
+TrainerConfig.mini_batch_size=32
+TrainerConfig.num_updates_per_train_iter=5 # epoches
+TrainerConfig.whole_replay_buffer_training=True
+TrainerConfig.clear_replay_buffer=False
+TrainerConfig.algorithm_ctor=@MbrlAlgorithm
+TrainerConfig.num_iterations=200 # num of interactions of unroll_length with env
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=0
+TrainerConfig.eval_interval=5
+TrainerConfig.debug_summaries=True
+TrainerConfig.summarize_grads_and_vars=0
+TrainerConfig.summary_interval=1
+TrainerConfig.use_rollout_state=True
+TrainerConfig.replay_buffer_length=100000
