@@ -600,11 +600,21 @@ class RewardNormalizer(SimpleDataTransformer):
         self._update_mode = update_mode
 
     def _transform(self, timestep_or_exp):
+        norm = self._normalizer
         if ((self._update_mode == "replay" and common.is_replay())
                 or (self._update_mode == "rollout" and common.is_rollout())):
-            self._normalizer.update(timestep_or_exp.reward)
+            norm.update(timestep_or_exp.reward)
+
+            with alf.summary.scope("RewardNormalizer"):
+                if norm._mean_averager:
+                    alf.summary.scalar("normalizer/mean",
+                                       norm._mean_averager.get())
+                if norm._m2_averager:
+                    alf.summary.scalar("normalizer/m2",
+                                       norm._m2_averager.get())
+
         return timestep_or_exp._replace(
-            reward=self._normalizer.normalize(
+            reward=norm.normalize(
                 timestep_or_exp.reward, clip_value=self._clip_value))
 
 
