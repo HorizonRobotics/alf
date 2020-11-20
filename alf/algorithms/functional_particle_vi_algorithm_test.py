@@ -18,12 +18,12 @@ import torch
 import torch.nn.functional as F
 
 import alf
-from alf.algorithms.hypernetwork_algorithm import HyperNetwork
+from alf.algorithms.functional_particle_vi_algorithm import FuncParVIAlgorithm
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
 
 
-class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
+class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     def cov(self, data, rowvar=False):
         """Estimate a covariance matrix given data.
 
@@ -54,14 +54,14 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('minmax'),
-                              ('gfsf', True), ('svgd2', True), ('svgd3', True))
-    def test_bayesian_linear_regression(self,
-                                        par_vi='minmax',
-                                        function_vi=False,
-                                        train_batch_size=10,
-                                        num_particles=128):
-        r"""
+    @parameterized.parameters(('gfsf'), ('svgd'), ('gfsf', True),
+                              ('svgd', True))
+    def test_functional_par_vi_algorithm(self,
+                                         par_vi='svgd',
+                                         function_vi=False,
+                                         num_particles=256,
+                                         train_batch_size=10):
+        """
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where 
         :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
@@ -69,15 +69,13 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
         For a linear generator with weight W and bias b, and takes standard Gaussian 
         noise as input, the output follows a Gaussian :math:`N(b, WW^T)`, which should 
-        match the posterior :math:`p(\beta|X,y)` for both ``svgd``, ``gfsf``, and
-        ``minmax``.
+        match the posterior :math:`p(\beta|X,y)` for both svgd and gfsf.
         
         """
         input_size = 3
         input_spec = TensorSpec((input_size, ), torch.float32)
         output_dim = 1
         batch_size = 100
-        hidden_size = output_dim * batch_size
         inputs = input_spec.randn(outer_dims=(batch_size, ))
         beta = torch.rand(input_size, output_dim) + 5.
         print("beta: {}".format(beta))
@@ -87,19 +85,16 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             inputs.t() @ inputs)  # + torch.eye(input_size))
         true_mean = true_cov @ inputs.t() @ targets
         noise_dim = 3
-        algorithm = HyperNetwork(
+        algorithm = FuncParVIAlgorithm(
             input_tensor_spec=input_spec,
             last_layer_param=(output_dim, False),
             last_activation=math_ops.identity,
-            noise_dim=noise_dim,
-            hidden_layers=None,
+            num_particles=num_particles,
             loss_type='regression',
             par_vi=par_vi,
             function_vi=function_vi,
             function_bs=train_batch_size,
-            critic_hidden_layers=(hidden_size, hidden_size),
-            optimizer=alf.optimizers.Adam(lr=1e-3),
-            critic_optimizer=alf.optimizers.Adam(lr=1e-3))
+            optimizer=alf.optimizers.Adam(lr=1e-2))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))
         print("ground truth cov norm: {}".format(true_cov.norm()))
@@ -116,50 +111,32 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                 entropy_regularization = train_batch_size / batch_size
             alg_step = algorithm.train_step(
                 inputs=(train_inputs, train_targets),
-                entropy_regularization=entropy_regularization,
-                num_particles=num_particles)
+                entropy_regularization=entropy_regularization)
 
             loss_info, params = algorithm.update_with_gradient(alg_step.info)
 
-        def _test(i, sampled_predictive=False):
+        def _test(i):
+            params = algorithm.particles
+            computed_mean = params.mean(0)
+            computed_cov = self.cov(params)
+
             print("-" * 68)
-            weight = algorithm._generator._net._fc_layers[0].weight
-            learned_cov = weight @ weight.t()
-            print("norm of generator weight: {}".format(weight.norm()))
-            print("norm of learned_cov: {}".format(learned_cov.norm()))
+            pred_step = algorithm.predict_step(inputs)
+            preds = pred_step.output.squeeze()  # [batch, n_particles]
+            computed_preds = inputs @ computed_mean  # [batch]
 
-            learned_mean = algorithm._generator._net._fc_layers[0].bias
-            predicts = inputs @ learned_mean  # [batch]
-            pred_err = torch.norm(predicts - targets.squeeze())
-            print("train_iter {}: pred err {}".format(i, pred_err))
+            pred_err = torch.norm((preds - targets).mean(1))
 
-            mean_err = torch.norm(learned_mean - true_mean.squeeze())
+            mean_err = torch.norm(computed_mean - true_mean.squeeze())
             mean_err = mean_err / torch.norm(true_mean)
-            print("train_iter {}: mean err {}".format(i, mean_err))
 
-            cov_err = torch.norm(learned_cov - true_cov)
+            cov_err = torch.norm(computed_cov - true_cov)
             cov_err = cov_err / torch.norm(true_cov)
+
+            print("train_iter {}: pred err {}".format(i, pred_err))
+            print("train_iter {}: mean err {}".format(i, mean_err))
             print("train_iter {}: cov err {}".format(i, cov_err))
-
-            if sampled_predictive:
-                params = algorithm.sample_parameters(num_particles=200)
-                pred_step = algorithm.predict_step(inputs, params=params)
-                sampled_preds = pred_step.output.squeeze(
-                )  # [batch, n_particles]
-                spred_err = torch.norm((sampled_preds - targets).mean(1))
-                print("train_iter {}: sampled pred err {}".format(
-                    i, spred_err))
-
-                computed_mean = params.mean(0)
-                smean_err = torch.norm(computed_mean - true_mean.squeeze())
-                smean_err = smean_err / torch.norm(true_mean)
-                print("train_iter {}: sampled mean err {}".format(
-                    i, smean_err))
-
-                computed_cov = self.cov(params)
-                scov_err = torch.norm(computed_cov - true_cov)
-                scov_err = scov_err / torch.norm(true_cov)
-                print("train_iter {}: sampled cov err {}".format(i, scov_err))
+            print("computed_cov norm: {}".format(computed_cov.norm()))
 
         train_iter = 5000
         for i in range(train_iter):
@@ -167,12 +144,12 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             if i % 1000 == 0:
                 _test(i)
 
-        learned_mean = algorithm._generator._net._fc_layers[0].bias
-        mean_err = torch.norm(learned_mean - true_mean.squeeze())
+        params = algorithm.particles
+        computed_mean = params.mean(0)
+        computed_cov = self.cov(params)
+        mean_err = torch.norm(computed_mean - true_mean.squeeze())
         mean_err = mean_err / torch.norm(true_mean)
-        weight = algorithm._generator._net._fc_layers[0].weight
-        learned_cov = weight @ weight.t()
-        cov_err = torch.norm(learned_cov - true_cov)
+        cov_err = torch.norm(computed_cov - true_cov)
         cov_err = cov_err / torch.norm(true_cov)
         print("-" * 68)
         print("train_iter {}: mean err {}".format(train_iter, mean_err))

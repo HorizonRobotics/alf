@@ -270,3 +270,39 @@ def clip_by_norms(tensors, clip_norm, in_place=False):
     return alf.nest.map_structure(
         lambda t: clip_by_global_norm([t], clip_norm, in_place=in_place)[0]
         if t is not None else t, tensors)
+
+
+def cov(data, rowvar=False):
+    """Estimate a covariance matrix given data.
+
+    Args:
+        data (tensor): A 1-D or 2-D tensor containing multiple observations 
+            of multiple dimentions. Each row of ``mat`` represents a
+            dimension of the observation, and each column a single
+            observation.
+        rowvar (bool): If True, then each row represents a dimension, with
+            observations in the columns. Othewise, each column represents
+            a dimension while the rows contains observations.
+
+    Returns:
+        The covariance matrix
+    """
+    x = data.detach().clone()
+
+    if x.ndim > 3:
+        raise ValueError('data has more than 3 dimensions')
+    if x.ndim == 3:
+        fact = 1.0 / (x.shape[1] - 1)
+        x -= torch.mean(x, dim=1, keepdim=True)
+        x_t = x.permute(0, 2, 1)
+        out = fact * torch.bmm(x_t, x)
+    else:
+        if x.dim() < 2:
+            x = x.view(1, -1)
+        if not rowvar and x.size(0) != 1:
+            x = x.t()
+        fact = 1.0 / (x.shape[1] - 1)
+        x -= torch.mean(x, dim=1, keepdim=True)
+        out = fact * x.matmul(x.t()).squeeze()
+
+    return out

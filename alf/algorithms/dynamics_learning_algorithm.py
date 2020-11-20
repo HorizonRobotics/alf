@@ -49,6 +49,8 @@ class DynamicsLearningAlgorithm(Algorithm):
 
         Args:
             hidden_size (int|tuple): size of hidden layer(s)
+            num_replicas (int): number of network replicas to be used
+                in the ensemble for dynamics learning.
             dynamics_network (Network): network for predicting the change of
                 the next feature based on the previous feature and action.
                 It should accept input with spec of the format
@@ -84,11 +86,11 @@ class DynamicsLearningAlgorithm(Algorithm):
             encoded_action_spec = TensorSpec((self._num_actions, ),
                                              dtype=torch.float32)
             dynamics_network = DynamicsNetwork(
-                name="dynamics_net",
                 input_tensor_spec=(feature_spec, encoded_action_spec),
-                preprocessing_combiner=NestConcat(),
-                fc_layer_params=hidden_size,
-                output_tensor_spec=flat_feature_spec[0])
+                output_tensor_spec=flat_feature_spec[0],
+                # preprocessing_combiner=NestConcat(),
+                joint_fc_layer_params=hidden_size,
+                name="dynamics_net")
 
         if num_replicas > 1:
             self._dynamics_network = dynamics_network.make_parallel(
@@ -98,6 +100,10 @@ class DynamicsLearningAlgorithm(Algorithm):
 
     @property
     def num_replicas(self):
+        return self._num_replicas
+
+    @property
+    def num_predictives(self):
         return self._num_replicas
 
     def _encode_action(self, action):
@@ -180,7 +186,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         Args:
             hidden_size (int|tuple): size of hidden layer(s)
             num_replicas (int): number of network replicas to be used
-                in the ensemble for dynamics learning
+                in the ensemble for dynamics learning.
             dynamics_network (Network): network for predicting the change of
                 the next feature based on the previous feature and action.
                 It should accept input with spec of the format
@@ -273,7 +279,7 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         forward_pred = observations + forward_deltas
 
         state = state._replace(feature=forward_pred, network=network_state)
-        return AlgStep(output=forward_pred, state=state, info=())
+        return AlgStep(output=forward_pred, state=state, info=actions)
 
     def update_state(self, time_step: TimeStep, state: DynamicsState):
         """Update the state based on TimeStep data. This function is

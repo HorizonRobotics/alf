@@ -144,7 +144,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         self._planner_module.set_action_sequence_cost_func(
             self._predict_multi_step_cost)
         if dynamics_module is not None:
-            self._num_dynamics_replicas = dynamics_module.num_replicas
+            self._num_predictives = dynamics_module.num_predictives
         self._particles_per_replica = particles_per_replica
 
     def _predict_next_step(self, time_step, dynamics_state):
@@ -162,7 +162,9 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             dynamics_step = self._dynamics_module.predict_step(
                 time_step, dynamics_state)
             pred_obs = dynamics_step.output
-            next_time_step = time_step._replace(observation=pred_obs)
+            actions = dynamics_step.info
+            next_time_step = time_step._replace(
+                observation=pred_obs, prev_action=actions)
             next_dynamic_state = dynamics_step.state
         return next_time_step, next_dynamic_state
 
@@ -181,17 +183,12 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
         return data_population
 
     def _expand_to_particles(self, inputs):
-        """Expand the inputs of shape [B, ...] to [B*p, n, ...] if n > 1,
-            or to [B*p, ...] if n = 1, where n is the number of replicas
-            and p is the number of particles per replica.
+        """Expand the inputs of shape [B, ...] to [B*p, ...], where p is 
+            the number of particles per replica.
         """
         # [B, ...] -> [B*p, ...]
         inputs = torch.repeat_interleave(
             inputs, self._particles_per_replica, dim=0)
-        if self._num_dynamics_replicas > 1:
-            # [B*p, ...] -> [B*p, n, ...]
-            inputs = inputs.unsqueeze(1).expand(
-                -1, self._num_dynamics_replicas, *inputs.shape[1:])
 
         return inputs
 
@@ -229,17 +226,18 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             time_step, dyn_state = self._predict_next_step(
                 time_step, dyn_state)
             next_obs = time_step.observation
+            cur_action = time_step.prev_action
             # Note: currently using (next_obs, action), might need to
             # consider (obs, action) in order to be more compatible
             # with the conventional definition of the reward function
             reward_step, reward_state = self._calc_step_reward(
-                next_obs, action, reward_state)
+                next_obs, cur_action, reward_state)
             reward = reward + reward_step
         cost = -reward
         # reshape cost
         # [B*par, n] -> [B, par*n]
         cost = cost.reshape(
-            -1, self._particles_per_replica * self._num_dynamics_replicas)
+            -1, self._particles_per_replica * self._num_predictives)
         cost = cost.mean(-1)
 
         # reshape cost back to [batch size, population_size]

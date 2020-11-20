@@ -2,7 +2,7 @@ import alf.algorithms.mbrl_algorithm
 import alf.algorithms.dynamics_learning_algorithm
 import alf.algorithms.reward_learning_algorithm
 import alf.algorithms.planning_algorithm
-import alf.examples.mbrl_pendulum
+import alf.examples.mbrl_reward_functions
 import alf.utils.math_ops
 
 # environment config
@@ -16,8 +16,8 @@ create_environment.env_name=%env_name
 observation_spec=@get_observation_spec()
 action_spec=@get_action_spec()
 
-num_dynamics_replicas=1
 particles_per_replica=1
+num_dynamics_replicas=10
 
 # --------------------dynamics learning config------------------------
 dynamics/DynamicsNetwork.input_tensor_spec=(%observation_spec, %action_spec)
@@ -90,7 +90,7 @@ TrainerConfig.num_updates_per_train_iter=5 # epoches
 TrainerConfig.whole_replay_buffer_training=True
 TrainerConfig.clear_replay_buffer=False
 TrainerConfig.algorithm_ctor=@MbrlAlgorithm
-TrainerConfig.num_iterations=50 # num of interactions of unroll_length with env
+TrainerConfig.num_iterations=200 # num of interactions of unroll_length with env
 TrainerConfig.num_checkpoints=5
 TrainerConfig.evaluate=0
 TrainerConfig.eval_interval=5
