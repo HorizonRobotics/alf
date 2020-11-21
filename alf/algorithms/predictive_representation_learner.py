@@ -13,6 +13,7 @@
 # limitations under the License.
 """PredictiveRepresentationLearner."""
 
+from functools import partial
 import gin
 import torch
 
@@ -23,7 +24,7 @@ from alf.experience_replayers.replay_buffer import BatchInfo, ReplayBuffer
 from alf.nest import nest
 from alf.nest.utils import convert_device
 from alf.networks import Network, LSTMEncodingNetwork
-from alf.utils import dist_utils, spec_utils, tensor_utils
+from alf.utils import common, dist_utils, spec_utils, tensor_utils
 from alf.utils.normalizers import AdaptiveNormalizer
 from alf.utils.summary_utils import safe_mean_hist_summary, safe_mean_summary
 
@@ -56,11 +57,12 @@ class SimpleDecoder(Algorithm):
                  input_tensor_spec,
                  target_field,
                  decoder_net_ctor,
-                 loss=torch.nn.SmoothL1Loss(reduction='none'),
+                 loss_ctor=partial(torch.nn.SmoothL1Loss, reduction='none'),
                  loss_weight=1.0,
                  summarize_each_dimension=False,
                  optimizer=None,
                  normalize_target=False,
+                 append_target_field_to_name=False,
                  debug_summaries=False,
                  name="SimpleDecoder"):
         """
@@ -72,18 +74,25 @@ class SimpleDecoder(Algorithm):
                 to construct an instance of ``Network`` for decoding. The network
                 should take the latent representation as input and output the
                 predicted value of the target.
-            loss (Callable): loss function with signature ``loss(y_pred, y_true)``.
-                Note that it should not reduce to a scalar. It should at least
-                keep the batch dimension in the returned loss.
+            loss_ctor (Callable): loss function with signature
+                ``loss(y_pred, y_true)``. Note that it should not reduce to a
+                scalar. It should at least keep the batch dimension in the
+                returned loss.
             loss_weight (float): weight for the loss.
             optimizer (Optimzer|None): if provided, it will be used to optimize
                 the parameter of decoder_net
             normalize_target (bool): whether to normalize target.
                 Note that the effect of this is to change the loss. The predicted
                 value itself is not normalized.
+            append_target_field_to_name (bool): whether append target field to
+                the name of the decoder. If True, the actual name used will be
+                ``name.target_field``
             debug_summaries (bool): whether to generate debug summaries
             name (str): name of this instance
         """
+        if append_target_field_to_name:
+            name = name + "." + target_field
+
         super().__init__(
             optimizer=optimizer, debug_summaries=debug_summaries, name=name)
         self._decoder_net = decoder_net_ctor(
@@ -92,7 +101,7 @@ class SimpleDecoder(Algorithm):
         ), "RNN decoder is not suppported"
         self._summarize_each_dimension = summarize_each_dimension
         self._target_field = target_field
-        self._loss = loss
+        self._loss = loss_ctor()
         self._loss_weight = loss_weight
         if normalize_target:
             self._target_normalizer = AdaptiveNormalizer(
@@ -202,7 +211,8 @@ class PredictiveRepresentationLearner(Algorithm):
             observation_spec (nested TensorSpec): describing the observation.
             action_spec (nested BoundedTensorSpec): describing the action.
             num_unroll_steps (int): the number of future steps to predict.
-            decoder_ctor (Callable): called as ``decoder_ctor(observation)`` to
+            decoder_ctor (Callable|[Callable]): each individual constructor is
+                called as ``decoder_ctor(observation)`` to
                 construct the decoder algorithm. It should follow the ``Algorithm``
                 interface. In addition to the interface of ``Algorithm``, it should
                 also implement a member function ``get_target_fields()``, which
@@ -238,12 +248,30 @@ class PredictiveRepresentationLearner(Algorithm):
         if encoding_optimizer is not None:
             self.add_optimizer(encoding_optimizer, [self._encoding_net])
         repr_spec = self._encoding_net.output_spec
-        self._decoder = decoder_ctor(
-            repr_spec, debug_summaries=debug_summaries, name=name + ".decoder")
-        assert len(alf.nest.flatten(self._decoder.train_state_spec)) == 0, (
-            "RNN decoder is not suported")
+
+        decoder_ctors = common.as_list(decoder_ctor)
+
+        self._decoders = torch.nn.ModuleList()
+        self._target_fields = []
+
+        for decoder_ctor in decoder_ctors:
+            decoder = decoder_ctor(
+                repr_spec,
+                debug_summaries=debug_summaries,
+                append_target_field_to_name=True,
+                name=name + ".decoder")
+            target_field = decoder.get_target_fields()
+            self._decoders.append(decoder)
+
+            assert len(alf.nest.flatten(decoder.train_state_spec)) == 0, (
+                "RNN decoder is not suported")
+            self._target_fields.append(target_field)
+
+        if len(self._target_fields) == 1:
+            self._target_fields = self._target_fields[0]
+
         self._num_unroll_steps = num_unroll_steps
-        self._target_fields = self._decoder.get_target_fields()
+
         self._output_spec = repr_spec
 
         if num_unroll_steps > 0:
@@ -288,18 +316,27 @@ class PredictiveRepresentationLearner(Algorithm):
         latent, state = self._encoding_net(time_step.observation, state)
         return AlgStep(output=latent, state=state)
 
-    def predict_multi_step(self, init_latent, actions, state=None):
+    def predict_multi_step(self,
+                           init_latent,
+                           actions,
+                           target_field=None,
+                           state=None):
         """Perform multi-step predictions based on the initial latent
             representation and actions sequences.
         Args:
             init_latent (Tensor): the latent representation for the initial
                 step of the prediction
             actions (Tensor): [B, unroll_steps, action_dim]
+            target_field (None|str|[str]): the name or a list if names of the
+                quantities to be predicted. It is used for selecting the
+                corresponding decoder. If None, all the available decoders will
+                be used for generating predictions.
             state:
         Returns:
-            prediction (Tensor): predicted target of shape
+            prediction (Tensor|[Tensor]): predicted target of shape
                 [B, unroll_steps + 1, d], where d is the dimension of
-                the predicted target.
+                the predicted target. The return is a list of Tensors when
+                there are multiple targets to be predicted.
         """
         num_unroll_steps = actions.shape[1]
 
@@ -308,8 +345,33 @@ class PredictiveRepresentationLearner(Algorithm):
         sim_latent = self._multi_step_latent_rollout(
             init_latent, num_unroll_steps, actions, state)
 
-        prediction = self._decoder.predict_step(sim_latent).info
-        return prediction
+        predictions = []
+        if target_field == None:
+            for decoder in self._decoders:
+                predictions.append(decoder.predict_step(sim_latent).info)
+        else:
+            target_field = common.as_list(target_field)
+            for field in target_field:
+                decoder = self.get_decoder(field)
+                predictions.append(decoder.predict_step(sim_latent).info)
+
+        return predictions[0] if len(predictions) == 1 else predictions
+
+    def get_decoder(self, target_field):
+        """Get the decoder which predicts the target specified by ``target_name``.
+        Args:
+            target_field (str): the name of the prediction quantity corresponding
+                to the decoder
+        Returns:
+            decoder (Algorithm)
+        """
+
+        decoder_ind = [
+            i for i, field in enumerate(common.as_list(self._target_fields))
+            if field == target_field
+        ]
+        assert len(decoder_ind) == 1, "wrong target_field"
+        return self._decoders[decoder_ind[0]]
 
     def _multi_step_latent_rollout(self, init_latent, num_unroll_steps,
                                    actions, state):
@@ -347,26 +409,33 @@ class PredictiveRepresentationLearner(Algorithm):
     def train_step(self, exp: TimeStep, state):
         # [B, num_unroll_steps + 1]
         info = exp.rollout_info
+        targets = common.as_list(info.target)
         batch_size = exp.step_type.shape[0]
         latent, state = self._encoding_net(exp.observation, state)
 
         sim_latent = self._multi_step_latent_rollout(
             latent, self._num_unroll_steps, info.action, state)
 
-        # [num_unroll_steps + 1)*B, ...]
-        train_info = self._decoder.train_step(sim_latent).info
-        train_info_spec = dist_utils.extract_spec(train_info)
-        train_info = dist_utils.distributions_to_params(train_info)
-        train_info = alf.nest.map_structure(
-            lambda x: x.reshape(self._num_unroll_steps + 1, batch_size, *x.
-                                shape[1:]), train_info)
-        # [num_unroll_steps + 1, B, ...]
-        train_info = dist_utils.params_to_distributions(
-            train_info, train_info_spec)
-        target = alf.nest.map_structure(lambda x: x.transpose(0, 1),
-                                        info.target)
-        loss_info = self._decoder.calc_loss(target, train_info, info.mask.t())
-        loss_info = alf.nest.map_structure(lambda x: x.mean(dim=0), loss_info)
+        loss = 0
+        for i, decoder in enumerate(self._decoders):
+            # [num_unroll_steps + 1)*B, ...]
+            train_info = decoder.train_step(sim_latent).info
+            train_info_spec = dist_utils.extract_spec(train_info)
+            train_info = dist_utils.distributions_to_params(train_info)
+            train_info = alf.nest.map_structure(
+                lambda x: x.reshape(self._num_unroll_steps + 1, batch_size, *x.
+                                    shape[1:]), train_info)
+            # [num_unroll_steps + 1, B, ...]
+            train_info = dist_utils.params_to_distributions(
+                train_info, train_info_spec)
+            target = alf.nest.map_structure(lambda x: x.transpose(0, 1),
+                                            targets[i])
+            loss_info = decoder.calc_loss(target, train_info, info.mask.t())
+            loss_info = alf.nest.map_structure(lambda x: x.mean(dim=0),
+                                               loss_info)
+            loss += loss_info.loss
+
+        loss_info = LossInfo(loss=loss, extra=loss)
 
         return AlgStep(output=latent, state=state, info=loss_info)
 
@@ -374,7 +443,13 @@ class PredictiveRepresentationLearner(Algorithm):
     def preprocess_experience(self, experience: Experience):
         """Fill experience.rollout_info with PredictiveRepresentationLearnerInfo
 
-        Note that the shape of experience is [B, T, ...]
+        Note that the shape of experience is [B, T, ...].
+
+        The target is a Tensor with the shape of [B, T, unroll_steps+1, ...]
+        when there is only one decoder. When multiple decorders are used,
+        the target is a list of Tensors, each is the target for
+        the corresponding decoder.
+
         """
         assert experience.batch_info != ()
         batch_info: BatchInfo = experience.batch_info
