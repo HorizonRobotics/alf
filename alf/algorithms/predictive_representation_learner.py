@@ -62,7 +62,7 @@ class SimpleDecoder(Algorithm):
                  summarize_each_dimension=False,
                  optimizer=None,
                  normalize_target=False,
-                 append_target_field_to_name=False,
+                 append_target_field_to_name=True,
                  debug_summaries=False,
                  name="SimpleDecoder"):
         """
@@ -365,13 +365,8 @@ class PredictiveRepresentationLearner(Algorithm):
         Returns:
             decoder (Algorithm)
         """
-
-        decoder_ind = [
-            i for i, field in enumerate(common.as_list(self._target_fields))
-            if field == target_field
-        ]
-        assert len(decoder_ind) == 1, "wrong target_field"
-        return self._decoders[decoder_ind[0]]
+        decoder_ind = common.as_list(self._target_fields).index(target_field)
+        return self._decoders[decoder_ind]
 
     def _multi_step_latent_rollout(self, init_latent, num_unroll_steps,
                                    actions, state):
@@ -445,10 +440,10 @@ class PredictiveRepresentationLearner(Algorithm):
 
         Note that the shape of experience is [B, T, ...].
 
-        The target is a Tensor with the shape of [B, T, unroll_steps+1, ...]
-        when there is only one decoder. When multiple decorders are used,
-        the target is a list of Tensors, each is the target for
-        the corresponding decoder.
+        The target is a Tensor (or a nest of Tensors) when there is only one
+        decoder. When there are multiple decorders, the target is a list,
+        and each of its element is a Tensor (or a nest of Tensors), which is
+        used as the target for the corresponding decoder.
 
         """
         assert experience.batch_info != ()
