@@ -138,6 +138,29 @@ class CriticNetworksTest(parameterized.TestCase, alf.test.TestCase):
         pnet = alf.networks.network.NaiveParallelNetwork(critic_net, replicas)
         _train(pnet, "NaiveParallelNetwork")
 
+    def test_make_parallel_warning_on_naive_parallel(self):
+        obs_spec = TensorSpec((20, ), torch.float32)
+        action_spec = TensorSpec((5, ), torch.float32)
+
+        input_preprocessors = EmbeddingPreprocessor(
+            action_spec, embedding_dim=10)
+        critic_net = CriticNetwork((obs_spec, action_spec),
+                                   action_input_processors=input_preprocessors,
+                                   joint_fc_layer_params=(256, 256))
+
+        replicas = 2
+
+        # Create a parallel network via the ``make_parallel()`` interface.
+        # As now ``input_preprocessors`` is not supported in
+        # ``ParallelEncodingNetwork``, ``make_parallel()`` will return an
+        # instance of the ``NaiveParallelNetwork``
+        expected_warning_message = ("``NaiveParallelNetwork`` is used by "
+                                    "``make_parallel()`` !")
+        with self.assertLogs() as ctx:
+            pnet = critic_net.make_parallel(replicas)
+            warning_message = ctx.records[0]
+            assert expected_warning_message in str(warning_message)
+
     @parameterized.parameters((CriticNetwork, ), (CriticRNNNetwork, ))
     def test_discrete_action(self, net_ctor):
         obs_spec = TensorSpec((20, ))
