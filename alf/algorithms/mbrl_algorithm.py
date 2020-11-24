@@ -162,7 +162,7 @@ class MbrlAlgorithm(OffPolicyAlgorithm):
             dynamics_step = self._dynamics_module.predict_step(
                 time_step, dynamics_state)
             pred_obs = dynamics_step.output
-            actions = dynamics_step.info
+            actions = dynamics_step.info.action
             next_time_step = time_step._replace(
                 observation=pred_obs, prev_action=actions)
             next_dynamic_state = dynamics_step.state

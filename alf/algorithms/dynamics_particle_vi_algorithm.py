@@ -224,7 +224,10 @@ class DynamicsParVIAlgorithm(FuncParVIAlgorithm):
 
         network_state = forward_step.state
         state = state._replace(feature=forward_pred, network=network_state)
-        return AlgStep(output=forward_pred, state=state, info=actions)
+        return AlgStep(
+            output=forward_pred,
+            state=state,
+            info=DynamicsInfo(action=actions))
 
     def train_step(self,
                    time_step: TimeStep,
@@ -255,8 +258,8 @@ class DynamicsParVIAlgorithm(FuncParVIAlgorithm):
         loss_masks = (time_step.step_type != StepType.FIRST).to(torch.float32)
         global_steps = alf.summary.get_global_counter()
         # entropy_regularization = 1. / np.sqrt(global_steps)
-        entropy_regularization = 1. / global_steps
-        # entropy_regularization = 1. / (global_steps * global_steps)
+        # entropy_regularization = 1. / global_steps
+        entropy_regularization = 1. / (global_steps * global_steps)
         dynamics_step = super().train_step(
             ((observations, actions), target),
             entropy_regularization=entropy_regularization,

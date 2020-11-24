@@ -27,7 +27,8 @@ from alf.utils import dist_utils, losses, math_ops, spec_utils, tensor_utils
 
 DynamicsState = namedtuple(
     "DynamicsState", ["feature", "network"], default_value=())
-DynamicsInfo = namedtuple("DynamicsInfo", ["loss", "dist"], default_value=())
+DynamicsInfo = namedtuple(
+    "DynamicsInfo", ["loss", "dist", "action"], default_value=())
 
 
 @gin.configurable
@@ -279,7 +280,10 @@ class DeterministicDynamicsAlgorithm(DynamicsLearningAlgorithm):
         forward_pred = observations + forward_deltas
 
         state = state._replace(feature=forward_pred, network=network_state)
-        return AlgStep(output=forward_pred, state=state, info=actions)
+        return AlgStep(
+            output=forward_pred,
+            state=state,
+            info=DynamicsInfo(action=actions))
 
     def update_state(self, time_step: TimeStep, state: DynamicsState):
         """Update the state based on TimeStep data. This function is
@@ -447,7 +451,9 @@ class StochasticDynamicsAlgorithm(DeterministicDynamicsAlgorithm):
         forward_preds = observations + forward_deltas
         state = state._replace(feature=forward_preds, network=network_states)
         return AlgStep(
-            output=forward_preds, state=state, info=DynamicsInfo(dist=dist))
+            output=forward_preds,
+            state=state,
+            info=DynamicsInfo(dist=dist, action=actions))
 
     def train_step(self, time_step: TimeStep, state: DynamicsState):
         """
