@@ -605,9 +605,10 @@ class ContinuousActionMapping(gym.ActionWrapper):
         super(ContinuousActionMapping, self).__init__(env)
 
         def _space_bounds(space):
-            assert np.all(np.isfinite(space.low))
-            assert np.all(np.isfinite(space.high))
-            return (space.low, space.high)
+            if isinstance(space, gym.spaces.Box):
+                assert np.all(np.isfinite(space.low))
+                assert np.all(np.isfinite(space.high))
+                return (space.low, space.high)
 
         self._bounds = alf.nest.map_structure(_space_bounds, self.action_space)
         self.action_space = alf.nest.map_structure(
