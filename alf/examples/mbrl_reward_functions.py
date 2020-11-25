@@ -15,6 +15,7 @@
 import gin
 import torch
 
+from alf.utils import common
 # implement the respective reward functions for desired environments here
 
 
@@ -159,18 +160,24 @@ def reward_function_for_reacher(obs, action):
             z = -torch.sin(hinge) * torch.cos(roll) * perp_all_axis
             new_rot_axis = x + y + z
             new_rot_perp_axis = torch.cross(new_rot_axis, rot_axis)
-            new_rot_perp_axis = torch.where(
-                torch.less(torch.norm(new_rot_perp_axis, dim=-1), 1e-30),
-                rot_perp_axis, new_rot_perp_axis)
+            tmp_rot_perp_axis = torch.where(
+                torch.lt(torch.norm(new_rot_perp_axis, dim=-1), 1e-30),
+                rot_perp_axis.permute(-1,
+                                      *list(range(rot_perp_axis.ndim - 1))),
+                new_rot_perp_axis.permute(
+                    -1, *list(range(new_rot_perp_axis.ndim - 1))))
+            new_rot_perp_axis = tmp_rot_perp_axis.permute(
+                *list(range(1, tmp_rot_perp_axis.ndim)), 0)
             new_rot_perp_axis /= torch.norm(
                 new_rot_perp_axis, dim=-1, keepdim=True)
             rot_axis, rot_perp_axis, cur_end = \
                 new_rot_axis, new_rot_perp_axis, cur_end + length * new_rot_axis
 
-        return cur_end
+        cost = torch.sum(torch.square(cur_end - common.get_env_goal()), dim=-1)
+        return cost
 
     def _action_cost(action):
-        cost = 0.01 * torch.sum(action**2, dim=1)
+        cost = 0.01 * torch.sum(action**2, dim=-1)
         return cost
 
     cost = _observation_cost(obs) + _action_cost(action)

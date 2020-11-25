@@ -33,6 +33,7 @@ import torch.nn as nn
 from typing import Callable
 
 import alf
+from alf.environments.parallel_environment import ParallelAlfEnvironment
 import alf.nest as nest
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils.spec_utils import zeros_from_spec as zero_tensor_from_nested_spec
@@ -564,6 +565,17 @@ def get_vocab_size():
         return _env.observation_spec()['sentence'].maximum + 1
     else:
         return 0
+
+
+@gin.configurable
+def get_env_goal():
+    assert _env
+    if isinstance(_env, ParallelAlfEnvironment):
+        alf_env = _env.envs[0]
+    else:
+        alf_env = _env._env
+    assert hasattr(alf_env.gym, 'goal')
+    return torch.as_tensor(alf_env.gym.goal, dtype=torch.float32)
 
 
 @gin.configurable

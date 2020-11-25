@@ -217,10 +217,10 @@ class DynamicsParVIAlgorithm(FuncParVIAlgorithm):
         forward_deltas = forward_step.output
         forward_pred = observations + forward_deltas
 
-        if self._debug_summaries:
-            preds_cov = tensor_utils.cov(forward_deltas).cpu()
-            alf.summary.scalar("cov_norm_dynamics_predictions",
-                               preds_cov.norm(dim=(1, 2)).mean())
+        # if self._debug_summaries:
+        #     preds_cov = tensor_utils.cov(forward_deltas).cpu()
+        #     alf.summary.scalar("cov_norm_dynamics_predictions",
+        #                        preds_cov.norm(dim=(1, 2)).mean())
 
         network_state = forward_step.state
         state = state._replace(feature=forward_pred, network=network_state)
