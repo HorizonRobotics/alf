@@ -642,11 +642,11 @@ class NormalizedAction(ContinuousActionMapping):
 
 
 @gin.configurable
-class NoDoneEnv(gym.Wrapper):
+class NonEpisodicEnv(gym.Wrapper):
     """Make a gym environment non-episodic by always setting ``done=False``."""
 
     def __init__(self, env):
-        gym.Wrapper.__init__(self, env)
+        super().__init__(env)
 
     def step(self, action):
         ob, reward, done, info = self.env.step(action)
