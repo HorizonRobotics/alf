@@ -99,7 +99,7 @@ class TDLoss(nn.Module):
                 can be same as ``value``.
             train_info : train_info includes action distrbution, actor, critic and
                 other information. Different algorithm may have different info inside.
-                For the retrace method, we can use SarsaInfo, SacInfo or DdpgInfo as train_info 
+                For the retrace method, we can use SarsaInfo, SacInfo or DdpgInfo as train_info
                 for Sac, Sarsa or Ddpg algorithm. Adding train_info to calculate importance_ratio
                 and importance_ratio_clipped.               
         Returns:
@@ -118,10 +118,26 @@ class TDLoss(nn.Module):
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma)
         elif self._use_retrace == False:
+            scope = alf.summary.scope(self.__class__.__name__)
+            importance_ratio, importance_ratio_clipped = value_ops. \
+            action_importance_ratio(
+                action_distribution=train_info.action_distribution,
+                collect_action_distribution=experience.rollout_info.
+                action_distribution,
+                action=experience.action,
+                clipping_mode='capping',
+                importance_ratio_clipping=0.0,
+                log_prob_clipping=0.0,
+                scope=scope,
+                check_numerics=False,
+                debug_summaries=self._debug_summaries)
             advantages = value_ops.generalized_advantage_estimation(
                 rewards=experience.reward,
                 values=target_value,
                 step_types=experience.step_type,
+                target_value=target_value,
+                importance_ratio=importance_ratio,
+                use_retrace=False,
                 discounts=experience.discount * self._gamma,
                 td_lambda=self._lambda)
             returns = advantages + target_value[:-1]
@@ -139,15 +155,17 @@ class TDLoss(nn.Module):
                 scope=scope,
                 check_numerics=False,
                 debug_summaries=self._debug_summaries)
-            advantages = value_ops.generalized_advantage_estimation_retrace(
+            advantages = value_ops.generalized_advantage_estimation(
                 importance_ratio=importance_ratio_clipped,
                 rewards=experience.reward,
                 values=value,
                 target_value=target_value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma,
+                use_retrace=True,
                 time_major=True,
                 td_lambda=self._lambda)
+
             returns = advantages + value[:-1]
             returns = returns.detach()
         value = value[:-1]

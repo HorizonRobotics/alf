@@ -169,7 +169,10 @@ class ActorCriticLoss(nn.Module):
                 values=value,
                 step_types=experience.step_type,
                 discounts=experience.discount * self._gamma,
-                td_lambda=self._lambda)
+                target_value=value,
+                td_lambda=self._lambda,
+                importance_ratio=1.0,
+                use_retrace=False)
             advantages = tensor_utils.tensor_extend_zero(advantages)
             if self._use_td_lambda_return:
                 returns = advantages + value
