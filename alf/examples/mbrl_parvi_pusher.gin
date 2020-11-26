@@ -67,9 +67,9 @@ RandomShootingAlgorithm.planning_horizon=25
 # CEM-based planner
 CEMPlanAlgorithm.feature_spec=%observation_spec
 CEMPlanAlgorithm.action_spec=%action_spec
-CEMPlanAlgorithm.population_size=400
+CEMPlanAlgorithm.population_size=500
 CEMPlanAlgorithm.planning_horizon=25
-CEMPlanAlgorithm.elite_size=40
+CEMPlanAlgorithm.elite_size=50
 CEMPlanAlgorithm.max_iter_num=5
 CEMPlanAlgorithm.epsilon=0.01
 CEMPlanAlgorithm.tau=0.9
@@ -80,10 +80,10 @@ MbrlAlgorithm.feature_spec=%observation_spec
 MbrlAlgorithm.action_spec=%action_spec
 MbrlAlgorithm.dynamics_module=@DynamicsParVIAlgorithm()
 MbrlAlgorithm.reward_module=@FixedRewardFunction()
-MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
+# MbrlAlgorithm.planner_module=@RandomShootingAlgorithm()
 MbrlAlgorithm.particles_per_replica=%particles_per_replica
 # uncomment to use CEM-planner
-# MbrlAlgorithm.planner_module=@CEMPlanAlgorithm()
+MbrlAlgorithm.planner_module=@CEMPlanAlgorithm()
 
 # agent config
 Mbrl/AdamW.weight_decay=0.0001
@@ -109,3 +109,4 @@ TrainerConfig.summarize_grads_and_vars=0
 TrainerConfig.summary_interval=1
 TrainerConfig.use_rollout_state=True
 TrainerConfig.replay_buffer_length=100000
+TrainerConfig.metric_min_buffer_size=1

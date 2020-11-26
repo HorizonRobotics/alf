@@ -568,14 +568,23 @@ def get_vocab_size():
 
 
 @gin.configurable
-def get_env_goal():
+def get_gym_env_attr(attr):
+    """Get specific attr of gym env wrapped in the global environment. Used for
+    customized gym environments.
+
+    Args:
+        attr (str): the attribute of the gym env.
+
+    Returns:
+        gym_env.attr
+    """
     assert _env
     if isinstance(_env, ParallelAlfEnvironment):
-        alf_env = _env.envs[0]
+        gym_env = _env.envs[0].gym
     else:
-        alf_env = _env._env
-    assert hasattr(alf_env.gym, 'goal')
-    return torch.as_tensor(alf_env.gym.goal, dtype=torch.float32)
+        gym_env = _env._env.gym
+    assert hasattr(gym_env, attr)
+    return torch.as_tensor(getattr(gym_env, attr), dtype=torch.float32)
 
 
 @gin.configurable

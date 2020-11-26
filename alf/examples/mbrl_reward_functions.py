@@ -98,7 +98,7 @@ def reward_function_for_halfcheetah(obs, action):
 
 
 @gin.configurable
-def reward_function_for_pusher(obs, action, goal_pos):
+def reward_function_for_pusher(obs, action):
     """Function for computing reward for gym CartPole environment. It takes
         as input:
         (1) observation (Tensor of shape [batch_size, observation_dim])
@@ -106,11 +106,13 @@ def reward_function_for_pusher(obs, action, goal_pos):
         and returns a reward Tensor of shape [batch_size].
     """
 
-    def _observation_cost(obs, goal_pos):
+    def _observation_cost(obs):
         to_w, og_w = 0.5, 1.25
         tip_pos, obj_pos = obs[..., 14:17], obs[..., 17:20]
         tip_obj_dist = torch.sum(torch.abs(tip_pos - obj_pos), dim=-1)
-        obj_goal_dist = torch.sum(torch.abs(goal_pos - obj_pos), dim=-1)
+        obj_goal_dist = torch.sum(
+            torch.abs(common.get_gym_env_attr('ac_goal_pos') - obj_pos),
+            dim=-1)
         cost = to_w * tip_obj_dist + og_w * obj_goal_dist
         cost = torch.where(
             torch.isnan(cost), 1e6 * torch.ones_like(cost), cost)
@@ -121,7 +123,7 @@ def reward_function_for_pusher(obs, action, goal_pos):
         cost = 0.1 * torch.sum(action**2, dim=-1)
         return cost
 
-    cost = _observation_cost(obs, goal_pos) + _action_cost(action)
+    cost = _observation_cost(obs) + _action_cost(action)
     reward = -cost
     return reward
 
@@ -173,7 +175,8 @@ def reward_function_for_reacher(obs, action):
             rot_axis, rot_perp_axis, cur_end = \
                 new_rot_axis, new_rot_perp_axis, cur_end + length * new_rot_axis
 
-        cost = torch.sum(torch.square(cur_end - common.get_env_goal()), dim=-1)
+        cost = torch.sum(
+            torch.square(cur_end - common.get_gym_env_attr('goal')), dim=-1)
         return cost
 
     def _action_cost(action):
