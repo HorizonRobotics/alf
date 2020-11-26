@@ -17,18 +17,20 @@ from gym import spaces
 import numpy as np
 
 import alf
-from alf.environments.gym_wrappers import FrameStack
+from alf.environments.gym_wrappers import (FrameStack, ContinuousActionClip,
+                                           ContinuousActionMapping)
 
 
 # FakeEnvironments adapted from gym/gym/wrappers/test_pixel_observation.py
 class FakeEnvironment(gym.Env):
     def __init__(self):
         self.action_space = spaces.Box(
-            shape=(1, ), low=-1, high=1, dtype=np.float32)
+            shape=(1, ), low=-2, high=3, dtype=np.float32)
+        self.observation_space = spaces.Box(
+            shape=(10, ), low=-1, high=1, dtype=np.float32)
+        self.action = None
 
     def render(self, width=32, height=32, *args, **kwargs):
-        del args
-        del kwargs
         image_shape = (height, width, 3)
         return np.zeros(image_shape, dtype=np.uint8)
 
@@ -37,7 +39,7 @@ class FakeEnvironment(gym.Env):
         return observation
 
     def step(self, action):
-        del action
+        self.action = action
         observation = self.observation_space.sample()
         reward, terminal, info = 0.0, False, {}
         return observation, reward, terminal, info
@@ -45,6 +47,7 @@ class FakeEnvironment(gym.Env):
 
 class FakeDictObservationEnvironment(FakeEnvironment):
     def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.observation_space = spaces.Dict({
             'image':
                 spaces.Box(shape=(2, 2, 3), low=-1, high=1, dtype=np.float32),
@@ -59,7 +62,6 @@ class FakeDictObservationEnvironment(FakeEnvironment):
                             shape=(7, ), low=-1, high=1, dtype=np.float32),
                 })
         })
-        super().__init__(*args, **kwargs)
 
 
 class FrameStackTest(alf.test.TestCase):
@@ -103,6 +105,35 @@ class FrameStackTest(alf.test.TestCase):
         )
         assert all_shapes == expected, "Result " + str(
             all_shapes) + " doesn't match exptected " + str(expected)
+
+
+class ActionWrappersTest(alf.test.TestCase):
+    def test_continuous_action_clipping(self):
+        env = ContinuousActionClip(FakeEnvironment())
+        action = env.action_space.high + 0.1
+        env.step(action)
+        self.assertTrue(np.all(env.unwrapped.action == env.action_space.high))
+
+        action = env.action_space.low - 0.1
+        env.step(action)
+        self.assertTrue(np.all(env.unwrapped.action == env.action_space.low))
+
+    def test_continuous_action_mapping(self):
+        unwrapped = FakeEnvironment()
+        env = ContinuousActionClip(
+            ContinuousActionMapping(unwrapped, low=-1., high=2.))
+        action = np.array([-1.1])
+        env.step(action)
+        self.assertTrue(np.all(unwrapped.action == unwrapped.action_space.low))
+
+        action = np.array([2.1])
+        env.step(action)
+        self.assertTrue(
+            np.all(unwrapped.action == unwrapped.action_space.high))
+
+        action = np.array([0.])  # from [-1, 2] to [-2, 3]
+        env.step(action)
+        self.assertAlmostEqual(float(unwrapped.action), -1. / 3)
 
 
 if __name__ == '__main__':
