@@ -662,6 +662,7 @@ def l2_dist_close_reward_fn(achieved_goal,
                             goal,
                             threshold=.05,
                             multi_dim_goal_reward=False,
+                            combine_position_speed_reward=False,
                             device="cpu"):
     if goal.dim() == 2:  # when goals are 1-dimentional
         assert achieved_goal.dim() == goal.dim()
@@ -672,11 +673,23 @@ def l2_dist_close_reward_fn(achieved_goal,
             torch.abs(achieved_goal - goal) < threshold,
             torch.zeros(1, dtype=torch.float32, device=device),
             -torch.ones(1, dtype=torch.float32, device=device))
+    elif combine_position_speed_reward:
+        pos_reward = l2_dist_close(achieved_goal[..., :2], goal[..., :2],
+                                   threshold, device)
+        sp_reward = l2_dist_close(achieved_goal[..., 2:], goal[..., 2:],
+                                  threshold, device)
+        # Both have to achieve; returns -1/0 reward.
+        return torch.max(pos_reward + sp_reward,
+                         -torch.ones(1, dtype=torch.float32, device=device))
     else:
-        return torch.where(
-            torch.norm(achieved_goal - goal, dim=2) < threshold,
-            torch.zeros(1, dtype=torch.float32, device=device),
-            -torch.ones(1, dtype=torch.float32, device=device))
+        return l2_dist_close(achieved_goal, goal, threshold, device)
+
+
+def l2_dist_close(achieved_goal, goal, threshold, device):
+    return torch.where(
+        torch.norm(achieved_goal - goal, dim=2) < threshold,
+        torch.zeros(1, dtype=torch.float32, device=device),
+        -torch.ones(1, dtype=torch.float32, device=device))
 
 
 @gin.configurable
@@ -821,7 +834,7 @@ def hindsight_relabel_fn(buffer,
         result = alf.nest.utils.transform_nest(
             result, "observation.final_goal", lambda _: result_f)
 
-    if control_aux:  # and num_subgoals > 0 for efficiency improvement
+    if control_aux:
         # If subgoal (not final goal) is reached, set discount to 0, StepType to ``LAST``.
         reward_achieved = relabeled_rewards >= 0
         if multi_dim_goal_reward:
@@ -832,16 +845,26 @@ def hindsight_relabel_fn(buffer,
         if relabel_final_goal > 0:
             goal_original |= relabel_final_g_cond.unsqueeze(1)
         subgoal_achieved = reward_achieved & ~goal_original
-        # don't overwrite first step in batch_length.
-        subgoal_achieved[:, 0] = torch.tensor(False)
+        # Cut off episode for any goal reached.
         if sparse_reward:
-            # Cut off episode for any goal reached.
+            # Need to cut off even the 0th step in the batch_length,
+            # because value shouldn't accumulate once goal is achieved.
             end = reward_achieved
         else:
             end = subgoal_achieved
         discount = torch.where(end, torch.tensor(0.), result.discount)
         step_type = torch.where(end, torch.tensor(ds.StepType.LAST),
                                 result.step_type)
+        if sparse_reward:
+            # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
+            # achieved but env ended episode due to position goal achieved.
+            # -1/0 reward doesn't end episode on achieving position goal, and
+            # doesn't need to do this relabeling.
+            mid = (result.step_type == ds.StepType.LAST) & ~reward_achieved & (
+                result.reward[..., 0] > 0)  # assumes no multi dim goal reward.
+            discount = torch.where(mid, torch.tensor(1.), discount)
+            step_type = torch.where(mid, torch.tensor(ds.StepType.MID),
+                                    step_type)
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".discount_mean_before_relabel",
@@ -895,6 +918,10 @@ def hindsight_relabel_fn(buffer,
             alf.summary.scalar(
                 "replayer/" + buffer._name + ".final_goal_achieved_rate",
                 torch.mean(fingoal_achieved[:, 1].float()))
+            both_achieved = reward_achieved[:, 0] & reward_achieved[:, 1]
+            alf.summary.scalar(
+                "replayer/" + buffer._name + ".both_steps_achieved_rate",
+                torch.mean(both_achieved.float()))
         res_reward = result.reward
         if res_reward.ndim > 2:
             for i in range(res_reward.shape[2]):

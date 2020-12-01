@@ -149,6 +149,8 @@ class Agent(OnPolicyAlgorithm):
                 goal_generator, SubgoalPlanningGoalGenerator):
 
             def _value(obs, states=()):
+                # Input obs can have 3 dims (batch, population, observation_dim) in CEM,
+                # or 2 dims (batch, observation_dim) as well.
                 ts = TimeStep(observation=obs)
                 batch_size = alf.nest.get_nest_batch_size(obs)
                 # We are assuming full state observation, no policy state
@@ -157,6 +159,9 @@ class Agent(OnPolicyAlgorithm):
                     ts, state=state, epsilon_greedy=0)
                 act = policy_step.output
                 v, s = rl_algorithm._critic_networks((obs, act), state=())
+                if rl_algorithm._num_critic_replicas > 1:
+                    obs_dim = len(alf.nest.get_nest_shape(obs))
+                    v = v.min(dim=obs_dim - 1)[0].unsqueeze(obs_dim - 1)
                 return v, s
 
             goal_generator.set_value_fn(_value)

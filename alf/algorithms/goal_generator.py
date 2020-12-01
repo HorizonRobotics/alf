@@ -495,16 +495,21 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._value_fn = value_fn
 
     def _wrapped_value_fn(self, obs, state):
+        # input tensors can be 2 (batch_size, batch_length) or 3 dimensional
+        # (batch_size, population, plan_horizon).
+        # This function consolidates multi dim value functions into a single dimension.
         values, state = self._value_fn(obs, state)
+        obs_dim = len(alf.nest.get_nest_shape(obs))
+        mdim = obs_dim < values.ndim
         if self.sparse_reward:
             # 0/1 reward, value cannot be negative, or too close to zero.
             # Sum all dims before taking log:
-            obs_dim = len(alf.nest.get_nest_shape(obs))
+            if mdim and self._plan_with_goal_value_only:
+                values = values[..., :-1]  # last dim is distraction reward
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
             values = torch.log(torch.max(values, torch.tensor(1.e-10)))
             # Multiply all dims (sum after log):
-            # mdim = obs_dim < values.ndim
-            # if mdim:
+            # if mdim and not self._plan_with_goal_value_only:
             #     # multi dim reward
             #     goal_v = values[..., :-1]  # last dim is distraction reward
             # else:
@@ -518,6 +523,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         else:
             # -1/0 reward, value cannot be positive.
             values = torch.min(values, torch.tensor([0.]))
+            if mdim and self._plan_with_goal_value_only:
+                values = values[..., :-1]
+            values = alf.math.sum_to_leftmost(values, dim=obs_dim)
         return values, state
 
     def _summarize_tensor_dims(self, name, t):
@@ -595,14 +603,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             raise NotImplementedError()
         values, _unused_value_state = self._wrapped_value_fn(stack_obs, ())
         dists = -values.reshape(batch_size, pop_size, horizon + 1, -1)
-        # values can be multi dimensional, need to sum to dim 3.
         if info is not None:
-            info["all_population_costs"] = alf.math.sum_to_leftmost(
-                dists, dim=3)
-        if self._plan_with_goal_value_only:
-            dists = dists[:, :, :, 0]
-        else:
-            dists = alf.math.sum_to_leftmost(dists, dim=3)
+            info["all_population_costs"] = dists
         if self._plan_cost_ln_norm > 1:
             if self._plan_cost_ln_norm < 10:
                 dists = dists**self._plan_cost_ln_norm
@@ -720,8 +722,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             observation["final_goal"] = torch.ones((batch_size, 1))
         values, _v_state = self._wrapped_value_fn(observation, ())
         init_costs = -values
-        # to deal with multi dim reward case
-        init_costs = alf.math.sum_to_leftmost(init_costs, dim=2)
         # Assumes costs are positive, at least later on during training,
         # Otherwise, don't use planner.
         # We also require goal to be > min_goal_cost_to_use_plan away.
@@ -892,6 +892,35 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 subgoals_index=subgoals_index,
                 steps_since_last_goal=new_sg_steps)
 
+        if self._final_goal:
+            state = state._replace(final_goal=final_goal.float().unsqueeze(1))
+        # Populate aux_desired into observation, very important for agent to see!
+        if self.control_aux:
+            observation["aux_desired"] = new_goal[:, self._action_dim:]
+
+        if common.is_play():
+
+            def _unreal(s):
+                return torch.any((torch.abs(s[:, 0]) > 5.7 + 0.5)
+                                 | (torch.abs(s[:, 1]) > 5.7 + 0.5)
+                                 | (abs(s[:, 7]) > 7.5)
+                                 | (abs(s[:, 11]) > 3.15 + 0.5)
+                                 | (torch.norm(
+                                     torch.cat((s[:, 4:7], s[:, 8:11]), dim=1),
+                                     dim=1) >= 3))
+
+            ach = observation["achieved_goal"]
+            desire = observation["desired_goal"]
+            ach_str = str(ach)
+            if self.control_aux:
+                ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
+                desire = torch.cat((desire, observation["aux_desired"]), dim=1)
+            if _unreal(ach):
+                logging.info("Reached Unreal: %s", ach_str)
+            if _unreal(desire):
+                logging.info("Unreal Goal: %s", str(desire))
+
+        if self._next_goal_on_success:
             if alf.summary.should_record_summaries():
                 alf.summary.scalar(
                     "planner/curr_goal_achieved." + common.exe_mode_name(),
@@ -941,13 +970,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                         common.exe_mode_name(), reached_fg_steps_sum /
                         torch.sum(fgoal_achieved.float()))
             if common.is_play():
-                ach = observation["achieved_goal"]
-                if self.control_aux:
-                    ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
-                ach_str = str(ach)
-                if torch.any(abs(ach[0:2]) > 5.7 + 0.5) or torch.norm(
-                        torch.cat((ach[2:5], ach[6:9]))) >= 0.6:
-                    logging.info("Reached Unreal: %s", ach_str)
                 if goal_achieved & advanced_goal:
                     logging.info("REACHED GOAL:%d in %d steps at\nachv: %s",
                                  current_subgoal_index, sg_steps, ach_str)
@@ -959,13 +981,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 elif ~goal_achieved & (
                         current_subgoal_index == self._num_subgoals + 1):
                     logging.info("Exiting Final Goal at\nachv: %s", ach_str)
+
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
                 "planner/steps_since_last_plan." + common.exe_mode_name(),
                 torch.mean(state.steps_since_last_plan.float()))
-        if self._final_goal:
-            state = state._replace(final_goal=final_goal.float().unsqueeze(1))
-        # Populate aux_desired into observation, very important for agent to see!
-        if self.control_aux:
-            observation["aux_desired"] = new_goal[:, self._action_dim:]
         return new_goal, state

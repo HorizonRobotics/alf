@@ -5,6 +5,8 @@ Agent.goal_generator=%goal_gen
 SubgoalPlanningGoalGenerator.min_goal_cost_to_use_plan=10
 SubgoalPlanningGoalGenerator.num_subgoals=1
 SubgoalPlanningGoalGenerator.plan_margin=0.2
+SubgoalPlanningGoalGenerator.normalize_goals=True
+SubgoalPlanningGoalGenerator.use_aux_achieved=True
 
 CEMOptimizer.iterations=20
 CEMOptimizer.population_size=1000

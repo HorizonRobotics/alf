@@ -55,12 +55,12 @@ SubgoalPlanningGoalGenerator.action_bounds=[-10, 10]
 TrainerConfig.initial_collect_steps=10000
 TrainerConfig.mini_batch_length=2
 TrainerConfig.mini_batch_size=5000
-TrainerConfig.num_updates_per_train_iter=40
+TrainerConfig.num_updates_per_train_iter=8
 TrainerConfig.replay_buffer_length=100000
 
 TrainerConfig.summary_interval=20
-TrainerConfig.num_iterations=1000
+TrainerConfig.num_iterations=3000
 TrainerConfig.num_checkpoints=10
 TrainerConfig.evaluate=True
-TrainerConfig.eval_interval=100
+TrainerConfig.eval_interval=500
 TrainerConfig.num_eval_episodes=50

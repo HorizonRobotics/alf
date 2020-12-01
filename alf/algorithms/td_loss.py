@@ -168,7 +168,9 @@ class TDLoss(nn.Module):
                             o = torch.abs(observation["aux_desired"][:-1, ...])
                             aux_realistic = torch.norm(
                                 torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
-                                dim=2) < 0.6
+                                dim=2) < 3
+                            aux_realistic &= torch.abs(o[:, :, 5]) < 7.5
+                            aux_realistic &= torch.abs(o[:, :, 9]) < 3.15 + 0.5
                             dist_th = 5.7 + 0.5
                             aux_realistic &= torch.abs(
                                 observation["desired_goal"][0, :, 0]) < dist_th
