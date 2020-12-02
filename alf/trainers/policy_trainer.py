@@ -392,7 +392,7 @@ class RLTrainer(Trainer):
         if self._num_iterations:
             time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
         else:
-            time_to_checkpoint = self._trainer_progress._num_env_steps + checkpoint_interval
+            time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 
         while True:
             t0 = time.time()
@@ -594,11 +594,12 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
     return next_time_step, policy_step, trans_state
 
 
+@common.mark_eval
 def play(root_dir,
          env,
          algorithm,
          checkpoint_step="latest",
-         epsilon_greedy=0.1,
+         epsilon_greedy=0.,
          num_episodes=10,
          max_episode_length=0,
          sleep_time_per_step=0.01,
