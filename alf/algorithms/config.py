@@ -36,7 +36,7 @@ class TrainerConfig(object):
                  load_checkpoint_strict=True,
                  evaluate=False,
                  eval_interval=10,
-                 epsilon_greedy=0.1,
+                 epsilon_greedy=0.,
                  eval_uncertainty=False,
                  num_eval_episodes=10,
                  summary_interval=50,
