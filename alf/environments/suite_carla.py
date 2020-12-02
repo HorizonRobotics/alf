@@ -180,6 +180,7 @@ class Player(object):
     def __init__(self,
                  actor,
                  alf_world,
+                 controller_ctor=None,
                  success_reward=100.,
                  success_distance_thresh=5.0,
                  max_collision_penalty=20.,
@@ -198,6 +199,9 @@ class Player(object):
         Args:
             actor (carla.Actor): the carla actor object
             alf_world (Wolrd): the world containing the player
+            controller_ctor (Callable|None): if provided, will be as ``controller_ctor(vehicle, step_time)``
+                to create a vehicle controller. It will be used to process the
+                action and generate the control.
             success_reward (float): the reward for arriving the goal location.
             success_distance_thresh (float): success is achieved if the current
                 location is with such distance of the goal
@@ -315,6 +319,10 @@ class Player(object):
             success=alf.TensorSpec(()), collision=alf.TensorSpec(()))
 
         self._control = carla.VehicleControl()
+        self._controller = None
+        if controller_ctor is not None:
+            self._controller = controller_ctor(actor, self._delta_seconds)
+
         self.reset()
 
         # for rendering
@@ -330,6 +338,9 @@ class Player(object):
         Returns:
             list[carla.command]:
         """
+
+        if self._controller:
+            self._controller.reset()
 
         wp = random.choice(self._alf_world.get_waypoints())
         goal_loc = wp.transform.location
@@ -435,7 +446,10 @@ class Player(object):
     def action_spec(self):
         """Get the action spec.
 
-        The action is a 4-D vector of [throttle, steer, brake, reverse], where
+        If ``controller`` is provided at ``__init__()``, the action_spec is given
+        by ``controller``.
+
+        Otherwise, the action is a 4-D vector of [throttle, steer, brake, reverse], where
         throttle is in [-1.0, 1.0] (negative value is same as zero), steer is in
         [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value is same as zero),
         and reverse is interpreted as a boolean value with values greater than
@@ -444,9 +458,12 @@ class Player(object):
         Returns:
             nested BoundedTensorSpec:
         """
-        return alf.BoundedTensorSpec([4],
-                                     minimum=[-1., -1., -1., 0.],
-                                     maximum=[1., 1., 1., 1.])
+        if self._controller is not None:
+            return self._controller.action_spec()
+        else:
+            return alf.BoundedTensorSpec([4],
+                                         minimum=[-1., -1., -1., 0.],
+                                         maximum=[1., 1., 1., 1.])
 
     def info_spec(self):
         """Get the info spec."""
@@ -459,12 +476,15 @@ class Player(object):
             nested str: each str corresponds to one TensorSpec from
             ``action_spec()``.
         """
-        return (
-            "4-D vector of [throttle, steer, brake, reverse], where "
-            "throttle is in [-1.0, 1.0] (negative value is same as zero), "
-            "steer is in [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value "
-            "is same as zero), and reverse is interpreted as a boolean value "
-            "with values greater than 0.5 corrsponding to True.")
+        if self._controller is not None:
+            return self._controller.action_desc()
+        else:
+            return (
+                "4-D vector of [throttle, steer, brake, reverse], where "
+                "throttle is in [-1.0, 1.0] (negative value is same as zero), "
+                "steer is in [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value "
+                "is same as zero), and reverse is interpreted as a boolean value "
+                "with values greater than 0.5 corrsponding to True.")
 
     def reward_spec(self):
         """Get the reward spec."""
@@ -632,10 +652,13 @@ class Player(object):
         self._is_first_step = False
         if self._done:
             return self.reset()
-        self._control.throttle = max(float(action[0]), 0.0)
-        self._control.steer = float(action[1])
-        self._control.brake = max(float(action[2]), 0.0)
-        self._control.reverse = bool(action[3] > 0.5)
+        if self._controller is not None:
+            self._control = self._controller.act(action)
+        else:
+            self._control.throttle = max(float(action[0]), 0.0)
+            self._control.steer = float(action[1])
+            self._control.brake = max(float(action[2]), 0.0)
+            self._control.reverse = bool(action[3] > 0.5)
         self._prev_action = action
 
         return [carla.command.ApplyVehicleControl(self._actor, self._control)]
