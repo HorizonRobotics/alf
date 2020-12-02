@@ -11,3 +11,5 @@ FrameStacker.stack_size=4
 ImageScaleTransformer.min=0.0
 RewardClipping.minmax=(-1, 1)
 TrainerConfig.data_transformer_ctor=[@FrameStacker, @ImageScaleTransformer, @RewardClipping]
+# this prevents infinite loops
+TrainerConfig.epsilon_greedy=0.1
