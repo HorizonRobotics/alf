@@ -392,7 +392,7 @@ class RLTrainer(Trainer):
         if self._num_iterations:
             time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
         else:
-            time_to_checkpoint = self._trainer_progress._num_env_steps + checkpoint_interval
+            time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 
         while True:
             t0 = time.time()
