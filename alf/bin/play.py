@@ -45,7 +45,7 @@ flags.DEFINE_integer(
     'checkpoint_step', None, "the number of training steps which is used to "
     "specify the checkpoint to be loaded. If None, the latest checkpoint under "
     "train_dir will be used.")
-flags.DEFINE_float('epsilon_greedy', 0.1, "probability of sampling action.")
+flags.DEFINE_float('epsilon_greedy', 0., "probability of sampling action.")
 flags.DEFINE_integer('random_seed', None, "random seed")
 flags.DEFINE_integer('num_episodes', 10, "number of episodes to play")
 flags.DEFINE_integer('max_episode_length', 0,

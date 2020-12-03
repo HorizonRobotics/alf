@@ -777,6 +777,13 @@ def is_rollout():
     return _exe_mode == EXE_MODE_ROLLOUT
 
 
+def is_eval():
+    """Return a bool value indicating whether the current code belongs to
+    evaluation or playing a learned model.
+    """
+    return _exe_mode == EXE_MODE_EVAL
+
+
 def mark_eval(func):
     """A decorator that will automatically mark the ``_exe_mode`` flag when
     entering/exiting a evaluation/test function.
