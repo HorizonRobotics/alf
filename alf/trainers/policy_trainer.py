@@ -719,8 +719,8 @@ def play(root_dir,
         logging.info(
             "%s: %s", m.name,
             map_structure(
-                lambda x: x.numpy().item() if x.ndim == 0 else x.numpy(),
-                m.result()))
+                lambda x: x.cpu().numpy().item()
+                if x.ndim == 0 else x.cpu().numpy(), m.result()))
     if recorder:
         recorder.close()
     env.reset()

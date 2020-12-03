@@ -51,7 +51,7 @@ class MetricBuffer(torch.nn.Module):
 
     def mean(self):
         if self._buf.current_size == 0:  # avoid nan
-            return torch.tensor(0, dtype=self._dtype, device='cpu')
+            return torch.tensor(0, dtype=self._dtype)
         return self._buf.get_all()[:self._buf.current_size].mean()
 
     def clear(self):
