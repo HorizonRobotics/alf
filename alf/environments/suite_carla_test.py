@@ -149,7 +149,11 @@ def main():
     logging.use_absl_handler()
     logging.set_verbosity(logging.INFO)
     env = suite_carla.CarlaEnvironment(
-        batch_size=1, map_name='Town01', num_other_vehicles=20, num_walkers=20)
+        batch_size=1,
+        map_name='Town01',
+        num_other_vehicles=20,
+        num_walkers=20,
+        day_length=100)
     try:
         play(env)
     finally:

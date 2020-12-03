@@ -31,6 +31,7 @@ To use this, there are two ways:
     cd ..
     ./ImportAssert.sh
     easy_install PythonAPI/carla/dist/carla-0.9.9-py3.7-linux-x86_64.egg
+    pip install networkx==2.2
 
 Make sure you are using python3.7
 
@@ -876,6 +877,18 @@ class CarlaEnvironment(AlfEnvironment):
     a Carla package.
     """
 
+    # not all vehicles have functioning lights. (See https://carla.readthedocs.io/en/0.9.9/core_world/#weather)
+    vehicles_with_functioning_lights = [
+        'vehicle.audi.tt',
+        'vehicle.chevrolet.impala',
+        'vehicle.dodge_charger.police',
+        'vehicle.audi.etron',
+        'vehicle.lincoln.mkz2017',
+        'vehicle.mustang.mustang',
+        'vehicle.tesla.model3',
+        'vehicle.volkswagen.t2',
+    ]
+
     def __init__(self,
                  batch_size,
                  map_name,
@@ -888,6 +901,7 @@ class CarlaEnvironment(AlfEnvironment):
                  global_distance_to_leading_vehicle=2.0,
                  use_hybrid_physics_mode=True,
                  safe=True,
+                 day_length=0.,
                  step_time=0.05):
         """
         Args:
@@ -905,6 +919,8 @@ class CarlaEnvironment(AlfEnvironment):
             use_hybrid_physics_mode (bool): If true, the autopiloted vehicle will
                 not use physics for simulation if it is far from other vehicles.
             safe (bool): avoid spawning vehicles prone to accidents.
+            day_length (float): number of seconds of a day. If 0, the time of the
+                day will not change.
             step_time (float): how many seconds does each step of simulation represents.
         """
         super().__init__()
@@ -917,6 +933,9 @@ class CarlaEnvironment(AlfEnvironment):
         self._num_walkers = num_walkers
         self._percentage_walkers_running = percentage_walkers_running
         self._percentage_walkers_crossing = percentage_walkers_crossing
+        self._day_length = day_length
+        self._time_of_the_day = 0.5 * day_length
+        self._step_time = step_time
 
         self._world = None
         try:
@@ -994,6 +1013,13 @@ class CarlaEnvironment(AlfEnvironment):
         assert len(
             blueprints
         ) > 0, "Cannot find safe vehicle '%s'" % self._vehicle_filter
+
+        blueprints = [
+            x for x in blueprints
+            if x.id in self.vehicles_with_functioning_lights
+        ]
+        assert len(blueprints) > 0, (
+            "Cannot find vehicle with functioning lights")
 
         spawn_points = self._world.get_map().get_spawn_points()
         number_of_spawn_points = len(spawn_points)
@@ -1213,6 +1239,8 @@ class CarlaEnvironment(AlfEnvironment):
         for response in self._client.apply_batch_sync(commands):
             if response.error:
                 logging.error(response.error)
+        if self._day_length > 0:
+            self._update_time_of_the_day()
         self._current_frame = self._world.tick()
         self._alf_world.on_tick()
         for vehicle in self._other_vehicles:
@@ -1224,6 +1252,34 @@ class CarlaEnvironment(AlfEnvironment):
                                                   actor.get_location())
 
         return self._get_current_time_step()
+
+    def _update_time_of_the_day(self):
+        light_state = None
+        if 0.25 * self._day_length - self._step_time < self._time_of_the_day <= 0.25 * self._day_length:
+            light_state = carla.VehicleLightState.NONE
+        elif 0.75 * self._day_length - self._step_time < self._time_of_the_day <= 0.75 * self._day_length:
+            light_state = carla.VehicleLightState(
+                carla.VehicleLightState.Position
+                | carla.VehicleLightState.LowBeam)
+        if light_state is not None:
+            for player in self._players:
+                player._actor.set_light_state(light_state)
+            for vehicle in self._other_vehicles:
+                vehicle.set_light_state(light_state)
+        self._time_of_the_day += self._step_time
+        if self._time_of_the_day >= self._day_length:
+            self._time_of_the_day -= self._day_length
+
+        weather = self._world.get_weather()
+        azimuth = weather.sun_azimuth_angle + 360 / self._day_length * self._step_time
+        if azimuth > 360:
+            azimuth -= 360
+        weather.sun_azimuth_angle = azimuth
+        altitude = self._time_of_the_day / self._day_length * 2
+        if altitude > 1:
+            altitude = 2. - altitude
+        weather.sun_altitude_angle = altitude * 180 - 90
+        self._world.set_weather(weather)
 
     def _get_current_time_step(self):
         time_step = [
