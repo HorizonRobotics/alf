@@ -34,10 +34,10 @@ class PIDController(object):
             K_I (float): coefficient for the integral term
             K_D (float): coefficient for the derivative term
             dt (float): time interval in seconds for each step
-            integration_time_window (float): the window for the integral. The
-                integration is implemented as a expolentially weighted sum over
-                the past errors where the weight is decayed by 1 - dt/integration_time_window
-                every step.
+            integration_time_window (float): the window for the integral in terms
+                of seconds. The integration is implemented as an exponentially
+                weighted sum over the past errors where the weight is decayed by
+                1 - dt/integration_time_window every step.
         """
         self._K_P = K_P
         self._K_I = K_I
@@ -120,9 +120,10 @@ class VehicleController(object):
         The action is a 3-D vector of [speed, direction, reverse], where speed is in
         [-1.0, 1.0] with negative value meaning zero speed and 1.0 corresponding
         to maximally allowed speed as provided by the ``max_speed`` argument for
-        ``__init__()``, and direction is the relative direction with 0 being
-        front, -0.5 being left and 0.5 being rignt, and reverse is interpreted
-        as a boolean value with values greater than 0.5 corrsponding to True.
+        ``__init__()``, and direction is the relative direction that the vehicle
+        is facing, with 0 being front, -0.5 being left and 0.5 being right, and
+        reverse is interpreted as a boolean value with values greater than 0.5
+        corrsponding to True to indicate going backward.
 
         Returns:
             alf.BoundedTensorSpec
@@ -141,9 +142,10 @@ class VehicleController(object):
             "3-D vector of [speed, direction, reverse], where speed is in "
             "[-1.0, 1.0] with negative value meaning zero speed and 1.0 corresponding to "
             "maximally allowed speed as provided by max_speed argument for __init__(), "
-            "direction is the relative direction with 0 being front, -0.5 "
-            "being left and 0.5 being rignt, and reverse is interpreted as a "
-            "boolean value with values greater than 0.5 corrsponding to True.")
+            "direction is the relative direction that the vehicle is facing, with "
+            "0 being front, -0.5 being left and 0.5 being rignt, and reverse is "
+            "interpreted as a boolean value with values greater than 0.5 "
+            "corrsponding to True to indicate going backward.")
 
     def act(self, action):
         """Generate carla.VehicleControl based on ``action``
