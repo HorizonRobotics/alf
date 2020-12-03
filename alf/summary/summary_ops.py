@@ -19,6 +19,17 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from typing import Callable
 
+try:
+    # If tensorflow has been installed, pytorch might use tensorflow's
+    # tensorboard. In this case, gfile needs to be redirected if embedding
+    # projector is to be used.
+    # https://github.com/pytorch/pytorch/issues/30966#issuecomment-582747929
+    import tensorflow as tf
+    import tensorboard as tb
+    tf.io.gfile = tb.compat.tensorflow_stub.io.gfile
+except:
+    pass
+
 _summary_enabled = False
 
 _summarize_output = False
@@ -145,6 +156,37 @@ def histogram(name, data, step=None, bins=None, walltime=None, max_bins=None):
         bins = _default_bins
     _summary_writer_stack[-1].add_histogram(
         name, data, step, bins=bins, walltime=walltime, max_bins=max_bins)
+
+
+@_summary_wrapper
+def embedding(name, data, step=None, class_labels=None, label_imgs=None):
+    """Add embeddings to summary. The potentially high-dimensional embeddings
+    will be projected down to either 2D or 3D for visualization, with several
+    projection techniques to choose from in Tensorboard.
+
+    The visualized embeddings can be seen in the "PROJECTOR" page of Tensorboard.
+
+    Note: if this function is called multiple times, on the page there will be
+    multiple visualizations, each for every step.
+
+    Args:
+        name (str): data identifier
+        data (Tensor | numpy.array): a matrix of shape ``[N, D]``, where ``D``
+            is the dimensionality of the embedding.
+        step (int): global step value to record. None for using
+            ``get_global_counter()``.
+        class_labels (list[str]): an optional list of class labels of length
+            ``N`` can be provided, where each label corresponds to an embedding.
+        label_imgs (Tensor): an optional tensor of shape ``[N, C, H, W]``. Each
+            label img corresponds to an embedding. Use this if you want to
+            associate each embedding with an image for visualization.
+    """
+    _summary_writer_stack[-1].add_embedding(
+        tag=name,
+        mat=data,
+        metadata=class_labels,
+        label_img=label_imgs,
+        global_step=step)
 
 
 def should_record_summaries():
