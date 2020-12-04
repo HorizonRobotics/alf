@@ -167,7 +167,7 @@ def embedding(name, data, step=None, class_labels=None, label_imgs=None):
     The visualized embeddings can be seen in the "PROJECTOR" page of Tensorboard.
 
     Note: if this function is called multiple times, on the page there will be
-    multiple visualizations, each for every step.
+    multiple visualizations, each for every call.
 
     Args:
         name (str): data identifier
