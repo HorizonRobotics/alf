@@ -506,6 +506,9 @@ class DataBuffer(RingBuffer):
                                             self._derived_buffer)
         return convert_device(result)
 
+    def is_full(self):
+        return (self.current_size == self._capacity).cpu().numpy()
+
     @property
     def current_size(self):
         return self._current_size[0]
