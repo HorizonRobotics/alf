@@ -71,6 +71,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  ou_damping=0.15,
                  critic_loss_ctor=None,
                  num_critic_replicas=1,
+                 split_exp_on_replicas="",
                  target_update_tau=0.05,
                  target_update_period=1,
                  rollout_random_action=0.,
@@ -101,6 +102,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor.
             num_critic_replicas (int): number of critics to be used. Default is 1.
+            split_exp_on_replicas (str): use "envid" or "pos" in replay buffer for
+                hashing content to different critic replicas.  Default is no split.
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. ``env`` only needs to be provided to the root
@@ -142,8 +145,9 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             input_tensor_spec = observation_spec.copy()
             for k, _ in observation_spec.items():
                 if k not in ("desired_goal", "aux_desired"):
-                    input_tensor_spec.pop(k, None)
+                    del input_tensor_spec[k]
             goal_net = goal_value_net_ctor(input_tensor_spec=input_tensor_spec)
+        self._split_exp_on_replicas = split_exp_on_replicas
         if use_parallel_network:
             critic_networks = critic_network.make_parallel(num_critic_replicas)
         else:
@@ -346,10 +350,24 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         critic_losses = [None] * self._num_critic_replicas
         for i in range(self._num_critic_replicas):
-            critic_losses[i] = self._critic_losses[i](
+            loss_i = self._critic_losses[i](
                 experience=experience,
                 value=train_info.critic.q_values[:, :, i, ...],
                 target_value=train_info.critic.target_q_values).loss
+
+            def _mask(t):
+                if experience.batch_info == ():
+                    return t
+                divr = self._num_critic_replicas
+                if self._split_exp_on_replicas == "pos":
+                    x = experience.batch_info.positions % divr != i
+                    t[:, x] = 0.
+                elif self._split_exp_on_replicas == "envid":
+                    x = experience.batch_info.env_ids % divr != i
+                    t[:, x] = 0.
+                return t
+
+            critic_losses[i] = _mask(loss_i)
 
         critic_loss = math_ops.add_n(critic_losses)
 
