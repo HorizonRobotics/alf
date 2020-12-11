@@ -158,8 +158,16 @@ class Agent(OnPolicyAlgorithm):
                 policy_step = rl_algorithm.predict_step(
                     ts, state=state, epsilon_greedy=0)
                 act = policy_step.output
-                v, s = rl_algorithm._critic_networks((obs, act), state=())
-                if rl_algorithm._num_critic_replicas > 1:
+                non_her_critic = hasattr(
+                    rl_algorithm,
+                    "_non_her_critic") and rl_algorithm._non_her_critic
+                if non_her_critic:
+                    critic = rl_algorithm._non_her_critic
+                else:
+                    critic = rl_algorithm._critic_networks
+                v, s = critic((obs, act), state=())
+                if (not non_her_critic
+                        and rl_algorithm._num_critic_replicas > 1):
                     obs_dim = len(alf.nest.get_nest_shape(obs))
                     v = v.min(dim=obs_dim - 1)[0].unsqueeze(obs_dim - 1)
                 return v, s

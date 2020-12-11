@@ -500,7 +500,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         # This function consolidates multi dim value functions into a single dimension.
         values, state = self._value_fn(obs, state)
         obs_dim = len(alf.nest.get_nest_shape(obs))
-        mdim = obs_dim < values.ndim
+        mdim = obs_dim <= values.ndim
         if self.sparse_reward:
             # 0/1 reward, value cannot be negative, or too close to zero.
             # Sum all dims before taking log:

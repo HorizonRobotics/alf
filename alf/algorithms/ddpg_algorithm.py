@@ -35,10 +35,17 @@ from alf.networks import ActorNetwork, CriticNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.utils import losses, common, dist_utils, math_ops, spec_utils
 
-DdpgCriticState = namedtuple("DdpgCriticState",
-                             ['critics', 'target_actor', 'target_critics'])
+DdpgCriticState = namedtuple(
+    "DdpgCriticState", [
+        'critics', 'non_her_critic', 'target_actor', 'target_critics',
+        'non_her_target'
+    ],
+    default_value=())
 DdpgCriticInfo = namedtuple(
-    "DdpgCriticInfo", ["q_values", "goal_values", "target_q_values"],
+    "DdpgCriticInfo", [
+        "q_values", "non_her_q_values", "goal_values", "target_q_values",
+        "non_her_target"
+    ],
     default_value=())
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
 DdpgState = namedtuple("DdpgState", ['actor', 'critics'])
@@ -63,6 +70,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
                  goal_value_net_ctor=None,
+                 use_non_her_critic=False,
+                 keep_her_rate=0.,
                  use_parallel_network=False,
                  reward_weights=None,
                  env=None,
@@ -96,6 +105,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 ``forward((observation, action), state)``.
             goal_value_net_ctor (Callable or None): if not None, it used to construct
                 the network to predict value based on goal input only.
+            use_non_her_critic (bool): whether to use non-her experience to train a
+                separate critic.  This can be useful for goal-based planning.
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics.
             reward_weights (list[float]): this is only used when the reward is
@@ -182,6 +193,15 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
         self._goal_net = goal_net
+        self._non_her_critic = None
+        self._non_her_target = None
+        self._keep_her_rate = keep_her_rate
+        if use_non_her_critic:
+            self._non_her_critic = critic_network_ctor(
+                input_tensor_spec=(observation_spec, action_spec),
+                name="critic_non_her")
+            self._non_her_target = self._non_her_critic.copy(
+                name='target_critic_non_her')
 
         self._reward_weights = None
         if reward_weights:
@@ -208,12 +228,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         self._ou_process = common.create_ou_process(action_spec, ou_stddev,
                                                     ou_damping)
-
+        models = [self._actor_network, self._critic_networks]
+        target_models = [
+            self._target_actor_network, self._target_critic_networks
+        ]
+        if self._non_her_critic:
+            models.append(self._non_her_critic)
+            target_models.append(self._non_her_target)
+            self._non_her_loss = critic_loss_ctor(name="critic_loss_non_her")
         self._update_target = common.get_target_updater(
-            models=[self._actor_network, self._critic_networks],
-            target_models=[
-                self._target_actor_network, self._target_critic_networks
-            ],
+            models=models,
+            target_models=target_models,
             tau=target_update_tau,
             period=target_update_period)
 
@@ -279,13 +304,28 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
 
+        non_her_q_values, non_her_critic = (), ()
+        non_her_target_q, non_her_target = (), ()
+        if self._non_her_critic:  # assumes no states.
+            non_her_q_values, non_her_critic = self._non_her_critic(
+                (exp.observation, exp.action), state=state.non_her_critic)
+            non_her_target_q, non_her_target = self._non_her_target(
+                (exp.observation, exp.action), state=state.non_her_target)
+            non_her_q_values = non_her_q_values.squeeze(dim=1)
+            non_her_target_q = non_her_target_q.squeeze(dim=1)
+
         state = DdpgCriticState(
             critics=critic_states,
+            non_her_critic=non_her_critic,
             target_actor=target_actor_state,
-            target_critics=target_critic_states)
+            target_critics=target_critic_states,
+            non_her_target=non_her_target)
 
         info = DdpgCriticInfo(
-            q_values=q_values, target_q_values=target_q_values)
+            q_values=q_values,
+            non_her_q_values=non_her_q_values,
+            target_q_values=target_q_values,
+            non_her_target=non_her_target_q)
 
         if self._goal_net:
             goal_input = exp.observation.copy()
@@ -377,6 +417,16 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 value=train_info.critic.goal_values,
                 target_value=train_info.critic.goal_values.detach()).loss
 
+        if self._non_her_critic and len(self._critic_losses) > 0:
+            loss = self._non_her_loss(
+                experience=experience,
+                value=train_info.critic.non_her_q_values,
+                target_value=train_info.critic.non_her_target.detach()).loss
+            if experience.batch_info != ():
+                discard = torch.rand(loss.shape[1]) >= self._keep_her_rate
+                loss[:, experience.batch_info.her & discard] = 0.
+            critic_loss += loss
+
         if (experience.batch_info != ()
                 and experience.batch_info.importance_weights != ()):
             valid_masks = (experience.step_type != StepType.LAST).to(
@@ -398,4 +448,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._update_target()
 
     def _trainable_attributes_to_ignore(self):
-        return ['_target_actor_network', '_target_critic_networks']
+        return [
+            '_target_actor_network', '_target_critic_networks',
+            '_non_her_target'
+        ]
