@@ -311,8 +311,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 (exp.observation, exp.action), state=state.non_her_critic)
             non_her_target_q, non_her_target = self._non_her_target(
                 (exp.observation, exp.action), state=state.non_her_target)
-            non_her_q_values = non_her_q_values.squeeze(dim=1)
-            non_her_target_q = non_her_target_q.squeeze(dim=1)
 
         state = DdpgCriticState(
             critics=critic_states,

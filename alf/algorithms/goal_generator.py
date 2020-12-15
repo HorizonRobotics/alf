@@ -306,6 +306,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  normalize_goals=False,
                  bound_goals=False,
                  value_fn=None,
+                 combine_her_nonher_value_weight=0.,
                  value_state_spec=(),
                  max_replan_steps=10,
                  plan_margin=0.,
@@ -432,6 +433,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._goal_achieved_fn = _goal_ach_fn
         if value_fn:
             self._value_fn = value_fn
+        self._combine_her_nonher_value_weight = combine_her_nonher_value_weight
 
         self._value_state_spec = value_state_spec
         if use_aux_achieved:
