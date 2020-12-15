@@ -19,6 +19,11 @@ from alf.environments import suite_babyai
 
 
 class SuiteBabyAITest(alf.test.TestCase):
+    def setUp(self):
+        super().setUp()
+        if not suite_babyai.is_available():
+            self.skipTest('suite_babyai is not available.')
+
     def test_one_token_per_step(self):
         env = suite_babyai.load(
             "BabyAI-GoToRedBall-v0", one_token_per_step=True)

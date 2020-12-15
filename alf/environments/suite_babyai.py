@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import babyai
 import gin
 import gym
 import numpy as np
@@ -21,11 +20,20 @@ import re
 import alf.environments.gym_wrappers
 from .suite_gym import wrap_env
 
+try:
+    import babyai
+except ImportError:
+    babyai = None
+
+
+def is_available():
+    return babyai is not None
+
 
 @gin.configurable
 def load(environment_name,
          env_id=None,
-         max_instruction_length=32,
+         max_instruction_length=80,
          one_token_per_step=False,
          discount=1.0,
          max_episode_steps=None,
@@ -38,13 +46,13 @@ def load(environment_name,
 
     Args:
         environment_name (str): Name for the environment to load.
+        env_id (int): (optional) ID of the environment.
         max_instruction_length (int): the maximum number of words of an instruction.
         one_token_per_step (bool): If False, the whole instruction (word ID array)
-            is given in one step in the observation. If True, the word IDs are
-            given in the observation sequentially. Each step only one world ID
-            is given. A zero is given for every steps after all the world IDs
+            is given in the observation at every step. If True, the word IDs are
+            given in the observation sequentially. Each step only one word ID
+            is given. A zero is given for every steps after all the word IDs
             are given.
-        env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
         max_episode_steps (int): If None the max_episode_steps will be set to the
             default step limit defined in the environment's spec. No limit is applied
@@ -127,18 +135,20 @@ class BabyAIWrapper(gym.Wrapper):
         'a',
     ]
 
+    VOCAB_SIZE = len(VOCAB) + 1
+
     def __init__(self,
                  env,
-                 max_instruction_length=32,
+                 max_instruction_length=80,
                  one_token_per_step=False):
         """
         Args:
             gym_env (gym.Env): An instance of OpenAI gym environment.
             max_instruction_length (int): the maximum number of words of an instruction.
             one_token_per_step (bool): If False, the whole instruction (word ID array)
-                is given in one step in the observation. If True, the word IDs are
-                given in the observation sequentially. Each step only one world ID
-                is given. Zeros are given for every steps after all the world IDs
+                is given in the observation at every step. If True, the word IDs are
+                given in the observation sequentially. Each step only one word ID
+                is given. Zeros are given for every steps after all the word IDs
                 are given.
         """
         super().__init__(env)
@@ -150,10 +160,14 @@ class BabyAIWrapper(gym.Wrapper):
         vocab_size = len(self.VOCAB) + 1
 
         obs_space = {
+            # 7x7x3 ego-centric observation, each location is represented by
+            # 3 values: object type, color, state (open, closed, locked)
             'image':
                 env.observation_space['image'],
+            # the orientation of the agent
             'direction':
                 gym.spaces.Discrete(4),
+            # instruction
             'mission':
                 gym.spaces.MultiDiscrete([vocab_size] * max_instruction_length)
         }
@@ -179,6 +193,10 @@ class BabyAIWrapper(gym.Wrapper):
                     raise ValueError(
                         "The instruction '%s' contains word "
                         " out of vocabulary: %s" % (instruction, token))
+        return instr
+
+    def _vectorize(self, instruction):
+        instr = self._tokenize(instruction)
         if len(instr) < self._max_instruction_length:
             instr = np.concatenate([
                 instr,
@@ -192,6 +210,7 @@ class BabyAIWrapper(gym.Wrapper):
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
         obs = self._transform_observation(obs)
+        info['success'] = 1.0 if reward > 0 else 0.
         return obs, reward, done, info
 
     def reset(self, **kwargs):
@@ -201,19 +220,23 @@ class BabyAIWrapper(gym.Wrapper):
         return self._transform_observation(obs)
 
     def _transform_observation(self, observation):
+        # Note: The original BabyAI environment give the same instruction at every
+        # steps of an episode.
         observation['direction'] = np.int64(observation['direction'])
         mission = observation['mission']
         if not self._one_token_per_step:
-            observation['mission'] = self._tokenize(mission)
+            observation['mission'] = self._vectorize(mission)
         else:
             if mission != self._last_mission:
                 if mission != '':
-                    self._tokens = self._tokenize(mission)
+                    self._tokens.extend(self._tokenize(mission))
                 self._last_mission = mission
             if len(self._tokens) > 0:
-                observation['mission'] = self._tokens[0]
-                self._tokens = self._tokens[1:]
+                observation['mission'] = self._tokens.pop(0)
             else:
                 observation['mission'] = np.int64(0)
 
         return observation
+
+
+gin.constant('BabyAIWrapper.VOCAB_SIZE', BabyAIWrapper.VOCAB_SIZE)
