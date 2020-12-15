@@ -241,6 +241,20 @@ class Trainer(object):
             alf.summary.text('diff', _markdownify(git_utils.get_diff()))
             alf.summary.text('seed', str(self._random_seed))
 
+            if self._config.code_snapshots is not None:
+                for f in self._config.code_snapshots:
+                    path = os.path.join(
+                        os.path.abspath(os.path.dirname(__file__)), "..", f)
+                    if not os.path.isfile(path):
+                        common.warning_once(
+                            "The code file '%s' for summary is invalid" % path)
+                        continue
+                    with open(path, 'r') as fin:
+                        code = fin.read()
+                        # adding "<pre>" will make TB show raw text instead of MD
+                        alf.summary.text('code/%s' % f,
+                                         "<pre>" + code + "</pre>")
+
     def _request_checkpoint(self, signum, frame):
         self._checkpoint_requested = True
 
