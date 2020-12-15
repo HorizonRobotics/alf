@@ -1,0 +1,71 @@
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import numpy as np
+
+import alf
+from alf.environments import suite_babyai
+
+
+class SuiteBabyAITest(alf.test.TestCase):
+    def test_one_token_per_step(self):
+        env = suite_babyai.load(
+            "BabyAI-GoToRedBall-v0", one_token_per_step=True)
+        vocab = suite_babyai.BabyAIWrapper.VOCAB
+        self.assertEqual(env.observation_spec()['mission'].shape, ())
+        self.assertEqual(env.observation_spec()['mission'].minimum, 0)
+        self.assertEqual(env.observation_spec()['mission'].maximum, len(vocab))
+        obs = env.reset().observation
+        self.assertEqual(obs['mission'], vocab.index('go') + 1)
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], vocab.index('to') + 1)
+        obs = env.step(0).observation
+        self.assertTrue(obs['mission'] == vocab.index('a') + 1
+                        or obs['mission'] == vocab.index('the') + 1)
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], vocab.index('red') + 1)
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], vocab.index('ball') + 1)
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], 0)
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], 0)
+
+    def test_one_instruction_per_step(self):
+        env = suite_babyai.load(
+            "BabyAI-GoToRedBall-v0",
+            max_instruction_length=10,
+            one_token_per_step=False)
+        vocab = suite_babyai.BabyAIWrapper.VOCAB
+        self.assertEqual(env.observation_spec()['mission'].shape, (10, ))
+        self.assertEqual(env.observation_spec()['mission'].minimum, 0)
+        self.assertEqual(env.observation_spec()['mission'].maximum, len(vocab))
+        instr1 = np.array(
+            [vocab.index(w) + 1
+             for w in ['go', 'to', 'the', 'red', 'ball']] + [0, 0, 0, 0, 0])
+        instr2 = np.array(
+            [vocab.index(w) + 1
+             for w in ['go', 'to', 'a', 'red', 'ball']] + [0, 0, 0, 0, 0])
+        obs = env.reset().observation
+        self.assertTrue(
+            np.alltrue(obs['mission'] == instr1)
+            or np.alltrue(obs['mission'] == instr2))
+        obs = env.step(0).observation
+        self.assertTrue(
+            np.alltrue(obs['mission'] == instr1)
+            or np.alltrue(obs['mission'] == instr2))
+
+
+if __name__ == '__main__':
+    alf.test.main()
