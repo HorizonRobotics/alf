@@ -182,6 +182,7 @@ class AlfGymWrapper(AlfEnvironment):
         return ds.restart(
             observation=observation,
             action_spec=self._action_spec,
+            reward_spec=self._reward_spec,
             env_id=self._env_id,
             env_info=self._zero_info)
 
@@ -201,12 +202,18 @@ class AlfGymWrapper(AlfEnvironment):
 
         if self._done:
             return ds.termination(
-                observation, action, reward, self._env_id, env_info=self._info)
+                observation,
+                action,
+                reward,
+                self._reward_spec,
+                self._env_id,
+                env_info=self._info)
         else:
             return ds.transition(
                 observation,
                 action,
                 reward,
+                self._reward_spec,
                 self._discount,
                 self._env_id,
                 env_info=self._info)
