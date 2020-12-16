@@ -207,8 +207,6 @@ def _generate_time_step(batched,
             reward = to_tensor(reward, dtype=torch.float32)
         discount = to_tensor(discount, dtype=torch.float32)
 
-    # TODO: Check leading dimension of flat_observation
-    # against batch_size if all are known statically.
     if batched:
         batch_size = flat_observation[0].shape[0]
         outer_dims = (batch_size, )
