@@ -45,6 +45,7 @@ except ImportError:
 
 import functools
 import numpy as np
+import copy
 import gym
 
 import gin
@@ -81,9 +82,10 @@ class CompleteEnvInfo(gym.Wrapper):
                 'cost_gremlins', 'cost_vases_displace', 'cost_vases_velocity',
                 'cost_hazards'
             ]
+        self._default_env_info = self._generate_default_env_info()
 
     def _is_level0_env(self, env_name):
-        return "0-" in env_name
+        return "0-v" in env_name
 
     def _generate_default_env_info(self):
         env_info = {}
@@ -95,7 +97,7 @@ class CompleteEnvInfo(gym.Wrapper):
         return env_info
 
     def step(self, action):
-        env_info = self._generate_default_env_info()
+        env_info = copy.copy(self._default_env_info)
         obs, reward, done, info = self.env.step(action)
         env_info.update(info)
         return obs, reward, done, env_info
@@ -105,7 +107,9 @@ class VectorReward(gym.Wrapper):
     """This wrapper makes the env returns a reward vector of length 3. The three
     dimensions are:
 
-    1. distance-improvement reward indicating the delta smaller distance to the goal
+    1. distance-improvement reward indicating the delta smaller distances of
+       agent<->box and box<->goal for "push" tasks, or agent<->goal for
+       "goal"/"button" tasks.
     2. negative binary cost where -1 means that at least one constraint has been
        violated at the current time step (constraints vary depending on env
        configurations).
@@ -173,7 +177,7 @@ def load(environment_name,
 
     # We can directly make the env here because none of the safety gym tasks
     # is registered with a ``max_episode_steps`` argument (the
-    # ``gym.wrappers.time_limit.TimeLimit``) won't be applied. But each task
+    # ``gym.wrappers.time_limit.TimeLimit`` won't be applied). But each task
     # will inherently manage the time limit through ``env.num_steps``.
     env = gym.make(environment_name)
 
