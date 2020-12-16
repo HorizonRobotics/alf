@@ -136,7 +136,11 @@ class AlfGymWrapper(AlfEnvironment):
             self._gym_env.observation_space, simplify_box_bounds)
         self._action_spec = tensor_spec_from_gym_space(
             self._gym_env.action_space, simplify_box_bounds)
-        self._reward_spec = TensorSpec(())
+        if hasattr(self._gym_env, "reward_space"):
+            self._reward_spec = tensor_spec_from_gym_space(
+                self._gym_env.reward_space, simplify_box_bounds)
+        else:
+            self._reward_spec = TensorSpec(())
         self._time_step_spec = ds.time_step_spec(
             self._observation_spec, self._action_spec, self._reward_spec)
         self._info = None
@@ -182,6 +186,7 @@ class AlfGymWrapper(AlfEnvironment):
         return ds.restart(
             observation=observation,
             action_spec=self._action_spec,
+            reward_spec=self._reward_spec,
             env_id=self._env_id,
             env_info=self._zero_info)
 
@@ -201,12 +206,18 @@ class AlfGymWrapper(AlfEnvironment):
 
         if self._done:
             return ds.termination(
-                observation, action, reward, self._env_id, env_info=self._info)
+                observation,
+                action,
+                reward,
+                self._reward_spec,
+                self._env_id,
+                env_info=self._info)
         else:
             return ds.transition(
                 observation,
                 action,
                 reward,
+                self._reward_spec,
                 self._discount,
                 self._env_id,
                 env_info=self._info)

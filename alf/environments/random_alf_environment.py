@@ -137,7 +137,7 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         return ds.restart(
             self._get_observation(),
             self._action_spec,
-            self._env_id,
+            env_id=self._env_id,
             batched=batched)
 
     def _sample_spec(self, spec, outer_dims):
@@ -180,14 +180,18 @@ class RandomAlfEnvironment(alf_environment.AlfEnvironment):
         if self._done:
             reward = self._reward_fn(ds.StepType.LAST, action, observation)
             self._check_reward_shape(reward)
-            time_step = ds.termination(observation, action, reward,
-                                       self._env_id)
+            time_step = ds.termination(
+                observation, action, reward, env_id=self._env_id)
             self._num_steps = 0
         else:
             reward = self._reward_fn(ds.StepType.MID, action, observation)
             self._check_reward_shape(reward)
-            time_step = ds.transition(observation, action, reward,
-                                      self._discount, self._env_id)
+            time_step = ds.transition(
+                observation,
+                action,
+                reward,
+                discount=self._discount,
+                env_id=self._env_id)
 
         return time_step
 

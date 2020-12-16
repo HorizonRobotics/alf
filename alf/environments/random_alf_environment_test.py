@@ -28,7 +28,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         action_spec = BoundedTensorSpec([], torch.int32)
         env = RandomAlfEnvironment(obs_spec, action_spec)
 
-        action = torch.tensor(0, dtype=torch.int64)
+        action = np.array(0, dtype=np.int64)
         time_step = env.step(action)
         self.assertTrue(np.all(time_step.observation >= -10))
         self.assertTrue(np.all(time_step.observation <= 10))
@@ -58,7 +58,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
             min_duration=min_duration)
         num_episodes = 100
 
-        action = torch.tensor(0, dtype=torch.int64)
+        action = np.array(0, dtype=np.int64)
         for _ in range(num_episodes):
             time_step = env.step(action)
             self.assertTrue(time_step.is_first())
@@ -82,7 +82,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
             max_duration=max_duration)
         num_episodes = 100
 
-        action = torch.tensor(0, dtype=torch.int64)
+        action = np.array(0, dtype=np.int64)
         for _ in range(num_episodes):
             time_step = env.step(action)
             self.assertTrue(time_step.is_first())
@@ -103,11 +103,9 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
 
         action = np.array(1, dtype=np.int64)
         time_step = env.step(action)  # No reward in first time_step
-        self.assertEqual(
-            torch.tensor(0.0, dtype=torch.float32), time_step.reward)
+        self.assertEqual(np.zeros((), dtype=np.float32), time_step.reward)
         time_step = env.step(action)
-        self.assertEqual(
-            torch.tensor(1, dtype=torch.float32), time_step.reward)
+        self.assertEqual(np.ones((), dtype=np.float32), time_step.reward)
 
     def testRendersImage(self):
         action_spec = BoundedTensorSpec((1, ), torch.int64, -10, 10)
@@ -129,7 +127,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
         action_spec = BoundedTensorSpec((1, ), torch.int64)
         env = RandomAlfEnvironment(
             obs_spec, action_spec, batch_size=batch_size)
-        time_step = env.step(torch.tensor(0, dtype=torch.int64))
+        time_step = env.step(np.array(0, dtype=np.int64))
         self.assertEqual(time_step.observation.shape, (3, 2, 3))
         self.assertEqual(time_step.reward.shape[0], batch_size)
         self.assertEqual(time_step.discount.shape[0], batch_size)
@@ -145,7 +143,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
             batch_size=batch_size)
         env._done = False
         env.reset()
-        action = torch.ones(batch_size)
+        action = np.ones(batch_size, dtype=np.int64)
         time_step = env.step(action)
         self.assertSequenceAlmostEqual([1.0] * 3, time_step.reward)
 
@@ -160,7 +158,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
             batch_size=1)
         env._done = False
         env.reset()
-        action = torch.tensor([0], dtype=torch.int64)
+        action = np.array([0], dtype=np.int64)
         time_step = env.step(action)
         self.assertEqual(time_step.reward, 1.0)
 
@@ -176,7 +174,7 @@ class RandomAlfEnvironmentTest(parameterized.TestCase, alf.test.TestCase):
             batch_size=5)
         env.reset()
         env._done = False
-        action = torch.tensor(0, dtype=torch.int64)
+        action = np.array(0, dtype=np.int64)
         with self.assertRaises(ValueError):
             env.step(action)
 
