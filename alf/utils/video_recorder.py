@@ -20,8 +20,6 @@ import numpy as np
 from alf.utils import common
 
 try:
-    import matplotlib
-    matplotlib.use('Agg')  # Required to resolve the TKinter error
     import matplotlib.pyplot as plt
 except ImportError:
     plt = None
