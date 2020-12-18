@@ -27,7 +27,7 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticInfo
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.decoding_algorithm import DecodingAlgorithm
-from alf.algorithms.memory import MemoryWithUsage
+from alf.networks.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.data_structures import TimeStep, AlgStep, LossInfo

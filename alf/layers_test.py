@@ -294,9 +294,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
                     d_model=d_model,
                     d_k=d_model,
                     d_v=d_model,
+                    d_ff=d_model,
                     num_heads=3,
                     memory_size=max_len,
-                    relative_positional_encoding=task_type >= 3))
+                    positional_encoding='rel' if task_type >= 3 else 'abs'))
         layers.append(alf.layers.FC(d_model, 1))
         model = nn.Sequential(*layers)
 

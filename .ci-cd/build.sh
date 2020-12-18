@@ -58,7 +58,6 @@ function test() {
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
         alf.algorithms.mcts_algorithm_test \
-        alf.algorithms.memory_test \
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
         alf.algorithms.muzero_algorithm_test \
@@ -100,6 +99,7 @@ function test() {
         alf.networks.critic_networks_test \
         alf.networks.value_networks_test \
         alf.networks.encoding_networks_test \
+        alf.networks.memory_test \
         alf.networks.projection_networks_test \
         alf.networks.q_networks_test \
         alf.optimizers.optimizers_test \

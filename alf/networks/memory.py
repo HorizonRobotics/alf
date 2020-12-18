@@ -352,3 +352,97 @@ class MemoryWithUsage(Memory):
             self._memory, self._usage = states
             self._batch_size = self._memory.shape[0]
             self._built = True
+
+
+class FIFOMemory(Memory):
+    """A Simple FIFO memory.
+
+    Whwn new memory are written, the oldest memory slots are removed.
+    """
+
+    def __init__(self, dim, size, name="FIFOMemory"):
+        """
+        Args:
+            dim (int): dimension of memory content
+            size (int): number of memory slots
+        """
+        self._built = False
+        state_spec = (alf.TensorSpec((size, dim), dtype=torch.float32),
+                      alf.TensorSpec((), dtype=torch.int64))
+        self._range = torch.arange(size).unsqueeze(0)
+        super().__init__(dim, size, state_spec=state_spec, name=name)
+
+    def build(self, batch_size):
+        """Build the memory for batch_size.
+
+        User does not need to call this explictly. `read` and `write` will
+        automatically call this if the memory has not been built yet.
+
+        Note: Subsequent `write` and `read` must match this `batch_size`
+        Args:
+            batch_size (int): batch size of the model.
+        """
+        self._batch_size = batch_size
+        self._memory = torch.zeros(batch_size, self.size, self.dim)
+        self._current_size = torch.zeros(batch_size, dtype=torch.int64)
+        self._built = True
+
+    def write(self, content):
+        """Write content to memory.
+
+        Append the content to memory. If the memory is full, the oldest slot
+        removed.
+
+        Args:
+            content (Tensor): shape should be [b, dim] or [b, k, dim]
+        """
+        if not self._built:
+            self.build(content.shape[0])
+        if content.ndim == 2:
+            content = content.unsqueeze(1)
+        assert content.shape[0] == self._batch_size
+        assert content.shape[2] == self.dim
+        k = content.shape[1]
+
+        self._memory = torch.cat([content, self._memory[:, k:, :]], dim=1)
+        self._current_size = self._current_size + k
+
+    def read(self, keys):
+        raise NotImplementedError()
+
+    @property
+    def states(self):
+        """Get the states of the memory.
+
+        Returns:
+            memory states: tuple of memory content and usage tensor.
+
+        """
+        return (self._memory, self._current_size)
+
+    def from_states(self, states):
+        """Restore the memory from states.
+
+        Args:
+            states (tuple of Tensor): It is should be obtained from states().
+        """
+        if states is None:
+            self._memory = None
+            self._current_size = None
+            self._built = False
+        else:
+            alf.nest.assert_same_structure(states, self.state_spec)
+            self._memory, self._current_size = states
+            self._batch_size = self._memory.shape[0]
+            self._built = True
+
+    def memory(self):
+        return self._memory
+
+    def mask(self):
+        """Get the mask for the stored memory.
+
+        Returns:
+            Tensor: shape=(batch_size, size), dtype=torch.bool
+        """
+        return self._range < self._current_size.unsqueeze(-1)

@@ -65,6 +65,58 @@ class Identity(nn.Module):
         return x
 
 
+class Cast(nn.Module):
+    """A layer that cast the dtype of the elements of the input tensor."""
+
+    def __init__(self, dtype=torch.float32):
+        """
+        Args:
+            dtype (torch.dtype): desired type of the new tensor.
+        """
+        super().__init__()
+        self._dtype = dtype
+
+    def forward(self, x):
+        return x.to(self._dtype)
+
+
+class Transpose(nn.Module):
+    """A layer that perform the transpose of channels."""
+
+    def __init__(self, dim0=0, dim1=1):
+        """
+        Args:
+            dim0 (int): the first dimension to be transposed
+            dim1 (int): the second dimension to be transposed
+        """
+        super().__init__()
+        if dim0 >= 0:
+            dim0 += 1
+        self._dim0 = dim0
+        if dim1 >= 0:
+            dim1 += 1
+        self._dim1 = dim1
+
+    def forward(self, x):
+        return x.transpose(self._dim0, self._dim1)
+
+
+class Permute(nn.Module):
+    """A layer that perform the transpose of channels."""
+
+    def __init__(self, *dims):
+        """
+        Args:
+            *dims: The desired ordering of dimensions (not including batch dimension)
+        """
+        super().__init__()
+        dims = [1 + d for d in dims]
+        self._dims = [0] + dims
+
+    def forward(self, x):
+        return x.permute(*self._dims)
+
+
 class BatchSquash(object):
     """Facilitates flattening and unflattening batch dims of a tensor. Copied
     from `tf_agents`.
@@ -123,13 +175,15 @@ class OneHot(nn.Module):
 
 @gin.configurable
 class FixedDecodingLayer(nn.Module):
+    """A layer that uses a set of fixed basis for decoding the inputs."""
+
     def __init__(self,
                  input_size,
                  output_size,
                  basis_type="rbf",
                  sigma=1.,
                  tau=0.5):
-        """A layer that uses a set of fixed basis for decoding the inputs.
+        """
         Args:
             input_size (int): the size of input to be decoded, representing the
                 number of representation coefficients
@@ -244,6 +298,8 @@ class FixedDecodingLayer(nn.Module):
 
 @gin.configurable
 class FC(nn.Module):
+    """Fully connected layer."""
+
     def __init__(self,
                  input_size,
                  output_size,
@@ -305,6 +361,7 @@ class FC(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
+        """Initialize the parameters."""
         if self._kernel_initializer is None:
             variance_scaling_init(
                 self._weight.data,
@@ -322,6 +379,14 @@ class FC(nn.Module):
             self._bn.reset_parameters()
 
     def forward(self, inputs):
+        """Forward computation.
+
+        Args:
+            inputs (Tensor): its shape should be ``[batch_size, input_size]`` or
+                ``[batch_size, ..., input_size]``
+        Returns:
+            Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
+        """
         if inputs.dim() == 2 and self._use_bias:
             y = torch.addmm(self._bias, inputs, self._weight.t())
         else:
@@ -355,6 +420,8 @@ class FC(nn.Module):
 
 @gin.configurable
 class ParallelFC(nn.Module):
+    """Parallel FC layer."""
+
     def __init__(self,
                  input_size,
                  output_size,
@@ -366,8 +433,7 @@ class ParallelFC(nn.Module):
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
-        """Parallel FC layer.
-
+        """
         It is equivalent to ``n`` separate FC layers with the same
         ``input_size`` and ``output_size``.
 
@@ -484,6 +550,8 @@ class ParallelFC(nn.Module):
 
 @gin.configurable
 class Conv2D(nn.Module):
+    """2D Convolution Layer."""
+
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -530,20 +598,30 @@ class Conv2D(nn.Module):
             padding=padding,
             bias=use_bias)
 
-        if kernel_initializer is None:
-            variance_scaling_init(
-                self._conv2d.weight.data,
-                gain=kernel_init_gain,
-                nonlinearity=self._activation)
-        else:
-            kernel_initializer(self._conv2d.weight.data)
-
-        if use_bias:
-            nn.init.constant_(self._conv2d.bias.data, bias_init_value)
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._use_bias = use_bias
         if use_bn:
             self._bn = nn.BatchNorm2d(out_channels)
         else:
             self._bn = None
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        """Initialize the parameters."""
+        if self._kernel_initializer is None:
+            variance_scaling_init(
+                self._conv2d.weight.data,
+                gain=self._kernel_init_gain,
+                nonlinearity=self._activation)
+        else:
+            self._kernel_initializer(self._conv2d.weight.data)
+        if self._use_bias:
+            nn.init.constant_(self._conv2d.bias.data, self._bias_init_value)
+        if self._bn is not None:
+            self._bn.reset_parameters()
 
     def forward(self, img):
         y = self._conv2d(img)
@@ -1104,6 +1182,7 @@ class TransformerBlock(nn.Module):
     """Transformer residue block.
 
     The transformer residue block includes two residue blocks with layer normalization (LN):
+
     1. Multi-head attention (MHA) block
     2. Position-wise MLP
 
@@ -1134,33 +1213,44 @@ class TransformerBlock(nn.Module):
                  memory_size,
                  d_k=None,
                  d_v=None,
-                 relative_positional_encoding=True,
+                 d_ff=None,
+                 positional_encoding='abs',
                  add_positional_encoding=True):
         """
         Args:
             d_model (int): dimension of the model, same as d_model in [1]
             num_heads (int): the number of attention heads
             memory_size (int): maximal allowed sequence length
-            d_k (int): Dimension of key, same as d_k in [1]. If None, use ``d_model``
-            d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model``
-            relative_positional_encoding (bool): If True, use the relative positional
-                encoding proposed in [3]. If False, use absolute positional encoding.
+            d_k (int): Dimension of key, same as d_k in [1]. If None, use ``d_model // num_heads``
+            d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model // num_heads``
+            d_ff (int): Diemension of the MLP, same as d_ff in [1]. If None, use ``4 * d_model``
+            positional_encoding (bool): One of ['none', 'abs', 'rel']. If 'none',
+                no position encoding will be used. If 'abs', use absolute positional
+                encoding depending on the absolute position in the memory sequence,
+                same as that described in [1]. If 'rel', use the relative positional
+                encoding proposed in [3].
             add_positional_encoding (bool): If True, in addition to use positional
                 encoding for calculating the attention weights, the positional encoding
                 is also concatenated to the attention result so that the attention
                 result can keep the location information better. Note that using
                 this option will increase the number of parameters by about 25%.
+                This option cannot be used if positional_encoding is 'none'.
         """
         super().__init__()
         if d_k is None:
-            d_k = d_model
+            d_k = d_model // num_heads
         if d_v is None:
-            d_v = d_model
+            d_v = d_model // num_heads
+        if d_ff is None:
+            d_ff = 4 * d_model
         self._q_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
         self._k_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
         self._v_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_v))
         d_a = d_v
         if add_positional_encoding:
+            assert positional_encoding != 'none', (
+                "positional_encoding cannot be 'none' for "
+                "add_positional_encoding=True")
             d_a = d_v + d_k
         self._o_proj = nn.Parameter(torch.Tensor(num_heads * d_a, d_model))
 
@@ -1170,32 +1260,36 @@ class TransformerBlock(nn.Module):
         self._d_a = d_a
         self._num_heads = num_heads
         self._memory_size = memory_size
-        self._relative_positional_encoding = relative_positional_encoding
+        self._relative_positional_encoding = positional_encoding == 'rel'
         self._add_positional_encoding = add_positional_encoding
 
         self._attention_scale = 1. / d_k**0.5
         self._mlp = torch.nn.Sequential(
-            FC(d_model, d_model, torch.relu_), FC(d_model, d_model))
+            FC(d_model, d_ff, torch.relu_), FC(d_ff, d_model))
         self._norm1 = torch.nn.LayerNorm(d_model)
         self._norm2 = torch.nn.LayerNorm(d_model)
 
-        l = 2 * memory_size - 1 if relative_positional_encoding else memory_size
-        self._positional_encoding = nn.Parameter(torch.Tensor(l, d_k))
+        l = 2 * memory_size - 1 if positional_encoding == 'rel' else memory_size
+        self._positional_encoding = None
+        if positional_encoding != 'none':
+            self._positional_encoding = nn.Parameter(torch.Tensor(l, d_k))
         # bias over query vectors when calculating score with keys. Introduced in [3].
-        self._qk_bias = nn.Parameter(torch.Tensor(1, num_heads, 1, d_k))
+        self._qk_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
         # bias over query vectors when calculating score with positional encodings.
         # Introduced in [3].
-        self._qp_bias = nn.Parameter(torch.Tensor(1, num_heads, 1, d_k))
+        self._qp_bias = nn.Parameter(torch.Tensor(num_heads, d_k))
         self.reset_parameters()
 
     def reset_parameters(self):
+        """Initialize the parameters."""
         nn.init.xavier_uniform_(self._q_proj)
         nn.init.xavier_uniform_(self._k_proj)
         nn.init.xavier_uniform_(self._v_proj)
         nn.init.xavier_uniform_(self._o_proj)
         nn.init.zeros_(self._qk_bias)
         nn.init.zeros_(self._qp_bias)
-        nn.init.uniform_(self._positional_encoding, -0.1, 0.1)
+        if self._positional_encoding is not None:
+            nn.init.uniform_(self._positional_encoding, -0.1, 0.1)
         for l in self._mlp:
             l.reset_parameters()
 
@@ -1246,8 +1340,8 @@ class TransformerBlock(nn.Module):
         if mask is not None:
             if mask.ndim == 2:
                 mask = mask.unsqueeze(1)
-            # [B, 1, M, N]
-            mask = mask.unsqueeze(1)
+            # [B, M, 1, N]
+            mask = mask.unsqueeze(2)
 
         # B: batch_size
         # H: num_heads
@@ -1269,61 +1363,86 @@ class TransformerBlock(nn.Module):
         assert n <= self._memory_size
         assert m <= self._memory_size
 
-        # [B * M, d_model]
-        query_flattened = query.reshape(-1, d_model)
-        # [B * N, d_model]
-        memory_flattened = memory.reshape(-1, d_model)
-        # [B, H, M, d_k]
-        q = torch.matmul(query_flattened, self._q_proj).reshape(
-            batch_size, m, num_heads, d_k).transpose(1, 2)
-        # [B, H, N, d_k]
-        k = torch.matmul(memory_flattened, self._k_proj).reshape(
-            batch_size, n, num_heads, d_k).transpose(1, 2)
-        # [B, H, N, d_v]
-        v = torch.matmul(memory_flattened, self._v_proj).reshape(
-            batch_size, n, num_heads, d_v).transpose(1, 2)
-        # [B, H, M, N]
-        logits = torch.matmul(q + self._qk_bias, k.transpose(2, 3))
-        # [N, d_k]
-        positional_encoding = self._positional_encoding
-        if n < self._memory_size:
-            d = self._memory_size - n
-            if self._relative_positional_encoding:
-                positional_encoding = positional_encoding[d:-d]
-            else:
-                positional_encoding = positional_encoding[:-d]
+        # [B, M, H, d_k] <= [B, M, d_model] * [d_model, d_k]
+        q = torch.matmul(query, self._q_proj).reshape(batch_size, m, num_heads,
+                                                      d_k)
 
-        if self._relative_positional_encoding:
-            # positional_encoding[i, j, :] <= positional_encoding(n - 1 + i - j, d)
-            # [M, N, d_k]
-            positional_encoding = self._shift(positional_encoding, m)
-            # [B, H, M, N] <= [B, H, M, d_k] * [M, N, d_k]
-            positional_logits = torch.einsum(
-                'bhmd,mnd->bhmn', q + self._qp_bias, positional_encoding)
+        # We select different versions of calculation based on memory consumption
+        if n * d_k <= m * d_model:
+            #             computation                  memory
+            # k           N * H * d_k * d_model        N * H * d_k
+            # a           M * H * N * d_k              M * H * N
+
+            # [B, N, H, d_k] <= [B, N, d_model] * [d_model, H * d_k]
+            k = torch.matmul(memory, self._k_proj).reshape(
+                batch_size, n, num_heads, d_k)
+            # [B, M, H, N] <= [B, M, H, d_k] * [B, N, H, d_k]
+            logits = torch.einsum('bmhd,bnhd->bmhn', q + self._qk_bias, k)
         else:
-            # [B, H, M, N] <= [B, H, M, d_k] * [d_k, N]
-            positional_logits = torch.matmul(q + self._qp_bias,
-                                             positional_encoding.t())
-        logits = logits + positional_logits
-        # [B, H, M, N]
+            #             computation                  memory
+            # qk          M * H * d_k * d_model        M * H * d_model
+            # a           M * H * N * d_model          M * H * N
+
+            # [B, M, H, d_model] <= [B, M, H, d_k] * [d_model, H, d_k]
+            qk = torch.einsum('bmhd,ehd->bmhe', q + self._qk_bias,
+                              self._k_proj.reshape(d_model, num_heads, d_k))
+            # [B, M, H, N] <= [B, M, H, d_model] * [B, N, d_model]
+            logits = torch.einsum('bmhd,bnd->bmhn', qk, memory)
+
+        if self._positional_encoding is not None:
+            # [N, d_k]
+            positional_encoding = self._positional_encoding
+            if n < self._memory_size:
+                d = self._memory_size - n
+                if self._relative_positional_encoding:
+                    positional_encoding = positional_encoding[d:-d]
+                else:
+                    positional_encoding = positional_encoding[:-d]
+
+            if self._relative_positional_encoding:
+                # positional_encoding[i, j, :] <= positional_encoding(n - 1 + i - j, d)
+                # [M, N, d_k]
+                positional_encoding = self._shift(positional_encoding, m)
+            # [B, M, H, N] <= [B, M, H, d_k] * ([d_k, N] or [M, d_k, N])
+            positional_logits = torch.matmul(
+                q + self._qp_bias, positional_encoding.transpose(-2, -1))
+            # gradient can still be correctly calculated in this case even though
+            # inplace add is used.
+            logits.add_(positional_logits)
+
+        # [B, M, H, N]
         a = _masked_softmax(logits, mask)
-        # [B, H, M, d_v] <= [B, H, M, N] * [B, H, N, d_v]
-        att_result = torch.matmul(a, v)
+
+        if n * d_v <= m * d_model:
+            #             computation                  memory
+            # v           N * H * d_v * d_model        N * H * d_v
+            # att_result  M * H * N * d_v              M * H * d_v
+
+            # [B, N, H, d_v] <= [B, N, d_model] * [d_model, H * d_v]
+            v = torch.matmul(memory, self._v_proj).reshape(
+                batch_size, n, num_heads, d_v)
+            # [B, M, H, d_v] <= [B, M, H, N] * [B, N, H, d_v]
+            att_result = torch.einsum('bmhn,bnhd->bmhd', a, v)
+        else:
+            # computation                  memory
+            # att_result  M * H * N * d_model          M * H * d_model
+            # att_result  M * H * d_v * d_model        M * H * d_v
+
+            # [B, M, H, d_model] <= [B, M, H, N] * [B, 1, N, d_model]
+            att_result = torch.einsum('bmhn,bnd->bmhd', a, memory)
+            # [B, M, H, d_v] <= [B, M, H, d_model] * [d_model, H, d_v]
+            att_result = torch.einsum(
+                'bmhd,dhe->bmhe', att_result,
+                self._v_proj.reshape(d_model, self._num_heads, d_v))
 
         if self._add_positional_encoding:
-            if self._relative_positional_encoding:
-                # [B, H, M, d_k] <= [B, H, M, N] * [M, N, d_k]
-                att_pos = torch.einsum('bhmn,mnd->bhmd', a,
-                                       positional_encoding)
-            else:
-                # [B, H, M, d_k] <= [B, H, M, N] * [N, d_k]
-                att_pos = torch.matmul(a, positional_encoding)
-            # [B, H, M, d_v + d_k]
+            # [B, M, H, d_k] <= [B, M, H, N] * ([N, d_k] or [M, N, d_k])
+            att_pos = torch.matmul(a, positional_encoding)
+            # [B, M, H, d_v + d_k]
             att_result = torch.cat([att_result, att_pos], dim=-1)
 
         # [B, M, H * d_a]
-        att_result = att_result.transpose(1, 2).reshape(
-            batch_size, m, num_heads * d_a)
+        att_result = att_result.reshape(batch_size, m, num_heads * d_a)
         # [B, M, d_model]
         x = original_query + torch.matmul(att_result, self._o_proj)
         # [B, M, d_model]

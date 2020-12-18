@@ -15,7 +15,7 @@
 import torch
 
 import alf
-import alf.algorithms.memory as memory
+import alf.networks.memory as memory
 
 
 class MemoryTest(alf.test.TestCase):
