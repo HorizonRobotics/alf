@@ -167,12 +167,13 @@ class Agent(OnPolicyAlgorithm):
                     v = nv
                 if (not non_her_critic or
                         goal_generator._combine_her_nonher_value_weight > 0):
-                    v, s = rl_algorithm._critic_networks((obs, act), state=())
+                    hv, s = rl_algorithm._critic_networks((obs, act), state=())
+                    v = hv
                 if (non_her_critic and
                         goal_generator._combine_her_nonher_value_weight > 0):
-                    v = v * goal_generator._combine_her_nonher_value_weight + nv
-                if (not non_her_critic
-                        and rl_algorithm._num_critic_replicas > 1):
+                    _w = goal_generator._combine_her_nonher_value_weight
+                    v = hv * _w + nv * (1. - _w)
+                if rl_algorithm._num_critic_replicas > 1:
                     obs_dim = len(alf.nest.get_nest_shape(obs))
                     v = v.min(dim=obs_dim - 1)[0].unsqueeze(obs_dim - 1)
                 return v, s

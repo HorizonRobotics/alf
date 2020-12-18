@@ -805,21 +805,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             - state (nest): new goal generator state.
         """
         first_steps = step_type == StepType.FIRST
-        inc_steps = state.steps_since_last_plan + 1
         steps_since_last_plan = torch.where(
-            first_steps, torch.as_tensor(10000, dtype=torch.int32), inc_steps)
-        update_cond = steps_since_last_plan > self._max_replan_steps
+            first_steps, torch.tensor(0, dtype=torch.int32),
+            state.steps_since_last_plan + torch.tensor(1, dtype=torch.int32))
+        state = state._replace(steps_since_last_plan=steps_since_last_plan)
+        update_cond = (steps_since_last_plan >
+                       self._max_replan_steps) | first_steps
         if torch.all(update_cond) or (
             (self.control_aux or self._next_goal_on_success)
                 and torch.any(update_cond)):
             # Need to replan:
-            # This is an efficiency trick so planning only happens for all envs
-            # together at certain timesteps, instead of for some envs for every
-            # timestep.
-            state = state._replace(
-                steps_since_last_plan=torch.zeros_like(inc_steps))
-            return torch.ones(
-                step_type.shape, dtype=torch.uint8).unsqueeze(-1), state
+            return update_cond.unsqueeze(-1), state
         else:
             # Not replan:
             if self.control_aux:
@@ -830,8 +826,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 goals = torch.where(
                     (step_type == StepType.FIRST).unsqueeze(-1),
                     observation["desired_goal"], state.goal)
-            state = state._replace(
-                steps_since_last_plan=steps_since_last_plan, goal=goals)
+            state = state._replace(goal=goals)
             return None, state
 
     def post_process(self, observation, state, step_type):
@@ -913,10 +908,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
             ach = observation["achieved_goal"]
             desire = observation["desired_goal"]
-            ach_str = str(ach)
             if self.control_aux:
                 ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
                 desire = torch.cat((desire, observation["aux_desired"]), dim=1)
+            ach_str = str(ach)
             if _unreal(ach):
                 logging.info("Reached Unreal: %s", ach_str)
             if _unreal(desire):
