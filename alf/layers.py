@@ -1181,7 +1181,10 @@ class TransformerBlock(nn.Module):
 
         l = 2 * memory_size - 1 if relative_positional_encoding else memory_size
         self._positional_encoding = nn.Parameter(torch.Tensor(l, d_k))
+        # bias over query vectors when calculating score with keys. Introduced in [3].
         self._qk_bias = nn.Parameter(torch.Tensor(1, num_heads, 1, d_k))
+        # bias over query vectors when calculating score with positional encodings.
+        # Introduced in [3].
         self._qp_bias = nn.Parameter(torch.Tensor(1, num_heads, 1, d_k))
         self.reset_parameters()
 
