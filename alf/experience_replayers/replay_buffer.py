@@ -875,6 +875,20 @@ def hindsight_relabel_fn(buffer,
         result = result._replace(discount=discount)
         result = result._replace(step_type=step_type)
 
+    replan = ()
+    if hasattr(result.rollout_info, "goal_generator"):
+        replan = alf.nest.get_field(result,
+                                    "rollout_info.goal_generator.replan")
+    if replan != ():
+        # If any of the subsequent steps are replanned, set it as LAST to
+        # avoid training previous steps with switched/replanned goals.
+        # It's fine to use across replan boundary trajectories for training in HER.
+        step_type = result.step_type
+        step_type[:, 1:] = torch.where(replan[:, 1:] & ~her_cond.unsqueeze(1),
+                                       torch.tensor(ds.StepType.LAST),
+                                       step_type[:, 1:])
+        result = result._replace(step_type=step_type)
+
     if sparse_reward:
         relabeled_rewards = suite_socialbot.transform_reward_tensor(
             relabeled_rewards)

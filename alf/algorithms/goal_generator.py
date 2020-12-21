@@ -31,11 +31,11 @@ import alf.utils.common as common
 GoalState = namedtuple(
     "GoalState", [
         "goal", "full_plan", "steps_since_last_plan", "subgoals_index",
-        "steps_since_last_goal", "final_goal"
+        "steps_since_last_goal", "final_goal", "replan"
     ],
     default_value=())
 GoalInfo = namedtuple(
-    "GoalInfo", ["goal", "original_goal", "final_goal", "loss"],
+    "GoalInfo", ["goal", "original_goal", "final_goal", "replan", "loss"],
     default_value=())
 
 
@@ -203,6 +203,7 @@ class ConditionalGoalGenerator(RLAlgorithm):
             if "final_goal" in exp.observation:
                 state = state._replace(
                     final_goal=exp.observation["final_goal"])
+            state = state._replace(replan=exp.rollout_info.replan)
         elif self._train_with_goal == 'orig':
             goal = exp.rollout_info.original_goal
         else:
@@ -210,7 +211,8 @@ class ConditionalGoalGenerator(RLAlgorithm):
         return AlgStep(
             output=goal,
             state=state,
-            info=GoalInfo(goal=goal, final_goal=state.final_goal))
+            info=GoalInfo(
+                goal=goal, final_goal=state.final_goal, replan=state.replan))
 
     def calc_loss(self, experience, info: GoalInfo):
         return LossInfo()
@@ -509,6 +511,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if mdim and self._plan_with_goal_value_only:
                 values = values[..., :-1]  # last dim is distraction reward
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
+            # values = torch.min(values, torch.tensor(1.))  # is this needed?
             values = torch.log(torch.max(values, torch.tensor(1.e-10)))
             # Multiply all dims (sum after log):
             # if mdim and not self._plan_with_goal_value_only:
@@ -808,9 +811,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         steps_since_last_plan = torch.where(
             first_steps, torch.tensor(0, dtype=torch.int32),
             state.steps_since_last_plan + torch.tensor(1, dtype=torch.int32))
-        state = state._replace(steps_since_last_plan=steps_since_last_plan)
         update_cond = (steps_since_last_plan >
                        self._max_replan_steps) | first_steps
+        steps_since_last_plan = torch.where(update_cond,
+                                            torch.tensor(0, dtype=torch.int32),
+                                            steps_since_last_plan)
+        state = state._replace(
+            steps_since_last_plan=steps_since_last_plan, replan=update_cond)
         if torch.all(update_cond) or (
             (self.control_aux or self._next_goal_on_success)
                 and torch.any(update_cond)):
