@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl import logging
 from absl.testing import parameterized
 import torch
+import torch.nn as nn
 import numpy as np
 
 import alf
@@ -268,6 +270,151 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
             torch.mm(dec.weight, dec.weight.transpose(1, 0)),
             torch.eye(dec.weight.shape[0]),
             epsilon=1e-6)
+
+    def test_transformer_block_shift(self):
+        n = 32
+        m = 7
+        l = 2 * n - 1
+        d = 24
+        x = torch.rand(l, d)
+        y = alf.layers.TransformerBlock._shift(x, m)
+        for i in range(m):
+            for j in range(n):
+                self.assertEqual(y[i, j], x[n - 1 + i - j, :])
+
+    @parameterized.parameters(0, 1, 2, 3)
+    def test_transformer_block(self, task_type=2):
+        batch_size = 100
+        max_len = 32
+        d_model = 64
+        layers = [alf.layers.FC(4, d_model, torch.relu_)]
+        for i in range(2):
+            layers.append(
+                alf.layers.TransformerBlock(
+                    d_model=d_model,
+                    d_k=d_model,
+                    d_v=d_model,
+                    num_heads=3,
+                    memory_size=max_len,
+                    relative_positional_encoding=task_type >= 3))
+        layers.append(alf.layers.FC(d_model, 1))
+        model = nn.Sequential(*layers)
+
+        def _get_batch_content_based(batch_size):
+            """
+            A simple memory task:
+            In the first half of the sequence x[n] (i, j < max_len // 2):
+                one of x[n, i, 0] (over i) is set to 1, which means type 0 value is x[n, i, 3]
+                one of x[n, j, 1] (over j) is set to 1, which means type 1 value is x[n, j, 3]
+            In the second half of the sequence (k >= max_len // 2)
+                x[n, k, type] = 1 means the desired result for y[n, k] is the value of the type
+            x[n, i, 2] is used for indicating whether i is at the second half or not.
+            This feature is not necessary for successfully train the task, but it
+            make the training much faster, which is required for a unittest.
+            """
+            x = torch.zeros(batch_size, max_len, 4)
+            x[:, :, 3] = torch.rand(batch_size, max_len)
+            # indicating second half
+            x[:, max_len // 2:, 2] = 1
+            index = torch.randint(max_len // 2, size=(batch_size, 2))
+            bindex = torch.arange(batch_size)
+            x[bindex, index[:, 0], 0] = 1
+            x[bindex, index[:, 1], 1] = 1
+            read_type = torch.randint(2, size=(batch_size, max_len // 2))
+            read_index = max_len // 2 + torch.arange(max_len // 2).unsqueeze(0)
+
+            bindex = bindex.unsqueeze(-1)
+            x[bindex, read_index, read_type] = 1
+            y = torch.zeros(batch_size, max_len)
+            y[bindex, read_index] = x[bindex, index[bindex, read_type], 3]
+            return x, y
+
+        def _get_batch_position_based(batch_size):
+            """
+            A simple memory task:
+            In the second half of the sequence (k >= max_len // 2)
+                x[n, k, type] = 1 means the desired result for y[n, k] is x[n, 4 + type, 3]
+            x[n, i, 2] is used for indicating whether i is at the second half or not.
+            """
+            x = torch.zeros(batch_size, max_len, 4)
+            x[:, :, 3] = torch.rand(batch_size, max_len)
+            # indicating second half
+            x[:, max_len // 2:, 2] = 1
+            read_type = torch.randint(2, size=(batch_size, max_len // 2))
+            read_index = max_len // 2 + torch.arange(max_len // 2).unsqueeze(0)
+            bindex = torch.arange(batch_size).unsqueeze(-1)
+            x[bindex, read_index, read_type] = 1
+            y = torch.zeros(batch_size, max_len)
+            y[bindex, read_index] = x[bindex, 4 + read_type, 3]
+            return x, y
+
+        def _get_batch_position_target(batch_size):
+            """
+            A simple memory task:
+            In the first half of the sequence x[n] (i, j < max_len // 2):
+                one of x[n, i, 0] (over i) is set to 1, which means type 0 is at location i
+                one of x[n, j, 1] (over j) is set to 1, which means type 1 is at location j
+            In the second half of the sequence (k >= max_len // 2)
+                x[n, k, type] = 1 means the desired result for y[n, k] is the location of the type
+            x[n, i, 2] is used for indicating whether i is at the second half or not.
+            """
+            x = torch.zeros(batch_size, max_len, 4)
+            #x[:, :, 3] = torch.rand(batch_size, max_len)
+            # indicating second half
+            x[:, max_len // 2:, 2] = 1
+            index = torch.randint(max_len // 2, size=(batch_size, 2))
+            bindex = torch.arange(batch_size)
+            x[bindex, index[:, 0], 0] = 1
+            x[bindex, index[:, 1], 1] = 1
+            read_type = torch.randint(2, size=(batch_size, max_len // 2))
+            read_index = max_len // 2 + torch.arange(max_len // 2).unsqueeze(0)
+
+            bindex = bindex.unsqueeze(-1)
+            x[bindex, read_index, read_type] = 1
+            y = torch.zeros(batch_size, max_len)
+            y[bindex, read_index] = index[bindex, read_type].to(torch.float32)
+            return x, y
+
+        def _get_batch_relative_position_based(batch_size):
+            """
+            A simple memory task:
+            In the second half of the sequence (k >= max_len // 2)
+                x[n, k, type] = 1 means the desired result for y[n, k] is x[n, k - 8 - type, 3]
+            x[n, i, 2] is used for indicating whether i is at the second half or not.
+            """
+            x = torch.zeros(batch_size, max_len, 4)
+            x[:, :, 3] = torch.rand(batch_size, max_len)
+            # indicating second half
+            x[:, max_len // 2:, 2] = 1
+            read_type = torch.randint(2, size=(batch_size, max_len // 2))
+            read_index = max_len // 2 + torch.arange(max_len // 2).unsqueeze(0)
+            bindex = torch.arange(batch_size).unsqueeze(-1)
+            x[bindex, read_index, read_type] = 1
+            y = torch.zeros(batch_size, max_len)
+            y[bindex, read_index] = x[bindex, read_index - 8 - read_type, 3]
+            return x, y
+
+        get_batch = [
+            _get_batch_content_based, _get_batch_position_based,
+            _get_batch_position_target, _get_batch_relative_position_based
+        ][task_type]
+
+        iters = [200, 500, 300, 500][task_type]
+        optimizer = torch.optim.Adam(list(model.parameters()), lr=1e-3)
+        for i in range(iters):
+            optimizer.zero_grad()
+            x, y = get_batch(batch_size)
+            pred = model(x).squeeze(-1)
+            loss = torch.mean((pred - y)**2)
+            logging.log_every_n(
+                logging.INFO,
+                "%s loss=%s" % (i, loss.detach().cpu().numpy()),
+                n=100)
+            loss.backward()
+            optimizer.step()
+
+        logging.info("loss=%s" % loss.detach().cpu().numpy())
+        self.assertLess(loss, 0.01)
 
 
 if __name__ == "__main__":

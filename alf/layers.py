@@ -1092,3 +1092,246 @@ class BottleneckBlock(nn.Module):
         x = torch.zeros(1, *input_shape)
         y = self.forward(x)
         return y.shape[1:]
+
+
+def _masked_softmax(logits, mask, dim=-1):
+    if mask is not None:
+        logits.masked_fill_(mask, -float('inf'))
+    return nn.functional.softmax(logits, dim=dim)
+
+
+class TransformerBlock(nn.Module):
+    """Transformer residue block.
+
+    The transformer residue block includes two residue blocks with layer normalization (LN):
+    1. Multi-head attention (MHA) block
+    2. Position-wise MLP
+
+    The overall computation is:
+
+    .. code-block:: python
+
+        y = x + MHA(LN(x))
+        z = y + MLP(LN(y))
+
+    The original transformer is described in:
+    [1]. Ashish Vaswani et. al. Attention Is All You Need
+
+    This implementation is a variation which places layer norm at a different
+    location, which is proposed in:
+    [2]. Ruibin XiongOn et. al. Layer Normalization in the Transformer Architecture
+
+    We also support the relative positional encoding proposed in
+    [3] Zihang Dai et. al. Transformer-XL: Attentive language models beyond a fixed-length context.
+
+    In this implementation, the positional encodings are learnable parameter instead
+    of the sinusoidal matrix proposed in [1]
+    """
+
+    def __init__(self,
+                 d_model,
+                 num_heads,
+                 memory_size,
+                 d_k=None,
+                 d_v=None,
+                 relative_positional_encoding=True,
+                 add_positional_encoding=True):
+        """
+        Args:
+            d_model (int): dimension of the model, same as d_model in [1]
+            num_heads (int): the number of attention heads
+            memory_size (int): maximal allowed sequence length
+            d_k (int): Dimension of key, same as d_k in [1]. If None, use ``d_model``
+            d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model``
+            relative_positional_encoding (bool): If True, use the relative positional
+                encoding proposed in [3]. If False, use absolute positional encoding.
+            add_positional_encoding (bool): If True, in addition to use positional
+                encoding for calculating the attention weights, the positional encoding
+                is also concatenated to the attention result so that the attention
+                result can keep the location information better. Note that using
+                this option will increase the number of parameters by about 25%.
+        """
+        super().__init__()
+        if d_k is None:
+            d_k = d_model
+        if d_v is None:
+            d_v = d_model
+        self._q_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
+        self._k_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_k))
+        self._v_proj = nn.Parameter(torch.Tensor(d_model, num_heads * d_v))
+        d_a = d_v
+        if add_positional_encoding:
+            d_a = d_v + d_k
+        self._o_proj = nn.Parameter(torch.Tensor(num_heads * d_a, d_model))
+
+        self._d_model = d_model
+        self._d_k = d_k
+        self._d_v = d_v
+        self._d_a = d_a
+        self._num_heads = num_heads
+        self._memory_size = memory_size
+        self._relative_positional_encoding = relative_positional_encoding
+        self._add_positional_encoding = add_positional_encoding
+
+        self._attention_scale = 1. / d_k**0.5
+        self._mlp = torch.nn.Sequential(
+            FC(d_model, d_model, torch.relu_), FC(d_model, d_model))
+        self._norm1 = torch.nn.LayerNorm(d_model)
+        self._norm2 = torch.nn.LayerNorm(d_model)
+
+        l = 2 * memory_size - 1 if relative_positional_encoding else memory_size
+        self._positional_encoding = nn.Parameter(torch.Tensor(l, d_k))
+        # bias over query vectors when calculating score with keys. Introduced in [3].
+        self._qk_bias = nn.Parameter(torch.Tensor(1, num_heads, 1, d_k))
+        # bias over query vectors when calculating score with positional encodings.
+        # Introduced in [3].
+        self._qp_bias = nn.Parameter(torch.Tensor(1, num_heads, 1, d_k))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self._q_proj)
+        nn.init.xavier_uniform_(self._k_proj)
+        nn.init.xavier_uniform_(self._v_proj)
+        nn.init.xavier_uniform_(self._o_proj)
+        nn.init.zeros_(self._qk_bias)
+        nn.init.zeros_(self._qp_bias)
+        nn.init.uniform_(self._positional_encoding, -0.1, 0.1)
+        for l in self._mlp:
+            l.reset_parameters()
+
+    @staticmethod
+    def _shift(x, m):
+        """
+        y[i, j, :] <= x[n - 1 + i - j, :] for 0<=i<m, 0<=j<n
+        Args:
+            x: [2 * N - 1, d]
+        Returns:
+            [M, N, d]
+        """
+        n = (x.shape[0] + 1) // 2
+        # [M, N], index[i, j] = n - 1 + i - j
+        index = n - 1 + torch.arange(m).unsqueeze(-1) - torch.arange(n)
+        return x[index]
+
+    def forward(self, memory, query=None, mask=None):
+        """Forward computation.
+
+        Notation: B: batch_size, N: length of ``memory``, M: length of ``query``
+        Args:
+            memory (Tensor): The shape is [B, N, d_model]
+            query (Tensor): The shape [B, d_model] or [B, M, d_model]. If None,
+                will use memory as query
+            mask (Tensor|None): A tensor for indicating which slot in ``memory``
+                will be used. Its shape can be [B, N] or [B, M, N]. If the shape
+                is [B, N], mask[b,n] indicates whether to use memory[b, n] for
+                calculating the attention result for ``query[b]``. If the shape is
+                [B, M, N], maks[b, m, n] indicates whether to use meory[b, n] for
+                calculating the attention result for ``query[b, m]``.
+        Returns:
+            Tensor: the shape is same as query.
+        """
+        need_squeeze = False
+        if query is None:
+            original_query = memory
+            memory = self._norm1(memory)
+            query = memory
+        else:
+            if query.ndim == 2:
+                query = query.unsqueeze(1)
+                need_squeeze = True
+            original_query = query
+            query = self._norm1(query)
+            memory = self._norm1(memory)
+
+        if mask is not None:
+            if mask.ndim == 2:
+                mask = mask.unsqueeze(1)
+            # [B, 1, M, N]
+            mask = mask.unsqueeze(1)
+
+        # B: batch_size
+        # H: num_heads
+        # N: memory_size
+        # M: query.shape[1]
+        # L: 2N-1 if relative_positional_encoding else N
+        batch_size = query.shape[0]
+        m = query.shape[1]
+        n = memory.shape[1]
+        d_k = self._d_k
+        d_v = self._d_v
+        d_model = self._d_model
+        d_a = self._d_a
+        num_heads = self._num_heads
+
+        assert query.shape[0] == memory.shape[0]
+        assert query.shape[2] == d_model
+        assert memory.shape[2] == d_model
+        assert n <= self._memory_size
+        assert m <= self._memory_size
+
+        # [B * M, d_model]
+        query_flattened = query.reshape(-1, d_model)
+        # [B * N, d_model]
+        memory_flattened = memory.reshape(-1, d_model)
+        # [B, H, M, d_k]
+        q = torch.matmul(query_flattened, self._q_proj).reshape(
+            batch_size, m, num_heads, d_k).transpose(1, 2)
+        # [B, H, N, d_k]
+        k = torch.matmul(memory_flattened, self._k_proj).reshape(
+            batch_size, n, num_heads, d_k).transpose(1, 2)
+        # [B, H, N, d_v]
+        v = torch.matmul(memory_flattened, self._v_proj).reshape(
+            batch_size, n, num_heads, d_v).transpose(1, 2)
+        # [B, H, M, N]
+        logits = torch.matmul(q + self._qk_bias, k.transpose(2, 3))
+        # [N, d_k]
+        positional_encoding = self._positional_encoding
+        if n < self._memory_size:
+            d = self._memory_size - n
+            if self._relative_positional_encoding:
+                positional_encoding = positional_encoding[d:-d]
+            else:
+                positional_encoding = positional_encoding[:-d]
+
+        if self._relative_positional_encoding:
+            # positional_encoding[i, j, :] <= positional_encoding(n - 1 + i - j, d)
+            # [M, N, d_k]
+            positional_encoding = self._shift(positional_encoding, m)
+            # [B, H, M, N] <= [B, H, M, d_k] * [M, N, d_k]
+            positional_logits = torch.einsum(
+                'bhmd,mnd->bhmn', q + self._qp_bias, positional_encoding)
+        else:
+            # [B, H, M, N] <= [B, H, M, d_k] * [d_k, N]
+            positional_logits = torch.matmul(q + self._qp_bias,
+                                             positional_encoding.t())
+        logits = logits + positional_logits
+        # [B, H, M, N]
+        a = _masked_softmax(logits, mask)
+        # [B, H, M, d_v] <= [B, H, M, N] * [B, H, N, d_v]
+        att_result = torch.matmul(a, v)
+
+        if self._add_positional_encoding:
+            if self._relative_positional_encoding:
+                # [B, H, M, d_k] <= [B, H, M, N] * [M, N, d_k]
+                att_pos = torch.einsum('bhmn,mnd->bhmd', a,
+                                       positional_encoding)
+            else:
+                # [B, H, M, d_k] <= [B, H, M, N] * [N, d_k]
+                att_pos = torch.matmul(a, positional_encoding)
+            # [B, H, M, d_v + d_k]
+            att_result = torch.cat([att_result, att_pos], dim=-1)
+
+        # [B, M, H * d_a]
+        att_result = att_result.transpose(1, 2).reshape(
+            batch_size, m, num_heads * d_a)
+        # [B, M, d_model]
+        x = original_query + torch.matmul(att_result, self._o_proj)
+        # [B, M, d_model]
+        y = self._mlp(self._norm2(x))
+        # [B, M, d_model]
+        z = x + y
+
+        if need_squeeze:
+            z = z.squeeze(1)
+
+        return z
