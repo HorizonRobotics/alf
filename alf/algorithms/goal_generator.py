@@ -679,8 +679,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             # In reality, subgoals_index can be different for different ENVs.  Here,
             # we simply plan all subgoals, and choose the subgoal specified by
             # the subgoals_index.
-            # TODO: Fix the achieved subgoal's dimensions after CEM sampling and
-            # only sample unachieved states.
+            # TODO: only calc costs for subgoals to be achieved.
             cap_subgoals_index = torch.min(
                 torch.as_tensor(self._num_subgoals, dtype=torch.int32),
                 state.subgoals_index)
@@ -808,9 +807,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             - state (nest): new goal generator state.
         """
         first_steps = step_type == StepType.FIRST
-        steps_since_last_plan = torch.where(
-            first_steps, torch.tensor(0, dtype=torch.int32),
-            state.steps_since_last_plan + torch.tensor(1, dtype=torch.int32))
+        steps_since_last_plan = state.steps_since_last_plan + torch.tensor(
+            1, dtype=torch.int32)
         update_cond = (steps_since_last_plan >
                        self._max_replan_steps) | first_steps
         steps_since_last_plan = torch.where(update_cond,
@@ -894,7 +892,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             state = state._replace(
                 goal=new_goal,
                 subgoals_index=subgoals_index,
-                steps_since_last_goal=new_sg_steps)
+                steps_since_last_goal=new_sg_steps,
+                replan=state.replan | advanced_goal)  # switched goal
 
         if self._final_goal:
             state = state._replace(final_goal=final_goal.float().unsqueeze(1))
@@ -990,4 +989,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar(
                 "planner/steps_since_last_plan." + common.exe_mode_name(),
                 torch.mean(state.steps_since_last_plan.float()))
+            alf.summary.scalar(
+                "planner/switched_goals." + common.exe_mode_name(),
+                torch.mean(state.replan.float()))
         return new_goal, state

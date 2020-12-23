@@ -216,6 +216,15 @@ class Agent(OnPolicyAlgorithm):
         # Need to make sure that no submodules use ``self._use_rollout_state``
         # before this line.
         self.use_rollout_state = self.use_rollout_state
+        self._goal_metrics = []
+        if isinstance(goal_generator, SubgoalPlanningGoalGenerator):
+            metric_buf_size = max(10, self._env.batch_size)
+            for i in range(goal_generator.num_subgoals + 3):
+                metric = alf.metrics.GoalAchievedMetric(
+                    batch_size=env.batch_size,
+                    buffer_size=metric_buf_size,
+                    goal_index=i)
+                self._goal_metrics.append(metric)
 
     def _control_aux(self, goal_generator=None):
         """Whether goal generator will output aux_desired to guide rl.
@@ -451,3 +460,63 @@ class Agent(OnPolicyAlgorithm):
         return new_exp._replace(
             rollout_info=exp.rollout_info._replace(rl=new_exp.rollout_info),
             rollout_info_field=exp.rollout_info_field)
+
+    def summarize_rollout(self, experience):
+        """Generate summaries for rollout.
+
+        Args:
+            experience (Experience): experience collected from ``rollout_step()``.
+        """
+        super().summarize_rollout(experience)
+        if not alf.summary.should_record_summaries() or not hasattr(
+                experience.state,
+                "goal_generator") or experience.state.goal_generator == ():
+            return
+        if experience.state.goal_generator.replan != ():
+            alf.summary.scalar(
+                "rollout/switched_goals",
+                torch.mean(experience.state.goal_generator.replan.float()))
+        if experience.state.goal_generator.steps_since_last_plan != ():
+            alf.summary.scalar(
+                "rollout/steps_since_last_plan",
+                torch.mean(experience.state.goal_generator.
+                           steps_since_last_plan.float()))
+            alf.summary.scalar(
+                "rollout/steps_since_last_goal",
+                torch.mean(experience.state.goal_generator.
+                           steps_since_last_goal.float()))
+        if experience.state.goal_generator.final_goal != ():
+            alf.summary.scalar(
+                "rollout/final_goal_rate",
+                torch.mean(experience.state.goal_generator.final_goal.float()))
+        if experience.state.goal_generator.subgoals_index != () and isinstance(
+                self._goal_generator, SubgoalPlanningGoalGenerator):
+            for i in range(self._goal_generator.num_subgoals + 3):
+                alf.summary.scalar(
+                    "rollout/subgoals_index_{}_rate".format(i),
+                    torch.mean(
+                        (experience.state.goal_generator.subgoals_index == i
+                         ).float()))
+
+    def summarize_metrics(self):
+        """Generate summaries for goal metrics.
+        """
+        if not alf.summary.should_record_summaries():
+            return
+        super().summarize_metrics()
+        if self._goal_metrics:
+            for metric in self._goal_metrics:
+                metric.gen_summaries(
+                    train_step=alf.summary.get_global_counter(),
+                    step_metrics=self._metrics[:2])
+
+    def observe_for_replay(self, exp):
+        r"""Observe experience for recording metrics.
+
+        Args:
+            exp (experience): the current exp during ``unroll()``.
+        """
+        super().observe_for_replay(exp)
+        if self._goal_metrics:
+            for metric in self._goal_metrics:
+                metric(exp)

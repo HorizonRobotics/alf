@@ -72,6 +72,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  goal_value_net_ctor=None,
                  use_non_her_critic=False,
                  keep_her_rate=0.,
+                 down_sample_high_value=1.,
                  use_parallel_network=False,
                  reward_weights=None,
                  env=None,
@@ -196,6 +197,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._non_her_critic = None
         self._non_her_target = None
         self._keep_her_rate = keep_her_rate
+        self._down_sample_high_value = down_sample_high_value
         if use_non_her_critic:
             self._non_her_critic = critic_network_ctor(
                 input_tensor_spec=(observation_spec, action_spec),
@@ -423,6 +425,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             if experience.batch_info != ():
                 discard = torch.rand(loss.shape[1]) >= self._keep_her_rate
                 loss[:, experience.batch_info.her & discard] = 0.
+            if self._down_sample_high_value < 1:
+                q = train_info.critic.non_her_q_values[0, :]
+                if q.ndim == 2:
+                    q = q[:,
+                          0]  # assuming first dim of multi-dim reward is goal reward.
+                batch_size = q.shape[0]
+                bottom_v, _ = torch.topk(
+                    q, int(batch_size * 0.1), largest=False, sorted=True)
+                loss[:,
+                     (torch.rand(batch_size) >= self._down_sample_high_value) &
+                     (q > bottom_v[-1])] = 0.
             critic_loss += loss
 
         if (experience.batch_info != ()

@@ -306,3 +306,27 @@ class AverageEnvInfoMetric(AverageEpisodicSumMetric):
 
     def _extract_metric_values(self, time_step):
         return time_step.env_info
+
+
+class GoalAchievedMetric(AverageEpisodicSumMetric):
+    """Metric for computing the average return."""
+
+    def __init__(self,
+                 name='GoalAchieved',
+                 prefix='Metrics',
+                 dtype=torch.float32,
+                 batch_size=1,
+                 buffer_size=10,
+                 goal_index=0):
+        super().__init__(
+            name="{}_{}".format(name, goal_index),
+            dtype=dtype,
+            prefix=prefix,
+            batch_size=batch_size,
+            buffer_size=buffer_size)
+        self._goal_index = goal_index
+
+    def _extract_metric_values(self, exp):
+        """Accumulate immediate rewards to get episodic return."""
+        return exp.state.goal_generator.subgoals_index.cpu(
+        ) == self._goal_index
