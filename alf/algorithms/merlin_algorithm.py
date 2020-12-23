@@ -27,13 +27,13 @@ from alf.algorithms.actor_critic_algorithm import ActorCriticInfo
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.decoding_algorithm import DecodingAlgorithm
-from alf.networks.memory import MemoryWithUsage
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.vae import VariationalAutoEncoder
 from alf.data_structures import TimeStep, AlgStep, LossInfo
 from alf.networks import EncodingNetwork, LSTMEncodingNetwork
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.networks.action_encoder import SimpleActionEncoder
+from alf.networks.memory import MemoryWithUsage
 from alf.nest import flatten, map_structure
 from alf.utils import common, dist_utils, math_ops
 

@@ -357,7 +357,7 @@ class MemoryWithUsage(Memory):
 class FIFOMemory(Memory):
     """A Simple FIFO memory.
 
-    Whwn new memory are written, the oldest memory slots are removed.
+    When new memory is written, the oldest memory slots are removed.
     """
 
     def __init__(self, dim, size, name="FIFOMemory"):

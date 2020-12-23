@@ -81,12 +81,16 @@ class Cast(nn.Module):
 
 
 class Transpose(nn.Module):
-    """A layer that perform the transpose of channels."""
+    """A layer that perform the transpose of channels.
+
+    Note that batch dimention is not considered for transpose. This means that
+    dim0=0 means the dimension after batch dimension.
+    """
 
     def __init__(self, dim0=0, dim1=1):
         """
         Args:
-            dim0 (int): the first dimension to be transposed
+            dim0 (int): the first dimension to be transposed.
             dim1 (int): the second dimension to be transposed
         """
         super().__init__()
@@ -102,7 +106,7 @@ class Transpose(nn.Module):
 
 
 class Permute(nn.Module):
-    """A layer that perform the transpose of channels."""
+    """A layer that perform the permutation of channels."""
 
     def __init__(self, *dims):
         """
@@ -1224,7 +1228,7 @@ class TransformerBlock(nn.Module):
             d_k (int): Dimension of key, same as d_k in [1]. If None, use ``d_model // num_heads``
             d_v (int): Dimension of value, same as d_v in [1]. If None, use ``d_model // num_heads``
             d_ff (int): Diemension of the MLP, same as d_ff in [1]. If None, use ``4 * d_model``
-            positional_encoding (bool): One of ['none', 'abs', 'rel']. If 'none',
+            positional_encoding (str): One of ['none', 'abs', 'rel']. If 'none',
                 no position encoding will be used. If 'abs', use absolute positional
                 encoding depending on the absolute position in the memory sequence,
                 same as that described in [1]. If 'rel', use the relative positional
