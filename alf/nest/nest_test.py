@@ -23,7 +23,7 @@ import alf.nest as nest
 import cnest
 from alf.data_structures import namedtuple
 from alf.tensor_specs import TensorSpec
-from alf.nest.utils import NestConcat, NestSelectiveConcat, NestSum, NestMultiply
+from alf.nest.utils import NestConcat, NestSum, NestMultiply
 from alf.nest import transform_nest
 
 NTuple = namedtuple('NTuple', ['a', 'b'])  # default value will be None
@@ -253,12 +253,13 @@ class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
         (NTuple(a=dict(x=1, y=0), b=1), torch.zeros((2, 13))),
         (NTuple(a=dict(x=0, y=1), b=1), torch.zeros((2, 14))),
         (NTuple(a=dict(x=1, y=1), b=1), torch.zeros((2, 17))),
+        (None, torch.zeros((2, 17))),
     )
-    def test_nest_selective_concat_tensors(self, ind, expected):
+    def test_nest_selective_concat_tensors(self, mask, expected):
         ntuple = NTuple(
             a=dict(x=torch.zeros((2, 3)), y=torch.zeros((2, 4))),
             b=torch.zeros((2, 10)))
-        ret = NestSelectiveConcat(ind)(ntuple)
+        ret = NestConcat(mask)(ntuple)
         self.assertTensorEqual(ret, expected)
 
     @parameterized.parameters(
@@ -269,12 +270,13 @@ class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
         (NTuple(a=dict(x=1, y=0), b=1), TensorSpec((2, 13))),
         (NTuple(a=dict(x=0, y=1), b=1), TensorSpec((2, 14))),
         (NTuple(a=dict(x=1, y=1), b=1), TensorSpec((2, 17))),
+        (None, TensorSpec((2, 17))),
     )
-    def test_nest_selective_concat_specs(self, ind, expected):
+    def test_nest_selective_concat_specs(self, mask, expected):
         ntuple = NTuple(
             a=dict(x=TensorSpec((2, 3)), y=TensorSpec((2, 4))),
             b=TensorSpec((2, 10)))
-        ret = NestSelectiveConcat(ind)(ntuple)
+        ret = NestConcat(mask)(ntuple)
         self.assertEqual(ret, expected)
 
 
