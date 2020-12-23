@@ -88,29 +88,33 @@ class NestConcat(NestCombiner):
 
 @gin.configurable
 class NestSelectiveConcat(NestCombiner):
-    def __init__(self, ind, dim=-1, name="NestSelectiveConcat"):
+    def __init__(self, nest_mask, dim=-1, name="NestSelectiveConcat"):
         """A combiner for selecting from the tensors in a nest and then
         concatenating them along a specified axis. It assumes that all the
         selected tensors have the same tensor spec. Can be used as a
         preprocessing combiner in ``EncodingNetwork``.
 
         Args:
-            ind (int|list[ind]): the index or a list of indices indicating
-                which of the tensors to be selected
+            nest_mask (nest): nest structured mask indicating which of the
+                tensors in the nest to be selected or not, indicated by a
+                value of True/False (1/0). Note that the structure of the mask
+                should be the same as the nest of data to apply this operator on.
             dim (int): the dim along which the tensors are concatenated
             name (str):
         """
         super(NestSelectiveConcat, self).__init__(name)
-        from alf.utils.common import as_list
-        self._ind = as_list(ind)
+        self._flat_mask = nest.flatten(nest_mask)
         self._dim = dim
 
     def _combine_flat(self, tensors):
+        assert len(
+            self._flat_mask) == len(tensors), ("incompatible structures "
+                                               "between mask and data nest")
+
         selected_tensors = []
-        assert min(self._ind) >= 0 and max(self._ind) < len(tensors), \
-                "invalid index for tensor selection"
-        for i in self._ind:
-            selected_tensors.append(tensors[i])
+        for i, mask_value in enumerate(self._flat_mask):
+            if mask_value:
+                selected_tensors.append(tensors[i])
         return torch.cat(selected_tensors, dim=self._dim)
 
 

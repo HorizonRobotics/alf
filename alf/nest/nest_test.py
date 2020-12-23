@@ -246,13 +246,13 @@ class TestNestConcat(alf.test.TestCase):
 
 class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(
-        ([0], torch.zeros((2, 3))),
-        ([1], torch.zeros((2, 4))),
-        ([2], torch.zeros((2, 10))),
-        ([0, 1], torch.zeros((2, 7))),
-        ([0, 2], torch.zeros((2, 13))),
-        ([1, 2], torch.zeros((2, 14))),
-        ([0, 1, 2], torch.zeros((2, 17))),
+        (NTuple(a=dict(x=1, y=0), b=0), torch.zeros((2, 3))),
+        (NTuple(a=dict(x=0, y=1), b=0), torch.zeros((2, 4))),
+        (NTuple(a=dict(x=0, y=0), b=1), torch.zeros((2, 10))),
+        (NTuple(a=dict(x=1, y=1), b=0), torch.zeros((2, 7))),
+        (NTuple(a=dict(x=1, y=0), b=1), torch.zeros((2, 13))),
+        (NTuple(a=dict(x=0, y=1), b=1), torch.zeros((2, 14))),
+        (NTuple(a=dict(x=1, y=1), b=1), torch.zeros((2, 17))),
     )
     def test_nest_selective_concat_tensors(self, ind, expected):
         ntuple = NTuple(
@@ -262,13 +262,13 @@ class TestNestSelectiveConcat(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorEqual(ret, expected)
 
     @parameterized.parameters(
-        ([0], TensorSpec((2, 3))),
-        ([1], TensorSpec((2, 4))),
-        ([2], TensorSpec((2, 10))),
-        ([0, 1], TensorSpec((2, 7))),
-        ([0, 2], TensorSpec((2, 13))),
-        ([1, 2], TensorSpec((2, 14))),
-        ([0, 1, 2], TensorSpec((2, 17))),
+        (NTuple(a=dict(x=1, y=0), b=0), TensorSpec((2, 3))),
+        (NTuple(a=dict(x=0, y=1), b=0), TensorSpec((2, 4))),
+        (NTuple(a=dict(x=0, y=0), b=1), TensorSpec((2, 10))),
+        (NTuple(a=dict(x=1, y=1), b=0), TensorSpec((2, 7))),
+        (NTuple(a=dict(x=1, y=0), b=1), TensorSpec((2, 13))),
+        (NTuple(a=dict(x=0, y=1), b=1), TensorSpec((2, 14))),
+        (NTuple(a=dict(x=1, y=1), b=1), TensorSpec((2, 17))),
     )
     def test_nest_selective_concat_specs(self, ind, expected):
         ntuple = NTuple(
