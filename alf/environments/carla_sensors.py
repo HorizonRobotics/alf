@@ -367,7 +367,7 @@ class RadarSensor(SensorBase):
         """
         Args:
             parent_actor (carla.Actor): the parent actor of this sensor.
-            xyz (tuple[float]): the attachment positition (x, y, z) relative to
+            xyz (tuple[float]): the attachment position (x, y, z) relative to
                 the parent_actor.
             pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
                 degrees.
@@ -493,7 +493,7 @@ class CameraSensor(SensorBase):
             attachment_type (str): There are two types of attachement. 'rigid':
                 the object follow its parent position strictly. 'spring_arm':
                 the object expands or retracts depending on camera situation.
-            xyz (tuple[float]): the attachment positition (x, y, z) relative to
+            xyz (tuple[float]): the attachment position (x, y, z) relative to
                 the parent_actor.
             pyr (tuple[float]): the attachment rotation (pitch, yaw, roll) in
                 degrees.
