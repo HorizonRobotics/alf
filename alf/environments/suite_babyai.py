@@ -18,6 +18,7 @@ import numpy as np
 import re
 
 import alf.environments.gym_wrappers
+from alf.environments import alf_wrappers
 from .suite_gym import wrap_env
 
 try:
@@ -66,6 +67,9 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
+    if isinstance(environment_name, (list, tuple)):
+        return alf_wrappers.MultitaskWrapper.load(load, **locals())
+
     gym_spec = gym.spec(environment_name)
     gym_env = gym_spec.make()
 

@@ -49,6 +49,10 @@ class ThreadEnvironment(alf_environment.AlfEnvironment):
         self._env = self._pool.apply(env_constructor)
 
     @property
+    def batched(self):
+        return True
+
+    @property
     def batch_size(self):
         return 1
 

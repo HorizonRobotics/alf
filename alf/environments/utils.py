@@ -61,7 +61,8 @@ def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
                        num_parallel_environments=30,
                        nonparallel=False,
-                       seed=None):
+                       seed=None,
+                       batched_wrappers=()):
     """Create a batched environment.
 
     Args:
@@ -74,18 +75,21 @@ def create_environment(env_name='CartPole-v0',
         num_parallel_environments (int): num of parallel environments
         nonparallel (bool): force to create a single env in the current
             process. Used for correctly exposing game gin confs to tensorboard.
-
+        seed (None|int): random number seed for environment.  A random seed is
+            used if None.
+        batched_wrappers (Iterable): a list of wrappers which can wrap batched
+            AlfEnvironment.
     Returns:
         AlfEnvironment:
     """
 
     if hasattr(env_load_fn, 'batched') and env_load_fn.batched:
         if nonparallel:
-            return env_load_fn(env_name, batch_size=1)
+            alf_env = env_load_fn(env_name, batch_size=1)
         else:
-            return env_load_fn(env_name, batch_size=num_parallel_environments)
-
-    if nonparallel:
+            alf_env = env_load_fn(
+                env_name, batch_size=num_parallel_environments)
+    elif nonparallel:
         # Each time we can only create one unwrapped env at most
 
         # Create and step the env in a separate thread. env `step` and `reset` must
@@ -116,6 +120,9 @@ def create_environment(env_name='CartPole-v0',
             # behaviors among different individual environments (to increase the
             # diversity of environment data)!
             alf_env.seed([seed + i for i in range(num_parallel_environments)])
+
+    for wrapper in batched_wrappers:
+        alf_env = wrapper(alf_env)
 
     return alf_env
 

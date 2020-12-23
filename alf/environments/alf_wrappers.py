@@ -18,17 +18,22 @@ Adapted from TF-Agents Environment API as seen in:
 """
 
 import abc
+from collections import OrderedDict
 import copy
 import cProfile
 import gin
+import math
 import numpy as np
 import random
 import six
 
 import torch
+import torch.nn.functional as F
 
+import alf
 from alf.data_structures import StepType, TimeStep, _is_numpy_array
 from alf.environments.alf_environment import AlfEnvironment
+from alf.environments.parallel_environment import ParallelAlfEnvironment
 import alf.nest as nest
 import alf.tensor_specs as ts
 from alf.utils import spec_utils
@@ -52,15 +57,26 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
 
     def __getattr__(self, name):
         """Forward all other calls to the base environment."""
+        if name.startswith('_'):
+            raise AttributeError(
+                "attempted to get missing private attribute '{}'".format(name))
         return getattr(self._env, name)
 
     @property
     def batched(self):
-        return getattr(self._env, 'batched', False)
+        return self._env.batched
 
     @property
     def batch_size(self):
-        return getattr(self._env, 'batch_size', None)
+        return self._env.batch_size
+
+    @property
+    def num_tasks(self):
+        return self._env.num_tasks
+
+    @property
+    def task_names(self):
+        return self._env.task_names
 
     def _reset(self):
         return self._env.reset()
@@ -465,3 +481,285 @@ class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
     def time_step_spec(self):
         spec = self._env.time_step_spec()
         return spec._replace(reward=self.reward_spec())
+
+
+class MultitaskWrapper(AlfEnvironment):
+    """Multitask environment based a list of environments.
+
+    All the environments need to have same observation_spec, action_spec, reward_spec
+    and info_spec. The action_spec of the new environment becomes:
+
+    .. code-block:: python
+
+        {
+            'task_id': TensorSpec((), maximum=num_envs - 1, dtype='int64'),
+            'action': original_action_spec
+        }
+
+    'task_id' is used to specify which task to run for the current step.
+    """
+
+    def __init__(self, envs, task_names):
+        """
+        Args:
+            envs (list[AlfEnvironment]): a list of environments. Each one
+                represents a different task.
+        """
+        self._envs = envs
+        self._observation_spec = envs[0].observation_spec()
+        self._action_spec = envs[0].action_spec()
+        self._reward_spec = envs[0].reward_spec()
+        self._env_info_spec = envs[0].env_info_spec()
+        self._task_names = task_names
+
+        def _nested_eq(a, b):
+            return all(
+                alf.nest.flatten(
+                    alf.nest.map_structure(lambda x, y: x == y, a, b)))
+
+        for env in envs:
+            assert _nested_eq(
+                env.observation_spec(), self._observation_spec), (
+                    "All environement should have same observation spec. "
+                    "Got %s vs %s" % (self._observation_spec,
+                                      env.observation_spec()))
+            assert _nested_eq(env.action_spec(), self._action_spec), (
+                "All environement should have same action spec. "
+                "Got %s vs %s" % (self._action_spec, env.action_spec()))
+            assert _nested_eq(env.reward_spec(), self._reward_spec), (
+                "All environement should have same reward spec. "
+                "Got %s vs %s" % (self._reward_spec, env.reward_spec()))
+            assert _nested_eq(env.env_info_spec(), self._env_info_spec), (
+                "All environement should have same env_info spec. "
+                "Got %s vs %s" % (self._env_info_spec, env.env_info_spec()))
+            env.reset()
+
+        self._current_env_id = np.int64(0)
+        self._action_spec = OrderedDict(
+            task_id=alf.BoundedTensorSpec((),
+                                          maximum=len(envs) - 1,
+                                          dtype='int64'),
+            action=self._action_spec)
+
+    @staticmethod
+    def load(load_fn, environment_name, **kwargs):
+        """
+        Args:
+            load_fn (Callable): function used to construct the environment for
+                each tasks. It will be called as ``load_fn(env_name, **kwargs)``
+            environment_name (list[str]): list of environment names
+            kwargs (**): arguments passed to load_fn
+        """
+        envs = []
+        for name in environment_name:
+            envs.append(load_fn(name, **kwargs))
+        return MultitaskWrapper(envs, environment_name)
+
+    @property
+    def num_tasks(self):
+        return len(self._envs)
+
+    @property
+    def task_names(self):
+        return self._task_names
+
+    def observation_spec(self):
+        return self._observation_spec
+
+    def action_spec(self):
+        return self._action_spec
+
+    def reward_spec(self):
+        return self._reward_spec
+
+    def env_info_spec(self):
+        return self._env_info_spec
+
+    def get_num_tasks(self):
+        return len(self._envs)
+
+    def _reset(self):
+        time_step = self._envs[self._current_env_id].reset()
+        return time_step._replace(
+            prev_action=OrderedDict(
+                task_id=self._current_env_id, action=time_step.prev_action))
+
+    def _step(self, action):
+        self._current_env_id = action['task_id']
+        action = action['action']
+        assert self._current_env_id < len(self._envs)
+        time_step = self._envs[self._current_env_id].step(action)
+        return time_step._replace(
+            prev_action=OrderedDict(
+                task_id=self._current_env_id, action=time_step.prev_action))
+
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(
+                "attempted to get missing private attribute '{}'".format(name))
+        return getattr(self._envs[self._current_env_id], name)
+
+    def seed(self, seed):
+        for env in self._envs:
+            env.seed(seed)
+
+
+@gin.configurable(blacklist=['env'])
+class CurriculumWrapper(AlfEnvironmentBaseWrapper):
+    """A wrapper to provide automatic curriculum task selection.
+
+    The probability of a task being chosen is based on its recent progress in
+    terms of episode reward. A task will be chosen more often if its episode
+    reward increases faster than other tasks.
+
+    The progress of a task is defined as the difference between its current score
+    and its past score.
+    """
+
+    def __init__(self,
+                 env,
+                 progress_favor=10.0,
+                 current_score_update_rate=1e-3,
+                 past_score_update_rate=5e-4,
+                 warmup_period=100):
+        """
+        env (AlfEnvironment): environment to be wrapped. It needs to be batched.
+        progress_favor (float): how much more likely to choose the environment with the
+            fastest progress than the ones with no progress.
+        current_score_update_rate (float): the rate for updating the current score
+        past_score_update_rate (float): the rate for updating the past score
+        warmup_period (int): gradually increase ``progress_favor`` from 1 to
+            ``progress_favor`` during the first ``num_tasks * warmup_period``
+            episodes
+        """
+        self._env = env
+        assert env.batched, "Only batched env is supported"
+        num_tasks = env.num_tasks
+        task_names = env.task_names
+        batch_size = env.batch_size
+        self._episode_rewards = torch.zeros(batch_size)
+        assert (
+            len(env.action_spec()) == 2 and 'action' in env.action_spec()
+            and 'task_id' in env.action_spec()
+        ), ("The action_spec in the wrapped "
+            "environment should have exactly two keys: 'task_id' and 'action'")
+        self._action_spec = env.action_spec()['action']
+        self._num_tasks = num_tasks
+        self._task_names = task_names
+        self._env_info_spec = copy.copy(env.env_info_spec())
+        self._env_info_spec.update(
+            self._add_task_names({
+                'curriculum_task_count': [alf.TensorSpec(())] * num_tasks,
+                'curriculum_task_score': [alf.TensorSpec(())] * num_tasks,
+                'curriculum_task_prob': [alf.TensorSpec(())] * num_tasks
+            }))
+        self._zero_curriculum_info = self._add_task_names({
+            'curriculum_task_count': [torch.zeros(batch_size, device='cpu')] *
+                                     num_tasks,
+            'curriculum_task_score': [torch.zeros(batch_size, device='cpu')] *
+                                     num_tasks,
+            'curriculum_task_prob': [torch.zeros(batch_size, device='cpu')] *
+                                    num_tasks
+        })
+        self._progress_favor = progress_favor
+        self._current_score_update_rate = current_score_update_rate
+        self._past_score_update_rate = past_score_update_rate
+        self._warmup_period = warmup_period * num_tasks
+        self._scale = math.log(progress_favor)
+        self._total_count = 0
+        self._current_scores = torch.zeros(num_tasks, device='cpu')
+        self._past_scores = torch.zeros(num_tasks, device='cpu')
+        self._task_probs = torch.ones(num_tasks, device='cpu') / num_tasks
+        self._task_counts = torch.zeros(num_tasks, device='cpu')
+
+        self._current_task_ids = self._sample_tasks(batch_size)
+
+    def _add_task_names(self, info):
+        for k, v in info.items():
+            info[k] = dict(zip(self._task_names, v))
+        return info
+
+    def _sample_tasks(self, num_samples):
+        return torch.multinomial(
+            self._task_probs, num_samples=num_samples, replacement=True)
+
+    def _update_curriculum(self, task_ids, task_scores):
+        for task_id, task_score in zip(task_ids, task_scores):
+            self._total_count += 1
+            self._task_counts[task_id] += 1
+            self._current_scores[
+                task_id] += self._current_score_update_rate * (
+                    task_score - self._current_scores[task_id])
+            self._past_scores[task_id] += self._past_score_update_rate * (
+                task_score - self._past_scores[task_id])
+
+        progresses = (self._current_scores - self._past_scores).relu()
+        max_progress = progresses.max()
+        progresses = progresses / (max_progress + 1e-30)
+        # Gradually increase scale from 0 to self._scale so that we tend to do
+        # random smapling of the environments initially
+        scale = self._scale * min(1, self._total_count / self._warmup_period)
+        self._task_probs = F.softmax(scale * progresses, dim=0)
+
+    def env_info_spec(self):
+        return self._env_info_spec
+
+    def action_spec(self):
+        return self._action_spec
+
+    def _reset(self):
+        time_step = self._env.reset()
+        info = copy.copy(time_step.env_info)
+        info.update(self._zero_curriculum_info)
+        return time_step._replace(
+            env_info=info, prev_action=time_step.prev_action['action'])
+
+    def _step(self, action):
+        time_step = self._env.step(
+            OrderedDict(task_id=self._current_task_ids, action=action))
+        task_ids = time_step.prev_action['task_id']
+        time_step_cpu = time_step.cpu()
+        info = time_step_cpu.env_info
+
+        is_first_step = time_step.is_first()
+        self._episode_rewards[is_first_step] = 0
+        self._episode_rewards += alf.math.sum_to_leftmost(time_step.reward, 1)
+        is_last_step = time_step.cpu().is_last()
+        last_env_ids = is_last_step.nonzero(as_tuple=True)[0]
+        if last_env_ids.numel() > 0:
+            self._update_curriculum(task_ids[last_env_ids],
+                                    self._episode_rewards[last_env_ids])
+            new_task_ids = self._sample_tasks(last_env_ids.numel())
+            self._current_task_ids[last_env_ids] = new_task_ids
+
+            num_envs = self._env.batch_size
+            # Tensors in time_step need to have a batch dimension
+            # [num_tasks, num_envs]
+            task_counts = self._task_counts.unsqueeze(1).expand(-1, num_envs)
+            current_scores = self._current_scores.unsqueeze(1).expand(
+                -1, num_envs)
+            task_probs = self._task_probs.unsqueeze(1).expand(-1, num_envs)
+            # [1, num_envs]
+            not_last = (~is_last_step).unsqueeze(0)
+            # [num_tasks, num_envs]
+            task_counts = task_counts.masked_fill(not_last, 0).cpu()
+            current_scores = current_scores.masked_fill(not_last, 0).cpu()
+            task_probs = task_probs.masked_fill(not_last, 0).cpu()
+            # These info is for the purpose of generating summary by
+            # ``alf.metrics.metrics.AverageEnvInfoMetric``, which calculates the
+            # average of epsodic sum of the values of info. So we only provide
+            # the info as LAST steps.
+            info.update(
+                self._add_task_names({
+                    'curriculum_task_count': list(task_counts),
+                    'curriculum_task_score': list(current_scores),
+                    'curriculum_task_prob': list(task_probs)
+                }))
+        else:
+            info.update(self._zero_curriculum_info)
+
+        time_step = time_step._replace(
+            prev_action=time_step.prev_action['action'], env_info=info)
+        time_step._cpu = time_step_cpu._replace(
+            prev_action=time_step_cpu.prev_action['action'], env_info=info)
+        return time_step
