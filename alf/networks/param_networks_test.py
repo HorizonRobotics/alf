@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@ import numpy as np
 import torch
 
 import alf
-from alf.algorithms.hypernetwork_networks import ParamConvNet, ParamNetwork
+from alf.networks import ParamConvNet, ParamNetwork
 from alf.tensor_specs import TensorSpec
 from alf.utils import math_ops
 
 
-class ParamConvNetTest(parameterized.TestCase, alf.test.TestCase):
+class ParamNetworksTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((1, True, True, False), (3, False, True, True))
     def test_param_convnet(self,
                            batch_size=1,
@@ -103,7 +103,8 @@ class ParamConvNetTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(output.shape, replica_output.shape)
 
         output_shape = (batch_size, replica, last_layer_size)
-        self.assertEqual(output_shape[1:], network.output_spec.shape)
+        self.assertEqual(output_shape[1:],
+                         (replica, ) + network.output_spec.shape)
         self.assertEqual(output_shape, tuple(output.size()))
 
 

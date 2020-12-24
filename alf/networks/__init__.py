@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,9 @@ from .encoding_networks import *
 from .mdq_critic_networks import *
 from .network import Network, NaiveParallelNetwork, SequentialNetwork
 from .ou_process import OUProcess
+from .param_networks import *
 from .preprocessor_networks import PreprocessorNetwork
 from .projection_networks import *
+from .relu_mlp import ReluMLP
 from .q_networks import *
 from .value_networks import *

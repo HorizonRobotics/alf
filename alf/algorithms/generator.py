@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,11 +17,12 @@ import gin
 import numpy as np
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
 import alf.nest as nest
-from alf.networks import Network, EncodingNetwork
+from alf.networks import Network, EncodingNetwork, ReluMLP
 from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
@@ -31,8 +32,93 @@ GeneratorLossInfo = namedtuple("GeneratorLossInfo",
 
 
 @gin.configurable
+class CriticAlgorithm(Algorithm):
+    """
+    Wrap a critic network as an Algorithm for flexible gradient updates
+    called by the Generator when par_vi is 'minmax'.
+    """
+
+    def __init__(self,
+                 input_tensor_spec,
+                 output_dim=None,
+                 hidden_layers=(3, 3),
+                 activation=torch.relu_,
+                 net: Network = None,
+                 use_relu_mlp=False,
+                 use_bn=True,
+                 optimizer=None,
+                 name="CriticAlgorithm"):
+        """Create a CriticAlgorithm.
+
+        Args:
+            input_tensor_spec (TensorSpec): spec of inputs. 
+            output_dim (int): dimension of output, default value is input_dim.
+            hidden_layers (tuple): size of hidden layers.
+            activation (nn.functional): activation used for all critic layers.
+            net (Network): network for predicting outputs from inputs.
+                If None, a default one with hidden_layers will be created
+            use_relu_mlp (bool): whether use ReluMLP as default net constrctor.
+                Diagonals of Jacobian can be explicitly computed for ReluMLP.
+            use_bn (bool): whether use batch norm for each critic layers.
+            optimizer (torch.optim.Optimizer): (optional) optimizer for training.
+            name (str): name of this CriticAlgorithm.
+        """
+        if optimizer is None:
+            optimizer = alf.optimizers.Adam(lr=1e-3)
+        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+
+        self._use_relu_mlp = use_relu_mlp
+        self._output_dim = output_dim
+        if output_dim is None:
+            self._output_dim = input_tensor_spec.shape[0]
+        if net is None:
+
+            if use_relu_mlp:
+                net = ReluMLP(
+                    input_tensor_spec=input_tensor_spec,
+                    hidden_layers=hidden_layers,
+                    activation=activation)
+            else:
+                net = EncodingNetwork(
+                    input_tensor_spec=input_tensor_spec,
+                    fc_layer_params=hidden_layers,
+                    use_fc_bn=use_bn,
+                    activation=activation,
+                    last_layer_size=self._output_dim,
+                    last_activation=math_ops.identity,
+                    last_use_fc_bn=use_bn,
+                    name='Critic')
+        self._net = net
+
+    def reset_net_parameters(self):
+        for fc in self._net._fc_layers:
+            fc.reset_parameters()
+
+    def predict_step(self, inputs, state=None, requires_jac_diag=False):
+        """Predict for one step of inputs.
+
+        Args:
+            inputs (torch.Tensor): inputs for prediction.
+            state: not used.
+            requires_jac_trace (bool): whether outputs diagonals of Jacobian.
+
+        Returns:
+            AlgStep:
+            - output (torch.Tensor): predictions or (predictions, diag_jacobian)
+                if requires_jac_diag is True.
+            - state: not used.
+        """
+        if self._use_relu_mlp:
+            outputs = self._net(inputs, requires_jac_diag=requires_jac_diag)[0]
+        else:
+            outputs = self._net(inputs)[0]
+
+        return AlgStep(output=outputs, state=(), info=())
+
+
+@gin.configurable
 class Generator(Algorithm):
-    """Generator
+    r"""Generator
 
     Generator generates outputs given `inputs` (can be None) by transforming
     a random noise and input using `net`:
@@ -58,7 +144,7 @@ class Generator(Algorithm):
       minimizing loss_func(net([noise, inputs]))
 
     * entropy_regularization > 0: the minimization is achieved using amortized
-      particle-based variational inference (ParVI), in particular, two ParVI
+      particle-based variational inference (ParVI), in particular, three ParVI
       methods are implemented:
 
         1. amortized Stein Variational Gradient Descent (SVGD):
@@ -70,6 +156,10 @@ class Generator(Algorithm):
 
         Liu, Chang, et al. "Understanding and accelerating particle-based 
         variational inference." International Conference on Machine Learning. 2019.
+
+        3. amortized Fisher Neural Sampler with Hutchinson's estimator (MINMAX):
+
+        Hu et at. "Stein Neural Sampler." https://arxiv.org/abs/1810.03545, 2018.
 
     It also supports an additional optional objective of maximizing the mutual
     information between [noise, inputs] and outputs by using mi_estimator to
@@ -90,7 +180,15 @@ class Generator(Algorithm):
                  entropy_regularization=0.,
                  mi_weight=None,
                  mi_estimator_cls=MIEstimator,
-                 par_vi="gfsf",
+                 par_vi=None,
+                 critic_input_dim=None,
+                 critic_hidden_layers=(100, 100),
+                 critic_l2_weight=10.,
+                 critic_iter_num=2,
+                 critic_relu_mlp=False,
+                 critic_use_bn=True,
+                 minmax_resample=True,
+                 critic_optimizer=None,
                  optimizer=None,
                  name="Generator"):
         r"""Create a Generator.
@@ -100,14 +198,15 @@ class Generator(Algorithm):
             noise_dim (int): dimension of noise
             input_tensor_spec (nested TensorSpec): spec of inputs. If there is
                 no inputs, this should be None.
-            hidden_layers (tuple): size of hidden layers.
+            hidden_layers (tuple): sizes of hidden layers.
             net (Network): network for generating outputs from [noise, inputs]
                 or noise (if inputs is None). If None, a default one with
                 hidden_layers will be created
             net_moving_average_rate (float): If provided, use a moving average
                 version of net to do prediction. This has been shown to be
                 effective for GAN training (arXiv:1907.02544, arXiv:1812.04948).
-            entropy_regularization (float): weight of entropy regularization
+            entropy_regularization (float): weight of entropy regularization.
+            mi_weight (float): weight of mutual information loss.
             mi_estimator_cls (type): the class of mutual information estimator
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
@@ -127,10 +226,29 @@ class Generator(Algorithm):
                     involves a kernel matrix inversion, so computationally most
                     expensive, but in some case the convergence seems faster 
                     than svgd approaches.
+                * minmax: Fisher Neural Sampler, optimal descent direction of
+                    the Stein discrepancy is solved by an inner optimization
+                    procedure in the space of L2 neural networks.
+            critic_input_dim (int): dimension of critic input, used for ``minmax``.
+            critic_hidden_layers (tuple): sizes of hidden layers of the critic,
+                used for ``minmax``.
+            critic_l2_weight (float): weight of L2 regularization in training 
+                the critic, used for ``minmax``.
+            critic_iter_num (int): number of critic updates for each generator
+                train_step, used for ``minmax``.
+            critic_relu_mlp (bool): whether use ReluMLP as the critic constructor,
+                used for ``minmax``.
+            critic_use_bn (book): whether use batch norm for each layers of the
+                critic, used for ``minmax``.
+            minmax_resample (bool): whether resample the generator for each 
+                critic update, used for ``minmax``.
+            critic_optimizer (torch.optim.Optimizer): Optimizer for training the
+                critic, used for ``minmax``.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
         super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        self._output_dim = output_dim
         self._noise_dim = noise_dim
         self._entropy_regularization = entropy_regularization
         self._par_vi = par_vi
@@ -145,6 +263,20 @@ class Generator(Algorithm):
                 self._grad_func = self._svgd_grad2
             elif par_vi == 'svgd3':
                 self._grad_func = self._svgd_grad3
+            elif par_vi == 'minmax':
+                if critic_input_dim is None:
+                    critic_input_dim = output_dim
+                self._grad_func = self._minmax_grad
+                self._critic_iter_num = critic_iter_num
+                self._critic_l2_weight = critic_l2_weight
+                self._critic_relu_mlp = critic_relu_mlp
+                self._minmax_resample = minmax_resample
+                self._critic = CriticAlgorithm(
+                    TensorSpec(shape=(critic_input_dim, )),
+                    hidden_layers=critic_hidden_layers,
+                    use_relu_mlp=critic_relu_mlp,
+                    use_bn=critic_use_bn,
+                    optimizer=critic_optimizer)
             else:
                 raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
@@ -183,7 +315,7 @@ class Generator(Algorithm):
                 self._net, self._predict_net, tau=net_moving_average_rate)
 
     def _trainable_attributes_to_ignore(self):
-        return ["_predict_net"]
+        return ["_predict_net", "_critic"]
 
     @property
     def noise_dim(self):
@@ -244,6 +376,7 @@ class Generator(Algorithm):
                    loss_func,
                    outputs=None,
                    batch_size=None,
+                   transform_func=None,
                    entropy_regularization=None,
                    state=None):
         """
@@ -258,6 +391,10 @@ class Generator(Algorithm):
                 shape [batch_size] a loss term for optimizing the generator.
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None.
+            transform_func (Callable): transform_func(outputs) transforms the 
+                generator outputs to its corresponding function values evaluated
+                on current training batch.
+            entropy_regularization (float): weight of entropy regularization.
             state: not used
 
         Returns:
@@ -269,8 +406,8 @@ class Generator(Algorithm):
             outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
-        loss, loss_propagated = self._grad_func(inputs, outputs, loss_func,
-                                                entropy_regularization)
+        loss, loss_propagated = self._grad_func(
+            inputs, outputs, loss_func, entropy_regularization, transform_func)
         mi_loss = ()
         if self._mi_estimator is not None:
             mi_step = self._mi_estimator.train_step([gen_inputs, outputs])
@@ -284,8 +421,14 @@ class Generator(Algorithm):
                 loss=loss_propagated,
                 extra=GeneratorLossInfo(generator=loss, mi_estimator=mi_loss)))
 
-    def _ml_grad(self, inputs, outputs, loss_func,
-                 entropy_regularization=None):
+    def _ml_grad(self,
+                 inputs,
+                 outputs,
+                 loss_func,
+                 entropy_regularization=None,
+                 transform_func=None):
+        if transform_func is not None:
+            outputs = transform_func(outputs)
         loss_inputs = outputs if inputs is None else [outputs, inputs]
         loss = loss_func(loss_inputs)
 
@@ -317,29 +460,33 @@ class Generator(Algorithm):
     def _rbf_func2(self, x, y):
         r"""
         Compute the rbf kernel and its gradient w.r.t. first entry 
-        :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2.
+        :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2 and svgd_grad3. 
 
         Args:
-            x (Tensor): set of N particles, shape (Nx x W), where W is the 
-                dimenseion of each particle
-            y (Tensor): set of N particles, shape (Ny x W), where W is the 
-                dimenseion of each particle
+            x (Tensor): set of N particles, shape (Nx, ...), where Nx is the 
+                number of particles.
+            y (Tensor): set of N particles, shape (Ny, ...), where Ny is the 
+                number of particles.
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
             :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
-            
+
         """
-        Nx, Dx = x.shape
-        Ny, Dy = y.shape
+        Nx = x.shape[0]
+        Ny = y.shape[0]
+        x = x.view(Nx, -1)
+        y = y.view(Ny, -1)
+        Dx = x.shape[1]
+        Dy = y.shape[1]
         assert Dx == Dy
-        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
+        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, D]
         dist_sq = torch.sum(diff**2, -1)  # [Nx, Ny]
         h = self._kernel_width(dist_sq.view(-1))
 
         kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
         kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
-                                  -2 * diff / h)  # [Nx, Ny, W]
+                                  -2 * diff / h)  # [Nx, Ny, D]
         return kappa, kappa_grad
 
     def _score_func(self, x, alpha=1e-5):
@@ -356,7 +503,7 @@ class Generator(Algorithm):
 
         Returns:
             :math:`\nabla\log q` (Tensor): the score function of shape (N x D)
-            
+
         """
         N, D = x.shape
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
@@ -368,14 +515,22 @@ class Generator(Algorithm):
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
         kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
 
-        return kappa_inv @ kappa_grad
+        return -kappa_inv @ kappa_grad
 
-    def _svgd_grad(self, inputs, outputs, loss_func, entropy_regularization):
+    def _svgd_grad(self,
+                   inputs,
+                   outputs,
+                   loss_func,
+                   entropy_regularization,
+                   transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
         evaluated by a single resampled particle. 
         """
         outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
+        if transform_func is not None:
+            outputs = transform_func(outputs)
+            outputs2 = transform_func(outputs2)
         kernel_weight = self._rbf_func(outputs, outputs2)
         weight_sum = entropy_regularization * kernel_weight.sum()
 
@@ -395,31 +550,58 @@ class Generator(Algorithm):
 
         return loss, loss_propagated
 
-    def _svgd_grad2(self, inputs, outputs, loss_func, entropy_regularization):
+    def _svgd_grad2(self,
+                    inputs,
+                    outputs,
+                    loss_func,
+                    entropy_regularization,
+                    transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
         evaluated by splitting half of the sampled batch. 
         """
         assert inputs is None, '"svgd2" does not support conditional generator'
+        if transform_func is not None:
+            outputs, extra_outputs, _ = transform_func(outputs)
+            aug_outputs = torch.cat([outputs, extra_outputs], dim=-1)
+        else:
+            aug_outputs = outputs
         num_particles = outputs.shape[0] // 2
         outputs_i, outputs_j = torch.split(outputs, num_particles, dim=0)
+        aug_outputs_i, aug_outputs_j = torch.split(
+            aug_outputs, num_particles, dim=0)
+
         loss_inputs = outputs_j
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
             neglogp = loss.loss
         else:
             neglogp = loss
-        loss_grad = torch.autograd.grad(neglogp.sum(), outputs_j)[0]  # [Nj, D]
+        loss_grad = torch.autograd.grad(neglogp.sum(),
+                                        loss_inputs)[0]  # [Nj, D]
 
-        # [Nj, Ni], [Nj, Ni, D]
-        kernel_weight, kernel_grad = self._rbf_func2(outputs_j, outputs_i)
+        # [Nj, Ni], [Nj, Ni, D']
+        kernel_weight, kernel_grad = self._rbf_func2(aug_outputs_j.detach(),
+                                                     aug_outputs_i.detach())
         kernel_logp = torch.matmul(kernel_weight.t(),
                                    loss_grad) / num_particles  # [Ni, D]
-        grad = kernel_logp - entropy_regularization * kernel_grad.mean(0)
-        loss_propagated = torch.sum(grad.detach() * outputs_i, dim=-1)
+
+        loss_prop_kernel_logp = torch.sum(
+            kernel_logp.detach() * outputs_i, dim=-1)
+        loss_prop_kernel_grad = torch.sum(
+            -entropy_regularization * kernel_grad.mean(0).detach() *
+            aug_outputs_i,
+            dim=-1)
+        loss_propagated = loss_prop_kernel_logp + loss_prop_kernel_grad
+
         return loss, loss_propagated
 
-    def _svgd_grad3(self, inputs, outputs, loss_func, entropy_regularization):
+    def _svgd_grad3(self,
+                    inputs,
+                    outputs,
+                    loss_func,
+                    entropy_regularization,
+                    transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
         evaluated by resampled particles of the same batch size. 
@@ -427,37 +609,144 @@ class Generator(Algorithm):
         assert inputs is None, '"svgd3" does not support conditional generator'
         num_particles = outputs.shape[0]
         outputs2, _ = self._predict(inputs, batch_size=num_particles)
+        if transform_func is not None:
+            outputs, extra_outputs, samples = transform_func(outputs)
+            outputs2, extra_outputs2, _ = transform_func((outputs2, samples))
+            aug_outputs = torch.cat([outputs, extra_outputs], dim=-1)
+            aug_outputs2 = torch.cat([outputs2, extra_outputs2], dim=-1)
+        else:
+            aug_outputs = outputs  # [N, D']
+            aug_outputs2 = outputs2  # [N2, D']
         loss_inputs = outputs2
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
             neglogp = loss.loss
         else:
             neglogp = loss
-        loss_grad = torch.autograd.grad(neglogp.sum(), outputs2)[0]  # [N2, D]
+        loss_grad = torch.autograd.grad(neglogp.sum(),
+                                        loss_inputs)[0]  # [N2, D]
 
-        # [N2, N], [N2, N, D]
-        kernel_weight, kernel_grad = self._rbf_func2(outputs2, outputs)
+        # [N2, N], [N2, N, D']
+        kernel_weight, kernel_grad = self._rbf_func2(aug_outputs2.detach(),
+                                                     aug_outputs.detach())
         kernel_logp = torch.matmul(kernel_weight.t(),
                                    loss_grad) / num_particles  # [N, D]
-        grad = kernel_logp - entropy_regularization * kernel_grad.mean(0)
-        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
+
+        loss_prop_kernel_logp = torch.sum(
+            kernel_logp.detach() * outputs, dim=-1)
+        loss_prop_kernel_grad = torch.sum(
+            -entropy_regularization * kernel_grad.mean(0).detach() *
+            aug_outputs,
+            dim=-1)
+        loss_propagated = loss_prop_kernel_logp + loss_prop_kernel_grad
 
         return loss, loss_propagated
 
-    def _gfsf_grad(self, inputs, outputs, loss_func, entropy_regularization):
+    def _gfsf_grad(self,
+                   inputs,
+                   outputs,
+                   loss_func,
+                   entropy_regularization,
+                   transform_func=None):
         """Compute particle gradients via GFSF (Stein estimator). """
         assert inputs is None, '"gfsf" does not support conditional generator'
+        if transform_func is not None:
+            outputs, extra_outputs, _ = transform_func(outputs)
+            aug_outputs = torch.cat([outputs, extra_outputs], dim=-1)
+        else:
+            aug_outputs = outputs
+        score_inputs = aug_outputs.detach()
         loss_inputs = outputs
         loss = loss_func(loss_inputs)
         if isinstance(loss, tuple):
             neglogp = loss.loss
         else:
             neglogp = loss
-        loss_grad = torch.autograd.grad(neglogp.sum(), outputs)[0]  # [N2, D]
+        loss_grad = torch.autograd.grad(neglogp.sum(),
+                                        loss_inputs)[0]  # [N2, D]
+        logq_grad = self._score_func(score_inputs) * entropy_regularization
 
-        logq_grad = self._score_func(outputs)
-        grad = loss_grad - entropy_regularization * logq_grad
-        loss_propagated = torch.sum(grad.detach() * outputs, dim=-1)
+        loss_prop_neglogp = torch.sum(loss_grad.detach() * outputs, dim=-1)
+        loss_prop_logq = torch.sum(logq_grad.detach() * aug_outputs, dim=-1)
+        loss_propagated = loss_prop_neglogp + loss_prop_logq
+
+        return loss, loss_propagated
+
+    def _jacobian_trace(self, fx, x):
+        """Hutchinson's trace Jacobian estimator O(1) call to autograd,
+            used by "\"minmax\" method"""
+        eps = torch.randn_like(fx)
+        jvp = torch.autograd.grad(
+            fx, x, grad_outputs=eps, retain_graph=True, create_graph=True)[0]
+        if eps.shape[-1] == jvp.shape[-1]:
+            tr_jvp = torch.einsum('bi,bi->b', jvp, eps)
+        else:
+            tr_jvp = torch.einsum('bi,bj->b', jvp, eps)
+        return tr_jvp
+
+    def _critic_train_step(self, inputs, loss_func, entropy_regularization=1.):
+        """
+        Compute the loss for critic training.
+        """
+        loss = loss_func(inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        loss_grad = torch.autograd.grad(neglogp.sum(), inputs)[0]  # [N, D]
+
+        if self._critic_relu_mlp:
+            critic_step = self._critic.predict_step(
+                inputs, requires_jac_diag=True)
+            outputs, jac_diag = critic_step.output
+            tr_gradf = jac_diag.sum(-1)  # [N]
+        else:
+            outputs = self._critic.predict_step(inputs).output
+            tr_gradf = self._jacobian_trace(outputs, inputs)  # [N]
+
+        f_loss_grad = (loss_grad.detach() * outputs).sum(1)  # [N]
+        loss_stein = f_loss_grad - entropy_regularization * tr_gradf  # [N]
+
+        l2_penalty = (outputs * outputs).sum(1).mean() * self._critic_l2_weight
+        critic_loss = loss_stein.mean() + l2_penalty
+
+        return critic_loss
+
+    def _minmax_grad(self,
+                     inputs,
+                     outputs,
+                     loss_func,
+                     entropy_regularization,
+                     transform_func=None):
+        """
+        Compute particle gradients via minmax svgd (Fisher Neural Sampler). 
+        """
+        assert inputs is None, '"minmax" does not support conditional generator'
+
+        # optimize the critic using resampled particles
+        if transform_func is not None:
+            outputs = transform_func(outputs)
+        num_particles = outputs.shape[0]
+
+        for i in range(self._critic_iter_num):
+
+            if self._minmax_resample:
+                critic_inputs, _ = self._predict(
+                    inputs, batch_size=num_particles)
+                if transform_func is not None:
+                    critic_inputs = transform_func(critic_inputs)
+            else:
+                critic_inputs = outputs.detach().clone()
+                critic_inputs.requires_grad = True
+
+            critic_loss = self._critic_train_step(critic_inputs, loss_func,
+                                                  entropy_regularization)
+            self._critic.update_with_gradient(LossInfo(loss=critic_loss))
+
+        # compute amortized svgd
+        loss = loss_func(outputs.detach())
+        critic_outputs = self._critic.predict_step(outputs.detach()).output
+        loss_propagated = torch.sum(-critic_outputs.detach() * outputs, dim=-1)
 
         return loss, loss_propagated
 
