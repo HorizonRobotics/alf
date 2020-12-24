@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Various memory class.
+"""Various memory classes.
 
 Currently, all the memory classes implemented here only supports memory in one
 episode, which means that the memory is reset at the beginning of an episode.

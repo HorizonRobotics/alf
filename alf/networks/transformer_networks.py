@@ -40,7 +40,7 @@ class TransformerNetwork(PreprocessorNetwork):
     where T_i denotes the ``TransformerBlock``  for the i-th prememory layers
     and TM_j denotes the ``TransformerBlock`` for the j-th memory layers. memory_j
     is an ``FIFOMemory`` object (not to be confused with the ``memory`` argument
-    of ``TransformerBlock.foroard() function``)
+    of ``TransformerBlock.forward() function``)
 
     The core embedding serves the same purpose of [CLS] in the BERT model in [1],
     which is to generate a fixed dimensional representation for downstream tasks.
@@ -156,7 +156,7 @@ class TransformerNetwork(PreprocessorNetwork):
                 at ``__init__()``
             state (nested Tensor): states
         Returns:
-            tensor: shape is [B, core_size * d_model]
+            Tensor: shape is [B, core_size * d_model]
         """
         z, _ = super().forward(inputs, state)
         batch_size = z.shape[0]
