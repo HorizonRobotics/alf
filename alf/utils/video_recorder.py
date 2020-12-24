@@ -160,7 +160,7 @@ class RecorderBuffer(object):
 class VideoRecorder(GymVideoRecorder):
     """A video recorder that renders frames and encodes them into a video file.
     Besides rendering frames, it also supports plotting prediction info.
-    Currently suppors the following data types:
+    Currently supports the following data types:
     * action distribution: plotted as a probability curve. For a discrete
     distribution, the probabilities are directly plotted. For a continuous
     distribution, the curve will be approximated by sampled points for each
@@ -168,7 +168,7 @@ class VideoRecorder(GymVideoRecorder):
     * action: plotted as heatmaps. Long type actions will be first
     converted to one-hot encodings.
     Furthermore, it supports displaying in the current frame some information
-    from future steps. This is encabled when ``future_steps``>0.
+    from future steps. This is enabled when ``future_steps``>0.
     """
 
     def __init__(self,
@@ -620,7 +620,7 @@ class VideoRecorder(GymVideoRecorder):
             env_frame (numpy.ndarray): ``numpy.ndarray`` with shape
                 ``(x, y, 3)``, representing RGB values for an x-by-y pixel image,
                 output from ``env.render('rgb_array')``.
-            pred_info (nested): a nest. Currently suppors the following data types:
+            pred_info (nested): a nest. Currently supports the following data types:
                 - action distribution: plotted as a probability curve. For a
                 discrete distribution, the probabilities are directly plotted.
                 For a continuous distribution, the curve will be approximated by
