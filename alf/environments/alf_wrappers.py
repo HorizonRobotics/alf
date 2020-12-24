@@ -646,7 +646,8 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
         """
         env (AlfEnvironment): environment to be wrapped. It needs to be batched.
         progress_favor (float): how much more likely to choose the environment with the
-            fastest progress than the ones with no progress.
+            fastest progress than the ones with no progress. If ``progress_favor``
+            is 1, all tasks are sampled uniformly.
         current_score_update_rate (float): the rate for updating the current score
         past_score_update_rate (float): the rate for updating the past score
         warmup_period (int): gradually increase ``progress_favor`` from 1 to
