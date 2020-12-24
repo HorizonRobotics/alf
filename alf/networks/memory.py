@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Implementation of a simple Memory module described in arXiv:1803.10760."""
+"""Various memory class.
+
+Currently, all the memory classes implemented here only supports memory in one
+episode, which means that the memory is reset at the beginning of an episode.
+"""
 
 import abc
 import math
@@ -93,6 +97,8 @@ class MemoryWithUsage(Memory):
     MemoryWithUsage stores memory in a matrix. During memory `write`, the memory
     slot with the smallest usage is replaced by the new memory content. The
     memory content can be retrived thrugh attention mechanism using `read`.
+
+    This implementation follows the one decribed in arXiv:1803.10760.
     """
 
     def __init__(self,

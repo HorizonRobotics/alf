@@ -38,7 +38,9 @@ class TransformerNetwork(PreprocessorNetwork):
         return core, new_memory_state
 
     where T_i denotes the ``TransformerBlock``  for the i-th prememory layers
-    and TM_j denotes the ``TransformerBlock`` for the j-th memory layers.
+    and TM_j denotes the ``TransformerBlock`` for the j-th memory layers. memory_j
+    is an ``FIFOMemory`` object (not to be confused with the ``memory`` argument
+    of ``TransformerBlock.foroard() function``)
 
     The core embedding serves the same purpose of [CLS] in the BERT model in [1],
     which is to generate a fixed dimensional representation for downstream tasks.
