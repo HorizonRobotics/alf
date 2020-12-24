@@ -551,7 +551,6 @@ class MultitaskWrapper(AlfEnvironment):
                                           maximum=len(envs) - 1,
                                           dtype='int64'),
             action=self._action_spec)
-        self._is_first_step = True
 
     @staticmethod
     def load(load_fn, environment_name, env_id=None, **kwargs):
