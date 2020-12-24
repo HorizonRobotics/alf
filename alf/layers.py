@@ -114,6 +114,8 @@ class Permute(nn.Module):
             *dims: The desired ordering of dimensions (not including batch dimension)
         """
         super().__init__()
+        assert all([d >= 0 for d in dims
+                    ]), ("dims should be non-negative. Got %s" % str(dims))
         dims = [1 + d for d in dims]
         self._dims = [0] + dims
 

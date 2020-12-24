@@ -20,7 +20,7 @@ from alf.networks import TransformerNetwork
 import alf
 
 
-class TransformerNetworkTest(alf.test.TestCase):
+class TransformerNetworkTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(True, False)
     def test_transformer_network(self, centralized_memory=True):
         d_model = 32
@@ -45,6 +45,7 @@ class TransformerNetworkTest(alf.test.TestCase):
             num_prememory_layers=2,
             num_memory_layers=num_memory_layers,
             num_attention_heads=8,
+            d_ff=d_model,
             centralized_memory=centralized_memory,
             input_preprocessors=input_preprocessors)
 

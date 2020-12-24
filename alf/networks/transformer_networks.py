@@ -39,6 +39,15 @@ class TransformerNetwork(PreprocessorNetwork):
 
     where T_i denotes the ``TransformerBlock``  for the i-th prememory layers
     and TM_j denotes the ``TransformerBlock`` for the j-th memory layers.
+
+    The core embedding serves the same purpose of [CLS] in the BERT model in [1],
+    which is to generate a fixed dimensional representation for downstream tasks.
+    Different from BERT, which only has one [CLS] embedding, we allow the option
+    of having multiple core embeddings. In addition to generating a fixed dimensional
+    representation, the core embedding is also used to update the memory.
+
+    [1]. Devlin et. al. BERT: Pre-training of Deep Bidirectional Transformers for
+         Language Understanding
     """
 
     def __init__(self,
@@ -55,7 +64,10 @@ class TransformerNetwork(PreprocessorNetwork):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input.
+                the input. If ``input_tensor_spec`` is not nested, it should
+                represent a rank-2 tensor of shape ``[input_size, d_model]``, where
+                ``input_size`` is the length of the input sequence, and ``d_model``
+                is the dimension of embedding.
             memory_size (int): size of memory.
             core_size (int): size of core (i.e. number of embeddings of core)
             num_prememory_layers (int): number of TransformerBlock calculation
@@ -82,12 +94,14 @@ class TransformerNetwork(PreprocessorNetwork):
                 should be [input_size_i, d_model]. The result of all the preprocessors
                 will be concatenated as a Tensor of shape ``[batch_size, input_size, d_model]``,
                 where ``input_size = sum_i input_size_i``.
-
         """
+        preprocessing_combiner = None
+        if input_preprocessors is not None:
+            preprocessing_combiner = NestConcat(dim=-2)
         super().__init__(
             input_tensor_spec,
             input_preprocessors,
-            preprocessing_combiner=NestConcat(dim=-2),
+            preprocessing_combiner=preprocessing_combiner,
             name=name)
 
         assert self._processed_input_tensor_spec.ndim == 2

@@ -357,7 +357,7 @@ class MemoryWithUsage(Memory):
 class FIFOMemory(Memory):
     """A Simple FIFO memory.
 
-    When new memory is written, the oldest memory slots are removed.
+    When new memory slots are written, the oldest memory slots are removed.
     """
 
     def __init__(self, dim, size, name="FIFOMemory"):
@@ -391,10 +391,11 @@ class FIFOMemory(Memory):
         """Write content to memory.
 
         Append the content to memory. If the memory is full, the oldest slot
-        removed.
+        will be removed.
 
         Args:
-            content (Tensor): shape should be [b, dim] or [b, k, dim]
+            content (Tensor): shape should be [b, dim] or [b, k, dim] where k
+                means the number of memory slots to be written
         """
         if not self._built:
             self.build(content.shape[0])
