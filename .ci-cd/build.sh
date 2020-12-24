@@ -101,7 +101,7 @@ function test() {
         alf.networks.param_networks_test \
         alf.networks.projection_networks_test \
         alf.networks.q_networks_test \
-        alf.networks.relu_mlp_test.py \
+        alf.networks.relu_mlp_test \
         alf.optimizers.optimizers_test \
         alf.optimizers.trusted_updater_test \
         alf.summary.summary_ops_test \
