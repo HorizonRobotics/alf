@@ -30,7 +30,10 @@ git clone https://github.com/HorizonRobotics/alf
 cd alf
 pip install -e .
 ```
-## [Documentation](https://alf.readthedocs.io/)
+
+## Documentation
+
+You can read the [ALF documentation here](https://alf.readthedocs.io/).
 
 ## Examples
 
@@ -137,3 +140,8 @@ Also it has only 20 (instead of 38) parallel environments to improve sample effi
 * [6x6 Go](alf/examples/muzero_go_6x6.gin). It took about a day to train a reasonable agent to play 6x6 go using one GPU.
 
   <img src="alf/examples/muzero_go_6x6.gif" width = "200" height ="200" alt="6x6-go"/>
+
+
+## Contribute to ALF
+
+You can follow the [guideline here](https://alf.readthedocs.io/en/latest/contributing.html).

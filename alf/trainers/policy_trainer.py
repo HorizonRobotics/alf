@@ -241,6 +241,20 @@ class Trainer(object):
             alf.summary.text('diff', _markdownify(git_utils.get_diff()))
             alf.summary.text('seed', str(self._random_seed))
 
+            if self._config.code_snapshots is not None:
+                for f in self._config.code_snapshots:
+                    path = os.path.join(
+                        os.path.abspath(os.path.dirname(__file__)), "..", f)
+                    if not os.path.isfile(path):
+                        common.warning_once(
+                            "The code file '%s' for summary is invalid" % path)
+                        continue
+                    with open(path, 'r') as fin:
+                        code = fin.read()
+                        # adding "<pre>" will make TB show raw text instead of MD
+                        alf.summary.text('code/%s' % f,
+                                         "<pre>" + code + "</pre>")
+
     def _request_checkpoint(self, signum, frame):
         self._checkpoint_requested = True
 
@@ -392,7 +406,7 @@ class RLTrainer(Trainer):
         if self._num_iterations:
             time_to_checkpoint = self._trainer_progress._iter_num + checkpoint_interval
         else:
-            time_to_checkpoint = self._trainer_progress._num_env_steps + checkpoint_interval
+            time_to_checkpoint = self._trainer_progress._env_steps + checkpoint_interval
 
         while True:
             t0 = time.time()
@@ -466,7 +480,7 @@ class RLTrainer(Trainer):
             self._eval_env.batch_size)
         episodes = 0
         while episodes < self._num_eval_episodes:
-            time_step, policy_state, trans_state, _ = _step(
+            time_step, policy_step, trans_state = _step(
                 algorithm=self._algorithm,
                 env=self._eval_env,
                 time_step=time_step,
@@ -474,6 +488,8 @@ class RLTrainer(Trainer):
                 trans_state=trans_state,
                 epsilon_greedy=self._config.epsilon_greedy,
                 metrics=self._eval_metrics)
+            policy_state = policy_step.state
+
             if time_step.is_last():
                 episodes += 1
 
@@ -589,18 +605,20 @@ def _step(algorithm, env, time_step, policy_state, trans_state, epsilon_greedy,
     next_time_step = env.step(policy_step.output)
     for metric in metrics:
         metric(time_step.cpu())
-    return next_time_step, policy_step.state, trans_state, policy_step.info
+    return next_time_step, policy_step, trans_state
 
 
+@common.mark_eval
 def play(root_dir,
          env,
          algorithm,
          checkpoint_step="latest",
-         epsilon_greedy=0.1,
+         epsilon_greedy=0.,
          num_episodes=10,
          max_episode_length=0,
          sleep_time_per_step=0.01,
          record_file=None,
+         future_steps=0,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
@@ -629,6 +647,17 @@ def play(root_dir,
         sleep_time_per_step (float): sleep so many seconds for each step
         record_file (str): if provided, video will be recorded to a file
             instead of shown on the screen.
+        future_steps (int): whether to encode some information from future steps
+            into the current frame. If future_steps is larger than zero,
+            then the related information (e.g. observation, reward, action etc.)
+            will be cached and the encoding of them to video frames is deferred
+            to the time when ``future_steps`` of future frames are available.
+            This defer mode is potentially useful to display for each frame
+            some information that expands beyond a single time step to the future.
+            Currently this mode only support offline rendering, i.e. rendering
+            and saving the video to ``record_file``. If a non-positive value is
+            provided, it is treated as not using the defer mode and the plots
+            for displaying future information will not be displayed.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
@@ -645,7 +674,8 @@ def play(root_dir,
 
     recorder = None
     if record_file is not None:
-        recorder = VideoRecorder(env, path=record_file)
+        recorder = VideoRecorder(
+            env, future_steps=future_steps, path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
@@ -664,7 +694,7 @@ def play(root_dir,
         alf.metrics.AverageEpisodeLengthMetric(buffer_size=num_episodes),
     ]
     while episodes < num_episodes:
-        time_step, policy_state, trans_state, info = _step(
+        time_step, policy_step, trans_state = _step(
             algorithm=algorithm,
             env=env,
             time_step=time_step,
@@ -672,9 +702,14 @@ def play(root_dir,
             trans_state=trans_state,
             epsilon_greedy=epsilon_greedy,
             metrics=metrics)
+        policy_state = policy_step.state
         episode_length += 1
+
+        is_last_step = time_step.is_last() or (episode_length >=
+                                               max_episode_length > 0)
+
         if recorder:
-            recorder.capture_frame(info)
+            recorder.capture_frame(time_step, policy_step, is_last_step)
         else:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
@@ -683,7 +718,7 @@ def play(root_dir,
 
         episode_reward += time_step_reward
 
-        if time_step.is_last() or episode_length >= max_episode_length > 0:
+        if is_last_step:
             logging.info("episode_length=%s episode_reward=%s" %
                          (episode_length, episode_reward))
             episode_reward = 0.
@@ -698,8 +733,8 @@ def play(root_dir,
         logging.info(
             "%s: %s", m.name,
             map_structure(
-                lambda x: x.numpy().item() if x.ndim == 0 else x.numpy(),
-                m.result()))
+                lambda x: x.cpu().numpy().item()
+                if x.ndim == 0 else x.cpu().numpy(), m.result()))
     if recorder:
         recorder.close()
     env.reset()

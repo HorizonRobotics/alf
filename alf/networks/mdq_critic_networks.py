@@ -518,10 +518,10 @@ class MdqCriticNetwork(Network):
             sampled_log_pi (torch.Tensor): the log prob of the sampled action
         """
         if greedy:
-            _, greedy_ind = torch.max(action_values, dim=-1)
-            sample_ind = greedy_ind
+            sampled_log_pi, sampled_ind = torch.max(logits, dim=-1)
         else:
             batch_size = logits.shape[0]
+
             # logits [B, n, d] -> [B*n, d]
             batched_logits = logits.reshape(-1, self._action_bins)
             dist = torch.distributions.categorical.Categorical(
@@ -531,8 +531,8 @@ class MdqCriticNetwork(Network):
             sampled_ind = dist.sample((1, ))
             sampled_log_pi = dist.log_prob(sampled_ind)
 
-        sampled_ind = sampled_ind.view(batch_size, -1)
-        sampled_log_pi = sampled_log_pi.view(batch_size, -1)
+            sampled_ind = sampled_ind.view(batch_size, -1)
+            sampled_log_pi = sampled_log_pi.view(batch_size, -1)
 
         return sampled_ind, sampled_log_pi
 

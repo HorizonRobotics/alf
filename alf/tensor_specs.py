@@ -318,7 +318,7 @@ class BoundedTensorSpec(TensorSpec):
         if outer_dims is not None:
             shape = tuple(outer_dims) + shape
 
-        if self._dtype.is_floating_point:
+        if self.is_continuous:
             uniform = torch.rand(shape, dtype=self._dtype)
             return ((1 - uniform) * torch.as_tensor(self._minimum) +
                     torch.as_tensor(self._maximum) * uniform)

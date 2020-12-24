@@ -113,7 +113,7 @@ class LinearScheduler(Scheduler):
         progresses = self._progresses
         while index < len(progresses) and progress >= progresses[index]:
             index += 1
-        if index < len(progress):
+        if index < len(progresses):
             w = (progress - progresses[index - 1]) / (
                 progresses[index] - progresses[index - 1])
             value = (1 - w) * self._values[index - 1] + w * self._values[index]

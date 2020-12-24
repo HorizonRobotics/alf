@@ -588,3 +588,66 @@ class ContinuousActionClip(gym.ActionWrapper):
         action = alf.nest.map_structure_up_to(
             action, _clip_action, self.action_space, action, self.bounds)
         return action
+
+
+@gin.configurable
+class ContinuousActionMapping(gym.ActionWrapper):
+    """Map continuous actions to a desired action space, while keeping discrete
+    actions unchanged."""
+
+    def __init__(self, env, low, high):
+        """
+        Args:
+            env (gym.Env): Gym env to be wrapped
+            low (float): the action lower bound to map to.
+            high (float): the action higher bound to map to.
+        """
+        super(ContinuousActionMapping, self).__init__(env)
+
+        def _space_bounds(space):
+            if isinstance(space, gym.spaces.Box):
+                assert np.all(np.isfinite(space.low))
+                assert np.all(np.isfinite(space.high))
+                return (space.low, space.high)
+
+        self._bounds = alf.nest.map_structure(_space_bounds, self.action_space)
+        self.action_space = alf.nest.map_structure(
+            lambda space: (gym.spaces.Box(
+                low=low, high=high, shape=space.shape, dtype=space.dtype)
+                           if isinstance(space, gym.spaces.Box) else space),
+            self.action_space)
+
+    def action(self, action):
+        def _scale_back(a, b, space):
+            if isinstance(space, gym.spaces.Box):
+                # a and b should be mutually broadcastable
+                b0, b1 = b
+                a0, a1 = space.low, space.high
+                return (a - a0) / (a1 - a0) * (b1 - b0) + b0
+            return a
+
+        # map action back to its original space
+        action = alf.nest.map_structure_up_to(action, _scale_back, action,
+                                              self._bounds, self.action_space)
+        return action
+
+
+@gin.configurable
+class NormalizedAction(ContinuousActionMapping):
+    """Normalize actions to ``[-1, 1]``. This normalized action space is
+    friendly to algorithms that computes action entropy, e.g., SAC."""
+
+    def __init__(self, env):
+        super().__init__(env, low=-1., high=1.)
+
+
+@gin.configurable
+class NonEpisodicEnv(gym.Wrapper):
+    """Make a gym environment non-episodic by always setting ``done=False``."""
+
+    def __init__(self, env):
+        super().__init__(env)
+
+    def step(self, action):
+        ob, reward, done, info = self.env.step(action)
+        return ob, reward, False, info

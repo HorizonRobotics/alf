@@ -681,19 +681,19 @@ class EncodingNetwork(PreprocessorNetwork):
         return z, state
 
     def make_parallel(self, n):
-        """Make a parllelized version of this network.
+        """Make a parallelized version of this network.
 
         A parallel network has ``n`` copies of network with the same structure but
         different independently initialized parameters.
 
         For supported network structures (currently, networks with only FC layers)
-        it will create ``ParallelCriticNetwork`` (PCN). Otherwise, it will
-        create a ``NaiveParallelNetwork`` (NPN). However, PCN is not always
+        it will create ``ParallelEncodingNetwork`` (PEN). Otherwise, it will
+        create a ``NaiveParallelNetwork`` (NPN). However, PEN is not always
         faster than NPN. Especially for small ``n`` and large batch_size. See
         ``test_make_parallel()`` in critic_networks_test.py for detail.
 
         Returns:
-            Network: A paralle network
+            Network: A parallel network
         """
         if (self.saved_args.get('input_preprocessors') is None and
             (self._preprocessing_combiner == math_ops.identity or isinstance(
@@ -703,6 +703,8 @@ class EncodingNetwork(PreprocessorNetwork):
             parallel_enc_net_args.update(n=n, name="parallel_" + self.name)
             return ParallelEncodingNetwork(**parallel_enc_net_args)
         else:
+            common.warning_once(
+                " ``NaiveParallelNetwork`` is used by ``make_parallel()`` !")
             return super().make_parallel(n)
 
 

@@ -76,6 +76,7 @@ def wrap_env(gym_env,
              max_episode_steps=0,
              gym_env_wrappers=(),
              time_limit_wrapper=alf_wrappers.TimeLimit,
+             normalize_action=True,
              clip_action=True,
              alf_env_wrappers=(),
              image_channel_first=True,
@@ -101,8 +102,11 @@ def wrap_env(gym_env,
         time_limit_wrapper (AlfEnvironmentBaseWrapper): Wrapper that accepts
             (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this
             should be left as the default, alf_wrappers.TimeLimit.
+        normalize_action (bool): if True, will scale continuous actions to
+            ``[-1, 1]`` to be better used by algorithms that compute entropies.
         clip_action (bool): If True, will clip continuous action to its bound specified
-            by action_spec.
+            by ``action_spec``. If ``normalize_action`` is also ``True``, this
+            clipping happens after the normalization (i.e., clips to ``[-1, 1]``).
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
             classes to use on the ALF environment.
         image_channel_first (bool): whether transpose image channels to first dimension.
@@ -120,6 +124,10 @@ def wrap_env(gym_env,
     # To apply channel_first transpose on gym (py) env
     if image_channel_first:
         gym_env = gym_wrappers.ImageChannelFirst(gym_env)
+
+    if normalize_action:
+        # normalize continuous actions to [-1, 1]
+        gym_env = gym_wrappers.NormalizedAction(gym_env)
 
     if clip_action:
         # clip continuous actions according to gym_env.action_space

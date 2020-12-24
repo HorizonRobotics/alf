@@ -414,7 +414,7 @@ class LatentMbrlAlgorithm(MbrlAlgorithm):
         actions = torch.reshape(actions, (-1, *actions.shape[2:]))
 
         pred_rewards = self._latent_pred_rep_module.predict_multi_step(
-            init_rep, actions)
+            init_rep, actions, target_field="reward")
 
         pred_rewards = pred_rewards.view(num_unroll_steps + 1, batch_size,
                                          population_size, -1)

@@ -70,20 +70,38 @@ class NestCombiner(abc.ABC):
 
 @gin.configurable
 class NestConcat(NestCombiner):
-    def __init__(self, dim=-1, name="NestConcat"):
-        """A combiner for concatenating all tensors in a nest along the specified
-        axis. It assumes that all tensors have the same tensor spec. Can be used
-        as a preprocessing combiner in ``EncodingNetwork``.
+    def __init__(self, nest_mask=None, dim=-1, name="NestConcat"):
+        """A combiner for selecting from the tensors in a nest and then
+        concatenating them along a specified axis. If nest_mask is None,
+        then all the tensors from the nest will be selected.
+        It assumes that all the selected tensors have the same tensor spec.
+        Can be used as a preprocessing combiner in ``EncodingNetwork``.
 
         Args:
+            nest_mask (nest|None): nest structured mask indicating which of the
+                tensors in the nest to be selected or not, indicated by a
+                value of True/False (1/0). Note that the structure of the mask
+                should be the same as the nest of data to apply this operator on.
+                If is None, then all the tensors from the nest will be selected.
             dim (int): the dim along which the tensors are concatenated
             name (str):
         """
         super(NestConcat, self).__init__(name)
+        self._flat_mask = nest.flatten(nest_mask) if nest_mask else nest_mask
         self._dim = dim
 
     def _combine_flat(self, tensors):
-        return torch.cat(tensors, dim=self._dim)
+        if self._flat_mask is not None:
+            assert len(self._flat_mask) == len(tensors), (
+                "incompatible structures "
+                "between mask and data nest")
+            selected_tensors = []
+            for i, mask_value in enumerate(self._flat_mask):
+                if mask_value:
+                    selected_tensors.append(tensors[i])
+            return torch.cat(selected_tensors, dim=self._dim)
+        else:
+            return torch.cat(tensors, dim=self._dim)
 
 
 @gin.configurable

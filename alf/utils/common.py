@@ -153,8 +153,10 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
         w_t = (1 - \tau) * w_t + \tau * w_s.
 
     Args:
-        models (Network | list[Network]): the current model.
-        target_models (Network | list[Network]): the model to be updated.
+        models (Network | list[Network] | Parameter | list[Parameter] ): the
+            current model or parameter.
+        target_models (Network | list[Network] | Parameter | list[Parameter]):
+            the model or parameter to be updated.
         tau (float): A float scalar in :math:`[0, 1]`. Default :math:`\tau=1.0`
             means hard update.
         period (int): Step interval at which the target model is updated.
@@ -166,22 +168,31 @@ def get_target_updater(models, target_models, tau=1.0, period=1, copy=True):
     models = as_list(models)
     target_models = as_list(target_models)
 
+    def _copy_model_or_parameter(s, t):
+        if isinstance(s, nn.Parameter):
+            t.data.copy_(s)
+        else:
+            for ws, wt in zip(s.parameters(), t.parameters()):
+                wt.data.copy_(ws)
+
+    def _lerp_model_or_parameter(s, t):
+        if isinstance(s, nn.Parameter):
+            t.data.lerp_(s, tau)
+        else:
+            for ws, wt in zip(s.parameters(), t.parameters()):
+                wt.data.lerp_(ws, tau)
+
     if copy:
         for model, target_model in zip(models, target_models):
-            for ws, wt in zip(model.parameters(), target_model.parameters()):
-                wt.data.copy_(ws)
+            _copy_model_or_parameter(model, target_model)
 
     def update():
         if tau != 1.0:
             for model, target_model in zip(models, target_models):
-                for ws, wt in zip(model.parameters(),
-                                  target_model.parameters()):
-                    wt.data.lerp_(ws, tau)
+                _lerp_model_or_parameter(model, target_model)
         else:
             for model, target_model in zip(models, target_models):
-                for ws, wt in zip(model.parameters(),
-                                  target_model.parameters()):
-                    wt.data.copy_(ws)
+                _copy_model_or_parameter(model, target_model)
 
     return Periodically(update, period, 'periodic_update_targets')
 
@@ -625,11 +636,18 @@ def write_gin_configs(root_dir, gin_file):
 def warning_once(msg, *args):
     """Generate warning message once.
 
+    Note that the current implementation resembles that of the ``log_every_n()```
+    function in ``logging`` but reduces the calling stack by one to ensure
+    the multiple warning once messages generated at difference places can be
+    displayed correctly.
+
     Args:
         msg: str, the message to be logged.
         *args: The args to be substitued into the msg.
     """
-    logging.log_every_n(logging.WARNING, msg, 1 << 62, *args)
+    caller = logging.get_absl_logger().findCaller()
+    count = logging._get_next_log_count_per_token(caller)
+    logging.log_if(logging.WARNING, msg, not (count % (1 << 62)), *args)
 
 
 def set_random_seed(seed):
@@ -757,6 +775,13 @@ def is_rollout():
     unrolling or training.
     """
     return _exe_mode == EXE_MODE_ROLLOUT
+
+
+def is_eval():
+    """Return a bool value indicating whether the current code belongs to
+    evaluation or playing a learned model.
+    """
+    return _exe_mode == EXE_MODE_EVAL
 
 
 def mark_eval(func):

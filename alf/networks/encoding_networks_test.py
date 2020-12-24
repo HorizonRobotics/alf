@@ -272,7 +272,7 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         pnet = network.make_parallel(replicas)
         self.assertTrue(isinstance(pnet, ParallelEncodingNetwork))
         self.assertEqual(len(list(pnet.parameters())), num_layers * 2)
-        _benchmark(pnet, "ParallelENcodingNetwork")
+        _benchmark(pnet, "ParallelEncodingNetwork")
         self.assertEqual(pnet.name, "parallel_" + network.name)
 
         pnet = alf.networks.network.NaiveParallelNetwork(network, replicas)
@@ -285,6 +285,31 @@ class EncodingNetworkTest(parameterized.TestCase, alf.test.TestCase):
         pnet = alf.networks.network.NaiveParallelNetwork(
             network, replicas, name="pnet")
         self.assertEqual(pnet.name, "pnet")
+
+    def test_make_parallel_warning_on_using_naive_parallel(self):
+        input_spec = TensorSpec((256, ))
+        fc_layer_params = (32, 32)
+
+        pre_encoding_net = EncodingNetwork(
+            input_tensor_spec=input_spec, fc_layer_params=fc_layer_params)
+
+        network = EncodingNetwork(
+            input_tensor_spec=input_spec,
+            fc_layer_params=fc_layer_params,
+            input_preprocessors=pre_encoding_net)
+
+        replicas = 2
+
+        # Create a parallel network via the ``make_parallel()`` interface.
+        # As now ``input_preprocessors`` is not supported in
+        # ``ParallelEncodingNetwork``, ``make_parallel()`` will return an
+        # instance of the ``NaiveParallelNetwork``
+        expected_warning_message = ("``NaiveParallelNetwork`` is used by "
+                                    "``make_parallel()`` !")
+        with self.assertLogs() as ctx:
+            pnet = network.make_parallel(replicas)
+            warning_message = ctx.records[0]
+            assert expected_warning_message in str(warning_message)
 
     @parameterized.parameters((None, True), ((100, 100), False))
     def test_parallel_image_decoding_network(self, preprocessing_fc_layers,

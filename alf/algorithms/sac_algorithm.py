@@ -589,23 +589,19 @@ class SacAlgorithm(OffPolicyAlgorithm):
                     critics = torch.tensordot(
                         critics, self._reward_weights, dims=1)
 
-            target_q_value = critics.min(dim=1)[0]
+            q_value = critics.min(dim=1)[0]
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
         else:
             # use the critics computed during action prediction for Mixed type
+            # ``critics``` is already after min over replicas
             critics_state = ()
             discrete_act_dist = action_distribution[0]
-            discrete_entropy = discrete_act_dist.entropy()
-            # critics is already after min over replicas
-            weighted_q_value = torch.sum(
-                discrete_act_dist.probs * critics, dim=-1)
-            discrete_alpha = torch.exp(self._log_alpha[0]).detach()
-            target_q_value = weighted_q_value + discrete_alpha * discrete_entropy
+            q_value = (discrete_act_dist.probs.detach() * critics).sum(-1)
             action, continuous_log_pi = action[1], log_pi[1]
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
-        dqda = nest_utils.grad(action, target_q_value.sum())
+        dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
             if self._dqda_clipping:

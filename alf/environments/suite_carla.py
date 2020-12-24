@@ -31,6 +31,7 @@ To use this, there are two ways:
     cd ..
     ./ImportAssert.sh
     easy_install PythonAPI/carla/dist/carla-0.9.9-py3.7-linux-x86_64.egg
+    pip install networkx==2.2
 
 Make sure you are using python3.7
 
@@ -180,6 +181,7 @@ class Player(object):
     def __init__(self,
                  actor,
                  alf_world,
+                 controller_ctor=None,
                  success_reward=100.,
                  success_distance_thresh=5.0,
                  max_collision_penalty=20.,
@@ -198,6 +200,9 @@ class Player(object):
         Args:
             actor (carla.Actor): the carla actor object
             alf_world (Wolrd): the world containing the player
+            controller_ctor (Callable|None): if provided, will be as ``controller_ctor(vehicle, step_time)``
+                to create a vehicle controller. It will be used to process the
+                action and generate the control.
             success_reward (float): the reward for arriving the goal location.
             success_distance_thresh (float): success is achieved if the current
                 location is with such distance of the goal
@@ -312,9 +317,15 @@ class Player(object):
         self._observation_desc[
             'velocity'] = "3D Velocity relative to self coordinate in m/s"
         self._info_spec = OrderedDict(
-            success=alf.TensorSpec(()), collision=alf.TensorSpec(()))
+            success=alf.TensorSpec(()),
+            collision=alf.TensorSpec(()),
+            red_light=alf.TensorSpec(()))
 
         self._control = carla.VehicleControl()
+        self._controller = None
+        if controller_ctor is not None:
+            self._controller = controller_ctor(actor, self._delta_seconds)
+
         self.reset()
 
         # for rendering
@@ -330,6 +341,9 @@ class Player(object):
         Returns:
             list[carla.command]:
         """
+
+        if self._controller:
+            self._controller.reset()
 
         wp = random.choice(self._alf_world.get_waypoints())
         goal_loc = wp.transform.location
@@ -435,7 +449,10 @@ class Player(object):
     def action_spec(self):
         """Get the action spec.
 
-        The action is a 4-D vector of [throttle, steer, brake, reverse], where
+        If ``controller`` is provided at ``__init__()``, the action_spec is given
+        by ``controller``.
+
+        Otherwise, the action is a 4-D vector of [throttle, steer, brake, reverse], where
         throttle is in [-1.0, 1.0] (negative value is same as zero), steer is in
         [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value is same as zero),
         and reverse is interpreted as a boolean value with values greater than
@@ -444,9 +461,12 @@ class Player(object):
         Returns:
             nested BoundedTensorSpec:
         """
-        return alf.BoundedTensorSpec([4],
-                                     minimum=[-1., -1., -1., 0.],
-                                     maximum=[1., 1., 1., 1.])
+        if self._controller is not None:
+            return self._controller.action_spec()
+        else:
+            return alf.BoundedTensorSpec([4],
+                                         minimum=[-1., -1., -1., 0.],
+                                         maximum=[1., 1., 1., 1.])
 
     def info_spec(self):
         """Get the info spec."""
@@ -459,12 +479,15 @@ class Player(object):
             nested str: each str corresponds to one TensorSpec from
             ``action_spec()``.
         """
-        return (
-            "4-D vector of [throttle, steer, brake, reverse], where "
-            "throttle is in [-1.0, 1.0] (negative value is same as zero), "
-            "steer is in [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value "
-            "is same as zero), and reverse is interpreted as a boolean value "
-            "with values greater than 0.5 corrsponding to True.")
+        if self._controller is not None:
+            return self._controller.action_desc()
+        else:
+            return (
+                "4-D vector of [throttle, steer, brake, reverse], where "
+                "throttle is in [-1.0, 1.0] (negative value is same as zero), "
+                "steer is in [-1.0, 1.0], brake is in [-1.0, 1.0] (negative value "
+                "is same as zero), and reverse is interpreted as a boolean value "
+                "with values greater than 0.5 corrsponding to True.")
 
     def reward_spec(self):
         """Get the reward spec."""
@@ -499,7 +522,10 @@ class Player(object):
         reward_vector = np.zeros(Player.REWARD_DIMENSION, np.float32)
         reward = 0.
         discount = 1.0
-        info = OrderedDict(success=np.float32(0.0), collision=np.float32(0.0))
+        info = OrderedDict(
+            success=np.float32(0.0),
+            collision=np.float32(0.0),
+            red_light=np.float32(0.0))
 
         # When the previous episode ends because of stucking at a collision with
         # another vehicle, it may get an additional collision event in the new frame
@@ -595,6 +621,7 @@ class Player(object):
             logging.info("actor=%d frame=%d RED_LIGHT" % (self._actor.id,
                                                           current_frame))
             reward_vector[Player.REWARD_RED_LIGHT] = 1.
+            info['red_light'] = np.float32(1.0)
             reward -= min(
                 self._max_red_light_penalty,
                 Player.PENALTY_RATE_RED_LIGHT * max(0., self._episode_reward))
@@ -632,10 +659,13 @@ class Player(object):
         self._is_first_step = False
         if self._done:
             return self.reset()
-        self._control.throttle = max(float(action[0]), 0.0)
-        self._control.steer = float(action[1])
-        self._control.brake = max(float(action[2]), 0.0)
-        self._control.reverse = bool(action[3] > 0.5)
+        if self._controller is not None:
+            self._control = self._controller.act(action)
+        else:
+            self._control.throttle = max(float(action[0]), 0.0)
+            self._control.steer = float(action[1])
+            self._control.brake = max(float(action[2]), 0.0)
+            self._control.reverse = bool(action[3] > 0.5)
         self._prev_action = action
 
         return [carla.command.ApplyVehicleControl(self._actor, self._control)]
@@ -847,6 +877,18 @@ class CarlaEnvironment(AlfEnvironment):
     a Carla package.
     """
 
+    # not all vehicles have functioning lights. (See https://carla.readthedocs.io/en/0.9.9/core_world/#weather)
+    vehicles_with_functioning_lights = [
+        'vehicle.audi.tt',
+        'vehicle.chevrolet.impala',
+        'vehicle.dodge_charger.police',
+        'vehicle.audi.etron',
+        'vehicle.lincoln.mkz2017',
+        'vehicle.mustang.mustang',
+        'vehicle.tesla.model3',
+        'vehicle.volkswagen.t2',
+    ]
+
     def __init__(self,
                  batch_size,
                  map_name,
@@ -859,6 +901,7 @@ class CarlaEnvironment(AlfEnvironment):
                  global_distance_to_leading_vehicle=2.0,
                  use_hybrid_physics_mode=True,
                  safe=True,
+                 day_length=0.,
                  step_time=0.05):
         """
         Args:
@@ -876,6 +919,8 @@ class CarlaEnvironment(AlfEnvironment):
             use_hybrid_physics_mode (bool): If true, the autopiloted vehicle will
                 not use physics for simulation if it is far from other vehicles.
             safe (bool): avoid spawning vehicles prone to accidents.
+            day_length (float): number of seconds of a day. If 0, the time of the
+                day will not change.
             step_time (float): how many seconds does each step of simulation represents.
         """
         super().__init__()
@@ -888,6 +933,9 @@ class CarlaEnvironment(AlfEnvironment):
         self._num_walkers = num_walkers
         self._percentage_walkers_running = percentage_walkers_running
         self._percentage_walkers_crossing = percentage_walkers_crossing
+        self._day_length = day_length
+        self._time_of_the_day = 0.5 * day_length
+        self._step_time = step_time
 
         self._world = None
         try:
@@ -965,6 +1013,13 @@ class CarlaEnvironment(AlfEnvironment):
         assert len(
             blueprints
         ) > 0, "Cannot find safe vehicle '%s'" % self._vehicle_filter
+
+        blueprints = [
+            x for x in blueprints
+            if x.id in self.vehicles_with_functioning_lights
+        ]
+        assert len(blueprints) > 0, (
+            "Cannot find vehicle with functioning lights")
 
         spawn_points = self._world.get_map().get_spawn_points()
         number_of_spawn_points = len(spawn_points)
@@ -1184,6 +1239,8 @@ class CarlaEnvironment(AlfEnvironment):
         for response in self._client.apply_batch_sync(commands):
             if response.error:
                 logging.error(response.error)
+        if self._day_length > 0:
+            self._update_time_of_the_day()
         self._current_frame = self._world.tick()
         self._alf_world.on_tick()
         for vehicle in self._other_vehicles:
@@ -1195,6 +1252,34 @@ class CarlaEnvironment(AlfEnvironment):
                                                   actor.get_location())
 
         return self._get_current_time_step()
+
+    def _update_time_of_the_day(self):
+        light_state = None
+        if 0.25 * self._day_length - self._step_time < self._time_of_the_day <= 0.25 * self._day_length:
+            light_state = carla.VehicleLightState.NONE
+        elif 0.75 * self._day_length - self._step_time < self._time_of_the_day <= 0.75 * self._day_length:
+            light_state = carla.VehicleLightState(
+                carla.VehicleLightState.Position
+                | carla.VehicleLightState.LowBeam)
+        if light_state is not None:
+            for player in self._players:
+                player._actor.set_light_state(light_state)
+            for vehicle in self._other_vehicles:
+                vehicle.set_light_state(light_state)
+        self._time_of_the_day += self._step_time
+        if self._time_of_the_day >= self._day_length:
+            self._time_of_the_day -= self._day_length
+
+        weather = self._world.get_weather()
+        azimuth = weather.sun_azimuth_angle + 360 / self._day_length * self._step_time
+        if azimuth > 360:
+            azimuth -= 360
+        weather.sun_azimuth_angle = azimuth
+        altitude = self._time_of_the_day / self._day_length * 2
+        if altitude > 1:
+            altitude = 2. - altitude
+        weather.sun_altitude_angle = altitude * 180 - 90
+        self._world.set_weather(weather)
 
     def _get_current_time_step(self):
         time_step = [

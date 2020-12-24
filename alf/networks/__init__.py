@@ -25,4 +25,5 @@ from .preprocessor_networks import PreprocessorNetwork
 from .projection_networks import *
 from .relu_mlp import ReluMLP
 from .q_networks import *
+from .transformer_networks import TransformerNetwork
 from .value_networks import *
