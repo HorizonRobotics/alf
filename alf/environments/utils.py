@@ -66,7 +66,9 @@ def create_environment(env_name='CartPole-v0',
     """Create a batched environment.
 
     Args:
-        env_name (str): env name
+        env_name (str|list[str]): env name. If it is a list, ``MultitaskWrapper``
+            will be used to create multi-task environments. Each one of them
+            consists of the environments listed in ``env_name``.
         env_load_fn (Callable) : callable that create an environment
             If env_load_fn has attribute ``batched`` and it is True,
             ``evn_load_fn(env_name, batch_size=num_parallel_environments)``
@@ -82,6 +84,9 @@ def create_environment(env_name='CartPole-v0',
     Returns:
         AlfEnvironment:
     """
+    if isinstance(env_name, (list, tuple)):
+        env_load_fn = functools.partial(alf_wrappers.MultitaskWrapper.load,
+                                        env_load_fn)
 
     if hasattr(env_load_fn, 'batched') and env_load_fn.batched:
         if nonparallel:

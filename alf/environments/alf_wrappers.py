@@ -484,7 +484,7 @@ class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
 
 
 class MultitaskWrapper(AlfEnvironment):
-    """Multitask environment based a list of environments.
+    """Multitask environment based on a list of environments.
 
     All the environments need to have same observation_spec, action_spec, reward_spec
     and info_spec. The action_spec of the new environment becomes:
@@ -496,21 +496,32 @@ class MultitaskWrapper(AlfEnvironment):
             'action': original_action_spec
         }
 
-    'task_id' is used to specify which task to run for the current step.
+    'task_id' is used to specify which task to run for the current step. Note
+    that current implementation does not prevent switching task in the middle of
+    one episode.
     """
 
-    def __init__(self, envs, task_names):
+    def __init__(self, envs, task_names, env_id=None):
         """
         Args:
             envs (list[AlfEnvironment]): a list of environments. Each one
                 represents a different task.
+            task_names (list[str]): the names of each task.
+            env_id (int): (optional) ID of the environment.
         """
+        assert len(envs) > 0, "`envs should not be empty"
+        assert len(set(task_names)) == len(task_names), (
+            "task_names should "
+            "not contain duplicated names: %s" % str(task_names))
         self._envs = envs
         self._observation_spec = envs[0].observation_spec()
         self._action_spec = envs[0].action_spec()
         self._reward_spec = envs[0].reward_spec()
         self._env_info_spec = envs[0].env_info_spec()
         self._task_names = task_names
+        if env_id is None:
+            env_id = 0
+        self._env_id = np.int32(env_id)
 
         def _nested_eq(a, b):
             return all(
@@ -540,20 +551,24 @@ class MultitaskWrapper(AlfEnvironment):
                                           maximum=len(envs) - 1,
                                           dtype='int64'),
             action=self._action_spec)
+        self._is_first_step = True
 
     @staticmethod
-    def load(load_fn, environment_name, **kwargs):
+    def load(load_fn, environment_name, env_id=None, **kwargs):
         """
         Args:
             load_fn (Callable): function used to construct the environment for
                 each tasks. It will be called as ``load_fn(env_name, **kwargs)``
             environment_name (list[str]): list of environment names
+            env_id (int): (optional) ID of the environment.
             kwargs (**): arguments passed to load_fn
         """
+        # TODO: may need to add the option of using ProcessEnvironment to wrap
+        # the underline environment
         envs = []
         for name in environment_name:
             envs.append(load_fn(name, **kwargs))
-        return MultitaskWrapper(envs, environment_name)
+        return MultitaskWrapper(envs, environment_name, env_id)
 
     @property
     def num_tasks(self):
@@ -581,15 +596,21 @@ class MultitaskWrapper(AlfEnvironment):
     def _reset(self):
         time_step = self._envs[self._current_env_id].reset()
         return time_step._replace(
+            env_id=self._env_id,
             prev_action=OrderedDict(
                 task_id=self._current_env_id, action=time_step.prev_action))
 
     def _step(self, action):
-        self._current_env_id = action['task_id']
+        if self._is_first_step:
+            self._current_env_id = action['task_id']
+            self._is_first_step = False
         action = action['action']
         assert self._current_env_id < len(self._envs)
         time_step = self._envs[self._current_env_id].step(action)
+        if time_step.is_last():
+            self._is_first_step = True
         return time_step._replace(
+            env_id=self._env_id,
             prev_action=OrderedDict(
                 task_id=self._current_env_id, action=time_step.prev_action))
 
@@ -717,7 +738,7 @@ class CurriculumWrapper(AlfEnvironmentBaseWrapper):
     def _step(self, action):
         time_step = self._env.step(
             OrderedDict(task_id=self._current_task_ids, action=action))
-        task_ids = time_step.prev_action['task_id']
+        task_ids = self._current_task_ids
         time_step_cpu = time_step.cpu()
         info = time_step_cpu.env_info
 

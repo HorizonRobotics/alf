@@ -50,9 +50,6 @@ def load(environment_name,
     Returns:
         An AlfEnvironment instance.
     """
-    if isinstance(environment_name, (list, tuple)):
-        return alf_wrappers.MultitaskWrapper.load(load, **locals())
-
     gym_spec = gym.spec(environment_name)
     gym_env = gym_spec.make()
 

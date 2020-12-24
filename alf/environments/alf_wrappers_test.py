@@ -175,7 +175,7 @@ class TimeLimitWrapperTest(alf.test.TestCase):
 class MultitaskWrapperTest(alf.test.TestCase):
     def test_multitask_wrapper(self):
         env = alf_wrappers.MultitaskWrapper.load(
-            suite_gym.load, ['CartPole-v1', 'CartPole-v1'])
+            suite_gym.load, ['CartPole-v0', 'CartPole-v1'])
         self.assertEqual(env.num_tasks, 2)
         self.assertEqual(env.action_spec()['task_id'],
                          alf.BoundedTensorSpec((), maximum=1, dtype='int64'))
@@ -224,6 +224,7 @@ class CurriculumWrapperTest(alf.test.TestCase):
 
         for j in range(500):
             time_step = env.step(time_step.prev_action)
+            self.assertEqual(time_step.env_id, torch.arange(4))
             self.assertEqual(
                 len(env.env_info_spec()['curriculum_task_count']), 2)
             self.assertEqual(
