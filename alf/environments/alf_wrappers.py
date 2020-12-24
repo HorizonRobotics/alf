@@ -600,14 +600,10 @@ class MultitaskWrapper(AlfEnvironment):
                 task_id=self._current_env_id, action=time_step.prev_action))
 
     def _step(self, action):
-        if self._is_first_step:
-            self._current_env_id = action['task_id']
-            self._is_first_step = False
+        self._current_env_id = action['task_id']
         action = action['action']
         assert self._current_env_id < len(self._envs)
         time_step = self._envs[self._current_env_id].step(action)
-        if time_step.is_last():
-            self._is_first_step = True
         return time_step._replace(
             env_id=self._env_id,
             prev_action=OrderedDict(
