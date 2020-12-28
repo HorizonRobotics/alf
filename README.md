@@ -24,7 +24,7 @@ Agent Learning Framework (ALF) is a reinforcement learning framework emphasizing
 
 ## Installation
 
-You can run the following commands to install ALF
+Python3.7 is currently supported by ALF. [Virtualenv](https://virtualenv.pypa.io/en/latest/) is recommended for the installation. After activating a virtual env, you can run the following commands to install ALF
 ```
 git clone https://github.com/HorizonRobotics/alf
 cd alf
