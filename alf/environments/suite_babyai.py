@@ -35,7 +35,7 @@ def is_available():
 def load(environment_name,
          env_id=None,
          max_instruction_length=80,
-         one_token_per_step=False,
+         mode='sent',
          discount=1.0,
          max_episode_steps=None,
          gym_env_wrappers=(),
@@ -49,11 +49,12 @@ def load(environment_name,
         environment_name (str): Name for the environment to load.
         env_id (int): (optional) ID of the environment.
         max_instruction_length (int): the maximum number of words of an instruction.
-        one_token_per_step (bool): If False, the whole instruction (word ID array)
-            is given in the observation at every step. If True, the word IDs are
-            given in the observation sequentially. Each step only one word ID
-            is given. A zero is given for every steps after all the word IDs
-            are given.
+        mode (str): one of ('sent', 'word', 'char'). If 'sent', the whole instruction
+            (word ID array) is given in the observation at every step. If 'word',
+            the word IDs are given in the observation sequentially. Each step
+            only one word ID is given. A zero is given for every steps after all
+            the word IDs are given. If 'char', similar to 'word', but only one
+            character is given at each step.
         discount (float): Discount to use for the environment.
         max_episode_steps (int): If None the max_episode_steps will be set to the
             default step limit defined in the environment's spec. No limit is applied
@@ -76,8 +77,7 @@ def load(environment_name,
         else:
             max_episode_steps = 0
 
-    gym_env = BabyAIWrapper(gym_env, max_instruction_length,
-                            one_token_per_step)
+    gym_env = BabyAIWrapper(gym_env, max_instruction_length, mode)
 
     return wrap_env(
         gym_env,
@@ -138,24 +138,23 @@ class BabyAIWrapper(gym.Wrapper):
 
     VOCAB_SIZE = len(VOCAB) + 1
 
-    def __init__(self,
-                 env,
-                 max_instruction_length=80,
-                 one_token_per_step=False):
+    def __init__(self, env, max_instruction_length=80, mode='sent'):
         """
         Args:
             gym_env (gym.Env): An instance of OpenAI gym environment.
             max_instruction_length (int): the maximum number of words of an instruction.
-            one_token_per_step (bool): If False, the whole instruction (word ID array)
-                is given in the observation at every step. If True, the word IDs are
-                given in the observation sequentially. Each step only one word ID
-                is given. Zeros are given for every steps after all the word IDs
-                are given.
+            mode (str): one of ('sent', 'word', 'char'). If 'sent', the whole instruction
+                (word ID array) is given in the observation at every step. If 'word',
+                the word IDs are given in the observation sequentially. Each step
+                only one word ID is given. A zero is given for every steps after all
+                the word IDs are given. If 'char', similar to 'word', but only one
+                character is given at each step.
         """
         super().__init__(env)
 
         self._max_instruction_length = max_instruction_length
-        self._one_token_per_step = one_token_per_step
+        assert mode in ('sent', 'word', 'char')
+        self._mode = mode
 
         # the extra 1 is for padding
         vocab_size = len(self.VOCAB) + 1
@@ -172,8 +171,10 @@ class BabyAIWrapper(gym.Wrapper):
             'mission':
                 gym.spaces.MultiDiscrete([vocab_size] * max_instruction_length)
         }
-        if one_token_per_step:
+        if mode == 'word':
             obs_space['mission'] = gym.spaces.Discrete(vocab_size)
+        elif mode == 'char':
+            obs_space['mission'] = gym.spaces.Discrete(128)
 
         self.observation_space = gym.spaces.Dict(obs_space)
 
@@ -186,15 +187,19 @@ class BabyAIWrapper(gym.Wrapper):
 
     def _tokenize(self, instruction):
         """Convert instruction string to a numpy array."""
+        if self._mode == 'char':
+            tokens = np.array([ord(c) for c in instruction])
+            return tokens
+
         tokens = self._word_pattern.findall(instruction.lower())
-        instr = np.array([self._vocab.get(token, 0) for token in tokens])
-        if np.amin(instr) == 0:
+        tokens = np.array([self._vocab.get(token, 0) for token in tokens])
+        if np.amin(tokens) == 0:
             for token in tokens:
                 if token not in self._vocab:
                     raise ValueError(
                         "The instruction '%s' contains word "
                         " out of vocabulary: %s" % (instruction, token))
-        return instr
+        return tokens
 
     def _vectorize(self, instruction):
         instr = self._tokenize(instruction)
@@ -225,7 +230,7 @@ class BabyAIWrapper(gym.Wrapper):
         # steps of an episode.
         observation['direction'] = np.int64(observation['direction'])
         mission = observation['mission']
-        if not self._one_token_per_step:
+        if self._mode == 'sent':
             observation['mission'] = self._vectorize(mission)
         else:
             if mission != self._last_mission:

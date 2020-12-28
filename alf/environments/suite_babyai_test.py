@@ -25,8 +25,7 @@ class SuiteBabyAITest(alf.test.TestCase):
             self.skipTest('suite_babyai is not available.')
 
     def test_one_token_per_step(self):
-        env = suite_babyai.load(
-            "BabyAI-GoToRedBall-v0", one_token_per_step=True)
+        env = suite_babyai.load("BabyAI-GoToRedBall-v0", mode='word')
         vocab = suite_babyai.BabyAIWrapper.VOCAB
         self.assertEqual(env.observation_spec()['mission'].shape, ())
         self.assertEqual(env.observation_spec()['mission'].minimum, 0)
@@ -47,11 +46,21 @@ class SuiteBabyAITest(alf.test.TestCase):
         obs = env.step(0).observation
         self.assertEqual(obs['mission'], 0)
 
+    def test_one_char_per_step(self):
+        env = suite_babyai.load("BabyAI-GoToRedBall-v0", mode='char')
+        self.assertEqual(env.observation_spec()['mission'].shape, ())
+        self.assertEqual(env.observation_spec()['mission'].minimum, 0)
+        self.assertEqual(env.observation_spec()['mission'].maximum, 127)
+        obs = env.reset().observation
+        self.assertEqual(obs['mission'], ord('g'))
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], ord('o'))
+        obs = env.step(0).observation
+        self.assertEqual(obs['mission'], ord(' '))
+
     def test_one_instruction_per_step(self):
         env = suite_babyai.load(
-            "BabyAI-GoToRedBall-v0",
-            max_instruction_length=10,
-            one_token_per_step=False)
+            "BabyAI-GoToRedBall-v0", max_instruction_length=10, mode='sent')
         vocab = suite_babyai.BabyAIWrapper.VOCAB
         self.assertEqual(env.observation_spec()['mission'].shape, (10, ))
         self.assertEqual(env.observation_spec()['mission'].minimum, 0)
