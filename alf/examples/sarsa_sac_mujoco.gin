@@ -16,6 +16,7 @@ TrainerConfig.mini_batch_size=256
 TrainerConfig.replay_buffer_length=1000000
 TrainerConfig.num_iterations=1000000
 TrainerConfig.temporally_independent_train_step=True
+TrainerConfig.summary_interval=2000
 
 import alf.utils.dist_utils
 # 0.184 is chosen so that the target_entropy per each action dimension is -1
