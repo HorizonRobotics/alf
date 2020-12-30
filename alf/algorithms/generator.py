@@ -374,7 +374,6 @@ class Generator(Algorithm):
     def train_step(self,
                    inputs,
                    loss_func,
-                   outputs=None,
                    batch_size=None,
                    transform_func=None,
                    entropy_regularization=None,
@@ -383,17 +382,32 @@ class Generator(Algorithm):
         Args:
             inputs (nested Tensor): if None, the outputs is generated only from
                 noise.
-            outputs (Tensor): generator's output (possibly from previous runs) used
-                for this train_step.
             loss_func (Callable): loss_func([outputs, inputs])
                 (loss_func(outputs) if inputs is None) returns a Tensor or namedtuple
                 of tensors with field `loss`, which is a Tensor of
                 shape [batch_size] a loss term for optimizing the generator.
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None.
-            transform_func (Callable): transform_func(outputs) transforms the 
-                generator outputs to its corresponding function values evaluated
-                on current training batch.
+            transform_func (Callable): transform function. 
+                It can be called in two ways 
+                - transform_func(params): params is a tensor of parameters for a 
+                    network, of shape ``[D]`` or ``[B, D]``
+                    - ``B``: batch size
+                    - ``D``: length of network parameters
+                    in this case, transform_func will evaluate the network(s)
+                    parameterized by ``params`` on the training batch (predifined
+                    with transform_func) plus additional sampled data.
+                - transform_func((params, extra_samples)): params is the same as
+                    above case and extra_samples is the tensor of additionalsampled
+                    data that will be evaluated by the network parameterized by
+                    ``params`` together with the training batch.
+                It returns three tensors
+                - outputs: outputs of network parameterized by params evaluated 
+                    on predined training batch.
+                - density_outputs: outputs of network parameterized by params 
+                    evaluated on additional sampled data. 
+                - extra_samples: additional sampled data, same as input
+                    extra_samples if called as transform_func((params, extra_samples))
             entropy_regularization (float): weight of entropy regularization.
             state: not used
 
@@ -402,8 +416,7 @@ class Generator(Algorithm):
                 outputs: Tensor with shape (batch_size, dim)
                 info: LossInfo
         """
-        if outputs is None:
-            outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
+        outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
         loss, loss_propagated = self._grad_func(

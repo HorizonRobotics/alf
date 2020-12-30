@@ -113,7 +113,19 @@ class ParamConvNet(Network):
         return self._param_length
 
     def set_parameters(self, theta, reinitialize=False):
-        """Distribute parameters to corresponding layers. """
+        """Distribute parameters to corresponding layers. 
+
+        Args:
+            theta (torch.Tensor): with shape ``[D] (groups=1)`` 
+                                        or ``[B, D] (groups=B)``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of parameters, should be self.param_length 
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize (bool): whether to reinitialize parameters of 
+                each layer.
+        """
         if theta.ndim == 1:
             theta = theta.unsqueeze(0)
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
@@ -287,7 +299,7 @@ class ParamNetwork(Network):
 
         Args:
             theta (torch.Tensor): with shape ``[D] (groups=1)`` 
-                                        or ``[B, D] (groups=n)``
+                                        or ``[B, D] (groups=B)``
                 where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``D``: length of parameters, should be self.param_length 

@@ -222,8 +222,13 @@ class HyperNetwork(Algorithm):
             par_vi = 'svgd3'
 
         if function_vi:
+            assert par_vi in ('svgd2', 'svgd3', 'gfsf'), (
+                "Function_vi is not support for par_vi method: %s" % par_vi)
             assert function_bs is not None, (
-                "need to specify batch_size of function outputs.")
+                "Need to specify batch_size of function outputs.")
+            assert function_extra_bs_sampler in ('uniform', 'normal'), (
+                "Unsupported sampling type %s for extra training batch" %
+                (function_extra_bs_sampler))
             self._function_extra_bs = math.ceil(
                 function_bs * function_extra_bs_ratio)
             self._function_extra_bs_sampler = function_extra_bs_sampler
@@ -417,7 +422,10 @@ class HyperNetwork(Algorithm):
 
         Args:
             data (torch.Tensor): training batch input.
-            params (torch.Tensor): sampled outputs from the generator.
+            params: tensor params or tuple of tensors (params, extra_samples)
+                - params: of shape ``[D]`` or ``[B, D]``, sampled outputs 
+                    from the generator
+                - extra_samples: sampled extra data
 
         Returns:
             outputs (torch.Tensor): outputs of param_net under params
@@ -440,11 +448,14 @@ class HyperNetwork(Algorithm):
 
         num_particles = params.shape[0]
         self._param_net.set_parameters(params)
-        outputs, _ = self._param_net(data)  # [B, P, D]
+        aug_data = torch.cat([data, extra_samples], dim=0)
+        aug_outputs, _ = self._param_net(aug_data)  # [B+b, P, D]
+
+        outputs = aug_outputs[:data.shape[0]]  # [B, P, D]
         outputs = outputs.transpose(0, 1)
         outputs = outputs.view(num_particles, -1)  # [P, B * D]
 
-        density_outputs, _ = self._param_net(extra_samples)
+        density_outputs = aug_outputs[-extra_samples.shape[0]:]  # [b, P, D]
         density_outputs = density_outputs.transpose(0, 1)
         density_outputs = density_outputs.view(num_particles, -1)
 
