@@ -1221,7 +1221,8 @@ class TransformerBlock(nn.Module):
                  d_v=None,
                  d_ff=None,
                  positional_encoding='abs',
-                 add_positional_encoding=True):
+                 add_positional_encoding=True,
+                 scale_attention_score=True):
         """
         Args:
             d_model (int): dimension of the model, same as d_model in [1]
@@ -1241,6 +1242,9 @@ class TransformerBlock(nn.Module):
                 result can keep the location information better. Note that using
                 this option will increase the number of parameters by about 25%.
                 This option cannot be used if positional_encoding is 'none'.
+            scale_attention_score (bool): If True, scale the attention score by
+                ``d_k ** -0.5`` as suggested in [1]. However, this may not always
+                be better since it slows the unittest in layers_test.py
         """
         super().__init__()
         if d_k is None:
@@ -1269,7 +1273,7 @@ class TransformerBlock(nn.Module):
         self._relative_positional_encoding = positional_encoding == 'rel'
         self._add_positional_encoding = add_positional_encoding
 
-        self._attention_scale = 1. / d_k**0.5
+        self._attention_scale = d_k**-0.5 if scale_attention_score else 1.
         self._mlp = torch.nn.Sequential(
             FC(d_model, d_ff, torch.relu_), FC(d_ff, d_model))
         self._norm1 = torch.nn.LayerNorm(d_model)
@@ -1415,6 +1419,9 @@ class TransformerBlock(nn.Module):
             # gradient can still be correctly calculated in this case even though
             # inplace add is used.
             logits.add_(positional_logits)
+
+        if self._attention_scale != 1.0:
+            logits.mul_(self._attention_scale)
 
         # [B, M, H, N]
         a = _masked_softmax(logits, mask)
