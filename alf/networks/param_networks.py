@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -283,7 +283,19 @@ class ParamNetwork(Network):
         return self._param_length
 
     def set_parameters(self, theta, reinitialize=False):
-        """Distribute parameters to corresponding layers. """
+        """Distribute parameters to corresponding layers. 
+
+        Args:
+            theta (torch.Tensor): with shape ``[D] (groups=1)`` 
+                                        or ``[B, D] (groups=n)``
+                where the meaning of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of parameters, should be self.param_length 
+                When the shape of inputs is ``[D]``, it will be unsqueezed
+                to ``[1, D]``.
+            reinitialize (bool): whether to reinitialize parameters of 
+                each layer.
+        """
         if theta.ndim == 1:
             theta = theta.unsqueeze(0)
         assert (theta.ndim == 2 and theta.shape[1] == self.param_length), (
@@ -311,7 +323,6 @@ class ParamNetwork(Network):
                     fc_theta[:, pos:pos + bias_length],
                     reinitialize=reinitialize)
                 pos = pos + bias_length
-        # self._output_spec = None
 
     def forward(self, inputs, state=()):
         """

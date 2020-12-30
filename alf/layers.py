@@ -1087,16 +1087,19 @@ class ParamFC(nn.Module):
         return self._bias_length
 
     def set_weight(self, weight, reinitialize=False):
-        """Store a weight tensor or batch of weight tensors."""
+        """Store a weight tensor or batch of weight tensors.
+
+        Args:
+            weight (torch.Tensor): with shape ``[B, D]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of weight vector, should be self._weight_length
+            reinitialize (bool): whether to reinitialize self._weight
+        """
         assert (weight.ndim == 2 and weight.shape[1] == self._weight_length), (
             "Input weight has wrong shape %s. Expecting shape (n, %d)" %
             (weight.shape, self._weight_length))
-        if weight.shape[0] == 1:
-            # non-parallel weight
-            self._groups = 1
-        elif weight.ndim == 2:
-            # parallel weight
-            self._groups = weight.shape[0]
+        self._groups = weight.shape[0]
         weight = weight.view(self._groups, self._output_size, self._input_size)
         if reinitialize:
             for i in range(self._groups):
@@ -1111,20 +1114,21 @@ class ParamFC(nn.Module):
         self._weight = weight
 
     def set_bias(self, bias, reinitialize=False):
-        """Store a bias tensor or batch of bias tensors."""
+        """Store a bias tensor or batch of bias tensors.
+
+        Args:
+            bias (torch.Tensor): with shape ``[B, D]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of bias vector, should be self._bias_length
+            reinitialize (bool): whether to reinitialize self._bias
+        """
         assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
             "Input bias has wrong shape %s. Expecting shape (n, %d)" %
             (bias.shape, self._bias_length))
-        if self._groups == 1:
-            # non-parallel bias
-            assert bias.shape[0] == 1, (
-                "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
-                (bias.shape, 1, self.bias_length))
-        else:
-            # parallel weight
-            assert (bias.ndim == 2 and bias.shape[0] == self._groups), (
-                "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
-                (bias.shape, self._group, self.bias_length))
+        assert bias.shape[0] == self._groups, (
+            "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
+            (bias.shape, self._group, self.bias_length))
 
         if reinitialize:
             if self._use_bias:
@@ -1257,7 +1261,15 @@ class ParamConv2D(nn.Module):
         return self._bias_length
 
     def set_weight(self, weight, reinitialize=False):
-        """Store a weight tensor or batch of weight tensors."""
+        """Store a weight tensor or batch of weight tensors.
+
+        Args:
+            weight (torch.Tensor): with shape ``[B, D]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of weight vector, should be self._weight_length
+            reinitialize (bool): whether to reinitialize self._weight
+        """
         assert (weight.ndim == 2 and weight.shape[1] == self._weight_length), (
             "Input weight has wrong shape %s. Expecting shape (n, %d)" %
             (weight.shape, self._weight_length))
@@ -1289,25 +1301,25 @@ class ParamConv2D(nn.Module):
         self._weight = weight
 
     def set_bias(self, bias, reinitialize=False):
-        """Store a bias tensor or batch of bias tensors."""
+        """Store a bias tensor or batch of bias tensors.
+
+        Args:
+            bias (torch.Tensor): with shape ``[B, D]``
+                where the mining of the symbols are:
+                - ``B``: batch size
+                - ``D``: length of bias vector, should be self._bias_length
+            reinitialize (bool): whether to reinitialize self._bias
+        """
         assert (bias.ndim == 2 and bias.shape[1] == self._bias_length), (
             "Input bias has wrong shape %s. Expecting shape (n, %d)" %
             (bias.shape, self._bias_length))
+        assert bias.shape[0] == self._groups, (
+            "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
+            (bias.shape, self._group, self.bias_length))
 
         if reinitialize:
             if self._use_bias:
                 nn.init.constant_(bias, self._bias_init_value)
-
-        if self._groups == 1:
-            # non-parallel bias
-            assert bias.shape[0] == 1, (
-                "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
-                (bias.shape, 1, self.bias_length))
-        else:
-            # parallel weight
-            assert bias.shape[0] == self._groups, (
-                "Input bias has wrong shape %s. Expecting shape (%d, %d)" %
-                (bias.shape, self._group, self.bias_length))
 
         self._bias = bias.reshape(-1)
 

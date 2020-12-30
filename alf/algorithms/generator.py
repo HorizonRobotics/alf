@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -211,7 +211,7 @@ class Generator(Algorithm):
                 for maximizing the mutual information between [noise, inputs]
                 and [outputs, inputs].
             par_vi (string): ParVI methods, options are
-                [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``],
+                [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
                 * svgd: empirical expectation of SVGD is evaluated by a single 
                     resampled particle. The main benefit of this choice is it 
                     supports conditional case, while all other options do not.
@@ -427,8 +427,8 @@ class Generator(Algorithm):
                  loss_func,
                  entropy_regularization=None,
                  transform_func=None):
-        if transform_func is not None:
-            outputs = transform_func(outputs)
+        assert transform_func is None, (
+            "function value based vi is not supported for ml_grad")
         loss_inputs = outputs if inputs is None else [outputs, inputs]
         loss = loss_func(loss_inputs)
 
@@ -485,8 +485,7 @@ class Generator(Algorithm):
         h = self._kernel_width(dist_sq.view(-1))
 
         kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
-        kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
-                                  -2 * diff / h)  # [Nx, Ny, D]
+        kappa_grad = kappa.unsqueeze(-1) * (-2 * diff / h)  # [Nx, Ny, D]
         return kappa, kappa_grad
 
     def _score_func(self, x, alpha=1e-5):
@@ -528,9 +527,8 @@ class Generator(Algorithm):
         evaluated by a single resampled particle. 
         """
         outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
-        if transform_func is not None:
-            outputs = transform_func(outputs)
-            outputs2 = transform_func(outputs2)
+        assert transform_func is None, (
+            "function value based vi is not supported for svgd_grad")
         kernel_weight = self._rbf_func(outputs, outputs2)
         weight_sum = entropy_regularization * kernel_weight.sum()
 
@@ -675,13 +673,12 @@ class Generator(Algorithm):
     def _jacobian_trace(self, fx, x):
         """Hutchinson's trace Jacobian estimator O(1) call to autograd,
             used by "\"minmax\" method"""
+        assert fx.shape[-1] == x.shape[-1], (
+            "Jacobian is not square, no trace defined.")
         eps = torch.randn_like(fx)
         jvp = torch.autograd.grad(
             fx, x, grad_outputs=eps, retain_graph=True, create_graph=True)[0]
-        if eps.shape[-1] == jvp.shape[-1]:
-            tr_jvp = torch.einsum('bi,bi->b', jvp, eps)
-        else:
-            tr_jvp = torch.einsum('bi,bj->b', jvp, eps)
+        tr_jvp = torch.einsum('bi,bi->b', jvp, eps)
         return tr_jvp
 
     def _critic_train_step(self, inputs, loss_func, entropy_regularization=1.):
@@ -724,8 +721,8 @@ class Generator(Algorithm):
         assert inputs is None, '"minmax" does not support conditional generator'
 
         # optimize the critic using resampled particles
-        if transform_func is not None:
-            outputs = transform_func(outputs)
+        assert transform_func is None, (
+            "function value based vi is not supported for minmax_grad")
         num_particles = outputs.shape[0]
 
         for i in range(self._critic_iter_num):
@@ -733,8 +730,6 @@ class Generator(Algorithm):
             if self._minmax_resample:
                 critic_inputs, _ = self._predict(
                     inputs, batch_size=num_particles)
-                if transform_func is not None:
-                    critic_inputs = transform_func(critic_inputs)
             else:
                 critic_inputs = outputs.detach().clone()
                 critic_inputs.requires_grad = True

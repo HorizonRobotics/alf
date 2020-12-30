@@ -1,4 +1,4 @@
-# Copyright (c) 2020 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2020 Horizon Robotics and ALF Contributors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -146,7 +146,8 @@ class HyperNetwork(Algorithm):
 
             Args for function_vi
             ====================================================================
-            function_vi (bool): whether to use funciton value based par_vi.
+            function_vi (bool): whether to use funciton value based par_vi, current
+                supported by [``svgd2``, ``svgd3``, ``gfsf``].
             function_bs (int): mini batch size for par_vi training. 
                 Needed for critic initialization when function_vi is True. 
             function_extra_bs_ratio (float): ratio of extra sampled batch size 
@@ -163,7 +164,24 @@ class HyperNetwork(Algorithm):
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
             par_vi (str): types of particle-based methods for variational inference,
-                types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``]
+                types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
+                * svgd: empirical expectation of SVGD is evaluated by a single 
+                    resampled particle. The main benefit of this choice is it 
+                    supports conditional case, while all other options do not.
+                * svgd2: empirical expectation of SVGD is evaluated by splitting
+                    half of the sampled batch. It is a trade-off between 
+                    computational efficiency and convergence speed.
+                * svgd3: empirical expectation of SVGD is evaluated by 
+                    resampled particles of the same batch size. It has better
+                    convergence but involves resampling, so less efficient
+                    computaionally comparing with svgd2.
+                * gfsf: wasserstein gradient flow with smoothed functions. It 
+                    involves a kernel matrix inversion, so computationally most
+                    expensive, but in some case the convergence seems faster 
+                    than svgd approaches.
+                * minmax: Fisher Neural Sampler, optimal descent direction of
+                    the Stein discrepancy is solved by an inner optimization
+                    procedure in the space of L2 neural networks.
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
@@ -404,6 +422,9 @@ class HyperNetwork(Algorithm):
         Returns:
             outputs (torch.Tensor): outputs of param_net under params
                 evaluated on data.
+            density_outputs (torch.Tensor): outputs of param_net under
+                params evaluated on sampled extra data.
+            extra_samples (torch.Tensor): sampled extra data.
         """
         # sample extra data
         if isinstance(params, tuple):
