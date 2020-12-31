@@ -411,7 +411,7 @@ class FIFOMemory(Memory):
         assert content.shape[2] == self.dim
         k = content.shape[1]
 
-        self._memory = torch.cat([content, self._memory[:, k:, :]], dim=1)
+        self._memory = torch.cat([content, self._memory[:, :-k, :]], dim=1)
         self._current_size = self._current_size + k
 
     def read(self, keys):
