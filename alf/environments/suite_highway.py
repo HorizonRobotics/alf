@@ -20,6 +20,7 @@ import collections
 import gin
 import gym
 import gym.spaces
+import numpy as np
 
 from alf.environments import suite_gym, alf_wrappers, gym_wrappers, process_environment
 
@@ -33,7 +34,10 @@ def is_available():
     return highway_env is not None
 
 
-class VectorizeObservation(gym_wrappers.BaseObservationWrapper):
+class FlattenObservation(gym_wrappers.BaseObservationWrapper):
+    """Flatten the 2D observations into a 1D vector
+    """
+
     def transform_space(self, observation_space):
         return gym.spaces.Box(
             low=-observation_space.low.ravel(),
@@ -53,6 +57,21 @@ class RemoveActionEnvInfo(gym.Wrapper):
         return obs, reward, done, env_info
 
 
+class ActionScalarization(gym.Wrapper):
+    """Convert action to scalar if the current action space is MetaDiscreteAction
+        and type of the input action is ``np.ndarray``
+    """
+
+    def __init__(self, env):
+        super().__init__(env)
+        self._is_discrete = isinstance(self.action_space, gym.spaces.Discrete)
+
+    def step(self, action):
+        if self._is_discrete and isinstance(action, np.ndarray):
+            action = action.item()
+        return self.env.step(action)
+
+
 @gin.configurable
 def load(environment_name,
          env_id=None,
@@ -70,10 +89,9 @@ def load(environment_name,
         environment_name (str): Name for the environment to load.
         env_id (int): (optional) ID of the environment.
         discount (float): Discount to use for the environment.
-        max_episode_steps (int): If None the max_episode_steps will be set to the
-            default step limit defined in the environment's spec. No limit is applied
-            if set to 0 or if there is no max_episode_steps set in the environment's
-            spec.
+        max_episode_steps (int): If None or 0 the ``max_episode_steps`` will be
+            set to the default step limit defined in the environment. Otherwise
+            ``max_episode_steps`` will be set to the smaller value of the two.
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers
             classes to use directly on the gym environment.
         alf_env_wrappers (Iterable): Iterable with references to alf_wrappers
@@ -93,7 +111,7 @@ def load(environment_name,
     }, "wrong highway environment name"
 
     gym_spec = gym.spec(environment_name)
-    gym_env = gym.make(environment_name)
+    gym_env = gym_spec.make()
 
     if env_config is None:
         default_env_config = {
@@ -123,17 +141,22 @@ def load(environment_name,
         env_config = default_env_config
 
     gym_env.configure(env_config)
-    _ = gym_env.reset()
+    gym_env.reset()
 
-    # currently vectorize the observations, will support other ways later
-    gym_env = VectorizeObservation(gym_env)
+    # currently flatten the observations, will support other ways later
+    gym_env = FlattenObservation(gym_env)
     gym_env = RemoveActionEnvInfo(gym_env)
+    gym_env = ActionScalarization(gym_env)
 
-    if max_episode_steps is None:
-        if gym_spec.max_episode_steps is not None:
-            max_episode_steps = gym_spec.max_episode_steps
-        else:
-            max_episode_steps = 0
+    # In the original environment, the last step due to time limit is not
+    # differentiated from those due to other reasons (e.g. crash):
+    # https://github.com/eleurent/highway-env/blob/ede285567a164a58b5bf8a78f1a6792f5a13a3fb/highway_env/envs/highway_env.py#L97-L99
+    # Here we -1 on top of the max steps specified by config["duration"] and
+    # use the time_limit_wrapper from alf to handle the last step correctly.
+    if not max_episode_steps:
+        max_episode_steps = gym_env.config["duration"] - 1
+
+    max_episode_steps = min(gym_env.config["duration"] - 1, max_episode_steps)
 
     return suite_gym.wrap_env(
         gym_env,

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from absl.testing import parameterized
 import functools
 import gin
 import torch
@@ -23,7 +24,7 @@ import alf.nest as nest
 from alf.tensor_specs import BoundedTensorSpec
 
 
-class SuiteHighwayTest(alf.test.TestCase):
+class SuiteHighwayTest(parameterized.TestCase, alf.test.TestCase):
     def setUp(self):
         super().setUp()
         if not suite_highway.is_available():
@@ -114,7 +115,45 @@ class SuiteHighwayTest(alf.test.TestCase):
         self.assertTrue(env.action_spec().is_discrete)
         self.assertEqual(env.action_spec().numel, 1)
 
+        actions = env.action_spec().sample().cpu().numpy()
+        for _ in range(10):
+            time_step = env.step(actions)
+
         self._env = env
+
+    @parameterized.parameters(5, 50)
+    def test_last_step(self, max_episode_steps):
+        env_config = {
+            "observation": {
+                "type":
+                    "Kinematics",
+                "vehicles_count":
+                    3,
+                "features": [
+                    "presence", "x", "y", "vx", "vy", "cos_h", "sin_h"
+                ],
+            },
+            "action": {
+                "type": "DiscreteMetaAction"
+            },
+            "duration": max_episode_steps
+        }
+
+        self._env = suite_highway.load(
+            environment_name="highway-v0", env_config=env_config)
+
+        for i in range(max_episode_steps):
+            actions = self._env.action_spec().sample().cpu().numpy()
+            time_step = self._env.step(actions)
+            if time_step.step_type == 2:
+                break
+
+        if time_step.env_info['crashed'].item() is True:
+            assert time_step.discount == 0.0
+
+        if i == max_episode_steps - 1 and not time_step.env_info[
+                'crashed'].item():
+            assert time_step.discount == 1.0
 
 
 if __name__ == '__main__':
