@@ -388,19 +388,25 @@ class Generator(Algorithm):
                 shape [batch_size] a loss term for optimizing the generator.
             batch_size (int): batch_size. Must be provided if inputs is None.
                 Its is ignored if inputs is not None.
-            transform_func (Callable): transform function. 
+            transform_func (Callable): transform function on generator's outputs.
+                Used in function value based par_vi (currently supported
+                by [``svgd2``, ``svgd3``, ``gfsf``]) for evaluating the network(s)
+                parameterized by the generator's outputs (given by self._predict) 
+                on the training batch (predefined with transform_func). 
                 It can be called in two ways 
                 - transform_func(params): params is a tensor of parameters for a 
                     network, of shape ``[D]`` or ``[B, D]``
                     - ``B``: batch size
                     - ``D``: length of network parameters
-                    in this case, transform_func will evaluate the network(s)
-                    parameterized by ``params`` on the training batch (predifined
-                    with transform_func) plus additional sampled data.
+                    In this case, transform_func first samples additional data besides
+                    the predefined training batch and then evaluate the network(s)
+                    parameterized by ``params`` on the training batch plus additional
+                    sampled data.
                 - transform_func((params, extra_samples)): params is the same as
-                    above case and extra_samples is the tensor of additionalsampled
-                    data that will be evaluated by the network parameterized by
-                    ``params`` together with the training batch.
+                    above case and extra_samples is the tensor of additional sampled
+                    data.
+                    In this case, transform_func evaluates the network(s) parameterized 
+                    by ``params`` on predefined training batch plus ``extra_samples``. 
                 It returns three tensors
                 - outputs: outputs of network parameterized by params evaluated 
                     on predined training batch.
