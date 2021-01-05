@@ -220,7 +220,7 @@ class Agent(OnPolicyAlgorithm):
         if isinstance(goal_generator, SubgoalPlanningGoalGenerator):
             metric_buf_size = max(10, self._env.batch_size)
             for i in range(goal_generator.num_subgoals + 3):
-                metric = alf.metrics.GoalAchievedMetric(
+                metric = alf.metrics.GoalIndexMetric(
                     batch_size=env.batch_size,
                     buffer_size=metric_buf_size,
                     goal_index=i)

@@ -395,6 +395,18 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 value=train_info.critic.q_values[:, :, i, ...],
                 target_value=train_info.critic.target_q_values).loss
 
+            if not self._non_her_critic and self._down_sample_high_value < 1:
+                q = train_info.critic.q_values[0, :, i]
+                if q.ndim == 2:
+                    q = q[:,
+                          0]  # assuming first dim of multi-dim reward is goal reward.
+                batch_size = q.shape[0]
+                bottom_v, _ = torch.topk(
+                    q, int(batch_size * 0.03), largest=False, sorted=True)
+                loss_i[:,
+                       (torch.rand(batch_size) >= self._down_sample_high_value)
+                       & (q > bottom_v[-1])] = 0.
+
             def _mask(t):
                 if experience.batch_info == ():
                     return t
@@ -432,7 +444,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                           0]  # assuming first dim of multi-dim reward is goal reward.
                 batch_size = q.shape[0]
                 bottom_v, _ = torch.topk(
-                    q, int(batch_size * 0.1), largest=False, sorted=True)
+                    q, int(batch_size * 0.03), largest=False, sorted=True)
                 loss[:,
                      (torch.rand(batch_size) >= self._down_sample_high_value) &
                      (q > bottom_v[-1])] = 0.

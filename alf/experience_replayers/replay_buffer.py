@@ -836,6 +836,8 @@ def hindsight_relabel_fn(buffer,
 
     if control_aux:
         # If subgoal (not final goal) is reached, set discount to 0, StepType to ``LAST``.
+        # Need to cut off even the 0th step in the batch_length, because value shouldn't
+        # accumulate once goal is achieved.
         reward_achieved = relabeled_rewards >= 0
         if multi_dim_goal_reward:
             # If multi dim goal reward, all dims have to achieve.
@@ -847,8 +849,6 @@ def hindsight_relabel_fn(buffer,
         subgoal_achieved = reward_achieved & ~goal_original
         # Cut off episode for any goal reached.
         if sparse_reward:
-            # Need to cut off even the 0th step in the batch_length,
-            # because value shouldn't accumulate once goal is achieved.
             end = reward_achieved
         else:
             end = subgoal_achieved

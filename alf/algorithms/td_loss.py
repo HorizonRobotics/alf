@@ -180,11 +180,12 @@ class TDLoss(nn.Module):
                             alf.summary.scalar("realistic_rate" + suffix,
                                                real_rate)
                             if real_rate > 0:
-                                _summarize(value[..., i][aux_realistic],
-                                           returns[..., i][aux_realistic],
-                                           td[..., i][aux_realistic],
-                                           suffix + "/real",
-                                           mask[aux_realistic])
+                                real_nonher = aux_realistic & non_her
+                                _summarize(value[..., i][real_nonher],
+                                           returns[..., i][real_nonher],
+                                           td[..., i][real_nonher],
+                                           suffix + "/real_nonher",
+                                           mask[real_nonher])
                             if real_rate < 1:
                                 non_real = ~aux_realistic
                                 _summarize(value[..., i][non_real],
@@ -196,7 +197,7 @@ class TDLoss(nn.Module):
                                     _summarize(value[..., i][nr_nonher],
                                                returns[..., i][nr_nonher],
                                                td[..., i][nr_nonher],
-                                               suffix + "/unreal-nonher",
+                                               suffix + "/unreal_nonher",
                                                mask[nr_nonher])
 
         loss = self._td_error_loss_fn(returns.detach(), value)

@@ -308,11 +308,11 @@ class AverageEnvInfoMetric(AverageEpisodicSumMetric):
         return time_step.env_info
 
 
-class GoalAchievedMetric(AverageEpisodicSumMetric):
+class GoalIndexMetric(AverageEpisodicSumMetric):
     """Metric for computing the average return."""
 
     def __init__(self,
-                 name='GoalAchieved',
+                 name='GoalIndex',
                  prefix='Metrics',
                  dtype=torch.float32,
                  batch_size=1,
