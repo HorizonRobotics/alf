@@ -53,8 +53,6 @@ function test() {
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \
         alf.algorithms.hypernetwork_algorithm_test \
-        alf.algorithms.hypernetwork_layers_test \
-        alf.algorithms.hypernetwork_networks_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
         alf.algorithms.mcts_algorithm_test \
@@ -99,9 +97,11 @@ function test() {
         alf.networks.critic_networks_test \
         alf.networks.value_networks_test \
         alf.networks.encoding_networks_test \
+        alf.networks.param_networks_test \
         alf.networks.memory_test \
         alf.networks.projection_networks_test \
         alf.networks.q_networks_test \
+        alf.networks.relu_mlp_test \
         alf.optimizers.optimizers_test \
         alf.optimizers.trusted_updater_test \
         alf.summary.summary_ops_test \
