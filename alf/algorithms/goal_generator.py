@@ -674,6 +674,14 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             goals = torch.cat((goals[:, :, :self._action_dim],
                                observation["desired_goal"].unsqueeze(1)),
                               dim=1)
+        old_plan = state.full_plan
+        if not self.control_aux:
+            assert False, "We give up on non-speed control mode."
+        old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
+        retain_old = (old_costs < costs).reshape((-1, 1, 1))
+        goals = torch.where(retain_old, old_plan, goals)
+        state = state._replace(replan=state.replan & ~retain_old.reshape(-1))
+
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
         if self._next_goal_on_success:
             # In reality, subgoals_index can be different for different ENVs.  Here,
@@ -744,6 +752,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar(
                 "planner/cost_mean_planning." + common.exe_mode_name(),
                 torch.mean(costs))
+            alf.summary.scalar(
+                "planner/retaining_old_plan." + common.exe_mode_name(),
+                torch.mean(retain_old.float()))
         orig_desired = observation["desired_goal"]
         if self.control_aux:
             orig_desired = goals[:, -1, :]
