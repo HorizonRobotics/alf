@@ -56,6 +56,10 @@ flags.DEFINE_integer(
     "number of future steps in addition to the current step "
     "on the current frame. Otherwise only information from the "
     "current step will be displayed.")
+flags.DEFINE_integer(
+    'append_blank_frames', 0,
+    "If >0, wil append such number of blank frames at the "
+    "end of each episode in the rendered video file.")
 flags.DEFINE_float('sleep_time_per_step', 0.01,
                    "sleep so many seconds for each step")
 flags.DEFINE_string(
@@ -102,6 +106,7 @@ def main(_):
             sleep_time_per_step=FLAGS.sleep_time_per_step,
             record_file=FLAGS.record_file,
             future_steps=FLAGS.future_steps,
+            append_blank_frames=FLAGS.append_blank_frames,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
