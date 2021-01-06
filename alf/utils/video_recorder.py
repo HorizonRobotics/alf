@@ -292,7 +292,7 @@ class VideoRecorder(GymVideoRecorder):
                         "matplotlib is not installed; prediction info will not "
                         "be plotted when rendering videos.")
 
-            self.last_frame = frame
+            self._last_frame = frame
             if defer_mode:
                 self._recorder_buffer.append_fields(self._fields, [
                     frame, time_step.observation, time_step.reward,
@@ -301,22 +301,29 @@ class VideoRecorder(GymVideoRecorder):
                 self._encode_with_future_info(
                     info_func=info_func, encode_all=is_last_step)
             else:
-                if self.ansi_mode:
-                    self._encode_ansi_frame(frame)
-                else:
-                    self._encode_image_frame(frame)
+                self._encode_frame(frame)
 
             if self._append_blank_frames > 0 and is_last_step:
                 if self._blank_frame is None:
-                    self._blank_frame = np.zeros_like(self.last_frame)
+                    self._blank_frame = np.zeros_like(self._last_frame)
                 for _ in range(self._append_blank_frames):
-                    if self.ansi_mode:
-                        self._encode_ansi_frame(self._blank_frame)
-                    else:
-                        self._encode_image_frame(self._blank_frame)
+                    self._encode_frame(self._blank_frame)
 
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")
+
+    def _encode_frame(self, frame):
+        """Perform encoding of the input frame
+
+        Args:
+            frame(np.ndarray|str|StringIO): the frame to be encoded,
+                which is of type ``str`` or ``StringIO`` if ``ansi_mode`` is
+                True, and ``np.array`` otherwise.
+        """
+        if self.ansi_mode:
+            self._encode_ansi_frame(frame)
+        else:
+            self._encode_image_frame(frame)
 
     def _encode_with_future_info(self,
                                  info_func=None,
@@ -460,11 +467,8 @@ class VideoRecorder(GymVideoRecorder):
             xframe = self._stack_imgs(xframes, horizontal=True)
             frame = frame_buffer[i]
             cat_frame = self._stack_imgs([frame, xframe], horizontal=False)
-            if self.ansi_mode:
-                self._encode_ansi_frame(cat_frame)
-            else:
-                self._encode_image_frame(cat_frame)
-            self.last_frame = cat_frame
+            self._encode_frame(cat_frame)
+            self._last_frame = cat_frame
         # remove the frames that have already been encoded
         self._recorder_buffer.popn_fields("frame", i + 1)
 
