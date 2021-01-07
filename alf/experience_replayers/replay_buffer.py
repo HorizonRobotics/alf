@@ -875,18 +875,19 @@ def hindsight_relabel_fn(buffer,
         result = result._replace(discount=discount)
         result = result._replace(step_type=step_type)
 
-    replan = ()
+    switched_goal = ()
     if hasattr(result.rollout_info, "goal_generator"):
-        replan = alf.nest.get_field(result,
-                                    "rollout_info.goal_generator.replan")
-    if replan != ():
-        # If any of the subsequent steps are replanned, set it as LAST to
-        # avoid training previous steps with switched/replanned goals.
-        # It's fine to use across replan boundary trajectories for training in HER.
+        switched_goal = alf.nest.get_field(
+            result, "rollout_info.goal_generator.switched_goal")
+    if switched_goal != ():
+        # If any of the subsequent steps have the goal switched, set it as LAST to
+        # avoid training previous steps with the new goals.
+        # It's fine to use across switched_goal boundary trajectories for training
+        # in HER.
         step_type = result.step_type
-        step_type[:, 1:] = torch.where(replan[:, 1:] & ~her_cond.unsqueeze(1),
-                                       torch.tensor(ds.StepType.LAST),
-                                       step_type[:, 1:])
+        step_type[:, 1:] = torch.where(
+            switched_goal[:, 1:] & ~her_cond.unsqueeze(1),
+            torch.tensor(ds.StepType.LAST), step_type[:, 1:])
         result = result._replace(step_type=step_type)
 
     if sparse_reward:

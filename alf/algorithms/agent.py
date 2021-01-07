@@ -248,7 +248,7 @@ class Agent(OnPolicyAlgorithm):
                 info = info._replace(
                     goal_generator=info.goal_generator._replace(
                         original_goal=original_goal,
-                        replan=goal_step.state.replan))
+                        switched_goal=goal_step.state.switched_goal))
                 if self._final_goal:
                     observation[
                         "final_goal"] = info.goal_generator.final_goal.float()
@@ -468,35 +468,8 @@ class Agent(OnPolicyAlgorithm):
             experience (Experience): experience collected from ``rollout_step()``.
         """
         super().summarize_rollout(experience)
-        if not alf.summary.should_record_summaries() or not hasattr(
-                experience.state,
-                "goal_generator") or experience.state.goal_generator == ():
-            return
-        if experience.state.goal_generator.replan != ():
-            alf.summary.scalar(
-                "rollout/switched_goals",
-                torch.mean(experience.state.goal_generator.replan.float()))
-        if experience.state.goal_generator.steps_since_last_plan != ():
-            alf.summary.scalar(
-                "rollout/steps_since_last_plan",
-                torch.mean(experience.state.goal_generator.
-                           steps_since_last_plan.float()))
-            alf.summary.scalar(
-                "rollout/steps_since_last_goal",
-                torch.mean(experience.state.goal_generator.
-                           steps_since_last_goal.float()))
-        if experience.state.goal_generator.final_goal != ():
-            alf.summary.scalar(
-                "rollout/final_goal_rate",
-                torch.mean(experience.state.goal_generator.final_goal.float()))
-        if experience.state.goal_generator.subgoals_index != () and isinstance(
-                self._goal_generator, SubgoalPlanningGoalGenerator):
-            for i in range(self._goal_generator.num_subgoals + 3):
-                alf.summary.scalar(
-                    "rollout/subgoals_index_{}_rate".format(i),
-                    torch.mean(
-                        (experience.state.goal_generator.subgoals_index == i
-                         ).float()))
+        if self._goal_generator:
+            self._goal_generator.summarize_rollout(experience)
 
     def summarize_metrics(self):
         """Generate summaries for goal metrics.
