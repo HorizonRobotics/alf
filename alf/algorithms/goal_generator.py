@@ -32,7 +32,7 @@ GoalState = namedtuple(
     "GoalState", [
         "goal", "full_plan", "steps_since_last_plan", "subgoals_index",
         "steps_since_last_goal", "final_goal", "replan", "switched_goal",
-        "advanced_goal"
+        "retain_old", "advanced_goal"
     ],
     default_value=())
 GoalInfo = namedtuple(
@@ -694,9 +694,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if not self.control_aux:
             assert False, "We give up on non-speed control mode."
         old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
-        retain_old = (old_costs < costs).reshape(-1, 1, 1)
-        goals = torch.where(retain_old, old_plan, goals)
-        state = state._replace(replan=state.replan & ~retain_old.reshape(-1))
+        retain_old = old_costs < costs
+        goals = torch.where(retain_old.reshape(-1, 1, 1), old_plan, goals)
+        state = state._replace(
+            replan=state.replan & ~retain_old, retain_old=retain_old)
 
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
         if self._next_goal_on_success:
@@ -768,9 +769,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar(
                 "planner/cost_mean_planning." + common.exe_mode_name(),
                 torch.mean(costs))
-            alf.summary.scalar(
-                "planner/retaining_old_plan." + common.exe_mode_name(),
-                torch.mean(retain_old.float()))
         orig_desired = observation["desired_goal"]
         if self.control_aux:
             orig_desired = goals[:, -1, :]
@@ -842,7 +840,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                             torch.tensor(0, dtype=torch.int32),
                                             steps_since_last_plan)
         state = state._replace(
-            steps_since_last_plan=steps_since_last_plan, replan=update_cond)
+            steps_since_last_plan=steps_since_last_plan,
+            replan=update_cond,
+            retain_old=torch.zeros_like(update_cond))
         if torch.all(update_cond) or (
             (self.control_aux or self._next_goal_on_success)
                 and torch.any(update_cond)):
@@ -1031,8 +1031,14 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             return
         state = experience.state.goal_generator
         if state.replan != ():
-            alf.summary.scalar("planner/rate_new_plan",
-                               torch.mean(state.replan.float()))
+            replan = state.replan
+            retain = state.retain_old
+            alf.summary.scalar("planner/rate_replan_adopted",
+                               torch.mean(replan.float()))
+            alf.summary.scalar("planner/rate_replan_rejected",
+                               torch.mean(retain.float()))
+            alf.summary.scalar("planner/rate_replan_requested",
+                               torch.mean(retain | replan).float())
         if state.switched_goal != ():
             alf.summary.scalar(
                 "planner/rate_switched_goal." + common.exe_mode_name(),
