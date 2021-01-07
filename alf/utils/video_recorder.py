@@ -177,6 +177,7 @@ class VideoRecorder(GymVideoRecorder):
                  value_range=1.,
                  frames_per_sec=None,
                  future_steps=0,
+                 append_blank_frames=0,
                  **kwargs):
         """
         Args:
@@ -197,6 +198,10 @@ class VideoRecorder(GymVideoRecorder):
                 If a non-positive value is provided, it is treated as not using
                 the defer mode and the plots for displaying future information
                 will not be displayed.
+            append_blank_frames (int): If >0, wil append such number of blank
+                frames at the end of the episode in the rendered video file.
+                A negative value has the same effects as 0 and no blank frames
+                will be appended.
         """
         super(VideoRecorder, self).__init__(env=env, **kwargs)
         self._img_plot_width = img_plot_width
@@ -206,6 +211,8 @@ class VideoRecorder(GymVideoRecorder):
             self.frames_per_sec = frames_per_sec  # overwrite the base class
 
         self._future_steps = future_steps
+        self._append_blank_frames = append_blank_frames
+        self._blank_frame = None
         self._fields = ["frame", "observation", "reward", "action"]
         self._recorder_buffer = RecorderBuffer(self._fields)
 
@@ -285,7 +292,7 @@ class VideoRecorder(GymVideoRecorder):
                         "matplotlib is not installed; prediction info will not "
                         "be plotted when rendering videos.")
 
-            self.last_frame = frame
+            self._last_frame = frame
             if defer_mode:
                 self._recorder_buffer.append_fields(self._fields, [
                     frame, time_step.observation, time_step.reward,
@@ -294,13 +301,29 @@ class VideoRecorder(GymVideoRecorder):
                 self._encode_with_future_info(
                     info_func=info_func, encode_all=is_last_step)
             else:
-                if self.ansi_mode:
-                    self._encode_ansi_frame(frame)
-                else:
-                    self._encode_image_frame(frame)
+                self._encode_frame(frame)
+
+            if self._append_blank_frames > 0 and is_last_step:
+                if self._blank_frame is None:
+                    self._blank_frame = np.zeros_like(self._last_frame)
+                for _ in range(self._append_blank_frames):
+                    self._encode_frame(self._blank_frame)
 
             assert not self.broken, (
                 "The output file is broken! Check warning messages.")
+
+    def _encode_frame(self, frame):
+        """Perform encoding of the input frame
+
+        Args:
+            frame(np.ndarray|str|StringIO): the frame to be encoded,
+                which is of type ``str`` or ``StringIO`` if ``ansi_mode`` is
+                True, and ``np.array`` otherwise.
+        """
+        if self.ansi_mode:
+            self._encode_ansi_frame(frame)
+        else:
+            self._encode_image_frame(frame)
 
     def _encode_with_future_info(self,
                                  info_func=None,
@@ -444,10 +467,8 @@ class VideoRecorder(GymVideoRecorder):
             xframe = self._stack_imgs(xframes, horizontal=True)
             frame = frame_buffer[i]
             cat_frame = self._stack_imgs([frame, xframe], horizontal=False)
-            if self.ansi_mode:
-                self._encode_ansi_frame(cat_frame)
-            else:
-                self._encode_image_frame(cat_frame)
+            self._encode_frame(cat_frame)
+            self._last_frame = cat_frame
         # remove the frames that have already been encoded
         self._recorder_buffer.popn_fields("frame", i + 1)
 

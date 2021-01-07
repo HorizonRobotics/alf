@@ -619,6 +619,7 @@ def play(root_dir,
          sleep_time_per_step=0.01,
          record_file=None,
          future_steps=0,
+         append_blank_frames=0,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
@@ -658,6 +659,11 @@ def play(root_dir,
             and saving the video to ``record_file``. If a non-positive value is
             provided, it is treated as not using the defer mode and the plots
             for displaying future information will not be displayed.
+        append_blank_frames (int): If >0, wil append such number of blank frames
+            at the end of the episode in the rendered video file. A negative
+            value has the same effects as 0 and no blank frames will be appended.
+            This option has no effects when displaying the frames on the screen
+            instead of recording to a file.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
@@ -675,7 +681,10 @@ def play(root_dir,
     recorder = None
     if record_file is not None:
         recorder = VideoRecorder(
-            env, future_steps=future_steps, path=record_file)
+            env,
+            future_steps=future_steps,
+            append_blank_frames=append_blank_frames,
+            path=record_file)
     else:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
