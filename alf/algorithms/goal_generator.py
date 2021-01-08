@@ -699,7 +699,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         retain_old = (old_costs < costs).squeeze(1)
         goals = torch.where(retain_old.reshape(-1, 1, 1), old_plan, goals)
         state = state._replace(
-            replan=state.replan & ~retain_old, retain_old=retain_old)
+            replan=state.replan & ~retain_old,
+            retain_old=state.replan & retain_old)
 
         subgoal = goals[:, 0, :]  # the first subgoal in the plan
         if self._next_goal_on_success:
@@ -836,14 +837,14 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         first_steps = step_type == StepType.FIRST
         steps_since_last_plan = state.steps_since_last_plan + torch.tensor(
             1, dtype=torch.int32)
-        update_cond = (steps_since_last_plan >
-                       self._max_replan_steps) | first_steps
+        replan = steps_since_last_plan > self._max_replan_steps
+        update_cond = replan | first_steps
         steps_since_last_plan = torch.where(update_cond,
                                             torch.tensor(0, dtype=torch.int32),
                                             steps_since_last_plan)
         state = state._replace(
             steps_since_last_plan=steps_since_last_plan,
-            replan=update_cond,
+            replan=replan,
             retain_old=torch.zeros_like(update_cond))
         if torch.all(update_cond) or (
             (self.control_aux or self._next_goal_on_success)
@@ -1042,9 +1043,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar("planner/rate_replan_requested",
                                torch.mean((retain | replan).float()))
         if state.switched_goal != ():
-            alf.summary.scalar(
-                "planner/rate_switched_goal." + common.exe_mode_name(),
-                torch.mean(state.switched_goal.float()))
+            alf.summary.scalar("planner/rate_switched_goal",
+                               torch.mean(state.switched_goal.float()))
         if state.steps_since_last_plan != ():
             alf.summary.scalar("planner/steps_since_last_plan",
                                torch.mean(state.steps_since_last_plan.float()))
