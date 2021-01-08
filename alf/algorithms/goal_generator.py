@@ -163,14 +163,11 @@ class ConditionalGoalGenerator(RLAlgorithm):
                                             epsilon_greedy)
         return AlgStep(
             output=new_goal,
-            state=GoalState(
+            state=state._replace(goal=new_goal),
+            info=GoalInfo(
                 goal=new_goal,
-                full_plan=state.full_plan,
                 final_goal=state.final_goal,
-                steps_since_last_goal=state.steps_since_last_goal,
-                subgoals_index=state.subgoals_index,
-                steps_since_last_plan=state.steps_since_last_plan),
-            info=GoalInfo(goal=new_goal, final_goal=state.final_goal))
+                switched_goal=state.switched_goal))
 
     def rollout_step(self, time_step: TimeStep, state):
         return self.predict_step(time_step, state, epsilon_greedy=1.)
@@ -413,13 +410,18 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if final_goal:
             final_goal_spec = TensorSpec((1, ))
         steps_spec = TensorSpec((), dtype=torch.int32)
+        flag_spec = TensorSpec((), dtype=torch.bool)
         train_state_spec = GoalState(
             goal=goal_spec,
             full_plan=full_plan_spec,
             final_goal=final_goal_spec,
             steps_since_last_plan=steps_spec,
             subgoals_index=steps_spec,
-            steps_since_last_goal=steps_spec)
+            steps_since_last_goal=steps_spec,
+            replan=flag_spec,
+            switched_goal=flag_spec,
+            retain_old=flag_spec,
+            advanced_goal=flag_spec)
         assert len(action_bounds) == 2, "specify min and max bounds"
         super().__init__(
             observation_spec,
@@ -694,7 +696,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if not self.control_aux:
             assert False, "We give up on non-speed control mode."
         old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
-        retain_old = old_costs < costs
+        retain_old = (old_costs < costs).squeeze(1)
         goals = torch.where(retain_old.reshape(-1, 1, 1), old_plan, goals)
         state = state._replace(
             replan=state.replan & ~retain_old, retain_old=retain_old)
@@ -1038,7 +1040,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar("planner/rate_replan_rejected",
                                torch.mean(retain.float()))
             alf.summary.scalar("planner/rate_replan_requested",
-                               torch.mean(retain | replan).float())
+                               torch.mean((retain | replan).float()))
         if state.switched_goal != ():
             alf.summary.scalar(
                 "planner/rate_switched_goal." + common.exe_mode_name(),

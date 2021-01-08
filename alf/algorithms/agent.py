@@ -247,8 +247,7 @@ class Agent(OnPolicyAlgorithm):
                     original_goal = goal_step.state.full_plan[:, -1, :]
                 info = info._replace(
                     goal_generator=info.goal_generator._replace(
-                        original_goal=original_goal,
-                        switched_goal=goal_step.state.switched_goal))
+                        original_goal=original_goal))
                 if self._final_goal:
                     observation[
                         "final_goal"] = info.goal_generator.final_goal.float()
