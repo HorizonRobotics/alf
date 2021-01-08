@@ -68,6 +68,16 @@ class AlfEnvironment(object):
         self._current_time_step = None
 
     @property
+    def num_tasks(self):
+        """Number of tasks supported by this environment."""
+        return 1
+
+    @property
+    def task_names(self):
+        """The name of each tasks."""
+        return [str(i) for i in range(self.num_tasks)]
+
+    @property
     def batched(self):
         """Whether the environment is batched or not.
 

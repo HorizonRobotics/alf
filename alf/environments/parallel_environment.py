@@ -71,6 +71,8 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
         self._reward_spec = self._envs[0].reward_spec()
         self._time_step_spec = self._envs[0].time_step_spec()
         self._env_info_spec = self._envs[0].env_info_spec()
+        self._num_tasks = self._envs[0].num_tasks
+        self._task_names = self._envs[0].task_names
         self._time_step_with_env_info_spec = self._time_step_spec._replace(
             env_info=self._env_info_spec)
         self._parallel_execution = True
@@ -105,6 +107,14 @@ class ParallelAlfEnvironment(alf_environment.AlfEnvironment):
     @property
     def batch_size(self):
         return self._num_envs
+
+    @property
+    def num_tasks(self):
+        return self._num_tasks
+
+    @property
+    def task_names(self):
+        return self._task_names
 
     def env_info_spec(self):
         return self._env_info_spec

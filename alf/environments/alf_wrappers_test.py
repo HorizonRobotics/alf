@@ -16,6 +16,7 @@
 
 from absl.testing import parameterized
 from absl.testing.absltest import mock
+from collections import OrderedDict
 import gym
 import math
 import torch
@@ -23,8 +24,9 @@ import numpy as np
 
 import alf
 import alf.data_structures as ds
-from alf.environments import alf_environment, alf_gym_wrapper, alf_wrappers
+from alf.environments import alf_environment, alf_gym_wrapper, alf_wrappers, suite_gym
 from alf.environments.random_alf_environment import RandomAlfEnvironment
+from alf.environments.utils import create_environment
 import alf.tensor_specs as ts
 
 
@@ -168,6 +170,80 @@ class TimeLimitWrapperTest(alf.test.TestCase):
         self.assertTrue(mid_time_step.is_mid())
         last_time_step = env.step(action)
         self.assertTrue(last_time_step.is_last())
+
+
+class MultitaskWrapperTest(alf.test.TestCase):
+    def test_multitask_wrapper(self):
+        env = alf_wrappers.MultitaskWrapper.load(
+            suite_gym.load, ['CartPole-v0', 'CartPole-v1'])
+        self.assertEqual(env.num_tasks, 2)
+        self.assertEqual(env.action_spec()['task_id'],
+                         alf.BoundedTensorSpec((), maximum=1, dtype='int64'))
+        self.assertEqual(env.action_spec()['action'],
+                         env._envs[0].action_spec())
+        time_step = env.reset()
+        time_step = env.step(
+            OrderedDict(task_id=1, action=time_step.prev_action['action']))
+        self.assertEqual(time_step.prev_action['task_id'], 1)
+
+
+class CurriculumWrapperTest(alf.test.TestCase):
+    def test_curriculum_wrapper(self):
+        task_names = ['CartPole-v0', 'CartPole-v1']
+        env = create_environment(
+            env_name=task_names,
+            env_load_fn=suite_gym.load,
+            num_parallel_environments=4,
+            batched_wrappers=(alf_wrappers.CurriculumWrapper, ))
+
+        self.assertTrue(type(env.action_spec()) == alf.BoundedTensorSpec)
+
+        self.assertEqual(env.num_tasks, 2)
+        self.assertEqual(len(env.env_info_spec()['curriculum_task_count']), 2)
+        self.assertEqual(len(env.env_info_spec()['curriculum_task_score']), 2)
+        self.assertEqual(len(env.env_info_spec()['curriculum_task_prob']), 2)
+        for i in task_names:
+            self.assertEqual(env.env_info_spec()['curriculum_task_count'][i],
+                             alf.TensorSpec(()))
+            self.assertEqual(env.env_info_spec()['curriculum_task_score'][i],
+                             alf.TensorSpec(()))
+            self.assertEqual(env.env_info_spec()['curriculum_task_prob'][i],
+                             alf.TensorSpec(()))
+
+        time_step = env.reset()
+        self.assertEqual(len(env.env_info_spec()['curriculum_task_count']), 2)
+        self.assertEqual(len(env.env_info_spec()['curriculum_task_score']), 2)
+        self.assertEqual(len(env.env_info_spec()['curriculum_task_prob']), 2)
+        for i in task_names:
+            self.assertEqual(
+                time_step.env_info['curriculum_task_count'][i].shape, (4, ))
+            self.assertEqual(
+                time_step.env_info['curriculum_task_score'][i].shape, (4, ))
+            self.assertEqual(
+                time_step.env_info['curriculum_task_prob'][i].shape, (4, ))
+
+        for j in range(500):
+            time_step = env.step(time_step.prev_action)
+            self.assertEqual(time_step.env_id, torch.arange(4))
+            self.assertEqual(
+                len(env.env_info_spec()['curriculum_task_count']), 2)
+            self.assertEqual(
+                len(env.env_info_spec()['curriculum_task_score']), 2)
+            self.assertEqual(
+                len(env.env_info_spec()['curriculum_task_prob']), 2)
+            for i in task_names:
+                self.assertEqual(
+                    time_step.env_info['curriculum_task_count'][i].shape,
+                    (4, ))
+                self.assertEqual(
+                    time_step.env_info['curriculum_task_score'][i].shape,
+                    (4, ))
+                self.assertEqual(
+                    time_step.env_info['curriculum_task_prob'][i].shape, (4, ))
+            sum_probs = sum(
+                time_step.env_info['curriculum_task_prob'].values())
+            self.assertTrue(
+                torch.all((sum_probs == 0.) | ((sum_probs - 1.).abs() < 1e-3)))
 
 
 if __name__ == '__main__':
