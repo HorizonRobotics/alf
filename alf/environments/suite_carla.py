@@ -889,6 +889,25 @@ class CarlaEnvironment(AlfEnvironment):
         'vehicle.volkswagen.t2',
     ]
 
+    # yapf: disable
+    weather_list = [
+        carla.WeatherParameters.ClearNoon,
+        carla.WeatherParameters.CloudyNoon,
+        carla.WeatherParameters.WetNoon,
+        carla.WeatherParameters.WetCloudyNoon,
+        carla.WeatherParameters.MidRainyNoon,
+        carla.WeatherParameters.HardRainNoon,
+        carla.WeatherParameters.SoftRainNoon,
+        carla.WeatherParameters.ClearSunset,
+        carla.WeatherParameters.CloudySunset,
+        carla.WeatherParameters.WetSunset,
+        carla.WeatherParameters.WetCloudySunset,
+        carla.WeatherParameters.MidRainSunset,
+        carla.WeatherParameters.HardRainSunset,
+        carla.WeatherParameters.SoftRainSunset
+    ]
+    # yapf: enable
+
     def __init__(self,
                  batch_size,
                  map_name,
@@ -902,6 +921,7 @@ class CarlaEnvironment(AlfEnvironment):
                  use_hybrid_physics_mode=True,
                  safe=True,
                  day_length=0.,
+                 random_weather=False,
                  step_time=0.05):
         """
         Args:
@@ -921,6 +941,10 @@ class CarlaEnvironment(AlfEnvironment):
             safe (bool): avoid spawning vehicles prone to accidents.
             day_length (float): number of seconds of a day. If 0, the time of the
                 day will not change.
+            random_weather (bool): whether to use random weather setting. If
+                False, the default weather setting will be used and kept fixed.
+                Note that currently the weather is only set when creating
+                the environment.
             step_time (float): how many seconds does each step of simulation represents.
         """
         super().__init__()
@@ -935,6 +959,7 @@ class CarlaEnvironment(AlfEnvironment):
         self._percentage_walkers_crossing = percentage_walkers_crossing
         self._day_length = day_length
         self._time_of_the_day = 0.5 * day_length
+        self._random_weather = random_weather
         self._step_time = step_time
 
         self._world = None
@@ -980,6 +1005,9 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._spawn_vehicles()
         self._spawn_walkers()
+
+        if self._random_weather:
+            self._randomize_weather()
 
         self._observation_spec = self._players[0].observation_spec()
         self._action_spec = self._players[0].action_spec()
@@ -1075,6 +1103,9 @@ class CarlaEnvironment(AlfEnvironment):
         assert len(self._players) + len(
             self._other_vehicles) == num_vehicles, (
                 "Fail to create %s vehicles" % num_vehicles)
+
+    def _randomize_weather(self):
+        self._world.set_weather(random.choice(self.weather_list))
 
     def _spawn_walkers(self):
         walker_blueprints = self._world.get_blueprint_library().filter(
