@@ -943,8 +943,9 @@ class CarlaEnvironment(AlfEnvironment):
                 day will not change.
             random_weather (bool): whether to use random weather setting. If
                 False, the default weather setting will be used and kept fixed.
-                Note that currently the weather is only set when creating
-                the environment.
+                Otherwise, will update the weather setting to one of the
+                pre-defined settings. Note that the weather setting is updated
+                both at the time of environment creation and environment reset.
             step_time (float): how many seconds does each step of simulation represents.
         """
         super().__init__()
@@ -1005,9 +1006,7 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._spawn_vehicles()
         self._spawn_walkers()
-
-        if self._random_weather:
-            self._randomize_weather()
+        self._update_weather()
 
         self._observation_spec = self._players[0].observation_spec()
         self._action_spec = self._players[0].action_spec()
@@ -1104,8 +1103,14 @@ class CarlaEnvironment(AlfEnvironment):
             self._other_vehicles) == num_vehicles, (
                 "Fail to create %s vehicles" % num_vehicles)
 
-    def _randomize_weather(self):
-        self._world.set_weather(random.choice(self.weather_list))
+    def _update_weather(self):
+        """Update the weather settings.
+        If ``self._random_weather`` is True, will change the weather setting
+        to one of the pre-defined settings. Otherwise, the current weather
+        setting is left unchanged.
+        """
+        if self._random_weather:
+            self._world.set_weather(random.choice(self.weather_list))
 
     def _spawn_walkers(self):
         walker_blueprints = self._world.get_blueprint_library().filter(
@@ -1331,6 +1336,7 @@ class CarlaEnvironment(AlfEnvironment):
         for response in self._client.apply_batch_sync(commands):
             if response.error:
                 logging.error(response.error)
+        self._update_weather()
         self._current_frame = self._world.tick()
         self._alf_world.on_tick()
         return self._get_current_time_step()
