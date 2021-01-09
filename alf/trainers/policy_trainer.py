@@ -620,6 +620,7 @@ def play(root_dir,
          record_file=None,
          future_steps=0,
          append_blank_frames=0,
+         render=True,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
@@ -664,6 +665,9 @@ def play(root_dir,
             value has the same effects as 0 and no blank frames will be appended.
             This option has no effects when displaying the frames on the screen
             instead of recording to a file.
+        render (bool): If False, then this function only evaluates the trained
+            model without calling rendering functions. This value will be ignored
+            if a ``record_file`` argument is provided.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
@@ -685,7 +689,7 @@ def play(root_dir,
             future_steps=future_steps,
             append_blank_frames=append_blank_frames,
             path=record_file)
-    else:
+    elif render:
         # pybullet_envs need to render() before reset() to enable mode='human'
         env.render(mode='human')
     env.reset()
@@ -719,7 +723,7 @@ def play(root_dir,
 
         if recorder:
             recorder.capture_frame(time_step, policy_step, is_last_step)
-        else:
+        elif render:
             env.render(mode='human')
             time.sleep(sleep_time_per_step)
 

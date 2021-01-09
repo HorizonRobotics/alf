@@ -332,3 +332,28 @@ class BoundedTensorSpec(TensorSpec):
                 high=self._maximum.item() + 1,
                 size=shape,
                 dtype=self._dtype)
+
+    def numpy_sample(self, outer_dims=None):
+        """Sample numpy arrays uniformly given the min/max bounds.
+
+        Args:
+            outer_dims (list[int]): an optional list of integers specifying outer
+                dimensions to add to the spec shape before sampling.
+
+        Returns:
+            np.ndarray: an array of ``self._dtype``
+        """
+        shape = self._shape
+        if outer_dims is not None:
+            shape = tuple(outer_dims) + shape
+
+        if self.is_continuous:
+            uniform = np.random.rand(*shape).astype(
+                torch_dtype_to_str(self._dtype))
+            return (1 - uniform) * self._minimum + self._maximum * uniform
+        else:
+            return np.random.randint(
+                low=self._minimum,
+                high=self._maximum + 1,
+                size=shape,
+                dtype=torch_dtype_to_str(self._dtype))
