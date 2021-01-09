@@ -65,6 +65,8 @@ flags.DEFINE_float('sleep_time_per_step', 0.01,
 flags.DEFINE_string(
     'record_file', None, "If provided, video will be recorded"
     "to a file instead of shown on the screen.")
+flags.DEFINE_bool('render', True,
+                  "Whether render ('human'|'rgb_array') the frames or not")
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_string(
@@ -107,6 +109,7 @@ def main(_):
             record_file=FLAGS.record_file,
             future_steps=FLAGS.future_steps,
             append_blank_frames=FLAGS.append_blank_frames,
+            render=FLAGS.render,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
