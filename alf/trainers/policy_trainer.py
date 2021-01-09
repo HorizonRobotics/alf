@@ -666,7 +666,8 @@ def play(root_dir,
             This option has no effects when displaying the frames on the screen
             instead of recording to a file.
         render (bool): If False, then this function only evaluates the trained
-            model without calling rendering functions.
+            model without calling rendering functions. This value will be ignored
+            if a ``record_file`` argument is provided.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
