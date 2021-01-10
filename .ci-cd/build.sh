@@ -52,6 +52,7 @@ function test() {
         alf.algorithms.ddpg_algorithm_test \
         alf.algorithms.diayn_algorithm_test \
         alf.algorithms.entropy_target_algorithm_test \
+        alf.algorithms.functional_particle_vi_algorithm_test \
         alf.algorithms.hypernetwork_algorithm_test \
         alf.algorithms.icm_algorithm_test \
         alf.algorithms.generator_test \
@@ -59,6 +60,7 @@ function test() {
         alf.algorithms.merlin_algorithm_test \
         alf.algorithms.mi_estimator_test \
         alf.algorithms.muzero_algorithm_test \
+        alf.algorithms.particle_vi_algorithm_test \
         alf.algorithms.ppo_algorithm_test \
         alf.algorithms.predictive_representation_learner_test \
         alf.algorithms.prior_actor_test \

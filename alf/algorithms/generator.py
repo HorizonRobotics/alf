@@ -235,8 +235,14 @@ class Generator(Algorithm):
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
-            critic_l2_weight (float): weight of L2 regularization in training
-                the critic, used for ``minmax``.
+            critic_l2_weight (float): weight of L2 regularization in training 
+                the critic, used for ``minmax``. According to the following paper,
+                this L2 penalty might not be needed for convergence of svgd in
+                L2 space, need further investigations.
+
+                Gorham et al "Stochastic Stein Discrepancies."
+                https://arxiv.org/pdf/2007.02857.pdf
+
             critic_iter_num (int): number of critic updates for each generator
                 train_step, used for ``minmax``.
             critic_relu_mlp (bool): whether use ReluMLP as the critic constructor,
