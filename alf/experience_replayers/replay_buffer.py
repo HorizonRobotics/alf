@@ -834,46 +834,45 @@ def hindsight_relabel_fn(buffer,
         result = alf.nest.utils.transform_nest(
             result, "observation.final_goal", lambda _: result_f)
 
+    reward_achieved = relabeled_rewards >= 0
+    if multi_dim_goal_reward:
+        # If multi dim goal reward, all dims have to achieve.
+        reward_achieved = torch.min(reward_achieved, dim=2)[0]
+    # Cut off episode for any goal reached.
+    end = reward_achieved
     if control_aux:
-        # If subgoal (not final goal) is reached, set discount to 0, StepType to ``LAST``.
+        # In non-sparse reward case, if subgoal (not final goal) is reached,
+        # set discount to 0, StepType to ``LAST``.
         # Need to cut off even the 0th step in the batch_length, because value shouldn't
         # accumulate once goal is achieved.
-        reward_achieved = relabeled_rewards >= 0
-        if multi_dim_goal_reward:
-            # If multi dim goal reward, all dims have to achieve.
-            reward_achieved = torch.min(reward_achieved, dim=2)[0]
         goal_original = torch.min(
             torch.isclose(_relabeled_goal, orig_goal), dim=2)[0] == 1
         if relabel_final_goal > 0:
             goal_original |= relabel_final_g_cond.unsqueeze(1)
         subgoal_achieved = reward_achieved & ~goal_original
-        # Cut off episode for any goal reached.
-        if sparse_reward:
-            end = reward_achieved
-        else:
+        if not sparse_reward:
             end = subgoal_achieved
-        discount = torch.where(end, torch.tensor(0.), result.discount)
-        step_type = torch.where(end, torch.tensor(ds.StepType.LAST),
-                                result.step_type)
-        if sparse_reward:
-            # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
-            # achieved but env ended episode due to position goal achieved.
-            # -1/0 reward doesn't end episode on achieving position goal, and
-            # doesn't need to do this relabeling.
-            mid = (result.step_type == ds.StepType.LAST) & ~reward_achieved & (
-                result.reward[..., 0] > 0)  # assumes no multi dim goal reward.
-            discount = torch.where(mid, torch.tensor(1.), discount)
-            step_type = torch.where(mid, torch.tensor(ds.StepType.MID),
-                                    step_type)
-        if alf.summary.should_record_summaries():
-            alf.summary.scalar(
-                "replayer/" + buffer._name + ".discount_mean_before_relabel",
-                torch.mean(result.discount[:, 1:]))
-            alf.summary.scalar(
-                "replayer/" + buffer._name + ".discount_mean_after_relabel",
-                torch.mean(discount[:, 1:]))
-        result = result._replace(discount=discount)
-        result = result._replace(step_type=step_type)
+    discount = torch.where(end, torch.tensor(0.), result.discount)
+    step_type = torch.where(end, torch.tensor(ds.StepType.LAST),
+                            result.step_type)
+    if sparse_reward:
+        # Also relabel ``LAST``` steps to ``MID``` where aux goals were not
+        # achieved but env ended episode due to position goal achieved.
+        # -1/0 reward doesn't end episode on achieving position goal, and
+        # doesn't need to do this relabeling.
+        mid = (result.step_type == ds.StepType.LAST) & ~reward_achieved & (
+            result.reward[..., 0] > 0)  # assumes no multi dim goal reward.
+        discount = torch.where(mid, torch.tensor(1.), discount)
+        step_type = torch.where(mid, torch.tensor(ds.StepType.MID), step_type)
+    if alf.summary.should_record_summaries():
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".discount_mean_before_relabel",
+            torch.mean(result.discount[:, 1:]))
+        alf.summary.scalar(
+            "replayer/" + buffer._name + ".discount_mean_after_relabel",
+            torch.mean(discount[:, 1:]))
+    result = result._replace(discount=discount)
+    result = result._replace(step_type=step_type)
 
     switched_goal = ()
     if (hasattr(result.rollout_info, "goal_generator")
