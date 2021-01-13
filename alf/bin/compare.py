@@ -207,6 +207,8 @@ def _tokenize(s):
     s = s.replace("CEMOptimizer.iterations=", "cemiters_")
     s = s.replace("GoalTask.min_distance=", "mindist_")
     s = s.replace("GoalTask.random_range=", "randrange_")
+    s = s.replace("GoalTask.chain_task_rate=", "chaintask_")
+    s = s.replace("PlayGround.max_steps=", "msteps_")
     s = s.replace("'", "")
     s = s.replace('"', "")
     s = s.replace("=", "__")

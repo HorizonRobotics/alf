@@ -876,7 +876,8 @@ def hindsight_relabel_fn(buffer,
         result = result._replace(step_type=step_type)
 
     switched_goal = ()
-    if hasattr(result.rollout_info, "goal_generator"):
+    if (hasattr(result.rollout_info, "goal_generator")
+            and hasattr(result.rollout_info.goal_generator, "switched_goal")):
         switched_goal = alf.nest.get_field(
             result, "rollout_info.goal_generator.switched_goal")
     if switched_goal != ():
