@@ -217,7 +217,8 @@ class Agent(OnPolicyAlgorithm):
         # before this line.
         self.use_rollout_state = self.use_rollout_state
         self._goal_metrics = []
-        if isinstance(goal_generator, SubgoalPlanningGoalGenerator):
+        if isinstance(goal_generator,
+                      SubgoalPlanningGoalGenerator) and self._env:
             metric_buf_size = max(10, self._env.batch_size)
             for i in range(goal_generator.num_subgoals + 3):
                 metric = alf.metrics.GoalIndexMetric(

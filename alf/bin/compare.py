@@ -38,15 +38,20 @@ import os
 import re
 import time
 
+flags.DEFINE_string(
+    'root_dir', None,
+    'Root directory for both algorithms, when gin1 and gin2 are set.')
 flags.DEFINE_string('root_dir1', None, 'Root directory for algorithm one.')
 flags.DEFINE_string('root_dir2', None, 'Root directory for algorithm two.')
+flags.DEFINE_string('gin1', None, 'gin params for algorithm one.')
+flags.DEFINE_string('gin2', None, 'gin params for algorithm two.')
 flags.DEFINE_string('output_file', None, 'output html file.')
 flags.DEFINE_integer('num_runs', 10, 'Compare on so many runs.')
 flags.DEFINE_integer('start_from', 0, 'Start random seeds from here.')
 flags.DEFINE_string(
     'common_gin', '', 'Common config for the two sides, '
     'e.g. "--gin_param=\'GoalTask.random_range=5\'"')
-flags.DEFINE_integer('overwrite', 0, 'Overwrite cached files.')
+flags.DEFINE_bool('overwrite', False, 'Overwrite cached files.')
 
 FLAGS = flags.FLAGS
 
@@ -70,12 +75,16 @@ def _file_exists(file):
             and os.stat(file).st_size > 100)
 
 
-def _play_cmd(root_dir, seed, mp4_f):
+def _play_cmd(root_dir, seed, mp4_f, gin):
     cmd = ("python3 -m alf.bin.play "
            " --random_seed={seed} --num_episodes=1"
-           " --verbosity=1 --root_dir={root_dir} --sleep_time_per_step=0"
+           " --verbosity=1 --root_dir={root_dir} {gin} --sleep_time_per_step=0"
            " --epsilon_greedy=0 --record_file={mp4} {g}").format(
-               root_dir=root_dir, seed=seed, mp4=mp4_f, g=FLAGS.common_gin)
+               root_dir=root_dir,
+               gin=gin,
+               seed=seed,
+               mp4=mp4_f,
+               g=FLAGS.common_gin)
     cmds = cmd.split(" ")
     return cmd, cmds
 
@@ -94,7 +103,7 @@ def _get_avg(data, metric, i):
     return np.mean(vs)
 
 
-def _create_html(data, all_data, metrics, abbr):
+def _create_html(data, all_data, metrics, abbr, root_dir1, root_dir2):
     """Creates the comparison in html content and return as string."""
     # Column ``AverageReturn_diff`` is after:
     #   one seed column, two sets of metrics, two log_file paths
@@ -124,11 +133,11 @@ def _create_html(data, all_data, metrics, abbr):
     html += "\n<pre>"
     if FLAGS.common_gin:
         html += "common_args: {}\n".format(FLAGS.common_gin)
-    html += "Alg1: {}\n".format(FLAGS.root_dir1)
+    html += "Alg1: {}\ngin1: {}\n".format(root_dir1, FLAGS.gin1)
     for m in metrics:
         html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(
             m, _get_avg(all_data, m, 0))
-    html += "\nAlg2: {}\n".format(FLAGS.root_dir2)
+    html += "\nAlg2: {}\ngin2: {}\n".format(root_dir2, FLAGS.gin2)
     for m in metrics:
         html += "&nbsp;&nbsp;&nbsp;|{}: {:.2f}".format(
             m, _get_avg(all_data, m, 1))
@@ -189,7 +198,15 @@ def _create_html(data, all_data, metrics, abbr):
 
 
 def _tokenize(s):
+    if not s:
+        return ""
     s = s.replace("--gin_param=", "")
+    s = s.replace("/home/lezhao/tmp/", "")
+    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.num_subgoals=",
+                  "numsg_")
+    s = s.replace("CEMOptimizer.iterations=", "cemiters_")
+    s = s.replace("GoalTask.min_distance=", "mindist_")
+    s = s.replace("GoalTask.random_range=", "randrange_")
     s = s.replace("'", "")
     s = s.replace('"', "")
     s = s.replace("=", "__")
@@ -198,10 +215,24 @@ def _tokenize(s):
     return s
 
 
+def _sort_options(s):
+    if not s:
+        return ""
+    arr = s.split("-")
+    arr.sort()
+    return "-".join(arr)
+
+
 def main(_):
     """main function."""
     # generate runs
-    dirs = [FLAGS.root_dir1, FLAGS.root_dir2]
+    assert ((FLAGS.root_dir and FLAGS.gin1 != FLAGS.gin2)
+            or (FLAGS.root_dir1 and FLAGS.root_dir2))
+    root_dir1, root_dir2 = FLAGS.root_dir1, FLAGS.root_dir2
+    if FLAGS.root_dir:
+        root_dir1, root_dir2 = FLAGS.root_dir, FLAGS.root_dir
+    dirs = [root_dir1, root_dir2]
+    gins = [FLAGS.gin1, FLAGS.gin2]
     metrics = [AVG_R_METRIC, "AverageEpisodeLength"]
     abbr = ["R", "L"]
     gin_str = ""
@@ -217,10 +248,14 @@ def main(_):
         item["seed"] = seed
         vs = ["", ""]
         for i, root_dir in enumerate(dirs):
-            mp4_f = root_dir + "/play-seed_{}{}.mp4".format(seed, gin_str)
+            _gin_str = gin_str
+            if gins[i]:
+                _gin_str += "-" + _tokenize(gins[i])
+            _gin_str = _sort_options(_gin_str)
+            mp4_f = root_dir + "/play-seed_{}{}.mp4".format(seed, _gin_str)
             log_file = root_dir + "/play-log-seed_{}{}.txt".format(
-                seed, gin_str)
-            command, commands = _play_cmd(root_dir, seed, mp4_f)
+                seed, _gin_str)
+            command, commands = _play_cmd(root_dir, seed, mp4_f, gins[i])
             command += " 2>> " + log_file
             if not _file_exists(mp4_f):
                 f = open(log_file, 'w')
@@ -278,9 +313,17 @@ def main(_):
     # create html
     output_file = FLAGS.output_file
     if not output_file:
-        output_file = FLAGS.root_dir1 + "/compare{}-{}.html".format(
-            gin_str, _tokenize(FLAGS.root_dir2))
-    html = _create_html(data, all_data, metrics, abbr)
+        custom_gins = ""
+        if FLAGS.gin1 or FLAGS.gin2:
+            if root_dir1 == root_dir2:
+                dir2_str = ""
+            else:
+                dir2_str = "-dir2_{}".format(_tokenize(root_dir2))
+            custom_gins = "gin1_{}-gin2_{}{}".format(
+                _tokenize(FLAGS.gin1), _tokenize(FLAGS.gin2), dir2_str)
+        output_file = root_dir1 + "/compare{}-{}-startfrom_{}-numruns_{}.html".format(
+            gin_str, custom_gins, FLAGS.start_from, FLAGS.num_runs)
+    html = _create_html(data, all_data, metrics, abbr, root_dir1, root_dir2)
     f = open(output_file, 'w')
     assert f, "Cannot write to " + output_file
     f.write(html)
@@ -290,6 +333,4 @@ def main(_):
 
 if __name__ == '__main__':
     logging.set_verbosity(logging.INFO)
-    flags.mark_flag_as_required('root_dir1')
-    flags.mark_flag_as_required('root_dir2')
     app.run(main)

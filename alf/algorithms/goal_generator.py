@@ -697,6 +697,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             assert False, "We give up on non-speed control mode."
         old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
         retain_old = (old_costs < costs).squeeze(1)
+        # Plot relative cost increase of new plan.  Is old plan a lot better than new?
+        if alf.summary.should_record_summaries():
+            new_cost_larger = torch.where(retain_old, costs - old_costs,
+                                          torch.zeros(()))
+            alf.summary.scalar("planner/avg_new_cost_larger_by",
+                               torch.mean(new_cost_larger))
         goals = torch.where(retain_old.reshape(-1, 1, 1), old_plan, goals)
         state = state._replace(
             replan=state.replan & ~retain_old,
