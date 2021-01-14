@@ -178,6 +178,7 @@ class VideoRecorder(GymVideoRecorder):
                  frames_per_sec=None,
                  future_steps=0,
                  append_blank_frames=0,
+                 render_prediction=False,
                  **kwargs):
         """
         Args:
@@ -202,6 +203,9 @@ class VideoRecorder(GymVideoRecorder):
                 frames at the end of the episode in the rendered video file.
                 A negative value has the same effects as 0 and no blank frames
                 will be appended.
+            render_prediction (bool): If True, extra prediction info
+                (returned by ``predict_step()``) will also be rendered by the
+                side of video frames.
         """
         super(VideoRecorder, self).__init__(env=env, **kwargs)
         self._img_plot_width = img_plot_width
@@ -213,6 +217,7 @@ class VideoRecorder(GymVideoRecorder):
         self._future_steps = future_steps
         self._append_blank_frames = append_blank_frames
         self._blank_frame = None
+        self._render_pred_info = render_prediction
         self._fields = ["frame", "observation", "reward", "action"]
         self._recorder_buffer = RecorderBuffer(self._fields)
 
@@ -284,13 +289,18 @@ class VideoRecorder(GymVideoRecorder):
                     'path=%s metadata_path=%s', self.path, self.metadata_path)
                 self.broken = True
         else:
-            if pred_info is not None:
-                if plt is not None:
-                    frame = self._plot_pred_info(frame, pred_info)
+            if self._render_pred_info:
+                if pred_info is not None:
+                    if plt is not None:
+                        frame = self._plot_pred_info(frame, pred_info)
+                    else:
+                        common.warning_once(
+                            "matplotlib is not installed; prediction info will not "
+                            "be plotted when rendering videos.")
                 else:
                     common.warning_once(
-                        "matplotlib is not installed; prediction info will not "
-                        "be plotted when rendering videos.")
+                        "You have choosen to render prediction info, but no "
+                        " prediction info is provided. Skipping this.")
 
             self._last_frame = frame
             if defer_mode:

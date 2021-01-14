@@ -621,6 +621,7 @@ def play(root_dir,
          future_steps=0,
          append_blank_frames=0,
          render=True,
+         render_prediction=False,
          ignored_parameter_prefixes=[]):
     """Play using the latest checkpoint under `train_dir`.
 
@@ -668,6 +669,9 @@ def play(root_dir,
         render (bool): If False, then this function only evaluates the trained
             model without calling rendering functions. This value will be ignored
             if a ``record_file`` argument is provided.
+        render_prediction (bool): If True, when using ``VideoRecorder`` to render
+            a video, extra prediction info (returned by ``predict_step()``) will
+            also be rendered by the side of video frames.
         ignored_parameter_prefixes (list[str]): ignore the parameters whose
             name has one of these prefixes in the checkpoint.
 """
@@ -688,6 +692,7 @@ def play(root_dir,
             env,
             future_steps=future_steps,
             append_blank_frames=append_blank_frames,
+            render_prediction=render_prediction,
             path=record_file)
     elif render:
         # pybullet_envs need to render() before reset() to enable mode='human'
