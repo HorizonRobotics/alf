@@ -65,8 +65,12 @@ flags.DEFINE_float('sleep_time_per_step', 0.01,
 flags.DEFINE_string(
     'record_file', None, "If provided, video will be recorded"
     "to a file instead of shown on the screen.")
+# use '--norender' to disable frame rendering
 flags.DEFINE_bool('render', True,
                   "Whether render ('human'|'rgb_array') the frames or not")
+# use '--render_prediction' to enable pred info rendering
+flags.DEFINE_bool('render_prediction', False,
+                  "Whether render prediction info at every frame or not")
 flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
 flags.DEFINE_string(
@@ -110,6 +114,7 @@ def main(_):
             future_steps=FLAGS.future_steps,
             append_blank_frames=FLAGS.append_blank_frames,
             render=FLAGS.render,
+            render_prediction=FLAGS.render_prediction,
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
