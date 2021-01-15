@@ -433,7 +433,9 @@ class FCBatchEnsemble(FC):
     In a nutshell, a tuple of vector :math:`(r_k, s_k)` is maintained for ensemble
     member k in addition to the original FC weight matrix w. For input x, the
     result for ensemble member k is calculated as :math:`(W \circ (s_k r_k^T)) x`.
-    This can be more efficiently calculated as :math:`(W (x \circ r_k)) \circ s_k`
+    This can be more efficiently calculated as :math:`(W (x \circ r_k)) \circ s_k`.
+    Note that for each sample in a batch, a random ensemble member will used for it
+    if ``ensemble_ids`` is not provided to ``forward()``.
 
     """
 
@@ -454,8 +456,8 @@ class FCBatchEnsemble(FC):
             input_size (int): input size
             output_size (int): output size
             ensemble_size (int): ensemble size
-            output_ensemble_ids (bool): If True, the forward() funciton will return
-                a tuple of (result, ensemble_ids). If False, the forward() funciton
+            output_ensemble_ids (bool): If True, the forward() function will return
+                a tuple of (result, ensemble_ids). If False, the forward() function
                 will return result only.
             activation (Callable): activation function
             use_bias (bool): whether use bias
@@ -482,7 +484,7 @@ class FCBatchEnsemble(FC):
         super().__init__(
             input_size,
             output_size,
-            activation=identity,
+            activation=activation,
             use_bias=False,
             use_bn=use_bn,
             use_ln=use_ln,
@@ -492,6 +494,7 @@ class FCBatchEnsemble(FC):
     def reset_parameters(self):
         """Reinitialize parameters."""
         super().reset_parameters()
+        # Both r and s are initialized to +1/-1 according to Appendix B
         torch.randint(
             2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
         torch.randint(
@@ -515,7 +518,7 @@ class FCBatchEnsemble(FC):
                 generated for each sample in the batch. If a tuple, it should
                 contain two tensors. The first one is the data tensor with shape
                 ``[batch_size, input_size]`` or ``[batch_size, ..., input_size]``.
-                The second one is emsemble ids indicating which ensemble member each
+                The second one is ensemble_ids indicating which ensemble member each
                 sample should use. Its shape should be [batch_size], and all elements
                 should be in [0, ensemble_size).
         Returns:
