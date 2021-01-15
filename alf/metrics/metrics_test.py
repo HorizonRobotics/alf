@@ -16,8 +16,9 @@ import torch
 
 import alf
 from alf.metrics import (EnvironmentSteps, NumberOfEpisodes,
-                         AverageReturnMetric, AverageEpisodeLengthMetric,
-                         AverageEnvInfoMetric)
+                         AverageReturnMetric,
+                         AverageDiscountedEpisodicReturnMetric,
+                         AverageEpisodeLengthMetric, AverageEnvInfoMetric)
 from alf.utils.tensor_utils import to_tensor
 from alf.data_structures import TimeStep, StepType
 
@@ -68,12 +69,17 @@ class THMetricsTest(parameterized.TestCase, unittest.TestCase):
         [('testEnvironmentStepsGraph', EnvironmentSteps, 5, 6),
          ('testNumberOfEpisodesGraph', NumberOfEpisodes, 4, 2),
          ('testAverageReturnGraph', AverageReturnMetric, 6, 9.0),
+         ('testAverageDiscountedEpisodicReturnMetric',
+          AverageDiscountedEpisodicReturnMetric, 6, 8.945),
          ('testAverageEpisodeLengthGraph', AverageEpisodeLengthMetric, 6, 2.0),
          ('testAverageEnvInfoMetric', AverageEnvInfoMetric, 6,
           dict(x=torch.as_tensor(5.), y=torch.as_tensor(1.5)))])
     def testMetric(self, metric_class, num_trajectories, expected_result):
         trajectories = self._create_trajectories()
-        if metric_class in [AverageReturnMetric, AverageEpisodeLengthMetric]:
+        if metric_class in [
+                AverageReturnMetric, AverageDiscountedEpisodicReturnMetric,
+                AverageEpisodeLengthMetric
+        ]:
             metric = metric_class(batch_size=2)
         elif metric_class == AverageEnvInfoMetric:
             metric = metric_class(

@@ -164,6 +164,17 @@ class AverageEpisodicSumMetric(metric.StepMetric):
         """Extract metrics from the time step. The return can be a nest."""
         raise NotImplementedError()
 
+    def _after_update(self, time_step):
+        """Some calculations done after the main calculation required for
+        accumulator and buffer update.
+        This function can be overridden by subclasses' ``_after_update()``
+        to perform some class specific calculations.
+        Args:
+            time_step (alf.data_structures.TimeStep): batched tensor
+
+        """
+        pass
+
     def _initialize(self, example_metric_value):
         counter = [0]
 
@@ -221,6 +232,8 @@ class AverageEpisodicSumMetric(metric.StepMetric):
                 lambda buf, acc: buf.append(acc[last_episode_indices]),
                 self._buffer, self._accumulator)
 
+        self._after_update(time_step)
+
         return time_step
 
     def result(self):
@@ -264,6 +277,68 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
         else:
             reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
             return [reward[..., i] for i in range(reward.shape[-1])]
+
+
+class AverageDiscountedEpisodicReturnMetric(AverageEpisodicSumMetric):
+    """Metric for computing the average discounted episodic return."""
+
+    def __init__(self,
+                 name='AverageDiscountedEpisodicReturnMetric',
+                 prefix='Metrics',
+                 reward_shape=(),
+                 dtype=torch.float32,
+                 discount=0.99,
+                 batch_size=1,
+                 buffer_size=10):
+        if reward_shape == ():
+            example_metric_value = torch.zeros((), device='cpu')
+        else:
+            example_metric_value = torch.zeros(
+                reward_shape, device='cpu').reshape(-1)
+            example_metric_value = list(example_metric_value)
+
+        self._discount = discount
+        self._accumulated_discount = torch.ones(batch_size, device='cpu')
+
+        super(AverageDiscountedEpisodicReturnMetric, self).__init__(
+            name=name,
+            dtype=dtype,
+            prefix=prefix,
+            batch_size=batch_size,
+            buffer_size=buffer_size,
+            example_metric_value=example_metric_value)
+
+    def _extract_metric_values(self, time_step):
+        """Accumulate discounted immediate rewards to get discounted episodic
+        return. It also updates the accumulated discount: multiply by
+        ``discount`` if not at episode beginning; and reset to one otherwise.
+        """
+        ndim = time_step.step_type.ndim
+        if time_step.reward.ndim == ndim:
+            return time_step.reward * self._accumulated_discount
+        else:
+            reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
+            return [
+                reward[..., i] * self._accumulated_discount
+                for i in range(reward.shape[-1])
+            ]
+
+    def _after_update(self, time_step):
+        """Set/Update the values of ``self._accumulated_discount``.
+        If this is the first step, it will set ``self._accumulated_discount``
+        to 1, which will be used for discounting the reward received at the
+        second step. Otherwise, is it updated by multiplying with
+        ``self._discount``.
+        Args:
+            time_step (alf.data_structures.TimeStep): batched tensor
+        """
+        is_first = time_step.is_first()
+
+        # apdate discount for the next time step
+        self._accumulated_discount = self._accumulated_discount * self._discount
+        self._accumulated_discount = torch.where(
+            is_first, torch.ones_like(self._accumulated_discount),
+            self._accumulated_discount)
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):

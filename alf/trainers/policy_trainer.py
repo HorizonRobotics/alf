@@ -358,6 +358,9 @@ class RLTrainer(Trainer):
                 alf.metrics.AverageReturnMetric(
                     buffer_size=self._num_eval_episodes,
                     reward_shape=self._eval_env.reward_spec().shape),
+                alf.metrics.AverageDiscountedEpisodicReturnMetric(
+                    buffer_size=self._num_eval_episodes,
+                    reward_shape=self._eval_env.reward_spec().shape),
                 alf.metrics.AverageEpisodeLengthMetric(
                     buffer_size=self._num_eval_episodes),
                 alf.metrics.AverageEnvInfoMetric(
