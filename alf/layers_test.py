@@ -529,6 +529,40 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         logging.info("loss=%s" % loss.detach().cpu().numpy())
         self.assertLess(loss, 0.01)
 
+    def test_fc_batch_ensemble(self):
+        batch_size = 256
+        x = torch.randn((batch_size, 16))
+        layer1 = alf.layers.FCBatchEnsemble(
+            16, 24, ensemble_size=8, use_bias=True)
+        layer2 = alf.layers.FCBatchEnsemble(
+            24, 1, ensemble_size=8, use_bias=False, output_ensemble_ids=False)
+        y = layer1(x)
+        # Test correct output type and shape
+        self.assertEqual(type(y), tuple)
+        self.assertEqual(y[0].shape, (batch_size, 24))
+        self.assertEqual(y[1].shape, (batch_size, ))
+        z = layer2(y)
+        self.assertEqual(z.shape, (256, 1))
+
+        x = torch.randn((8, 16))
+        x = torch.cat([x] * 32, dim=0)
+        ensemble_ids = torch.arange(8).unsqueeze(-1).expand(-1, 8).reshape(-1)
+        ensemble_ids = torch.cat([ensemble_ids] * 4, dim=0)
+        y = layer1((x, ensemble_ids))
+        z = layer2(y)
+        # test same ensemble id leads to same result
+        # different ensemble id leads to different result
+        self.assertEqual(z[0:64], z[64:128])
+        self.assertEqual(z[0:64], z[128:192])
+        self.assertEqual(z[0:64], z[192:256])
+        self.assertTrue((z[0:8] != z[8:16]).all())
+        self.assertTrue((z[0:8] != z[16:24]).all())
+        self.assertTrue((z[0:8] != z[24:32]).all())
+        self.assertTrue((z[0:8] != z[32:40]).all())
+        self.assertTrue((z[0:8] != z[40:48]).all())
+        self.assertTrue((z[0:8] != z[48:56]).all())
+        self.assertTrue((z[0:8] != z[56:64]).all())
+
 
 if __name__ == "__main__":
     alf.test.main()

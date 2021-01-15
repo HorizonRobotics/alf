@@ -425,6 +425,146 @@ class FC(nn.Module):
         return ParallelFC(n=n, **self._kwargs)
 
 
+class FCBatchEnsemble(FC):
+    r"""The BatchEnsemble for FC layer.
+
+    BatchEnsemble is proposed in `Wen et. al. BatchEnsemble: An Alternative Approach
+    to Efficient Ensemble and Lifelong Learning <https://arxiv.org/abs/2002.06715>`_
+
+    In a nutshell, a tuple of vector :math:`(r_k, s_k)` is maintained for ensemble
+    member k in addition to the original FC weight matrix w. For input x, the
+    result for ensemble member k is calculated as :math:`(W \circ (s_k r_k^T)) x`.
+    This can be more efficiently calculated as :math:`(W (x \circ r_k)) \circ s_k`.
+    Note that for each sample in a batch, a random ensemble member will used for it
+    if ``ensemble_ids`` is not provided to ``forward()``.
+
+    """
+
+    def __init__(self,
+                 input_size,
+                 output_size,
+                 ensemble_size,
+                 output_ensemble_ids=True,
+                 activation=identity,
+                 use_bias=True,
+                 use_bn=False,
+                 use_ln=False,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_range=0.):
+        """
+        Args:
+            input_size (int): input size
+            output_size (int): output size
+            ensemble_size (int): ensemble size
+            output_ensemble_ids (bool): If True, the forward() function will return
+                a tuple of (result, ensemble_ids). If False, the forward() function
+                will return result only.
+            activation (Callable): activation function
+            use_bias (bool): whether use bias
+            use_bn (bool): whether use batch normalization.
+            use_ln (bool): whether use layer normalization
+            kernel_initializer (Callable): initializer for the FC layer kernel.
+                If none is provided a ``variance_scaling_initializer`` with gain as
+                ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to
+                the std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_range (float): biases are initialized uniformly in
+                [-bias_init_range, bias_init_range]
+        """
+        nn.Module.__init__(self)
+        self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
+        self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
+        self._ensemble_bias = nn.Parameter(
+            torch.Tensor(ensemble_size, output_size))
+        self._use_ensemble_bias = use_bias
+        self._ensemble_size = ensemble_size
+        self._output_ensemble_ids = output_ensemble_ids
+        self._bias_init_range = bias_init_range
+        super().__init__(
+            input_size,
+            output_size,
+            activation=activation,
+            use_bias=False,
+            use_bn=use_bn,
+            use_ln=use_ln,
+            kernel_initializer=kernel_initializer,
+            kernel_init_gain=kernel_init_gain)
+
+    def reset_parameters(self):
+        """Reinitialize parameters."""
+        super().reset_parameters()
+        # Both r and s are initialized to +1/-1 according to Appendix B
+        torch.randint(
+            2, size=self._r.shape, dtype=torch.float32, out=self._r.data)
+        torch.randint(
+            2, size=self._s.shape, dtype=torch.float32, out=self._s.data)
+        self._r.data.mul_(2)
+        self._r.data.sub_(1)
+        self._s.data.mul_(2)
+        self._s.data.sub_(1)
+        if self._use_bias:
+            nn.init.uniform_(
+                self._ensemble_bias.data,
+                a=-self._bias_init_range,
+                b=self._bias_init_range)
+
+    def forward(self, inputs):
+        """Forward computation.
+
+        Args:
+            inputs (Tensor|tuple): if a Tensor, its shape should be ``[batch_size, input_size]`` or
+                ``[batch_size, ..., input_size]``. And a random ensemble id will be
+                generated for each sample in the batch. If a tuple, it should
+                contain two tensors. The first one is the data tensor with shape
+                ``[batch_size, input_size]`` or ``[batch_size, ..., input_size]``.
+                The second one is ensemble_ids indicating which ensemble member each
+                sample should use. Its shape should be [batch_size], and all elements
+                should be in [0, ensemble_size).
+        Returns:
+            tuple if ``output_ensemble_ids`` is True,
+            - Tensor: with shape as ``inputs.shape[:-1] + (output_size,)``
+            - LongTensor: if enseble_ids is provided, this is same as ``ensemble_ids``,
+                otherwise a randomly generated ensemble_ids is returned
+            Tensor if ``output_ensemble_ids`` is False. The result of FC.
+        """
+        if type(inputs) == tuple:
+            inputs, ensemble_ids = inputs
+        else:
+            ensemble_ids = torch.randint(
+                self._ensemble_size, size=(inputs.shape[0], ))
+        batch_size = inputs.shape[0]
+        output_size, input_size = self._weight.shape
+        r = self._r[ensemble_ids]  # [batch_size, input_size]
+        s = self._s[ensemble_ids]  # [batch_size, output_size]
+        if inputs.ndim > 2:
+            ones = [1] * (inputs.ndim - 2)
+            r = r.reshape(batch_size, *ones, input_size)
+            s = s.reshape(batch_size, *ones, output_size)
+        y = (inputs * r).matmul(self._weight.t())
+        y = y * s
+        if self._use_ensemble_bias:
+            bias = self._ensemble_bias[ensemble_ids]
+            if inputs.ndim > 2:
+                bias = bias.reshape(batch_size, *ones, output_size)
+            y += bias
+        if self._use_ln:
+            if not self._use_ensemble_bias:
+                self._ln.bias.data.zero_()
+            y = self._ln(y)
+        if self._use_bn:
+            if not self._use_ensemble_bias:
+                self._bn.bias.data.zero_()
+            y = self._bn(y)
+
+        y = self._activation(y)
+        if self._output_ensemble_ids:
+            return y, ensemble_ids
+        else:
+            return y
+
+
 @gin.configurable
 class ParallelFC(nn.Module):
     """Parallel FC layer."""
@@ -1840,3 +1980,20 @@ class TransformerBlock(nn.Module):
             z = z.squeeze(1)
 
         return z
+
+
+class Lambda(nn.Module):
+    def __init__(self, func):
+        """
+        Args:
+            func (Callable): a function that calculate the output given the input.
+                It should be parameterless.
+        """
+        super().__init__()
+        self._func = func
+
+    def forward(self, x):
+        return self._func(x)
+
+    def reset_parameters(self):
+        return
