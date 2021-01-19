@@ -23,6 +23,7 @@ from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.off_policy_algorithm import OffPolicyAlgorithm
 from alf.algorithms.sac_algorithm import SacAlgorithm
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.data_transformer import RewardNormalizer
 from alf.data_structures import TimeStep, Experience, namedtuple, AlgStep
 from alf.data_structures import make_experience, LossInfo
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
@@ -80,8 +81,9 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 calculate the representation from the original observation as
                 the observation for downstream algorithms such as ``rl_algorithm``.
                 We assume that the representation is trained by ``rl_algorithm``.
-            reward_normalizer_ctor (Callable): if not None, environment rewards
-                will be normalized for training.
+            reward_normalizer_ctor (Callable): if not None, it must be
+                ``RewardNormalizer`` and environment rewards will be normalized
+                for training.
             gamma (float): the reward discount to be applied when accumulating
                 ``k`` steps' rewards for a repeated action. Note that this value
                 should be equal to the gamma used by the critic loss for target
@@ -152,6 +154,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         self._repr_learner = repr_learner
         self._reward_normalizer = None
         if reward_normalizer_ctor is not None:
+            assert reward_normalizer_ctor.__name__ == "RewardNormalizer"
             self._reward_normalizer = reward_normalizer_ctor(
                 observation_spec=())
         self._rl = rl
@@ -324,7 +327,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         rl_info, repeats, sample_rewards = rl_exp.rollout_info
 
         if self._reward_normalizer is not None:
-            normalizer = self._reward_normalizer._normalizer
+            normalizer = self._reward_normalizer.normalizer
             normalizer.update(sample_rewards)
 
             # compute current variance
@@ -343,7 +346,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
                 var,
                 variance_epsilon=normalizer._variance_epsilon)
 
-            clip = self._reward_normalizer._clip_value
+            clip = self._reward_normalizer.clip_value
             if clip > 0:
                 # The clip value is for single-step rewards, so we need to multiply
                 # it with the repeated steps.
