@@ -609,6 +609,14 @@ class RewardNormalizer(SimpleDataTransformer):
             reward=norm.normalize(
                 timestep_or_exp.reward, clip_value=self._clip_value))
 
+    @property
+    def normalizer(self):
+        return self._normalizer
+
+    @property
+    def clip_value(self):
+        return self._clip_value
+
 
 @gin.configurable
 class RewardScaling(SimpleDataTransformer):

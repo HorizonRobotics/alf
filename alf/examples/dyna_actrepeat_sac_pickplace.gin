@@ -15,7 +15,6 @@ SacAlgorithm.q_network_cls=@q/QNetwork
 DynamicActionRepeatAgent.K=%K
 DynamicActionRepeatAgent.rl_algorithm_cls=@SacAlgorithm
 DynamicActionRepeatAgent.gamma=0.98
-DynamicActionRepeatAgent.optimizer=@AdamTF()
 
 TrainerConfig.algorithm_ctor=@DynamicActionRepeatAgent
 TrainerConfig.unroll_length=25
