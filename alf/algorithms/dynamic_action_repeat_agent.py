@@ -321,7 +321,6 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         updated by random sample rewards.
         """
         reward = rl_exp.reward
-        # repeats might be zero for StepType.FIRST
         rl_info, repeats, sample_rewards = rl_exp.rollout_info
 
         if self._reward_normalizer is not None:
@@ -346,7 +345,10 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
 
             clip = self._reward_normalizer._clip_value
             if clip > 0:
-                reward = torch.clamp(reward, -clip, clip)
+                # The clip value is for single-step rewards, so we need to multiply
+                # it with the repeated steps.
+                clip = clip * repeats
+                reward = torch.max(torch.min(clip, reward), -clip)
 
         rl_exp = rl_exp._replace(reward=reward, rollout_info=rl_info)
         return self._rl.preprocess_experience(rl_exp)
