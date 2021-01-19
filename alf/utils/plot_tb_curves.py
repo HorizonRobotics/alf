@@ -298,7 +298,7 @@ class MeanCurveGroupReader(object):
 
     @property
     def y_label(self):
-        return "Aggregated Score"
+        return "Normalized Score"
 
     @property
     def name(self):
@@ -322,9 +322,14 @@ class CurvesPlotter(object):
                  x_label=None,
                  y_label=None,
                  x_scaled_and_aligned=False,
+                 figsize=(4, 4),
+                 dpi=100,
                  linestyle='-',
                  linewidth=2,
                  alpha=0.3,
+                 bg_color='#EEEEEE',
+                 grid_color='#DEDEDE',
+                 legend_kwargs=dict(loc="best"),
                  title=None):
         r"""
         Args:
@@ -345,14 +350,23 @@ class CurvesPlotter(object):
             x_scaled_and_aligned (bool): If True, the x axes of all MeanCurves
                 will be scaled and aligned to ``x_range``; otherwise, the x axes
                 will be plot according to ``x`` of each MeanCurve.
+            figsize (tuple[int]): a tuple of ints determining the size of the
+                figure in inches. A larger figure size will allow for longer texts,
+                more axes or more ticklabels to be shown.
+            dpi (int): Dots per inches. How many pixels each inch contains. A
+                ``figsize`` of ``(w,h)`` consists of ``w*h*dpi**2`` pixels.
             linestyle (str): the line style to plot. Possible values:
                 '-' ('solid'), '--' ('dashed'), '-.' (dashdot), and ':' ('dotted').
             linewidth (int): the thickness of lines to plot. Default: 2.
             alpha (float): the transparency value for plotting shaded area around
                 a curve.
+            bg_color (str): the background color of the figure
+            grid_color (str): color of the dashed grid lines
+            legend_kwargs (dict): kwargs for plotting the legend. If None, then
+                no legend will be plotted.
             title (str): title of the figure
         """
-        self._fig, ax = plt.subplots(1)
+        self._fig, ax = plt.subplots(1, figsize=figsize, dpi=dpi)
 
         if not isinstance(mean_curves, list):
             mean_curves = [mean_curves]
@@ -391,8 +405,10 @@ class CurvesPlotter(object):
                 facecolor=color,
                 alpha=alpha)
 
-        ax.legend(loc='best')
-        ax.grid(linestyle='--')
+        if legend_kwargs is not None:
+            ax.legend(**legend_kwargs)
+        ax.set_facecolor(bg_color)
+        ax.grid(linestyle='--', color=grid_color)
         ax.ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
 
         if y_range:
