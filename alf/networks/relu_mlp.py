@@ -122,7 +122,7 @@ class ReluMLP(Network):
         for fc in self._fc_layers:
             z = fc(z)
         if ndim == 1:
-            z = z.squeeze()
+            z = z.squeeze(0)
         if requires_jac:
             z = (z, self._compute_jac())
         elif requires_jac_diag:
@@ -139,7 +139,7 @@ class ReluMLP(Network):
         self.forward(inputs)
         J = self._compute_jac()
         if inputs.ndim == 1:
-            J = J.squeeze()
+            J = J.squeeze(0)
 
         return J
 
@@ -164,7 +164,7 @@ class ReluMLP(Network):
         self.forward(inputs)
         J_diag = self._compute_jac_diag()
         if inputs.ndim == 1:
-            J_diag = J_diag.squeeze()
+            J_diag = J_diag.squeeze(0)
 
         return J_diag
 
@@ -231,6 +231,6 @@ class ReluMLP(Network):
             J = torch.matmul(J * mask, fc.weight)
 
         if ndim == 1:
-            J = J.squeeze()
+            J = J.squeeze(0)
 
         return J  # [B, n_in] or [n_in]
