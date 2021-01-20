@@ -112,13 +112,17 @@ class ReluMLP(Network):
             requires_jac (bool): whether outputs input-output Jacobian.
             requires_jac_diag (bool): whetheer outputs diagonals of Jacobian.
         """
-        inputs = inputs.squeeze()
-        assert inputs.shape[-1] == self._input_size, \
-            ("inputs should has shape {}!".format(self._input_size))
+        ndim = inputs.ndim
+        if ndim == 1:
+            inputs = inputs.unsqueeze(0)
+        assert inputs.ndim == 2 and inputs.shape[-1] == self._input_size, \
+            ("inputs should has shape (B, {})!".format(self._input_size))
 
         z = inputs
         for fc in self._fc_layers:
             z = fc(z)
+        if ndim == 1:
+            z = z.squeeze(0)
         if requires_jac:
             z = (z, self._compute_jac())
         elif requires_jac_diag:
@@ -129,13 +133,15 @@ class ReluMLP(Network):
     def compute_jac(self, inputs):
         """Compute the input-output Jacobian. """
 
-        inputs = inputs.squeeze()
-        assert inputs.shape[-1] == self._input_size, \
+        assert inputs.ndim <= 2 and inputs.shape[-1] == self._input_size, \
             ("inputs should has shape {}!".format(self._input_size))
 
         self.forward(inputs)
+        J = self._compute_jac()
+        if inputs.ndim == 1:
+            J = J.squeeze(0)
 
-        return self._compute_jac()
+        return J
 
     def _compute_jac(self):
         """Compute the input-output Jacobian. """
@@ -152,13 +158,15 @@ class ReluMLP(Network):
     def compute_jac_diag(self, inputs):
         """Compute diagonals of the input-output Jacobian. """
 
-        inputs = inputs.squeeze()
-        assert inputs.shape[-1] == self._input_size, \
+        assert inputs.ndim <= 2 and inputs.shape[-1] == self._input_size, \
             ("inputs should has shape {}!".format(self._input_size))
 
         self.forward(inputs)
+        J_diag = self._compute_jac_diag()
+        if inputs.ndim == 1:
+            J_diag = J_diag.squeeze(0)
 
-        return self._compute_jac_diag()
+        return J_diag
 
     def _compute_jac_diag(self):
         """Compute diagonals of the input-output Jacobian. """
@@ -179,3 +187,50 @@ class ReluMLP(Network):
                              self._fc_layers[0].weight)  # [B, n]
 
         return J
+
+    def compute_vjp(self, inputs, vec):
+        """Compute vector-Jacobian product. 
+
+        Args:
+            inputs (Tensor): size (self._input_size) or (B, self._input_size)
+            vec (Tensor): the vector for which the vector-Jacobian product
+                is computed. Must be of size (self._output_size) or
+                (B, self._output_size). 
+
+        Returns:
+            vjp (Tensor): size (self._input_size) or (B, self._input_size).
+        """
+
+        ndim = inputs.ndim
+        assert vec.ndim == ndim, \
+            ("ndim of inputs and vec must be consistent!")
+        if ndim > 1:
+            assert ndim == 2, \
+                ("inputs must be a vector or matrix!")
+            assert inputs.shape[0] == vec.shape[0], \
+                ("batch size of inputs and vec must agree!")
+        assert inputs.shape[-1] == self._input_size, \
+            ("inputs should has shape {}!".format(self._input_size))
+        assert vec.shape[-1] == self._output_size, \
+            ("vec should has shape {}!".format(self._output_size))
+
+        self.forward(inputs)
+
+        return self._compute_vjp(vec)
+
+    def _compute_vjp(self, vec):
+        """Compute vector-Jacobian product. """
+
+        ndim = vec.ndim
+        if ndim == 1:
+            vec = vec.unsqueeze(0)
+
+        J = torch.matmul(vec, self._fc_layers[-1].weight)
+        for fc in reversed(self._fc_layers[0:-1]):
+            mask = (fc.hidden_neurons > 0).float()
+            J = torch.matmul(J * mask, fc.weight)
+
+        if ndim == 1:
+            J = J.squeeze(0)
+
+        return J  # [B, n_in] or [n_in]
