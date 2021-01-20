@@ -230,7 +230,7 @@ class AverageEpisodicSumMetric(metric.StepMetric):
 
     def _extract_and_process_acc_value(self, acc, last_episode_indices):
         """Extract the final accumulated value and perform some optional
-        customizable processings.
+        customizable processing.
         Args:
             acc (Tensor): batched tensor representing an accumulator
             last_episode_indices (Tensor): indices representing the location
@@ -290,13 +290,16 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
 
     .. math::
         \begin{array}{ll}
-            R &= r_1 + (1 + gamma) r_2 + + (1 + gamma + gamma^2) r_3 + \cdots \\
+            R &= r_1 + (1 + gamma) r_2 + (1 + gamma + gamma^2) r_3 + \cdots \\
             &= \frac{1}{L}\sum_{l=1}^L \sum_{k=0}^{l-1} \gamma^k r_l,
         \end{array}
-    where :math:`\gamma` is the reward discount.
+    where :math:`\gamma` is the reward discount, and :math:`r_1` denotes the
+    reward due to the first action, which is received at the second time step.
+    :math:`L` equals to the episode length - 1.
 
-    Note that if the last step is not due time limit, the discounted return
-    calculated form the formula above is unbiased. If the last step is due
+
+    Note that if the last step is not due to time limit, the discounted return
+    calculated form the formula above is unbiased. If the last step is due to
     time limit, it is a biased estimate and its expectation is lower than the
     ground-truth one.
     """
@@ -360,8 +363,8 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
         is_first = time_step.is_first()
 
         # update discount for the next time step
-        self._accumulated_discount = self._accumulated_discount + \
-                            self._discount**self._current_step
+        self._accumulated_discount = (
+            self._discount * self._accumulated_discount + 1)
         self._accumulated_discount = torch.where(
             is_first, torch.zeros_like(self._accumulated_discount),
             self._accumulated_discount)
