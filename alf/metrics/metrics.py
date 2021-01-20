@@ -290,7 +290,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
 
     .. math::
         \begin{array}{ll}
-            R &= r_1 + (1 + gamma) r_2 + (1 + gamma + gamma^2) r_3 + \cdots \\
+            R &=\frac{1}{L} (r_1 + (1+\gamma) r_2 + (1+\gamma+\gamma^2) r_3 + \cdots) \\
             &= \frac{1}{L}\sum_{l=1}^L \sum_{k=0}^{l-1} \gamma^k r_l,
         \end{array}
     where :math:`\gamma` is the reward discount, and :math:`r_1` denotes the
