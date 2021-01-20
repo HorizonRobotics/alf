@@ -941,7 +941,7 @@ def get_all_parameters(obj):
                 # some attrbutes are property function, which may raise exception
                 # when called in a wrong context (e.g. Algorithm.experience_spec)
                 pass
-            if attr is not None and id(attr) in memo:
+            if attr is None or id(attr) in memo:
                 continue
             unprocessed.append((attr, path + name))
             memo.add(id(attr))
