@@ -579,12 +579,12 @@ class Algorithm(nn.Module):
     def get_unoptimized_parameter_info(self):
         """Return the information about the parameters not being optimized.
 
-        Note: the difference of this with parameters contained in the optimizer
+        Note: the difference of this with the parameters contained in the optimizer
         'None' from get_optimizer_info() is that get_optimizer_info() does not
         traverse all the parameters (e.g., parameters in list, tuple, dict, or set).
 
         Returns:
-            str: path of all parameters not being optimizedd
+            str: path of all parameters not being optimized
         """
         self._setup_optimizers()
         optimized_parameters = []
