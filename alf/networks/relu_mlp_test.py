@@ -44,15 +44,15 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(
         dict(hidden_layers=(2, )),
-        dict(hidden_layers=(2, 3)),
+        dict(hidden_layers=(2, 3), batch_size=1),
         dict(hidden_layers=(2, 3, 4)),
     )
-    def test_compute_jac(self, hidden_layers=(2, ), input_size=5):
+    def test_compute_jac(self, hidden_layers=(2, ), batch_size=2,
+                         input_size=5):
         """
         Check that the input-output Jacobian computed by the direct(autograd-free)
         approach is consistent with the one computed by calling autograd.
         """
-        batch_size = 2
         spec = TensorSpec((input_size, ))
         mlp = ReluMLP(spec, output_size=4, hidden_layers=hidden_layers)
 
@@ -60,6 +60,7 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
         x = torch.randn(batch_size, input_size, requires_grad=True)
         x1 = x.detach().clone()
         x1.requires_grad = True
+        # z, state = mlp(x1, requires_jac=True)
         jac = mlp.compute_jac(x1)
 
         # compute jac using autograd
@@ -74,16 +75,18 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(
         dict(hidden_layers=(2, )),
-        dict(hidden_layers=(2, 3)),
+        dict(hidden_layers=(2, 3), batch_size=1),
         dict(hidden_layers=(2, 3, 4)),
     )
-    def test_compute_jac_diag(self, hidden_layers=(2, ), input_size=5):
+    def test_compute_jac_diag(self,
+                              hidden_layers=(2, ),
+                              batch_size=2,
+                              input_size=5):
         """
         Check that the diagonal of input-output Jacobian computed by
         the direct (autograd-free) approach is consistent with the one
         computed by calling autograd.
         """
-        batch_size = 2
         spec = TensorSpec((input_size, ))
         mlp = ReluMLP(spec, hidden_layers=hidden_layers)
 
@@ -105,15 +108,15 @@ class ReluMLPTest(parameterized.TestCase, alf.test.TestCase):
 
     @parameterized.parameters(
         dict(hidden_layers=(2, )),
-        dict(hidden_layers=(2, 3)),
+        dict(hidden_layers=(2, 3), batch_size=1),
         dict(hidden_layers=(2, 3, 4)),
     )
-    def test_compute_vjp(self, hidden_layers=(2, ), input_size=5):
+    def test_compute_vjp(self, hidden_layers=(2, ), batch_size=2,
+                         input_size=5):
         """
         Check that the vector-Jacobian product computed by the direct(autograd-free)
         approach is consistent with the one computed by calling autograd.
         """
-        batch_size = 2
         output_size = 4
         spec = TensorSpec((input_size, ))
         mlp = ReluMLP(

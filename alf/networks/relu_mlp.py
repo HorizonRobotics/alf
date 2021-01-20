@@ -112,7 +112,8 @@ class ReluMLP(Network):
             requires_jac (bool): whether outputs input-output Jacobian.
             requires_jac_diag (bool): whetheer outputs diagonals of Jacobian.
         """
-        if inputs.ndim == 1:
+        ndim = inputs.ndim
+        if ndim == 1:
             inputs = inputs.unsqueeze(0)
         assert inputs.ndim == 2 and inputs.shape[-1] == self._input_size, \
             ("inputs should has shape (B, {})!".format(self._input_size))
@@ -120,6 +121,8 @@ class ReluMLP(Network):
         z = inputs
         for fc in self._fc_layers:
             z = fc(z)
+        if ndim == 1:
+            z = z.squeeze()
         if requires_jac:
             z = (z, self._compute_jac())
         elif requires_jac_diag:
@@ -134,8 +137,11 @@ class ReluMLP(Network):
             ("inputs should has shape {}!".format(self._input_size))
 
         self.forward(inputs)
+        J = self._compute_jac()
+        if inputs.ndim == 1:
+            J = J.squeeze()
 
-        return self._compute_jac()
+        return J
 
     def _compute_jac(self):
         """Compute the input-output Jacobian. """
@@ -156,8 +162,11 @@ class ReluMLP(Network):
             ("inputs should has shape {}!".format(self._input_size))
 
         self.forward(inputs)
+        J_diag = self._compute_jac_diag()
+        if inputs.ndim == 1:
+            J_diag = J_diag.squeeze()
 
-        return self._compute_jac_diag()
+        return J_diag
 
     def _compute_jac_diag(self):
         """Compute diagonals of the input-output Jacobian. """
@@ -192,10 +201,11 @@ class ReluMLP(Network):
             vjp (Tensor): size (self._input_size) or (B, self._input_size).
         """
 
-        assert inputs.ndim == vec.ndim, \
+        ndim = inputs.ndim
+        assert vec.ndim == ndim, \
             ("ndim of inputs and vec must be consistent!")
-        if inputs.ndim > 1:
-            assert inputs.ndim == 2, \
+        if ndim > 1:
+            assert ndim == 2, \
                 ("inputs must be a vector or matrix!")
             assert inputs.shape[0] == vec.shape[0], \
                 ("batch size of inputs and vec must agree!")
@@ -211,12 +221,16 @@ class ReluMLP(Network):
     def _compute_vjp(self, vec):
         """Compute vector-Jacobian product. """
 
-        if vec.ndim == 1:
+        ndim = vec.ndim
+        if ndim == 1:
             vec = vec.unsqueeze(0)
 
         J = torch.matmul(vec, self._fc_layers[-1].weight)
         for fc in reversed(self._fc_layers[0:-1]):
             mask = (fc.hidden_neurons > 0).float()
-            J = torch.einsum('ba, ba, aj->bj', J, mask, fc.weight)
+            J = torch.matmul(J * mask, fc.weight)
 
-        return J  # [B, n_in]
+        if ndim == 1:
+            J = J.squeeze()
+
+        return J  # [B, n_in] or [n_in]
