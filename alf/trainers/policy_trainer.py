@@ -237,6 +237,9 @@ class Trainer(object):
             alf.summary.text(
                 'optimizers',
                 _markdownify(self._algorithm.get_optimizer_info()))
+            alf.summary.text(
+                'unoptimized_parameters',
+                _markdownify(self._algorithm.get_unoptimized_parameter_info()))
             alf.summary.text('revision', git_utils.get_revision())
             alf.summary.text('diff', _markdownify(git_utils.get_diff()))
             alf.summary.text('seed', str(self._random_seed))

@@ -576,6 +576,28 @@ class Algorithm(nn.Module):
 
         return json_pretty_str_info
 
+    def get_unoptimized_parameter_info(self):
+        """Return the information about the parameters not being optimized.
+
+        Note: the difference of this with parameters contained in the optimizer
+        'None' from get_optimizer_info() is that get_optimizer_info() does not
+        traverse all the parameters (e.g., parameters in list, tuple, dict, or set).
+
+        Returns:
+            str: path of all parameters not being optimizedd
+        """
+        self._setup_optimizers()
+        optimized_parameters = []
+        for optimizer in self.optimizers(include_ignored_attributes=True):
+            optimized_parameters.extend(_get_optimizer_params(optimizer))
+        optimized_parameters = set(optimized_parameters)
+        all_parameters = common.get_all_parameters(self)
+        unoptimized_parameters = []
+        for name, p in all_parameters:
+            if p not in optimized_parameters:
+                unoptimized_parameters.append(name)
+        return json.dumps(obj=unoptimized_parameters, indent=2)
+
     @property
     def predict_state_spec(self):
         """Returns the RNN state spec for ``predict_step()``."""

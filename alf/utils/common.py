@@ -30,6 +30,7 @@ import time
 import torch
 import torch.distributions as td
 import torch.nn as nn
+import types
 from typing import Callable
 
 import alf
@@ -873,3 +874,75 @@ def check_numerics(nested):
                                      nested, nested_finite)
         assert all(alf.nest.flatten(nested_finite)), (
             "Some tensor in nested is not finite: %s" % bad)
+
+
+def get_all_parameters(obj):
+    """Get all the parameters under ``obj`` and its descendents.
+
+    Note: This function assumes all the parameters can be reached through tuple,
+    list, dict, set, nn.Module or the attributes of an object. If a parameter is
+    held in a strange way, it will not be included by this function.
+
+    Args:
+        obj (object): will look for paramters under this object.
+    Returns:
+        list: list of (path, Parameters)
+    """
+    all_parameters = []
+    memo = set()
+    unprocessed = [(obj, '')]
+    # BFS for all subobjects
+    while unprocessed:
+        obj, path = unprocessed.pop(0)
+        if isinstance(obj, types.ModuleType):
+            # Do not traverse into a module. There are too much stuff inside a
+            # module.
+            continue
+        if isinstance(obj, nn.Parameter):
+            all_parameters.append((path, obj))
+            continue
+        if path:
+            path += '.'
+        if nest.is_namedtuple(obj):
+            for name, value in nest.extract_fields_from_nest(obj):
+                if id(value) not in memo:
+                    unprocessed.append((value, path + str(name)))
+                    memo.add(id(value))
+        elif isinstance(obj, dict):
+            # The keys of a generic dict are not necessarily str, and cannot be
+            # handled by nest.extract_fields_from_nest.
+            for name, value, in obj.items():
+                if id(value) not in memo:
+                    unprocessed.append((value, path + str(name)))
+                    memo.add(id(value))
+        elif isinstance(obj, (tuple, list, set)):
+            for i, value in enumerate(obj):
+                if id(value) not in memo:
+                    unprocessed.append((value, path + str(i)))
+                    memo.add(id(value))
+        elif isinstance(obj, nn.Module):
+            for name, m in obj.named_children():
+                if id(m) not in memo:
+                    unprocessed.append((m, path + name))
+                    memo.add(id(m))
+            for name, p in obj.named_parameters():
+                if id(p) not in memo:
+                    unprocessed.append((p, path + name))
+                    memo.add(id(p))
+        attribute_names = dir(obj)
+        for name in attribute_names:
+            if name.startswith('__') and name.endswith('__'):
+                # Ignore system attributes,
+                continue
+            attr = None
+            try:
+                attr = getattr(obj, name)
+            except:
+                # some attrbutes are property function, which may raise exception
+                # when called in a wrong context (e.g. Algorithm.experience_spec)
+                pass
+            if attr is not None and id(attr) in memo:
+                continue
+            unprocessed.append((attr, path + name))
+            memo.add(id(attr))
+    return all_parameters

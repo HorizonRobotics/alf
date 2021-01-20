@@ -15,6 +15,8 @@
 from absl import logging
 from contextlib import redirect_stderr
 from io import StringIO
+import torch
+import torch.nn as nn
 
 import alf
 import alf.utils.common as common
@@ -41,6 +43,31 @@ class WraningOnceTest(alf.test.TestCase):
         assert len(warning_messages) == len(generated_warning_messages)
         for msg, gen_msg in zip(warning_messages, generated_warning_messages):
             assert msg in gen_msg
+
+
+class MyObject(object):
+    def __init__(self):
+        self._list = [alf.layers.FC(3, 4), alf.layers.FC(4, 5)]
+        self._dict = {
+            "a": nn.Parameter(torch.zeros(3, 4)),
+            4: nn.Parameter(torch.zeros(4, 5)),
+        }
+        self._a = nn.Parameter(torch.zeros(3))
+        self._list2 = self._list
+        self._dict2 = self._dict
+
+
+class GetAllParametersTest(alf.test.TestCase):
+    def test_get_all_parameters(self):
+        obj = MyObject()
+        names = set([
+            '_a', '_dict.a', '_dict.4', '_list.0._weight', '_list.0._bias',
+            '_list.1._weight', '_list.1._bias'
+        ])
+        params = common.get_all_parameters(obj)
+        for name, p in params:
+            self.assertTrue(name in names)
+        self.assertEqual(len(names), len(params))
 
 
 if __name__ == '__main__':
