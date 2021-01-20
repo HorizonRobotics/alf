@@ -333,8 +333,7 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
 
     def _extract_metric_values(self, time_step):
         """Accumulate discounted immediate rewards to get discounted episodic
-        return. It also updates the accumulated discount: multiply by
-        ``discount`` if not at episode beginning; and reset to one otherwise.
+        return. It also updates the accumulated discount and step count.
         """
         self._update_discount_and_step_count(time_step)
 
@@ -353,10 +352,15 @@ class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
     def _update_discount_and_step_count(self, time_step):
         """Set/Update the values of ``self._accumulated_discount`` and
         the value of ``self._current_step``.
-        If this is the first step, it will set ``self._accumulated_discount``
-        to 1, which will be used for discounting the reward received at the
-        second step. Otherwise, is it updated by multiplying with
-        ``self._discount``.
+        If this is the first step, ``self._accumulated_discount`` will be set
+        to zero. Otherwise, it is multiplied by ``discount`` and added by one.
+        The updated accumulated discount will be used for computing the
+        accumulated contribution of the the reward received at the current step
+        to the discounted return.
+        ``self._current_step`` will be set to zero for the first step, and
+        is added by one otherwise. Therefore, at the episode end, its value
+        equals to episode length - 1.
+
         Args:
             time_step (alf.data_structures.TimeStep): batched tensor
         """
