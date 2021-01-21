@@ -32,7 +32,7 @@ GoalState = namedtuple(
     "GoalState", [
         "goal", "full_plan", "steps_since_last_plan", "subgoals_index",
         "steps_since_last_goal", "final_goal", "replan", "switched_goal",
-        "retain_old", "advanced_goal"
+        "retain_old", "advanced_goal", "prev_ext_goal"
     ],
     default_value=())
 GoalInfo = namedtuple(
@@ -413,6 +413,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         flag_spec = TensorSpec((), dtype=torch.bool)
         train_state_spec = GoalState(
             goal=goal_spec,
+            prev_ext_goal=TensorSpec((action_dim, )),
             full_plan=full_plan_spec,
             final_goal=final_goal_spec,
             steps_since_last_plan=steps_spec,
@@ -701,8 +702,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if alf.summary.should_record_summaries():
             new_cost_larger = torch.where(retain_old, costs - old_costs,
                                           torch.zeros(()))
-            alf.summary.scalar("planner/avg_new_cost_larger_by",
-                               torch.mean(new_cost_larger))
+            alf.summary.scalar(
+                "planner/avg_new_cost_larger_by." + common.exe_mode_name(),
+                torch.mean(new_cost_larger))
         goals = torch.where(retain_old.reshape(-1, 1, 1), old_plan, goals)
         state = state._replace(
             replan=state.replan & ~retain_old,
@@ -843,7 +845,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         first_steps = step_type == StepType.FIRST
         steps_since_last_plan = state.steps_since_last_plan + torch.tensor(
             1, dtype=torch.int32)
-        replan = steps_since_last_plan > self._max_replan_steps
+        switched_ext_goal = torch.ones_like(first_steps)
+        ext_goal = observation["desired_goal"]
+        if state.prev_ext_goal != ():
+            switched_ext_goal &= torch.min(
+                torch.isclose(ext_goal, state.prev_ext_goal), dim=1)[0] == 0
+        replan = switched_ext_goal | (steps_since_last_plan >
+                                      self._max_replan_steps)
         update_cond = replan | first_steps
         steps_since_last_plan = torch.where(update_cond,
                                             torch.tensor(0, dtype=torch.int32),
@@ -851,7 +859,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         state = state._replace(
             steps_since_last_plan=steps_since_last_plan,
             replan=replan,
-            retain_old=torch.zeros_like(update_cond))
+            retain_old=torch.zeros_like(update_cond),
+            prev_ext_goal=ext_goal)
         if torch.all(update_cond) or (
             (self.control_aux or self._next_goal_on_success)
                 and torch.any(update_cond)):
