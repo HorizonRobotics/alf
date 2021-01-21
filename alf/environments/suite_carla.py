@@ -37,7 +37,7 @@ Make sure you are using python3.7
 
 """
 
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from absl import logging
 import gin
 import math
@@ -710,22 +710,30 @@ class Player(object):
         np.set_printoptions(precision=1)
         info_text = [
             'FPS: %6.2f' % self._clock.get_fps(),
-            'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()),
-            'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()),
+            'GPS:  (%7.4f, %8.4f, %5.2f)' % tuple(obs['gnss'].tolist()) \
+                                if 'gnss' in obs.keys() else '',
+            'Goal: (%7.1f, %8.1f, %5.1f)' % tuple(obs['goal'].tolist()) \
+                                if 'goal' in obs.keys() else '',
             'Ahead: (%7.1f, %8.1f, %5.1f)' % tuple(
-                obs['navigation'][2].tolist()),
-            'Distance: %7.2f' % np.linalg.norm(obs['goal']),
+                obs['navigation'][2].tolist()) \
+                                if 'navigation' in obs.keys() else '',
+            'Distance: %7.2f' % np.linalg.norm(obs['goal']) \
+                                if 'goal' in obs.keys() else '',
             'Velocity: (%4.1f, %4.1f, %4.1f) km/h' % tuple(
-                (3.6 * obs['velocity']).tolist()),
+                    (3.6 * obs['velocity']).tolist()) \
+                                if 'velocity' in obs.keys() else '',
             'Acceleration: (%4.1f, %4.1f, %4.1f)' % tuple(
-                obs['imu'][0:3].tolist()),
-            'Compass: %5.1f' % math.degrees(float(obs['imu'][6])),
+                    obs['imu'][0:3].tolist()) \
+                                if 'imu' in obs.keys() else '',
+            'Compass: %5.1f' % math.degrees(float(obs['imu'][6])) \
+                                if 'imu' in obs.keys() else '',
             'Throttle: %4.2f' % self._control.throttle,
             'Brake:    %4.2f' % self._control.brake,
             'Steer:    %4.2f' % self._control.steer,
             'Reverse:  %4s' % self._control.reverse,
             'Reward: (%s)' % self._current_time_step.reward,
         ]
+        info_text = [info for info in info_text if info != '']
         np.set_printoptions(precision=np_precision)
         self._draw_text(info_text)
 
@@ -869,6 +877,19 @@ class CarlaServer(object):
         self.stop()
 
 
+WeatherParameters = namedtuple(
+    'WeatherParameters',
+    [
+        'cloudiness',  # [0, 100]
+        'precipitation',  # [0, 100]
+        'precipitation_deposits',  # [0, 100]
+        'wind_intensity',  # [0, 100]
+        'fog_density',  # [0, 100]
+        'fog_distance'  # [0, 100]
+    ],
+    defaults=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
+
+
 @gin.configurable
 class CarlaEnvironment(AlfEnvironment):
     """Carla simulation environment.
@@ -889,25 +910,6 @@ class CarlaEnvironment(AlfEnvironment):
         'vehicle.volkswagen.t2',
     ]
 
-    # yapf: disable
-    weather_list = [
-        carla.WeatherParameters.ClearNoon,
-        carla.WeatherParameters.CloudyNoon,
-        carla.WeatherParameters.WetNoon,
-        carla.WeatherParameters.WetCloudyNoon,
-        carla.WeatherParameters.MidRainyNoon,
-        carla.WeatherParameters.HardRainNoon,
-        carla.WeatherParameters.SoftRainNoon,
-        carla.WeatherParameters.ClearSunset,
-        carla.WeatherParameters.CloudySunset,
-        carla.WeatherParameters.WetSunset,
-        carla.WeatherParameters.WetCloudySunset,
-        carla.WeatherParameters.MidRainSunset,
-        carla.WeatherParameters.HardRainSunset,
-        carla.WeatherParameters.SoftRainSunset
-    ]
-    # yapf: enable
-
     def __init__(self,
                  batch_size,
                  map_name,
@@ -921,7 +923,8 @@ class CarlaEnvironment(AlfEnvironment):
                  use_hybrid_physics_mode=True,
                  safe=True,
                  day_length=0.,
-                 random_weather=False,
+                 max_weather_length=0,
+                 weather_transition_ratio=0.1,
                  step_time=0.05):
         """
         Args:
@@ -941,11 +944,21 @@ class CarlaEnvironment(AlfEnvironment):
             safe (bool): avoid spawning vehicles prone to accidents.
             day_length (float): number of seconds of a day. If 0, the time of the
                 day will not change.
-            random_weather (bool): whether to use random weather setting. If
-                False, the default weather setting will be used and kept fixed.
-                Otherwise, will update the weather setting to one of the
-                pre-defined settings. Note that the weather setting is updated
-                both at the time of environment creation and environment reset.
+            max_weather_length (float): the number of seconds each weather will
+                last at the most. The actual lasting time (actual_weather_length)
+                of each randomized weather setting is randomly sampled from
+                [0.25 * max_weather_length, max_weather_length].
+                If max_weather_length is set to 0, the weather won't change.
+                Otherwise, weather randomization is turned on and we will
+                sample a new set of parameters after reaching
+                actual_weather_length for each sampled weather. Note that we
+                exclude ``sun_azimuth_angle`` and ``sun_altitude_angle``
+                from weather randomization and they are controlled separately
+                by ``day_length`` in a more realistic way.
+            weather_transition_ratio (float): the ratio between the length of
+                the weather transtion part and the actual lasting time of the
+                new weather including the transition phase. It has no effect
+                if max_weather_length is 0.
             step_time (float): how many seconds does each step of simulation represents.
         """
         super().__init__()
@@ -960,8 +973,11 @@ class CarlaEnvironment(AlfEnvironment):
         self._percentage_walkers_crossing = percentage_walkers_crossing
         self._day_length = day_length
         self._time_of_the_day = 0.5 * day_length
-        self._random_weather = random_weather
         self._step_time = step_time
+        self._max_weather_length = max_weather_length
+        self._actual_weather_length = 0
+        self._weather_length_count = 0
+        self._weather_transition_ratio = min(1.0, weather_transition_ratio)
 
         self._world = None
         try:
@@ -1006,7 +1022,6 @@ class CarlaEnvironment(AlfEnvironment):
 
         self._spawn_vehicles()
         self._spawn_walkers()
-        self._update_weather()
 
         self._observation_spec = self._players[0].observation_spec()
         self._action_spec = self._players[0].action_spec()
@@ -1105,12 +1120,53 @@ class CarlaEnvironment(AlfEnvironment):
 
     def _update_weather(self):
         """Update the weather settings.
-        If ``self._random_weather`` is True, will change the weather setting
-        to one of the pre-defined settings. Otherwise, the current weather
-        setting is left unchanged.
+
+        This function sample a new set of weather parameters once the
+        actual lasting time of the previous weather setting is up.
+        The actual lasting time of each weather setting is randomly sampled
+        from [0.25 * max_weather_length, max_weather_length].
+        After the termination of the previous weather setting, there is a
+        transition phase to linearly transit from the old to the new weather
+        settings.
         """
-        if self._random_weather:
-            self._world.set_weather(random.choice(self.weather_list))
+
+        # sample new weather parameter
+        if self._weather_length_count == 0:
+            # the actual lasting time of the new weather
+            self._actual_weather_length = max(
+                0.25, np.random.rand()) * self._max_weather_length
+            p = np.random.uniform(0, 100, len(WeatherParameters()))
+            weather = self._world.get_weather()
+            wp = WeatherParameters(*p)
+            prev_weather_parameter = [
+                weather.cloudiness, weather.precipitation,
+                weather.precipitation_deposits, weather.wind_intensity,
+                weather.fog_density, weather.fog_distance
+            ]
+
+            trans_steps = max(
+                1, self._actual_weather_length * self._weather_transition_ratio
+                / self._step_time)
+            self._dp = WeatherParameters(*(
+                (p - prev_weather_parameter) / trans_steps))
+
+        # for the initial transition period, we smoothly transit between two
+        # weather settings
+        if (self._weather_length_count <=
+                self._actual_weather_length * self._weather_transition_ratio):
+            weather = self._world.get_weather()
+            weather.cloudiness += self._dp.cloudiness
+            weather.precipitation += self._dp.precipitation
+            weather.precipitation_deposits += self._dp.precipitation_deposits
+            weather.wind_intensity += self._dp.wind_intensity
+            weather.fog_density += self._dp.fog_density
+            weather.fog_distance += self._dp.fog_distance
+            self._world.set_weather(weather)
+
+        self._weather_length_count += self._step_time
+        if self._weather_length_count >= self._actual_weather_length:
+            self._weather_length_count = 0
+            self._actual_weather_length = 0
 
     def _spawn_walkers(self):
         walker_blueprints = self._world.get_blueprint_library().filter(
@@ -1277,6 +1333,8 @@ class CarlaEnvironment(AlfEnvironment):
                 logging.error(response.error)
         if self._day_length > 0:
             self._update_time_of_the_day()
+        if self._max_weather_length > 0:
+            self._update_weather()
         self._current_frame = self._world.tick()
         self._alf_world.on_tick()
         for vehicle in self._other_vehicles:
@@ -1336,7 +1394,6 @@ class CarlaEnvironment(AlfEnvironment):
         for response in self._client.apply_batch_sync(commands):
             if response.error:
                 logging.error(response.error)
-        self._update_weather()
         self._current_frame = self._world.tick()
         self._alf_world.on_tick()
         return self._get_current_time_step()
