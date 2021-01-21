@@ -1,0 +1,5 @@
+include 'her_target_navigation_states.gin'
+
+GoalTask.speed_goal=True
+
+hindsight_relabel_fn.action_dim=12
