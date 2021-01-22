@@ -303,52 +303,69 @@ class NaiveParallelNetwork(Network):
         return self._state_spec
 
 
-@gin.configurable
-class SequentialNetwork(Network):
-    """Network composed of a sequence of torch layers."""
+class NetworkWrapper(Network):
+    """Wrap module as a Network."""
 
-    def __init__(self, input_tensor_spec, layers, name="SequentialNetwork"):
+    def __init__(self, module, input_tensor_spec):
         """
-
         Args:
-            input_tensor_spec (TensorSpec): the tensor spec of the input.
-            layers (list[nn.Module]): list of torch layers.
-            name (str):
+            module (Callable): can be called as ``module(input)`` to calculate
+                the output.
+            input_tensor_spec (TensorSpec): the TensorSpec for the input of ``module``
         """
-        super().__init__(input_tensor_spec, name)
-        if len(layers) == 1 and isinstance(layers[0], nn.Sequential):
-            self._layers = layers[0]
-        else:
-            self._layers = nn.Sequential(*layers)
+        super().__init__(input_tensor_spec)
+        self._module = module
 
-    def forward(self, input, state=()):
-        return self._layers(input), state
+    def forward(self, x, state=()):
+        return self._module(x), state
 
-    def copy(self, name=None):
-        """Create a  copy of this network or return the current instance.
-
-        If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the layers and re-initialize
-        their parameters.
-
-        Args:
-            name (str): name of the new network. Only used if not self._singleton_instance.
-        Returns:
-            SequentialNetwork:
-        """
+    def copy(self):
         if self._singleton_instance:
             return self
 
-        if name is None:
-            name = self.name
+        module = copy.deepcopy(self._module)
+        alf.layers.reset_parameters(module)
 
-        new_layers = [copy.deepcopy(l) for l in self._layers]
-        for layer in new_layers:
-            if hasattr(layer, 'reset_parameters'):
-                layer.reset_parameters()
-            elif isinstance(layer, nn.Module):
-                assert len(list(layer.parameters())) == 0, (
-                    "Need to implement "
-                    "reset_parameters() for %s in order to copy." %
-                    type(layer))
-        return SequentialNetwork(self._input_tensor_spec, new_layers, name)
+        return NetworkWrapper(module, self._input_tensor_spec)
+
+
+def get_input_tensor_spec(net):
+    """Get the input_tensor_spec of net if possible
+
+    Args:
+        net (nn.Module):
+    Returns:
+        nested TensorSpec | None: None if input_tensor_spec cannot be inferred
+            from ``net``.
+    """
+    if isinstance(net, Network):
+        return net.input_tensor_spec
+    if isinstance(net, alf.layers.FC):
+        return alf.TensorSpec((net.input_size, ))
+    elif isinstance(net, torch.nn.Sequential):
+        return get_input_tensor_spec(net[0])
+    else:
+        return None
+
+
+def wrap_as_network(net, input_tensor_spec):
+    """Wrap net as a Network if it is not a Network.
+
+    Args:
+        net (Network | Callable):
+        input_tensor_spec (): if net is not a ``Network``, ``input_tensor_spec``
+            must be provided unless net is a ``FC``. In that case, ``input_tensor_spec``
+            will be inferred from ``net.input_size`` if it is not provided.
+    Returns:
+        Network:
+    Raises:
+        ValueError: if input_tensor_spec is None and cannot be inferred from ``net``
+    """
+    if isinstance(net, Network):
+        return net
+    if input_tensor_spec is None:
+        input_tensor_spec = get_input_tensor_spec(net)
+    if input_tensor_spec is None:
+        raise ValueError("input_tensor_spec is undefined for net of "
+                         "type: %s" % type(net))
+    return NetworkWrapper(net, input_tensor_spec)

@@ -14,11 +14,13 @@
 
 from .actor_distribution_networks import *
 from .actor_networks import *
+from .containers import Branch, Parallel, Sequential
 from .critic_networks import *
 from .dynamics_networks import *
 from .encoding_networks import *
 from .mdq_critic_networks import *
-from .network import Network, NaiveParallelNetwork, SequentialNetwork
+from .network import Network, NaiveParallelNetwork
+from .networks import GRUCell, LSTMCell, Residue
 from .ou_process import OUProcess
 from .param_networks import *
 from .preprocessor_networks import PreprocessorNetwork

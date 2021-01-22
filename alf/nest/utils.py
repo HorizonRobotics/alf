@@ -24,10 +24,11 @@ from . import nest
 from alf.tensor_specs import TensorSpec
 
 
-class NestCombiner(abc.ABC):
+class NestCombiner(abc.ABC, nn.Module):
     """A base class for combining all elements in a nested structure."""
 
     def __init__(self, name):
+        super().__init__()
         self._name = name
 
     @abc.abstractmethod

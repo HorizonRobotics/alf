@@ -90,6 +90,7 @@ function test() {
         alf.metrics.metrics_test \
         alf.nest.cnest_test \
         alf.nest.nest_test \
+        alf.networks.containers_test \
         alf.networks.network_test \
         alf.networks.action_encoder_test \
         alf.networks.actor_distribution_networks_test \

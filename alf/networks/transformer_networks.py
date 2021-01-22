@@ -54,12 +54,12 @@ class TransformerNetwork(PreprocessorNetwork):
 
     def __init__(self,
                  input_tensor_spec,
-                 memory_size,
-                 core_size,
                  num_prememory_layers,
-                 num_memory_layers,
                  num_attention_heads,
                  d_ff,
+                 core_size=1,
+                 memory_size=0,
+                 num_memory_layers=0,
                  centralized_memory=True,
                  input_preprocessors=None,
                  name="TransformerNetwork"):
@@ -70,16 +70,16 @@ class TransformerNetwork(PreprocessorNetwork):
                 represent a rank-2 tensor of shape ``[input_size, d_model]``, where
                 ``input_size`` is the length of the input sequence, and ``d_model``
                 is the dimension of embedding.
-            memory_size (int): size of memory.
-            core_size (int): size of core (i.e. number of embeddings of core)
             num_prememory_layers (int): number of TransformerBlock calculation
                 without using memory
-            num_memory_layers (int): number of TransformerBlock calculation
-                using memory
             num_attention_heads (int): number of attention heads for each
                 ``TransformerBlock``
             d_ff (int): the size of the hidden layer of the feedforward network
                 in each ``TransformerBlock``
+            memory_size (int): size of memory.
+            num_memory_layers (int): number of TransformerBlock calculation
+                using memory
+            core_size (int): size of core (i.e. number of embeddings of core)
             centralized_memory (bool): if False, there will be a separate memory
                 for each memory layers. if True, there will be a single memory
                 for all the memroy layers and it is updated using the last core
@@ -109,13 +109,18 @@ class TransformerNetwork(PreprocessorNetwork):
         assert self._processed_input_tensor_spec.ndim == 2
 
         input_size, d_model = self._processed_input_tensor_spec.shape
-        if centralized_memory:
-            self._memories = [FIFOMemory(d_model, memory_size)]
+        if num_memory_layers > 0:
+            assert memory_size > 0, ("memory_size needs to be set if "
+                                     "num_memory_layers > 0")
+            if centralized_memory:
+                self._memories = [FIFOMemory(d_model, memory_size)]
+            else:
+                self._memories = [
+                    FIFOMemory(d_model, memory_size)
+                    for _ in range(num_memory_layers)
+                ]
         else:
-            self._memories = [
-                FIFOMemory(d_model, memory_size)
-                for _ in range(num_memory_layers)
-            ]
+            self._memories = []
         self._centralized_memory = centralized_memory
 
         self._core_size = core_size
@@ -149,7 +154,7 @@ class TransformerNetwork(PreprocessorNetwork):
     def state_spec(self):
         return self._state_spec
 
-    def forward(self, inputs, state):
+    def forward(self, inputs, state=()):
         """
         Args:
             inputs (nested Tensor): consistent with ``input_tensor_spec`` provided
@@ -165,7 +170,7 @@ class TransformerNetwork(PreprocessorNetwork):
         for i in range(self._num_prememory_layers):
             query = self._transformers[i].forward(query)
 
-        if self._centralized_memory:
+        if self._num_memory_layers > 0 and self._centralized_memory:
             memory = self._memories[0]
             memory.from_states(state[0])
             mem = memory.memory()

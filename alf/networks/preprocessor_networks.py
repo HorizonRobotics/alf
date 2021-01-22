@@ -28,7 +28,7 @@ from alf.nest.utils import get_outer_rank
 from alf.networks.network import Network
 from alf.tensor_specs import TensorSpec
 
-from .network import Network, SequentialNetwork
+from .network import Network, NetworkWrapper
 
 
 class PreprocessorNetwork(Network):
@@ -87,7 +87,7 @@ class PreprocessorNetwork(Network):
                     self._input_preprocessor_modules.append(preproc)
                     return preproc
                 elif isinstance(preproc, nn.Module):
-                    preproc = SequentialNetwork(input_spec, [preproc]).copy()
+                    preproc = NetworkWrapper(preproc, input_spec).copy()
                     self._input_preprocessor_modules.append(preproc)
                     return preproc
                 else:

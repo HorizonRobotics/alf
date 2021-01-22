@@ -18,6 +18,7 @@ import gin
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep
 from alf.networks import EncodingNetwork
+from alf.utils.spec_utils import is_same_spec
 
 
 @gin.configurable
@@ -32,6 +33,7 @@ class EncodingAlgorithm(Algorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 encoder=None,
                  encoder_cls=EncodingNetwork,
                  debug_summaries=False,
                  name="EncodingAlgorithm"):
@@ -45,7 +47,12 @@ class EncodingAlgorithm(Algorithm):
             debug_summaries (bool): True if debug summaries should be created.
             name (str): Name of this algorithm.
         """
-        encoder = encoder_cls(input_tensor_spec=observation_spec)
+        if encoder is not None:
+            assert is_same_spec(encoder.input_tensor_spec, observation_spec), (
+                "encoder.input_tensor_spec is different from observation_spec: "
+                "%s vs. %s" % (encoder.input_tensor_spec, observation_spec))
+        else:
+            encoder = encoder_cls(input_tensor_spec=observation_spec)
         super().__init__(
             train_state_spec=encoder.state_spec,
             debug_summaries=debug_summaries,
