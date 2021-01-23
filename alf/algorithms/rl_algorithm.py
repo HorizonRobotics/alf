@@ -152,7 +152,11 @@ class RLAlgorithm(Algorithm):
                 alf.metrics.AverageEnvInfoMetric(
                     example_env_info=env.reset().env_info,
                     batch_size=env.batch_size,
-                    buffer_size=metric_buf_size)
+                    buffer_size=metric_buf_size),
+                alf.metrics.AverageDiscountedReturnMetric(
+                    batch_size=env.batch_size,
+                    buffer_size=metric_buf_size,
+                    reward_shape=env.reward_spec().shape)
             ]
 
         self._original_rollout_step = self.rollout_step

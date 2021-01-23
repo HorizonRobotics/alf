@@ -16,6 +16,7 @@
 Converted to PyTorch from the TF version.
 https://github.com/tensorflow/agents/blob/master/tf_agents/metrics/tf_metrics.py
 """
+import gin
 import torch
 
 import alf
@@ -213,15 +214,31 @@ class AverageEpisodicSumMetric(metric.StepMetric):
 
         alf.nest.map_structure(_update_accumulator_, self._accumulator, values)
 
-        # Add final accumulated value to buffer.
+        # Extract the final accumulated value and do customizable processing
+        # via ``_extract_and_process_acc_value``, and add the processed
+        # result to buffer
         last_episode_indices = torch.where(time_step.is_last())[0]
 
         if len(last_episode_indices) > 0:
             alf.nest.map_structure(
-                lambda buf, acc: buf.append(acc[last_episode_indices]),
-                self._buffer, self._accumulator)
+                lambda buf, acc: buf.append(
+                    self._extract_and_process_acc_value(
+                        acc, last_episode_indices)), self._buffer,
+                self._accumulator)
 
         return time_step
+
+    def _extract_and_process_acc_value(self, acc, last_episode_indices):
+        """Extract the final accumulated value and perform some optional
+        customizable processing.
+        Args:
+            acc (Tensor): batched tensor representing an accumulator
+            last_episode_indices (Tensor): indices representing the location
+                of the position of the last step
+        Returns:
+            The value of the accumulator at the episode end.
+        """
+        return acc[last_episode_indices]
 
     def result(self):
         return alf.nest.map_structure(lambda buf: buf.mean(), self._buffer)
@@ -264,6 +281,114 @@ class AverageReturnMetric(AverageEpisodicSumMetric):
         else:
             reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
             return [reward[..., i] for i in range(reward.shape[-1])]
+
+
+@gin.configurable
+class AverageDiscountedReturnMetric(AverageEpisodicSumMetric):
+    """Metric for computing the average discounted episodic return.
+    It is calculated according to the following formula:
+
+    .. math::
+        \begin{array}{ll}
+            R &=\frac{1}{L} (r_1 + (1+\gamma) r_2 + (1+\gamma+\gamma^2) r_3 + \cdots) \\
+            &= \frac{1}{L}\sum_{l=1}^L \sum_{k=0}^{l-1} \gamma^k r_l,
+        \end{array}
+    where :math:`\gamma` is the reward discount, and :math:`r_1` denotes the
+    reward due to the first action, which is received at the second time step.
+    :math:`L` equals to the episode length - 1.
+
+
+    Note that if the last step is not due to time limit, the discounted return
+    calculated form the formula above is unbiased. If the last step is due to
+    time limit, it is a biased estimate and its expectation is lower than the
+    ground-truth one.
+    """
+
+    def __init__(self,
+                 name='AverageDiscountedReturn',
+                 prefix='Metrics',
+                 reward_shape=(),
+                 dtype=torch.float32,
+                 discount=0.99,
+                 batch_size=1,
+                 buffer_size=10):
+        if reward_shape == ():
+            example_metric_value = torch.zeros((), device='cpu')
+        else:
+            example_metric_value = torch.zeros(
+                reward_shape, device='cpu').reshape(-1)
+            example_metric_value = list(example_metric_value)
+
+        self._discount = discount
+        self._accumulated_discount = torch.zeros(batch_size, device='cpu')
+        self._current_step = torch.zeros(batch_size, device='cpu')
+
+        super(AverageDiscountedReturnMetric, self).__init__(
+            name=name,
+            dtype=dtype,
+            prefix=prefix,
+            batch_size=batch_size,
+            buffer_size=buffer_size,
+            example_metric_value=example_metric_value)
+
+    def _extract_metric_values(self, time_step):
+        """Accumulate discounted immediate rewards to get discounted episodic
+        return. It also updates the accumulated discount and step count.
+        """
+        self._update_discount_and_step_count(time_step)
+
+        ndim = time_step.step_type.ndim
+        if time_step.reward.ndim == ndim:
+            discounted_reward = time_step.reward * self._accumulated_discount
+        else:
+            reward = time_step.reward.reshape(*time_step.step_type.shape, -1)
+            discounted_reward = [
+                reward[..., i] * self._accumulated_discount
+                for i in range(reward.shape[-1])
+            ]
+
+        return discounted_reward
+
+    def _update_discount_and_step_count(self, time_step):
+        """Set/Update the values of ``self._accumulated_discount`` and
+        the value of ``self._current_step``.
+        If this is the first step, ``self._accumulated_discount`` will be set
+        to zero. Otherwise, it is multiplied by ``discount`` and added by one.
+        The updated accumulated discount will be used for computing the
+        accumulated contribution of the the reward received at the current step
+        to the discounted return.
+        ``self._current_step`` will be set to zero for the first step, and
+        is added by one otherwise. Therefore, at the episode end, its value
+        equals to episode length - 1.
+
+        Args:
+            time_step (alf.data_structures.TimeStep): batched tensor
+        """
+        is_first = time_step.is_first()
+
+        # update discount for the next time step
+        self._accumulated_discount = (
+            self._discount * self._accumulated_discount + 1)
+        self._accumulated_discount = torch.where(
+            is_first, torch.zeros_like(self._accumulated_discount),
+            self._accumulated_discount)
+
+        self._current_step = torch.where(is_first,
+                                         torch.zeros_like(self._current_step),
+                                         self._current_step + 1)
+
+    def _extract_and_process_acc_value(self, acc, last_episode_indices):
+        """Extract the final accumulated value and divide by the number of
+        steps of an episode.
+        Args:
+            acc (Tensor): batched tensor representing an accumulator
+            last_episode_indices (Tensor): indices representing the location
+                of the position of the last step
+        Returns:
+            The value of the accumulator at the episode end.
+        """
+        return acc[last_episode_indices] / self._current_step[
+            last_episode_indices]
 
 
 class AverageEpisodeLengthMetric(AverageEpisodicSumMetric):

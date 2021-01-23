@@ -366,7 +366,10 @@ class RLTrainer(Trainer):
                 alf.metrics.AverageEnvInfoMetric(
                     example_env_info=self._eval_env.reset().env_info,
                     batch_size=self._eval_env.batch_size,
-                    buffer_size=self._num_eval_episodes)
+                    buffer_size=self._num_eval_episodes),
+                alf.metrics.AverageDiscountedReturnMetric(
+                    buffer_size=self._num_eval_episodes,
+                    reward_shape=self._eval_env.reward_spec().shape),
             ]
             self._eval_summary_writer = alf.summary.create_summary_writer(
                 self._eval_dir, flush_secs=config.summaries_flush_secs)
