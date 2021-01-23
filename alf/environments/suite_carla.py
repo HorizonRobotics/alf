@@ -37,7 +37,7 @@ Make sure you are using python3.7
 
 """
 
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict
 from absl import logging
 import gin
 import math
@@ -132,6 +132,12 @@ def _to_numpy_loc(loc: carla.Location):
 
 
 class WeatherParameters(object):
+    """A class for a set of weather related parameters. Currently it contains
+    all the weather fields from ``carla.WeatherParameters`` except for
+    ``sun_azimuth_angle`` and ``sun_altitude_angle``, which are controlled
+    separately by ``day_length`` in a more realistic way.
+    """
+
     def __init__(self,
                  cloudiness=0,
                  precipitation=0,
