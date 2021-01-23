@@ -2024,6 +2024,7 @@ class GFT(nn.Module):
             FC(language_dim, (1 + image_channels) * image_channels)
             for k in range(num_transformations)
         ])
+        self._ones = torch.ones(1, 1, 1)
 
     def forward(self, input):
         """
@@ -2035,14 +2036,14 @@ class GFT(nn.Module):
         image, sentence = input
         batch_size, channels = image.shape[:2]
         # [B, C, W*H]
-        cnn_out = image.view(*image.shape[:2], -1)
+        cnn_out = image.view(batch_size, channels, -1)
         ## compute K transformation matrices
         ts = [
             l(sentence).view(batch_size, channels, channels + 1)
             for l in self._t_layers
         ]
 
-        ones = torch.ones(batch_size, 1, cnn_out.shape[-1])
+        ones = self._ones.expand(batch_size, 1, cnn_out.shape[-1])
         for t in ts:
             # [B, C+1, W*H]
             cnn_out = torch.cat((cnn_out, ones), dim=1)

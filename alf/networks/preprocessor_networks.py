@@ -110,7 +110,7 @@ class PreprocessorNetwork(Network):
         else:
             assert isinstance(input_tensor_spec, TensorSpec), \
                 "The spec must be an instance of TensorSpec!"
-            self._preprocessing_combiner = math_ops.identity
+            self._preprocessing_combiner = alf.layers.Identity()
 
         # This input spec is the final resulting spec after input preprocessors
         # and the nest combiner.
