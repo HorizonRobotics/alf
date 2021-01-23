@@ -284,3 +284,37 @@ def zeros_like(nested):
         nested Tensor: a nest with all zeros
     """
     return nest.map_structure(torch.zeros_like, nested)
+
+
+def make_nested_module(nested, ignore_non_module_element=True):
+    """Convert a nest of modules to nn.Module using nn.ModuleList or nn.ModuleDict.
+
+    The reason to use this function is that nest of Modules will not be trained
+    or checkpointed. We need to use nn.ModuleList or nn.ModuleDict to hold the
+    individual modules in the nest.
+
+    Args:
+        nested (nested nn.Module): a nest of nn.Module
+        ignore_non_module_element (bool): If True, will ignore the non-module element
+            and replace them with an empty nn.Module(). If False, will raise error
+            if there are any non-module elements.
+    Returns:
+        nn.Module
+    """
+    if isinstance(nested, (tuple, list)):
+        module = torch.nn.ModuleList()
+        for m in nested:
+            module.append(make_nested_module(m))
+    elif nest.is_namedtuple(nested) or isinstance(nested, dict):
+        module = torch.nn.ModuleDict()
+        for field, value in nest.extract_fields_from_nest(nested):
+            module[field] = make_nested_module(value)
+    else:
+        module = nested
+        if not ignore_non_module_element:
+            assert isinstance(
+                nested,
+                torch.nn.Module), ("Unsupported type %s" % type(nested))
+        elif not isinstance(nested, torch.nn.Module):
+            module = nn.Module()
+    return module
