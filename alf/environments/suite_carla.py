@@ -131,6 +131,112 @@ def _to_numpy_loc(loc: carla.Location):
     return np.array([loc.x, loc.y, loc.z])
 
 
+class WeatherParameters(object):
+    def __init__(self,
+                 cloudiness=0,
+                 precipitation=0,
+                 precipitation_deposits=0,
+                 wind_intensity=0,
+                 fog_density=0,
+                 fog_distance=0):
+        self.cloudiness = cloudiness  # [0, 100]
+        self.precipitation = precipitation  # [0, 100]
+        self.precipitation_deposits = precipitation_deposits  # [0, 100]
+        self.wind_intensity = wind_intensity  # [0, 100]
+        self.fog_density = fog_density  # [0, 100]
+        self.fog_distance = fog_distance  # [0, 100]
+        self._fields = None
+
+    def get_weather_fields(self):
+        """ Get the list of configurable weather fields
+
+        Returns:
+            A list of strings, each as the name of a configurable field
+        """
+        if self._fields is None:
+            self._fields = [
+                m for m in self.__dict__.keys() if not m.startswith('_')
+            ]
+        return self._fields
+
+    def __add__(self, other):
+        """ Add other to current parameters and return a new instance.
+
+        Args:
+            other (WeatherParameters)
+        """
+        new_param = type(self)()
+        for m in self.get_weather_fields():
+            setattr(new_param, m, getattr(self, m) + getattr(other, m))
+        return new_param
+
+    def __sub__(self, other):
+        """ Subtract other from current parameters and return a new instance.
+
+        Args:
+            other (WeatherParameters)
+        """
+        new_param = type(self)()
+        for m in self.get_weather_fields():
+            setattr(new_param, m, getattr(self, m) - getattr(other, m))
+        return new_param
+
+    def __truediv__(self, value):
+        """ Divide the current parameters by value and return a new instance.
+
+        Args:
+            value(float|int): a number to divide the parameters by
+        """
+        assert type(value) == int or type(value) == float
+        value = float(value)
+        new_param = type(self)()
+        for m in self.get_weather_fields():
+            setattr(new_param, m, getattr(self, m) / value)
+        return new_param
+
+    def __len__(self):
+        """ Get the number of configurable weather fields
+        """
+        return len(self.get_weather_fields())
+
+    def __str__(self):
+        return ''.join([
+            '{a}: {b} '.format(a=m, b=getattr(self, m))
+            for m in self.get_weather_fields()
+        ])
+
+
+def extract_weather_parameters(weather_param: carla.WeatherParameters):
+    """Extract the parameters according to the fields in ``WeatherParameters``
+    and use them to construct an instance of ``WeatherParameters``.
+    """
+    wp = WeatherParameters()
+    for m in wp.get_weather_fields():
+        setattr(wp, m, getattr(weather_param, m))
+    return wp
+
+
+def adjust_weather_parameters(weather_param: carla.WeatherParameters,
+                              delta: WeatherParameters):
+    """Adjust the parameters of ``weather_param`` according to the fields
+    in ``WeatherParameters``. The value is adjusted by adding the field
+    value of ``delta`` to ``weather_param``.
+
+    Args:
+        weather_param (carla.WeatherParameters): a ``carla.WeatherParameters``
+            instance containing the parameters to be adjusted
+        delta (WeatherParameters): an instance of ``WeatherParameters`` with
+            the value of each field representing the amount to be adjusted
+
+    Returns:
+        The input weather_param instance with adjusted field values.
+    """
+    for m in delta.get_weather_fields():
+        setattr(weather_param, m,
+                getattr(weather_param, m) + getattr(delta, m))
+    return weather_param
+
+
 @gin.configurable(blacklist=['actor', 'alf_world'])
 class Player(object):
     """Player is a vehicle with some sensors.
@@ -877,19 +983,6 @@ class CarlaServer(object):
         self.stop()
 
 
-WeatherParameters = namedtuple(
-    'WeatherParameters',
-    [
-        'cloudiness',  # [0, 100]
-        'precipitation',  # [0, 100]
-        'precipitation_deposits',  # [0, 100]
-        'wind_intensity',  # [0, 100]
-        'fog_density',  # [0, 100]
-        'fog_distance'  # [0, 100]
-    ],
-    defaults=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0))
-
-
 @gin.configurable
 class CarlaEnvironment(AlfEnvironment):
     """Carla simulation environment.
@@ -1135,33 +1228,25 @@ class CarlaEnvironment(AlfEnvironment):
             # the actual lasting time of the new weather
             self._actual_weather_length = max(
                 0.25, np.random.rand()) * self._max_weather_length
-            p = np.random.uniform(0, 100, len(WeatherParameters()))
+            new_weather_parameter = WeatherParameters(
+                *np.random.uniform(0, 100, len(WeatherParameters())))
             weather = self._world.get_weather()
-            wp = WeatherParameters(*p)
-            prev_weather_parameter = [
-                weather.cloudiness, weather.precipitation,
-                weather.precipitation_deposits, weather.wind_intensity,
-                weather.fog_density, weather.fog_distance
-            ]
+
+            prev_weather_parameter = extract_weather_parameters(weather)
 
             trans_steps = max(
                 1, self._actual_weather_length * self._weather_transition_ratio
                 / self._step_time)
-            self._dp = WeatherParameters(*(
-                (p - prev_weather_parameter) / trans_steps))
+            self._dp = (
+                new_weather_parameter - prev_weather_parameter) / trans_steps
 
         # for the initial transition period, we smoothly transit between two
         # weather settings
         if (self._weather_length_count <=
                 self._actual_weather_length * self._weather_transition_ratio):
             weather = self._world.get_weather()
-            weather.cloudiness += self._dp.cloudiness
-            weather.precipitation += self._dp.precipitation
-            weather.precipitation_deposits += self._dp.precipitation_deposits
-            weather.wind_intensity += self._dp.wind_intensity
-            weather.fog_density += self._dp.fog_density
-            weather.fog_distance += self._dp.fog_distance
-            self._world.set_weather(weather)
+            updated_weather = adjust_weather_parameters(weather, self._dp)
+            self._world.set_weather(updated_weather)
 
         self._weather_length_count += self._step_time
         if self._weather_length_count >= self._actual_weather_length:
