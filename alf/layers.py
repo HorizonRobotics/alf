@@ -515,7 +515,7 @@ class FCBatchEnsemble(FC):
         self._r.data.sub_(1)
         self._s.data.mul_(2)
         self._s.data.sub_(1)
-        if self._use_bias:
+        if self._use_ensemble_bias:
             nn.init.uniform_(
                 self._ensemble_bias.data,
                 a=-self._bias_init_range,
