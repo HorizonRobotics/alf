@@ -26,7 +26,7 @@ def _make_alg_experience(experience, name):
     """Given an experience, extracts the ``rollout_info`` field for an
     algorithm.
     """
-    if experience.rollout_info == ():
+    if experience.rollout_info is ():
         rollout_info = ()
     else:
         rollout_info = getattr(experience.rollout_info, name)
@@ -176,7 +176,7 @@ class AgentHelper(object):
                 algorithms. It is batched from each ``AlgStep.info`` returned by
                 ``rollout_step()``.
         """
-        assert experience.rollout_info == (), (
+        assert experience.rollout_info is (), (
             "'experience' should always be collected from 'unroll()' and its "
             "'rollout_info' field should have been moved to 'train_info'!")
         for alg in algorithms:

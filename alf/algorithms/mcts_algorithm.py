@@ -309,7 +309,7 @@ class MCTSAlgorithm(OffPolicyAlgorithm):
 
         if valid_action_mask is not None:
             # mask out invalid actions
-            assert model_output.actions == ()
+            assert model_output.actions is ()
             model_output = model_output._replace(
                 action_probs=model_output.action_probs *
                 valid_action_mask.to(torch.float32))

@@ -326,7 +326,7 @@ class Agent(OnPolicyAlgorithm):
 
     def calc_loss(self, experience, train_info: AgentInfo):
         """Calculate loss."""
-        if experience.rollout_info == ():
+        if experience.rollout_info is ():
             experience = experience._replace(
                 reward=self.calc_training_reward(experience.reward,
                                                  train_info))
