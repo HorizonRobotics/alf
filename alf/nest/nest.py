@@ -139,6 +139,36 @@ def map_structure_up_to(shallow_nest, func, *nests):
         raise e
 
 
+def assert_same_structure_up_to(shallow_nest, deep_nest):
+    """(C++)
+    Asserts that ``deep_nest`` has same structure as ``shallow_nest`` up the
+    depths of ``shallow_nest``.  Every sub-nest of each of ``nests`` beyond the
+    depth of the corresponding sub-nest in ``shallow_nest`` will be treated as a
+    leaf.
+
+    Examples:
+
+    .. code-block:: python
+
+        assert_same_structure_up_to(([2], None), ([1], [1, 2, 3]))
+        # success
+
+        assert_same_structure_up_to(([2], []), ([1], [1, 2, 3]))
+        # failure
+
+    Args:
+        shallow_nest (nest): a shallow nested structure.
+        deep_nest (nest): a variable length of nested structures.
+    """
+    try:
+        cnest.map_structure_up_to(shallow_nest, lambda _: None, deep_nest)
+    except Exception as e:
+        logging.error(
+            "assert_same_structure_up_to() fails for {} and {}. Error message: "
+            "'{}'".format(shallow_nest, deep_nest, str(e)))
+        raise e
+
+
 def prune_nest_like(nest, slim_nest, value_to_match=None):
     """(C++)
     Prune a nested structure referring to another slim nest. Generally, for

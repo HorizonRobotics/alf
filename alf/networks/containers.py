@@ -153,15 +153,14 @@ class Parallel(Network):
             name (str):
         """
         if input_tensor_spec is None:
-            input_tensor_spec = map_structure(
-                lambda net: get_input_tensor_spec(net), networks)
+            input_tensor_spec = map_structure(get_input_tensor_spec, networks)
             specified = all(
                 map(lambda s: s is not None, flatten(input_tensor_spec)))
             assert specified, (
                 "input_tensor_spec needs "
                 "to be specified if it cannot be infered from elements of "
                 "networks")
-        alf.nest.assert_same_structure(networks, input_tensor_spec)
+        alf.nest.assert_same_structure_up_to(networks, input_tensor_spec)
         super().__init__(input_tensor_spec, name=name)
         networks = map_structure_up_to(networks, wrap_as_network, networks,
                                        input_tensor_spec)
@@ -239,8 +238,14 @@ class Branch(Network):
 
     """
 
-    def __init__(self, networks, input_tensor_spec=None, name="Parallel"):
-
+    def __init__(self, networks, input_tensor_spec=None, name="Branch"):
+        """
+        Args:
+            networks (nested nn.Module): a nest of nn.Modules
+            input_tensor_spec (nested TensorSpec): must be provided if it cannot
+                be inferred from any one network of ``networks``
+            name (str):
+        """
         if input_tensor_spec is None:
             specs = list(
                 map(get_input_tensor_spec, alf.nest.flatten(networks)))
