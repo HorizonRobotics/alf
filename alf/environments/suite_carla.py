@@ -151,7 +151,9 @@ class WeatherParameters(object):
         self.wind_intensity = wind_intensity  # [0, 100]
         self.fog_density = fog_density  # [0, 100]
         self.fog_distance = fog_distance  # [0, 100]
-        self._fields = None
+        self._fields = [
+            m for m in self.__dict__.keys() if not m.startswith('_')
+        ]
 
     def get_weather_fields(self):
         """ Get the list of configurable weather fields
@@ -159,10 +161,6 @@ class WeatherParameters(object):
         Returns:
             A list of strings, each as the name of a configurable field
         """
-        if self._fields is None:
-            self._fields = [
-                m for m in self.__dict__.keys() if not m.startswith('_')
-            ]
         return self._fields
 
     def __add__(self, other):
