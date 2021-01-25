@@ -201,7 +201,7 @@ class Parallel(Network):
         Args:
             name (str): name of the new network. Only used if not self._singleton_instance.
         Returns:
-            Sequential:
+            Parallel:
         """
         if self._singleton_instance:
             return self
@@ -299,7 +299,7 @@ class Branch(Network):
         Args:
             name (str): name of the new network. Only used if not self._singleton_instance.
         Returns:
-            Sequential:
+            Branch:
         """
         if self._singleton_instance:
             return self

@@ -110,7 +110,8 @@ class Residue(Network):
         block = wrap_as_network(block, input_tensor_spec)
         super().__init__(input_tensor_spec=block.input_tensor_spec)
         self._block = block
+        self._activation = activation
 
     def forward(self, x, state=()):
         y, state = self._block(x, state)
-        return torch.relu_(x + y), state
+        return self._activation(x + y), state
