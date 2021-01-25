@@ -162,10 +162,15 @@ class TDLoss(nn.Module):
                                        returns[..., i][_non], td[..., i][_non],
                                        suffix + "/non_final", mask[_non])
                         observation = experience.observation
-                        if (isinstance(observation, dict)
-                                and "aux_desired" in observation):
+                        if (isinstance(observation, dict) and
+                            ("aux_desired" in observation
+                             or observation["desired_goal"].shape[-1] == 12)):
+                            if "aux_desired" in observation:
+                                o = observation["aux_desired"]
+                            else:
+                                o = observation["desired_goal"][..., 2:]
                             # take first n - 1 time steps for judging
-                            o = torch.abs(observation["aux_desired"][:-1, ...])
+                            o = torch.abs(o[:-1, ...])
                             aux_realistic = torch.norm(
                                 torch.cat((o[:, :, 2:5], o[:, :, 6:9]), dim=2),
                                 dim=2) < 3

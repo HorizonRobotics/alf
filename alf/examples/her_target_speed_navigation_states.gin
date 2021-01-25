@@ -1,5 +1,7 @@
 include 'her_target_navigation_states.gin'
 
 GoalTask.speed_goal=True
+GoalTask.use_aux_achieved=False
 
 hindsight_relabel_fn.action_dim=12
+SubgoalPlanningGoalGenerator.action_dim=12

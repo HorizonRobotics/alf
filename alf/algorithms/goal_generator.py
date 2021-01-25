@@ -320,6 +320,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  plan_cost_ln_norm=1,
                  goal_speed_zero=False,
                  min_goal_cost_to_use_plan=0.,
+                 speed_goal=False,
                  use_aux_achieved=False,
                  aux_dim=0,
                  control_aux=False,
@@ -361,6 +362,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 segment costs to form the full plan cost.
             min_goal_cost_to_use_plan (float): cost of original goal must be above
                 this threshold for the plan to be accepted.
+            speed_goal (bool): whether goal includes speed pose etc..
             use_aux_achieved (bool): whether to plan auxiliary achieved states like
                 agent's speed, pose etc. in the field ``aux_achieved``.
             aux_dim (int): number of dimensions to plan for ``aux_achieved`` field.
@@ -392,6 +394,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._plan_cost_ln_norm = plan_cost_ln_norm
         self._goal_speed_zero = goal_speed_zero
         self._min_goal_cost_to_use_plan = min_goal_cost_to_use_plan
+        self._speed_goal = speed_goal
+        if speed_goal:
+            assert not control_aux and not use_aux_achieved
         self._use_aux_achieved = use_aux_achieved
         self._aux_dim = aux_dim
         self._control_aux = control_aux
@@ -404,7 +409,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         goal_shape = (self._goal_dim, )
         goal_spec = TensorSpec(goal_shape)
         plan_horizon = self._compute_plan_horizon()
-        full_plan_shape = (plan_horizon, self._goal_dim)
+        full_plan_len = plan_horizon
+        if not control_aux:
+            full_plan_len += 1
+        full_plan_shape = (full_plan_len, self._goal_dim)
         full_plan_spec = TensorSpec(full_plan_shape)
         final_goal_spec = ()
         if final_goal:
@@ -454,7 +462,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._combine_her_nonher_value_weight = combine_her_nonher_value_weight
 
         self._value_state_spec = value_state_spec
-        if use_aux_achieved:
+        if use_aux_achieved and not speed_goal:
             assert "aux_achieved" in observation_spec, (
                 "aux_achieved not in observation_spec. "
                 "Set use_aux_achieved flag in env?")
@@ -603,7 +611,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                                   horizon + 1)
             stack_obs["final_goal"][:, :, -1] = torch.ones(())
             stack_obs["final_goal"] = stack_obs["final_goal"].reshape(-1, 1)
-        if self._use_aux_achieved:
+        if self._use_aux_achieved and not self._speed_goal:
             aux_start = time_step.observation["aux_achieved"].reshape(
                 batch_size, 1, 1, self._aux_dim).expand(
                     batch_size, pop_size, 1, self._aux_dim)
@@ -694,8 +702,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                observation["desired_goal"].unsqueeze(1)),
                               dim=1)
         old_plan = state.full_plan
-        if not self.control_aux:
-            assert False, "We give up on non-speed control mode."
+        # if not self.control_aux:
+        #     assert False, "We give up on non-speed control mode."  Why?
         old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
         retain_old = (old_costs < costs).squeeze(1)
         # Plot relative cost increase of new plan.  Is old plan a lot better than new?
@@ -710,7 +718,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             replan=state.replan & ~retain_old,
             retain_old=state.replan & retain_old)
 
-        subgoal = goals[:, 0, :]  # the first subgoal in the plan
         if self._next_goal_on_success:
             # In reality, subgoals_index can be different for different ENVs.  Here,
             # we simply plan all subgoals, and choose the subgoal specified by
@@ -722,6 +729,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
             subgoal = goals[(torch.arange(batch_size),
                              cap_subgoals_index.squeeze().long())]
+        else:
+            subgoal = goals[:, 0, :]  # the first subgoal in the plan
 
         if self._num_subgoals > 0 and (alf.summary.should_record_summaries()
                                        or common.is_play()):
@@ -794,7 +803,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             else:
                 outcome = "plan fail:"
             ach = observation["achieved_goal"]
-            if self._use_aux_achieved:
+            if self._use_aux_achieved and not self._speed_goal:
                 ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
             plan_horizon = goals.shape[1]
             if self.control_aux:
