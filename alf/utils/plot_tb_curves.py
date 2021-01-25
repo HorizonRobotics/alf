@@ -309,8 +309,13 @@ class MeanCurveGroupReader(object):
 
 
 class CurvesPlotter(object):
-    """Plot several MeanCurves in a figure. The curve colors will form
-    a cycle over 10 default colors.
+    """Plot several ``MeanCurve``s in a figure. The curve colors will form
+    a cycle over 10 default colors. The user should make sure that the ``MeanCurve``s
+    to plot are meaningful to be compared in one figure.
+
+    For each ``MeanCurve``, its ``y`` field will be plotted as the mean, its
+    ``min_y`` and ``max_y`` will be plotted by a shaded area around ``y``, and
+    its ``x`` determines the x-axis range.
     """
     _COLORS = ['C%d' % i for i in range(10)]
 
@@ -444,28 +449,38 @@ def _get_curve_path(dir):
 
 if __name__ == "__main__":
     """Plotting examples."""
-    mean_curve_reader = EnvironmentStepsSuccessReader(
-        event_file=glob.glob(_get_curve_path("sac_kickball_gs/*/eval")),
-        name="sac_kickball",
-        smoothing=3)
-    mean_curve_reader1 = EnvironmentStepsSuccessReader(
-        event_file=glob.glob(_get_curve_path("ddpg_navigation_gs/*/eval")),
-        name="ddpg_navigation",
-        smoothing=5)
+    methods = ["sac", "ddpg"]
+    tasks = ["kickball", "navigation"]
 
-    # Scale and align x-axis of the two curves
-    plotter = CurvesPlotter(
-        [mean_curve_reader(), mean_curve_reader1()],
-        x_label=mean_curve_reader.x_label,
-        y_label=mean_curve_reader.y_label,
-        y_range=(0, 1.0),
-        x_range=(0, 5000000))
-    plotter.plot(output_path="/tmp/test1.pdf")
+    curve_readers = [[
+        EnvironmentStepsReturnReader(
+            event_file=glob.glob(_get_curve_path("%s_%s/*/eval" % (m, t))),
+            name="%s_%s" % (m, t),
+            smoothing=3) for t in tasks
+    ] for m in methods]
 
-    # Plot the curves without alignment
-    plotter = CurvesPlotter(
-        [mean_curve_reader(), mean_curve_reader1()],
-        x_label=mean_curve_reader.x_label,
-        y_label=mean_curve_reader.y_label,
-        x_scaled_and_aligned=False)
-    plotter.plot(output_path="/tmp/test2.pdf")
+    # Scale and align x-axis of SAC and DDPG on task "kickball"
+    plotter = CurvesPlotter([cr[0]() for cr in curve_readers],
+                            x_label=curve_readers[0][0].x_label,
+                            y_label=curve_readers[0][0].y_label,
+                            y_range=(0, 1.0),
+                            x_range=(0, 5000000))
+    plotter.plot(output_path="/tmp/kickball.pdf")
+
+    # Now, to compare SAC with DDPG on navigation and kickball at the same time,
+    # we use the normalized score.
+    # [kickball, navigation]
+    random_return = [0., -10.]  # obtained by evaluating a random policy
+    sac_trained_return = [100., 50.]  # obtained by evaluating trained SAC
+    task_performance_ranges = list(zip(random_return, sac_trained_return))
+
+    curve_group_readers = [
+        MeanCurveGroupReader(cr, task_performance_ranges, m)
+        for m, cr in zip(methods, curve_readers)
+    ]
+
+    plotter = CurvesPlotter([cgr() for cgr in curve_group_readers],
+                            x_range=(0, 5000000),
+                            x_label=curve_group_readers[0].x_label,
+                            y_label=curve_group_readers[0].y_label)
+    plotter.plot(output_path="/tmp/normalized_score.pdf")
