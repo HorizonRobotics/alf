@@ -316,5 +316,5 @@ def make_nested_module(nested, ignore_non_module_element=True):
                 nested,
                 torch.nn.Module), ("Unsupported type %s" % type(nested))
         elif not isinstance(nested, torch.nn.Module):
-            module = nn.Module()
+            module = None
     return module

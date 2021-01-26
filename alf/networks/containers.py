@@ -44,30 +44,30 @@ class Sequential(Network):
 
     """
 
-    def __init__(self, layers, input_tensor_spec=None, name="Sequential"):
+    def __init__(self, modules, input_tensor_spec=None, name="Sequential"):
         """
 
         Args:
-            layers (list[nn.Module]): list of torch layers.
+            modules (list[nn.Module]): list of ``torch.nn.Module`` or ``alf.nn.Network``.
             input_tensor_spec (TensorSpec): the tensor spec of the input. It must
-                be specified if it cannot be inferred from ``layers[0]``.
+                be specified if it cannot be inferred from ``modules[0]``.
             name (str):
         """
-        state_spec = [()] * len(layers)
-        for i, layer in enumerate(layers):
-            if isinstance(layer, Network):
-                state_spec[i] = layer.state_spec
+        state_spec = [()] * len(modules)
+        for i, module in enumerate(modules):
+            if isinstance(module, Network):
+                state_spec[i] = module.state_spec
         if len(flatten(state_spec)) == 0:
             state_spec = ()
         self._state_spec = state_spec
         if input_tensor_spec is None:
-            input_tensor_spec = get_input_tensor_spec(layers[0])
+            input_tensor_spec = get_input_tensor_spec(modules[0])
         if input_tensor_spec is None:
             raise ValueError(
                 "input_tensor_spec needs to "
-                "be provided for layers[0] of type %s" % type(layers[0]))
+                "be provided for modules[0] of type %s" % type(modules[0]))
         super().__init__(input_tensor_spec, name)
-        self._layers = nn.ModuleList(layers)
+        self._networks = nn.ModuleList(modules)
 
     @property
     def state_spec(self):
@@ -76,26 +76,26 @@ class Sequential(Network):
     def forward(self, input, state=()):
         x = input
         if self._state_spec == ():
-            for layer in self._layers:
-                if isinstance(layer, Network):
-                    x = layer(x)[0]
+            for net in self._networks:
+                if isinstance(net, Network):
+                    x = net(x)[0]
                 else:
-                    x = layer(x)
+                    x = net(x)
             return x, state
         else:
-            new_state = [()] * len(self._layers)
-            for i, layer in enumerate(self._layers):
-                if isinstance(layer, Network):
-                    x, new_state[i] = layer(x, state[i])
+            new_state = [()] * len(self._networks)
+            for i, net in enumerate(self._networks):
+                if isinstance(net, Network):
+                    x, new_state[i] = net(x, state[i])
                 else:
-                    x = layer(x)
+                    x = net(x)
             return x, new_state
 
     def copy(self, name=None):
         """Create a copy of this network or return the current instance.
 
         If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the layers and re-initialize
+        ``self``; otherwise it will make a copy of all the modules and re-initialize
         their parameters.
 
         Args:
@@ -109,18 +109,18 @@ class Sequential(Network):
         if name is None:
             name = self.name
 
-        new_layers = []
-        for l in self._layers:
-            if isinstance(l, Network):
-                layer = l.copy()
+        new_networks = []
+        for n in self._networks:
+            if isinstance(n, Network):
+                net = n.copy()
             else:
-                layer = copy.deepcopy(l)
-                alf.layers.reset_parameters(layer)
-            new_layers.append(layer)
-        return Sequential(new_layers, self._input_tensor_spec, name)
+                net = copy.deepcopy(n)
+                alf.layers.reset_parameters(net)
+            new_networks.append(net)
+        return Sequential(new_networks, self._input_tensor_spec, name)
 
     def __getitem__(self, i):
-        return self._layers[i]
+        return self._networks[i]
 
 
 class Parallel(Network):
@@ -144,25 +144,25 @@ class Parallel(Network):
 
     """
 
-    def __init__(self, networks, input_tensor_spec=None, name="Parallel"):
+    def __init__(self, modules, input_tensor_spec=None, name="Parallel"):
         """
         Args:
-            networks (nested nn.Module): a nest of nn.Modules
+            modules (nested nn.Module): a nest of ``torch.nn.Module`` or ``alf.nn.Network``.
             input_tensor_spec (nested TensorSpec): must be provided if it cannot
-                be inferred from ``networks``
+                be inferred from ``modules``.
             name (str):
         """
         if input_tensor_spec is None:
-            input_tensor_spec = map_structure(get_input_tensor_spec, networks)
+            input_tensor_spec = map_structure(get_input_tensor_spec, modules)
             specified = all(
                 map(lambda s: s is not None, flatten(input_tensor_spec)))
             assert specified, (
                 "input_tensor_spec needs "
                 "to be specified if it cannot be infered from elements of "
                 "networks")
-        alf.nest.assert_same_structure_up_to(networks, input_tensor_spec)
+        alf.nest.assert_same_structure_up_to(modules, input_tensor_spec)
         super().__init__(input_tensor_spec, name=name)
-        networks = map_structure_up_to(networks, wrap_as_network, networks,
+        networks = map_structure_up_to(modules, wrap_as_network, modules,
                                        input_tensor_spec)
         self._state_spec = map_structure(lambda net: net.state_spec, networks)
         if len(flatten(self._state_spec)) == 0:
@@ -195,7 +195,7 @@ class Parallel(Network):
         """Create a copy of this network or return the current instance.
 
         If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the layers and re-initialize
+        ``self``; otherwise it will make a copy of all the modules and re-initialize
         their parameters.
 
         Args:
@@ -238,28 +238,27 @@ class Branch(Network):
 
     """
 
-    def __init__(self, networks, input_tensor_spec=None, name="Branch"):
+    def __init__(self, modules, input_tensor_spec=None, name="Branch"):
         """
         Args:
-            networks (nested nn.Module): a nest of nn.Modules
+            modules (nested nn.Module): a nest of ``torch.nn.Module`` or ``alf.nn.Network``.
             input_tensor_spec (nested TensorSpec): must be provided if it cannot
-                be inferred from any one network of ``networks``
+                be inferred from any one of ``modules``
             name (str):
         """
         if input_tensor_spec is None:
-            specs = list(
-                map(get_input_tensor_spec, alf.nest.flatten(networks)))
+            specs = list(map(get_input_tensor_spec, alf.nest.flatten(modules)))
             specs = list(filter(lambda s: s is not None, specs))
             assert specs, ("input_tensor_spec needs to be specified since it "
-                           "cannot be infered from any one of networks")
+                           "cannot be infered from any one of modules")
             for spec in specs:
                 assert alf.utils.spec_utils.is_same_spec(spec, specs[0]), (
-                    "networks have inconsistent input_tensor_spec: %s vs %s" %
+                    "modules have inconsistent input_tensor_spec: %s vs %s" %
                     (spec, specs[0]))
             input_tensor_spec = specs[0]
         super().__init__(input_tensor_spec, name=name)
         networks = map_structure(
-            lambda net: wrap_as_network(net, input_tensor_spec), networks)
+            lambda net: wrap_as_network(net, input_tensor_spec), modules)
         self._state_spec = map_structure(lambda net: net.state_spec, networks)
         if len(flatten(self._state_spec)) == 0:
             self._state_spec = ()
@@ -293,7 +292,7 @@ class Branch(Network):
         """Create a copy of this network or return the current instance.
 
         If ``self._singleton_instance`` is True, calling ``copy()`` will return
-        ``self``; otherwise it will make a copy of all the layers and re-initialize
+        ``self``; otherwise it will make a copy of all the modules and re-initialize
         their parameters.
 
         Args:
