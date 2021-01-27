@@ -63,7 +63,7 @@ class PIDController(object):
         else:
             derivative = 0.
         self._prev_error = error
-        return self._K_P * error + self._K_I * self._integral + self._K_P * derivative
+        return self._K_P * error + self._K_I * self._integral + self._K_D * derivative
 
     def reset(self):
         """Reset the controller."""
