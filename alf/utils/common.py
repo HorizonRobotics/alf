@@ -444,10 +444,14 @@ def get_conf_file():
     Returns:
         str: the name of the conf file. None if there is no conf file
     """
-    if not hasattr(flags.FLAGS, "conf"):
+    if not hasattr(flags.FLAGS, "conf") or not hasattr(flags.FLAGS,
+                                                       "gin_file"):
         return None
 
-    conf_file = flags.FLAGS.conf
+    conf_file = getattr(flags.FLAGS, 'conf', None)
+    if conf_file is not None:
+        return conf_file
+    conf_file = getattr(flags.FLAGS, 'gin_file', None)
     if conf_file is not None:
         return conf_file
 
@@ -513,6 +517,7 @@ def write_config(root_dir):
         root_dir (str): directory path
     """
     conf_file = get_conf_file()
+    assert conf_file is not None, "There is no config file"
     if conf_file.endswith('.gin'):
         return write_gin_configs(root_dir, 'configured.gin')
 

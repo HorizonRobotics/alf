@@ -71,8 +71,9 @@ flags.DEFINE_bool('render', True,
 # use '--render_prediction' to enable pred info rendering
 flags.DEFINE_bool('render_prediction', False,
                   "Whether render prediction info at every frame or not")
-flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
+flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+flags.DEFINE_string('conf', None, 'Path to the alf config file.')
 flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
 flags.DEFINE_string(
     'ignored_parameter_prefixes', "",

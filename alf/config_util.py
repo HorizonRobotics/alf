@@ -102,7 +102,7 @@ def get_operative_configs():
     Returns:
         list[tuple[config_name, _Config]]
     """
-    configs = [(name, config.get_value())
+    configs = [(name, config.get_effective_value())
                for name, config in _get_all_leaves(_CONF_TREE)
                if config.is_used()]
     return sorted(configs, key=lambda x: x[0])
@@ -161,6 +161,10 @@ class _Config(object):
         self._value = value
 
     def get_value(self):
+        assert self._configured
+        return self._value
+
+    def get_effective_value(self):
         assert self._configured or self._has_default_value
         return self._value if self._configured else self._default_value
 
@@ -321,20 +325,22 @@ def _make_wrapper(fn, configs, signature, has_self):
 
         for i, (name, param) in enumerate(signature.parameters.items()):
             config = configs.get(name, None)
-            if i < num_positional_args:
+            if config is None:
+                continue
+            elif i < num_positional_args:
                 continue
             elif param.kind in (Parameter.VAR_POSITIONAL,
                                 Parameter.VAR_KEYWORD):
                 continue
             elif param.kind == Parameter.POSITIONAL_ONLY:
-                if config is not None and config.is_configured():
+                if config.is_configured():
                     unspecified_positional_args.append(config.get_value)
                     config.set_used()
-            elif param.kind in (Parameter.POSITIONAL_OR_KEYWORD,
-                                Parameter.KEYWORD_ONLY):
-                if name not in kwargs and config is not None:
+            elif name not in kwargs and param.kind in (
+                    Parameter.POSITIONAL_OR_KEYWORD, Parameter.KEYWORD_ONLY):
+                if config.is_configured():
                     unspecified_kw_args[name] = config.get_value()
-                    config.set_used()
+                config.set_used()
 
         return fn(*args, *unspecified_positional_args, **kwargs,
                   **unspecified_kw_args)
