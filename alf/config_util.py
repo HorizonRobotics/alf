@@ -246,8 +246,8 @@ def _make_config(signature, whitelist, blacklist):
 def _add_to_conf_tree(module_path, func_name, para_name, node):
     """
     Args:
-      module_path (list[str]):
-      node (_Config):
+        module_path (list[str]):
+        node (_Config):
     """
 
     tree = _CONF_TREE
@@ -349,7 +349,7 @@ def _make_wrapper(fn, configs, signature, has_self):
 
 
 def _decorate(fn_or_cls, name, whitelist, blacklist):
-    """decorate a function of class.
+    """decorate a function or class.
 
     Args:
         fn_or_cls (Callable): a function or a class
@@ -436,7 +436,8 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
 
     Note: currently, to maitain the compatibility with gin-config, all the
         functions decorated using alf.configurable are auomatically configurable
-        using gin.
+        using gin. The values specified using ``alf.config()`` will override
+        values specified through gin.
 
     Args:
         fn_or_name (Callable|str): A name for this configurable, or a function
