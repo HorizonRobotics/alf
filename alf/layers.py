@@ -21,8 +21,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import alf
 from alf.initializers import variance_scaling_init
-from alf.nest.utils import get_outer_rank
+from alf.nest.utils import get_outer_rank, NestConcat, NestMultiply, NestSum
 from alf.tensor_specs import TensorSpec
 from alf.utils import common
 from alf.utils.math_ops import identity
@@ -344,6 +345,8 @@ class FC(nn.Module):
 
         super(FC, self).__init__()
 
+        self._input_size = input_size
+        self._output_size = output_size
         self._activation = activation
         self._weight = nn.Parameter(torch.Tensor(output_size, input_size))
         if use_bias:
@@ -366,6 +369,14 @@ class FC(nn.Module):
         else:
             self._ln = None
         self.reset_parameters()
+
+    @property
+    def input_size(self):
+        return self._input_size
+
+    @property
+    def output_size(self):
+        return self._output_size
 
     def reset_parameters(self):
         """Initialize the parameters."""
@@ -504,7 +515,7 @@ class FCBatchEnsemble(FC):
         self._r.data.sub_(1)
         self._s.data.mul_(2)
         self._s.data.sub_(1)
-        if self._use_bias:
+        if self._use_ensemble_bias:
             nn.init.uniform_(
                 self._ensemble_bias.data,
                 a=-self._bias_init_range,
@@ -1177,9 +1188,9 @@ class ParamFC(nn.Module):
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """A fully connected layer that does not maintain its own weight and bias,
-        but accepts both from users. If the given parameter (weight and bias) 
+        but accepts both from users. If the given parameter (weight and bias)
         tensor has an extra batch dimension (first dimension), it performs
-        parallel FC operation. 
+        parallel FC operation.
 
         Args:
             input_size (int): input size
@@ -1280,13 +1291,13 @@ class ParamFC(nn.Module):
         """Forward
 
         Args:
-            inputs (torch.Tensor): with shape ``[B, D] (groups=1)`` 
+            inputs (torch.Tensor): with shape ``[B, D] (groups=1)``
                                         or ``[B, n, D] (groups=n)``
                 where the meaning of the symbols are:
                 - ``B``: batch size
                 - ``n``: number of replicas
-                - ``D``: input dimension 
-                When the shape of inputs is ``[B, D]``, all the n linear 
+                - ``D``: input dimension
+                When the shape of inputs is ``[B, D]``, all the n linear
                 operations will take inputs as the same shared inputs.
                 When the shape of inputs is ``[B, n, D]``, each linear operator
                 will have its own input data by slicing inputs.
@@ -1342,9 +1353,9 @@ class ParamConv2D(nn.Module):
                  kernel_init_gain=1.0,
                  bias_init_value=0.0):
         """A 2D conv layer that does not maintain its own weight and bias,
-        but accepts both from users. If the given parameter (weight and bias) 
+        but accepts both from users. If the given parameter (weight and bias)
         tensor has an extra batch dimension (first dimension), it performs
-        parallel FC operation. 
+        parallel FC operation.
 
         Args:
             in_channels (int): channels of the input image
@@ -1467,7 +1478,7 @@ class ParamConv2D(nn.Module):
         """Forward
 
         Args:
-            img (torch.Tensor): with shape ``[B, C, H, W] (groups=1)`` 
+            img (torch.Tensor): with shape ``[B, C, H, W] (groups=1)``
                                         or ``[B, n, C, H, W] (groups=n)``
                 where the meaning of the symbols are:
                 - ``B``: batch size
@@ -1983,6 +1994,8 @@ class TransformerBlock(nn.Module):
 
 
 class Lambda(nn.Module):
+    """Wrap a function as an nn.Module."""
+
     def __init__(self, func):
         """
         Args:
@@ -1995,5 +2008,108 @@ class Lambda(nn.Module):
     def forward(self, x):
         return self._func(x)
 
+
+class GFT(nn.Module):
+    """Guided Feature Transformation.
+
+    This class implements the GFT model proposed in the following paper:
+
+    `Yu et al. Guided Feature Transformation (GFT): A Neural language Grounding
+    Module for Embodied Agents, CoRL 2018 <https://arxiv.org/pdf/1805.08329.pdf>`_
+    """
+
+    def __init__(self, num_transformations, image_channels, language_dim):
+        super().__init__()
+        self._t_layers = nn.ModuleList([
+            FC(language_dim, (1 + image_channels) * image_channels)
+            for k in range(num_transformations)
+        ])
+        self._ones = torch.ones(1, 1, 1)
+
+    def forward(self, input):
+        """
+        Args:
+            input (tuple): the tuple of image features and sentence embedding.
+        Returns:
+            Tensor: same shape as input[0]
+        """
+        image, sentence = input
+        batch_size, channels = image.shape[:2]
+        # [B, C, W*H]
+        cnn_out = image.view(batch_size, channels, -1)
+        ## compute K transformation matrices
+        ts = [
+            l(sentence).view(batch_size, channels, channels + 1)
+            for l in self._t_layers
+        ]
+
+        ones = self._ones.expand(batch_size, 1, cnn_out.shape[-1])
+        for t in ts:
+            # [B, C+1, W*H]
+            cnn_out = torch.cat((cnn_out, ones), dim=1)
+            # [B, C, W*H] <= [B, C, C+1] * [B, C+1, W*H]
+            cnn_out = torch.relu_(torch.matmul(t, cnn_out))
+        return cnn_out.reshape(*image.shape)
+
     def reset_parameters(self):
-        return
+        for l in self._t_layers:
+            l.reset_parameters()
+
+
+class GetFields(nn.Module):
+    """Get the fields from a nested input."""
+
+    def __init__(self, fields):
+        """
+        Args
+            fields (nested str): the path of the fields to be retrieved. Each str
+                in ``fields`` represents a path to the field with '.' separating
+                the field name at different level.
+        """
+        super().__init__()
+        self._fields = fields
+
+    def forward(self, input):
+        return alf.nest.map_structure(
+            lambda path: alf.nest.get_field(input, path), self._fields)
+
+
+class Sum(nn.Module):
+    """Sum over given dimension(s).
+
+    Note that batch dimention is not counted for dim. This means that
+    dim=0 means the dimension after batch dimension.
+    """
+
+    def __init__(self, dim):
+        """
+        Args:
+            dim (int|tuple[int]): the dimension(s) to be summed.
+        """
+        super().__init__()
+        dim = alf.nest.map_structure(lambda d: d + 1 if d >= 0 else d, dim)
+        self._dim = dim
+
+    def forward(self, input):
+        return input.sum(dim=self._dim)
+
+
+def reset_parameters(module):
+    """Reset the parameters for ``module``.
+
+    Args:
+        module (nn.Module):
+    Returns:
+        None
+    Raises:
+        ValueError: fail to reset the parameters for ``module``
+    """
+    if hasattr(module, 'reset_parameters'):
+        module.reset_parameters()
+    elif isinstance(module, nn.Sequential):
+        for l in module:
+            reset_parameters(l)
+    elif isinstance(module, nn.Module):
+        if len(list(module.parameters())) > 0:
+            raise ValueError(
+                "Cannot reset_parameter for layer type %s." % type(module))

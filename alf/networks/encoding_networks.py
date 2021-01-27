@@ -695,10 +695,9 @@ class EncodingNetwork(PreprocessorNetwork):
         Returns:
             Network: A parallel network
         """
-        if (self.saved_args.get('input_preprocessors') is None and
-            (self._preprocessing_combiner == math_ops.identity or isinstance(
+        if (self.saved_args.get('input_preprocessors') is None and isinstance(
                 self._preprocessing_combiner,
-                (alf.nest.utils.NestSum, alf.nest.utils.NestConcat)))):
+            (alf.layers.Identity, alf.layers.NestSum, alf.layers.NestConcat))):
             parallel_enc_net_args = dict(**self.saved_args)
             parallel_enc_net_args.update(n=n, name="parallel_" + self.name)
             return ParallelEncodingNetwork(**parallel_enc_net_args)

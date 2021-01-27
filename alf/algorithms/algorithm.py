@@ -571,7 +571,8 @@ class Algorithm(nn.Module):
                 dict(
                     optimizer=optimizer.__class__.__name__,
                     hypers=optimizer.defaults,
-                    parameters=[self._param_to_name[p] for p in parameters]))
+                    parameters=sorted(
+                        [self._param_to_name[p] for p in parameters])))
         json_pretty_str_info = json.dumps(obj=optimizer_info, indent=2)
 
         return json_pretty_str_info
@@ -596,7 +597,7 @@ class Algorithm(nn.Module):
         for name, p in all_parameters:
             if p not in optimized_parameters:
                 unoptimized_parameters.append(name)
-        return json.dumps(obj=unoptimized_parameters, indent=2)
+        return json.dumps(obj=sorted(unoptimized_parameters), indent=2)
 
     @property
     def predict_state_spec(self):

@@ -97,3 +97,20 @@ def zeros_from_spec(nested_spec, batch_size):
     param_spec = dist_utils.to_distribution_param_spec(nested_spec)
     params = nest.map_structure(_zero_tensor, param_spec)
     return dist_utils.params_to_distributions(params, nested_spec)
+
+
+def is_same_spec(spec1, spec2):
+    """Whether two nested specs are same.
+
+    Args:
+        spec1 (nested TensorSpec): the first spec
+        spec2 (nested TensorSpec): the second spec
+    Returns:
+        bool
+    """
+    try:
+        nest.assert_same_structure(spec1, spec2)
+    except:
+        return False
+    same = nest.map_structure(lambda s1, s2: s1 == s2, spec1, spec2)
+    return all(nest.flatten(same))

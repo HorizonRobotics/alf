@@ -90,18 +90,20 @@ function test() {
         alf.metrics.metrics_test \
         alf.nest.cnest_test \
         alf.nest.nest_test \
-        alf.networks.network_test \
         alf.networks.action_encoder_test \
         alf.networks.actor_distribution_networks_test \
         alf.networks.actor_networks_test \
+        alf.networks.containers_test \
         alf.networks.critic_networks_test \
-        alf.networks.value_networks_test \
         alf.networks.encoding_networks_test \
-        alf.networks.param_networks_test \
         alf.networks.memory_test \
+        alf.networks.network_test \
+        alf.networks.param_networks_test \
+        alf.networks.preprocessors_test \
         alf.networks.projection_networks_test \
         alf.networks.q_networks_test \
         alf.networks.relu_mlp_test \
+        alf.networks.value_networks_test \
         alf.optimizers.optimizers_test \
         alf.optimizers.trusted_updater_test \
         alf.summary.summary_ops_test \

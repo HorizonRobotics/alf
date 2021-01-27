@@ -30,14 +30,21 @@ from alf.utils import common
 
 class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
     input_spec = TensorSpec((10, ))
-    preproc = EmbeddingPreprocessor(
-        input_tensor_spec=input_spec, embedding_dim=10)
 
-    shared_preproc = preproc.copy().singleton()
+    def _make_preproc(self, shared):
+        preproc = EmbeddingPreprocessor(
+            input_tensor_spec=TestInputpreprocessor.input_spec,
+            embedding_dim=10)
+        if shared:
+            return preproc.copy().singleton()
+        else:
+            return preproc
 
-    @parameterized.parameters((False, preproc), (True, preproc),
-                              (False, shared_preproc), (True, shared_preproc))
-    def test_input_preprocessor(self, lstm, preproc):
+    @parameterized.parameters((False, False), (True, False), (False, True),
+                              (True, True))
+    def test_input_preprocessor(self, lstm, shared_preproc):
+        preproc = self._make_preproc(shared_preproc)
+
         def _check_with_shared_param(net1, net2, shared_subnet=None):
             net1_params = set(net1.parameters())
             net2_params = set(net2.parameters())
@@ -114,8 +121,9 @@ class TestInputpreprocessor(parameterized.TestCase, alf.test.TestCase):
         net([batch, batch], state)
         p_net([batch, batch], p_state)
 
-    @parameterized.parameters(preproc, shared_preproc)
-    def test_input_preprocessor_state(self, input_preprocessor):
+    @parameterized.parameters(False, True)
+    def test_input_preprocessor_state(self, shared_preproc):
+        input_preprocessor = self._make_preproc(shared_preproc)
         batch_size = 6
         batch = TestInputpreprocessor.input_spec.zeros(
             outer_dims=(batch_size, ))

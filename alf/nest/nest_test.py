@@ -103,6 +103,27 @@ class TestAssertSameStructure(parameterized.TestCase, alf.test.TestCase):
                           dict(x=1, y=dict(x=3, y=1)))
 
 
+class TestAssertSameStructureUpTo(parameterized.TestCase, alf.test.TestCase):
+    def test_assert_same_structure_up_to(self):
+        nest.assert_same_structure_up_to(1.0, 10)
+        nest.assert_same_structure_up_to(
+            NTuple(a=1, b=2), NTuple(a=[2, 3], b=(1, 2)))
+        nest.assert_same_structure_up_to(
+            dict(x=1, y=NTuple(a=[1], b=3)), dict(y=NTuple(a=[3], b=1), x=1))
+        nest.assert_same_structure_up_to(
+            dict(x=1, y=2), dict(y=NTuple(a=[3], b=1), x=1))
+        nest.assert_same_structure_up_to(
+            dict(x=5, y=NTuple(a=2, b=3)), dict(y=NTuple(a=[3], b=1), x=1))
+        self.assertRaises(RuntimeError, nest.assert_same_structure_up_to,
+                          dict(x=1, y=[2]), dict(x=[2], y=1))
+        self.assertRaises(RuntimeError, nest.assert_same_structure_up_to,
+                          dict(y=NTuple(a=[3], b=1), x=1),
+                          dict(x=5, y=NTuple(a=2, b=3)))
+        self.assertRaises(RuntimeError, nest.assert_same_structure_up_to,
+                          dict(y=NTuple(a=[3], b=1), x=1),
+                          dict(x=5, y=NTuple(a=2, b=3)))
+
+
 class TestMapStructure(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters((nest.py_map_structure, AssertionError),
                               (cnest.map_structure, RuntimeError))

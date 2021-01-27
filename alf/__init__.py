@@ -15,6 +15,7 @@
 from . import metrics
 from . import module
 from . import networks
+from . import networks as nn
 from . import nest
 from . import optimizers
 from . import summary
