@@ -17,6 +17,7 @@ from collections import namedtuple
 import gin
 import torch
 
+import alf
 from alf.algorithms.actor_critic_algorithm import ActorCriticAlgorithm
 from alf.algorithms.ppo_loss import PPOLoss
 from alf.data_structures import Experience, TimeStep
@@ -26,7 +27,7 @@ PPOInfo = namedtuple("PPOInfo",
                      ["action_distribution", "returns", "advantages"])
 
 
-@gin.configurable
+@alf.configurable
 class PPOAlgorithm(ActorCriticAlgorithm):
     """PPO Algorithm.
     Implement the simplified surrogate loss in equation (9) of "Proximal

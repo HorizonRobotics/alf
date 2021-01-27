@@ -145,8 +145,7 @@ class Trainer(object):
         self._debug_summaries = config.debug_summaries
         self._summarize_grads_and_vars = config.summarize_grads_and_vars
         self._config = config
-
-        self._random_seed = common.set_random_seed(config.random_seed)
+        self._random_seed = config.random_seed
 
     def train(self):
         """Perform training."""
@@ -225,14 +224,14 @@ class Trainer(object):
     def _summarize_training_setting(self):
         # We need to wait for one iteration to get the operative args
         # Right just give a fixed gin file name to store operative args
-        common.write_gin_configs(self._root_dir, "configured.gin")
+        common.write_config(self._root_dir)
         with alf.summary.record_if(lambda: True):
 
             def _markdownify(paragraph):
                 return "    ".join(
                     (os.linesep + paragraph).splitlines(keepends=True))
 
-            common.summarize_gin_config()
+            common.summarize_config()
             alf.summary.text('commandline', ' '.join(sys.argv))
             alf.summary.text(
                 'optimizers',
@@ -320,15 +319,16 @@ class RLTrainer(Trainer):
         self._num_eval_episodes = config.num_eval_episodes
         alf.summary.should_summarize_output(config.summarize_output)
 
-        env = self._create_environment(random_seed=self._random_seed)
+        env = alf.get_env()
         logging.info(
             "observation_spec=%s" % pprint.pformat(env.observation_spec()))
         logging.info("action_spec=%s" % pprint.pformat(env.action_spec()))
-        common.set_global_env(env)
-
         data_transformer = create_data_transformer(
             config.data_transformer_ctor, env.observation_spec())
         self._config.data_transformer = data_transformer
+
+        # keep compatibility with previous gin based config
+        common.set_global_env(env)
         observation_spec = data_transformer.transformed_observation_spec
         common.set_transformed_observation_spec(observation_spec)
 
@@ -419,9 +419,9 @@ class RLTrainer(Trainer):
             logging.log_every_n_seconds(
                 logging.INFO,
                 '%s -> %s: %s time=%.3f throughput=%0.2f' %
-                (common.get_gin_file(), [
-                    os.path.basename(self._root_dir.strip('/'))
-                ], iter_num, t, int(train_steps) / t),
+                (common.get_conf_file(),
+                 os.path.basename(self._root_dir.strip('/')), iter_num, t,
+                 int(train_steps) / t),
                 n_seconds=1)
 
             if self._evaluate and (iter_num + 1) % self._eval_interval == 0:

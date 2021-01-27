@@ -17,6 +17,7 @@ import gin
 import numpy as np
 import random
 
+import alf
 from alf.environments import suite_gym
 from alf.environments import thread_environment, parallel_environment
 from alf.environments import alf_wrappers
@@ -56,7 +57,7 @@ class UnwrappedEnvChecker(object):
         self.update(wrap_with_process)
 
 
-@gin.configurable
+@alf.configurable
 def create_environment(env_name='CartPole-v0',
                        env_load_fn=suite_gym.load,
                        num_parallel_environments=30,
@@ -132,7 +133,7 @@ def create_environment(env_name='CartPole-v0',
     return alf_env
 
 
-@gin.configurable
+@alf.configurable
 def load_with_random_max_episode_steps(env_name,
                                        env_load_fn=suite_gym.load,
                                        min_steps=200,

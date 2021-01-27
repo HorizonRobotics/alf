@@ -31,7 +31,7 @@ EntropyTargetLossInfo = namedtuple("EntropyTargetLossInfo", ["neg_entropy"])
 EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["loss"])
 
 
-@gin.configurable
+@alf.configurable
 class EntropyTargetAlgorithm(Algorithm):
     """Algorithm for adjusting entropy regularization.
 

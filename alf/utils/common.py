@@ -24,7 +24,9 @@ import glob
 import math
 import numpy as np
 import os
+import pprint
 import random
+import runpy
 import shutil
 import time
 import torch
@@ -429,6 +431,100 @@ def get_gin_file():
         return ''
 
 
+ALF_CONFIG_FILE = 'alf_config.py'
+
+
+def get_conf_file():
+    """Get the configuration file.
+
+    If ``FLAGS.conf`` is not set, find alf_config.py for configured.gin under
+    ``FLAGS.root_dir`` and returns it. If there is no 'conf' flag defined,
+    return None.
+
+    Returns:
+        str: the name of the conf file. None if there is no conf file
+    """
+    if not hasattr(flags.FLAGS, "conf"):
+        return None
+
+    conf_file = flags.FLAGS.conf
+    if conf_file is not None:
+        return conf_file
+
+    root_dir = os.path.expanduser(flags.FLAGS.root_dir)
+    conf_file = os.path.join(root_dir, ALF_CONFIG_FILE)
+    if os.path.exists(conf_file):
+        return conf_file
+    gin_file = glob.glob(os.path.join(root_dir, "*.gin"))
+    if not gin_file:
+        return None
+    assert len(
+        gin_file) == 1, "Multiple *.gin files are found in %s" % root_dir
+    return gin_file[0]
+
+
+def parse_conf_file(conf_file):
+    """Parse config from file.
+
+    It also looks for FLAGS.gin_param and FLAGS.conf_param for extra configs.
+
+    Args:
+        conf_file (str): the full path to the config file
+    """
+    if conf_file.endswith(".gin"):
+        gin_params = flags.FLAGS.gin_param
+        gin.parse_config_files_and_bindings([conf_file], gin_params)
+    else:
+        conf_params = flags.FLAGS.conf_param
+        if conf_params:
+            for conf_param in conf_params:
+                pos = conf_param.find('=')
+                if pos == -1:
+                    raise ValueError("conf_params")
+                config_name = conf_param[:pos]
+                config_value = conf_param[pos + 1:]
+                config_value = eval(config_value)
+                alf.config1(config_name, config_value)
+
+        runpy.run_path(conf_file)
+
+
+def summarize_config():
+    """Write config to TensorBoard."""
+
+    def _format(configs):
+        paragraph = pprint.pformat(dict(configs))
+        return "    ".join((os.linesep + paragraph).splitlines(keepends=True))
+
+    if get_conf_file().endswith('.gin'):
+        return summarize_gin_config()
+
+    operative_configs = alf.get_operative_configs()
+    inoperative_configs = alf.get_inoperative_configs()
+    alf.summary.text('config/operative_config', _format(operative_configs))
+    if inoperative_configs:
+        alf.summary.text('gin/inoperative_config',
+                         _format(inoperative_configs))
+
+
+def write_config(root_dir):
+    """Write config to a file under directory ``root_dir``
+    Args:
+        root_dir (str): directory path
+    """
+    conf_file = get_conf_file()
+    if conf_file.endswith('.gin'):
+        return write_gin_configs(root_dir, 'configured.gin')
+
+    root_dir = os.path.expanduser(root_dir)
+    alf_config_file = os.path.join(root_dir, ALF_CONFIG_FILE)
+    if conf_file == alf_config_file:
+        # config is from root_dir, so no need to write
+        return
+    os.makedirs(root_dir, exist_ok=True)
+    shutil.copyfile(conf_file, alf_config_file)
+
+
 def get_initial_policy_state(batch_size, policy_state_spec):
     """
     Return zero tensors as the initial policy states.
@@ -455,14 +551,6 @@ def get_initial_time_step(env, first_env_id=0):
     """
     time_step = env.current_time_step()
     return time_step._replace(env_id=time_step.env_id + first_env_id)
-
-
-def transpose2(x, dim1, dim2):
-    """Transpose two axes ``dim1`` and ``dim2`` of a tensor."""
-    perm = list(range(len(x.shape)))
-    perm[dim1] = dim2
-    perm[dim2] = dim1
-    return tf.transpose(x, perm)
 
 
 _env = None
@@ -603,7 +691,7 @@ def active_action_target_entropy(active_action_portion=0.2, min_entropy=0.3):
     """
     assert active_action_portion <= 1.0 and active_action_portion > 0
     action_spec = get_action_spec()
-    assert tensor_spec.is_discrete(
+    assert action_spec.is_discrete(
         action_spec), "only support discrete actions!"
     num_actions = action_spec.maximum - action_spec.minimum + 1
     return max(math.log(num_actions * active_action_portion), min_entropy)

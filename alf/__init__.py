@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .config_util import *
+
 from . import metrics
 from . import module
 from . import networks
@@ -24,3 +26,4 @@ from .utils import math_ops as math
 from .device_ctx import *
 from .tensor_specs import *
 import alf.utils.external_configurables
+from .config_helpers import *
