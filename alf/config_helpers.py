@@ -24,8 +24,8 @@ from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
 
 __all__ = [
-    'get_raw_observation_spec', 'get_observation_spec', 'get_action_spec',
-    'get_env'
+    'close_env', 'get_raw_observation_spec', 'get_observation_spec',
+    'get_action_spec', 'get_env'
 ]
 
 _env = None
@@ -109,3 +109,16 @@ def get_env():
         trainer_config = TrainerConfig(root_dir='')
         _env = create_environment(seed=trainer_config.random_seed)
     return _env
+
+
+def close_env():
+    """Close the global environment.
+
+    This function will be automatically called by ``RLTrainer``.
+    """
+    global _env
+    global _transformed_observation_spec
+    if _env is not None:
+        _env.close()
+    _env = None
+    _transformed_observation_spec = None

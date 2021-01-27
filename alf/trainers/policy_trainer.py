@@ -390,6 +390,7 @@ class RLTrainer(Trainer):
         """Close all envs to release their resources."""
         for env in self._envs:
             env.close()
+        alf.close_env()
         if self._unwrapped_env is not None:
             self._unwrapped_env.close()
 

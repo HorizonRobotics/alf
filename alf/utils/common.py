@@ -500,7 +500,8 @@ def summarize_config():
         paragraph = pprint.pformat(dict(configs))
         return "    ".join((os.linesep + paragraph).splitlines(keepends=True))
 
-    if get_conf_file().endswith('.gin'):
+    conf_file = get_conf_file()
+    if conf_file is None or conf_file.endswith('.gin'):
         return summarize_gin_config()
 
     operative_configs = alf.get_operative_configs()
@@ -517,8 +518,7 @@ def write_config(root_dir):
         root_dir (str): directory path
     """
     conf_file = get_conf_file()
-    assert conf_file is not None, "There is no config file"
-    if conf_file.endswith('.gin'):
+    if conf_file is None or conf_file.endswith('.gin'):
         return write_gin_configs(root_dir, 'configured.gin')
 
     root_dir = os.path.expanduser(root_dir)

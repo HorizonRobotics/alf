@@ -124,7 +124,7 @@ def main(_):
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
-        env.close()
+        alf.close_env()
 
 
 if __name__ == '__main__':
