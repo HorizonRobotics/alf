@@ -44,7 +44,7 @@ DdpgCriticState = namedtuple(
 DdpgCriticInfo = namedtuple(
     "DdpgCriticInfo", [
         "q_values", "non_her_q_values", "goal_values", "target_q_values",
-        "non_her_target"
+        "non_her_target", "target_goal_values"
     ],
     default_value=())
 DdpgActorState = namedtuple("DdpgActorState", ['actor', 'critics'])
@@ -70,6 +70,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  actor_network_ctor=ActorNetwork,
                  critic_network_ctor=CriticNetwork,
                  goal_value_net_ctor=None,
+                 goal_net_position_only=False,
                  use_non_her_critic=False,
                  keep_her_rate=0.,
                  down_sample_high_value=1.,
@@ -153,12 +154,23 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         actor_network = actor_network_ctor(
             input_tensor_spec=observation_spec, action_spec=action_spec)
         goal_net = None
+        self._goal_net_position_only = goal_net_position_only
         if goal_value_net_ctor is not None:
             input_tensor_spec = observation_spec.copy()
+            self._goal_net_fields = ["desired_goal", "aux_desired"]
+            if goal_net_position_only:
+                self._goal_net_fields.remove("aux_desired")
+                self._goal_net_fields.append("achieved_goal")
             for k, _ in observation_spec.items():
-                if k not in ("desired_goal", "aux_desired"):
+                if k not in self._goal_net_fields:
                     del input_tensor_spec[k]
             goal_net = goal_value_net_ctor(input_tensor_spec=input_tensor_spec)
+            if goal_net_position_only:
+                if use_parallel_network:
+                    goal_net = goal_net.make_parallel(num_critic_replicas)
+                else:
+                    goal_net = alf.networks.NaiveParallelNetwork(
+                        goal_net, num_critic_replicas)
         self._split_exp_on_replicas = split_exp_on_replicas
         if use_parallel_network:
             critic_networks = critic_network.make_parallel(num_critic_replicas)
@@ -194,6 +206,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         self._num_critic_replicas = num_critic_replicas
         self._critic_networks = critic_networks
         self._goal_net = goal_net
+        self._goal_net_target = None
+        if goal_net_position_only:
+            self._goal_net_target = self._goal_net.copy(
+                name='target_critic_goal_net')
+
         self._non_her_critic = None
         self._non_her_target = None
         self._keep_her_rate = keep_her_rate
@@ -225,8 +242,6 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         for i in range(num_critic_replicas):
             self._critic_losses[i] = critic_loss_ctor(
                 name=("critic_loss" + str(i)))
-        if goal_net:
-            self._goal_value_loss = critic_loss_ctor(name="goal_value_loss")
 
         self._ou_process = common.create_ou_process(action_spec, ou_stddev,
                                                     ou_damping)
@@ -234,6 +249,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         target_models = [
             self._target_actor_network, self._target_critic_networks
         ]
+        if goal_net:
+            if goal_net_position_only:
+                models.append(self._goal_net)
+                target_models.append(self._goal_net_target)
+                self._goal_value_losses = [None] * num_critic_replicas
+                for i in range(num_critic_replicas):
+                    self._goal_value_losses[i] = critic_loss_ctor(
+                        name=("goal_value_losses" + str(i)))
+            else:
+                self._goal_value_loss = critic_loss_ctor(
+                    name="goal_value_loss")
         if self._non_her_critic:
             models.append(self._non_her_critic)
             target_models.append(self._non_her_target)
@@ -330,9 +356,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if self._goal_net:
             goal_input = exp.observation.copy()
             for k, _ in exp.observation.items():
-                if k not in ("desired_goal", "aux_desired"):
+                if k not in self._goal_net_fields:
                     goal_input.pop(k, None)
             goal_values, _ = self._goal_net(goal_input, state=())
+            if self._goal_net_position_only:
+                target_goal_values, _ = self._goal_net_target(
+                    goal_input, state=())
+                if self._num_critic_replicas > 1:
+                    target_goal_values = target_goal_values.min(dim=1)[0]
+                else:
+                    target_goal_values = target_goal_values.squeeze(dim=1)
+                info = info._replace(target_goal_values=target_goal_values)
             info = info._replace(goal_values=goal_values)
 
         return state, info
@@ -424,10 +458,17 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         critic_loss = math_ops.add_n(critic_losses)
 
         if self._goal_net:
-            critic_loss += self._goal_value_loss(
-                experience=experience,
-                value=train_info.critic.goal_values,
-                target_value=train_info.critic.goal_values.detach()).loss
+            if self._goal_net_position_only:
+                for i in range(self._num_critic_replicas):
+                    critic_loss += self._goal_value_losses[i](
+                        experience=experience,
+                        value=train_info.critic.goal_values[:, :, i, ...],
+                        target_value=train_info.critic.target_goal_values).loss
+            else:
+                critic_loss += self._goal_value_loss(
+                    experience=experience,
+                    value=train_info.critic.goal_values,
+                    target_value=train_info.critic.goal_values).loss
 
         if self._non_her_critic and len(self._critic_losses) > 0:
             loss = self._non_her_loss(
@@ -473,5 +514,5 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
     def _trainable_attributes_to_ignore(self):
         return [
             '_target_actor_network', '_target_critic_networks',
-            '_non_her_target'
+            '_non_her_target', '_goal_net_target'
         ]

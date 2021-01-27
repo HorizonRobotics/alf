@@ -151,28 +151,40 @@ class Agent(OnPolicyAlgorithm):
             def _value(obs, states=()):
                 # Input obs can have 3 dims (batch, population, observation_dim) in CEM,
                 # or 2 dims (batch, observation_dim) as well.
-                ts = TimeStep(observation=obs)
-                batch_size = alf.nest.get_nest_batch_size(obs)
-                # We are assuming full state observation, no policy state
-                state = rl_algorithm.get_initial_rollout_state(batch_size)
-                policy_step = rl_algorithm.predict_step(
-                    ts, state=state, epsilon_greedy=0)
-                act = policy_step.output
-                non_her_critic = hasattr(
-                    rl_algorithm,
-                    "_non_her_critic") and rl_algorithm._non_her_critic
-                if non_her_critic:
-                    nv, s = rl_algorithm._non_her_critic((obs, act), state=())
-                    nv = nv.unsqueeze(1)
-                    v = nv
-                if (not non_her_critic or
-                        goal_generator._combine_her_nonher_value_weight > 0):
-                    hv, s = rl_algorithm._critic_networks((obs, act), state=())
-                    v = hv
-                if (non_her_critic and
-                        goal_generator._combine_her_nonher_value_weight > 0):
-                    _w = goal_generator._combine_her_nonher_value_weight
-                    v = hv * _w + nv * (1. - _w)
+                if hasattr(rl_algorithm, "_goal_net_position_only"
+                           ) and rl_algorithm._goal_net_position_only:
+                    goal_input = obs.copy()
+                    for k, _ in obs.items():
+                        if k not in rl_algorithm._goal_net_fields:
+                            goal_input.pop(k, None)
+                    v, s = rl_algorithm._goal_net(goal_input, state=())
+                else:
+                    ts = TimeStep(observation=obs)
+                    batch_size = alf.nest.get_nest_batch_size(obs)
+                    # We are assuming full state observation, no policy state
+                    state = rl_algorithm.get_initial_rollout_state(batch_size)
+                    policy_step = rl_algorithm.predict_step(
+                        ts, state=state, epsilon_greedy=0)
+                    act = policy_step.output
+                    non_her_critic = hasattr(
+                        rl_algorithm,
+                        "_non_her_critic") and rl_algorithm._non_her_critic
+                    if non_her_critic:
+                        nv, s = rl_algorithm._non_her_critic((obs, act),
+                                                             state=())
+                        nv = nv.unsqueeze(1)
+                        v = nv
+                    if (not non_her_critic
+                            or goal_generator._combine_her_nonher_value_weight
+                            > 0):
+                        hv, s = rl_algorithm._critic_networks((obs, act),
+                                                              state=())
+                        v = hv
+                    if (non_her_critic
+                            and goal_generator._combine_her_nonher_value_weight
+                            > 0):
+                        _w = goal_generator._combine_her_nonher_value_weight
+                        v = hv * _w + nv * (1. - _w)
                 if rl_algorithm._num_critic_replicas > 1:
                     obs_dim = len(alf.nest.get_nest_shape(obs))
                     v = v.min(dim=obs_dim - 1)[0].unsqueeze(obs_dim - 1)

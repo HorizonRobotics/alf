@@ -575,9 +575,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         (batch_size, pop_size, horizon, plan_dim) = samples.shape
         if self.control_aux:
             horizon -= 1
-        assert (plan_dim == self._action_dim
-                + self._aux_dim), "{} != {} + {}".format(
-                    plan_dim, self._action_dim, self._aux_dim)
+        # When using goal_value_net with position only input, this is not True.
+        # assert (plan_dim == self._action_dim
+        #         + self._aux_dim), "{} != {} + {}".format(
+        #             plan_dim, self._action_dim, self._aux_dim)
         action_dim = self._action_dim
         start = time_step.observation["achieved_goal"].reshape(
             batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
@@ -611,7 +612,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                                   horizon + 1)
             stack_obs["final_goal"][:, :, -1] = torch.ones(())
             stack_obs["final_goal"] = stack_obs["final_goal"].reshape(-1, 1)
-        if self._use_aux_achieved and not self._speed_goal:
+        if (self._use_aux_achieved and not self._speed_goal
+                and plan_dim > action_dim):
+            # When computing old plan cost under position only control,
+            # plan_dim == action_dim, skip aux_achieved in that case.
             aux_start = time_step.observation["aux_achieved"].reshape(
                 batch_size, 1, 1, self._aux_dim).expand(
                     batch_size, pop_size, 1, self._aux_dim)
@@ -702,8 +706,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                observation["desired_goal"].unsqueeze(1)),
                               dim=1)
         old_plan = state.full_plan
-        # if not self.control_aux:
-        #     assert False, "We give up on non-speed control mode."  Why?
         old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
         retain_old = (old_costs < costs).squeeze(1)
         # Plot relative cost increase of new plan.  Is old plan a lot better than new?
@@ -979,6 +981,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if self.control_aux:
                 ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
                 desire = torch.cat((desire, observation["aux_desired"]), dim=1)
+            elif self._use_aux_achieved:
+                z = torch.zeros((ach.shape[0], self._aux_dim))
+                ach = torch.cat((ach, z), dim=1)
+                desire = torch.cat((desire, z), dim=1)
             ach_str = str(ach)
             if self._unreal(ach):
                 logging.info("Reached Unreal: %s", ach_str)
@@ -1075,7 +1081,11 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             alf.summary.scalar("planner/steps_since_last_goal",
                                torch.mean(state.steps_since_last_goal.float()))
             goal_shape = state.goal.shape
-            goal = state.goal.reshape(goal_shape[0] * goal_shape[1], -1)
+            batch_size = goal_shape[0] * goal_shape[1]
+            goal = state.goal.reshape(batch_size, -1)
+            if not self.control_aux and self._use_aux_achieved:
+                goal = torch.cat(
+                    (goal, torch.zeros(batch_size, self._aux_dim)), dim=1)
             alf.summary.scalar(
                 "planner/rate_real_goal",
                 1. - torch.mean(self._unreal_batch(goal).float()))
