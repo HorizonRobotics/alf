@@ -296,8 +296,8 @@ def make_nested_module(nested, ignore_non_module_element=True):
     Args:
         nested (nested nn.Module): a nest of nn.Module
         ignore_non_module_element (bool): If True, will ignore the non-module element
-            and replace them with an empty nn.Module(). If False, will raise error
-            if there are any non-module elements.
+            and replace them with None. If False, will raise error if there are
+            any non-module elements.
     Returns:
         nn.Module
     """
