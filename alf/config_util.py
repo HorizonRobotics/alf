@@ -198,16 +198,20 @@ def config1(config_name, value, replacing_existing_config=False):
             raise ValueError("Cannot find config name %s" % config_name)
         tree = tree[name]
 
-    leaves = _get_all_leaves(tree)
-    if len(leaves) > 1:
-        # only show at most 3 ambiguous choices
-        leaves = leaves[:3]
-        names = [name + '.' + config_name for name, node in leaves]
-        raise ValueError("config name '%s' is ambiguous. There are %s" %
-                         (config_name, names))
+    if isinstance(tree, dict):
+        leaves = _get_all_leaves(tree)
+        if len(leaves) > 1:
+            # only show at most 3 ambiguous choices
+            leaves = leaves[:3]
+            names = [name + '.' + config_name for name, node in leaves]
+            raise ValueError("config name '%s' is ambiguous. There are %s" %
+                             (config_name, names))
 
-    assert len(leaves) == 1
-    config_node = leaves[0][1]
+        assert len(leaves) == 1
+        config_node = leaves[0][1]
+    else:
+        config_node = tree
+
     if config_node.is_used():
         raise ValueError(
             "Config '%s' has already been used. You should config "
@@ -269,12 +273,24 @@ def _add_to_conf_tree(module_path, func_name, arg_name, node):
     names = []
     for name in reversed(path[1:]):
         if not isinstance(tree, dict):
-            raise ValueError("'%s' conflicts with existing config name '%s' "
-                             "defined." % ('.'.join(path), '.'.join(names)))
+            raise ValueError("'%s' conflicts with existing config name '%s'" %
+                             ('.'.join(path), '.'.join(names)))
         if name not in tree:
             tree[name] = {}
         tree = tree[name]
-        names.append(name)
+        names.insert(0, name)
+
+    if not isinstance(tree, dict):
+        raise ValueError("'%s' conflicts with existing config name '%s'" %
+                         ('.'.join(path), '.'.join(names)))
+    if path[0] in tree:
+        if isinstance(tree[path[0]], dict):
+            leaves = _get_all_leaves(tree)
+            raise ValueError(
+                "'%s' conflicts with existing config name '%s'" %
+                ('.'.join(path), '.'.join([leaves[0][0]] + names)))
+        else:
+            raise ValueError("'%s' has already been defined." % '.'.join(path))
 
     tree[path[0]] = node
 
@@ -380,7 +396,14 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
     """
     signature = inspect.signature(fn_or_cls)
     configs = _make_config(signature, whitelist, blacklist)
-    module_path = fn_or_cls.__module__.split('.')
+
+    if name is None or '.' not in name:
+        module_path = fn_or_cls.__module__.split('.')
+    else:
+        parts = name.split('.')
+        module_path = parts[:-1]
+        name = parts[-1]
+
     if name is None:
         name = fn_or_cls.__qualname__
 
@@ -448,6 +471,15 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     In this case, the name of the configurable is 'MyClass', and both `param1`
     and `param2` are configurable.
 
+    The full name of a configurable value is MODULE_PATH.FUNC_NAME.ARG_NAME. It
+    can be referred using any suffixes as long as there is no ambiguity. For
+    example, assuming there are two configurable values "abc.def.func.a" and
+    "xyz.uvw.func.a", you can use "abc.def.func.a", "def.func.a", "xyz.uvw.func.a"
+    or "uvw.func.a" to refer these two configurable values. You cannot use
+    "func.a" because of the ambiguity. Because of this, you cannot have a config
+    name which is the strict suffix of another config name. For example,
+    "A.Test.arg" and "Test.arg" cannot both be defined.
+
     Note: currently, to maintain the compatibility with gin-config, all the
         functions decorated using alf.configurable are auomatically configurable
         using gin. The values specified using ``alf.config()`` will override
@@ -457,7 +489,10 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
         fn_or_name (Callable|str): A name for this configurable, or a function
             to decorate (in which case the name will be taken from that function).
             If not set, defaults to the name of the function/class that is being made
-            configurable.
+            configurable. If a name is provided, it may also include module components
+            to be used for disambiguation. If the module components is provided,
+            the original module name of the function will not be used to compose
+            the full name.
         whitelist (list[str]): A whitelisted set of kwargs that should be configurable.
             All other kwargs will not be configurable. Only one of ``whitelist`` or
             ``blacklist`` should be specified.

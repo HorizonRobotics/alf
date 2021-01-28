@@ -37,8 +37,12 @@ def test_func3(a, b=100, c=200):
     return a, b, c
 
 
-@alf.configurable("FancyTest")
+@alf.configurable("Test.FancyTest")
 def test_func4(arg=10):
+    return arg
+
+
+def test_func5(arg=10):
     return arg
 
 
@@ -113,8 +117,30 @@ class ConfigTest(alf.test.TestCase):
         alf.config1('test_func.c', 15)
         self.assertEqual(test_func(10, 20), (10, 20, 15))
 
+        # Test explicit name for function
         alf.config("FancyTest", arg=3)
         self.assertEqual(test_func4(), 3)
+
+        # Test name conflict: long vs. short
+        self.assertRaisesRegex(
+            ValueError, "'A.Test.FancyTest.arg' conflicts "
+            "with existing config name 'Test.FancyTest.arg'",
+            alf.configurable("A.Test.FancyTest"), test_func5)
+
+        # Test name conflict: short vs. long
+        alf.configurable("A.B.C.D.test")(test_func5)
+        self.assertRaisesRegex(
+            ValueError, "'B.C.D.test.arg' conflicts "
+            "with existing config name 'A.B.C.D.test.arg'",
+            alf.configurable("B.C.D.test"), test_func5)
+
+        # Test name conflict: same
+        # Note: this exception is raised by gin instead of alf. Need to change
+        # it if gin is removed in the future.
+        self.assertRaisesRegex(
+            ValueError, "A configurable matching "
+            "'A.B.C.D.test' already exists.", alf.configurable("A.B.C.D.test"),
+            test_func5)
 
         # Test duplicated config
         with self.assertLogs() as ctx:

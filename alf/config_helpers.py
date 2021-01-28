@@ -22,6 +22,7 @@ based TrainerConfig in this module.
 from alf.environments.utils import create_environment
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
+from alf.utils.common import set_random_seed
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
@@ -106,6 +107,8 @@ def get_env():
     global _env
     if _env is None:
         trainer_config = TrainerConfig(root_dir='')
+        trainer_config.random_seed = set_random_seed(
+            trainer_config.random_seed)
         _env = create_environment(seed=trainer_config.random_seed)
     return _env
 

@@ -186,7 +186,7 @@ class TrainerConfig(object):
             algorithm_ctor=algorithm_ctor,
             data_transformer_ctor=data_transformer_ctor,
             data_transformer=None,  # to be set by Trainer
-            random_seed=alf.utils.common.set_random_seed(random_seed),
+            random_seed=random_seed,
             num_iterations=num_iterations,
             num_env_steps=num_env_steps,
             unroll_length=unroll_length,
