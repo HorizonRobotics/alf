@@ -484,7 +484,8 @@ def parse_conf_file(conf_file):
             for conf_param in conf_params:
                 pos = conf_param.find('=')
                 if pos == -1:
-                    raise ValueError("conf_params")
+                    raise ValueError("conf_param should have a format of "
+                                     "'CONFIG_NAME=VALUE': %s" % conf_param)
                 config_name = conf_param[:pos]
                 config_value = conf_param[pos + 1:]
                 config_value = eval(config_value)

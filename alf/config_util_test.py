@@ -46,6 +46,14 @@ def test_func5(arg=10):
     return arg
 
 
+def test_func6(arg=10):
+    return arg
+
+
+def test_func7(arg=10):
+    return arg
+
+
 @alf.configurable
 class Test(object):
     def __init__(self, a, b, c=10):
@@ -128,11 +136,12 @@ class ConfigTest(alf.test.TestCase):
             alf.configurable("A.Test.FancyTest"), test_func5)
 
         # Test name conflict: short vs. long
-        alf.configurable("A.B.C.D.test")(test_func5)
+        alf.configurable("A.B.C.D.test")(test_func6)
         self.assertRaisesRegex(
             ValueError, "'B.C.D.test.arg' conflicts "
             "with existing config name 'A.B.C.D.test.arg'",
-            alf.configurable("B.C.D.test"), test_func5)
+            alf.configurable("B.C.D.test"), test_func7)
+        alf.config('D.test', arg=5)
 
         # Test name conflict: same
         # Note: this exception is raised by gin instead of alf. Need to change
@@ -167,10 +176,14 @@ class ConfigTest(alf.test.TestCase):
         obj3 = Test3(1, 2)
         self.assertEqual(obj3(), (0, 0, 7))
 
-        logging.info("get_operative_configs(): \n%s" % pprint.pformat(
-            alf.get_operative_configs()))
-        logging.info("get_inoperative_configs(): \n%s" % pprint.pformat(
-            alf.get_inoperative_configs()))
+        operative_configs = alf.get_operative_configs()
+        logging.info("get_operative_configs(): \n%s" %
+                     pprint.pformat(operative_configs))
+        self.assertTrue('Test.FancyTest.arg' in dict(operative_configs))
+        inoperative_configs = alf.get_inoperative_configs()
+        logging.info("get_inoperative_configs(): \n%s" %
+                     pprint.pformat(inoperative_configs))
+        self.assertTrue('A.B.C.D.test.arg' in dict(inoperative_configs))
 
 
 if __name__ == '__main__':

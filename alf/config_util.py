@@ -139,7 +139,7 @@ def _get_all_leaves(conf_dict):
 
 
 class _Config(object):
-    """Object prepresenting one configurable value."""
+    """Object representing one configurable value."""
 
     def __init__(self):
         self._configured = False
@@ -481,7 +481,7 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     "A.Test.arg" and "Test.arg" cannot both be defined.
 
     Note: currently, to maintain the compatibility with gin-config, all the
-        functions decorated using alf.configurable are auomatically configurable
+        functions decorated using alf.configurable are automatically configurable
         using gin. The values specified using ``alf.config()`` will override
         values specified through gin.
 
