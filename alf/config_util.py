@@ -100,7 +100,7 @@ def get_operative_configs():
     alf.config() needs to be used.
 
     Returns:
-        list[tuple[config_name, _Config]]
+        list[tuple[config_name, Any]]
     """
     configs = [(name, config.get_effective_value())
                for name, config in _get_all_leaves(_CONF_TREE)
@@ -115,7 +115,7 @@ def get_inoperative_configs():
     but its set value has never been used by any function calls.
 
     Returns:
-        list[tuple[config_name, _Config]]
+        list[tuple[config_name, Any]]
     """
     configs = [(name, config.get_value())
                for name, config in _get_all_leaves(_CONF_TREE)
@@ -187,7 +187,7 @@ def config1(config_name, value, replacing_existing_config=False):
         config_name (str): name of the config
         value (any): value of the config
         replacing_existing_config (bool): whether to replace with the provided
-            new value if the value has be configured before. A warning will be
+            new value if the value has been configured before. A warning will be
             generated if this is False and the value has been set previously.
 
     """
@@ -353,7 +353,7 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
 
     Args:
         fn_or_cls (Callable): a function or a class
-        name (str): name for the function. If None, fn_or_cls.__qualname__
+        name (str): name for the function. If None, ``fn_or_cls.__qualname__``
             will be used.
         whitelist (list[str]): A whitelisted set of kwargs that should be configurable.
             All other kwargs will not be configurable. Only one of ``whitelist`` or

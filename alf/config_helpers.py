@@ -15,8 +15,8 @@
 
 The main motivation is to give the access of observation_spec and action_spec,
 which are necessary for config some models. observation_spec and action_spec are
-only available after the environment is craeted. So we create an environment
-based TrainerConfig in the module.
+only available after the environment is created. So we create an environment
+based TrainerConfig in this module.
 """
 
 from alf.environments.utils import create_environment
