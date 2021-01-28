@@ -437,7 +437,7 @@ ALF_CONFIG_FILE = 'alf_config.py'
 def get_conf_file():
     """Get the configuration file.
 
-    If ``FLAGS.conf`` is not set, find alf_config.py for configured.gin under
+    If ``FLAGS.conf`` is not set, find alf_config.py or configured.gin under
     ``FLAGS.root_dir`` and returns it. If there is no 'conf' flag defined,
     return None.
 

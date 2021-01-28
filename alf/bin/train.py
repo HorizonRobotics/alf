@@ -47,7 +47,6 @@ from absl import flags
 from absl import logging
 import gin
 import os
-import runpy
 import torch
 
 from alf.utils import common

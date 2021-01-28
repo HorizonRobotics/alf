@@ -70,8 +70,7 @@ def get_observation_spec(field=None):
         env = get_env()
         data_transformer = create_data_transformer(
             config.data_transformer_ctor, env.observation_spec())
-        observation_spec = data_transformer.transformed_observation_spec
-        _transformed_observation_spec = observation_spec
+        _transformed_observation_spec = data_transformer.transformed_observation_spec
 
     specs = _transformed_observation_spec
     if field:
@@ -96,7 +95,7 @@ def get_action_spec():
 
 
 def get_env():
-    """Get the training environment.
+    """Get the global training environment.
 
     Note: you need to finish all the config for environments and
     TrainerConfig.random_seed before using this function.

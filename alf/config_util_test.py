@@ -121,13 +121,16 @@ class ConfigTest(alf.test.TestCase):
             alf.config1('test_func2.c', 15)
             alf.config1('test_func2.c', 16)
             warning_message = ctx.records[0]
-            self.assertTrue(
-                "'test_func2.c' has been configured" in str(warning_message))
+            self.assertTrue("ignored" in str(warning_message))
         self.assertEqual(test_func2(1), (1, 100, 15))
 
         # Test replacing_existing_config
         alf.config1('test_func3.c', 15)
-        alf.config1('test_func3.c', 16, replacing_existing_config=True)
+        with self.assertLogs() as ctx:
+            alf.config1('test_func3.c', 16, replacing_existing_config=True)
+            warning_message = ctx.records[0]
+            self.assertTrue("replaced" in str(warning_message))
+
         self.assertEqual(test_func3(1), (1, 100, 16))
 
         # Test the right constructor is used for subclass

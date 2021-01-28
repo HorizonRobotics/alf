@@ -30,7 +30,7 @@ def config(prefix_or_dict, replacing_existing_config=False, **kwargs):
 
     Example:
 
-    Asumme we have the following decorated functions and classes:
+    Assume we have the following decorated functions and classes:
 
     .. code-block:: python
 
@@ -54,9 +54,9 @@ def config(prefix_or_dict, replacing_existing_config=False, **kwargs):
 
     .. code-block::
 
-        alf.config('cool_func', cool_arg2='new_value', cool_arg2='another_value)
-        alf.config('Test.func', b=3)
-        alf.config('func', b=3)     # 'Test.func' can be uniquely identified by 'func'
+        alf.config('cool_func', cool_arg2='new_value', cool_arg2='another_value')
+        alf.config('Worker.func', b=3)
+        alf.config('func', b=3)     # 'Worker.func' can be uniquely identified by 'func'
         alf.config({
             'dumb_func.b': 3,
             'Worker.job1': 2
@@ -200,7 +200,7 @@ def config1(config_name, value, replacing_existing_config=False):
 
     leaves = _get_all_leaves(tree)
     if len(leaves) > 1:
-        # only show atmost 3 ambiguous choices
+        # only show at most 3 ambiguous choices
         leaves = leaves[:3]
         names = [name + '.' + config_name for name, node in leaves]
         raise ValueError("config name '%s' is ambiguous. There are %s" %
@@ -212,18 +212,29 @@ def config1(config_name, value, replacing_existing_config=False):
         raise ValueError(
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
-    if not replacing_existing_config and config_node.is_configured():
-        logging.warning(
-            "The value of config '%s' has been configured. The new "
-            "config will be ignored" % config_name)
+    if config_node.is_configured():
+        if replacing_existing_config:
+            logging.warning(
+                "The value of config '%s' has been configured to %s. It is "
+                "replaced by the new value %s" %
+                (config_name, config_node.get_value(), value))
+            config_node.set_value(value)
+        else:
+            logging.warning(
+                "The value of config '%s' has been configured to %s. The new "
+                "value %s will be ignored" % (config_name,
+                                              config_node.get_value(), value))
     else:
         config_node.set_value(value)
 
 
 def _make_config(signature, whitelist, blacklist):
-    """
+    """Create a dictionary of _Config for given signature.
+
     Args:
-        signature (inspec.Signature):
+        signature (inspec.Signature): function signature
+        whitelist (list[str]): allowed configurable argument names
+        blacklist (list[str]): disallowed configurable argument names
     Returns:
         dict: name => _Config
     """
@@ -243,15 +254,18 @@ def _make_config(signature, whitelist, blacklist):
     return configs
 
 
-def _add_to_conf_tree(module_path, func_name, para_name, node):
-    """
+def _add_to_conf_tree(module_path, func_name, arg_name, node):
+    """Add a config object to _CONF_TREE.
+
     Args:
-        module_path (list[str]):
-        node (_Config):
+        module_path (list[str]): module path of this function
+        func_name (str): name of the function
+        node (_Config): config object for this value
+        arg_name: (str): name of the argument
     """
 
     tree = _CONF_TREE
-    path = module_path + func_name.split('.') + [para_name]
+    path = module_path + func_name.split('.') + [arg_name]
     names = []
     for name in reversed(path[1:]):
         if not isinstance(tree, dict):
@@ -370,8 +384,8 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
     if name is None:
         name = fn_or_cls.__qualname__
 
-    for para_name, node in configs.items():
-        _add_to_conf_tree(module_path, name, para_name, node)
+    for arg_name, node in configs.items():
+        _add_to_conf_tree(module_path, name, arg_name, node)
 
     if inspect.isclass(fn_or_cls):
         # cannot use _make_wrapper() directly on fn_or_cls. This is because
@@ -416,7 +430,7 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     The decorator can be supplied with parameters to specify the configurable name
     or supply a whitelist/blacklist:
 
-        @alf.configurable('my_func', whitelist='param2')
+        @alf.configurable('my_func', whitelist=['param2'])
         def my_function(param1, param2='a default value'):
             ...
 
@@ -434,7 +448,7 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     In this case, the name of the configurable is 'MyClass', and both `param1`
     and `param2` are configurable.
 
-    Note: currently, to maitain the compatibility with gin-config, all the
+    Note: currently, to maintain the compatibility with gin-config, all the
         functions decorated using alf.configurable are auomatically configurable
         using gin. The values specified using ``alf.config()`` will override
         values specified through gin.
