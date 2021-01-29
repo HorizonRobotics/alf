@@ -26,7 +26,10 @@ from alf.tensor_specs import BoundedTensorSpec
 
 @gin.configurable
 class HandcraftedAlgorithm(OffPolicyAlgorithm):
-    """An Algorithm with handcrafted computational logic.
+    """A base class for algorithms with handcrafted computational logic.
+    Note that a concrete algorithm should subclass from this and implement the
+    computational logic in ``_policy_func``. See ``SimpleCarlaAlgorithm`` for
+    an exmaple.
     """
 
     def __init__(self,
@@ -101,10 +104,30 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec: BoundedTensorSpec,
+                 distance_to_decelerate=50.0,
+                 distance_to_stop=1.0,
                  env=None,
                  config: TrainerConfig = None,
                  debug_summaries=False,
                  name="SimpleCarlaAlgorithm"):
+        """
+        Args:
+            observation_spec (nested TensorSpec): representing the observations.
+            action_spec (nested BoundedTensorSpec): representing the actions.
+            distance_to_decelerate (float|int): the distance in meter to goal
+                from which to start decreasing the speed
+            distance_to_stop (float|int): the distance in meter to goal
+                from which to start to make a stop
+            env (Environment): The environment to interact with. ``env`` is a
+                batched environment, which means that it runs multiple simulations
+                simultateously. ``env` only needs to be provided to the root
+                algorithm.
+            config (TrainerConfig): config for training. It only needs to be
+                provided to the algorithm which performs ``train_iter()`` by
+                itself.
+            debug_summaries (bool): True if debug summaries should be created.
+            name (str): The name of this algorithm.
+        """
 
         super().__init__(
             observation_spec,
@@ -113,6 +136,9 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
             config=config,
             debug_summaries=debug_summaries,
             name=name)
+
+        self._distance_to_decelerate = distance_to_decelerate
+        self._distance_to_stop = distance_to_stop
 
     def _policy_func(self, observation):
         """A naive hand-crafted policy for Carla environment.
@@ -123,11 +149,20 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
         Returns
             Tensor: action computed based on the observation
         """
-        nav = alf.nest.get_field(observation, 'observation.navigation')
+        # waypoints is a [B, k, 3] shaped tensor, which contains the batched
+        # positions of a number of future waypoints in the route, relative to
+        # the coordinate system of the respective vehicle. waypoints[:, 0]
+        # is the closest waypoint and waypoints[:, -1] is the farthest one.
+        # Each waypoint has 3 elements corresponding to the x, y, z values
+        # relative to the vehicle's coordinate system.
+        waypoints = alf.nest.get_field(observation, 'observation.navigation')
+
+        # goal is a [B, 3] shaped tensor, with each 3D vector contains the
+        # x, y, z positions of the goal, relative to  to the vehicle's
+        # coordinate system.
         goal = alf.nest.get_field(observation, 'observation.goal')
 
-        waypoints = nav
-        if waypoints.shape[-1] > 1:
+        if waypoints.shape[1] > 1:
             wp_vector = waypoints[:, 1]
         else:
             wp_vector = waypoints[:, 0]
@@ -135,16 +170,26 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
         direction = torch.atan2(wp_vector[..., 1], wp_vector[..., 0])
         direction = direction / np.pi
 
+        # action is a [B, 3] tensor with each 3D vector corresponding to
+        # [speed, direction, reverse].
+        # speed: 1.0 corresponding to maximally allowed speed
+        # direction: relative to the vehicle's heading, with 0 being front,
+        # -0.5 being left and 0.5 being right
+        # reverse: values greater than 0.5 corrsponding to going backward.
+
         action = torch.zeros(waypoints.shape[0], self._action_spec.shape[0])
+
+        distance_to_goal = torch.norm(goal, dim=1)
+
+        # here we adjust the speed based on the distance to goal
+        action[distance_to_goal > self._distance_to_decelerate, 0] = 1
+        # logical_and is introduced in torch 1.5.0, use * instead
+        ind = (distance_to_goal > self._distance_to_stop) * (
+            distance_to_goal <= self._distance_to_decelerate)
+        action[ind, 0] = distance_to_goal[ind] / self._distance_to_decelerate
+        action[distance_to_goal <= self._distance_to_stop, 0] = 0
+
+        # direction is computated based on the waypoint
         action[:, 1] = direction
-
-        distance_to_goal = torch.norm(goal)
-
-        if distance_to_goal > 50:
-            action[:, 0] = 1
-        elif distance_to_goal > 1 and distance_to_goal < 50:
-            action[:, 0] = distance_to_goal / 50.0
-        else:
-            action[:, 0] = 0
 
         return action
