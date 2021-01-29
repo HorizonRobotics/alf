@@ -73,6 +73,8 @@ def train_eval(ml_type, root_dir):
         root_dir (str): directory for saving summary and checkpoints
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
+    trainer_conf.random_seed = common.set_random_seed(trainer_conf.random_seed)
+
     if ml_type == 'rl':
         trainer = policy_trainer.RLTrainer(trainer_conf)
     elif ml_type == 'sl':

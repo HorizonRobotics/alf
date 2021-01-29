@@ -478,7 +478,21 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     or "uvw.func.a" to refer these two configurable values. You cannot use
     "func.a" because of the ambiguity. Because of this, you cannot have a config
     name which is the strict suffix of another config name. For example,
-    "A.Test.arg" and "Test.arg" cannot both be defined.
+    "A.Test.arg" and "Test.arg" cannot both be defined. You can supply a different
+    name for the function to avoid conflict:
+
+    .. code-block:: pytyon
+        ``@alf.configurable("NewTest")
+        def Test(arg):
+            ...
+
+    or
+
+    .. code-block:: pytyon
+        ``@alf.configurable("B.Test")
+        def Test(arg):
+            ...
+
 
     Note: currently, to maintain the compatibility with gin-config, all the
         functions decorated using alf.configurable are automatically configurable

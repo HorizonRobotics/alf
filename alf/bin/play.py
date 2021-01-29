@@ -85,7 +85,8 @@ FLAGS = flags.FLAGS
 
 def main(_):
     seed = common.set_random_seed(FLAGS.random_seed)
-    alf.config('create_environment', nonparallel=True, seed=seed)
+    alf.config('create_environment', nonparallel=True)
+    alf.config('TrainerConfig', random_seed=seed)
     conf_file = common.get_conf_file()
     common.parse_conf_file(conf_file)
     config = policy_trainer.TrainerConfig(root_dir="")
