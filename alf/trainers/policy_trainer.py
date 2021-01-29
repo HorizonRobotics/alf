@@ -753,7 +753,7 @@ def play(root_dir,
             # change the step_type to LAST before being observed by metrics
             # to ensure the episodic information will be updated correctly
             time_step = time_step._replace(
-                step_type=torch.ones_like(time_step.step_type) * StepType.LAST)
+                step_type=torch.full_like(time_step.step_type, StepType.LAST))
             # observe the last step
             for m in metrics:
                 m(time_step.cpu())
