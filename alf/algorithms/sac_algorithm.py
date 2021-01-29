@@ -758,7 +758,7 @@ class SacAlgorithm(OffPolicyAlgorithm):
         critic_loss = math_ops.add_n(critic_losses)
 
         if (experience.batch_info != ()
-                and experience.batch_info.importance_weights != ()):
+                and experience.batch_info.importance_weights is not ()):
             valid_masks = (experience.step_type != StepType.LAST).to(
                 torch.float32)
             valid_n = torch.clamp(valid_masks.sum(dim=0), min=1.0)

@@ -50,10 +50,6 @@ def scale_gradient(tensor, scale):
     return tensor
 
 
-def _is_empty(x):
-    return isinstance(x, tuple) and x == ()
-
-
 @gin.configurable
 class MuzeroAlgorithm(OffPolicyAlgorithm):
     """MuZero algorithm.
@@ -277,7 +273,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 candidate_action_policy_field, env_ids, positions)
 
             if self._reanalyze_ratio > 0:
-                if not _is_empty(candidate_actions):
+                if candidate_actions is not ():
                     candidate_actions[r] = r_candidate_actions
                 candidate_action_policy[r] = r_candidate_action_policy
                 values[r] = r_values
@@ -525,7 +521,7 @@ class MuzeroAlgorithm(OffPolicyAlgorithm):
                 exp1, alf.nest.get_field(exp1, mcts_state_field))
             self._mcts.set_model(self._model)
             candidate_actions = ()
-            if not _is_empty(mcts_step.info.candidate_actions):
+            if mcts_step.info.candidate_actions is not ():
                 candidate_actions = mcts_step.info.candidate_actions
                 candidate_actions = candidate_actions.reshape(
                     batch_size, n1, *candidate_actions.shape[1:])

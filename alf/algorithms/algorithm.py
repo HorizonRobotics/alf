@@ -1048,7 +1048,7 @@ class Algorithm(nn.Module):
             - params (list[(name, Parameter)]): list of parameters being updated.
         """
         masks = None
-        if (batch_info is not None and batch_info.importance_weights != ()
+        if (batch_info is not None and batch_info.importance_weights is not ()
                 and self._config.priority_replay_beta != 0):
             masks = batch_info.importance_weights.pow(
                 -self._config.priority_replay_beta).unsqueeze(0)
@@ -1397,7 +1397,7 @@ class Algorithm(nn.Module):
                 policy_state = common.reset_state_if_necessary(
                     policy_state, initial_train_state,
                     exp.step_type == StepType.FIRST)
-            elif policy_state != ():
+            elif policy_state is not ():
                 common.warning_once(
                     "Policy state is non-empty but the experience doesn't "
                     "contain the 'step_type' field. No way to reinitialize "
@@ -1462,7 +1462,7 @@ class Algorithm(nn.Module):
 
         experience = self._add_batch_info(experience, batch_info)
         loss_info = self.calc_loss(experience, train_info)
-        if loss_info.priority != ():
+        if loss_info.priority is not ():
             priority = (loss_info.priority**self._config.priority_replay_alpha
                         + self._config.priority_replay_eps)
             self._exp_replayer.update_priority(batch_info.env_ids,

@@ -274,7 +274,7 @@ class NaiveParallelNetwork(Network):
         assert 1 <= outer_rank <= 2, ("inputs should have shape [B, %d, ...] "
                                       " or [B, ...]" % self._n)
 
-        if state != ():
+        if state is not ():
             state_outer_rank = alf.nest.utils.get_outer_rank(
                 state, self.state_spec)
             assert state_outer_rank == 1, (

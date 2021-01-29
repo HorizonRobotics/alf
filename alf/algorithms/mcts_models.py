@@ -134,7 +134,7 @@ class MCTSModel(nn.Module, metaclass=abc.ABCMeta):
 
         # target_action.shape is [B, unroll_steps+1, num_candidate]
         # log_prob needs sample shape in the beginning
-        if isinstance(target.action, tuple) and target.action == ():
+        if target.action is ():
             # This condition is only possible for Categorical distribution
             assert isinstance(model_output.action_distribution, td.Categorical)
             policy_loss = -(target.action_policy *
