@@ -183,8 +183,7 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
 
         # here we adjust the speed based on the distance to goal
         action[distance_to_goal > self._distance_to_decelerate, 0] = 1
-        # logical_and is introduced in torch 1.5.0, use * instead
-        ind = (distance_to_goal > self._distance_to_stop) * (
+        ind = (distance_to_goal > self._distance_to_stop) & (
             distance_to_goal <= self._distance_to_decelerate)
         action[ind, 0] = distance_to_goal[ind] / self._distance_to_decelerate
         action[distance_to_goal <= self._distance_to_stop, 0] = 0
