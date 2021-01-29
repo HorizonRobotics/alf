@@ -148,7 +148,8 @@ class BabyAIWrapper(gym.Wrapper):
                 the word IDs are given in the observation sequentially. Each step
                 only one word ID is given. A zero is given for every steps after all
                 the word IDs are given. If 'char', similar to 'word', but only one
-                character is given at each step.
+                character is given at each step. For 'char' mode, we assume that
+                the unicode of each character is within [0, 127].
         """
         super().__init__(env)
 
@@ -189,17 +190,21 @@ class BabyAIWrapper(gym.Wrapper):
         """Convert instruction string to a numpy array."""
         if self._mode == 'char':
             tokens = np.array([ord(c) for c in instruction])
+            if np.amax(tokens) > 127:
+                raise ValueError(
+                    "Character out of range. The unicode of "
+                    "character should be in [0, 127]: %s" % instruction)
             return tokens
 
         tokens = self._word_pattern.findall(instruction.lower())
-        tokens = np.array([self._vocab.get(token, 0) for token in tokens])
-        if np.amin(tokens) == 0:
+        instr = np.array([self._vocab.get(token, 0) for token in tokens])
+        if np.amin(instr) == 0:
             for token in tokens:
                 if token not in self._vocab:
                     raise ValueError(
                         "The instruction '%s' contains word "
                         " out of vocabulary: %s" % (instruction, token))
-        return tokens
+        return instr
 
     def _vectorize(self, instruction):
         instr = self._tokenize(instruction)
