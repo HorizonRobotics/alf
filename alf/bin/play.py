@@ -71,8 +71,10 @@ flags.DEFINE_bool('render', True,
 # use '--render_prediction' to enable pred info rendering
 flags.DEFINE_bool('render_prediction', False,
                   "Whether render prediction info at every frame or not")
-flags.DEFINE_multi_string('gin_file', None, 'Paths to the gin-config files.')
+flags.DEFINE_string('gin_file', None, 'Path to the gin-config file.')
 flags.DEFINE_multi_string('gin_param', None, 'Gin binding parameters.')
+flags.DEFINE_string('conf', None, 'Path to the alf config file.')
+flags.DEFINE_multi_string('conf_param', None, 'Config binding parameters.')
 flags.DEFINE_string(
     'ignored_parameter_prefixes', "",
     "Comma separated strings to ingore the parameters whose name has one of "
@@ -83,19 +85,24 @@ FLAGS = flags.FLAGS
 
 def main(_):
     seed = common.set_random_seed(FLAGS.random_seed)
-    gin_file = common.get_gin_file()
-    gin.parse_config_files_and_bindings(gin_file, FLAGS.gin_param)
-    algorithm_ctor = gin.query_parameter(
-        'TrainerConfig.algorithm_ctor').scoped_configurable_fn
-    env = create_environment(nonparallel=True, seed=seed)
-    env.reset()
-    common.set_global_env(env)
+    alf.config('create_environment', nonparallel=True)
+    alf.config('TrainerConfig', random_seed=seed)
+    conf_file = common.get_conf_file()
+    common.parse_conf_file(conf_file)
     config = policy_trainer.TrainerConfig(root_dir="")
+
+    env = alf.get_env()
+    env.reset()
     data_transformer = create_data_transformer(config.data_transformer_ctor,
                                                env.observation_spec())
     config.data_transformer = data_transformer
+
+    # keep compatibility with previous gin based config
+    common.set_global_env(env)
     observation_spec = data_transformer.transformed_observation_spec
     common.set_transformed_observation_spec(observation_spec)
+
+    algorithm_ctor = config.algorithm_ctor
     algorithm = algorithm_ctor(
         observation_spec=observation_spec,
         action_spec=env.action_spec(),
@@ -118,7 +125,7 @@ def main(_):
             ignored_parameter_prefixes=FLAGS.ignored_parameter_prefixes.split(
                 ",") if FLAGS.ignored_parameter_prefixes else [])
     finally:
-        env.close()
+        alf.close_env()
 
 
 if __name__ == '__main__':

@@ -35,7 +35,7 @@ TracInfo = namedtuple(
     ["action_distribution", "observation", "state", "ac", "prev_action"])
 
 
-@gin.configurable
+@alf.configurable
 class TracAlgorithm(OnPolicyAlgorithm):
     """Trust-region actor-critic.
 

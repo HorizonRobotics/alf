@@ -24,15 +24,11 @@ from alf.trainers.policy_trainer import create_dataset, SLTrainer
 from alf.utils import common
 
 
-class MyRLTrainer(RLTrainer):
-    def _create_environment(self,
-                            nonparallel=False,
-                            random_seed=None,
-                            register=True):
-        env = MyEnv(3)
-        if register:
-            self._register_env(env)
-        return env
+def env_load(env_name, batch_size):
+    return MyEnv(3)
+
+
+env_load.batched = True
 
 
 class MySLTrainer(SLTrainer):
@@ -44,6 +40,7 @@ class MySLTrainer(SLTrainer):
 class TrainerTest(alf.test.TestCase):
     def test_rl_trainer(self):
         with tempfile.TemporaryDirectory() as root_dir:
+            alf.config("create_environment", env_load_fn=env_load)
             conf = TrainerConfig(
                 algorithm_ctor=MyAlg,
                 root_dir=root_dir,
@@ -51,7 +48,7 @@ class TrainerTest(alf.test.TestCase):
                 num_iterations=100)
 
             # test train
-            trainer = MyRLTrainer(conf)
+            trainer = RLTrainer(conf)
             self.assertEqual(RLTrainer.progress(), 0)
             trainer.train()
             self.assertEqual(RLTrainer.progress(), 1)
@@ -68,7 +65,7 @@ class TrainerTest(alf.test.TestCase):
 
             # test checkpoint
             conf.num_iterations = 200
-            new_trainer = MyRLTrainer(conf)
+            new_trainer = RLTrainer(conf)
             new_trainer._restore_checkpoint()
             self.assertEqual(RLTrainer.progress(), 0.5)
             time_step = common.get_initial_time_step(env)

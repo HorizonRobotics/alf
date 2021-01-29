@@ -16,7 +16,7 @@ import gin
 import alf
 
 
-@gin.configurable
+@alf.configurable
 class TrainerConfig(object):
     """Configuration for training."""
 

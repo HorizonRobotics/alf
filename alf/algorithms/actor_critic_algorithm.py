@@ -15,6 +15,7 @@
 
 import gin
 
+import alf
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
@@ -29,7 +30,7 @@ ActorCriticInfo = namedtuple("ActorCriticInfo",
                              ["action_distribution", "value"])
 
 
-@gin.configurable
+@alf.configurable
 class ActorCriticAlgorithm(OnPolicyAlgorithm):
     """Actor critic algorithm."""
 

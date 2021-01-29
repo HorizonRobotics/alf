@@ -26,7 +26,7 @@ from alf.utils import common
 from alf.utils import value_ops
 
 
-@gin.configurable
+@alf.configurable
 class PPOLoss(ActorCriticLoss):
     """PPO loss."""
 
