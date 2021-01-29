@@ -25,7 +25,7 @@ __all__ = [
 ]
 
 
-def config(prefix_or_dict, replacing_existing_config=False, **kwargs):
+def config(prefix_or_dict, mutable=True, **kwargs):
     """Set the values for the configs with given name as suffix.
 
     Example:
@@ -68,9 +68,11 @@ def config(prefix_or_dict, replacing_existing_config=False, **kwargs):
             specifies the value for a config with name key. If a str, it is used
             as prefix so that each (key, value) pair in kwargs specifies the
             value for config with name ``prefix + '.' + key``
-        replacing_existing_config (bool): whether to replace with the provided
-            new value if the value has be configured before. A warning will be
-            generated when trying to set a value which has been set previously.
+        mutable (bool): whether the config can be changed later. If the user
+            tries to change an existing immutable config, the change will be
+            ignored and a warning will be generated. You can always change a
+            mutable config. ``ValueError`` will be raised if trying to set a new
+                immutable value to an existing immutable value.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -84,7 +86,7 @@ def config(prefix_or_dict, replacing_existing_config=False, **kwargs):
         raise ValueError(
             "Unsupported type for 'prefix_or_dict': %s" % type(prefix_or_dict))
     for key, value in configs.items():
-        config1(key, value, replacing_existing_config)
+        config1(key, value, mutable)
 
 
 def get_all_config_names():
@@ -145,6 +147,7 @@ class _Config(object):
         self._configured = False
         self._used = False
         self._has_default_value = False
+        self._mutable = True
 
     def set_default_value(self, value):
         self._default_value = value
@@ -155,6 +158,12 @@ class _Config(object):
 
     def is_configured(self):
         return self._configured
+
+    def set_mutable(self, mutable):
+        self._mutable = mutable
+
+    def is_mutable(self):
+        return self._mutable
 
     def set_value(self, value):
         self._configured = True
@@ -180,15 +189,18 @@ class _Config(object):
 _CONF_TREE = {}
 
 
-def config1(config_name, value, replacing_existing_config=False):
+def config1(config_name, value, mutable=True):
     """Set one configurable value.
 
     Args:
         config_name (str): name of the config
         value (any): value of the config
-        replacing_existing_config (bool): whether to replace with the provided
-            new value if the value has been configured before. A warning will be
-            generated when trying to set a value which has been set previously.
+        mutable (bool): whether the config can be changed later. If the user
+            tries to change an existing immutable config, the change will be
+            ignored and a warning will be generated. You can always change a
+            mutable config. ``ValueError`` will be raised if trying to set a new
+            immutable value to an existing immutable value.
+
 
     """
     tree = _CONF_TREE
@@ -217,19 +229,25 @@ def config1(config_name, value, replacing_existing_config=False):
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
     if config_node.is_configured():
-        if replacing_existing_config:
+        if config_node.is_mutable():
             logging.warning(
                 "The value of config '%s' has been configured to %s. It is "
                 "replaced by the new value %s" %
                 (config_name, config_node.get_value(), value))
             config_node.set_value(value)
+            config_node.set_mutable(mutable)
         else:
+            if not mutable:
+                raise ValueError(
+                    "The config '%s' has been configured to an immutable value "
+                    "of %s. You cannot change it to a new immutable value")
             logging.warning(
-                "The value of config '%s' has been configured to %s. The new "
-                "value %s will be ignored" % (config_name,
-                                              config_node.get_value(), value))
+                "The config '%s' has been configured to an immutable value "
+                "of %s. The new value %s will be ignored" %
+                (config_name, config_node.get_value(), value))
     else:
         config_node.set_value(value)
+        config_node.set_mutable(mutable)
 
 
 def _make_config(signature, whitelist, blacklist):

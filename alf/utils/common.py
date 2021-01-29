@@ -476,10 +476,10 @@ def parse_conf_file(conf_file):
         conf_file (str): the full path to the config file
     """
     if conf_file.endswith(".gin"):
-        gin_params = flags.FLAGS.gin_param
+        gin_params = getattr(flags.FLAGS, 'gin_param', None)
         gin.parse_config_files_and_bindings([conf_file], gin_params)
     else:
-        conf_params = flags.FLAGS.conf_param
+        conf_params = getattr(flags.FLAGS, 'conf_param', None)
         if conf_params:
             for conf_param in conf_params:
                 pos = conf_param.find('=')
@@ -489,7 +489,7 @@ def parse_conf_file(conf_file):
                 config_name = conf_param[:pos]
                 config_value = conf_param[pos + 1:]
                 config_value = eval(config_value)
-                alf.config1(config_name, config_value)
+                alf.config1(config_name, config_value, mutable=False)
 
         runpy.run_path(conf_file)
 
@@ -515,6 +515,9 @@ def summarize_config():
 
 def write_config(root_dir):
     """Write config to a file under directory ``root_dir``
+
+    Configs from FLAGS.conf_param are also recorded.
+
     Args:
         root_dir (str): directory path
     """
@@ -524,11 +527,30 @@ def write_config(root_dir):
 
     root_dir = os.path.expanduser(root_dir)
     alf_config_file = os.path.join(root_dir, ALF_CONFIG_FILE)
-    if conf_file == alf_config_file:
-        # config is from root_dir, so no need to write
-        return
     os.makedirs(root_dir, exist_ok=True)
-    shutil.copyfile(conf_file, alf_config_file)
+    conf_params = getattr(flags.FLAGS, 'conf_param', None)
+    config = ''
+    if conf_params:
+        config += "########### config from commandline ###########\n\n"
+        config += "import alf\n"
+        config += "alf.config({\n"
+        for conf_param in conf_params:
+            pos = conf_param.find('=')
+            if pos == -1:
+                raise ValueError("conf_param should have a format of "
+                                 "'CONFIG_NAME=VALUE': %s" % conf_param)
+            config_name = conf_param[:pos]
+            config_value = conf_param[pos + 1:]
+            config += "    '%s': %s,\n" % (config_name, config_value)
+        config += "},\n"
+        config += "mutable=False)\n\n"
+        config += "########### end config from commandline ###########\n\n"
+    f = open(conf_file, 'r')
+    config += f.read()
+    f.close()
+    f = open(alf_config_file, 'w')
+    f.write(config)
+    f.close()
 
 
 def get_initial_policy_state(batch_size, policy_state_spec):

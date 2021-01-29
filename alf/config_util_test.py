@@ -156,17 +156,23 @@ class ConfigTest(alf.test.TestCase):
             alf.config1('test_func2.c', 15)
             alf.config1('test_func2.c', 16)
             warning_message = ctx.records[0]
-            self.assertTrue("ignored" in str(warning_message))
-        self.assertEqual(test_func2(1), (1, 100, 15))
-
-        # Test replacing_existing_config
-        alf.config1('test_func3.c', 15)
-        with self.assertLogs() as ctx:
-            alf.config1('test_func3.c', 16, replacing_existing_config=True)
-            warning_message = ctx.records[0]
             self.assertTrue("replaced" in str(warning_message))
+        self.assertEqual(test_func2(1), (1, 100, 16))
 
-        self.assertEqual(test_func3(1), (1, 100, 16))
+        # Test mutable
+        alf.config1('test_func3.c', 15, mutable=False)
+        with self.assertLogs() as ctx:
+            alf.config1('test_func3.c', 16)
+            warning_message = ctx.records[0]
+            self.assertTrue("ignored" in str(warning_message))
+        self.assertRaisesRegex(
+            ValueError,
+            "cannot change it",
+            alf.config,
+            'test_func3',
+            mutable=False,
+            c=17)
+        self.assertEqual(test_func3(1), (1, 100, 15))
 
         # Test the right constructor is used for subclass
         obj2 = Test2(7, 9)
