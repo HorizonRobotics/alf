@@ -70,7 +70,7 @@ def config(prefix_or_dict, replacing_existing_config=False, **kwargs):
             value for config with name ``prefix + '.' + key``
         replacing_existing_config (bool): whether to replace with the provided
             new value if the value has be configured before. A warning will be
-            generated if this is False and the value has been set previously.
+            generated when trying to set a value which has been set previously.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -188,7 +188,7 @@ def config1(config_name, value, replacing_existing_config=False):
         value (any): value of the config
         replacing_existing_config (bool): whether to replace with the provided
             new value if the value has been configured before. A warning will be
-            generated if this is False and the value has been set previously.
+            generated when trying to set a value which has been set previously.
 
     """
     tree = _CONF_TREE
