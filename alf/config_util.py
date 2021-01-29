@@ -442,6 +442,8 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
 
     The decorator can be used without any parameters as follows:
 
+    .. code-block: python
+
         @alf.configurable
         def my_function(param1, param2='a default value'):
             ...
@@ -453,6 +455,8 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     The decorator can be supplied with parameters to specify the configurable name
     or supply a whitelist/blacklist:
 
+    .. code-block: python
+
         @alf.configurable('my_func', whitelist=['param2'])
         def my_function(param1, param2='a default value'):
             ...
@@ -463,10 +467,12 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     Classes can be decorated as well, in which case parameters of their
     constructors are made configurable:
 
+    .. code-block:: python
+
         @alf.configurable
         class MyClass(object):
             def __init__(self, param1, param2='a default value'):
-            ...
+                ...
 
     In this case, the name of the configurable is 'MyClass', and both `param1`
     and `param2` are configurable.
@@ -481,23 +487,25 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     "A.Test.arg" and "Test.arg" cannot both be defined. You can supply a different
     name for the function to avoid conflict:
 
-    .. code-block:: pytyon
-        ``@alf.configurable("NewTest")
+    .. code-block:: python
+
+        @alf.configurable("NewTest")
         def Test(arg):
             ...
 
     or
 
-    .. code-block:: pytyon
-        ``@alf.configurable("B.Test")
+    .. code-block:: python
+
+        @alf.configurable("B.Test")
         def Test(arg):
             ...
 
 
     Note: currently, to maintain the compatibility with gin-config, all the
-        functions decorated using alf.configurable are automatically configurable
-        using gin. The values specified using ``alf.config()`` will override
-        values specified through gin.
+    functions decorated using alf.configurable are automatically configurable
+    using gin. The values specified using ``alf.config()`` will override
+    values specified through gin.
 
     Args:
         fn_or_name (Callable|str): A name for this configurable, or a function
