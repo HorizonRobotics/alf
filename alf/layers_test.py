@@ -530,6 +530,11 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertLess(loss, 0.01)
 
     def test_fc_batch_ensemble(self):
+        num_threads = torch.get_num_threads()
+        # Use single thread to make the equality tests more robust. Different
+        # addition order from multi-thread may lead to slightly different result.
+        torch.set_num_threads(1)
+
         batch_size = 256
         x = torch.randn((batch_size, 16))
         layer1 = alf.layers.FCBatchEnsemble(
@@ -562,6 +567,8 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTrue((z[0:8] != z[40:48]).all())
         self.assertTrue((z[0:8] != z[48:56]).all())
         self.assertTrue((z[0:8] != z[56:64]).all())
+
+        torch.set_num_threads(num_threads)
 
 
 if __name__ == "__main__":
