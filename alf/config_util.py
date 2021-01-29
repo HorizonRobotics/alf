@@ -71,7 +71,8 @@ def config(prefix_or_dict, mutable=True, **kwargs):
         mutable (bool): whether the config can be changed later. If the user
             tries to change an existing immutable config, the change will be
             ignored and a warning will be generated. You can always change a
-            mutable config.
+            mutable config. ``ValueError`` will be raised if trying to set a new
+                immutable value to an existing immutable value.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -197,7 +198,9 @@ def config1(config_name, value, mutable=True):
         mutable (bool): whether the config can be changed later. If the user
             tries to change an existing immutable config, the change will be
             ignored and a warning will be generated. You can always change a
-            mutable config.
+            mutable config. ``ValueError`` will be raised if trying to set a new
+            immutable value to an existing immutable value.
+
 
     """
     tree = _CONF_TREE
