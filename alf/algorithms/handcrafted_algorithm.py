@@ -189,7 +189,7 @@ class SimpleCarlaAlgorithm(HandcraftedAlgorithm):
         action[ind, 0] = distance_to_goal[ind] / self._distance_to_decelerate
         action[distance_to_goal <= self._distance_to_stop, 0] = 0
 
-        # direction is computated based on the waypoint
+        # direction is computed based on the waypoint
         action[:, 1] = direction
 
         return action
