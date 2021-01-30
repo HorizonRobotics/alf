@@ -29,6 +29,7 @@ import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
+from alf.data_structures import StepType
 from alf.environments.utils import create_environment
 from alf.nest import map_structure
 from alf.tensor_specs import TensorSpec
@@ -749,6 +750,10 @@ def play(root_dir,
             episode_reward = 0.
             episode_length = 0.
             episodes += 1
+            # change the step_type to LAST before being observed by metrics
+            # to ensure the episodic information will be updated correctly
+            time_step = time_step._replace(
+                step_type=torch.full_like(time_step.step_type, StepType.LAST))
             # observe the last step
             for m in metrics:
                 m(time_step.cpu())
