@@ -241,7 +241,7 @@ def adjust_weather_parameters(weather_param: carla.WeatherParameters,
     return weather_param
 
 
-@gin.configurable(blacklist=['actor', 'alf_world'])
+@alf.configurable(blacklist=['actor', 'alf_world'])
 class Player(object):
     """Player is a vehicle with some sensors.
 
@@ -886,7 +886,7 @@ def _exec(command):
 gin.constant('CarlaEnvironment.REWARD_DIMENSION', Player.REWARD_DIMENSION)
 
 
-@gin.configurable
+@alf.configurable
 class CarlaServer(object):
     """CarlaServer for doing the simulation."""
 
@@ -987,7 +987,7 @@ class CarlaServer(object):
         self.stop()
 
 
-@gin.configurable
+@alf.configurable
 class CarlaEnvironment(AlfEnvironment):
     """Carla simulation environment.
 
@@ -1027,7 +1027,7 @@ class CarlaEnvironment(AlfEnvironment):
         Args:
             batch_size (int): the number of learning vehicles.
             map_name (str): the name of the map (e.g. "Town01")
-            vehicle_filter (str): the filter for getting vehicle blueprints.
+            vehicle_filter (str): the filter for getting ego vehicle blueprints.
             walker_filter (str): the filter for getting walker blueprints.
             num_other_vehicles (int): the number of autopilot vehicles
             num_walkers (int): the number of walkers
@@ -1136,7 +1136,8 @@ class CarlaEnvironment(AlfEnvironment):
             self._vehicle_filter)
         assert len(
             blueprints) > 0, "Cannot find vehicle '%s'" % self._vehicle_filter
-        if self._safe:
+
+        def _filter_safe(blueprints):
             blueprints = [
                 x for x in blueprints
                 if int(x.get_attribute('number_of_wheels')) == 4
@@ -1148,7 +1149,11 @@ class CarlaEnvironment(AlfEnvironment):
             blueprints = [
                 x for x in blueprints if not x.id.endswith('cybertruck')
             ]
-            blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+            return [x for x in blueprints if not x.id.endswith('t2')]
+
+        if self._safe:
+            blueprints = _filter_safe(blueprints)
+
         assert len(
             blueprints
         ) > 0, "Cannot find safe vehicle '%s'" % self._vehicle_filter
@@ -1159,6 +1164,13 @@ class CarlaEnvironment(AlfEnvironment):
         ]
         assert len(blueprints) > 0, (
             "Cannot find vehicle with functioning lights")
+
+        other_blueprints = self._world.get_blueprint_library().filter(
+            'vehicle.*')
+        other_blueprints = [
+            x for x in other_blueprints
+            if x.id in self.vehicles_with_functioning_lights
+        ]
 
         spawn_points = self._world.get_map().get_spawn_points()
         number_of_spawn_points = len(spawn_points)
@@ -1173,7 +1185,10 @@ class CarlaEnvironment(AlfEnvironment):
 
         commands = []
         for i, transform in enumerate(spawn_points[:num_vehicles]):
-            blueprint = random.choice(blueprints)
+            if i < self._batch_size:
+                blueprint = random.choice(blueprints)
+            else:
+                blueprint = random.choice(other_blueprints)
             if blueprint.has_attribute('color'):
                 color = random.choice(
                     blueprint.get_attribute('color').recommended_values)
@@ -1488,7 +1503,7 @@ class CarlaEnvironment(AlfEnvironment):
         return self._get_current_time_step()
 
 
-@gin.configurable(whitelist=['wrappers'])
+@alf.configurable(whitelist=['wrappers'])
 def load(map_name, batch_size, wrappers=[]):
     """Load CarlaEnvironment
 

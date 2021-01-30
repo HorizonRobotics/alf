@@ -88,7 +88,11 @@ def main(_):
     alf.config('create_environment', nonparallel=True)
     alf.config('TrainerConfig', random_seed=seed)
     conf_file = common.get_conf_file()
-    common.parse_conf_file(conf_file)
+    try:
+        common.parse_conf_file(conf_file)
+    except Exception as e:
+        alf.close_env()
+        raise e
     config = policy_trainer.TrainerConfig(root_dir="")
 
     env = alf.get_env()

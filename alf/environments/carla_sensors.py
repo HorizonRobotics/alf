@@ -14,7 +14,6 @@
 
 import abc
 from absl import logging
-import gin
 import math
 import numpy as np
 import weakref
@@ -100,7 +99,7 @@ class SensorBase(abc.ABC):
         """
 
 
-@gin.configurable
+@alf.configurable
 class CollisionSensor(SensorBase):
     """CollisionSensor for getting collision signal.
 
@@ -355,7 +354,7 @@ class IMUSensor(SensorBase):
 # ==============================================================================
 # -- RadarSensor ---------------------------------------------------------------
 # ==============================================================================
-@gin.configurable
+@alf.configurable
 class RadarSensor(SensorBase):
     """RadarSensor for detecting obstacles."""
 
@@ -467,7 +466,7 @@ class RadarSensor(SensorBase):
 # ==============================================================================
 # -- CameraSensor -------------------------------------------------------------
 # ==============================================================================
-@gin.configurable
+@alf.configurable
 class CameraSensor(SensorBase):
     """CameraSensor."""
 

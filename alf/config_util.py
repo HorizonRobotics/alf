@@ -20,12 +20,12 @@ import inspect
 from inspect import Parameter
 
 __all__ = [
-    'config', 'config1', 'configurable', 'get_all_config_names',
+    'config', 'config1', 'configurable', 'get_all_config_names', 'get_config',
     'get_operative_configs', 'get_inoperative_configs'
 ]
 
 
-def config(prefix_or_dict, mutable=True, **kwargs):
+def config(prefix_or_dict, mutable=True, raise_if_used=True, **kwargs):
     """Set the values for the configs with given name as suffix.
 
     Example:
@@ -72,7 +72,9 @@ def config(prefix_or_dict, mutable=True, **kwargs):
             tries to change an existing immutable config, the change will be
             ignored and a warning will be generated. You can always change a
             mutable config. ``ValueError`` will be raised if trying to set a new
-                immutable value to an existing immutable value.
+            immutable value to an existing immutable value.
+        raise_if_used (bool): If True, ValueError will be raised if trying to
+            config a value which has already been used.
         **kwargs: only used if ``prefix_or_dict`` is a str.
     """
     if isinstance(prefix_or_dict, str):
@@ -86,7 +88,7 @@ def config(prefix_or_dict, mutable=True, **kwargs):
         raise ValueError(
             "Unsupported type for 'prefix_or_dict': %s" % type(prefix_or_dict))
     for key, value in configs.items():
-        config1(key, value, mutable)
+        config1(key, value, mutable, raise_if_used)
 
 
 def get_all_config_names():
@@ -153,6 +155,9 @@ class _Config(object):
         self._default_value = value
         self._has_default_value = True
 
+    def has_default_value(self):
+        return self._has_default_value
+
     def get_default_value(self):
         return self._default_value
 
@@ -189,20 +194,8 @@ class _Config(object):
 _CONF_TREE = {}
 
 
-def config1(config_name, value, mutable=True):
-    """Set one configurable value.
-
-    Args:
-        config_name (str): name of the config
-        value (any): value of the config
-        mutable (bool): whether the config can be changed later. If the user
-            tries to change an existing immutable config, the change will be
-            ignored and a warning will be generated. You can always change a
-            mutable config. ``ValueError`` will be raised if trying to set a new
-            immutable value to an existing immutable value.
-
-
-    """
+def _get_config_node(config_name):
+    """Get the _Config corresponding to config_name."""
     tree = _CONF_TREE
     path = config_name.split('.')
     for name in reversed(path):
@@ -224,7 +217,26 @@ def config1(config_name, value, mutable=True):
     else:
         config_node = tree
 
-    if config_node.is_used():
+    return config_node
+
+
+def config1(config_name, value, mutable=True, raise_if_used=True):
+    """Set one configurable value.
+
+    Args:
+        config_name (str): name of the config
+        value (any): value of the config
+        mutable (bool): whether the config can be changed later. If the user
+            tries to change an existing immutable config, the change will be
+            ignored and a warning will be generated. You can always change a
+            mutable config. ``ValueError`` will be raised if trying to set a new
+            immutable value to an existing immutable value.
+        raise_if_used (bool): If True, ValueError will be raised if trying to
+            config a value which has already been used.
+    """
+    config_node = _get_config_node(config_name)
+
+    if raise_if_used and config_node.is_used():
         raise ValueError(
             "Config '%s' has already been used. You should config "
             "its value before using it." % config_name)
@@ -248,6 +260,28 @@ def config1(config_name, value, mutable=True):
     else:
         config_node.set_value(value)
         config_node.set_mutable(mutable)
+
+
+def get_config(config_name):
+    """Get the value of the config with the name ``config_name``.
+
+    Args:
+        config_name (str): name of the config or its suffix which can uniquely
+            identify the config.
+    Return:
+        Any: value of the config
+    Raises:
+        ValueError: if the value of the config has not been configured and it
+            does not have a default value.
+    """
+    config_node = _get_config_node(config_name)
+    if not config_node.is_configured() and not config_node.has_default_value():
+        raise ValueError(
+            "Config '%s' is not configured nor has a default value." %
+            config_name)
+
+    config_node.set_used()
+    return config_node.get_effective_value()
 
 
 def _make_config(signature, whitelist, blacklist):

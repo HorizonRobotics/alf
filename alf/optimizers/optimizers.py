@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import copy
-import gin
 import torch
 from typing import Callable
 
@@ -98,10 +97,10 @@ def wrap_optimizer(cls):
     return NewCls
 
 
-Adam = gin.external_configurable(wrap_optimizer(torch.optim.Adam), 'Adam')
+Adam = alf.configurable('Adam')(wrap_optimizer(torch.optim.Adam))
 
-AdamW = gin.external_configurable(wrap_optimizer(torch.optim.AdamW), 'AdamW')
+AdamW = alf.configurable('AdamW')(wrap_optimizer(torch.optim.AdamW))
 
-SGD = gin.external_configurable(wrap_optimizer(torch.optim.SGD), 'SGD')
+SGD = alf.configurable('SGD')(wrap_optimizer(torch.optim.SGD))
 
-AdamTF = gin.external_configurable(wrap_optimizer(adam_tf.AdamTF), 'AdamTF')
+AdamTF = alf.configurable('AdamTF')(wrap_optimizer(adam_tf.AdamTF))

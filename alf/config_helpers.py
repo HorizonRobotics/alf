@@ -19,9 +19,10 @@ only available after the environment is created. So we create an environment
 based TrainerConfig in this module.
 """
 
-from alf.environments.utils import create_environment
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
+from alf.config_util import get_config
+from alf.environments.utils import create_environment
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
@@ -66,10 +67,11 @@ def get_observation_spec(field=None):
     """
     global _transformed_observation_spec
     if _transformed_observation_spec is None:
-        config = TrainerConfig(root_dir='')
+        data_transformer_ctor = get_config(
+            'TrainerConfig.data_transformer_ctor')
         env = get_env()
-        data_transformer = create_data_transformer(
-            config.data_transformer_ctor, env.observation_spec())
+        data_transformer = create_data_transformer(data_transformer_ctor,
+                                                   env.observation_spec())
         _transformed_observation_spec = data_transformer.transformed_observation_spec
 
     specs = _transformed_observation_spec
@@ -105,8 +107,8 @@ def get_env():
     """
     global _env
     if _env is None:
-        trainer_config = TrainerConfig(root_dir='')
-        _env = create_environment(seed=trainer_config.random_seed)
+        random_seed = get_config('TrainerConfig.random_seed')
+        _env = create_environment(seed=random_seed)
     return _env
 
 

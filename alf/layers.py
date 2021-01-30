@@ -13,7 +13,6 @@
 # limitations under the License.
 """Some basic layers."""
 
-import gin
 import copy
 
 import numpy as np
@@ -170,7 +169,7 @@ class BatchSquash(object):
                      tuple(tensor.shape[1:])))
 
 
-@gin.configurable
+@alf.configurable
 class OneHot(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
@@ -181,7 +180,7 @@ class OneHot(nn.Module):
             input, num_classes=self._num_classes).to(torch.float32)
 
 
-@gin.configurable
+@alf.configurable
 class FixedDecodingLayer(nn.Module):
     """A layer that uses a set of fixed basis for decoding the inputs."""
 
@@ -304,7 +303,7 @@ class FixedDecodingLayer(nn.Module):
         return self._B.weight
 
 
-@gin.configurable
+@alf.configurable
 class FC(nn.Module):
     """Fully connected layer."""
 
@@ -576,7 +575,7 @@ class FCBatchEnsemble(FC):
             return y
 
 
-@gin.configurable
+@alf.configurable
 class ParallelFC(nn.Module):
     """Parallel FC layer."""
 
@@ -706,7 +705,7 @@ class ParallelFC(nn.Module):
         return self._bias
 
 
-@gin.configurable
+@alf.configurable
 class Conv2D(nn.Module):
     """2D Convolution Layer."""
 
@@ -796,7 +795,7 @@ class Conv2D(nn.Module):
         return self._conv2d.bias
 
 
-@gin.configurable
+@alf.configurable
 class ParallelConv2D(nn.Module):
     def __init__(self,
                  in_channels,
@@ -949,7 +948,7 @@ class ParallelConv2D(nn.Module):
         return self._bias
 
 
-@gin.configurable
+@alf.configurable
 class ConvTranspose2D(nn.Module):
     def __init__(self,
                  in_channels,
@@ -1029,7 +1028,7 @@ class ConvTranspose2D(nn.Module):
         return self._conv_trans2d.bias
 
 
-@gin.configurable
+@alf.configurable
 class ParallelConvTranspose2D(nn.Module):
     def __init__(self,
                  in_channels,
@@ -1177,7 +1176,7 @@ class ParallelConvTranspose2D(nn.Module):
         return self._bias
 
 
-@gin.configurable
+@alf.configurable
 class ParamFC(nn.Module):
     def __init__(self,
                  input_size,
@@ -1338,7 +1337,7 @@ class ParamFC(nn.Module):
         return self._activation(res)
 
 
-@gin.configurable
+@alf.configurable
 class ParamConv2D(nn.Module):
     def __init__(self,
                  in_channels,
@@ -1549,7 +1548,7 @@ class ParamConv2D(nn.Module):
         return res
 
 
-@gin.configurable
+@alf.configurable
 class Reshape(nn.Module):
     def __init__(self, shape):
         """A layer for reshape the tensor.
@@ -1593,7 +1592,7 @@ def _conv_transpose_2d(in_channels,
         bias=bias)
 
 
-@gin.configurable(
+@alf.configurable(
     whitelist=['v1_5', 'with_batch_normalization', 'keep_conv_bias'])
 class BottleneckBlock(nn.Module):
     """Bottleneck block for ResNet.

@@ -14,7 +14,6 @@
 """PredictiveRepresentationLearner."""
 
 from functools import partial
-import gin
 import torch
 
 import alf
@@ -45,7 +44,7 @@ PredictiveRepresentationLearnerInfo = namedtuple(
     ])
 
 
-@gin.configurable
+@alf.configurable
 class SimpleDecoder(Algorithm):
     """A simple decoder with elementwise loss between the target and the predicted value.
 
@@ -181,7 +180,7 @@ class SimpleDecoder(Algorithm):
         return LossInfo(loss=loss * self._loss_weight, extra=loss)
 
 
-@gin.configurable
+@alf.configurable
 class PredictiveRepresentationLearner(Algorithm):
     """Learn representation based on the prediction of future values.
 
