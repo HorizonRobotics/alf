@@ -560,6 +560,7 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertTensorClose(z[0:64], z[64:128], epsilon=1e-10)
         self.assertTensorClose(z[0:64], z[128:192], epsilon=1e-10)
         self.assertTensorClose(z[0:64], z[192:256], epsilon=1e-10)
+
         self.assertTrue((z[0:8] != z[8:16]).all())
         self.assertTrue((z[0:8] != z[16:24]).all())
         self.assertTrue((z[0:8] != z[24:32]).all())
