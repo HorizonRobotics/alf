@@ -20,8 +20,8 @@ import inspect
 from inspect import Parameter
 
 __all__ = [
-    'config', 'config1', 'configurable', 'get_all_config_names', 'get_config',
-    'get_operative_configs', 'get_inoperative_configs'
+    'config', 'config1', 'configurable', 'get_all_config_names',
+    'get_config_value', 'get_operative_configs', 'get_inoperative_configs'
 ]
 
 
@@ -195,7 +195,7 @@ _CONF_TREE = {}
 
 
 def _get_config_node(config_name):
-    """Get the _Config corresponding to config_name."""
+    """Get the _Config object corresponding to config_name."""
     tree = _CONF_TREE
     path = config_name.split('.')
     for name in reversed(path):
@@ -262,7 +262,7 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
         config_node.set_mutable(mutable)
 
 
-def get_config(config_name):
+def get_config_value(config_name):
     """Get the value of the config with the name ``config_name``.
 
     Args:

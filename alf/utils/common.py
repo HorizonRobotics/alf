@@ -26,7 +26,6 @@ import numpy as np
 import os
 import pprint
 import random
-import runpy
 import shutil
 import time
 import torch
@@ -472,26 +471,21 @@ def parse_conf_file(conf_file):
 
     It also looks for FLAGS.gin_param and FLAGS.conf_param for extra configs.
 
+    Note: a global environment will be created (which can be obtained by
+    alf.get_env()) and random seed will be initialized by this function using
+    common.set_random_seed().
+
     Args:
         conf_file (str): the full path to the config file
     """
     if conf_file.endswith(".gin"):
         gin_params = getattr(flags.FLAGS, 'gin_param', None)
         gin.parse_config_files_and_bindings([conf_file], gin_params)
+        # Create the global environment and initialize random seed
+        alf.get_env()
     else:
         conf_params = getattr(flags.FLAGS, 'conf_param', None)
-        if conf_params:
-            for conf_param in conf_params:
-                pos = conf_param.find('=')
-                if pos == -1:
-                    raise ValueError("conf_param should have a format of "
-                                     "'CONFIG_NAME=VALUE': %s" % conf_param)
-                config_name = conf_param[:pos]
-                config_value = conf_param[pos + 1:]
-                config_value = eval(config_value)
-                alf.config1(config_name, config_value, mutable=False)
-
-        runpy.run_path(conf_file)
+        alf.parse_config(conf_file, conf_params)
 
 
 def summarize_config():

@@ -1027,7 +1027,9 @@ class CarlaEnvironment(AlfEnvironment):
         Args:
             batch_size (int): the number of learning vehicles.
             map_name (str): the name of the map (e.g. "Town01")
-            vehicle_filter (str): the filter for getting ego vehicle blueprints.
+            vehicle_filter (str): the filter for getting the blueprints for
+                training vehicles. The filter for other vehicles will always be
+                obtained using 'vehicle.*'.
             walker_filter (str): the filter for getting walker blueprints.
             num_other_vehicles (int): the number of autopilot vehicles
             num_walkers (int): the number of walkers

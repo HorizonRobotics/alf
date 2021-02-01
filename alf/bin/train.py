@@ -85,11 +85,6 @@ def train_eval(ml_type, root_dir):
 
 def main(_):
     FLAGS.alsologtostderr = True
-    random_seed = alf.get_config('TrainerConfig.random_seed')
-    alf.config(
-        'TrainerConfig',
-        random_seed=common.set_random_seed(random_seed),
-        raise_if_used=False)
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)

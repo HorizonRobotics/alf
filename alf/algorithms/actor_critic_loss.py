@@ -14,7 +14,6 @@
 
 from collections import namedtuple
 
-import gin
 import torch
 import torch.nn as nn
 
@@ -37,7 +36,7 @@ def _normalize_advantages(advantages, variance_epsilon=1e-8):
     return normalized_advantages
 
 
-@gin.configurable
+@alf.configurable
 class ActorCriticLoss(nn.Module):
     def __init__(self,
                  gamma=0.99,

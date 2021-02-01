@@ -13,11 +13,10 @@
 # limitations under the License.
 """ActorDistributionNetwork and ActorRNNDistributionNetwork."""
 
-import gin
-
 import torch
 import torch.nn as nn
 
+import alf
 import alf.nest as nest
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .projection_networks import NormalProjectionNetwork, CategoricalProjectionNetwork
@@ -26,7 +25,7 @@ from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 from alf.networks.network import Network
 
 
-@gin.configurable
+@alf.configurable
 class ActorDistributionNetwork(Network):
     """Network which outputs temporally uncorrelated action distributions."""
 
@@ -140,7 +139,7 @@ class ActorDistributionNetwork(Network):
         return act_dist, state
 
 
-@gin.configurable
+@alf.configurable
 class ActorDistributionRNNNetwork(ActorDistributionNetwork):
     """Network which outputs temporally correlated action distributions."""
 
