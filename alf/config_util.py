@@ -21,7 +21,8 @@ from inspect import Parameter
 
 __all__ = [
     'config', 'config1', 'configurable', 'get_all_config_names',
-    'get_config_value', 'get_operative_configs', 'get_inoperative_configs'
+    'get_config_value', 'get_operative_configs', 'get_inoperative_configs',
+    'pre_config', 'validate_pre_configs'
 ]
 
 
@@ -262,13 +263,63 @@ def config1(config_name, value, mutable=True, raise_if_used=True):
         config_node.set_mutable(mutable)
 
 
+_PRE_CONFIGS = []
+_HANDLED_PRE_CONFIGS = []
+
+
+def pre_config(configs):
+    """Preset the values for configs before the module defining it is imported.
+
+    This function is useful for handling the config params from commandline,
+    where there are no module imports and hence no config has been defined.
+
+    The value is bound to the config when the module defining the config is
+    imported later. ``validate_pre_configs()` should be called after the config
+    file has been loaded to ensure that all the pre_configs have been correctly
+    bound.
+
+    Args:
+        configs (dict): dictionary of config name to value
+    """
+    for name, value in configs.items():
+        _PRE_CONFIGS.append((name, value))
+
+
+def _handle_pre_configs(path, node):
+    def _handle1(item):
+        name, value = item
+        parts = name.split('.')
+        if len(parts) > len(path):
+            return False
+        for i in range(-len(parts), 0):
+            if parts[i] != path[i]:
+                return False
+        node.set_value(value)
+        node.set_mutable(False)
+        _HANDLED_PRE_CONFIGS.append(name)
+        return True
+
+    global _PRE_CONFIGS
+    _PRE_CONFIGS = list(filter(_handle1, _PRE_CONFIGS))
+
+
+def validate_pre_configs():
+    """Validate that all the configs set through ``pre_config()`` are correctly bound."""
+
+    for config_name, _ in _PRE_CONFIGS:
+        _get_config_node(config_name)
+
+    for config_name in _HANDLED_PRE_CONFIGS:
+        _get_config_node(config_name)
+
+
 def get_config_value(config_name):
     """Get the value of the config with the name ``config_name``.
 
     Args:
         config_name (str): name of the config or its suffix which can uniquely
             identify the config.
-    Return:
+    Returns:
         Any: value of the config
     Raises:
         ValueError: if the value of the config has not been configured and it
@@ -345,6 +396,8 @@ def _add_to_conf_tree(module_path, func_name, arg_name, node):
             raise ValueError("'%s' has already been defined." % '.'.join(path))
 
     tree[path[0]] = node
+
+    _handle_pre_configs(path, node)
 
 
 def _find_class_construction_fn(cls):

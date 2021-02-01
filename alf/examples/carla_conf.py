@@ -39,11 +39,12 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
     prev_action_spec = observation_spec['prev_action']
     observation_preprocessors = {}
 
-    def _make_simple_preproc(spec):
+    def _make_simple_preproc(spec, use_bias=False):
         return torch.nn.Sequential(
             alf.layers.Reshape([-1]),
             alf.layers.FC(
-                spec.numel, encoding_dim, use_bias=False, use_bn=preproc_bn))
+                spec.numel, encoding_dim, use_bias=use_bias,
+                use_bn=preproc_bn))
 
     for sensor, spec in observation_spec['observation'].items():
         if sensor == 'camera':
@@ -56,6 +57,10 @@ def create_input_preprocessors(encoding_dim, use_bn=False, preproc_bn=False):
             observation_preprocessors[sensor] = _make_simple_preproc(spec)
 
     return {
-        'observation': observation_preprocessors,
-        'prev_action': _make_simple_preproc(prev_action_spec),
+        'observation':
+            observation_preprocessors,
+        'prev_action':
+            _make_simple_preproc(
+                prev_action_spec,
+                use_bias='camera' not in observation_spec['observation']),
     }

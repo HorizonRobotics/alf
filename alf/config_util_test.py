@@ -54,6 +54,18 @@ def test_func7(arg=10):
     return arg
 
 
+def test_func8(a=1, b=2, c=3):
+    return a, b, c
+
+
+def test_func9(a=1, b=2, c=3):
+    return a, b, c
+
+
+def test_func10(a=1, b=2, c=3):
+    return a, b, c
+
+
 @alf.configurable
 class Test(object):
     def __init__(self, a, b, c=10):
@@ -181,6 +193,21 @@ class ConfigTest(alf.test.TestCase):
         # Test subclass using constructor from base
         obj3 = Test3(1, 2)
         self.assertEqual(obj3(), (0, 0, 7))
+
+        # test unknown pre_config
+        alf.pre_config({'test_func8.c': 10})
+        self.assertRaisesRegex(ValueError, "Cannot find config name",
+                               alf.validate_pre_configs)
+        func8 = alf.configurable(test_func8)
+        alf.validate_pre_configs()
+
+        # test ambiguous pre_config
+        alf.pre_config({'test_f.a': 10})
+        func9 = alf.configurable("ModuleA.test_f")(test_func9)
+        func10 = alf.configurable("ModuleB.test_f")(test_func10)
+        self.assertRaisesRegex(ValueError,
+                               "config name 'test_f.a' is ambiguous",
+                               alf.validate_pre_configs)
 
         operative_configs = alf.get_operative_configs()
         logging.info("get_operative_configs(): \n%s" %

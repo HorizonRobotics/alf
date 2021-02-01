@@ -527,7 +527,7 @@ def write_config(root_dir):
     if conf_params:
         config += "########### config from commandline ###########\n\n"
         config += "import alf\n"
-        config += "alf.config({\n"
+        config += "alf.pre_config({\n"
         for conf_param in conf_params:
             pos = conf_param.find('=')
             if pos == -1:
@@ -536,8 +536,7 @@ def write_config(root_dir):
             config_name = conf_param[:pos]
             config_value = conf_param[pos + 1:]
             config += "    '%s': %s,\n" % (config_name, config_value)
-        config += "},\n"
-        config += "mutable=False)\n\n"
+        config += "})\n\n"
         config += "########### end config from commandline ###########\n\n"
     f = open(conf_file, 'r')
     config += f.read()
