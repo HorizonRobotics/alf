@@ -212,10 +212,10 @@ class GridSearch(object):
             str: a string with parameters abbr encoded
         """
 
-        def _abbr_single(x):
+        def _abbr_single(x, l):
             def _initials(t):
                 words = [w for w in t.split('_') if w]
-                len_per_word = max(token_len // len(words), 1)
+                len_per_word = max(l // len(words), 1)
                 return '_'.join([w[:len_per_word] for w in words])
 
             if isinstance(x, str):
@@ -225,24 +225,32 @@ class GridSearch(object):
             else:
                 return str(x)
 
-        def _abbr(x):
+        def _abbr(x, l):
             if isinstance(x, Iterable) and not isinstance(x, str):
                 strs = []
                 for key in x:
                     try:
                         val = x.get(key)
-                        strs.append("%s=%s" % (_abbr(key), _abbr(val)))
+                        strs.append("%s=%s" % (_abbr(key, l), _abbr(val, l)))
                     except:
-                        strs.append("%s" % _abbr(key))
+                        strs.append("%s" % _abbr(key, l))
                 return "+".join(strs)
             else:
-                return _abbr_single(x)
+                return _abbr_single(x, l)
 
-        name = "%04dr%d" % (id, repeat)
-        abbr = _abbr(parameters)
-        if abbr:
-            name += "+" + abbr
-        # truncate the entire string if it's beyond the max length
+        def _generate_name(max_token_len):
+            name = "%04dr%d" % (id, repeat)
+            abbr = _abbr(parameters, max_token_len)
+            if abbr:
+                name += "+" + abbr
+            return name
+
+        # first try not truncating words
+        name = _generate_name(max_token_len=max_len)
+        if len(name) > max_len:
+            # If this regenerated name is still over ``max_len``, it will get
+            # hard truncated
+            name = _generate_name(max_token_len=token_len)
         return name[:max_len]
 
     def run(self):
