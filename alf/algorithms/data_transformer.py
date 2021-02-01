@@ -580,6 +580,7 @@ class RewardNormalizer(SimpleDataTransformer):
     def __init__(self,
                  observation_spec,
                  normalizer=None,
+                 update_max_calls=0,
                  clip_value=-1.0,
                  update_mode="replay"):
         """
@@ -588,6 +589,8 @@ class RewardNormalizer(SimpleDataTransformer):
                 timestep
             normalizer (Normalizer): the normalizer to be used to normalizer the
                 reward. If None, will use ``ScalarAdaptiveNormalizer``.
+            update_max_calls (int): If >0, then the normalier's statistics will
+                only be updated so many first calls of ``_transform()``.
             clip_value (float): if > 0, will clip the normalized reward within
                 [-clip_value, clip_value]. Do not clip if ``clip_value`` < 0
             update_mode (str): update stats during either "replay" or "rollout".
@@ -598,12 +601,16 @@ class RewardNormalizer(SimpleDataTransformer):
         self._normalizer = normalizer
         self._clip_value = clip_value
         self._update_mode = update_mode
+        self._max_calls = update_max_calls
+        self._calls = 0
 
     def _transform(self, timestep_or_exp):
         norm = self._normalizer
         if ((self._update_mode == "replay" and common.is_replay())
                 or (self._update_mode == "rollout" and common.is_rollout())):
-            norm.update(timestep_or_exp.reward)
+            if self._max_calls == 0 or self._calls < self._max_calls:
+                norm.update(timestep_or_exp.reward)
+            self._calls += 1
 
         return timestep_or_exp._replace(
             reward=norm.normalize(
