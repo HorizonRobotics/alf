@@ -557,9 +557,10 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
         z = layer2(y)
         # test same ensemble id leads to same result
         # different ensemble id leads to different result
-        self.assertEqual(z[0:64], z[64:128])
-        self.assertEqual(z[0:64], z[128:192])
-        self.assertEqual(z[0:64], z[192:256])
+        self.assertTensorClose(z[0:64], z[64:128], epsilon=1e-6)
+        self.assertTensorClose(z[0:64], z[128:192], epsilon=1e-6)
+        self.assertTensorClose(z[0:64], z[192:256], epsilon=1e-6)
+
         self.assertTrue((z[0:8] != z[8:16]).all())
         self.assertTrue((z[0:8] != z[16:24]).all())
         self.assertTrue((z[0:8] != z[24:32]).all())
