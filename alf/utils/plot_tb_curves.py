@@ -38,13 +38,6 @@ class MeanCurveReader(object):
     """Read and compute a ``MeanCurve`` from one or multiple TB event files. A
     ``MeanCurveReader`` is suitable for one method on one task with multiple runs.
     """
-    _SIZE_GUIDANCE = {
-        'compressedHistograms': 10,
-        'images': 0,
-        'scalars':
-            100,  # sampled points will evenly distribute over the training time
-        'histograms': 1
-    }
 
     def _get_metric_name(self):
         raise NotImplementedError()
@@ -59,7 +52,6 @@ class MeanCurveReader(object):
 
     def __init__(self,
                  event_file,
-                 fraction=0.,
                  name="MeanCurve",
                  smoothing=None,
                  variance_mode="std",
@@ -71,15 +63,15 @@ class MeanCurveReader(object):
                 "eval/" or "train/". The curves of these files will be averaged.
                 It's the user's responsibility to ensure that it's meaningful to
                 group these event files and show their mean and variance.
-            fraction (float): if >0 (e.g., 0.5), then only the first ``fraction``
-                of the curve will be loaded.
             name (str): name of the mean curve.
-            smoothing (int): if None, no smoothing is applied; otherwise this
-                is the window width of a Savitzky-Golay filter
+            smoothing (int | float): if None, no smoothing is applied; if int,
+                it's the window width of a Savitzky-Golay filter; if float,
+                it's the smoothing weight of a running average (higher -> smoother).
             variance_mode (str): how to compute the shaded region around the
                 mean curve, either "std" or "minmax".
-            max_n_scalars (int): the maximal number of points each curve will
-                have. If None, a default value is used.
+            max_n_scalars (int): the max number of points each curve will show,
+                *after* the curve has been fit to a function. If None, a default
+                value of 10000 will be used.
 
         Returns:
             MeanCurve: a mean curve structure.
@@ -89,34 +81,26 @@ class MeanCurveReader(object):
         else:
             assert len(event_file) > 0, "Empty event file list!"
 
-        if max_n_scalars is not None:
-            self._SIZE_GUIDANCE['scalars'] = max_n_scalars
-
-        assert 0 <= fraction <= 1, "`fraction` should be in [0,1]!"
-        if fraction > 0:
-            n_scalars = self._SIZE_GUIDANCE['scalars']
-            self._SIZE_GUIDANCE['scalars'] = int(n_scalars / fraction)
+        if max_n_scalars is None:
+            max_n_scalars = 10000
 
         x, ys = None, []
+        scalar_events_list = []
         for ef in event_file:
-            event_acc = EventAccumulator(ef, self._SIZE_GUIDANCE)
+            event_acc = EventAccumulator(ef)
             event_acc.Reload()
-            # 'scalar_events' is a list of ScalarEvent(wall_time, step, value),
-            # with a maximal length specified by _SIZE_GUIDANCE
+            # 'scalar_events' is a list of ScalarEvent(wall_time, step, value)
             scalar_events = event_acc.Scalars(self._get_metric_name())
-            if fraction > 0:
-                # truncate the ``scalar_events`` list to ``fracion```
-                scalar_events = scalar_events[:max(
-                    1, int(fraction * len(scalar_events)))]
+            max_n_scalars = min(max_n_scalars, len(scalar_events))
+            scalar_events_list.append(scalar_events)
 
+        for scalar_events in scalar_events_list:
             steps, values = zip(*[(se.step, se.value) for se in scalar_events])
             if x is None:
                 x = np.array(steps)
-            else:
-                assert len(steps) == len(x), (
-                    "All curves should have the same number of values!")
+            # new_x should be the same for every scalar_events
             new_x, y = self._interpolate_and_smooth_if_necessary(
-                steps, values, x[0], x[-1], smoothing)
+                max_n_scalars, steps, values, x[0], x[-1], smoothing)
             ys.append(y)
 
         x = new_x
@@ -135,7 +119,7 @@ class MeanCurveReader(object):
                 raise ValueError("Invalid variance mode: %s" % variance_mode)
             self._mean_curve = MeanCurve(
                 x=x, y=y, min_y=min_y, max_y=max_y, name=name)
-            self._name = name
+        self._name = name
 
     @property
     def name(self):
@@ -145,48 +129,101 @@ class MeanCurveReader(object):
         return self._mean_curve
 
     def _interpolate_and_smooth_if_necessary(self,
+                                             n_scalars,
                                              steps,
                                              values,
                                              min_step,
                                              max_step,
                                              smoothing=None,
-                                             kind="nearest"):
+                                             kind="linear"):
         """First interpolate the ``(steps, values)`` pair to get a
-        function. Then for the specified steps ``_SIZE_GUIDANCE["scalars"]``,
+        function. Then for the range ``(min_step, max_step)``,
         compute the values using the fitted function. Lastly apply a smoothing
         to the curve if a smoothing factor is specified.
 
-        The reason why we have the first two steps is that for some metrics,
+        The reason why we have the interpolation is that
         the x steps are not always the same for multiple random runs (e.g.,
         environment steps). So we need to first adjust x steps according to
         some reference minmax steps.
 
         Args:
+            n_scalars (int): the number of output scalars
             steps (list[int]): x values
             values (list[float]): y values
             min_step (float): min_x after interpolation
             max_step (float): max_x after interpolation
-            smoothing (int): if None, no smoothing is applied; otherwise this
-                is the window width of a Savitzky-Golay filter
-            kind (str): Interpolation type. Common options: "linear", "nearest",
-                "cubic", "quadratic", etc. For a complete list, see
+            smoothing (int | float): if None, no smoothing is applied; if int,
+                it's the window width of a Savitzky-Golay filter; if float,
+                it's the smoothing weight of a running average (higher -> smoother).
+            kind (str): Interpolation type. Common options: "linear" (default),
+                "nearest", "cubic", "quadratic", etc. For a complete list, see
                 ``scipy.interpolate.interp1d()``.
 
         Returns:
-            list: a list of values
+            tuple: the first is the adjusted x values and the second is the
+                interpolated and smoothed y values.
         """
-        # Also allow extrapolation if needed
+        # evenly distribute the values along x axis
         func = interp1d(steps, values, kind=kind, fill_value='extrapolate')
-
-        n_scalars = self._SIZE_GUIDANCE["scalars"]
         delta_x = (max_step - min_step) / (n_scalars - 1)
         new_x = np.arange(n_scalars) * delta_x + min_step
         new_values = func(new_x)
 
-        if smoothing is not None:
+        if isinstance(smoothing, int):
             new_values = savgol_filter(new_values, smoothing, polyorder=1)
+        elif smoothing is not None:
+            assert 0 < smoothing < 1
+            new_values = ema_smooth(new_values, weight=smoothing)
 
         return new_x, new_values
+
+
+def ema_smooth(scalars, weight=0.6, speed=64., adaptive=False, mode="forward"):
+    r"""EMA smoothing, following TB's official implementation:
+    https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/vz_line_chart2/line-chart.ts#L695
+
+    For adaptive EMA, the incoming weight decreases as the time increases.
+
+    Args:
+        scalars (list[float]): an array of floats to be smoothed, where the
+            array index represents incoming time steps.
+        weight (float): the weight of history. The history is updated as
+            ``history * weight + scalar * (1 - weight)``. Only useful when
+            ``adaptive=False``.
+        speed (int): an integer number specifying the adpative weight. Only
+            useful when ``adaptive=True``. A higher speed means a smaller
+            average window.
+        adaptive (bool): whether use adaptive weighting or not. If True, then
+            later scalars will have smaller incoming weights (proportional to
+            the inverse of array index).
+        mode (str): "forward" | "both". For "forward" mode, the moving average
+            goes from the array beginning to end. For "both" mode, the moving
+            average has an additional backward pass, and the final smoothed
+            value is an average of forward and backward passes.
+    """
+
+    def _smooth_one_pass(scalars):
+        last = 0
+        debias_w = 0
+        smoothed = []
+        w = weight
+        for i, point in enumerate(scalars):
+            if adaptive:
+                w = 1 - speed / (i + speed)
+            last = last * w + (1 - w) * point  # Calculate smoothed value
+            debias_w = debias_w * w + (1 - w)
+            smoothed.append(last / debias_w)
+
+        return smoothed
+
+    smoothed_forward = _smooth_one_pass(scalars)
+    if mode != "forward":
+        smoothed_backward = _smooth_one_pass(scalars[::-1])
+        smoothed = np.mean(
+            np.array([smoothed_forward, smoothed_backward[::-1]]), axis=0)
+    else:
+        smoothed = smoothed_forward
+    return smoothed
 
 
 class EnvironmentStepsReturnReader(MeanCurveReader):
@@ -324,6 +361,7 @@ class CurvesPlotter(object):
                  y_clipping=None,
                  x_range=None,
                  y_range=None,
+                 x_ticks=None,
                  x_label=None,
                  y_label=None,
                  x_scaled_and_aligned=False,
@@ -331,9 +369,9 @@ class CurvesPlotter(object):
                  dpi=100,
                  linestyle='-',
                  linewidth=2,
-                 alpha=0.3,
-                 bg_color='#EEEEEE',
-                 grid_color='#DEDEDE',
+                 std_alpha=0.3,
+                 bg_color=None,
+                 grid_color=None,
                  legend_kwargs=dict(loc="best"),
                  title=None):
         r"""
@@ -347,6 +385,7 @@ class CurvesPlotter(object):
                 the figure. If None, then it will be decided according to the
                 ``y`` values. Note that this range won't change ``y`` data; it's
                 only used by matplotlib for drawing ``y`` limits.
+            x_ticks (list[float]): x ticks shown along x axis
             y_clipping (tuple[float]): the y values will be clipped to this range
                 if not None. Because of smoothing in ``MeanCurveReader`` and/or
                 std region, the input y values might be out of this range.
@@ -363,7 +402,7 @@ class CurvesPlotter(object):
             linestyle (str): the line style to plot. Possible values:
                 '-' ('solid'), '--' ('dashed'), '-.' (dashdot), and ':' ('dotted').
             linewidth (int): the thickness of lines to plot. Default: 2.
-            alpha (float): the transparency value for plotting shaded area around
+            std_alpha (float): the transparency value for plotting shaded area around
                 a curve.
             bg_color (str): the background color of the figure
             grid_color (str): color of the dashed grid lines
@@ -393,27 +432,40 @@ class CurvesPlotter(object):
             return np.clip(y, y_clipping[0],
                            y_clipping[1]) if y_clipping else y
 
+        if not isinstance(linestyle, list):
+            linestyle = [linestyle] * len(mean_curves)
+
         for i, c in enumerate(mean_curves):
-            color = self._COLORS[i % len(self._COLORS)]
+            if i < len(mean_curves) - 1:
+                color = self._COLORS[i % len(self._COLORS)]
+
+            else:  # assume the last method is best; "black" for highlighting
+                color = "black"
             x = (scaled_x if x_scaled_and_aligned else c.x)
             ax.plot(
                 x,
                 _clip_y(c.y),
                 color=color,
                 lw=linewidth,
-                linestyle=linestyle,
+                linestyle=linestyle[i],
                 label=c.name)
             ax.fill_between(
                 x,
                 _clip_y(c.max_y),
                 _clip_y(c.min_y),
                 facecolor=color,
-                alpha=alpha)
+                alpha=std_alpha)
 
         if legend_kwargs is not None:
             ax.legend(**legend_kwargs)
-        ax.set_facecolor(bg_color)
-        ax.grid(linestyle='--', color=grid_color)
+        if bg_color is not None:
+            ax.set_facecolor(bg_color)
+        if grid_color is not None:
+            ax.grid(linestyle='--', color=grid_color)
+        else:
+            ax.grid(linestyle='-')
+        if x_ticks is not None:
+            ax.set_xticks(x_ticks)
         ax.ticklabel_format(axis="x", style="sci", scilimits=(0, 0))
 
         if y_range:
