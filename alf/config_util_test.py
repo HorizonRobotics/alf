@@ -66,6 +66,10 @@ def test_func10(a=1, b=2, c=3):
     return a, b, c
 
 
+def test_func11(a=1, b=2, c=3):
+    return a, b, c
+
+
 @alf.configurable
 class Test(object):
     def __init__(self, a, b, c=10):
@@ -198,7 +202,9 @@ class ConfigTest(alf.test.TestCase):
         alf.pre_config({'test_func8.c': 10})
         self.assertRaisesRegex(ValueError, "Cannot find config name",
                                alf.validate_pre_configs)
+        func11 = alf.configurable(test_func11)
         func8 = alf.configurable(test_func8)
+        self.assertEqual(func8(), (1, 2, 10))
         alf.validate_pre_configs()
 
         # test ambiguous pre_config

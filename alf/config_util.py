@@ -20,9 +20,9 @@ import inspect
 from inspect import Parameter
 
 __all__ = [
-    'config', 'config1', 'configurable', 'get_all_config_names',
-    'get_config_value', 'get_operative_configs', 'get_inoperative_configs',
-    'pre_config', 'validate_pre_configs'
+    'config', 'config1', 'configurable', 'define_config',
+    'get_all_config_names', 'get_config_value', 'get_operative_configs',
+    'get_inoperative_configs', 'pre_config', 'validate_pre_configs'
 ]
 
 
@@ -290,14 +290,14 @@ def _handle_pre_configs(path, node):
         name, value = item
         parts = name.split('.')
         if len(parts) > len(path):
-            return False
+            return True
         for i in range(-len(parts), 0):
             if parts[i] != path[i]:
-                return False
+                return True
         node.set_value(value)
         node.set_mutable(False)
         _HANDLED_PRE_CONFIGS.append(name)
-        return True
+        return False
 
     global _PRE_CONFIGS
     _PRE_CONFIGS = list(filter(_handle1, _PRE_CONFIGS))
@@ -654,3 +654,17 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
         return _decorator
     else:
         return _decorate(gin_ret, name, whitelist, blacklist)
+
+
+def define_config(name, default_value):
+    """Define a configurable value with givien ``default_value``.
+
+    Its value can be retrieved by ``get_config_value()``.
+
+    Args:
+        name (str): name of the configurable value
+        default_value (Any): default value
+    """
+    node = _Config()
+    node.set_default_value(default_value)
+    _add_to_conf_tree(['_CONFIG'], '_USER', name, node)
