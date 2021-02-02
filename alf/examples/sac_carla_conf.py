@@ -66,7 +66,6 @@ alf.config(
     sparse_reward=False,
     # Cannot train well with allow_negative_distance_reward=False yet.
     allow_negative_distance_reward=True,
-    # Currently, even a small penalty such as one make the training much worse
     max_collision_penalty=20.,
     max_red_light_penalty=20.,
 
