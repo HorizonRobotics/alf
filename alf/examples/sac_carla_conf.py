@@ -44,22 +44,6 @@ alf.config(
     summarize_action_distributions=True,
 )
 
-tasac = False
-
-if tasac:
-    alf.config('RewardNormalizer', clip_value=1.0)
-    alf.config(
-        'TrainerConfig',
-        mini_batch_length=8,
-        data_transformer_ctor=[
-            ImageScaleTransformer, ObservationNormalizer, RewardNormalizer
-        ])
-else:
-    alf.config(
-        'TrainerConfig',
-        mini_batch_length=4,
-        data_transformer_ctor=[ImageScaleTransformer, ObservationNormalizer])
-
 alf.config(
     'suite_carla.Player',
     # Not yet able to successfully train with sparse reward.
@@ -82,6 +66,27 @@ alf.config(
     # 1000 second day length means 4.5 days in replay buffer of 90000 length
     day_length=1000,
     max_weather_length=500,
+)
+
+alf.define_config('tasac', False)
+tasac = alf.get_config_value('tasac')
+
+if 'camera' in alf.get_raw_observation_spec()['observation']:
+    data_transformer_ctor = [ImageScaleTransformer, ObservationNormalizer]
+else:
+    data_transformer_ctor = [ObservationNormalizer]
+
+if tasac:
+    alf.config('RewardNormalizer', clip_value=1.0)
+    data_transformer_ctor.append(RewardNormalizer)
+    mini_batch_length = 8
+else:
+    mini_batch_length = 4
+
+alf.config(
+    'TrainerConfig',
+    mini_batch_length=mini_batch_length,
+    data_transformer_ctor=data_transformer_ctor,
 )
 
 encoding_dim = 256
