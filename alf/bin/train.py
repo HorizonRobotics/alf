@@ -73,8 +73,6 @@ def train_eval(ml_type, root_dir):
         root_dir (str): directory for saving summary and checkpoints
     """
     trainer_conf = policy_trainer.TrainerConfig(root_dir=root_dir)
-    trainer_conf.random_seed = common.set_random_seed(trainer_conf.random_seed)
-
     if ml_type == 'rl':
         trainer = policy_trainer.RLTrainer(trainer_conf)
     elif ml_type == 'sl':
@@ -88,8 +86,11 @@ def train_eval(ml_type, root_dir):
 def main(_):
     FLAGS.alsologtostderr = True
     conf_file = common.get_conf_file()
-    common.parse_conf_file(conf_file)
-    train_eval(FLAGS.ml_type, FLAGS.root_dir)
+    try:
+        common.parse_conf_file(conf_file)
+        train_eval(FLAGS.ml_type, FLAGS.root_dir)
+    finally:
+        alf.close_env()
 
 
 if __name__ == '__main__':

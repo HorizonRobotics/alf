@@ -14,7 +14,6 @@
 """Replay buffer."""
 
 from absl import logging
-import gin
 import math
 import numpy as np
 import torch
@@ -35,7 +34,7 @@ BatchInfo = namedtuple(
     default_value=())
 
 
-@gin.configurable
+@alf.configurable
 class ReplayBuffer(RingBuffer):
     """Replay buffer with RingBuffer as implementation.
 
@@ -652,7 +651,7 @@ class ReplayBuffer(RingBuffer):
         step_type[env_ids, self.circular(positions)] = int(ds.StepType.LAST)
 
 
-@gin.configurable
+@alf.configurable
 def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
     if goal.dim() == 2:  # when goals are 1-dimentional
         assert achieved_goal.dim() == goal.dim()
@@ -664,7 +663,7 @@ def l2_dist_close_reward_fn(achieved_goal, goal, threshold=.05, device="cpu"):
         -torch.ones(1, dtype=torch.float32, device=device))
 
 
-@gin.configurable
+@alf.configurable
 def hindsight_relabel_fn(buffer,
                          result,
                          info,

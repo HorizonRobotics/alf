@@ -13,14 +13,13 @@
 # limitations under the License.
 """Encoding algorithm."""
 
-import gin
-
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.data_structures import AlgStep, Experience, LossInfo, TimeStep
 from alf.networks import EncodingNetwork
 
 
-@gin.configurable
+@alf.configurable
 class EncodingAlgorithm(Algorithm):
     """Basic encoding algorithm.
 

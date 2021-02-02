@@ -13,7 +13,6 @@
 # limitations under the License.
 """Loss for PPO algorithm."""
 
-import gin
 import torch
 
 import alf

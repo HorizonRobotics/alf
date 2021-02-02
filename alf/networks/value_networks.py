@@ -13,19 +13,19 @@
 # limitations under the License.
 """ValueNetwork and ValueRNNNetwork."""
 
-import gin
 import functools
 
 import torch
 import torch.nn as nn
 
+import alf
 from .encoding_networks import EncodingNetwork, LSTMEncodingNetwork
 from .preprocessor_networks import PreprocessorNetwork
 from alf.tensor_specs import TensorSpec
 import alf.utils.math_ops as math_ops
 
 
-@gin.configurable
+@alf.configurable
 class ValueNetwork(PreprocessorNetwork):
     """Output temporally uncorrelated values."""
 
@@ -116,7 +116,7 @@ class ValueNetwork(PreprocessorNetwork):
         return value, state
 
 
-@gin.configurable
+@alf.configurable
 class ValueRNNNetwork(PreprocessorNetwork):
     """Outputs temporally correlated values."""
 

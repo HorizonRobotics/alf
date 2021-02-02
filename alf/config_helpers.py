@@ -19,13 +19,17 @@ only available after the environment is created. So we create an environment
 based TrainerConfig in this module.
 """
 
-from alf.environments.utils import create_environment
+import runpy
+
 from alf.algorithms.config import TrainerConfig
 from alf.algorithms.data_transformer import create_data_transformer
+from alf.config_util import config1, get_config_value, pre_config, validate_pre_configs
+from alf.environments.utils import create_environment
+from alf.utils.common import set_random_seed
 
 __all__ = [
     'close_env', 'get_raw_observation_spec', 'get_observation_spec',
-    'get_action_spec', 'get_env'
+    'get_action_spec', 'get_env', 'parse_config'
 ]
 
 _env = None
@@ -66,10 +70,11 @@ def get_observation_spec(field=None):
     """
     global _transformed_observation_spec
     if _transformed_observation_spec is None:
-        config = TrainerConfig(root_dir='')
+        data_transformer_ctor = get_config_value(
+            'TrainerConfig.data_transformer_ctor')
         env = get_env()
-        data_transformer = create_data_transformer(
-            config.data_transformer_ctor, env.observation_spec())
+        data_transformer = create_data_transformer(data_transformer_ctor,
+                                                   env.observation_spec())
         _transformed_observation_spec = data_transformer.transformed_observation_spec
 
     specs = _transformed_observation_spec
@@ -94,19 +99,72 @@ def get_action_spec():
     return env.action_spec()
 
 
+_is_parsing = False
+
+
+def parse_config(conf_file, conf_params):
+    """Parse config file and config parameters
+
+    Note: a global environment will be created (which can be obtained by
+    alf.get_env()) and random seed will be initialized by this function using
+    common.set_random_seed().
+
+    Args:
+        conf_file (str): The full path of the config file.
+        conf_params (list[str]): the list of config parameters. Each one has a
+            format of CONFIG_NAME=VALUE.
+    """
+    global _is_parsing
+    _is_parsing = True
+
+    try:
+        if conf_params:
+            for conf_param in conf_params:
+                pos = conf_param.find('=')
+                if pos == -1:
+                    raise ValueError("conf_param should have a format of "
+                                     "'CONFIG_NAME=VALUE': %s" % conf_param)
+                config_name = conf_param[:pos]
+                config_value = conf_param[pos + 1:]
+                config_value = eval(config_value)
+                pre_config({config_name: config_value})
+
+        runpy.run_path(conf_file)
+        validate_pre_configs()
+    finally:
+        _is_parsing = False
+
+    # Create the global environment and initialize random seed
+    get_env()
+
+
 def get_env():
     """Get the global training environment.
 
     Note: you need to finish all the config for environments and
     TrainerConfig.random_seed before using this function.
 
+    Note: random seed will be initialized in this function.
+
     Returns:
         AlfEnvironment
     """
     global _env
     if _env is None:
-        trainer_config = TrainerConfig(root_dir='')
-        _env = create_environment(seed=trainer_config.random_seed)
+        if _is_parsing:
+            random_seed = get_config_value('TrainerConfig.random_seed')
+        else:
+            # We construct a TrainerConfig object here so that the value
+            # configured through gin-config can be properly retrieved.
+            train_config = TrainerConfig(root_dir='')
+            random_seed = train_config.random_seed
+        # We have to call set_random_seed() here because we need the actual
+        # random seed to call create_environment.
+        random_seed = set_random_seed(random_seed)
+        # We need to re-set 'TrainerConfig.random_seed' to record the actual
+        # random seed we are using.
+        config1('TrainerConfig.random_seed', random_seed, raise_if_used=False)
+        _env = create_environment(seed=random_seed)
     return _env
 
 

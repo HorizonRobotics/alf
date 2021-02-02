@@ -16,7 +16,6 @@
 from collections import namedtuple
 import copy
 import functools
-import gin
 import numpy as np
 import torch
 import torch.nn as nn
@@ -49,7 +48,7 @@ MBPState = namedtuple(
 MBPLossInfo = namedtuple("MBPLossInfo", ["decoder", "vae"])
 
 
-@gin.configurable
+@alf.configurable
 class MemoryBasedPredictor(Algorithm):
     """The Memroy Based Predictor.
 
@@ -233,7 +232,7 @@ class MemoryBasedPredictor(Algorithm):
                     decoder=decoder_loss.extra, vae=encode_step.info.extra)))
 
 
-@gin.configurable
+@alf.configurable
 class MemoryBasedActor(OnPolicyAlgorithm):
     """The policy module for MERLIN model."""
 
@@ -350,7 +349,7 @@ MerlinLossInfo = namedtuple("MerlinLossInfo", ["mba", "mbp"])
 MerlinInfo = namedtuple("MerlinInfo", ["mbp_info", "mba_info"])
 
 
-@gin.configurable
+@alf.configurable
 class MerlinAlgorithm(OnPolicyAlgorithm):
     """MERLIN model.
 
@@ -478,7 +477,7 @@ class MerlinAlgorithm(OnPolicyAlgorithm):
                 mbp=mbp_loss_info.extra, mba=mba_loss_info.extra))
 
 
-@gin.configurable
+@alf.configurable
 class ResnetEncodingNetwork(alf.networks.Network):
     """Image encoding network using ResNet bottleneck blocks.
 
@@ -536,7 +535,7 @@ class ResnetEncodingNetwork(alf.networks.Network):
         return self._model(observation), ()
 
 
-@gin.configurable
+@alf.configurable
 class ResnetDecodingNetwork(alf.networks.Network):
     """Image decoding network using ResNet bottleneck blocks.
 

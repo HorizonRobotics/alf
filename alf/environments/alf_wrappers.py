@@ -21,7 +21,6 @@ import abc
 from collections import OrderedDict
 import copy
 import cProfile
-import gin
 import math
 import numpy as np
 import random
@@ -116,7 +115,7 @@ class AlfEnvironmentBaseWrapper(AlfEnvironment):
 
 
 # Used in ALF
-@gin.configurable
+@alf.configurable
 class TimeLimit(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
@@ -156,7 +155,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
         return self._duration
 
 
-@gin.configurable
+@alf.configurable
 class PerformanceProfiler(AlfEnvironmentBaseWrapper):
     """End episodes after specified number of steps."""
 
@@ -287,7 +286,7 @@ class GoalReplayEnvWrapper(AlfEnvironmentBaseWrapper):
 
 
 # Used in ALF
-@gin.configurable
+@alf.configurable
 class NonEpisodicAgent(AlfEnvironmentBaseWrapper):
     """
     Make the agent non-episodic by replacing all termination time steps with
@@ -340,7 +339,7 @@ class NonEpisodicAgent(AlfEnvironmentBaseWrapper):
 
 
 # Used in ALF
-@gin.configurable
+@alf.configurable
 class RandomFirstEpisodeLength(AlfEnvironmentBaseWrapper):
     """Randomize the length of the first episode.
 
@@ -391,7 +390,7 @@ class RandomFirstEpisodeLength(AlfEnvironmentBaseWrapper):
         return time_step
 
 
-@gin.configurable(whitelist=[])
+@alf.configurable(whitelist=[])
 class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
     def __init__(self, env):
         """Add prev_action to observation.
@@ -431,7 +430,7 @@ class ActionObservationWrapper(AlfEnvironmentBaseWrapper):
                 prev_action=time_step.prev_action))
 
 
-@gin.configurable
+@alf.configurable
 class ScalarRewardWrapper(AlfEnvironmentBaseWrapper):
     """A wrapper that converts a vector reward to a scalar reward by averaging
     reward dims with a weight vector."""
@@ -620,7 +619,7 @@ class MultitaskWrapper(AlfEnvironment):
             env.seed(seed)
 
 
-@gin.configurable(blacklist=['env'])
+@alf.configurable(blacklist=['env'])
 class CurriculumWrapper(AlfEnvironmentBaseWrapper):
     """A wrapper to provide automatic curriculum task selection.
 

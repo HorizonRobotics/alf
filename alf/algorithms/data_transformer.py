@@ -15,7 +15,6 @@
 
 import copy
 from functools import partial
-import gin
 import numpy as np
 import torch
 from torch import nn
@@ -158,7 +157,7 @@ class SequentialDataTransformer(DataTransformer):
         return experience
 
 
-@gin.configurable
+@alf.configurable
 class FrameStacker(DataTransformer):
     def __init__(self,
                  observation_spec,
@@ -410,7 +409,7 @@ class IdentityDataTransformer(SimpleDataTransformer):
         return timestep_or_exp
 
 
-@gin.configurable
+@alf.configurable
 class ImageScaleTransformer(SimpleDataTransformer):
     def __init__(self, observation_spec, min=-1.0, max=1.0, fields=None):
         """Scale image to min and max (0->min, 255->max).
@@ -457,7 +456,7 @@ class ImageScaleTransformer(SimpleDataTransformer):
         return timestep_or_exp._replace(observation=observation)
 
 
-@gin.configurable
+@alf.configurable
 class ObservationNormalizer(SimpleDataTransformer):
     def __init__(self,
                  observation_spec,
@@ -550,7 +549,7 @@ class ObservationNormalizer(SimpleDataTransformer):
         return timestep_or_exp._replace(observation=observation)
 
 
-@gin.configurable
+@alf.configurable
 class RewardClipping(SimpleDataTransformer):
     """Clamp immediate rewards to the range :math:`[min, max]`.
 
@@ -573,7 +572,7 @@ class RewardClipping(SimpleDataTransformer):
             reward=timestep_or_exp.reward.clamp(*self._minmax))
 
 
-@gin.configurable
+@alf.configurable
 class RewardNormalizer(SimpleDataTransformer):
     """Transform reward to be zero-mean and unit-variance."""
 
@@ -625,7 +624,7 @@ class RewardNormalizer(SimpleDataTransformer):
         return self._clip_value
 
 
-@gin.configurable
+@alf.configurable
 class RewardScaling(SimpleDataTransformer):
     """Scale immediate rewards by a factor of ``scale``.
 

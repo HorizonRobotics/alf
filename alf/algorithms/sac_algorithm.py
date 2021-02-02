@@ -15,7 +15,6 @@
 
 from absl import logging
 import numpy as np
-import gin
 import functools
 from enum import Enum
 
@@ -84,7 +83,7 @@ def _set_target_entropy(name, target_entropy, flat_action_spec):
     return target_entropy
 
 
-@gin.configurable
+@alf.configurable
 class SacAlgorithm(OffPolicyAlgorithm):
     r"""Soft Actor Critic algorithm, described in:
 
