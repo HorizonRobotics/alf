@@ -27,7 +27,7 @@ from alf.utils.common import warning_once
 from alf.utils.data_buffer import atomic, RingBuffer
 from alf.utils import checkpoint_utils
 
-from .segment_tree import SumSegmentTree, MaxSegmentTree, MinSegmentTree
+from .segment_tree import SumSegmentTree, MaxSegmentTree
 
 BatchInfo = namedtuple(
     "BatchInfo", ["env_ids", "positions", "importance_weights"],
@@ -229,12 +229,15 @@ class ReplayBuffer(RingBuffer):
                 The elements are the new priorities corresponds to experiences
                 indicated by ``(env_ids, positions)``
         """
-        # If positions are outdated, we don't update their priorities.
-        valid, = torch.where(positions >= self._current_pos[env_ids] -
-                             self._current_size[env_ids])
-        indices = self._env_id_idx_to_index(env_ids[valid],
-                                            self.circular(positions[valid]))
-        self._update_segment_tree(indices, priorities[valid])
+        with alf.device(self._device):
+            env_ids, positions, priorities = convert_device(
+                (env_ids, positions, priorities))
+            # If positions are outdated, we don't update their priorities.
+            valid, = torch.where(positions >= self._current_pos[env_ids] -
+                                 self._current_size[env_ids])
+            indices = self._env_id_idx_to_index(
+                env_ids[valid], self.circular(positions[valid]))
+            self._update_segment_tree(indices, priorities[valid])
 
     @atomic
     @torch.no_grad()
