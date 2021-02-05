@@ -143,7 +143,7 @@ class VehicleController(object):
             "[-1.0, 1.0] with negative value meaning zero speed and 1.0 corresponding to "
             "maximally allowed speed as provided by max_speed argument for __init__(), "
             "direction is the relative direction that the vehicle is facing, with "
-            "0 being front, -0.5 being left and 0.5 being rignt, and reverse is "
+            "0 being front, -0.5 being left and 0.5 being right, and reverse is "
             "interpreted as a boolean value with values greater than 0.5 "
             "corrsponding to True to indicate going backward.")
 

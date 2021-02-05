@@ -299,7 +299,7 @@ class VideoRecorder(GymVideoRecorder):
                             "be plotted when rendering videos.")
                 else:
                     common.warning_once(
-                        "You have choosen to render prediction info, but no "
+                        "You have chosen to render prediction info, but no "
                         " prediction info is provided. Skipping this.")
 
             self._last_frame = frame
