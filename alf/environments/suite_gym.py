@@ -100,7 +100,7 @@ def wrap_env(gym_env,
         gym_env_wrappers (Iterable): Iterable with references to gym_wrappers,
             classes to use directly on the gym environment.
         time_limit_wrapper (AlfEnvironmentBaseWrapper): Wrapper that accepts
-            (env, max_episode_steps) params to enforce a TimeLimit. Usuaully this
+            (env, max_episode_steps) params to enforce a TimeLimit. Usually this
             should be left as the default, alf_wrappers.TimeLimit.
         normalize_action (bool): if True, will scale continuous actions to
             ``[-1, 1]`` to be better used by algorithms that compute entropies.

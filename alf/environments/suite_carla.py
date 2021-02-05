@@ -415,7 +415,7 @@ class Player(object):
         self._observation_spec['goal'] = alf.TensorSpec([3])
         self._observation_spec['velocity'] = alf.TensorSpec([3])
 
-        # UE4 coordinate system is right handed:
+        # UE4 coordinate system is left handed:
         # https://forums.unrealengine.com/development-discussion/c-gameplay-programming/103787-ue4-coordinate-system-not-right-handed
         self._observation_desc['goal'] = (
             "Target location relative to the vehicle coordinate system in "
