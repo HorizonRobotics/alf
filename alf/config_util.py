@@ -502,6 +502,8 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
     signature = inspect.signature(fn_or_cls)
     configs = _make_config(signature, whitelist, blacklist)
 
+    orig_name = name
+
     if name is None or '.' not in name:
         module_path = fn_or_cls.__module__.split('.')
     else:
@@ -526,9 +528,11 @@ def _decorate(fn_or_cls, name, whitelist, blacklist):
         if construction_fn.__name__ == '__new__':
             decorated_fn = staticmethod(decorated_fn)
         setattr(fn_or_cls, construction_fn.__name__, decorated_fn)
-        return fn_or_cls
     else:
-        return _make_wrapper(fn_or_cls, configs, signature, has_self=0)
+        fn_or_cls = _make_wrapper(fn_or_cls, configs, signature, has_self=0)
+
+    return gin.configurable(
+        orig_name, whitelist=whitelist, blacklist=blacklist)(fn_or_cls)
 
 
 def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
@@ -639,21 +643,17 @@ def configurable(fn_or_name=None, whitelist=[], blacklist=[]):
     else:
         name = fn_or_name
 
-    gin_ret = gin.configurable(
-        fn_or_name, whitelist=whitelist, blacklist=blacklist)
-
     if whitelist and blacklist:
         raise ValueError("Only one of 'whitelist' and 'blacklist' can be set.")
 
     if not callable(fn_or_name):
 
         def _decorator(fn_or_cls):
-            fn_or_cls = gin_ret(fn_or_cls)
             return _decorate(fn_or_cls, name, whitelist, blacklist)
 
         return _decorator
     else:
-        return _decorate(gin_ret, name, whitelist, blacklist)
+        return _decorate(fn_or_name, name, whitelist, blacklist)
 
 
 def define_config(name, default_value):
