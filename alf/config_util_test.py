@@ -160,12 +160,9 @@ class ConfigTest(alf.test.TestCase):
         alf.config('D.test', arg=5)
 
         # Test name conflict: same
-        # Note: this exception is raised by gin instead of alf. Need to change
-        # it if gin is removed in the future.
-        self.assertRaisesRegex(
-            ValueError, "A configurable matching "
-            "'A.B.C.D.test' already exists.", alf.configurable("A.B.C.D.test"),
-            test_func5)
+        self.assertRaisesRegex(ValueError,
+                               "'A.B.C.D.test.arg' has already been defined.",
+                               alf.configurable("A.B.C.D.test"), test_func5)
 
         # Test duplicated config
         with self.assertLogs() as ctx:
