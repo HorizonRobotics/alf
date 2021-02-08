@@ -126,17 +126,6 @@ if env.reward_spec().numel > 1:
     reward_weights = [0.] * env.reward_spec().numel
     reward_weights[0] = 1.0
 
-alf.config(
-    'SacAlgorithm',
-    actor_network_cls=actor_network_cls,
-    critic_network_cls=critic_network_cls,
-    target_entropy=partial(calc_default_target_entropy, min_prob=0.1),
-    target_update_tau=0.005,
-    critic_loss_ctor=TDLoss,
-    use_parallel_network=True,
-    use_entropy_reward=False,
-    reward_weights=reward_weights)
-
 # config EncodingAlgorithm
 encoder_cls = partial(
     alf.networks.EncodingNetwork,
@@ -187,7 +176,21 @@ alf.config(
     optimizer=alf.optimizers.Adam(lr=learning_rate),
 )
 
-if tasac:
+if not tasac:
+    from alf.algorithms.sac_algorithm import SacAlgorithm
+    alf.config('Agent', rl_algorithm_cls=SacAlgorithm)
+
+    alf.config(
+        'SacAlgorithm',
+        actor_network_cls=actor_network_cls,
+        critic_network_cls=critic_network_cls,
+        target_entropy=partial(calc_default_target_entropy, min_prob=0.1),
+        target_update_tau=0.005,
+        critic_loss_ctor=TDLoss,
+        use_parallel_network=True,
+        use_entropy_reward=False,
+        reward_weights=reward_weights)
+else:
     from alf.algorithms.tasac_algorithm import TasacValueAlgorithm, SkipRepeatTDLoss
     value_net_cls = partial(
         alf.networks.ValueNetwork,
@@ -196,6 +199,11 @@ if tasac:
 
     alf.config('Agent', rl_algorithm_cls=TasacValueAlgorithm)
     alf.config(
+        'TrainerConfig',
+        use_rollout_state=True,
+        temporally_independent_train_step=True)
+
+    alf.config(
         'TasacValueAlgorithm',
         actor_network_cls=actor_network_cls,
         critic_network_cls=critic_network_cls,
@@ -203,7 +211,6 @@ if tasac:
         reward_weights=reward_weights,
         target_update_tau=0.005,
         use_parallel_network=True,
-        # always use 1-step TD
         critic_loss_ctor=SkipRepeatTDLoss,
         target_entropy=(partial(calc_default_target_entropy, min_prob=0.1),
                         partial(calc_default_target_entropy, min_prob=0.1)),
