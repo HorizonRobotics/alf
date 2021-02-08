@@ -211,7 +211,6 @@ else:
         reward_weights=reward_weights,
         target_update_tau=0.005,
         use_parallel_network=True,
-        # always use 1-step TD
         critic_loss_ctor=SkipRepeatTDLoss,
         target_entropy=(partial(calc_default_target_entropy, min_prob=0.1),
                         partial(calc_default_target_entropy, min_prob=0.1)),
