@@ -282,7 +282,11 @@ def pre_config(configs):
         configs (dict): dictionary of config name to value
     """
     for name, value in configs.items():
-        _PRE_CONFIGS.append((name, value))
+        try:
+            config1(name, value, mutable=False)
+            _HANDLED_PRE_CONFIGS.append(name)
+        except ValueError:
+            _PRE_CONFIGS.append((name, value))
 
 
 def _handle_pre_configs(path, node):
@@ -306,8 +310,8 @@ def _handle_pre_configs(path, node):
 def validate_pre_configs():
     """Validate that all the configs set through ``pre_config()`` are correctly bound."""
 
-    for config_name, _ in _PRE_CONFIGS:
-        _get_config_node(config_name)
+    if _PRE_CONFIGS:
+        raise ValueError("Cannot find config name %s" % _PRE_CONFIGS[0][0])
 
     for config_name in _HANDLED_PRE_CONFIGS:
         _get_config_node(config_name)

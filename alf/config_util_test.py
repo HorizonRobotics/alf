@@ -198,14 +198,17 @@ class ConfigTest(alf.test.TestCase):
         obj3 = Test3(1, 2)
         self.assertEqual(obj3(), (0, 0, 7))
 
-        # test unknown pre_config
+        # test pre_config for config not defined yet
         alf.pre_config({'test_func8.c': 10})
         self.assertRaisesRegex(ValueError, "Cannot find config name",
                                alf.validate_pre_configs)
         func11 = alf.configurable(test_func11)
+        # test pre_config for config already defined
+        alf.pre_config({'test_func11.a': 5})
         func8 = alf.configurable(test_func8)
-        self.assertEqual(func8(), (1, 2, 10))
         alf.validate_pre_configs()
+        self.assertEqual(func8(), (1, 2, 10))
+        self.assertEqual(func11(), (5, 2, 3))
 
         # test ambiguous pre_config
         alf.pre_config({'test_f.a': 10})
