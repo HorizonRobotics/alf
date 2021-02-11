@@ -718,7 +718,7 @@ class CausalConv1D(nn.Module):
                  out_channels,
                  kernel_size,
                  dilation=1,
-                 hide_current=True,
+                 hide_current=False,
                  activation=torch.relu_,
                  use_bias=None,
                  use_bn=False,
