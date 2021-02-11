@@ -571,6 +571,34 @@ class LayersTest(parameterized.TestCase, alf.test.TestCase):
 
         torch.set_num_threads(num_threads)
 
+    @parameterized.parameters((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3),
+                              (3, 1), (3, 2), (3, 3))
+    def test_causal_conv1d(self,
+                           kernel_size,
+                           dilation,
+                           batch_size=5,
+                           act=math_ops.identity,
+                           use_bias=True):
+        in_channels = 4
+        out_channels = 5
+        signal_length = 40
+
+        # create batched multi-channel 1d signal
+        signal = torch.randn(batch_size, in_channels, signal_length)
+
+        causal_conv = alf.layers.CausalConv1D(
+            in_channels,
+            out_channels,
+            kernel_size,
+            dilation,
+            activation=act,
+            use_bias=use_bias)
+
+        out = causal_conv(signal)
+
+        # the output signal should have the same length as the original one
+        self.assertTrue(out.shape == (batch_size, out_channels, signal_length))
+
 
 if __name__ == "__main__":
     alf.test.main()

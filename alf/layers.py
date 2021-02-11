@@ -15,6 +15,7 @@
 
 import copy
 
+from functools import partial
 import numpy as np
 import torch
 import torch.nn as nn
@@ -703,6 +704,118 @@ class ParallelFC(nn.Module):
                 the same ``input_size`` and ``output_size``
         """
         return self._bias
+
+
+@alf.configurable
+class CausalConv1D(nn.Module):
+    """1D (Dilated) Causal Convolution layer.
+        1D Dilated Causal Convolution is proposed in `Aaron et. al. WaveNet:
+        A generative model for raw audio <https://arxiv.org/abs/1609.03499>`_
+    """
+
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 kernel_size,
+                 dilation=1,
+                 activation=torch.relu_,
+                 use_bias=None,
+                 use_bn=False,
+                 kernel_initializer=None,
+                 kernel_init_gain=1.0,
+                 bias_init_value=0.0):
+        """A layer implementing the 1D (Dilated) Causal Convolution.
+        It is also responsible for activation and customized weights
+        initialization. An auto gain calculation might depend on the activation
+        following the causal conv1d layer.
+
+        Args:
+            in_channels (int): channels of the input
+            out_channels (int): channels of the output
+            kernel_size (int): size of the kernel
+            dilation (int): controls the spacing between the kernel points.
+                Please refer to here for a visual illustration:
+                https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
+            activation (torch.nn.functional): activation to be applied to output
+            use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
+            use_bn (bool): whether use batch normalization
+            kernel_initializer (Callable): initializer for the conv layer kernel.
+                If None is provided a variance_scaling_initializer with gain as
+                ``kernel_init_gain`` will be used.
+            kernel_init_gain (float): a scaling factor (gain) applied to the
+                std of kernel init distribution. It will be ignored if
+                ``kernel_initializer`` is not None.
+            bias_init_value (float): a constant
+        """
+        super(CausalConv1D, self).__init__()
+        if use_bias is None:
+            use_bias = not use_bn
+        self._activation = activation
+        # use F.pad for asymmstric padding
+        self._pad = partial(
+            F.pad,
+            pad=((kernel_size - 1) * dilation, 0),
+            mode='constant',
+            value=0)
+        self._causal_conv1d = nn.Conv1d(
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=1,
+            padding=0,
+            dilation=dilation,
+            bias=use_bias)
+
+        self._kernel_initializer = kernel_initializer
+        self._kernel_init_gain = kernel_init_gain
+        self._bias_init_value = bias_init_value
+        self._use_bias = use_bias
+        if use_bn:
+            self._bn = nn.BatchNorm1d(out_channels)
+        else:
+            self._bn = None
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        """Initialize the parameters."""
+        if self._kernel_initializer is None:
+            variance_scaling_init(
+                self._causal_conv1d.weight.data,
+                gain=self._kernel_init_gain,
+                nonlinearity=self._activation)
+        else:
+            self._kernel_initializer(self._causal_conv1d.weight.data)
+        if self._use_bias:
+            nn.init.constant_(self._causal_conv1d.bias.data,
+                              self._bias_init_value)
+        if self._bn is not None:
+            self._bn.reset_parameters()
+
+    def forward(self, x):
+        """
+        Args:
+            x (tensor): input of the shape [B, C, L] where B is the batch size,
+                C denotes the number of input channels, and L is the length of
+                the signal.
+
+        Returns:
+            A tensor of the shape [B, C', L], where C' denotes the number of
+                output channels.
+        """
+
+        y = self._causal_conv1d(self._pad(x))
+        if self._bn is not None:
+            y = self._bn(y)
+        return self._activation(y)
+
+    @property
+    def weight(self):
+        return self._causal_conv1d.weight
+
+    @property
+    def bias(self):
+        return self._causal_conv1d.bias
 
 
 @alf.configurable
