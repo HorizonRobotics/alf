@@ -78,29 +78,40 @@ class VehicleController(object):
     def __init__(self,
                  vehicle,
                  step_time,
-                 max_speed=20.,
+                 max_speed=5.56,
                  max_throttle=0.75,
                  max_steering=0.8,
                  max_brake=0.3,
-                 s_P=1.0,
-                 s_I=0.05,
+                 s_P=0.28,
+                 s_I=0.014,
                  s_D=0,
                  d_P=1.95,
                  d_I=0.07,
                  d_D=0.2):
         """
-        The defaults are from https://github.com/carla-simulator/carla/blob/master/PythonAPI/carla/agents/navigation/local_planner.py
+        The defaults are from https://github.com/carla-simulator/carla/blob/master/PythonAPI/carla/agents/navigation/local_planner.py.
+        Note that the max_speed and gain parameters for speed are originally
+        specified for speed in the unit of km/h. Since here we use m/s, we have
+        converted them as follows as our default values:
+            max_speed = 20 / 3.6 = 5.56
+            s_P = 1.0 / 3.6 = 0.28
+            s_I = 0.05 / 3.6 = 0.014
+            s_D = 0 / 3.6 = 0
 
         Args:
             vehicle (carla.Actor): the actor for vehicle
             step_time (float): time interval in seconds for each step
-            max_speed (float): maximal speed in m/s.
+            max_speed (float): maximal speed in m/s. Default to 5.6 m/s which
+                is about 20 km/h.
             max_throttle (float): maximal throttle
             max_steering (float): maximal steering
             max_brake (float): maximal brake
-            s_P (float): coefficient of the proportional term for the speed controller
-            s_I (float): coefficient of the integral term for the speed controller
-            s_D (float): coefficient of the derivative term for the speed controller
+            s_P (float): coefficient of the proportional term for the speed
+                controller, with the unit of speed as m/s
+            s_I (float): coefficient of the integral term for the speed
+                controller, with the unit of speed as m/s
+            s_D (float): coefficient of the derivative term for the speed
+                controller, with the unit of speed as m/s
             d_P (float): coefficient of the proportional term for the direction controller
             d_I (float): coefficient of the integral term for the direction controller
             d_D (float): coefficient of the derivative term for the direction controller
