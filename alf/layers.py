@@ -718,6 +718,7 @@ class CausalConv1D(nn.Module):
                  out_channels,
                  kernel_size,
                  dilation=1,
+                 hide_current=True,
                  activation=torch.relu_,
                  use_bias=None,
                  use_bn=False,
@@ -729,6 +730,17 @@ class CausalConv1D(nn.Module):
         initialization. An auto gain calculation might depend on the activation
         following the causal conv1d layer.
 
+        Note that the main difference of causal conv v.s. standard conv is that
+        each temporal element in the convolutional output is causal w.r.t.
+        the temporal elements from input. For example, for a length L sequence
+        x with the shape of [B, C, L], and y = causal_conv(x), where the shape
+        of y is [B, C', L], by causal we mean y[..., l] only depends on
+        X[..., :l] (i.e. the past), and there is no dependency on X[..., :l]
+        (i.e. future) as in the standard non-causal convolution.
+
+        This can implemented by using an asymmetric padding, which in effect
+        shift the input to the right (future) according to kernel size.
+
         Args:
             in_channels (int): channels of the input
             out_channels (int): channels of the output
@@ -736,6 +748,9 @@ class CausalConv1D(nn.Module):
             dilation (int): controls the spacing between the kernel points.
                 Please refer to here for a visual illustration:
                 https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
+            hide_current (bool): whether to hide the current by shifting the
+                input to the right (future) by one. This is typically needed
+                in the first layer of a causal conv net.
             activation (torch.nn.functional): activation to be applied to output
             use_bias (bool|None): whether use bias. If None, will use ``not use_bn``
             use_bn (bool): whether use batch normalization
@@ -751,12 +766,16 @@ class CausalConv1D(nn.Module):
         if use_bias is None:
             use_bias = not use_bn
         self._activation = activation
-        # use F.pad for asymmstric padding
+
+        # use F.pad for asymmetric padding
+        if hide_current:
+            assert dilation == 1, "the dilation should be 1 for hiding current"
+            asymmetric_padding = (kernel_size, -1)
+        else:
+            asymmetric_padding = ((kernel_size - 1) * dilation, 0)
+
         self._pad = partial(
-            F.pad,
-            pad=((kernel_size - 1) * dilation, 0),
-            mode='constant',
-            value=0)
+            F.pad, pad=asymmetric_padding, mode='constant', value=0)
         self._causal_conv1d = nn.Conv1d(
             in_channels,
             out_channels,
