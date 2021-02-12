@@ -93,10 +93,10 @@ class VehicleController(object):
         Note that the max_speed and gain parameters for speed are originally
         specified for speed in the unit of km/h. Since here we use m/s, we have
         converted them as follows as our default values:
-            :math:`max_speed = (20 km/h) / 3.6 =  5.56 m/s`
-            :math:`s_P = (1.0 h/km) * 3.6 = 3.6 s/m`
-            :math:`s_I = (0.05 h/km) * 3.6 = 0.18 s/m`
-            :math:`s_D = (0 h/km) * 3.6 = 0 s/m`
+            max_speed = (20 km/h) / 3.6 =  5.56 m/s
+            s_P = (1.0 h/km) * 3.6 = 3.6 s/m
+            s_I = (0.05 h/km) * 3.6 = 0.18 s/m
+            s_D = (0 h/km) * 3.6 = 0 s/m
 
         Args:
             vehicle (carla.Actor): the actor for vehicle
