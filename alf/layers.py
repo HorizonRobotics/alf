@@ -732,12 +732,12 @@ class CausalConv1D(nn.Module):
 
         Note that the main difference of causal conv v.s. standard conv is that
         each temporal element in the convolutional output is causal w.r.t.
-        the temporal elements from input. For example, for a length :math:`L`
-        sequence :math:`x` with the shape of :math:`[B, C, L]`, and
-        :math:`y = causal_conv(x)`, where the shape of :math:`y` is
-        :math:`[B, C', L]`, by causal we mean :math:`y[..., l]` only depends on
-        :math:`X[..., :l]` (i.e. the past), and there is no dependency on
-        :math:`X[..., l:]` (i.e. future) as in the standard non-causal
+        the temporal elements from input. For example, for a length `L`
+        sequence `x` with the shape of `[B, C, L]`, and
+        `y = causal_conv(x)`, where the shape of `y` is
+        `[B, C', L]`, by causal we mean `y[..., l]` only depends on
+        `X[..., :l]` (i.e. the past), and there is no dependency on
+        `X[..., l:]` (i.e. future) as in the standard non-causal
         convolution.
 
         This can implemented by using an asymmetric padding, which in effect
