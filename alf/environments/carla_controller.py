@@ -82,8 +82,8 @@ class VehicleController(object):
                  max_throttle=0.75,
                  max_steering=0.8,
                  max_brake=0.3,
-                 s_P=0.28,
-                 s_I=0.014,
+                 s_P=3.6,
+                 s_I=0.18,
                  s_D=0,
                  d_P=1.95,
                  d_I=0.07,
@@ -93,10 +93,10 @@ class VehicleController(object):
         Note that the max_speed and gain parameters for speed are originally
         specified for speed in the unit of km/h. Since here we use m/s, we have
         converted them as follows as our default values:
-            max_speed = 20 / 3.6 = 5.56
-            s_P = 1.0 / 3.6 = 0.28
-            s_I = 0.05 / 3.6 = 0.014
-            s_D = 0 / 3.6 = 0
+            :math:`max_speed = (20 km/h) / 3.6 =  5.56 m/s`
+            :math:`s_P = (1.0 h/km) * 3.6 = 3.6 s/m`
+            :math:`s_I = (0.05 h/km) * 3.6 = 0.18 s/m`
+            :math:`s_D = (0 h/km) * 3.6 = 0 s/m`
 
         Args:
             vehicle (carla.Actor): the actor for vehicle
@@ -107,11 +107,11 @@ class VehicleController(object):
             max_steering (float): maximal steering
             max_brake (float): maximal brake
             s_P (float): coefficient of the proportional term for the speed
-                controller, with the unit of speed as m/s
+                controller, with the unit as s/m
             s_I (float): coefficient of the integral term for the speed
-                controller, with the unit of speed as m/s
+                controller, with the unit as s/m
             s_D (float): coefficient of the derivative term for the speed
-                controller, with the unit of speed as m/s
+                controller, with the unit as s/m
             d_P (float): coefficient of the proportional term for the direction controller
             d_I (float): coefficient of the integral term for the direction controller
             d_D (float): coefficient of the derivative term for the direction controller
