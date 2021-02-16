@@ -414,6 +414,32 @@ class FIFOMemory(Memory):
         self._memory = torch.cat([content, self._memory[:, :-k, :]], dim=1)
         self._current_size = self._current_size + k
 
+    def masked_write(self, content, mask):
+        """Write content to memory.
+
+        Append the content to memory. If the memory is full, the oldest slot
+        will be removed.
+
+        Args:
+            content (Tensor): shape should be [b, dim] or [b, k, dim] where k
+                means the number of memory slots to be written
+            mask (bool Tensor): shape should be [b]. ``mask[i]`` indicates whether
+                the i-th memory should be updated.
+        """
+        if not self._built:
+            self.build(content.shape[0])
+        if content.ndim == 2:
+            content = content.unsqueeze(1)
+        assert content.shape[0] == self._batch_size
+        assert content.shape[2] == self.dim
+        k = content.shape[1]
+
+        self._memory = torch.where(
+            mask.reshape(self._batch_size, 1, 1),
+            torch.cat([content, self._memory[:, :-k, :]], dim=1), content)
+        self._current_size = torch.where(mask, self._current_size + k,
+                                         self._current_size)
+
     def read(self, keys):
         raise NotImplementedError()
 

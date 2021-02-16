@@ -524,10 +524,11 @@ class SLTrainer(Trainer):
                 self._algorithm.train_iter()
 
             if (epoch_num + 1) % self._eval_interval == 0:
-                if self._evaluate:
-                    self._algorithm.evaluate()
-                if self._eval_uncertainty:
-                    self._algorithm.eval_uncertainty()
+                with alf.summary.record_if(lambda: True):
+                    if self._evaluate:
+                        self._algorithm.evaluate()
+                    if self._eval_uncertainty:
+                        self._algorithm.eval_uncertainty()
 
             if epoch_num == begin_epoch_num:
                 self._summarize_training_setting()
@@ -537,10 +538,11 @@ class SLTrainer(Trainer):
             self._trainer_progress.update(epoch_num)
 
             if (self._num_epochs and epoch_num >= self._num_epochs):
-                if self._evaluate:
-                    self._algorithm.evaluate()
-                if self._eval_uncertainty:
-                    self._algorithm.eval_uncertainty()
+                with alf.summary.record_if(lambda: True):
+                    if self._evaluate:
+                        self._algorithm.evaluate()
+                    if self._eval_uncertainty:
+                        self._algorithm.eval_uncertainty()
                 break
 
             if self._num_epochs and epoch_num >= time_to_checkpoint:

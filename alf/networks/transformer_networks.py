@@ -60,10 +60,12 @@ class TransformerNetwork(PreprocessorNetwork):
                  d_ff,
                  core_size=1,
                  use_core_embedding=True,
+                 memories=None,
                  memory_size=0,
                  num_memory_layers=0,
                  return_core_only=True,
                  centralized_memory=True,
+                 memory_update_period=1,
                  input_preprocessors=None,
                  name="TransformerNetwork"):
         """
@@ -79,6 +81,12 @@ class TransformerNetwork(PreprocessorNetwork):
                 ``TransformerBlock``
             d_ff (int): the size of the hidden layer of the feedforward network
                 in each ``TransformerBlock``
+            memories (list[Memory]): list of memory object. ``len(memories)``
+                should be ``num_memory_layers`` or 1 (for centrailzied_memory).
+                Their size and dim must match ``memory_size`` and ``d_model``.
+                Note that if ``memories`` are provided by the caller their states
+                should be handled by the caller too (using ``Memory.from_states()``
+                and ``Memory.states``).
             memory_size (int): size of memory.
             num_memory_layers (int): number of TransformerBlock calculation
                 using memory
@@ -93,6 +101,8 @@ class TransformerNetwork(PreprocessorNetwork):
                 for each memory layers. if True, there will be a single memory
                 for all the memroy layers and it is updated using the last core
                 embeddings.
+            memory_update_period (int): how often to update the memory. 0 for
+                not updating.
             input_preprocessors (nested Network|nn.Module): a nest of
                 preprocessor networks, each of which will be applied to the
                 corresponding input. If not None, then it must have the same
@@ -106,19 +116,27 @@ class TransformerNetwork(PreprocessorNetwork):
                 will be concatenated as a Tensor of shape ``[batch_size, input_size, d_model]``,
                 where ``input_size = sum_i input_size_i``.
         """
-        preprocessing_combiner = None
-        if input_preprocessors is not None:
-            preprocessing_combiner = NestConcat(dim=-2)
         super().__init__(
             input_tensor_spec,
             input_preprocessors,
-            preprocessing_combiner=preprocessing_combiner,
+            preprocessing_combiner=NestConcat(dim=-2),
             name=name)
 
         assert self._processed_input_tensor_spec.ndim == 2
 
         input_size, d_model = self._processed_input_tensor_spec.shape
-        if num_memory_layers > 0:
+        self._external_memory = False
+        if memories:
+            if centralized_memory:
+                assert len(memories) == 1
+            else:
+                assert len(memories) == num_memory_layers
+            for mem in memories:
+                assert mem.size == memory_size
+                assert mem.dim == d_model
+            self._memories = memories
+            self._external_memory = True
+        elif num_memory_layers > 0:
             assert memory_size > 0, ("memory_size needs to be set if "
                                      "num_memory_layers > 0")
             if centralized_memory:
@@ -140,7 +158,13 @@ class TransformerNetwork(PreprocessorNetwork):
         else:
             self._core_embedding = None
 
-        self._state_spec = [mem.state_spec for mem in self._memories]
+        if self._external_memory:
+            self._state_spec = []
+        else:
+            self._state_spec = [mem.state_spec for mem in self._memories]
+        self._memory_update_period = memory_update_period
+        if memory_update_period > 1:
+            self._state_spec.append(alf.TensorSpec((), dtype=torch.int32))
         self._num_memory_layers = num_memory_layers
         self._num_prememory_layers = num_prememory_layers
 
@@ -191,29 +215,46 @@ class TransformerNetwork(PreprocessorNetwork):
         for i in range(self._num_prememory_layers):
             query = self._transformers[i].forward(query)
 
+        if self._memory_update_period > 1:
+            step = state[-1]
+            mask = step == 0
+
+        if not self._external_memory:
+            for i, mem in enumerate(self._memories):
+                mem.from_states(state[i])
+
         if self._num_memory_layers > 0 and self._centralized_memory:
             memory = self._memories[0]
-            memory.from_states(state[0])
             mem = memory.memory()
             for i in range(self._num_memory_layers):
                 transformer = self._transformers[self._num_prememory_layers +
                                                  i]
                 query = transformer.forward(
                     memory=torch.cat([mem, query], dim=-2), query=query)
-            memory.write(query[:, :self._core_size, :])
+            if self._memory_update_period == 1:
+                memory.write(query[:, :self._core_size, :])
+            elif self._memory_update_period > 1:
+                memory.masked_write(query[:, :self._core_size, :], mask)
         else:
             for i in range(self._num_memory_layers):
                 memory = self._memories[i]
-                memory.from_states(state[i])
                 transformer = self._transformers[self._num_prememory_layers +
                                                  i]
                 new_query = transformer.forward(
                     memory=torch.cat([memory.memory(), query], dim=-2),
                     query=query)
-                memory.write(query[:, :self._core_size, :])
+                if self._memory_update_period == 1:
+                    memory.write(query[:, :self._core_size, :])
+                elif self._memory_update_period > 1:
+                    memory.masked_write(query[:, :self._core_size, :], mask)
                 query = new_query
 
-        new_state = [mem.states for mem in self._memories]
+        if not self._external_memory:
+            new_state = [mem.states for mem in self._memories]
+        else:
+            new_state = []
+        if self._memory_update_period > 1:
+            new_state.append((step + 1) % self._memory_update_period)
 
         if self._return_core_only:
             return query[:, :self._core_size, :].reshape(batch_size,
