@@ -322,6 +322,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  plan_margin=0.,
                  plan_with_goal_value_only=False,
                  plan_cost_ln_norm=1,
+                 sg_leng_penalty=0,
+                 subgoal_cost_thd=0.5,
+                 infer_yaw=False,
                  goal_speed_zero=False,
                  min_goal_cost_to_use_plan=0.,
                  speed_goal=False,
@@ -364,6 +367,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 to be adopted.
             plan_cost_ln_norm (int): ln norm applied to segment costs before adding
                 segment costs to form the full plan cost.
+            sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
+            subgoal_cost_thd (float): penalize subgoal if above this distance.
+            infer_yaw (bool): infer yaw from speed, instead of sample using CEM.
             min_goal_cost_to_use_plan (float): cost of original goal must be above
                 this threshold for the plan to be accepted.
             speed_goal (bool): whether goal includes speed pose etc..
@@ -394,6 +400,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._plan_margin = plan_margin
         self._plan_with_goal_value_only = plan_with_goal_value_only
         self._plan_cost_ln_norm = plan_cost_ln_norm
+        self._sg_leng_penalty = sg_leng_penalty
+        self._subgoal_cost_thd = subgoal_cost_thd
+        self._infer_yaw = infer_yaw
         self._goal_speed_zero = goal_speed_zero
         self._min_goal_cost_to_use_plan = min_goal_cost_to_use_plan
         self._speed_goal = speed_goal
@@ -577,6 +586,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def _costs_agg_dist(self, time_step, state, samples, info=None):
         assert self._value_fn, "no value function provided."
         (batch_size, pop_size, horizon, plan_dim) = samples.shape
+        if self._infer_yaw and plan_dim == 12:
+            samples[:, :, :, 11] = torch.atan2(samples[:, :, :, 3],
+                                               samples[:, :, :, 2])
         if self.control_aux:
             horizon -= 1
         # When using goal_value_net with position only input, this is not True.
@@ -651,7 +663,14 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             else:
                 dists = torch.max(dists, dim=2)[0]  # L-inf norm
         agg_dist = alf.math.sum_to_leftmost(dists, dim=2)
-        return agg_dist
+        seg_norms = torch.norm(
+            samples_e[:, :, 1:, :] - samples_e[:, :, :-1, :], dim=3)
+        seg_costs = torch.where(
+            seg_norms > self._subgoal_cost_thd,
+            self._sg_leng_penalty
+            * (torch.exp(seg_norms - self._subgoal_cost_thd) - 1),
+            torch.zeros(()))
+        return agg_dist + alf.math.sum_to_leftmost(seg_costs, dim=2)
 
     def _compute_plan_horizon(self):
         plan_horizon = self._num_subgoals
@@ -702,6 +721,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         info = {}
         goals, costs = opt.obtain_solution(ts, (), info)
         batch_size = goals.shape[0]
+        if new_goal_mask is None:
+            new_goal_mask = torch.ones((batch_size, 1), dtype=torch.bool)
         if self.control_aux:
             # This portion of the CEM samples were never used in the
             # _costs_agg_dist function, and were filled with desired_goal.
@@ -711,19 +732,22 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                observation["desired_goal"].unsqueeze(1)),
                               dim=1)
         old_plan = state.full_plan
+        old_samples = state.full_plan.clone()
         if not self.control_aux:
             # leave out the real goal from samples (subgoals)
-            old_plan = old_plan[:, :-1, :]
-        old_costs = opt.cost_function(ts, state, old_plan.unsqueeze(1))
+            old_samples = old_samples[:, :-1, :]
+        old_costs = opt.cost_function(ts, state, old_samples.unsqueeze(1))
         retain_old = (old_costs < costs).squeeze(1)
         # Plot relative cost increase of new plan.  Is old plan a lot better than new?
         if alf.summary.should_record_summaries():
-            new_cost_larger = torch.where(retain_old, costs - old_costs,
-                                          torch.zeros(()))
+            new_cost_larger = torch.where(
+                retain_old[new_goal_mask.squeeze(1)],
+                (costs - old_costs)[new_goal_mask.squeeze(1)], torch.zeros(()))
             alf.summary.scalar(
                 "planner/avg_new_cost_larger_by." + common.exe_mode_name(),
                 torch.mean(new_cost_larger))
-        goals = torch.where(retain_old.reshape(-1, 1, 1), old_plan, goals)
+        goals = torch.where((retain_old.unsqueeze(1) | ~new_goal_mask).reshape(
+            batch_size, 1, 1), old_plan, goals)
         state = state._replace(
             replan=state.replan & ~retain_old,
             retain_old=state.replan & retain_old)
@@ -755,13 +779,13 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 torch.mean(full_dist))
             dist_ag_subgoal = torch.norm(
                 subgoal[:, :self._action_dim] - observation["achieved_goal"],
-                dim=1)
+                dim=1)[new_goal_mask.squeeze(1)]
             alf.summary.scalar(
                 "planner/distance_ag_to_subgoal." + common.exe_mode_name(),
                 torch.mean(dist_ag_subgoal))
             dist_subgoal_g = torch.norm(
                 subgoal[:, :self._action_dim] - observation["desired_goal"],
-                dim=1)
+                dim=1)[new_goal_mask.squeeze(1)]
             alf.summary.scalar(
                 "planner/distance_subgoal_to_goal." + common.exe_mode_name(),
                 torch.mean(dist_subgoal_g))
@@ -789,9 +813,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             costs > 0) & (init_costs > costs * (1. + self._plan_margin))
         if self._always_adopt_plan:
             plan_success |= torch.tensor(1, dtype=torch.bool)
-        if new_goal_mask is not None:
-            # Considers plan success only when new plan is requested.
-            plan_success &= new_goal_mask
+        # Considers plan success only when new plan is requested.
+        plan_success &= new_goal_mask
         state = state._replace(plan_success=plan_success.squeeze(1))
 
         if alf.summary.should_record_summaries():
@@ -840,8 +863,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         # Add full plan to state so we can get final goal's aux_desired,
         # as well as all the subgoals for the case when next_goal_on_success.
         if self._next_goal_on_success or self.control_aux:
-            full_plan = torch.where(
-                plan_success.unsqueeze(2), goals, state.full_plan)
+            full_plan = torch.where(plan_success.unsqueeze(2), goals, old_plan)
             state = state._replace(full_plan=full_plan)
         return subgoal, state
 

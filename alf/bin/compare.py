@@ -204,11 +204,20 @@ def _tokenize(s):
     s = s.replace("/home/lezhao/tmp/", "")
     s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.num_subgoals=",
                   "numsg_")
+    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.plan_cost_ln_norm=",
+                  "sglnnorm_")
+    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.sg_leng_penalty=",
+                  "sglpenal_")
+    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.max_replan_steps=",
+                  "mps_")
+    s = s.replace("goal_gen/SubgoalPlanningGoalGenerator.infer_yaw=True",
+                  "inferyaw")
+    s = s.replace("suite_socialbot.load.max_episode_steps=", "mes_")
     s = s.replace("CEMOptimizer.iterations=", "cemiters_")
     s = s.replace("GoalTask.min_distance=", "mindist_")
     s = s.replace("GoalTask.random_range=", "randrange_")
     s = s.replace("GoalTask.chain_task_rate=", "chaintask_")
-    s = s.replace("PlayGround.max_steps=", "msteps_")
+    s = s.replace("PlayGround.max_steps=", "ms_")
     s = s.replace("'", "")
     s = s.replace('"', "")
     s = s.replace("=", "__")
@@ -323,7 +332,7 @@ def main(_):
                 dir2_str = "-dir2_{}".format(_tokenize(root_dir2))
             custom_gins = "gin1_{}-gin2_{}{}".format(
                 _tokenize(FLAGS.gin1), _tokenize(FLAGS.gin2), dir2_str)
-        output_file = root_dir1 + "/compare{}-{}-startfrom_{}-numruns_{}.html".format(
+        output_file = root_dir1 + "/compare{}-{}-s_{}-n_{}.html".format(
             gin_str, custom_gins, FLAGS.start_from, FLAGS.num_runs)
     html = _create_html(data, all_data, metrics, abbr, root_dir1, root_dir2)
     f = open(output_file, 'w')

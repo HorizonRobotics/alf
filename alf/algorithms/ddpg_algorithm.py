@@ -82,6 +82,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                  ou_damping=0.15,
                  critic_loss_ctor=None,
                  num_critic_replicas=1,
+                 num_critics_for_training=0,
                  split_exp_on_replicas="",
                  target_update_tau=0.05,
                  target_update_period=1,
@@ -115,6 +116,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 multidimensional. In that case, the weighted sum of the q values
                 is used for training the actor.
             num_critic_replicas (int): number of critics to be used. Default is 1.
+            num_critics_for_training (int): if not zero, only use the first n critics
+                for critic training.
             split_exp_on_replicas (str): use "envid" or "pos" in replay buffer for
                 hashing content to different critic replicas.  Default is no split.
             env (Environment): The environment to interact with. env is a batched
@@ -204,6 +207,7 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         self._actor_network = actor_network
         self._num_critic_replicas = num_critic_replicas
+        self._num_critics_for_training = num_critics_for_training
         self._critic_networks = critic_networks
         self._goal_net = goal_net
         self._goal_net_target = None
@@ -325,6 +329,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             (exp.observation, target_action), state=state.target_critics)
 
         if self._num_critic_replicas > 1:
+            if self._num_critics_for_training > 0:
+                target_q_values = target_q_values[:, :self.
+                                                  _num_critics_for_training,
+                                                  ...]
             target_q_values = target_q_values.min(dim=1)[0]
         else:
             target_q_values = target_q_values.squeeze(dim=1)
@@ -363,6 +371,10 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                 target_goal_values, _ = self._goal_net_target(
                     goal_input, state=())
                 if self._num_critic_replicas > 1:
+                    if self._num_critics_for_training > 0:
+                        target_goal_values = target_goal_values[:, :self.
+                                                                _num_critics_for_training,
+                                                                ...]
                     target_goal_values = target_goal_values.min(dim=1)[0]
                 else:
                     target_goal_values = target_goal_values.squeeze(dim=1)
@@ -386,6 +398,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
                     q_values, self._reward_weights, dims=1)
 
         if self._num_critic_replicas > 1:
+            if self._num_critics_for_training > 0:
+                q_values = q_values[:, :self._num_critics_for_training, ...]
             q_value = q_values.min(dim=1)[0]
         else:
             q_value = q_values.squeeze(dim=1)

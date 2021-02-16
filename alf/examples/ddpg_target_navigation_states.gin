@@ -58,7 +58,7 @@ TrainerConfig.initial_collect_steps=10000
 TrainerConfig.mini_batch_length=2
 TrainerConfig.mini_batch_size=5000
 TrainerConfig.num_updates_per_train_iter=40
-TrainerConfig.replay_buffer_length=100000
+TrainerConfig.replay_buffer_length=200000
 
 TrainerConfig.summary_interval=20
 TrainerConfig.num_iterations=3000
