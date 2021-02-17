@@ -1321,6 +1321,7 @@ class CarlaEnvironment(AlfEnvironment):
             walker = self._world.get_actor(response.actor_id)
             self._walkers.append({"walker": walker})
             walker_speeds2.append(walker_speed)
+
         walker_speeds = walker_speeds2
 
         # 3. we spawn the walker controller

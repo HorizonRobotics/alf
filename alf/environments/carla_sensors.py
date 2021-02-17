@@ -918,6 +918,7 @@ class World(object):
         """Should be called after every world tick() to update data."""
         self._traffic_light_states = np.array(
             [a.state for a in self._traffic_light_actors], dtype=np.int)
+        self._actor_locations = {}
 
     def _get_traffic_light_waypoints(self, traffic_light):
         # Copied from RunningRedLightTest.get_traffic_light_waypoints() in
