@@ -1320,7 +1320,6 @@ class CarlaEnvironment(AlfEnvironment):
                 continue
             walker = self._world.get_actor(response.actor_id)
             self._walkers.append({"walker": walker})
-            self._alf_world.add_actor(walker)
             walker_speeds2.append(walker_speed)
 
         walker_speeds = walker_speeds2
