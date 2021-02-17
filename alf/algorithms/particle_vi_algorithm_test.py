@@ -59,10 +59,10 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     @parameterized.parameters(('svgd'), ('gfsf'))
     def test_par_vi_algorithm(self, par_vi='svgd'):
         """
-        The generator is trained to match(STEIN)/maximize(ML) the likelihood
-        of a Gaussian distribution with zero mean and diagonal variance :math:`(1, 4)`.
-        After training, :math:`w^T w` is the variance of the distribution implied by the
-        generator. So it should be :math:`diag(1,4)` for STEIN and 0 for 'ML'.
+        The par_vi algorithm is trained to match the likelihood of a Gaussian 
+        distribution with zero mean and diagonal variance :math:`(1, 4)`.
+        After training, :math:`w^T w` is the variance of the distribution 
+        implied by the particles. So it should be :math:`diag(1,4)`.
         """
         logging.info("par_vi: %s" % (par_vi))
         dim = 2
@@ -85,13 +85,13 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             alg_step = ParVI.train_step(loss_func=_neglogprob)
             ParVI.update_with_gradient(alg_step.info)
 
-        for i in range(5000):
+        for i in range(2000):
             _train()
             learned_var = self.cov(ParVI.particles)
             if i % 500 == 0:
                 print(i, "learned var=", learned_var)
 
-        self.assertArrayEqual(torch.diag(var), learned_var, 0.1)
+        self.assertArrayEqual(torch.diag(var), learned_var, 0.2)
 
 
 if __name__ == '__main__':

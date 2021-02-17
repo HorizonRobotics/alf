@@ -48,7 +48,6 @@ class ParVIAlgorithm(Algorithm):
 
     def __init__(self,
                  particle_dim,
-                 train_state_spec=(),
                  num_particles=10,
                  entropy_regularization=1.,
                  par_vi="gfsf",
@@ -59,8 +58,6 @@ class ParVIAlgorithm(Algorithm):
 
         Args:
             particle_dim (int): dimension of the particles.
-            train_state_spec (nested TensorSpec): for the network state of
-                ``train_step()``.
             num_particles (int): number of particles.
             entropy_regularization (float): weight of the repulsive term in par_vi. 
             par_vi (string): par_vi methods, options are [``svgd``, ``gfsf``],
@@ -74,10 +71,7 @@ class ParVIAlgorithm(Algorithm):
             name (str): name of this generator
         """
         super().__init__(
-            train_state_spec=train_state_spec,
-            optimizer=optimizer,
-            debug_summaries=debug_summaries,
-            name=name)
+            optimizer=optimizer, debug_summaries=debug_summaries, name=name)
         self._particle_dim = particle_dim
         self._num_particles = num_particles
         self._entropy_regularization = entropy_regularization
@@ -87,6 +81,8 @@ class ParVIAlgorithm(Algorithm):
             self._grad_func = self._gfsf_grad
         elif par_vi == 'svgd':
             self._grad_func = self._svgd_grad
+        elif par_vi == None:
+            self._grad_func = self._ml_grad
         else:
             raise ValueError("Unsupported par_vi method: %s" % par_vi)
 
@@ -123,8 +119,6 @@ class ParVIAlgorithm(Algorithm):
                    state=None):
         """
         Args:
-            outputs (Tensor): generator's output (possibly from previous runs) used
-                for this train_step.
             loss_func (Callable): loss_func(loss_inputs) returns a Tensor or 
                 namedtuple of tensors with field `loss`, which is a Tensor of
                 shape [num_particles] a loss term for optimizing the generator.
@@ -170,7 +164,7 @@ class ParVIAlgorithm(Algorithm):
 
         return self._kernel_width_averager.get()
 
-    def _rbf_func(self, x, y):
+    def _rbf_func(self, x, y=None):
         r"""
         Compute the rbf kernel and its gradient w.r.t. first entry 
         :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad.
@@ -179,26 +173,34 @@ class ParVIAlgorithm(Algorithm):
             x (Tensor): set of N particles, shape (Nx x W), where W is the 
                 dimenseion of each particle
             y (Tensor): set of N particles, shape (Ny x W), where W is the 
-                dimenseion of each particle
+                dimenseion of each particle. If y is None, treat y=x and compute
+                the leave-the-sample-out kernel and gradient of kernel.
 
         Returns:
             :math:`K(x, y)` (Tensor): the RBF kernel of shape (Nx x Ny)
-            :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x D)
+            :math:`\nabla_x K(x, y)` (Tensor): the derivative of RBF kernel of shape (Nx x Ny x W)
             
         """
         Nx, Dx = x.shape
-        Ny, Dy = y.shape
-        assert Dx == Dy
-        diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
+        if y is not None:
+            Ny, Dy = y.shape
+            assert Dx == Dy
+            diff = x.unsqueeze(1) - y.unsqueeze(0)  # [Nx, Ny, W]
+        else:
+            diff = x.unsqueeze(1) - x.unsqueeze(0)  # [Nx, Nx, W]
         dist_sq = torch.sum(diff**2, -1)  # [Nx, Ny]
-        # h = self._kernel_width(dist_sq.view(-1))
         h, _ = torch.median(dist_sq.view(-1), dim=0)
         if h == 0.:
             h = torch.ones_like(h)
         else:
             h = h / max(np.log(Nx), 1.)
 
-        kappa = torch.exp(-dist_sq / h)  # [Nx, Nx]
+        kappa = torch.exp(-dist_sq / h)  # [Nx, Ny]
+        if y is None:
+            # compute leave-the-sample-out kernel and gradient of kernel
+            mask = torch.eye(Nx).bool()
+            kappa = kappa.masked_fill(mask, 0.)
+
         kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
                                   -2 * diff / h)  # [Nx, Ny, W]
         return kappa, kappa_grad
@@ -231,6 +233,27 @@ class ParVIAlgorithm(Algorithm):
 
         return kappa_inv @ kappa_grad
 
+    def _ml_grad(self,
+                 particles,
+                 loss_func,
+                 entropy_regularization=None,
+                 transform_func=None):
+        if transform_func is not None:
+            particles, extra_particles, _ = transform_func(particles)
+            aug_particles = torch.cat([particles, extra_particles], dim=-1)
+        else:
+            aug_particles = particles
+        loss_inputs = particles
+        loss = loss_func(loss_inputs)
+        if isinstance(loss, tuple):
+            neglogp = loss.loss
+        else:
+            neglogp = loss
+        grad = torch.autograd.grad(neglogp.sum(), loss_inputs)[0]
+        loss_propagated = torch.sum(grad.detach() * particles, dim=-1)
+
+        return loss, loss_propagated
+
     def _svgd_grad(self,
                    particles,
                    loss_func,
@@ -238,7 +261,8 @@ class ParVIAlgorithm(Algorithm):
                    transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by splitting half of the sampled batch. 
+        evaluated using the all particles except for the one that the 
+        SVGD gradient is computed for. 
         """
         if transform_func is not None:
             particles, extra_particles = transform_func(particles)
@@ -257,14 +281,14 @@ class ParVIAlgorithm(Algorithm):
         # [N, N], [N, N, D]
         kernel_weight, kernel_grad = self._rbf_func(aug_particles.detach(),
                                                     aug_particles.detach())
-        kernel_logp = torch.matmul(kernel_weight.t(),
-                                   loss_grad) / self.num_particles  # [N, D]
+        kernel_logp = torch.matmul(kernel_weight, loss_grad) / (
+            self.num_particles)  # [N, D]
 
         loss_prop_kernel_logp = torch.sum(
             kernel_logp.detach() * particles, dim=-1)
         loss_prop_kernel_grad = torch.sum(
-            -entropy_regularization * kernel_grad.mean(0).detach() *
-            aug_particles,
+            -entropy_regularization * kernel_grad.mean(0).detach() * \
+                aug_particles,
             dim=-1)
         loss_propagated = loss_prop_kernel_logp + loss_prop_kernel_grad
 

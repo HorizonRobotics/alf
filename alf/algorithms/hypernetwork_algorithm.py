@@ -31,15 +31,21 @@ from alf.tensor_specs import TensorSpec
 from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
 
-HyperNetworkLossInfo = namedtuple("HyperNetworkLossInfo", ["loss", "extra"])
-
 
 def classification_loss(output, target):
+    if output.ndim == 2:
+        output = output.reshape(output.shape[0], target.shape[1], -1)
     pred = output.max(-1)[1]
+    target = target.squeeze(-1)
     acc = pred.eq(target).float().mean(0)
     avg_acc = acc.mean()
-    loss = F.cross_entropy(output.transpose(1, 2), target)
-    return HyperNetworkLossInfo(loss=loss, extra=avg_acc)
+    if output.dim == 3:
+        output = output.transpose(1, 2)
+    else:
+        output = output.reshape(output.shape[0] * target.shape[1], -1)
+        target = target.reshape(-1)
+    loss = F.cross_entropy(output, target)
+    return LossInfo(loss=loss, extra=avg_acc)
 
 
 def regression_loss(output, target):
@@ -50,7 +56,7 @@ def regression_loss(output, target):
         output.reshape(-1, out_shape),
         target.reshape(-1, out_shape),
         reduction='sum')
-    return HyperNetworkLossInfo(loss=loss, extra=())
+    return LossInfo(loss=loss, extra=())
 
 
 @gin.configurable
