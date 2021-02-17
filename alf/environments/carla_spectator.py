@@ -87,7 +87,7 @@ def main(_):
         if actor.type_id.startswith('vehicle'):
             vehicles.append(actor)
             logging.info("id: %s type_id: %s" % (actor.id, actor.type_id))
-
+    logging.info("Found %s vechiles." % len(vehicles))
     if len(vehicles) == 0:
         logging.info("There is no vehicles in the simulation. Quit")
         return
