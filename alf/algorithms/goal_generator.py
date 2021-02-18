@@ -321,6 +321,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  max_replan_steps=10,
                  plan_margin=0.,
                  plan_with_goal_value_only=False,
+                 plan_remaining_subgoals=1,
                  plan_cost_ln_norm=1,
                  sg_leng_penalty=0,
                  subgoal_cost_thd=0.5,
@@ -365,6 +366,9 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 replanning.
             plan_margin (float): how much larger value than baseline does the plan need,
                 to be adopted.
+            plan_with_goal_value_only (bool): only use goal value to plan, disregard
+                other dimensions in the multi-dimensional reward.
+            plan_remaining_subgoals (bool): skip planning already achieved subgoals.
             plan_cost_ln_norm (int): ln norm applied to segment costs before adding
                 segment costs to form the full plan cost.
             sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
@@ -399,6 +403,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._max_replan_steps = max_replan_steps
         self._plan_margin = plan_margin
         self._plan_with_goal_value_only = plan_with_goal_value_only
+        self._plan_remaining_subgoals = plan_remaining_subgoals
         self._plan_cost_ln_norm = plan_cost_ln_norm
         self._sg_leng_penalty = sg_leng_penalty
         self._subgoal_cost_thd = subgoal_cost_thd
@@ -589,8 +594,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if self._infer_yaw and plan_dim == 12:
             samples[:, :, :, 11] = torch.atan2(samples[:, :, :, 3],
                                                samples[:, :, :, 2])
+        # horizon here measures the number of subgoals in the plan
         if self.control_aux:
             horizon -= 1
+        n_goals = horizon + 1
         # When using goal_value_net with position only input, this is not True.
         # assert (plan_dim == self._action_dim
         #         + self._aux_dim), "{} != {} + {}".format(
@@ -611,38 +618,65 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         else:
             ag_samples = samples
         if horizon > 0:
-            samples_e = torch.cat([start, ag_samples, end], dim=2)
+            pos_traj = torch.cat([start, ag_samples, end], dim=2)
         else:
-            samples_e = torch.cat([start, end], dim=2)
+            pos_traj = torch.cat([start, end], dim=2)
+        if self._plan_remaining_subgoals:
+            sg_index = torch.min(
+                torch.as_tensor(self._num_subgoals, dtype=torch.int32),
+                state.subgoals_index).long()
+            # Set the previous subgoal to the current state.
+            # sg_index always points to the current subgoal in all subgoals,
+            # hence, always points to the previous state in the position trajectory.
+            pos_traj[(torch.arange(batch_size).reshape(batch_size, 1, 1),
+                      torch.arange(pop_size).reshape(1, pop_size, 1),
+                      sg_index.reshape(-1, 1, 1))] = start
+            batch_mask = sg_index > 0
+            sg_index_masked = (sg_index - 1)[batch_mask]
+            new_b_size = sg_index_masked.shape[0]
+            if new_b_size > 0:
+                samples_masked = samples[batch_mask]
+                samples_masked[(torch.arange(new_b_size).reshape(
+                    new_b_size, 1, 1, 1), torch.arange(pop_size).reshape(
+                        1, pop_size, 1, 1),
+                                sg_index_masked.reshape(new_b_size, 1, 1, 1),
+                                torch.arange(action_dim).reshape(
+                                    1, 1, 1, action_dim))] = start[batch_mask]
+                samples[batch_mask] = samples_masked
+            sg_mask = (torch.arange(n_goals).reshape(1, 1, -1) <
+                       sg_index.reshape(-1, 1, 1) - 1).expand(
+                           batch_size, pop_size, n_goals)
+            samples[sg_mask] = 0
         stack_obs = time_step.observation.copy()
         stack_obs["observation"] = time_step.observation[
             "observation"].reshape(batch_size, 1, 1, -1).expand(
-                batch_size, pop_size, horizon + 1, -1).reshape(
-                    batch_size * pop_size * (horizon + 1), -1)
-        stack_obs["achieved_goal"] = samples_e[:, :, :-1, :].reshape(
-            batch_size * pop_size * (horizon + 1), action_dim)
-        stack_obs["desired_goal"] = samples_e[:, :, 1:, :].reshape(
-            batch_size * pop_size * (horizon + 1), action_dim)
+                batch_size, pop_size, n_goals, -1).reshape(
+                    batch_size * pop_size * n_goals, -1)
+        stack_obs["achieved_goal"] = pos_traj[:, :, :-1, :].reshape(
+            batch_size * pop_size * n_goals, action_dim)
+        stack_obs["desired_goal"] = pos_traj[:, :, 1:, :].reshape(
+            batch_size * pop_size * n_goals, action_dim)
         if self._final_goal:
             stack_obs["final_goal"] = torch.zeros(batch_size, pop_size,
-                                                  horizon + 1)
+                                                  n_goals)
             stack_obs["final_goal"][:, :, -1] = torch.ones(())
             stack_obs["final_goal"] = stack_obs["final_goal"].reshape(-1, 1)
         if (self._use_aux_achieved and not self._speed_goal
                 and plan_dim > action_dim):
             # When computing old plan cost under position only control,
             # plan_dim == action_dim, skip aux_achieved in that case.
-            aux_start = time_step.observation["aux_achieved"].reshape(
+            aux_ach_1 = time_step.observation["aux_achieved"].reshape(
                 batch_size, 1, 1, self._aux_dim).expand(
                     batch_size, pop_size, 1, self._aux_dim)
             if horizon > 0:
-                aux_start = torch.cat([
-                    aux_start, samples[:, :, :horizon, action_dim:].reshape(
-                        batch_size, pop_size, horizon, self._aux_dim)
-                ],
-                                      dim=2)
-            stack_obs["aux_achieved"] = aux_start.reshape(
-                batch_size * pop_size * (horizon + 1), self._aux_dim)
+                aux_ach = torch.cat(
+                    (aux_ach_1, samples[:, :, :horizon, action_dim:]), dim=2)
+                if self._plan_remaining_subgoals:
+                    aux_ach[:, :, sg_index] = aux_ach_1
+            else:
+                aux_ach = aux_ach_1
+            stack_obs["aux_achieved"] = aux_ach.reshape(
+                batch_size * pop_size * n_goals, self._aux_dim)
             if self.control_aux:
                 if self._goal_speed_zero:
                     samples[:, :, -1, action_dim:action_dim +
@@ -650,11 +684,11 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                     samples[:, :, -1, action_dim + 5] = 0  # yaw speed
                 stack_obs[
                     "aux_desired"] = samples[:, :, :, action_dim:].reshape(
-                        batch_size * pop_size * (horizon + 1), self._aux_dim)
+                        batch_size * pop_size * n_goals, self._aux_dim)
         if self._value_state_spec != ():
             raise NotImplementedError()
         values, _unused_value_state = self._wrapped_value_fn(stack_obs, ())
-        dists = -values.reshape(batch_size, pop_size, horizon + 1, -1)
+        dists = -values.reshape(batch_size, pop_size, n_goals, -1)
         if info is not None:
             info["all_population_costs"] = dists
         if self._plan_cost_ln_norm > 1:
@@ -662,15 +696,22 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 dists = dists**self._plan_cost_ln_norm
             else:
                 dists = torch.max(dists, dim=2)[0]  # L-inf norm
-        agg_dist = alf.math.sum_to_leftmost(dists, dim=2)
         seg_norms = torch.norm(
-            samples_e[:, :, 1:, :] - samples_e[:, :, :-1, :], dim=3)
+            pos_traj[:, :, 1:, :] - pos_traj[:, :, :-1, :], dim=3)
         seg_costs = torch.where(
             seg_norms > self._subgoal_cost_thd,
             self._sg_leng_penalty
             * (torch.exp(seg_norms - self._subgoal_cost_thd) - 1),
             torch.zeros(()))
-        return agg_dist + alf.math.sum_to_leftmost(seg_costs, dim=2)
+        if self._plan_remaining_subgoals:
+            seg_mask = (torch.arange(n_goals).reshape(1, 1, -1) <
+                        sg_index.reshape(-1, 1, 1)).expand(
+                            batch_size, pop_size, n_goals)
+            dists[seg_mask] = 0
+            seg_costs[seg_mask] = 0
+        agg_dist = alf.math.sum_to_leftmost(dists, dim=2)
+        agg_cost = alf.math.sum_to_leftmost(seg_costs, dim=2)
+        return agg_dist + agg_cost
 
     def _compute_plan_horizon(self):
         plan_horizon = self._num_subgoals
@@ -719,7 +760,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         ts = TimeStep(observation=observation)
         assert self._value_fn, "set_value_fn before generate_goal"
         info = {}
-        goals, costs = opt.obtain_solution(ts, (), info)
+        goals, costs = opt.obtain_solution(ts, state, info)
         batch_size = goals.shape[0]
         if new_goal_mask is None:
             new_goal_mask = torch.ones((batch_size, 1), dtype=torch.bool)
@@ -850,15 +891,15 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             else:
                 subgoal_str = ""
             logging.info(
-                "%s init_cost: %f plan_cost: %f:\nobs: %s\nachv: %s ->\n"
-                "%sgoal: %s", outcome, init_costs, costs,
-                str(observation["observation"]), str(ach), subgoal_str,
-                str(orig_desired))
+                "%s init_cost: %.4f plan_cost: %.4f:\nobs: %s\nachv: %s ->\n"
+                "%sgoal: %s\nretain_old: %d, subgoal_index: %d",
+                outcome, init_costs, costs, str(observation["observation"]),
+                str(ach), subgoal_str, str(orig_desired), bool(retain_old),
+                int(state.subgoals_index))
             if self._num_subgoals > 0 and "segment_costs" in info:
-                logging.info(
-                    "full_dist=%f; ag_sg=%f, cost=%f; sg_g=%f, cost=%f",
-                    full_dist, dist_ag_subgoal, info["segment_costs"][0, 0],
-                    dist_subgoal_g, info["segment_costs"][0, 1])
+                logging.info("full_dist=%.2f; ag_sg=%.2f, sg_g=%.2f, costs=%s",
+                             full_dist, dist_ag_subgoal, dist_subgoal_g,
+                             str(info["segment_costs"].squeeze(2)[0, :]))
         subgoal = torch.where(plan_success, subgoal, orig_desired)
         # Add full plan to state so we can get final goal's aux_desired,
         # as well as all the subgoals for the case when next_goal_on_success.
