@@ -132,6 +132,12 @@ class TemporalStack(Network):
     avg:   [0, 0],   [0, 1.5], [0, 1.5], [1.5, 3.5], [1.5, 3.5]
     max:   [0, 0],   [0, 2],   [0, 2],   [2, 4],     [2, 4]
 
+    Note that for 'avg' and 'max', the result is zero for the first ``pooling_size - 1``
+    steps because it needs ``pooling_size`` input to calculate the result. After
+    that, the output changes every ``pooling_size`` steps as the new pooling result
+    available. On the other hand, for 'skip', the first input is immediately
+    reflected in the output because it is a valid way of skipping.
+
     Example:
 
     .. code-block:: python
@@ -140,13 +146,26 @@ class TemporalStack(Network):
         cnn = alf.networks.Sequential([
             alf.networks.TemporalStack(256, 3, 1),
             torch.nn.Flatten(),
-            alf.layers.FC(768, 256, activation=torch.relu_)
+            alf.layers.FC(768, 256, activation=torch.relu_),
             alf.networks.TemporalStack(256, 3, 2),
             torch.nn.Flatten(),
-            alf.layers.FC(768, 256, activation=torch.relu_)
+            alf.layers.FC(768, 256, activation=torch.relu_),
             alf.networks.TemporalStack(256, 3, 4),
             torch.nn.Flatten(),
             alf.layers.FC(768, 256, activation=torch.relu_)])
+
+
+    Note that the output of the above network changes every 4 steps, which may make
+    the response too slow for many tasks. So a practical way of using ``TemporalStack``
+    is to combine it with ``Residue`` so that the output will not lag:
+
+    .. code-block:: python
+
+        block = alf.networks.Residue(
+            alf.networks.Sequential([
+                alf.networks.TemporalStack(256, 3, 2),
+                torch.nn.Flatten(),
+                alf.layers.FC(768, 256, activation=torch.relu_)]))
 
     """
 
