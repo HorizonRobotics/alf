@@ -1110,7 +1110,7 @@ class NavigationSensor(SensorBase):
             ``Player``
         """
         loc = self._alf_world.get_actor_location(self._parent.id)
-        loc = np.array([loc.x, loc.y, loc.y])
+        loc = np.array([loc.x, loc.y, loc.z])
         nearby_waypoints = self._waypoints[self._nearest_index:self.
                                            _nearest_index + self.WINDOW]
         dist = np.linalg.norm(nearby_waypoints - loc, axis=1)
