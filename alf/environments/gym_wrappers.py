@@ -574,7 +574,7 @@ def _nested_space_to_gym_space(space):
             (k, _nested_space_to_gym_space(s)) for k, s in space.items())
         return gym.spaces.Dict(spaces)
     elif isinstance(space, tuple):
-        spaces = tuple(_gym_space_to_nested_space(s) for s in space)
+        spaces = tuple(_nested_space_to_gym_space(s) for s in space)
         return gym.spaces.Tuple(spaces)
     else:
         return space
