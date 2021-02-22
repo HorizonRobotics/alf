@@ -16,7 +16,7 @@ import torch
 
 import alf
 
-from alf.networks import TemporalStack
+from alf.networks import TemporalPool
 
 
 class NestworksTest(alf.test.TestCase):
@@ -25,7 +25,7 @@ class NestworksTest(alf.test.TestCase):
         dim = 3
 
         x = torch.randn((batch_size, 20, dim))
-        l = TemporalStack(dim, 5, 3)
+        l = TemporalPool(dim, 5, 3)
         self.assertEqual(l.output_spec, alf.TensorSpec((5, dim)))
         state = alf.utils.common.zero_tensor_from_nested_spec(
             l.state_spec, batch_size)
@@ -63,7 +63,7 @@ class NestworksTest(alf.test.TestCase):
         dim = 3
 
         x = torch.randn((batch_size, 20, dim))
-        l = TemporalStack(dim, 5, 3, mode='max')
+        l = TemporalPool(dim, 5, 3, mode='max')
         self.assertEqual(l.output_spec, alf.TensorSpec((5, dim)))
         state = alf.utils.common.zero_tensor_from_nested_spec(
             l.state_spec, batch_size)
@@ -113,7 +113,7 @@ class NestworksTest(alf.test.TestCase):
         dim = 3
 
         x = torch.randn((batch_size, 20, dim))
-        l = TemporalStack(dim, 5, 3, mode='avg')
+        l = TemporalPool(dim, 5, 3, mode='avg')
         self.assertEqual(l.output_spec, alf.TensorSpec((5, dim)))
         state = alf.utils.common.zero_tensor_from_nested_spec(
             l.state_spec, batch_size)

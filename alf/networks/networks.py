@@ -21,7 +21,7 @@ import alf
 from alf.utils.common import expand_dims_as
 from .network import Network, wrap_as_network
 
-__all__ = ['LSTMCell', 'GRUCell', 'Residue', 'TemporalStack']
+__all__ = ['LSTMCell', 'GRUCell', 'Residue', 'TemporalPool']
 
 
 class LSTMCell(Network):
@@ -120,8 +120,8 @@ class Residue(Network):
         return self._activation(x + y), state
 
 
-class TemporalStack(Network):
-    """Stack features temporally.
+class TemporalPool(Network):
+    """Pool features temporally.
 
     Suppose input_size=(), stack_size=2, pooling_size=2, the following table
     shows the output of different mode for an input sequence of 1,2,3,4,5 (ignoring
@@ -144,26 +144,26 @@ class TemporalStack(Network):
 
         # A temporal CNN with progressively large temporal receptive field.
         cnn = alf.networks.Sequential([
-            alf.networks.TemporalStack(256, 3, 1),
+            alf.networks.TemporalPool(256, 3, 1),
             torch.nn.Flatten(),
             alf.layers.FC(768, 256, activation=torch.relu_),
-            alf.networks.TemporalStack(256, 3, 2),
+            alf.networks.TemporalPool(256, 3, 2),
             torch.nn.Flatten(),
             alf.layers.FC(768, 256, activation=torch.relu_),
-            alf.networks.TemporalStack(256, 3, 4),
+            alf.networks.TemporalPool(256, 3, 4),
             torch.nn.Flatten(),
             alf.layers.FC(768, 256, activation=torch.relu_)])
 
 
     Note that the output of the above network changes every 4 steps, which may make
-    the response too slow for many tasks. So a practical way of using ``TemporalStack``
+    the response too slow for many tasks. So a practical way of using ``TemporalPool``
     is to combine it with ``Residue`` so that the output will not lag:
 
     .. code-block:: python
 
         block = alf.networks.Residue(
             alf.networks.Sequential([
-                alf.networks.TemporalStack(256, 3, 2),
+                alf.networks.TemporalPool(256, 3, 2),
                 torch.nn.Flatten(),
                 alf.layers.FC(768, 256, activation=torch.relu_)]))
 
