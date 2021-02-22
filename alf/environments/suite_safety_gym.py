@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Suite for loading OpenAI Safety Gym environments.
+"""Suite for loading OpenAI `Safety Gym <https://openai.com/blog/safety-gym/>`_ environments.
 
 **NOTE**: Mujoco requires separated installation.
 
@@ -23,6 +23,7 @@ https://github.com/openai/mujoco-py
 
 
 Several general facts about the provided benchmark environments:
+
 1. All have distance-based dense rewards
 2. All have continual goals: after reaching a goal, the goal is reset but the
    layout keeps the same until timeout.
@@ -43,16 +44,16 @@ except ImportError:
     mujoco_py = None
     safety_gym = None
 
-import functools
 import numpy as np
 import copy
 import gym
 
 import gin
-from alf.environments import suite_gym, alf_wrappers, process_environment
+from alf.environments import suite_gym
 
 
 def is_available():
+    """Check if both ``mujoco_py`` and ``safety_gym`` have been installed."""
     return (mujoco_py is not None and safety_gym is not None)
 
 
@@ -97,6 +98,9 @@ class CompleteEnvInfo(gym.Wrapper):
         return env_info
 
     def step(self, action):
+        """Take a step through the environment the returns the complete set of
+        env info, regardless of whether the corresponding event is enabled or not.
+        """
         env_info = copy.copy(self._default_env_info)
         obs, reward, done, info = self.env.step(action)
         env_info.update(info)
@@ -128,6 +132,20 @@ class VectorReward(gym.Wrapper):
             shape=[self.REWARD_DIMENSION])
 
     def step(self, action):
+        """Take one step through the environment and obtains several rewards.
+
+        Args:
+            action (np.array):
+
+        Returns:
+            tuple:
+            - obs (np.array): a flattened observation vector that contains
+              all enabled sensors' data
+            - rewards (np.array): a reward vector of length ``REWARD_DIMENSION``.
+              See the class docstring for their meanings.
+            - done (bool): whether the episode has ended
+            - info (dict): a dict of additional env information
+        """
         obs, reward, done, info = self.env.step(action)
         # Get the second and third reward from ``info``
         cost_reward = -info["cost"]
@@ -172,7 +190,7 @@ def load(environment_name,
             the torch environment.
 
     Returns:
-        An AlfEnvironment instance.
+        AlfEnvironment:
     """
 
     # We can directly make the env here because none of the safety gym tasks
