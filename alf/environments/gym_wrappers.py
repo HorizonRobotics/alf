@@ -585,7 +585,7 @@ class ContinuousActionClip(gym.ActionWrapper):
     """Clip continuous actions according to the action space.
 
     Note that any action outside of the bounds specified by action_space will be
-    clipped to the bounds before passing to the underline environment.
+    clipped to the bounds before passing to the underlying environment.
     """
 
     def __init__(self, env, min_v=-1.e9, max_v=1.e9):
