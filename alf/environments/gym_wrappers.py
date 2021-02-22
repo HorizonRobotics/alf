@@ -14,7 +14,7 @@
 """Wrappers for gym (numpy) environments. """
 
 from absl import logging
-from collections import deque
+from collections import deque, OrderedDict
 import copy
 import cv2
 import gin
@@ -566,9 +566,27 @@ def _gym_space_to_nested_space(space):
         return space
 
 
+def _nested_space_to_gym_space(space):
+    """Change nested space to gym Space"""
+
+    if isinstance(space, (dict, OrderedDict)):
+        spaces = dict(
+            (k, _nested_space_to_gym_space(s)) for k, s in space.items())
+        return gym.spaces.Dict(spaces)
+    elif isinstance(space, tuple):
+        spaces = tuple(_gym_space_to_nested_space(s) for s in space)
+        return gym.spaces.Tuple(spaces)
+    else:
+        return space
+
+
 @gin.configurable
 class ContinuousActionClip(gym.ActionWrapper):
-    """Clip continuous actions according to the action space."""
+    """Clip continuous actions according to the action space.
+
+    Note that any action outside of the bounds specified by action_space will be
+    clipped to the bounds before passing to the underline environment.
+    """
 
     def __init__(self, env, min_v=-1.e9, max_v=1.e9):
         """Create an ContinuousActionClip gym wrapper.
@@ -634,6 +652,8 @@ class ContinuousActionMapping(gym.ActionWrapper):
                 low=low, high=high, shape=space.shape, dtype=space.dtype)
                            if isinstance(space, gym.spaces.Box) else space),
             nested_action_space)
+        self.action_space = _nested_space_to_gym_space(
+            self._nested_action_space)
 
     def action(self, action):
         def _scale_back(a, b, space):
