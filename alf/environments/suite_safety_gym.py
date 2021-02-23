@@ -140,6 +140,42 @@ class VectorReward(gym.Wrapper):
         return self._reward_space
 
 
+@gin.configurable(blacklist=['env'])
+class RGBRenderWrapper(gym.Wrapper):
+    """A ``metadata`` field should've been defined in the original safety gym env;
+    otherwise video recording will be disabled. See
+    https://github.com/openai/gym/blob/master/gym/wrappers/monitoring/video_recorder.py#L41
+
+    Also the original env needs a ``camera_id`` if "rgb_array" mode is used for
+    rendering, which is incompatible with our ``ALFEnvironment`` interfaces.
+    Here we wrap ``render()`` with a customizable camera mode.
+    """
+    _metadata = {'render.modes': ["rgb_array", "human"]}
+
+    def __init__(self, env, width=None, height=None, camera_mode="fixedfar"):
+        """
+        Args:
+            width (int): the width of rgb image
+            height (int): the height of rbg image
+            camera_mode (str): one of ('fixednear', 'fixedfar', 'vision', 'track')
+        """
+        super().__init__(env)
+        # self.metadata will first inherit subclass's metadata
+        self.metadata.update(self._metadata)
+        self._width = width
+        self._height = height
+        self._camera_mode = camera_mode
+
+    def render(self, mode="human"):
+        camera_id = self.unwrapped.model.camera_name2id(self._camera_mode)
+        render_kwargs = dict(mode=mode, camera_id=camera_id)
+        if self._width is not None:
+            render_kwargs["width"] = self._width
+        if self._height is not None:
+            render_kwargs["height"] = self._height
+        return self.env.render(**render_kwargs)
+
+
 gin.constant('SafetyGym.REWARD_DIMENSION', VectorReward.REWARD_DIMENSION)
 
 
@@ -187,6 +223,8 @@ def load(environment_name,
     # make vector reward
     if not unconstrained:
         env = VectorReward(env)
+
+    env = RGBRenderWrapper(env)
 
     # Have to -1 on top of the original env max steps here, because the
     # underlying gym env will output ``done=True`` when reaching the time limit
