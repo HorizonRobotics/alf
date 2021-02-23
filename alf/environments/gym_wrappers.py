@@ -14,7 +14,7 @@
 """Wrappers for gym (numpy) environments. """
 
 from absl import logging
-from collections import deque
+from collections import deque, OrderedDict
 import copy
 import cv2
 import gin
@@ -554,9 +554,39 @@ class DMAtariPreprocessing(gym.Wrapper):
         return np.expand_dims(int_image, axis=2)
 
 
+def _gym_space_to_nested_space(space):
+    """Change gym Space to a nest which can be handled by alf.nest functions."""
+
+    if isinstance(space, gym.spaces.Dict):
+        return dict((k, _gym_space_to_nested_space(s))
+                    for k, s in space.spaces.items())
+    elif isinstance(space, gym.spaces.Tuple):
+        return tuple(_gym_space_to_nested_space(s) for s in space.spaces)
+    else:
+        return space
+
+
+def _nested_space_to_gym_space(space):
+    """Change nested space to gym Space"""
+
+    if isinstance(space, (dict, OrderedDict)):
+        spaces = dict(
+            (k, _nested_space_to_gym_space(s)) for k, s in space.items())
+        return gym.spaces.Dict(spaces)
+    elif isinstance(space, tuple):
+        spaces = tuple(_nested_space_to_gym_space(s) for s in space)
+        return gym.spaces.Tuple(spaces)
+    else:
+        return space
+
+
 @gin.configurable
 class ContinuousActionClip(gym.ActionWrapper):
-    """Clip continuous actions according to the action space."""
+    """Clip continuous actions according to the action space.
+
+    Note that any action outside of the bounds specified by action_space will be
+    clipped to the bounds before passing to the underlying environment.
+    """
 
     def __init__(self, env, min_v=-1.e9, max_v=1.e9):
         """Create an ContinuousActionClip gym wrapper.
@@ -573,7 +603,10 @@ class ContinuousActionClip(gym.ActionWrapper):
             else:
                 return min_v, max_v
 
-        self.bounds = alf.nest.map_structure(_space_bounds, self.action_space)
+        self._nested_action_space = _gym_space_to_nested_space(
+            self.action_space)
+        self.bounds = alf.nest.map_structure(_space_bounds,
+                                             self._nested_action_space)
 
     def action(self, action):
         def _clip_action(space, action, bounds):
@@ -585,8 +618,9 @@ class ContinuousActionClip(gym.ActionWrapper):
                 action = np.clip(action, bounds[0], bounds[1])
             return action
 
-        action = alf.nest.map_structure_up_to(
-            action, _clip_action, self.action_space, action, self.bounds)
+        action = alf.nest.map_structure_up_to(action, _clip_action,
+                                              self._nested_action_space,
+                                              action, self.bounds)
         return action
 
 
@@ -610,12 +644,16 @@ class ContinuousActionMapping(gym.ActionWrapper):
                 assert np.all(np.isfinite(space.high))
                 return (space.low, space.high)
 
-        self._bounds = alf.nest.map_structure(_space_bounds, self.action_space)
-        self.action_space = alf.nest.map_structure(
+        nested_action_space = _gym_space_to_nested_space(self.action_space)
+        self._bounds = alf.nest.map_structure(_space_bounds,
+                                              nested_action_space)
+        self._nested_action_space = alf.nest.map_structure(
             lambda space: (gym.spaces.Box(
                 low=low, high=high, shape=space.shape, dtype=space.dtype)
                            if isinstance(space, gym.spaces.Box) else space),
-            self.action_space)
+            nested_action_space)
+        self.action_space = _nested_space_to_gym_space(
+            self._nested_action_space)
 
     def action(self, action):
         def _scale_back(a, b, space):
@@ -628,7 +666,8 @@ class ContinuousActionMapping(gym.ActionWrapper):
 
         # map action back to its original space
         action = alf.nest.map_structure_up_to(action, _scale_back, action,
-                                              self._bounds, self.action_space)
+                                              self._bounds,
+                                              self._nested_action_space)
         return action
 
 
