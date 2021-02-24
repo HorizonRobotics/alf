@@ -324,16 +324,16 @@ def main(_):
     # create html
     output_file = FLAGS.output_file
     if not output_file:
+        if root_dir1 == root_dir2:
+            dir2_str = ""
+        else:
+            dir2_str = "-dir2_{}".format(_tokenize(root_dir2))
         custom_gins = ""
         if FLAGS.gin1 or FLAGS.gin2:
-            if root_dir1 == root_dir2:
-                dir2_str = ""
-            else:
-                dir2_str = "-dir2_{}".format(_tokenize(root_dir2))
-            custom_gins = "gin1_{}-gin2_{}{}".format(
-                _tokenize(FLAGS.gin1), _tokenize(FLAGS.gin2), dir2_str)
-        output_file = root_dir1 + "/compare{}-{}-s_{}-n_{}.html".format(
-            gin_str, custom_gins, FLAGS.start_from, FLAGS.num_runs)
+            custom_gins = "gin1_{}-gin2_{}".format(
+                _tokenize(FLAGS.gin1), _tokenize(FLAGS.gin2))
+        output_file = root_dir1 + "/compare{}-{}{}-s_{}-n_{}.html".format(
+            gin_str, custom_gins, dir2_str, FLAGS.start_from, FLAGS.num_runs)
     html = _create_html(data, all_data, metrics, abbr, root_dir1, root_dir2)
     f = open(output_file, 'w')
     assert f, "Cannot write to " + output_file

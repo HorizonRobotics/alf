@@ -321,7 +321,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  max_replan_steps=10,
                  plan_margin=0.,
                  plan_with_goal_value_only=False,
-                 plan_remaining_subgoals=1,
+                 plan_remaining_subgoals=True,
+                 plan_after_goal_achieved=False,
                  plan_cost_ln_norm=1,
                  sg_leng_penalty=0,
                  subgoal_cost_thd=0.5,
@@ -369,6 +370,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             plan_with_goal_value_only (bool): only use goal value to plan, disregard
                 other dimensions in the multi-dimensional reward.
             plan_remaining_subgoals (bool): skip planning already achieved subgoals.
+            plan_after_goal_achieved (bool): replan after achieving subgoal.
             plan_cost_ln_norm (int): ln norm applied to segment costs before adding
                 segment costs to form the full plan cost.
             sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
@@ -404,6 +406,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._plan_margin = plan_margin
         self._plan_with_goal_value_only = plan_with_goal_value_only
         self._plan_remaining_subgoals = plan_remaining_subgoals
+        self._plan_after_goal_achieved = plan_after_goal_achieved
         self._plan_cost_ln_norm = plan_cost_ln_norm
         self._sg_leng_penalty = sg_leng_penalty
         self._subgoal_cost_thd = subgoal_cost_thd
@@ -626,15 +629,18 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 torch.as_tensor(self._num_subgoals, dtype=torch.int32),
                 state.subgoals_index).long()
             # Set the previous subgoal to the current state.
-            # sg_index always points to the current subgoal in all subgoals,
+            # ``sg_index`` always points to the current subgoal in all subgoals,
             # hence, always points to the previous state in the position trajectory.
             pos_traj[(torch.arange(batch_size).reshape(batch_size, 1, 1),
                       torch.arange(pop_size).reshape(1, pop_size, 1),
-                      sg_index.reshape(-1, 1, 1))] = start
+                      sg_index.reshape(batch_size, 1, 1))] = start
             batch_mask = sg_index > 0
             sg_index_masked = (sg_index - 1)[batch_mask]
             new_b_size = sg_index_masked.shape[0]
             if new_b_size > 0:
+                # Overwrite values in samples so debug output during play can see the
+                # effect.  Here ``sg_index - 1`` points to the right position in samples
+                # to overwrite with the current state to start planning.
                 samples_masked = samples[batch_mask]
                 samples_masked[(torch.arange(new_b_size).reshape(
                     new_b_size, 1, 1, 1), torch.arange(pop_size).reshape(
@@ -846,6 +852,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             observation["final_goal"] = torch.ones((batch_size, 1))
         values, _v_state = self._wrapped_value_fn(observation, ())
         init_costs = -values
+        if self._use_aux_achieved and self.control_aux:
+            del observation["aux_desired"]
+        if self._final_goal:
+            del observation["final_goal"]
         # Assumes costs are positive, at least later on during training,
         # Otherwise, don't use planner.
         # We also require goal to be > min_goal_cost_to_use_plan away.
@@ -908,100 +918,24 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             state = state._replace(full_plan=full_plan)
         return subgoal, state
 
-    def _goal_achieved(self, observation, goal):
+    def _goal_achieved(self, observation, state):
         achieved = observation["achieved_goal"]
         if self.control_aux:
             achieved = torch.cat((achieved, observation["aux_achieved"]),
                                  dim=1)
-        return self._goal_achieved_fn(achieved, goal)
+        goal_achieved = self._goal_achieved_fn(achieved, state.goal)
+        # Make sure we are really using the plan, instead of the original goal.
+        return goal_achieved & state.plan_success
 
-    def update_condition(self, observation, step_type, state):
-        """Condition to update the goals.
-
-        Args:
-            observation (nested Tensor): the observation at the current time step
-            step_type (StepType): step type for current observation
-            state (nested Tensor): state of this goal generator
-
-        Returns:
-            - update mask (Tensor or None): representing the envs to update
-                goals for.  When None, no updates will be made.
-            - state (nest): new goal generator state.
-        """
-        first_steps = step_type == StepType.FIRST
-        steps_since_last_plan = state.steps_since_last_plan + torch.tensor(
-            1, dtype=torch.int32)
-        switched_ext_goal = torch.ones_like(first_steps)
-        ext_goal = observation["desired_goal"]
-        if state.prev_ext_goal != ():
-            switched_ext_goal &= torch.min(
-                torch.isclose(ext_goal, state.prev_ext_goal), dim=1)[0] == 0
-        replan = switched_ext_goal | (steps_since_last_plan >
-                                      self._max_replan_steps)
-        update_cond = replan | first_steps
-        steps_since_last_plan = torch.where(update_cond,
-                                            torch.tensor(0, dtype=torch.int32),
-                                            steps_since_last_plan)
-        state = state._replace(
-            steps_since_last_plan=steps_since_last_plan,
-            replan=replan,
-            retain_old=torch.zeros_like(update_cond),
-            prev_ext_goal=ext_goal)
-        if torch.all(update_cond) or (
-            (self.control_aux or self._next_goal_on_success)
-                and torch.any(update_cond)):
-            # Need to replan:
-            return update_cond.unsqueeze(-1), state
-        else:
-            # Not replan:
-            if self.control_aux:
-                assert not torch.any(first_steps), (
-                    "replan condition should ensure no first steps here")
-                goals = state.goal
-            else:
-                goals = torch.where(
-                    (step_type == StepType.FIRST).unsqueeze(-1),
-                    observation["desired_goal"], state.goal)
-            state = state._replace(goal=goals)
-            return None, state
-
-    def _unreal(self, s):
-        return torch.any(self._unreal_batch(s))
-
-    def _unreal_batch(self, s):
-        return ((torch.abs(s[:, 0]) > 5.7 + 0.5)
-                | (torch.abs(s[:, 1]) > 5.7 + 0.5)
-                | (abs(s[:, 7]) > 7.5)
-                | (abs(s[:, 11]) > 3.15 + 0.5)
-                |
-                (torch.norm(torch.cat(
-                    (s[:, 4:7], s[:, 8:11]), dim=1), dim=1) >= 3))
-
-    def post_process(self, observation, state, step_type, epsilon_greedy=1.):
-        """Post process after update_condition and generate_goal calls.
-
-        This is needed because generate_goal isn't always called for every update_condition call.
-
-        Args:
-            observation (nested Tensor): the observation at the current time step
-            state (nested Tensor): state of this goal generator, with state.goal being the new goal
-            step_type (StepType): step type for current observation
-
-        Returns:
-            - goal (Tensor): a batch of one-hot tensors representing the updated goals.
-            - state (nest).
-        """
-        new_goal = state.goal
-        if self._final_goal:
-            final_goal = torch.zeros(new_goal.shape[0])
+    def _update_subgoal(self,
+                        observation,
+                        state,
+                        step_type,
+                        stage="before_goal_gen"):
         if self._next_goal_on_success:
-            if self._final_goal:
-                final_goal = (state.subgoals_index >= self._num_subgoals)
             # Judge whether we reached the subgoal
             first_steps = step_type == StepType.FIRST
-            goal_achieved = self._goal_achieved(observation, new_goal)
-            # Make sure we are really using the plan, instead of the original goal.
-            goal_achieved &= state.plan_success
+            goal_achieved = self._goal_achieved(observation, state)
             # Judge whether we reached max subgoal steps, and need to skip current subgoal
             # Even at the first step of a new plan, goal may be achieved.
             sg_steps = state.steps_since_last_goal
@@ -1052,6 +986,174 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 # switched_goal=state.replan | advanced_goal,
                 advanced_goal=advanced_goal)
 
+            if alf.summary.should_record_summaries():
+                alf.summary.scalar(
+                    "planner/curr_goal_achieved." + stage + "." +
+                    common.exe_mode_name(), torch.mean(goal_achieved.float()))
+                alf.summary.scalar(
+                    "planner/curr_goal_skipped." + stage + "." +
+                    common.exe_mode_name(),
+                    torch.mean(curr_goal_skipped.float()))
+                reached_all_steps_sum = torch.sum(
+                    torch.where(goal_achieved, sg_steps,
+                                torch.zeros_like(sg_steps)))
+                if reached_all_steps_sum > 0:
+                    alf.summary.scalar(
+                        "planner/steps_to_reach_all_goals." + stage + "." +
+                        common.exe_mode_name(), reached_all_steps_sum /
+                        torch.sum(goal_achieved.float()))
+                subgoal_achieved = goal_achieved & (
+                    current_subgoal_index < self._num_subgoals) & advanced_goal
+                reached_sg_steps_sum = torch.sum(
+                    torch.where(subgoal_achieved, sg_steps,
+                                torch.zeros_like(sg_steps)))
+                alf.summary.scalar(
+                    "planner/rate_to_reach_sub_goal." + stage + "."
+                    + common.exe_mode_name(),
+                    torch.mean(subgoal_achieved.float()))
+                if reached_sg_steps_sum > 0:
+                    alf.summary.scalar(
+                        "planner/steps_to_reach_subgoal." + stage + "." +
+                        common.exe_mode_name(), reached_sg_steps_sum /
+                        torch.sum(subgoal_achieved.float()))
+                fgoal_achieved = goal_achieved & (
+                    current_subgoal_index >=
+                    self._num_subgoals) & advanced_goal
+                alf.summary.scalar(
+                    "planner/rate_to_reach_final_goal." + stage + "." +
+                    common.exe_mode_name(), torch.mean(fgoal_achieved.float()))
+                reached_fg_steps_sum = torch.sum(
+                    torch.where(fgoal_achieved, sg_steps,
+                                torch.zeros_like(sg_steps)))
+                if reached_fg_steps_sum > 0:
+                    alf.summary.scalar(
+                        "planner/steps_to_reach_final_goal." + stage + "." +
+                        common.exe_mode_name(), reached_fg_steps_sum /
+                        torch.sum(fgoal_achieved.float()))
+
+        if common.is_play():
+            ach = observation["achieved_goal"]
+            desire = observation["desired_goal"]
+            if self.control_aux:
+                ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
+                # TODO: maybe pull in the aux_desired from the current subgoal.
+                desire = new_goal
+            elif self._use_aux_achieved:
+                z = torch.zeros((ach.shape[0], self._aux_dim))
+                ach = torch.cat((ach, z), dim=1)
+                desire = torch.cat((desire, z), dim=1)
+            ach_str = str(ach)
+            if stage == "before_goal_gen":
+                if self._unreal(ach):
+                    logging.info("Reached Unreal: %s", ach_str)
+                if self._unreal(desire):
+                    logging.info("Unreal Goal: %s", str(desire))
+
+            if goal_achieved & advanced_goal:
+                logging.info("REACHED GOAL (%s):%d in %d steps at\nachv: %s",
+                             stage, current_subgoal_index, sg_steps, ach_str)
+                if current_subgoal_index[0] < self._num_subgoals:
+                    logging.info("New Goal (%s):\ngoal: %s", stage,
+                                 str(new_goal))
+            elif curr_goal_skipped & advanced_goal:
+                logging.info("Skipped Goal (%s):%d in %d steps at\nachv: %s",
+                             stage, current_subgoal_index, sg_steps, ach_str)
+            elif ~goal_achieved & (
+                    current_subgoal_index == self._num_subgoals + 1):
+                logging.info("Exiting Final Goal (%s) at\nachv: %s", stage,
+                             ach_str)
+
+        return state
+
+    def update_condition(self, observation, step_type, state):
+        """Condition to update the goals.
+
+        Args:
+            observation (nested Tensor): the observation at the current time step
+            step_type (StepType): step type for current observation
+            state (nested Tensor): state of this goal generator
+
+        Returns:
+            - update mask (Tensor or None): representing the envs to update
+                goals for.  When None, no updates will be made.
+            - state (nest): new goal generator state.
+        """
+        first_steps = step_type == StepType.FIRST
+        steps_since_last_plan = state.steps_since_last_plan + torch.tensor(
+            1, dtype=torch.int32)
+        switched_ext_goal = torch.ones_like(first_steps)
+        ext_goal = observation["desired_goal"]
+        if state.prev_ext_goal != ():
+            switched_ext_goal &= torch.min(
+                torch.isclose(ext_goal, state.prev_ext_goal), dim=1)[0] == 0
+        replan = switched_ext_goal | (steps_since_last_plan >
+                                      self._max_replan_steps)
+        update_cond = replan | first_steps
+        steps_since_last_plan = torch.where(update_cond,
+                                            torch.tensor(0, dtype=torch.int32),
+                                            steps_since_last_plan)
+        state = state._replace(
+            steps_since_last_plan=steps_since_last_plan,
+            replan=replan,
+            retain_old=torch.zeros_like(update_cond),
+            prev_ext_goal=ext_goal)
+        if self._plan_after_goal_achieved and self._next_goal_on_success:
+            state = self._update_subgoal(observation, state, step_type)
+        if torch.all(update_cond) or (
+            (self.control_aux or self._next_goal_on_success)
+                and torch.any(update_cond)):
+            # Need to replan:
+            return update_cond.unsqueeze(-1), state
+        else:
+            # Not replan:
+            if self.control_aux:
+                assert not torch.any(first_steps), (
+                    "replan condition should ensure no first steps here")
+                goals = state.goal
+            else:
+                goals = torch.where(
+                    (step_type == StepType.FIRST).unsqueeze(-1),
+                    observation["desired_goal"], state.goal)
+            state = state._replace(goal=goals)
+            return None, state
+
+    def _unreal(self, s):
+        return torch.any(self._unreal_batch(s))
+
+    def _unreal_batch(self, s):
+        return ((torch.abs(s[:, 0]) > 5.7 + 0.5)
+                | (torch.abs(s[:, 1]) > 5.7 + 0.5)
+                | (abs(s[:, 7]) > 7.5)
+                | (abs(s[:, 11]) > 3.15 + 0.5)
+                |
+                (torch.norm(torch.cat(
+                    (s[:, 4:7], s[:, 8:11]), dim=1), dim=1) >= 3))
+
+    def post_process(self, observation, state, step_type, epsilon_greedy=1.):
+        """Post process after update_condition and generate_goal calls.
+
+        This is needed because generate_goal isn't always called for every update_condition call.
+
+        Args:
+            observation (nested Tensor): the observation at the current time step
+            state (nested Tensor): state of this goal generator, with state.goal being the new goal
+            step_type (StepType): step type for current observation
+
+        Returns:
+            - goal (Tensor): a batch of one-hot tensors representing the updated goals.
+            - state (nest).
+        """
+        new_goal = state.goal
+        if self._final_goal:
+            final_goal = torch.zeros(new_goal.shape[0])
+        if self._next_goal_on_success:
+            if self._final_goal:
+                final_goal = (state.subgoals_index >= self._num_subgoals)
+
+        state = self._update_subgoal(observation, state, step_type,
+                                     "post_goal_gen")
+        new_goal = state.goal
+
         if self._final_goal:
             state = state._replace(final_goal=final_goal.float().unsqueeze(1))
         # Populate aux_desired into observation, very important for agent to see!
@@ -1062,78 +1164,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             torch.isclose(state.prev_goal, new_goal), dim=1)[0] == 0
         state = state._replace(switched_goal=switched_goal)
         state = state._replace(prev_goal=new_goal)
-
-        if common.is_play():
-            ach = observation["achieved_goal"]
-            desire = observation["desired_goal"]
-            if self.control_aux:
-                ach = torch.cat((ach, observation["aux_achieved"]), dim=1)
-                desire = torch.cat((desire, observation["aux_desired"]), dim=1)
-            elif self._use_aux_achieved:
-                z = torch.zeros((ach.shape[0], self._aux_dim))
-                ach = torch.cat((ach, z), dim=1)
-                desire = torch.cat((desire, z), dim=1)
-            ach_str = str(ach)
-            if self._unreal(ach):
-                logging.info("Reached Unreal: %s", ach_str)
-            if self._unreal(desire):
-                logging.info("Unreal Goal: %s", str(desire))
-
-        if self._next_goal_on_success:
-            if alf.summary.should_record_summaries():
-                alf.summary.scalar(
-                    "planner/curr_goal_achieved." + common.exe_mode_name(),
-                    torch.mean(goal_achieved.float()))
-                alf.summary.scalar(
-                    "planner/curr_goal_skipped." + common.exe_mode_name(),
-                    torch.mean(curr_goal_skipped.float()))
-                reached_all_steps_sum = torch.sum(
-                    torch.where(goal_achieved, sg_steps,
-                                torch.zeros_like(sg_steps)))
-                if reached_all_steps_sum > 0:
-                    alf.summary.scalar(
-                        "planner/steps_to_reach_all_goals." +
-                        common.exe_mode_name(), reached_all_steps_sum /
-                        torch.sum(goal_achieved.float()))
-                subgoal_achieved = goal_achieved & (
-                    current_subgoal_index < self._num_subgoals) & advanced_goal
-                reached_sg_steps_sum = torch.sum(
-                    torch.where(subgoal_achieved, sg_steps,
-                                torch.zeros_like(sg_steps)))
-                alf.summary.scalar(
-                    "planner/rate_to_reach_sub_goal." + common.exe_mode_name(),
-                    torch.mean(subgoal_achieved.float()))
-                if reached_sg_steps_sum > 0:
-                    alf.summary.scalar(
-                        "planner/steps_to_reach_subgoal." +
-                        common.exe_mode_name(), reached_sg_steps_sum /
-                        torch.sum(subgoal_achieved.float()))
-                fgoal_achieved = goal_achieved & (
-                    current_subgoal_index >=
-                    self._num_subgoals) & advanced_goal
-                alf.summary.scalar(
-                    "planner/rate_to_reach_final_goal." +
-                    common.exe_mode_name(), torch.mean(fgoal_achieved.float()))
-                reached_fg_steps_sum = torch.sum(
-                    torch.where(fgoal_achieved, sg_steps,
-                                torch.zeros_like(sg_steps)))
-                if reached_fg_steps_sum > 0:
-                    alf.summary.scalar(
-                        "planner/steps_to_reach_final_goal." +
-                        common.exe_mode_name(), reached_fg_steps_sum /
-                        torch.sum(fgoal_achieved.float()))
-            if common.is_play():
-                if goal_achieved & advanced_goal:
-                    logging.info("REACHED GOAL:%d in %d steps at\nachv: %s",
-                                 current_subgoal_index, sg_steps, ach_str)
-                    if current_subgoal_index[0] < self._num_subgoals:
-                        logging.info("New Goal:\ngoal: %s", str(new_goal))
-                elif curr_goal_skipped & advanced_goal:
-                    logging.info("Skipped Goal:%d in %d steps at\nachv: %s",
-                                 current_subgoal_index, sg_steps, ach_str)
-                elif ~goal_achieved & (
-                        current_subgoal_index == self._num_subgoals + 1):
-                    logging.info("Exiting Final Goal at\nachv: %s", ach_str)
 
         if self._gou_stddev > 0 and epsilon_greedy >= 1:
             new_goal += self._ou_process()
