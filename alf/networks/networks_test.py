@@ -20,7 +20,7 @@ from alf.networks import TemporalPool
 
 
 class NestworksTest(alf.test.TestCase):
-    def test_temporal_stack_skip(self):
+    def test_temporal_pool_skip(self):
         batch_size = 2
         dim = 3
 
@@ -58,7 +58,7 @@ class NestworksTest(alf.test.TestCase):
             o, state = l(x[:, i, :], state)
             self.assertEqual(o, x[:, 3:18:3, :])
 
-    def test_temporal_stack_max(self):
+    def test_temporal_pool_max(self):
         batch_size = 2
         dim = 3
 
@@ -108,7 +108,7 @@ class NestworksTest(alf.test.TestCase):
             self.assertEqual(
                 o, x[:, 3:18, :].reshape(batch_size, 5, 3, dim).max(dim=2)[0])
 
-    def test_temporal_stack_avg(self):
+    def test_temporal_pool_avg(self):
         batch_size = 2
         dim = 3
 
