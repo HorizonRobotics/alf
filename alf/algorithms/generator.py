@@ -51,7 +51,7 @@ class CriticAlgorithm(Algorithm):
         """Create a CriticAlgorithm.
 
         Args:
-            input_tensor_spec (TensorSpec): spec of inputs. 
+            input_tensor_spec (TensorSpec): spec of inputs.
             output_dim (int): dimension of output, default value is input_dim.
             hidden_layers (tuple): size of hidden layers.
             activation (nn.functional): activation used for all critic layers.
@@ -123,6 +123,8 @@ class Generator(Algorithm):
     Generator generates outputs given `inputs` (can be None) by transforming
     a random noise and input using `net`:
 
+    .. code-block:: python
+
         outputs = net([noise, input]) if input is not None
                   else net(noise)
 
@@ -147,19 +149,19 @@ class Generator(Algorithm):
       particle-based variational inference (ParVI), in particular, three ParVI
       methods are implemented:
 
-        1. amortized Stein Variational Gradient Descent (SVGD):
+      1. amortized Stein Variational Gradient Descent (SVGD):
 
-        Feng et al "Learning to Draw Samples with Amortized Stein Variational
-        Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+         Feng et al "Learning to Draw Samples with Amortized Stein Variational
+         Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
 
-        2. amortized Wasserstein ParVI with Smooth Functions (GFSF):
+      2. amortized Wasserstein ParVI with Smooth Functions (GFSF):
 
-        Liu, Chang, et al. "Understanding and accelerating particle-based 
-        variational inference." International Conference on Machine Learning. 2019.
+         Liu, Chang, et al. "Understanding and accelerating particle-based
+         variational inference." International Conference on Machine Learning. 2019.
 
-        3. amortized Fisher Neural Sampler with Hutchinson's estimator (MINMAX):
+      3. amortized Fisher Neural Sampler with Hutchinson's estimator (MINMAX):
 
-        Hu et at. "Stein Neural Sampler." https://arxiv.org/abs/1810.03545, 2018.
+         Hu et at. "Stein Neural Sampler." https://arxiv.org/abs/1810.03545, 2018.
 
     It also supports an additional optional objective of maximizing the mutual
     information between [noise, inputs] and outputs by using mi_estimator to
@@ -212,27 +214,28 @@ class Generator(Algorithm):
                 and [outputs, inputs].
             par_vi (string): ParVI methods, options are
                 [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
-                * svgd: empirical expectation of SVGD is evaluated by a single 
-                    resampled particle. The main benefit of this choice is it 
-                    supports conditional case, while all other options do not.
+
+                * svgd: empirical expectation of SVGD is evaluated by a single
+                  resampled particle. The main benefit of this choice is it
+                  supports conditional case, while all other options do not.
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
-                    half of the sampled batch. It is a trade-off between 
-                    computational efficiency and convergence speed.
-                * svgd3: empirical expectation of SVGD is evaluated by 
-                    resampled particles of the same batch size. It has better
-                    convergence but involves resampling, so less efficient
-                    computaionally comparing with svgd2.
-                * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally most
-                    expensive, but in some case the convergence seems faster 
-                    than svgd approaches.
+                  half of the sampled batch. It is a trade-off between
+                  computational efficiency and convergence speed.
+                * svgd3: empirical expectation of SVGD is evaluated by
+                  resampled particles of the same batch size. It has better
+                  convergence but involves resampling, so less efficient
+                  computaionally comparing with svgd2.
+                * gfsf: wasserstein gradient flow with smoothed functions. It
+                  involves a kernel matrix inversion, so computationally most
+                  expensive, but in some case the convergence seems faster
+                  than svgd approaches.
                 * minmax: Fisher Neural Sampler, optimal descent direction of
-                    the Stein discrepancy is solved by an inner optimization
-                    procedure in the space of L2 neural networks.
+                  the Stein discrepancy is solved by an inner optimization
+                  procedure in the space of L2 neural networks.
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
-            critic_l2_weight (float): weight of L2 regularization in training 
+            critic_l2_weight (float): weight of L2 regularization in training
                 the critic, used for ``minmax``.
             critic_iter_num (int): number of critic updates for each generator
                 train_step, used for ``minmax``.
@@ -240,7 +243,7 @@ class Generator(Algorithm):
                 used for ``minmax``.
             critic_use_bn (book): whether use batch norm for each layers of the
                 critic, used for ``minmax``.
-            minmax_resample (bool): whether resample the generator for each 
+            minmax_resample (bool): whether resample the generator for each
                 critic update, used for ``minmax``.
             critic_optimizer (torch.optim.Optimizer): Optimizer for training the
                 critic, used for ``minmax``.
@@ -391,29 +394,36 @@ class Generator(Algorithm):
             transform_func (Callable): transform function on generator's outputs.
                 Used in function value based par_vi (currently supported
                 by [``svgd2``, ``svgd3``, ``gfsf``]) for evaluating the network(s)
-                parameterized by the generator's outputs (given by self._predict) 
-                on the training batch (predefined with transform_func). 
-                It can be called in two ways 
-                - transform_func(params): params is a tensor of parameters for a 
-                    network, of shape ``[D]`` or ``[B, D]``
-                    - ``B``: batch size
-                    - ``D``: length of network parameters
-                    In this case, transform_func first samples additional data besides
-                    the predefined training batch and then evaluate the network(s)
-                    parameterized by ``params`` on the training batch plus additional
-                    sampled data.
+                parameterized by the generator's outputs (given by self._predict)
+                on the training batch (predefined with transform_func).
+                It can be called in two ways
+
+                - transform_func(params): params is a tensor of parameters for a
+                  network, of shape ``[D]`` or ``[B, D]``
+
+                  - ``B``: batch size
+                  - ``D``: length of network parameters
+
+                  In this case, transform_func first samples additional data besides
+                  the predefined training batch and then evaluate the network(s)
+                  parameterized by ``params`` on the training batch plus additional
+                  sampled data.
+
                 - transform_func((params, extra_samples)): params is the same as
-                    above case and extra_samples is the tensor of additional sampled
-                    data.
-                    In this case, transform_func evaluates the network(s) parameterized 
-                    by ``params`` on predefined training batch plus ``extra_samples``. 
-                It returns three tensors
-                - outputs: outputs of network parameterized by params evaluated 
-                    on predined training batch.
-                - density_outputs: outputs of network parameterized by params 
-                    evaluated on additional sampled data. 
+                  above case and extra_samples is the tensor of additional sampled
+                  data.
+                  In this case, transform_func evaluates the network(s) parameterized
+                  by ``params`` on predefined training batch plus ``extra_samples``.
+
+                It returns three tensors:
+
+                - outputs: outputs of network parameterized by params evaluated
+                  on predined training batch.
+                - density_outputs: outputs of network parameterized by params
+                  evaluated on additional sampled data.
                 - extra_samples: additional sampled data, same as input
-                    extra_samples if called as transform_func((params, extra_samples))
+                  extra_samples if called as transform_func((params, extra_samples))
+
             entropy_regularization (float): weight of entropy regularization.
             state: not used
 
@@ -478,13 +488,13 @@ class Generator(Algorithm):
 
     def _rbf_func2(self, x, y):
         r"""
-        Compute the rbf kernel and its gradient w.r.t. first entry 
-        :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2 and svgd_grad3. 
+        Compute the rbf kernel and its gradient w.r.t. first entry
+        :math:`K(x, y), \nabla_x K(x, y)`, used by svgd_grad2 and svgd_grad3.
 
         Args:
-            x (Tensor): set of N particles, shape (Nx, ...), where Nx is the 
+            x (Tensor): set of N particles, shape (Nx, ...), where Nx is the
                 number of particles.
-            y (Tensor): set of N particles, shape (Ny, ...), where Ny is the 
+            y (Tensor): set of N particles, shape (Ny, ...), where Ny is the
                 number of particles.
 
         Returns:
@@ -509,12 +519,12 @@ class Generator(Algorithm):
 
     def _score_func(self, x, alpha=1e-5):
         r"""
-        Compute the stein estimator of the score function 
+        Compute the stein estimator of the score function
         :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
-        used by gfsf_grad. 
+        used by gfsf_grad.
 
         Args:
-            x (Tensor): set of N particles, shape (N x D), where D is the 
+            x (Tensor): set of N particles, shape (N x D), where D is the
                 dimenseion of each particle
             alpha (float): weight of regularization for inverse kernel
                 this parameter turns out to be crucial for convergence.
@@ -543,7 +553,7 @@ class Generator(Algorithm):
                    transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by a single resampled particle. 
+        evaluated by a single resampled particle.
         """
         outputs2, _ = self._predict(inputs, batch_size=outputs.shape[0])
         assert transform_func is None, (
@@ -575,7 +585,7 @@ class Generator(Algorithm):
                     transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by splitting half of the sampled batch. 
+        evaluated by splitting half of the sampled batch.
         """
         assert inputs is None, '"svgd2" does not support conditional generator'
         if transform_func is not None:
@@ -621,7 +631,7 @@ class Generator(Algorithm):
                     transform_func=None):
         """
         Compute particle gradients via SVGD, empirical expectation
-        evaluated by resampled particles of the same batch size. 
+        evaluated by resampled particles of the same batch size.
         """
         assert inputs is None, '"svgd3" does not support conditional generator'
         num_particles = outputs.shape[0]
@@ -735,7 +745,7 @@ class Generator(Algorithm):
                      entropy_regularization,
                      transform_func=None):
         """
-        Compute particle gradients via minmax svgd (Fisher Neural Sampler). 
+        Compute particle gradients via minmax svgd (Fisher Neural Sampler).
         """
         assert inputs is None, '"minmax" does not support conditional generator'
 
