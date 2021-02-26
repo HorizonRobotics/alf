@@ -22,8 +22,8 @@ import gin
 import inspect
 import six
 import torch
-
 import torch.nn as nn
+import typing
 
 import alf
 from alf.tensor_specs import TensorSpec
@@ -72,7 +72,7 @@ class _NetworkMeta(abc.ABCMeta):
         arg_spec = inspect.getfullargspec(init)
         if arg_spec.varargs is not None:
             raise RuntimeError(
-                "%s.__init__ function accepts *args.  This is not allowed." %
+                "%s.__init__ function accepts *args. This is not allowed." %
                 classname)
 
         def _capture_init(self, *args, **kwargs):
@@ -223,6 +223,8 @@ class Network(nn.Module):
         If possible, the subclass should override this to generate an optimized
         parallel implementation.
 
+        Args:
+            n (int): the number of copies
         Returns:
             Network: A parallel network
         """
@@ -304,7 +306,7 @@ class NaiveParallelNetwork(Network):
 
 
 class NetworkWrapper(Network):
-    """Wrap module as a Network."""
+    """Wrap module or function as a Network."""
 
     def __init__(self, module, input_tensor_spec):
         """
@@ -314,6 +316,9 @@ class NetworkWrapper(Network):
             input_tensor_spec (TensorSpec): the TensorSpec for the input of ``module``
         """
         super().__init__(input_tensor_spec)
+        assert isinstance(
+            module,
+            typing.Callable), ("module is not Callable: %s" % type(module))
         self._module = module
 
     def forward(self, x, state=()):
@@ -353,7 +358,7 @@ def wrap_as_network(net, input_tensor_spec):
 
     Args:
         net (Network | Callable):
-        input_tensor_spec (): if net is not a ``Network``, ``input_tensor_spec``
+        input_tensor_spec (nested TensorSpec): if net is not a ``Network``, ``input_tensor_spec``
             must be provided unless net is a ``FC``. In that case, ``input_tensor_spec``
             will be inferred from ``net.input_size`` if it is not provided.
     Returns:

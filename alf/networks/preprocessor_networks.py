@@ -11,11 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""PreprocessorNetworks"""
+"""PreprocessorNetworks."""
 
 import gin
 import functools
 import math
+import typing
 
 import torch
 import torch.nn as nn
@@ -42,20 +43,24 @@ class PreprocessorNetwork(Network):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
-                the input. If nested, then ``preprocessing_combiner`` must not be
-                None.
-            input_preprocessors (nested Network|nn.Module): a nest of
+                the input.
+            input_preprocessors (nested Network|nn.Module|None): a nest of
                 preprocessor networks, each of which will be applied to the
-                corresponding input. If not None, then it must have the same
-                structure with ``input_tensor_spec``. If any element is None, then
-                it will be treated as math_ops.identity. This arg is helpful if
+                corresponding input. If None, it is treaded as ``math_ops.identity``.
+                If not None, ``input_tensor_spec`` must have the same structure
+                with ``input_preprocessors`` upto the structure defined by
+                ``input_preprocessors`` (see ``alf.nest.map_structure_upto``),
+                and each element of ``input_preproccessors`` will be applied to the
+                corresponding subnest in ``input_tensor_spec``. If any element is None,
+                it will be treated as ``math_ops.identity``. This arg is helpful if
                 you want to have separate preprocessings for different inputs by
                 configuring a gin file without changing the code. For example,
                 embedding a discrete input before concatenating it to another
                 continuous vector.
             preprocessing_combiner (NestCombiner): preprocessing called on
-                complex inputs. Note that this combiner must also accept
-                ``input_tensor_spec`` as the input to compute the processed
+                complex inputs. It must be provided if the result from
+                ``input_preprocessors`` is nested. This combiner must accept the result
+                from ``input_preprocessors`` as the input to compute the processed
                 tensor spec. For example, see `alf.nest.utils.NestConcat`. This
                 arg is helpful if you want to combine inputs by configuring a
                 gin file without changing the code.
@@ -66,40 +71,35 @@ class PreprocessorNetwork(Network):
         # make sure the network holds the parameters of any trainable input
         # preprocessor
         self._input_preprocessor_modules = nn.ModuleList()
-
-        def _get_preprocessed_spec(preproc, spec):
-            if not isinstance(preproc, Network):
-                # In this case we just assume the spec won't change after the
-                # preprocessing. If it does change, then you should consider
-                # defining an input preprocessor network instead.
-                return spec
-            return preproc.output_spec
-
         self._input_preprocessors = None
         if input_preprocessors is not None:
 
             def _return_or_copy_preprocessor(preproc, input_spec):
                 if preproc is None:
                     # allow None as a placeholder in the nest
-                    return lambda x: (x, None)
+                    return NetworkWrapper(lambda x: x, input_spec)
                 elif isinstance(preproc, Network):
+                    assert not nest.flatten(preproc.state_spec), (
+                        "stateful preprocessor is not supported: %s" %
+                        type(preproc))
                     preproc = preproc.copy()
                     self._input_preprocessor_modules.append(preproc)
                     return preproc
-                elif isinstance(preproc, nn.Module):
+                elif isinstance(preproc, typing.Callable):
                     preproc = NetworkWrapper(preproc, input_spec).copy()
                     self._input_preprocessor_modules.append(preproc)
-                    return preproc
                 else:
-                    return lambda x: (preproc(x), None)
+                    raise ValueError(
+                        "Unsupported type in input_preprocessors: %s" %
+                        type(preproc))
+                return preproc
 
-            self._input_preprocessors = alf.nest.map_structure(
-                _return_or_copy_preprocessor, input_preprocessors,
-                input_tensor_spec)
+            self._input_preprocessors = alf.nest.map_structure_up_to(
+                input_preprocessors, _return_or_copy_preprocessor,
+                input_preprocessors, input_tensor_spec)
 
             input_tensor_spec = alf.nest.map_structure(
-                _get_preprocessed_spec, self._input_preprocessors,
-                input_tensor_spec)
+                lambda net: net.output_spec, self._input_preprocessors)
 
         self._preprocessing_combiner = preprocessing_combiner
         if alf.nest.is_nested(input_tensor_spec):
@@ -128,9 +128,9 @@ class PreprocessorNetwork(Network):
             Tensor: tensor after preprocessing.
         """
         if self._input_preprocessors:
-            inputs = alf.nest.map_structure(
-                lambda preproc, tensor: preproc(tensor)[0],
-                self._input_preprocessors, inputs)
+            inputs = alf.nest.map_structure_up_to(
+                self._input_preprocessors, lambda preproc, tensor: preproc(
+                    tensor)[0], self._input_preprocessors, inputs)
 
         proc_inputs = self._preprocessing_combiner(inputs)
         outer_rank = get_outer_rank(proc_inputs,

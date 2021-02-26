@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import gin
 import math
 import numpy as np
 from typing import Callable
@@ -21,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.distributions as td
 
+import alf
 import alf.layers as layers
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 from alf.networks.network import Network
@@ -28,7 +28,7 @@ from alf.utils import dist_utils
 import alf.utils.math_ops as math_ops
 
 
-@gin.configurable
+@alf.configurable
 class CategoricalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
@@ -79,7 +79,7 @@ class CategoricalProjectionNetwork(Network):
             return td.Categorical(logits=logits), state
 
 
-@gin.configurable
+@alf.configurable
 class NormalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
@@ -212,7 +212,7 @@ class NormalProjectionNetwork(Network):
         return ParallelNormalProjectionNetwork(**parallel_proj_net_args)
 
 
-@gin.configurable
+@alf.configurable
 class ParallelNormalProjectionNetwork(Network):
     def __init__(self,
                  input_size,
@@ -337,7 +337,7 @@ class ParallelNormalProjectionNetwork(Network):
         return self._normal_dist(means, stds), state
 
 
-@gin.configurable
+@alf.configurable
 class StableNormalProjectionNetwork(NormalProjectionNetwork):
     r"""Generates a Multi-variate normal by predicting a mean and std.
 
@@ -446,7 +446,7 @@ class StableNormalProjectionNetwork(NormalProjectionNetwork):
         return self._normal_dist(means, stds), state
 
 
-@gin.configurable
+@alf.configurable
 class CauchyProjectionNetwork(NormalProjectionNetwork):
     def __init__(self,
                  input_size,
