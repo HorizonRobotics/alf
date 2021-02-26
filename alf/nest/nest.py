@@ -700,14 +700,15 @@ def py_prune_nest_like(nest, slim_nest, value_to_match=None):
 def get_field(nested, field):
     """Get the field from nested.
 
-    field is a string separated by ".". get_filed(nested, "a.b") is equivalent
+    ``field`` is a string separated by ".". get_field(nested, "a.b") is equivalent
     to nested.a.b if nested is constructed using namedtuple or nests['a']['b']
-    if nested is contructed using dict.
+    if nested is contructed using dict. If nested is constructed using list or
+    unnamed tuple, get_field(nested, "1.2") is equivalent to nested[1][2].
 
     Args:
         nested (nest): a nested structure
         field (str): indicate the path to the field with '.' separating the field
-            name at different level. ``None`` means the whole nest
+            name at different level. ``None`` or '' means the whole nest.
     Returns:
         nest: value of the field corresponding to ``field``
     """
@@ -721,8 +722,7 @@ def get_field(nested, field):
         elif isinstance(nested, dict):
             return _traverse(nested=nested[level], levels=levels[1:])
         else:
-            raise TypeError("If value is a nest, it must be either " +
-                            "a dict or namedtuple!")
+            return _traverse(nested=nested[int(level)], levels=levels[1:])
 
     return _traverse(nested=nested, levels=field.split('.') if field else [])
 
