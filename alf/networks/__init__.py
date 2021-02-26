@@ -14,12 +14,12 @@
 
 from .actor_distribution_networks import *
 from .actor_networks import *
-from .containers import Branch, Parallel, Sequential
+from .containers import Branch, Parallel, Sequential, Echo
 from .critic_networks import *
 from .dynamics_networks import *
 from .encoding_networks import *
 from .mdq_critic_networks import *
-from .network import Network, NaiveParallelNetwork
+from .network import Network, NaiveParallelNetwork, wrap_as_network
 from .networks import *
 from .ou_process import OUProcess
 from .param_networks import *

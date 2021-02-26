@@ -34,9 +34,7 @@ class ContainersTest(alf.test.TestCase):
 
     def test_sequential1(self):
         net = alf.nn.Sequential(
-            [alf.layers.FC(4, 6),
-             alf.nn.GRUCell(6, 8),
-             alf.nn.GRUCell(8, 12)])
+            alf.layers.FC(4, 6), alf.nn.GRUCell(6, 8), alf.nn.GRUCell(8, 12))
 
         self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
         self.assertTrue(
@@ -63,9 +61,7 @@ class ContainersTest(alf.test.TestCase):
 
     def test_sequential2(self):
         net = alf.nn.Sequential(
-            [alf.layers.FC(4, 6),
-             alf.layers.FC(6, 8),
-             alf.layers.FC(8, 12)])
+            alf.layers.FC(4, 6), alf.layers.FC(6, 8), alf.layers.FC(8, 12))
 
         self.assertEqual(net.input_tensor_spec, alf.TensorSpec((4, )))
         self.assertEqual(net.state_spec, ())

@@ -14,17 +14,16 @@
 """Various Network containers."""
 
 import copy
-import gin
 import torch.nn as nn
 
 import alf
 from alf.nest import (flatten, flatten_up_to, map_structure,
                       map_structure_up_to, pack_sequence_as)
+from alf.utils.spec_utils import is_same_spec
 from .network import Network, get_input_tensor_spec, wrap_as_network
 
 
-@gin.configurable
-class Sequential(Network):
+def Sequential(*modules, input_tensor_spec=None, name="Sequential"):
     """Network composed of a sequence of torch.nn.Module or alf.nn.Network.
 
     Example:
@@ -42,19 +41,25 @@ class Sequential(Network):
         y, new_state2 = module2(z, state[1])
         new_state = (new_state1, new_state2)
 
-    """
-
-    def __init__(self, modules, input_tensor_spec=None, name="Sequential"):
-        """
-
         Args:
-            modules (list[nn.Module]): list of ``torch.nn.Module`` or ``alf.nn.Network``.
+            modules (nn.Module): list of ``torch.nn.Module`` or ``alf.nn.Network``.
             input_tensor_spec (TensorSpec): the tensor spec of the input. It must
                 be specified if it cannot be inferred from ``modules[0]``.
             name (str):
-        """
+    """
+    # The reason that we use a wrapper function for _Sequential is that Network
+    # does not allow *args for __init__() (see _NetworkMeta.__new__()). And we
+    # want to use *modules here to make the interface consistant with
+    # torch.nn.Sequential and alf.layers.Sequential to avoid confusion.
+    return _Sequential(modules, input_tensor_spec=input_tensor_spec, name=name)
+
+
+class _Sequential(Network):
+    def __init__(self, modules, input_tensor_spec, name):
         state_spec = [()] * len(modules)
         for i, module in enumerate(modules):
+            assert isinstance(
+                module, nn.Module), ("%s is not an nn.Module" % type(module))
             if isinstance(module, Network):
                 state_spec[i] = module.state_spec
         if len(flatten(state_spec)) == 0:
@@ -241,7 +246,8 @@ class Branch(Network):
     def __init__(self, modules, input_tensor_spec=None, name="Branch"):
         """
         Args:
-            modules (nested nn.Module): a nest of ``torch.nn.Module`` or ``alf.nn.Network``.
+            modules (nested nn.Module | Callable): a nest of ``torch.nn.Module``
+                ``alf.nn.Network`` or ``Callable``
             input_tensor_spec (nested TensorSpec): must be provided if it cannot
                 be inferred from any one of ``modules``
             name (str):
@@ -250,7 +256,7 @@ class Branch(Network):
             specs = list(map(get_input_tensor_spec, alf.nest.flatten(modules)))
             specs = list(filter(lambda s: s is not None, specs))
             assert specs, ("input_tensor_spec needs to be specified since it "
-                           "cannot be infered from any one of modules")
+                           "cannot be inferred from any one of modules")
             for spec in specs:
                 assert alf.utils.spec_utils.is_same_spec(spec, specs[0]), (
                     "modules have inconsistent input_tensor_spec: %s vs %s" %
@@ -312,3 +318,118 @@ class Branch(Network):
     @property
     def networks(self):
         return self._networks
+
+
+class Echo(Network):
+    """Echo network.
+
+    Echo network uses part of the output of ``block`` of current step as part of
+    the input of ``block`` for the next step. In particular, if the input of ``block``
+    is a dictionary, it should contains two keys 'input' and 'echo', and 'echo'
+    will be taken from the output of the previous step. If the input of ``block``
+    is a tuple, the second input will be taken from the output of the previous step.
+    If the output is a dictionary, it should contains two keys 'output' and 'echo',
+    and 'echo' will be used as the input for the next step. If the output is a tuple,
+    the second output will be used as the input for the next step.
+
+    Note that ``block`` itself can be a recurrent network with state.
+
+    Examples:
+
+    .. code-block:: python
+
+        echo = Echo(block)
+        output, state = echo(real_input, state)
+
+    is equivalent to the following if the input and output of block are dicts:
+
+    .. code-block:: python
+
+        block_state, echo_input = state
+        block_output, block_state = block(dict(input=real_input, echo=echo_input), block_state)
+        output = block_output['output']
+        echo_output = block_output['echo']
+        state = (block_state, echo_output)
+
+    and is equivalent to the following if the input and output of block are tuples:
+
+    .. code-block:: python
+
+        block_state, echo_input = state
+        block_output, block_state = block((real_input, echo_input), block_state)
+        output, echo_output = block_output
+        state = (block_state, echo_output)
+
+    """
+
+    def __init__(self, block, input_tensor_spec=None):
+        """
+        Args:
+            block (Network): the module for performing the actual computation
+            input_tensor_spec (nested TensorSpec): If provided, it must match
+                the block.input_tensor_spec[0] or input_tensor_spec['input']
+        """
+        assert isinstance(
+            block, Network), ("block must be an instance of "
+                              "alf.networks.Network. Got %s" % type(block))
+        if (isinstance(block.input_tensor_spec, tuple)
+                and len(block.input_tensor_spec) == 2):
+            self._is_tuple_input = True
+            real_input_spec, echo_input_spec = block.input_tensor_spec
+        elif (isinstance(block.input_tensor_spec, dict)
+              and len(block.input_tensor_spec) == 2
+              and 'input' in block.input_tensor_spec
+              and 'echo' in block.input_tensor_spec):
+            self._is_tuple_input = False
+            real_input_spec = block.input_tensor_spec['input']
+            echo_input_spec = block.input_tensor_spec['echo']
+        else:
+            raise ValueError(
+                "block.input_tensor_spec should be a tuple with "
+                "two elements or a dict with two keys 'input' and 'echo': %s" %
+                block.input_tensor_spec)
+
+        if (isinstance(block.output_spec, tuple)
+                and len(block.output_spec) == 2):
+            self._is_tuple_output = True
+            echo_output_spec = block.output_spec[1]
+        elif (isinstance(block.output_spec, dict)
+              and len(block.output_spec) == 2 and 'output' in block.output_spec
+              and 'echo' in block.output_spec):
+            self._is_tuple_output = False
+            echo_output_spec = block.output_spec['echo']
+        else:
+            raise ValueError(
+                "block.output_spec should be a tuple with "
+                "two elements or a dict with two keys 'output' and 'echo': %s"
+                % block.output_spec)
+        assert is_same_spec(echo_input_spec, echo_output_spec), (
+            "echo input and echo output should have same spec: %s vs. %s" %
+            (echo_input_spec, echo_output_spec))
+
+        if input_tensor_spec is not None:
+            assert is_same_spec(real_input_spec, input_tensor_spec), (
+                "input_tensor_spec is not same as real_input_spec: %s vs. %s" %
+                (input_tensor_spec, real_input_spec))
+
+        super().__init__(input_tensor_spec=real_input_spec)
+        self._state_spec = (block.state_spec, echo_input_spec)
+        self._block = block
+
+    @property
+    def state_spec(self):
+        return self._state_spec
+
+    def forward(self, input, state):
+        block_state, echo_state = state
+        if self._is_tuple_input:
+            block_input = (input, echo_state)
+        else:
+            block_input = dict(input=input, echo=echo_state)
+        block_output, block_state = self._block(block_input, block_state)
+        if self._is_tuple_output:
+            real_output, echo_output = block_output
+        else:
+            real_output = block_output['output']
+            echo_output = block_output['echo']
+        return real_output, (block_state, echo_output)

@@ -2122,3 +2122,67 @@ class Detach(nn.Module):
 
     def forward(self, input):
         return common.detach(input)
+
+
+class Branch(nn.Module):
+    """Apply multiple modules on the same input.
+
+    Example:
+
+    .. code-block:: python
+
+        net = Branch((module1, module2))
+        y = net(x)
+
+    is equivalent to the following:
+
+    .. code-block:: python
+
+        y = module1(x), module2(x)
+
+    """
+
+    def __init__(self, modules):
+        """
+        Args:
+            modules (nested nn.Module): a nest of ``torch.nn.Module``
+        """
+        super().__init__()
+        has_network = any(
+            alf.nest.flatten(
+                alf.nest.map_structure(
+                    lambda m: isinstance(m, alf.networks.Network), modules)))
+        assert not has_network, (
+            "modules should not contain alf.networks.Network. "
+            "Try alf.networks.Branch instead.")
+
+        self._networks = modules
+        if alf.nest.is_nested(modules):
+            # make it a nn.Module so its parameters can be picked up by the framework
+            self._nets = alf.nest.utils.make_nested_module(modules)
+
+    def forward(self, inputs):
+        return alf.nest.map_structure(lambda net: net(inputs), self._networks)
+
+    def reset_parameters(self):
+        alf.nest.map_structure(reset_parameters, self._networks)
+
+
+class Sequential(nn.Sequential):
+    """A thin wrapper over nn.Sequential to allow stateless alf.networks.Network."""
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        for m in self:
+            if isinstance(m, alf.networks.Network):
+                assert not alf.nest.flatten(m.state_spec), (
+                    "Network element of layers.Sequential should stateless. "
+                    "Use networks.Sequential instead")
+
+    def forward(self, input):
+        for module in self:
+            if isinstance(module, alf.networks.Network):
+                input = module(input)[0]
+            else:
+                input = module(input)
+        return input
