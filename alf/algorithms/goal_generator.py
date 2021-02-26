@@ -592,6 +592,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                     torch.var(t[:, i]))
 
     def _costs_agg_dist(self, time_step, state, samples, info=None):
+        # This function can alter the values of ``samples`` when only planning
+        # remaining subgoals.
         assert self._value_fn, "no value function provided."
         (batch_size, pop_size, horizon, plan_dim) = samples.shape
         if self._infer_yaw and plan_dim == 12:
@@ -601,10 +603,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if self.control_aux:
             horizon -= 1
         n_goals = horizon + 1
-        # When using goal_value_net with position only input, this is not True.
-        # assert (plan_dim == self._action_dim
-        #         + self._aux_dim), "{} != {} + {}".format(
-        #             plan_dim, self._action_dim, self._aux_dim)
         action_dim = self._action_dim
         start = time_step.observation["achieved_goal"].reshape(
             batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
@@ -612,6 +610,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         end = time_step.observation["desired_goal"].reshape(
             batch_size, 1, 1, action_dim).expand(batch_size, pop_size, 1,
                                                  action_dim)
+        # When speed goal, plan_dim == action_dim, no need to plan aux dims.
+        # When only planning position goal, plan_dim == action_dim, but we still
+        # need the aux dims.
+        aux_dims_additional = (self._use_aux_achieved and not self._speed_goal
+                               and plan_dim > action_dim)
+        if aux_dims_additional:
+            aux_ach_1 = time_step.observation["aux_achieved"].reshape(
+                batch_size, 1, 1, self._aux_dim).expand(
+                    batch_size, pop_size, 1, self._aux_dim)
+
         if self._use_aux_achieved or self.control_aux:
             ag_samples = samples[:, :, :, :action_dim]
             if self.control_aux:
@@ -642,13 +650,21 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 # effect.  Here ``sg_index - 1`` points to the right position in samples
                 # to overwrite with the current state to start planning.
                 samples_masked = samples[batch_mask]
-                samples_masked[(torch.arange(new_b_size).reshape(
+                act_index = (torch.arange(new_b_size).reshape(
                     new_b_size, 1, 1, 1), torch.arange(pop_size).reshape(
                         1, pop_size, 1, 1),
-                                sg_index_masked.reshape(new_b_size, 1, 1, 1),
-                                torch.arange(action_dim).reshape(
-                                    1, 1, 1, action_dim))] = start[batch_mask]
+                             sg_index_masked.reshape(new_b_size, 1, 1, 1),
+                             torch.arange(action_dim).reshape(
+                                 1, 1, 1, action_dim))
+                samples_masked[act_index] = start[batch_mask]
+                if aux_dims_additional and horizon > 0:
+                    # Change last index for aux dimensions
+                    aux_index = act_index[:-1] + (torch.arange(
+                        self._aux_dim).reshape(1, 1, 1, self._aux_dim) +
+                                                  torch.tensor(action_dim), )
+                    samples_masked[aux_index] = aux_ach_1[batch_mask]
                 samples[batch_mask] = samples_masked
+
             sg_mask = (torch.arange(n_goals).reshape(1, 1, -1) <
                        sg_index.reshape(-1, 1, 1) - 1).expand(
                            batch_size, pop_size, n_goals)
@@ -667,18 +683,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                                   n_goals)
             stack_obs["final_goal"][:, :, -1] = torch.ones(())
             stack_obs["final_goal"] = stack_obs["final_goal"].reshape(-1, 1)
-        if (self._use_aux_achieved and not self._speed_goal
-                and plan_dim > action_dim):
-            # When computing old plan cost under position only control,
-            # plan_dim == action_dim, skip aux_achieved in that case.
-            aux_ach_1 = time_step.observation["aux_achieved"].reshape(
-                batch_size, 1, 1, self._aux_dim).expand(
-                    batch_size, pop_size, 1, self._aux_dim)
+        if aux_dims_additional:
             if horizon > 0:
                 aux_ach = torch.cat(
                     (aux_ach_1, samples[:, :, :horizon, action_dim:]), dim=2)
-                if self._plan_remaining_subgoals:
-                    aux_ach[:, :, sg_index] = aux_ach_1
             else:
                 aux_ach = aux_ach_1
             stack_obs["aux_achieved"] = aux_ach.reshape(
