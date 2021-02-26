@@ -160,10 +160,11 @@ def get_env():
             random_seed = train_config.random_seed
         # We have to call set_random_seed() here because we need the actual
         # random seed to call create_environment.
-        random_seed = set_random_seed(random_seed)
+        seed = set_random_seed(random_seed)
         # We need to re-set 'TrainerConfig.random_seed' to record the actual
         # random seed we are using.
-        config1('TrainerConfig.random_seed', random_seed, raise_if_used=False)
+        if random_seed is None:
+            config1('TrainerConfig.random_seed', seed, raise_if_used=False)
         _env = create_environment(seed=random_seed)
     return _env
 
