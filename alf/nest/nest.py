@@ -700,10 +700,10 @@ def py_prune_nest_like(nest, slim_nest, value_to_match=None):
 def get_field(nested, field):
     """Get the field from nested.
 
-    ``field`` is a string separated by ".". get_field(nested, "a.b") is equivalent
-    to nested.a.b if nested is constructed using namedtuple or nests['a']['b']
+    ``field`` is a string separated by ".". ``get_field(nested, "a.b")`` is equivalent
+    to ``nested.a.b`` if ``nested`` is constructed using namedtuple or ``nests['a']['b']``
     if nested is contructed using dict. If nested is constructed using list or
-    unnamed tuple, get_field(nested, "1.2") is equivalent to nested[1][2].
+    unnamed tuple, ``get_field(nested, "1.2")`` is equivalent to ``nested[1][2]``.
 
     Args:
         nested (nest): a nested structure
