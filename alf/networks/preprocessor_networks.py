@@ -46,7 +46,7 @@ class PreprocessorNetwork(Network):
                 the input.
             input_preprocessors (nested Network|nn.Module|None): a nest of
                 preprocessor networks, each of which will be applied to the
-                corresponding input. If None, it is treaded as ``math_ops.identity``.
+                corresponding input. If None, it is treated as ``math_ops.identity``.
                 If not None, ``input_tensor_spec`` must have the same structure
                 with ``input_preprocessors`` upto the structure defined by
                 ``input_preprocessors`` (see ``alf.nest.map_structure_upto``),
