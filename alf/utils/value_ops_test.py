@@ -96,14 +96,17 @@ class GeneralizedAdvantageTest(unittest.TestCase):
     """Tests for alf.utils.value_ops.generalized_advantage_estimation
     """
 
-    def _check(self, rewards, values, step_types, discounts, td_lambda,
-               expected):
+    def _check(self, rewards, values, step_types, discounts, target_value,
+               importance_ratio, use_retrace, td_lambda, expected):
         np.testing.assert_array_almost_equal(
             value_ops.generalized_advantage_estimation(
                 rewards=rewards,
                 values=values,
                 step_types=step_types,
                 discounts=discounts,
+                target_value=target_value,
+                importance_ratio=importance_ratio,
+                use_retrace=use_retrace,
                 td_lambda=td_lambda,
                 time_major=False), expected)
 
@@ -113,6 +116,9 @@ class GeneralizedAdvantageTest(unittest.TestCase):
                 values=torch.stack([values, 2 * values], dim=2),
                 step_types=step_types,
                 discounts=discounts,
+                importance_ratio=importance_ratio,
+                target_value=target_value,
+                use_retrace=use_retrace,
                 td_lambda=td_lambda,
                 time_major=False),
             torch.stack([expected, 2 * expected], dim=2),
@@ -124,7 +130,9 @@ class GeneralizedAdvantageTest(unittest.TestCase):
         rewards = torch.tensor([[3.] * 5], dtype=torch.float32)
         discounts = torch.tensor([[0.9] * 5], dtype=torch.float32)
         td_lambda = 0.6 / 0.9
-
+        target_value = torch.tensor([[3.] * 4], dtype=torch.float32)
+        importance_ratio = torch.tensor([[0.8] * 3], dtype=torch.float32)
+        use_retrace = False
         d = 2 * 0.9 + 1
         expected = torch.tensor([[((d * 0.6 + d) * 0.6 + d) * 0.6 + d,
                                   (d * 0.6 + d) * 0.6 + d, d * 0.6 + d, d]],
@@ -134,7 +142,10 @@ class GeneralizedAdvantageTest(unittest.TestCase):
             values=values,
             step_types=step_types,
             discounts=discounts,
+            importance_ratio=importance_ratio,
+            target_value=target_value,
             td_lambda=td_lambda,
+            use_retrace=use_retrace,
             expected=expected)
 
         # two episodes, and exceed by time limit (discount=1)
@@ -150,7 +161,10 @@ class GeneralizedAdvantageTest(unittest.TestCase):
             values=values,
             step_types=step_types,
             discounts=discounts,
+            importance_ratio=importance_ratio,
+            target_value=target_value,
             td_lambda=td_lambda,
+            use_retrace=use_retrace,
             expected=expected)
 
         # tow episodes, and end normal (discount=0)
@@ -169,8 +183,41 @@ class GeneralizedAdvantageTest(unittest.TestCase):
             step_types=step_types,
             discounts=discounts,
             td_lambda=td_lambda,
+            importance_ratio=importance_ratio,
+            target_value=target_value,
+            use_retrace=use_retrace,
             expected=expected)
 
+
+'''
+class GeneralizedAdvantage_retrace_Test(unittest.TestCase):
+    """Tests for alf.utils.value_ops
+    """GeneralizedAdvantageTest.test_generalized_advantage_estimation()
+
+    def test_generalized_advantage_estimation_retrace(self):
+        values = torch.tensor([[2.] * 4], dtype=torch.float32)
+        step_types = torch.tensor([[StepType.MID] * 4], dtype=torch.int64)
+        rewards = torch.tensor([[3.] * 4], dtype=torch.float32)
+        discounts = torch.tensor([[0.9] * 4], dtype=torch.float32)
+        td_lambda = 0.6 / 0.9
+        target_value = torch.tensor([[3.] * 4], dtype=torch.float32)
+        importance_ratio = torch.tensor([[0.8] * 3], dtype=torch.float32)
+        d = 3 * 0.9 + 3 - 2
+        expected = torch.tensor(
+            [[(d * 0.6 * 0.8) * 0.6 * 0.8 + 0.6 * 0.8 * d + d,
+              d * 0.6 * 0.8 + d, d]],
+            dtype=torch.float32)
+        np.testing.assert_array_almost_equal(
+            value_ops.generalized_advantage_estimation_retrace(
+                rewards=rewards,
+                values=values,
+                target_value=target_value,
+                step_types=step_types,
+                discounts=discounts,
+                td_lambda=td_lambda,
+                importance_ratio=importance_ratio,
+                time_major=False), expected)
+'''
 
 if __name__ == '__main__':
     unittest.main()

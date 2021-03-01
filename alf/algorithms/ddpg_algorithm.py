@@ -326,7 +326,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
             critic_losses[i] = self._critic_losses[i](
                 experience=experience,
                 value=train_info.critic.q_values[:, :, i, ...],
-                target_value=train_info.critic.target_q_values).loss
+                target_value=train_info.critic.target_q_values,
+                train_info = train_info).loss
 
         critic_loss = math_ops.add_n(critic_losses)
 

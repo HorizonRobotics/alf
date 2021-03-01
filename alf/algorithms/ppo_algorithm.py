@@ -47,7 +47,10 @@ class PPOAlgorithm(ActorCriticAlgorithm):
             values=exp.rollout_info.value,
             step_types=exp.step_type,
             discounts=exp.discount * self._loss._gamma,
+            target_value=exp.rollout_info.value,
             td_lambda=self._loss._lambda,
+            importance_ratio=1.0,
+            use_retrace=False,
             time_major=False)
         advantages = torch.cat([
             advantages,

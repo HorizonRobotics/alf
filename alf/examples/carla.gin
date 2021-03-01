@@ -4,8 +4,8 @@ import alf
 import alf.algorithms.merlin_algorithm
 import alf.environments.suite_carla
 
-CameraSensor.image_size_x=200
-CameraSensor.image_size_y=100
+CameraSensor.image_size_x=128
+CameraSensor.image_size_y=64
 CameraSensor.fov=135
 
 create_environment.env_name='Town01'
