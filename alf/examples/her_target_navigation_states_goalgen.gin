@@ -18,6 +18,7 @@ CEMOptimizer.population_size=1000
 
 #ObservationNormalizer.clipping=6.
 #TrainerConfig.data_transformer_ctor=@ObservationNormalizer  # during rollout, aux_desired is missing in normalizer input, but present in replay, throwing error.
+# Add a normalizer after replay training?
 
 import alf.algorithms.vae
 encoding_dim=10

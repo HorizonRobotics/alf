@@ -339,6 +339,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  plan_after_goal_achieved=False,
                  vae=None,
                  vae_weight=0.,
+                 vae_penalize_above=-1.e8,
                  vae_samples=1,
                  vae_decoder=None,
                  plan_cost_ln_norm=1,
@@ -395,6 +396,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 been observed before, i.e. under current state, goal is reachable.
                 VAE is trained with hindsight experience, using future state as goal.
             vae_weight (float): weight of vae cost in trajectory cost.
+            vae_penalize_above (float): penalize vae_cost only if above this threshold.
             vae_samples (int): number of z samples to use in VAE.
             vae_decoder (nn.Module): decoder for the VAE.
             sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
@@ -526,6 +528,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             assert normalize_goals
         self._vae = vae
         self._vae_weight = vae_weight
+        self._vae_penalize_above = torch.tensor(vae_penalize_above)
         self._concat = alf.nest.utils.NestConcat()
         self._vae_samples = vae_samples
         self._vae_decoder = vae_decoder
@@ -563,15 +566,17 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         flat_in = inputs
         if alf.nest.is_nested(inputs):
             flat_in = self._concat(inputs)
+        # MSE reconstruction loss
         decode_loss = torch.mean(
-            100 * alf.utils.math_ops.square(flat_in - outputs), dim=-1)
+            alf.utils.math_ops.square(flat_in - outputs), dim=-1)
         loss = decode_loss + kld_loss
         return kld_loss, decode_loss, loss
 
     def vae_cost(self, obs):
         """During rollout, sample ``z ~ q(z|x)`` and compute VAE log likelihood bound.
 
-        :math:`sum_z \log P(x|z) - \beta KL(q(z|x) || prior(z))`
+        Reconstruction cost + KLD:
+        :math:`sum_z - \log P(x|z) + \beta KL(q(z|x) || prior(z))`
 
         Args:
             obs (nested Tensor): data to be encoded.
@@ -583,6 +588,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         _, _, loss = self._vae_loss(obs, n_samples=self._vae_samples)
         if self._vae_samples > 1:
             loss = torch.mean(loss, dim=0)
+        loss = torch.max(self._vae_penalize_above, loss)
         return loss.unsqueeze(1) * self._vae_weight
 
     def goal_dim(self):
@@ -659,7 +665,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 values = values[..., :-1]
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
         if self._vae:
-            values += self.vae_cost(obs)
+            values -= self.vae_cost(obs)
         return values, state
 
     def _summarize_tensor_dims(self, name, t):
