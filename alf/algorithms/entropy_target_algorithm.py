@@ -13,6 +13,7 @@
 # limitations under the License.
 """An algorithm for adjusting entropy regularization strength."""
 from absl import logging
+import copy
 import gin
 import math
 import numpy as np
@@ -32,7 +33,18 @@ EntropyTargetInfo = namedtuple("EntropyTargetInfo", ["loss"])
 
 
 @alf.configurable
-class EntropyTargetAlgorithm(Algorithm):
+def EntropyTargetAlgorithm(action_spec,
+                           initial_alpha=0.1,
+                           skip_free_stage=False,
+                           max_entropy=None,
+                           target_entropy=None,
+                           very_slow_update_rate=0.001,
+                           slow_update_rate=0.01,
+                           fast_update_rate=np.log(2),
+                           min_alpha=1e-4,
+                           average_window=2,
+                           debug_summaries=False,
+                           name="EntropyTargetAlgorithm"):
     """Algorithm for adjusting entropy regularization.
 
     It tries to adjust the entropy regularization (i.e. alpha) so that the
@@ -69,8 +81,72 @@ class EntropyTargetAlgorithm(Algorithm):
     To do so, you need to use the same ``target_entropy``, set ``skip_free_stage``
     to True, and  set ``slow_update_rate`` and ``fast_update_rate`` to the 4
     times of the learning rate for temperature.
+
+    Args:
+        action_spec (nested BoundedTensorSpec): representing the actions.
+        initial_alpha (float): initial value for alpha; make sure that it's
+            large enough for initial meaningful exploration
+        skip_free_stage (bool): If True, directly goes to the adjust stage.
+        max_entropy (float|None|Nested[float|None]): the upper bound of the total
+            entropy. If it is None,
+            ``min(initial_entropy * 0.8, initial_entropy / 0.8)`` is used.
+            initial_entropy is estimated from the first ``average_window``
+            steps. 0.8 is to ensure that we can get a policy a less random
+            as the initial policy before starting the free stage.
+            If ``target_entropy`` is nested and:
+
+            - If ``max_entropy`` is None: the max entropy of each of the distribution
+              in ``action_spec`` is calculated as using the estimated initial
+              entropy for that distribution.
+            - If ``max_entropy`` is nested: it should have the same structure
+              as ``action_spec`` and each element indicates the max entropy
+              for the corresponding distribution in ``action_spec``.
+            - If ``max_entropy`` is a float: it is the max entropy for each of
+              the distributions in ``action_spec``
+
+        target_entropy (float|None|Nested[float|None]): the lower bound of the
+            total entropy. If it is None, a default value proportional to the action dimension
+            is used. This value should be less or equal than ``max_entropy``.
+            If ``action_spec`` is nested, ``target_entropy`` can also be a nest
+            with the same structure and each element indicates the target entropy
+            for the corresponding distribution in ``action_spec``.
+        very_slow_update_rate (float): a tiny update rate for ``log_alpha``;
+            used in stage 0.
+        slow_update_rate (float): minimal update rate for ``log_alpha``; used
+            in stage 2.
+        fast_update_rate (float): maximum update rate for ``log_alpha``; used
+            in state 2.
+        min_alpha (float): the minimal value of alpha. If <=0, :math:`e^{-100}`
+            is used.
+        average_window (int): window size for averaging past entropies.
+        debug_summaries (bool): True if debug summaries should be created.
     """
 
+    kwargs = copy.copy(locals())
+    if not alf.nest.is_nested(target_entropy):
+        return _EntropyTargetAlgorithm(**kwargs)
+    else:
+
+        def _create_et(path, action_spec, target_entropy, max_entropy):
+            kwargs.update(
+                action_spec=action_spec,
+                target_entropy=target_entropy,
+                max_entropy=max_entropy,
+                name=name + "/" + path)
+            return _EntropyTargetAlgorithm(**kwargs)
+
+        alf.nest.assert_same_structure(target_entropy, action_spec)
+        if alf.nest.is_nested(max_entropy):
+            alf.nest.assert_same_structure(max_entropy, action_spec)
+        else:
+            max_entropy = alf.nest.map_structure(lambda x: max_entropy,
+                                                 action_spec)
+        algs = alf.nest.py_map_structure_with_path(_create_et, action_spec,
+                                                   target_entropy, max_entropy)
+        return _NestedEntropyTargetAlgorithm(algs, debug_summaries, name)
+
+
+class _EntropyTargetAlgorithm(Algorithm):
     def __init__(self,
                  action_spec,
                  initial_alpha=0.1,
@@ -84,31 +160,6 @@ class EntropyTargetAlgorithm(Algorithm):
                  average_window=2,
                  debug_summaries=False,
                  name="EntropyTargetAlgorithm"):
-        """
-        Args:
-            action_spec (nested BoundedTensorSpec): representing the actions.
-            initial_alpha (float): initial value for alpha; make sure that it's
-                large enough for initial meaningful exploration
-            skip_free_stage (bool): If True, directly goes to the adjust stage.
-            max_entropy (float): the upper bound of the entropy. If not provided,
-                ``min(initial_entropy * 0.8, initial_entropy / 0.8)`` is used.
-                initial_entropy is estimated from the first ``average_window``
-                steps. 0.8 is to ensure that we can get a policy a less random
-                as the initial policy before starting the free stage.
-            target_entropy (float): the lower bound of the entropy. If not
-                provided, a default value proportional to the action dimension
-                is used. This value should be less or equal than ``max_entropy``.
-            very_slow_update_rate (float): a tiny update rate for ``log_alpha``;
-                used in stage 0.
-            slow_update_rate (float): minimal update rate for ``log_alpha``; used
-                in stage 2.
-            fast_update_rate (float): maximum update rate for ``log_alpha``; used
-                in state 2.
-            min_alpha (float): the minimal value of alpha. If <=0, :math:`e^{-100}`
-                is used.
-            average_window (int): window size for averaging past entropies.
-            debug_summaries (bool): True if debug summaries should be created.
-        """
         super().__init__(debug_summaries=debug_summaries, name=name)
 
         self.register_buffer(
@@ -300,3 +351,33 @@ class EntropyTargetAlgorithm(Algorithm):
                     alf.summary.scalar("target_entropy", target_entropy)
 
         return alpha
+
+
+class _NestedEntropyTargetAlgorithm(Algorithm):
+    def __init__(self, algs, debug_summaries, name):
+        super().__init__(debug_summaries=debug_summaries, name=name)
+        self._algs = algs
+        self._algs_flattened = alf.nest.flatten(algs)
+        self._nested_algs = alf.nest.utils.make_nested_module(algs)
+
+    def rollout_step(self, distribution, step_type, on_policy_training):
+        if on_policy_training:
+            return self.train_step(distribution, step_type)
+        else:
+            return AlgStep()
+
+    def train_step(self, distribution, step_type):
+        infos = alf.nest.map_structure(
+            lambda alg, dist: alg.train_step(dist, step_type).info, self._algs,
+            distribution)
+        return AlgStep(output=(), state=(), info=infos)
+
+    def calc_loss(self, experience, info: EntropyTargetInfo, valid_mask=None):
+        info_flattened = alf.nest.flatten_up_to(self._algs, info)
+        loss_infos = list(
+            map(lambda alg, inf: alg.calc_loss(experience, inf, valid_mask),
+                self._algs_flattened, info_flattened))
+        loss = sum(loss_info.loss for loss_info in loss_infos)
+        extra = alf.nest.pack_sequence_as(
+            self._algs, [loss_info.extra for loss_info in loss_infos])
+        return LossInfo(loss=loss, extra=extra)
