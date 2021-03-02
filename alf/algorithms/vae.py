@@ -35,7 +35,7 @@ class VariationalAutoEncoder(Algorithm):
 
     Mathematically:
 
-    :math:`\log p(x) >= E_z \log P(x|z) - \beta KL(q(z|x) || prior(z))`
+    :math:`\log p(x) >= E_{z ~ q(z|x)} \log P(x|z) - \beta KL(q(z|x) || prior(z))`
 
     ``train_step()`` method returns sampled z and KLD, it is up to the user of
     this class to use the returned z to decode and compute reconstructive loss to
@@ -98,16 +98,18 @@ class VariationalAutoEncoder(Algorithm):
         self._beta = beta
         self._z_dim = z_dim
 
-    def _sampling_forward(self, inputs):
+    def _sampling_forward(self, inputs, n_samples=1):
         """Encode the data into latent space then do sampling.
 
         Args:
             inputs (nested Tensor): if a prior network is provided, this is a
                 tuple of ``(prior_input, new_observation)``.
+            n_samples (int): number of samples to produce.
 
         Returns:
             tuple:
-            - z (Tensor): ``z`` is a tensor of shape (``B``, ``z_dim``).
+            - z (Tensor): ``z`` is a tensor of shape (``B``, ``z_dim``) or
+                (``n_samples``, ``B``, ``z_dim``) if sampling more than 1.
             - kl_loss (Tensor): ``kl_loss`` is a tensor of shape (``B``,).
         """
         if self._z_prior_network:
@@ -132,7 +134,10 @@ class VariationalAutoEncoder(Algorithm):
 
         kl_div_loss = 0.5 * torch.sum(kl_div_loss, dim=-1)
         # reparameterization sampling: z = u + var ** 0.5 * eps
-        eps = torch.randn(z_mean.shape)
+        shape = z_mean.shape
+        if n_samples > 1:
+            shape = (n_samples, ) + shape
+        eps = torch.randn(shape)
         z = z_mean + torch.exp(z_log_var * 0.5) * eps
         return z, kl_div_loss
 

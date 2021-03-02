@@ -294,6 +294,20 @@ class RandomCategoricalGoalGenerator(ConditionalGoalGenerator):
 
 
 @gin.configurable
+def goal_gen_output_dims(observation_spec, aux_dim):
+    dims = [aux_dim]
+    dims += [x.numel for x in alf.nest.flatten(observation_spec)]
+    return sum(dims)
+
+
+@gin.configurable
+def goal_gen_output_spec(observation_spec, control_aux=0):
+    res = observation_spec.copy()
+    res["aux_desired"] = observation_spec["aux_achieved"]
+    return res
+
+
+@gin.configurable
 class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     """Subgoal Planning Goal Generation Module.
 
@@ -323,6 +337,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  plan_with_goal_value_only=False,
                  plan_remaining_subgoals=True,
                  plan_after_goal_achieved=False,
+                 vae=None,
+                 vae_weight=0.,
+                 vae_samples=1,
+                 vae_decoder=None,
                  plan_cost_ln_norm=1,
                  sg_leng_penalty=0,
                  subgoal_cost_thd=0.5,
@@ -373,6 +391,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             plan_after_goal_achieved (bool): replan after achieving subgoal.
             plan_cost_ln_norm (int): ln norm applied to segment costs before adding
                 segment costs to form the full plan cost.
+            vae (Algorithm): if provided, use VAE to estimate whether observation has
+                been observed before, i.e. under current state, goal is reachable.
+                VAE is trained with hindsight experience, using future state as goal.
+            vae_weight (float): weight of vae cost in trajectory cost.
+            vae_samples (int): number of z samples to use in VAE.
+            vae_decoder (nn.Module): decoder for the VAE.
             sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
             subgoal_cost_thd (float): penalize subgoal if above this distance.
             infer_yaw (bool): infer yaw from speed, instead of sample using CEM.
@@ -437,7 +461,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if final_goal:
             final_goal_spec = TensorSpec((1, ))
         steps_spec = TensorSpec((), dtype=torch.int32)
-        flag_spec = TensorSpec((), dtype=torch.bool)
+        flag_spec = TensorSpec((), dtype=torch.int32)
         train_state_spec = GoalState(
             goal=goal_spec,
             prev_goal=goal_spec,
@@ -500,11 +524,66 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._bound_goals = bound_goals
         if bound_goals:
             assert normalize_goals
-        if not self._normalizer:
-            alf.utils.checkpoint_utils.enable_checkpoint(self, False)
+        self._vae = vae
+        self._vae_weight = vae_weight
+        self._concat = alf.nest.utils.NestConcat()
+        self._vae_samples = vae_samples
+        self._vae_decoder = vae_decoder
         self._ou_process = common.create_ou_process(goal_spec, gou_stddev,
                                                     gou_damping)
         self._gou_stddev = gou_stddev
+
+    def calc_loss(self, experience, info: GoalInfo):
+        if self._vae is None:
+            return LossInfo()
+        # Keep only HER data
+        her_exp = experience.observation
+        if hasattr(experience.batch_info, "her"):
+            her_exp = alf.nest.map_structure(
+                lambda x: x[:, experience.batch_info.her, ...], her_exp)
+        # Flatten batch_length and batch_size into one dimension.
+        her_exp = alf.nest.map_structure(
+            lambda x: x.reshape((x.shape[0] * x.shape[1], x.shape[2])),
+            her_exp)
+        # Compute loss using one z sample
+        kld_loss, decode_loss, loss = self._vae_loss(her_exp)
+        return LossInfo(
+            loss=torch.mean(loss),
+            extra={
+                "vae_kld_loss": torch.mean(kld_loss),
+                "vae_decode_loss": torch.mean(decode_loss),
+                "vae_full_loss": torch.mean(loss)
+            })
+
+    def _vae_loss(self, inputs, n_samples=1):
+        assert self._vae
+        assert self._vae_decoder
+        z, kld_loss = self._vae._sampling_forward(inputs)
+        outputs, _ = self._vae_decoder(z)
+        flat_in = inputs
+        if alf.nest.is_nested(inputs):
+            flat_in = self._concat(inputs)
+        decode_loss = torch.mean(
+            100 * alf.utils.math_ops.square(flat_in - outputs), dim=-1)
+        loss = decode_loss + kld_loss
+        return kld_loss, decode_loss, loss
+
+    def vae_cost(self, obs):
+        """During rollout, sample ``z ~ q(z|x)`` and compute VAE log likelihood bound.
+
+        :math:`sum_z \log P(x|z) - \beta KL(q(z|x) || prior(z))`
+
+        Args:
+            obs (nested Tensor): data to be encoded.
+
+        Returns:
+            bounds (Tensor).
+        """
+        # Rollout using possibly multiple z samples
+        _, _, loss = self._vae_loss(obs, n_samples=self._vae_samples)
+        if self._vae_samples > 1:
+            loss = torch.mean(loss, dim=0)
+        return loss.unsqueeze(1) * self._vae_weight
 
     def goal_dim(self):
         """Number of dimensions of a goal.
@@ -579,6 +658,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if mdim and self._plan_with_goal_value_only:
                 values = values[..., :-1]
             values = alf.math.sum_to_leftmost(values, dim=obs_dim)
+        if self._vae:
+            values += self.vae_cost(obs)
         return values, state
 
     def _summarize_tensor_dims(self, name, t):
@@ -804,8 +885,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         goals = torch.where((retain_old.unsqueeze(1) | ~new_goal_mask).reshape(
             batch_size, 1, 1), old_plan, goals)
         state = state._replace(
-            replan=state.replan & ~retain_old,
-            retain_old=state.replan & retain_old)
+            replan=(state.replan.bool()
+                    & ~retain_old.bool()).int(),
+            retain_old=(state.replan.bool()
+                        & retain_old.bool()).int())
 
         if self._next_goal_on_success:
             # In reality, subgoals_index can be different for different ENVs.  Here,
@@ -874,7 +957,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             plan_success |= torch.tensor(1, dtype=torch.bool)
         # Considers plan success only when new plan is requested.
         plan_success &= new_goal_mask
-        state = state._replace(plan_success=plan_success.squeeze(1))
+        state = state._replace(plan_success=plan_success.squeeze(1).int())
 
         if alf.summary.should_record_summaries():
             alf.summary.scalar(
@@ -933,7 +1016,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                  dim=1)
         goal_achieved = self._goal_achieved_fn(achieved, state.goal)
         # Make sure we are really using the plan, instead of the original goal.
-        return goal_achieved & state.plan_success
+        return goal_achieved.bool() & state.plan_success.bool()
 
     def _update_subgoal(self,
                         observation,
@@ -974,7 +1057,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             new_goal = state.full_plan[(torch.arange(batch_size),
                                         cap_subgoals_index.squeeze().long())]
             new_sg_steps = torch.where(
-                (first_steps | next_subgoal) & state.plan_success,
+                (first_steps | next_subgoal) & state.plan_success.bool(),
                 torch.zeros_like(sg_steps), sg_steps)
             new_sg_steps += 1
             # Reset plan steps counter if subgoal is reached.
@@ -982,7 +1065,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 advanced_goal, torch.tensor(0, dtype=torch.int32),
                 state.steps_since_last_plan)
             new_goal = torch.where(
-                state.plan_success.unsqueeze(1), new_goal, state.goal)
+                state.plan_success.unsqueeze(1).bool(), new_goal, state.goal)
             state = state._replace(
                 goal=new_goal,
                 subgoals_index=subgoals_index,
@@ -992,7 +1075,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 # replan can be rejected if not significantly better than
                 # the base policy.
                 # switched_goal=state.replan | advanced_goal,
-                advanced_goal=advanced_goal)
+                advanced_goal=advanced_goal.int())
 
             if alf.summary.should_record_summaries():
                 alf.summary.scalar(
@@ -1102,8 +1185,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                                             steps_since_last_plan)
         state = state._replace(
             steps_since_last_plan=steps_since_last_plan,
-            replan=replan,
-            retain_old=torch.zeros_like(update_cond),
+            replan=replan.int(),
+            retain_old=torch.zeros_like(update_cond).int(),
             prev_ext_goal=ext_goal)
         if self._plan_after_goal_achieved and self._next_goal_on_success:
             state = self._update_subgoal(observation, state, step_type)
@@ -1170,7 +1253,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
 
         switched_goal = torch.min(
             torch.isclose(state.prev_goal, new_goal), dim=1)[0] == 0
-        state = state._replace(switched_goal=switched_goal)
+        state = state._replace(switched_goal=switched_goal.int())
         state = state._replace(prev_goal=new_goal)
 
         if self._gou_stddev > 0 and epsilon_greedy >= 1:
@@ -1224,5 +1307,5 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 if state.advanced_goal != ():
                     alf.summary.scalar(
                         "planner/rate_advanced_to_subgoal_{}".format(i),
-                        torch.mean((state.advanced_goal &
+                        torch.mean((state.advanced_goal.bool() &
                                     (state.subgoals_index == i)).float()))
