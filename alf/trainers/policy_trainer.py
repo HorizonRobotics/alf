@@ -153,10 +153,12 @@ class Trainer(object):
 
         self._checkpoint_requested = False
         signal.signal(signal.SIGUSR2, self._request_checkpoint)
+        # kill -12 PID
         logging.info("Use `kill -%s %s` to request checkpoint during training."
                      % (int(signal.SIGUSR2), os.getpid()))
 
         self._debug_requested = False
+        # kill -10 PID
         signal.signal(signal.SIGUSR1, self._request_debug)
         logging.info("Use `kill -%s %s` to request debugging." % (int(
             signal.SIGUSR1), os.getpid()))
