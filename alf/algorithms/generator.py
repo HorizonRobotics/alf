@@ -31,7 +31,7 @@ GeneratorLossInfo = namedtuple("GeneratorLossInfo",
                                ["generator", "mi_estimator"])
 
 
-@gin.configurable
+@alf.configurable
 class CriticAlgorithm(Algorithm):
     """
     Wrap a critic network as an Algorithm for flexible gradient updates
@@ -116,7 +116,7 @@ class CriticAlgorithm(Algorithm):
         return AlgStep(output=outputs, state=(), info=())
 
 
-@gin.configurable
+@alf.configurable
 class Generator(Algorithm):
     r"""Generator
 

@@ -17,6 +17,7 @@ import gin
 import numpy as np
 import torch
 
+import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.mi_estimator import MIEstimator
 from alf.data_structures import AlgStep, LossInfo, namedtuple
@@ -27,7 +28,7 @@ from alf.utils import common, math_ops
 from alf.utils.averager import AdaptiveAverager
 
 
-@gin.configurable
+@alf.configurable
 class ParVIAlgorithm(Algorithm):
     """ParVIAlgorithm
 

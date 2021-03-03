@@ -59,7 +59,7 @@ def regression_loss(output, target):
     return LossInfo(loss=loss, extra=())
 
 
-@gin.configurable
+@alf.configurable
 class HyperNetwork(Algorithm):
     """HyperNetwork 
 

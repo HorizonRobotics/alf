@@ -54,7 +54,7 @@ def _expand_to_replica(inputs, replicas, spec):
         return inputs
 
 
-@gin.configurable
+@alf.configurable
 class FuncParVIAlgorithm(ParVIAlgorithm):
     """Functional ParVI Algorithm 
 
