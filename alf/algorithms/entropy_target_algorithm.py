@@ -96,7 +96,7 @@ class EntropyTargetAlgorithm(Algorithm):
                 initial_entropy is estimated from the first ``average_window``
                 steps. 0.8 is to ensure that we can get a policy a less random
                 as the initial policy before starting the free stage.
-            target_entropy (float|None: the lower bound of the total entropy.
+            target_entropy (float|None): the lower bound of the total entropy.
                 If it is None, a default value proportional to the action dimension
                 is used. This value should be less or equal than ``max_entropy``.
             very_slow_update_rate (float): a tiny update rate for ``log_alpha``;
@@ -342,13 +342,13 @@ class NestedEntropyTargetAlgorithm(Algorithm):
                 If ``target_entropy`` is nested and:
 
                 - If ``max_entropy`` is None: the max entropy of each of the distribution
-                in ``action_spec`` is calculated as using the estimated initial
-                entropy for that distribution.
+                  in ``action_spec`` is calculated as using the estimated initial
+                  entropy for that distribution.
                 - If ``max_entropy`` is nested: it should have the same structure
-                as ``action_spec`` and each element indicates the max entropy
-                for the corresponding distribution in ``action_spec``.
+                  as ``action_spec`` and each element indicates the max entropy
+                  for the corresponding distribution in ``action_spec``.
                 - If ``max_entropy`` is a float: it is the max entropy for each of
-                the distributions in ``action_spec``
+                  the distributions in ``action_spec``
 
             target_entropy (Nested[float|None]): the lower bound of the
                 the entropy for each corresponding action in ``action_spec``.
