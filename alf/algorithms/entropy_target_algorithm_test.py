@@ -18,6 +18,7 @@ import torch.nn as nn
 
 import alf
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm, EntropyTargetInfo
+from alf.algorithms.entropy_target_algorithm import NestedEntropyTargetAlgorithm
 from alf.data_structures import TimeStep, StepType
 from alf.networks import NormalProjectionNetwork, StableNormalProjectionNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
@@ -65,7 +66,7 @@ class EntropyTargetAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         action_spec = dict(
             a=BoundedTensorSpec((1, ), minimum=0, maximum=3),
             b=BoundedTensorSpec((), minimum=0, maximum=3, dtype='int64'))
-        alg = EntropyTargetAlgorithm(
+        alg = NestedEntropyTargetAlgorithm(
             action_spec=action_spec, target_entropy=dict(a=None, b=None))
         net = alf.nn.Branch(
             dict(
