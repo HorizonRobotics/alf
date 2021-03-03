@@ -673,14 +673,9 @@ class SacAlgorithm(OffPolicyAlgorithm):
         return sum(nest.flatten(alpha_loss))
 
     def train_step(self, exp: Experience, state: SacState):
-        # We detach exp.observation here so that in the case that exp.observation
-        # is calculated by some other trainable module, the training of that
-        # module will not be affected by the gradient back-propagated from the
-        # actor. However, the gradient from critic will still affect the training
-        # of that module.
         (action_distribution, action, critics,
          action_state) = self._predict_action(
-             common.detach(exp.observation), state=state.action)
+             exp.observation, state=state.action)
 
         log_pi = nest.map_structure(lambda dist, a: dist.log_prob(a),
                                     action_distribution, action)
