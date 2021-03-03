@@ -528,13 +528,36 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             assert normalize_goals
         self._vae = vae
         self._vae_weight = vae_weight
-        self._vae_penalize_above = torch.tensor(vae_penalize_above)
+        self._vae_penalize_above = torch.tensor(
+            vae_penalize_above, dtype=torch.float32)
         self._concat = alf.nest.utils.NestConcat()
         self._vae_samples = vae_samples
         self._vae_decoder = vae_decoder
         self._ou_process = common.create_ou_process(goal_spec, gou_stddev,
                                                     gou_damping)
         self._gou_stddev = gou_stddev
+
+    def _vae_loss(self, inputs, n_samples=1):
+        assert self._vae
+        assert self._vae_decoder
+        z, kld_loss = self._vae._sampling_forward(inputs, n_samples=n_samples)
+        flat_z = z
+        if n_samples > 1:
+            flat_z = z.reshape(-1, self._vae._z_dim)
+        flat_outputs, _ = self._vae_decoder(flat_z)
+        outputs = flat_outputs
+        if n_samples > 1:
+            outputs = flat_outputs.reshape(z.shape[0], z.shape[1], -1)
+        flat_in = inputs
+        if alf.nest.is_nested(inputs):
+            flat_in = self._concat(inputs)
+        # MSE reconstruction loss
+        decode_loss = torch.mean(
+            alf.utils.math_ops.square(flat_in - outputs), dim=-1)
+        if n_samples > 1:
+            decode_loss = torch.mean(decode_loss, dim=0)
+        loss = decode_loss + kld_loss
+        return kld_loss, decode_loss, loss
 
     def calc_loss(self, experience, info: GoalInfo):
         if self._vae is None:
@@ -558,20 +581,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 "vae_full_loss": torch.mean(loss)
             })
 
-    def _vae_loss(self, inputs, n_samples=1):
-        assert self._vae
-        assert self._vae_decoder
-        z, kld_loss = self._vae._sampling_forward(inputs)
-        outputs, _ = self._vae_decoder(z)
-        flat_in = inputs
-        if alf.nest.is_nested(inputs):
-            flat_in = self._concat(inputs)
-        # MSE reconstruction loss
-        decode_loss = torch.mean(
-            alf.utils.math_ops.square(flat_in - outputs), dim=-1)
-        loss = decode_loss + kld_loss
-        return kld_loss, decode_loss, loss
-
     def vae_cost(self, obs):
         """During rollout, sample ``z ~ q(z|x)`` and compute VAE log likelihood bound.
 
@@ -586,8 +595,6 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         """
         # Rollout using possibly multiple z samples
         _, _, loss = self._vae_loss(obs, n_samples=self._vae_samples)
-        if self._vae_samples > 1:
-            loss = torch.mean(loss, dim=0)
         loss = torch.max(self._vae_penalize_above, loss)
         return loss.unsqueeze(1) * self._vae_weight
 
