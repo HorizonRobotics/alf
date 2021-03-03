@@ -680,7 +680,7 @@ def entropy_with_fallback(distributions, return_sum=True):
     Args:
         distributions (nested Distribution): A possibly batched tuple of
             distributions.
-        return_sum (bool): if return_sum, return the total entropy. If not return_sum,
+        return_sum (bool): if True, return the total entropy. If not True,
             return the entropy for each distribution in the nest.
 
     Returns:
