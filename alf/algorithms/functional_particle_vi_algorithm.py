@@ -97,8 +97,6 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                  name="FuncParVIAlgorithm"):
         """
         Args:
-            Args for the each parametric network
-            ====================================================================
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
@@ -122,13 +120,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
                 ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
 
-            Args for the ensemble of particles
-            ====================================================================
             num_particles (int): number of sampling particles
             entropy_regularization (float): weight of the repulsive term in par_vi. 
 
-            Args for function_vi
-            ====================================================================
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
             function_bs (int): mini batch size for par_vi training. 
@@ -140,14 +134,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             function_extra_bs_std (float): std of the normal distribution for
                 sampling extra training batch when using normal sampler.
 
-            Args for training and testing
-            ====================================================================
             loss_type (str): loglikelihood type for the generated functions,
                 types are [``classification``, ``regression``]
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
             par_vi (str): types of particle-based methods for variational inference,
                 types are [``svgd``, ``gfsf``]
+
                 * svgd: empirical expectation of SVGD is evaluated by reusing
                     the same batch of particles.   
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
@@ -244,7 +237,10 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
             state: not used.
 
         Returns:
-            AlgStep: outputs with shape (batch_size, self._param_net._output_spec.shape[0])
+            AlgStep: 
+            - output (Tensor): predictions with shape 
+                ``[batch_size, self._param_net._output_spec.shape[0]]``
+            - state: not used
         """
         if params is None:
             params = self.particles
@@ -304,8 +300,9 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
 
         Returns:
             AlgStep:
-                outputs: Tensor with shape (batch_size, dim)
-                info: LossInfo
+            - output(Tensor): shape is ``[batch_size, dim]``
+            - state: not used
+            - info (LossInfo): loss
         """
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
@@ -331,13 +328,13 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         evaluated on the training batch. Used when function_vi is True.
 
         Args:
-            data (torch.Tensor): training batch input.
-            params (torch.Tensor): parameter tensor for param_net.
+            data (Tensor): training batch input.
+            params (Tensor): parameter tensor for param_net.
 
         Returns:
-            outputs (torch.Tensor): outputs of param_net under params
+            outputs (Tensor): outputs of param_net under params
                 evaluated on data.
-            density_outputs (torch.Tensor): outputs of param_net under
+            density_outputs (Tensor): outputs of param_net under
                 params evaluated on sampled extra data.
         """
         # sample extra data
@@ -373,8 +370,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         Used when function_vi is True.
 
         Args:
-            targets (torch.Tensor): target values of the training batch.
-            outputs (torch.Tensor): function outputs to evaluate the loss.
+            targets (Tensor): target values of the training batch.
+            outputs (Tensor): function outputs to evaluate the loss.
 
         Returns:
             negative log_prob for outputs evaluated on current training batch.
@@ -403,8 +400,8 @@ class FuncParVIAlgorithm(ParVIAlgorithm):
         Used when function_vi is False.
 
         Args:
-            inputs (torch.Tensor): (data, target) of training batch.
-            params (torch.Tensor): generator outputs to evaluate the loss.
+            inputs (Tensor): (data, target) of training batch.
+            params (Tensor): generator outputs to evaluate the loss.
 
         Returns:
             negative log_prob for params evaluated on current training batch.
