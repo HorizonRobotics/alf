@@ -37,6 +37,7 @@ def wrap_optimizer(cls):
     def __init__(self,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
+                 add_gfsf_grad=False,
                  name=None,
                  **kwargs):
         """
@@ -45,6 +46,8 @@ def wrap_optimizer(cls):
             clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
                 to clip gradient. If False, use `tensor_utils.clip_by_norms` for
                 each grad.
+            add_gfsf_grad (bool): If True, add `gfsf` gradient to the default gradient
+                of the parameters with extra key `gfsf`.
             name (str): the name displayed when summarizing the gradient norm. If
                 None, then a global name in the format of "class_name_i" will be
                 created, where "i" is the global optimizer id.
@@ -64,10 +67,13 @@ def wrap_optimizer(cls):
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
+        self._add_gfsf_grad = add_gfsf_grad
         self.name = name
         if name is None:
             self.name = NewClsName + str(NewCls.counter)
             NewCls.counter += 1
+        # if add_gfsf_grad:
+        #     pass
 
     @common.add_method(NewCls)
     def step(self, closure=None):
