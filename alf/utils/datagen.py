@@ -37,6 +37,12 @@ class TestDataSet(torch.utils.data.Dataset):
     def __len__(self):
         return len(self._features)
 
+    def get_features(self):
+        return self._features
+
+    def get_targets(self):
+        return self._values
+
 
 def load_test(train_bs=50, test_bs=10, num_workers=0):
     input_dim = 3

@@ -24,98 +24,83 @@ from typing import Callable
 import alf
 from alf.algorithms.algorithm import Algorithm
 from alf.algorithms.config import TrainerConfig
+from alf.algorithms.hypernetwork_algorithm import classification_loss, regression_loss
+from alf.algorithms.particle_vi_algorithm import ParVIAlgorithm
 from alf.data_structures import AlgStep, LossInfo, namedtuple
-from alf.algorithms.generator import Generator
 from alf.networks import EncodingNetwork, ParamNetwork
 from alf.tensor_specs import TensorSpec
+from alf.nest.utils import get_outer_rank
 from alf.utils import common, math_ops, summary_utils
 from alf.utils.summary_utils import record_time
 
 
-def classification_loss(output, target):
-    if output.ndim == 2:
-        output = output.reshape(output.shape[0], target.shape[1], -1)
-    pred = output.max(-1)[1]
-    target = target.squeeze(-1)
-    acc = pred.eq(target).float().mean(0)
-    avg_acc = acc.mean()
-    if output.dim == 3:
-        output = output.transpose(1, 2)
+def _expand_to_replica(inputs, replicas, spec):
+    """Expand the inputs of shape [B, ...] to [B, n, ...] if n > 1,
+        where n is the number of replicas. When n = 1, the unexpanded
+        inputs will be returned.
+    Args:
+        inputs (Tensor): the input tensor to be expanded
+        spec (TensorSpec): the spec of the unexpanded inputs. It is used to
+            determine whether the inputs is already an expanded one. If it
+            is already expanded, inputs will be returned without any
+            further processing.
+    Returns:
+        Tensor: the expaneded inputs or the original inputs.
+    """
+    outer_rank = get_outer_rank(inputs, spec)
+    if outer_rank == 1 and replicas > 1:
+        return inputs.unsqueeze(1).expand(-1, replicas, *inputs.shape[1:])
     else:
-        output = output.reshape(output.shape[0] * target.shape[1], -1)
-        target = target.reshape(-1)
-    loss = F.cross_entropy(output, target)
-    return LossInfo(loss=loss, extra=avg_acc)
-
-
-def regression_loss(output, target):
-    out_shape = output.shape[-1]
-    assert (target.shape[-1] == out_shape), (
-        "feature dimension of output and target does not match.")
-    loss = 0.5 * F.mse_loss(
-        output.reshape(-1, out_shape),
-        target.reshape(-1, out_shape),
-        reduction='sum')
-    return LossInfo(loss=loss, extra=())
+        return inputs
 
 
 @alf.configurable
-class HyperNetwork(Algorithm):
-    """HyperNetwork 
+class FuncParVIAlgorithm(ParVIAlgorithm):
+    """Functional ParVI Algorithm 
 
-    HyperNetwork algorithm maintains a generator that generates a set of 
-    parameters for a predefined neural network from a random noise input. 
-    It is based on the following work:
+    Functional ParVI algorithm maintains a set of functional particles, 
+    where each particle is a neural network. All particles are updated
+    using particle-based VI approaches.
 
-    https://github.com/neale/HyperGAN
+    There are two ways of treating a neural network as a particle: 
 
-    Ratzlaff and Fuxin. "HyperGAN: A Generative Model for Diverse, 
-    Performant Neural Networks." International Conference on Machine Learning. 2019.
+    * All the weights of the neural network as a particle.
 
-    Major differences versus the original paper are:
-
-    * A single generator that generates parameters for all network layers.
-
-    * Remove the mixer and the discriminator.
-
-    * The generator is trained with Amortized particle-based variational 
-      inference (ParVI) methods, please refer to generator.py for details.
+    * Outputs of the neural network for an input mini-batch as a particle.  
 
     """
 
     def __init__(self,
-                 input_tensor_spec,
+                 input_tensor_spec=None,
+                 param_net: ParamNetwork = None,
                  conv_layer_params=None,
                  fc_layer_params=None,
                  activation=torch.relu_,
                  last_layer_param=None,
                  last_activation=None,
-                 noise_dim=32,
-                 hidden_layers=(64, 64),
-                 use_fc_bn=False,
                  num_particles=10,
                  entropy_regularization=1.,
-                 critic_optimizer=None,
-                 critic_hidden_layers=(100, 100),
+                 loss_type="classification",
+                 voting="soft",
+                 par_vi="svgd",
                  function_vi=False,
                  function_bs=None,
                  function_extra_bs_ratio=0.1,
                  function_extra_bs_sampler='uniform',
                  function_extra_bs_std=1.,
-                 loss_type="classification",
-                 voting="soft",
-                 par_vi="svgd",
                  optimizer=None,
                  logging_network=False,
                  logging_training=False,
                  logging_evaluate=False,
                  config: TrainerConfig = None,
-                 name="HyperNetwork"):
+                 debug_summaries=False,
+                 name="FuncParVIAlgorithm"):
         """
         Args:
             input_tensor_spec (nested TensorSpec): the (nested) tensor spec of
                 the input. If nested, then ``preprocessing_combiner`` must not be
                 None.
+            param_net (ParamNetwork): input parametric network.
             conv_layer_params (tuple[tuple]): a tuple of tuples where each
                 tuple takes a format 
                 ``(filters, kernel_size, strides, padding, pooling_kernel)``,
@@ -123,26 +108,20 @@ class HyperNetwork(Algorithm):
             fc_layer_params (tuple[tuple]): a tuple of tuples where each tuple
                 takes a format ``(FC layer sizes. use_bias)``, where 
                 ``use_bias`` is optional.
-            activation (nn.functional): activation used for all the layers but
+            activation (Callable): activation used for all the layers but
                 the last layer.
             last_layer_param (tuple): an optional tuple of the format
                 ``(size, use_bias)``, where ``use_bias`` is optional,
                 it appends an additional layer at the very end. 
                 Note that if ``last_activation`` is specified, 
                 ``last_layer_param`` has to be specified explicitly.
-            last_activation (nn.functional): activation function of the
+            last_activation (Callable): activation function of the
                 additional layer specified by ``last_layer_param``. Note that if
                 ``last_layer_param`` is not None, ``last_activation`` has to be
                 specified explicitly.
 
-            noise_dim (int): dimension of noise
-            hidden_layers (tuple): size of hidden layers.
-            use_fc_bn (bool): whether use batnch normalization for fc layers.
             num_particles (int): number of sampling particles
-            entropy_regularization (float): weight of entropy regularization
-
-            critic_optimizer (torch.optim.Optimizer): the optimizer for training critic.
-            critic_hidden_layers (tuple): sizes of critic hidden layeres. 
+            entropy_regularization (float): weight of the repulsive term in par_vi. 
 
             function_vi (bool): whether to use funciton value based par_vi, current
                 supported by [``svgd2``, ``svgd3``, ``gfsf``].
@@ -160,104 +139,67 @@ class HyperNetwork(Algorithm):
             voting (str): types of voting results from sampled functions,
                 types are [``soft``, ``hard``]
             par_vi (str): types of particle-based methods for variational inference,
-                types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
+                types are [``svgd``, ``gfsf``]
 
-                * svgd: empirical expectation of SVGD is evaluated by a single 
-                    resampled particle. The main benefit of this choice is it 
-                    supports conditional case, while all other options do not.
-                * svgd2: empirical expectation of SVGD is evaluated by splitting
-                    half of the sampled batch. It is a trade-off between 
-                    computational efficiency and convergence speed.
-                * svgd3: empirical expectation of SVGD is evaluated by 
-                    resampled particles of the same batch size. It has better
-                    convergence but involves resampling, so less efficient
-                    computaionally comparing with svgd2.
+                * svgd: empirical expectation of SVGD is evaluated by reusing
+                    the same batch of particles.   
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally most
-                    expensive, but in some case the convergence seems faster 
+                    involves a kernel matrix inversion, so computationally more
+                    expensive, but in some cases the convergence seems faster 
                     than svgd approaches.
-                * minmax: Fisher Neural Sampler, optimal descent direction of
-                    the Stein discrepancy is solved by an inner optimization
-                    procedure in the space of L2 neural networks.
-            optimizer (torch.optim.Optimizer): The optimizer for training generator.
+            function_vi (bool): whether to use function value based par_vi.
+            optimizer (torch.optim.Optimizer): The optimizer for training.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
             logging_evaluate (bool): whether logging loss and acc of evaluate.
             config (TrainerConfig): configuration for training
             name (str):
         """
-        super().__init__(train_state_spec=(), optimizer=optimizer, name=name)
+        if param_net is None:
+            assert input_tensor_spec is not None
+            param_net = ParamNetwork(
+                input_tensor_spec=input_tensor_spec,
+                conv_layer_params=conv_layer_params,
+                fc_layer_params=fc_layer_params,
+                activation=activation,
+                last_layer_param=last_layer_param,
+                last_activation=last_activation)
 
-        param_net = ParamNetwork(
-            input_tensor_spec=input_tensor_spec,
-            conv_layer_params=conv_layer_params,
-            fc_layer_params=fc_layer_params,
-            activation=activation,
-            last_layer_param=last_layer_param,
-            last_activation=last_activation)
-
-        gen_output_dim = param_net.param_length
-        noise_spec = TensorSpec(shape=(noise_dim, ))
-        net = EncodingNetwork(
-            noise_spec,
-            fc_layer_params=hidden_layers,
-            use_fc_bn=use_fc_bn,
-            last_layer_size=gen_output_dim,
-            last_activation=math_ops.identity,
-            name="Generator")
+        particle_dim = param_net.param_length
 
         if logging_network:
-            logging.info("Generated network")
+            logging.info("Each network")
             logging.info("-" * 68)
             logging.info(param_net)
 
-            logging.info("Generator network")
-            logging.info("-" * 68)
-            logging.info(net)
+        super().__init__(
+            particle_dim,
+            num_particles=num_particles,
+            entropy_regularization=entropy_regularization,
+            par_vi=par_vi,
+            optimizer=optimizer,
+            debug_summaries=debug_summaries,
+            name=name)
 
-        if par_vi == 'svgd':
-            par_vi = 'svgd3'
+        self._param_net = param_net
+        self._param_net.set_parameters(self.particles.data, reinitialize=True)
+
+        self._train_loader = None
+        self._test_loader = None
+        self._loss_type = loss_type
+        self._logging_training = logging_training
+        self._logging_evaluate = logging_evaluate
+        self._config = config
+        self._function_vi = function_vi
 
         if function_vi:
-            assert par_vi in ('svgd2', 'svgd3', 'gfsf'), (
-                "Function_vi is not support for par_vi method: %s" % par_vi)
             assert function_bs is not None, (
-                "Need to specify batch_size of function outputs.")
-            assert function_extra_bs_sampler in ('uniform', 'normal'), (
-                "Unsupported sampling type %s for extra training batch" %
-                (function_extra_bs_sampler))
+                "need to specify batch_size of function outputs.")
             self._function_extra_bs = math.ceil(
                 function_bs * function_extra_bs_ratio)
             self._function_extra_bs_sampler = function_extra_bs_sampler
             self._function_extra_bs_std = function_extra_bs_std
-            critic_input_dim = (
-                function_bs + self._function_extra_bs) * last_layer_param[0]
-        else:
-            critic_input_dim = gen_output_dim
 
-        self._generator = Generator(
-            gen_output_dim,
-            noise_dim=noise_dim,
-            net=net,
-            entropy_regularization=entropy_regularization,
-            par_vi=par_vi,
-            critic_input_dim=critic_input_dim,
-            critic_hidden_layers=critic_hidden_layers,
-            optimizer=None,
-            critic_optimizer=critic_optimizer,
-            name=name)
-
-        self._param_net = param_net
-        self._num_particles = num_particles
-        self._entropy_regularization = entropy_regularization
-        self._train_loader = None
-        self._test_loader = None
-        self._use_fc_bn = use_fc_bn
-        self._loss_type = loss_type
-        self._function_vi = function_vi
-        self._logging_training = logging_training
-        self._logging_evaluate = logging_evaluate
-        self._config = config
         assert (voting in ['soft',
                            'hard']), ('voting only supports "soft" and "hard"')
         self._voting = voting
@@ -270,7 +212,10 @@ class HyperNetwork(Algorithm):
         else:
             raise ValueError("Unsupported loss_type: %s" % loss_type)
 
-    def set_data_loader(self, train_loader, test_loader=None):
+    def set_data_loader(self,
+                        train_loader,
+                        test_loader=None,
+                        entropy_regularization=None):
         """Set data loadder for training and testing.
 
         Args:
@@ -279,66 +224,34 @@ class HyperNetwork(Algorithm):
         """
         self._train_loader = train_loader
         self._test_loader = test_loader
-        self._entropy_regularization = 1 / len(train_loader)
+        if entropy_regularization is not None:
+            self._entropy_regularization = entropy_regularization
 
-    def set_num_particles(self, num_particles):
-        """Set the number of particles to sample through one forward
-        pass of the hypernetwork. """
-        self._num_particles = num_particles
-
-    @property
-    def num_particles(self):
-        """number of sampled particles. """
-        return self._num_particles
-
-    def sample_parameters(self, noise=None, num_particles=None, training=True):
-        """Sample parameters for an ensemble of networks. 
-
-        Args:
-            noise (Tensor): input noise to self._generator. Default is None.
-            num_particles (int): number of sampled particles. Default is None.
-                If both noise and num_particles are None, num_particles
-                provided to the constructor will be used as batch_size for 
-                self._generator.
-            training (bool): whether or not training self._generator
-
-        Returns:
-            ``AlgStep.output`` from ``predict_step`` of ``self._generator``
-        """
-        if noise is None and num_particles is None:
-            num_particles = self.num_particles
-        generator_step = self._generator.predict_step(
-            noise=noise, batch_size=num_particles, training=training)
-        return generator_step.output
-
-    def predict_step(self, inputs, params=None, num_particles=None,
-                     state=None):
+    def predict_step(self, inputs, params=None, state=None):
         """Predict ensemble outputs for inputs using the hypernetwork model.
 
         Args:
             inputs (Tensor): inputs to the ensemble of networks.
             params (Tensor): parameters of the ensemble of networks,
-                if None, will resample.
-            num_particles (int): size of sampled ensemble. Default is None.
+                if None, use self.particles.
             state: not used.
 
         Returns:
             AlgStep: 
-            - output (Tensor): shape is 
+            - output (Tensor): predictions with shape 
                 ``[batch_size, self._param_net._output_spec.shape[0]]``
             - state: not used
         """
         if params is None:
-            params = self.sample_parameters(num_particles=num_particles)
+            params = self.particles
         self._param_net.set_parameters(params)
         outputs, _ = self._param_net(inputs)
         return AlgStep(output=outputs, state=(), info=())
 
-    def train_iter(self, num_particles=None, state=None):
+    def train_iter(self, state=None):
         """Perform one epoch (iteration) of training.
-
+        
         Args:
-            num_particles (int): number of sampled particles. Default is None.
             state: not used
 
         Return:
@@ -354,13 +267,11 @@ class HyperNetwork(Algorithm):
             for batch_idx, (data, target) in enumerate(self._train_loader):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
-                alg_step = self.train_step((data, target),
-                                           num_particles=num_particles,
-                                           state=state)
+                alg_step = self.train_step((data, target), state=state)
                 loss_info, params = self.update_with_gradient(alg_step.info)
-                loss += loss_info.extra.generator.loss
+                loss += loss_info.extra.loss
                 if self._loss_type == 'classification':
-                    avg_acc.append(alg_step.info.extra.generator.extra)
+                    avg_acc.append(alg_step.info.extra.extra)
         acc = None
         if self._loss_type == 'classification':
             acc = torch.as_tensor(avg_acc).mean() * 100
@@ -374,63 +285,57 @@ class HyperNetwork(Algorithm):
 
     def train_step(self,
                    inputs,
-                   num_particles=None,
                    entropy_regularization=None,
+                   loss_mask=None,
                    state=None):
         """Perform one batch of training computation.
 
         Args:
             inputs (nested Tensor): input training data. 
-            num_particles (int): number of sampled particles. Default is None,
-                in which case self._num_particles will be used for batch_size
-                of self._generator.
+            entropy_regularization (float): weight of the repulsive term in par_vi. 
+                If None, use self._entropy_regularization.
+            loss_mask (Tensor): mask indicating which samples are valid for 
+                loss propagation.
             state: not used
 
         Returns:
-            ``train_step`` of ``self._generator``
+            AlgStep:
+            - output(Tensor): shape is ``[batch_size, dim]``
+            - state: not used
+            - info (LossInfo): loss
         """
-        if num_particles is None:
-            num_particles = self._num_particles
         if entropy_regularization is None:
             entropy_regularization = self._entropy_regularization
 
         if self._function_vi:
             data, target = inputs
-            return self._generator.train_step(
-                inputs=None,
-                loss_func=functools.partial(self._function_neglogprob,
-                                            target.view(-1)),
-                batch_size=num_particles,
-                entropy_regularization=entropy_regularization,
+            return super().train_step(
+                loss_func=functools.partial(self._function_neglogprob, target),
                 transform_func=functools.partial(self._function_transform,
                                                  data),
+                entropy_regularization=entropy_regularization,
+                loss_mask=loss_mask,
                 state=())
         else:
-            return self._generator.train_step(
-                inputs=None,
+            return super().train_step(
                 loss_func=functools.partial(self._neglogprob, inputs),
-                batch_size=num_particles,
                 entropy_regularization=entropy_regularization,
                 state=())
 
     def _function_transform(self, data, params):
         """
-        Transform the generator outputs to its corresponding function values
+        Transform the particles to its corresponding function values
         evaluated on the training batch. Used when function_vi is True.
 
         Args:
             data (Tensor): training batch input.
-            params: tensor params or tuple of tensors (params, extra_samples)
-                - params: of shape ``[D]`` or ``[B, D]``, sampled outputs 
-                    from the generator
-                - extra_samples: sampled extra data
+            params (Tensor): parameter tensor for param_net.
 
         Returns:
             outputs (Tensor): outputs of param_net under params
                 evaluated on data.
             density_outputs (Tensor): outputs of param_net under
                 params evaluated on sampled extra data.
-            extra_samples (Tensor): sampled extra data.
         """
         # sample extra data
         if isinstance(params, tuple):
@@ -454,10 +359,10 @@ class HyperNetwork(Algorithm):
         outputs = outputs.view(num_particles, -1)  # [P, B * D]
 
         density_outputs = aug_outputs[-extra_samples.shape[0]:]  # [b, P, D]
-        density_outputs = density_outputs.transpose(0, 1)
-        density_outputs = density_outputs.view(num_particles, -1)
+        density_outputs = density_outputs.transpose(0, 1)  # [P, b, D]
+        density_outputs = density_outputs.view(num_particles, -1)  # [P, b * D]
 
-        return outputs, density_outputs, extra_samples
+        return outputs, density_outputs
 
     def _function_neglogprob(self, targets, outputs):
         """
@@ -472,7 +377,20 @@ class HyperNetwork(Algorithm):
             negative log_prob for outputs evaluated on current training batch.
         """
         num_particles = outputs.shape[0]
-        targets = targets.unsqueeze(0).expand(num_particles, *targets.shape)
+        if self._loss_type == 'regression':
+            # [B, D] -> [B, N, D]
+            targets = _expand_to_replica(targets, num_particles,
+                                         self._param_net.output_spec)
+            # [B, N, D] -> [N, B, D]
+            targets = targets.permute(1, 0, 2)
+            # [N, B, D] -> [N, -1]
+            targets = targets.view(num_particles, -1)
+        else:
+            # [B] -> [B, 1]
+            targets = targets.unsqueeze(1)
+            # [B, 1] -> [N, B, 1]
+            targets = targets.unsqueeze(0).expand(num_particles,
+                                                  *targets.shape)
 
         return self._loss_func(outputs, targets)
 
@@ -491,26 +409,23 @@ class HyperNetwork(Algorithm):
         self._param_net.set_parameters(params)
         num_particles = params.shape[0]
         data, target = inputs
-        output, _ = self._param_net(data)  # [B, P, D]
-        target = target.unsqueeze(1).expand(*target.shape[:1], num_particles,
-                                            *target.shape[1:])
+        output, _ = self._param_net(data)  # [B, N, D]
+        if self._loss_type == 'regression':
+            # [B, d] -> [B, N, d]
+            target = _expand_to_replica(target, num_particles,
+                                        self._param_net.output_spec)
+        else:
+            # [B] -> [B, N]
+            target = target.unsqueeze(1).expand(*target[:1], num_particles)
+
         return self._loss_func(output, target)
 
     def evaluate(self, num_particles=None):
-        """Evaluate on a randomly drawn ensemble. 
-
-        Args:
-            num_particles (int): number of sampled particles. Default is None.
-        """
+        """Evaluate on the fixed ensemble. """
 
         assert self._test_loader is not None, "Must set test_loader first."
-        logging.info("==> Begin testing")
-        if self._use_fc_bn:
-            self._generator.eval()
-        params = self.sample_parameters(num_particles=num_particles)
-        self._param_net.set_parameters(params)
-        if self._use_fc_bn:
-            self._generator.train()
+        logging.info("==> Begin evaluating")
+        self._param_net.set_parameters(self.particles)
         with record_time("time/test"):
             if self._loss_type == 'classification':
                 test_acc = 0.
@@ -519,6 +434,10 @@ class HyperNetwork(Algorithm):
                 data = data.to(alf.get_default_device())
                 target = target.to(alf.get_default_device())
                 output, _ = self._param_net(data)  # [B, N, D]
+                if num_particles is not None:
+                    idxs = torch.randint(0, self._num_particles,
+                                         (num_particles, ))
+                    output = torch.index_select(output, 1, idxs)
                 loss, extra = self._vote(output, target)
                 if self._loss_type == 'classification':
                     test_acc += extra.item()
@@ -581,11 +500,12 @@ class HyperNetwork(Algorithm):
             loss_info (LossInfo): loss
             params (list[Parameter]): list of parameters with gradients
         """
-        if self._config.summarize_grads_and_vars:
-            summary_utils.summarize_variables(params)
-            summary_utils.summarize_gradients(params)
-        if self._config.debug_summaries:
-            summary_utils.summarize_loss(loss_info)
+        if self._config is not None:
+            if self._config.summarize_grads_and_vars:
+                summary_utils.summarize_variables(params)
+                summary_utils.summarize_gradients(params)
+            if self._config.debug_summaries:
+                summary_utils.summarize_loss(loss_info)
         if cum_loss is not None:
             alf.summary.scalar(name='train_epoch/neglogprob', data=cum_loss)
         if avg_acc is not None:

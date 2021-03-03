@@ -31,7 +31,7 @@ GeneratorLossInfo = namedtuple("GeneratorLossInfo",
                                ["generator", "mi_estimator"])
 
 
-@gin.configurable
+@alf.configurable
 class CriticAlgorithm(Algorithm):
     """
     Wrap a critic network as an Algorithm for flexible gradient updates
@@ -98,13 +98,13 @@ class CriticAlgorithm(Algorithm):
         """Predict for one step of inputs.
 
         Args:
-            inputs (torch.Tensor): inputs for prediction.
+            inputs (Tensor): inputs for prediction.
             state: not used.
             requires_jac_trace (bool): whether outputs diagonals of Jacobian.
 
         Returns:
             AlgStep:
-            - output (torch.Tensor): predictions or (predictions, diag_jacobian)
+            - output (Tensor): predictions or (predictions, diag_jacobian)
                 if requires_jac_diag is True.
             - state: not used.
         """
@@ -116,7 +116,7 @@ class CriticAlgorithm(Algorithm):
         return AlgStep(output=outputs, state=(), info=())
 
 
-@gin.configurable
+@alf.configurable
 class Generator(Algorithm):
     r"""Generator
 
@@ -235,8 +235,8 @@ class Generator(Algorithm):
             critic_input_dim (int): dimension of critic input, used for ``minmax``.
             critic_hidden_layers (tuple): sizes of hidden layers of the critic,
                 used for ``minmax``.
-            critic_l2_weight (float): weight of L2 regularization in training
-                the critic, used for ``minmax``.
+            critic_l2_weight (float): weight of L2 regularization in training 
+                the critic, used for ``minmax``. 
             critic_iter_num (int): number of critic updates for each generator
                 train_step, used for ``minmax``.
             critic_relu_mlp (bool): whether use ReluMLP as the critic constructor,
@@ -365,7 +365,9 @@ class Generator(Algorithm):
             state: not used
 
         Returns:
-            AlgorithmStep: outputs with shape (batch_size, output_dim)
+            AlgStep:
+            - output (Tensor): predictions with shape ``[batch_size, output_dim]``
+            - state: not used.
         """
         outputs, _ = self._predict(
             inputs=inputs,
@@ -428,9 +430,9 @@ class Generator(Algorithm):
             state: not used
 
         Returns:
-            AlgorithmStep:
-                outputs: Tensor with shape (batch_size, dim)
-                info: LossInfo
+            AlgStep:
+            - output (Tensor): predictions with shape ``[batch_size, output_dim]``
+            - info (LossInfo): loss
         """
         outputs, gen_inputs = self._predict(inputs, batch_size=batch_size)
         if entropy_regularization is None:
