@@ -2112,3 +2112,13 @@ def reset_parameters(module):
         if len(list(module.parameters())) > 0:
             raise ValueError(
                 "Cannot reset_parameter for layer type %s." % type(module))
+
+
+class Detach(nn.Module):
+    """Detach nested Tensors."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, input):
+        return common.detach(input)

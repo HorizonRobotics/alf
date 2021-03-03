@@ -105,6 +105,7 @@ proj_net = partial(
 
 actor_network_cls = partial(
     alf.networks.ActorDistributionNetwork,
+    input_preprocessors=alf.layers.Detach(),
     fc_layer_params=fc_layers_params,
     activation=activation,
     use_fc_bn=use_batch_normalization,
