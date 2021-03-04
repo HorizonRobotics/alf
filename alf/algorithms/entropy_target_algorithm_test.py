@@ -18,6 +18,7 @@ import torch.nn as nn
 
 import alf
 from alf.algorithms.entropy_target_algorithm import EntropyTargetAlgorithm, EntropyTargetInfo
+from alf.algorithms.entropy_target_algorithm import NestedEntropyTargetAlgorithm
 from alf.data_structures import TimeStep, StepType
 from alf.networks import NormalProjectionNetwork, StableNormalProjectionNetwork
 from alf.tensor_specs import BoundedTensorSpec, TensorSpec
@@ -56,7 +57,35 @@ class EntropyTargetAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         alg_step = alg.train_step(dist, self._time_step.step_type)
 
-        info = EntropyTargetInfo(loss=alg_step.info.loss)
+        info = alg_step.info
+        for i in range(-3, 1):
+            alg._stage = torch.tensor(i, dtype=torch.int32)
+            alg.calc_loss(self._time_step, info)
+
+    def test_nested_entropy_target_algorithm(self):
+        action_spec = dict(
+            a=BoundedTensorSpec((1, ), minimum=0, maximum=3),
+            b=BoundedTensorSpec((), minimum=0, maximum=3, dtype='int64'))
+        alg = NestedEntropyTargetAlgorithm(
+            action_spec=action_spec, target_entropy=dict(a=None, b=None))
+        net = alf.nn.Branch(
+            dict(
+                a=NormalProjectionNetwork(
+                    self._input_tensor_spec.shape[0],
+                    action_spec['a'],
+                    projection_output_init_gain=1.0,
+                    squash_mean=True),
+                b=alf.nn.CategoricalProjectionNetwork(
+                    self._input_tensor_spec.shape[0], action_spec['b']),
+            ))
+        embedding = 10 * torch.rand(
+            (100, ) + self._input_tensor_spec.shape, dtype=torch.float32)
+
+        dist, _ = net(embedding)
+
+        alg_step = alg.train_step(dist, self._time_step.step_type)
+
+        info = alg_step.info
         for i in range(-3, 1):
             alg._stage = torch.tensor(i, dtype=torch.int32)
             alg.calc_loss(self._time_step, info)

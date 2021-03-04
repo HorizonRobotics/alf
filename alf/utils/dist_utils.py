@@ -654,7 +654,7 @@ def estimated_entropy(dist, num_samples=1, check_numerics=False):
 
 
 # Here, we compute entropy of transformed distributions using sampling.
-def entropy_with_fallback(distributions):
+def entropy_with_fallback(distributions, return_sum=True):
     r"""Computes total entropy of nested distribution.
     If ``entropy()`` of a distribution is not implemented, this function will
     fallback to use sampling to calculate the entropy. It returns two values:
@@ -680,6 +680,8 @@ def entropy_with_fallback(distributions):
     Args:
         distributions (nested Distribution): A possibly batched tuple of
             distributions.
+        return_sum (bool): if True, return the total entropy. If not True,
+            return the entropy for each distribution in the nest.
 
     Returns:
         tuple:
@@ -702,7 +704,11 @@ def entropy_with_fallback(distributions):
     entropies = list(map(_compute_entropy, nest.flatten(distributions)))
     entropies, entropies_for_gradient = zip(*entropies)
 
-    return sum(entropies), sum(entropies_for_gradient)
+    if return_sum:
+        return sum(entropies), sum(entropies_for_gradient)
+    else:
+        return (nest.pack_sequence_as(distributions, entropies),
+                nest.pack_sequence_as(distributions, entropies_for_gradient))
 
 
 @gin.configurable
