@@ -67,7 +67,7 @@ def wrap_optimizer(cls):
     def __init__(self,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
-                 gfsf_grad_weight=False,
+                 gfsf_grad_weight=None,
                  name=None,
                  **kwargs):
         """
@@ -77,7 +77,7 @@ def wrap_optimizer(cls):
                 to clip gradient. If False, use `tensor_utils.clip_by_norms` for
                 each grad.
             gfsf_grad_weight (float): If not None, denotes the weight of the repulsive
-                gradient term for parameters with attribute ``gfsf``.
+                gradient term for parameters with attribute ``ensemble_group``.
             name (str): the name displayed when summarizing the gradient norm. If
                 None, then a global name in the format of "class_name_i" will be
                 created, where "i" is the global optimizer id.
@@ -149,7 +149,7 @@ def wrap_optimizer(cls):
     @common.add_method(NewCls)
     def add_param_group(self, param_group):
         """This function first splits the input param_group into multiple
-        param_groups according to their ``gfsf_group`` attributes, then 
+        param_groups according to their ``ensemble_group`` attributes, then 
         calls the parent's ``add_param_group()`` function to add each of
         them to the optimizer.
         """
@@ -165,34 +165,35 @@ def wrap_optimizer(cls):
 
         len_params = len(param_group['params'])
         std_param_group = []
-        gfsf_param_groups = [[] for i in range(len_params)]
-        bs_gfsf_param_groups = torch.zeros(len_params)
+        ensemble_param_groups = [[] for i in range(len_params)]
+        group_batch_sizes = torch.zeros(len_params)
         for param in param_group['params']:
             if not isinstance(param, torch.Tensor):
                 raise TypeError("optimizer can only optimize Tensors, "
                                 "but one of the params is " +
                                 torch.typename(param))
-            if hasattr(param, 'gfsf_group'):
-                assert isinstance(param.gfsf_group,
-                                  int), ("gfsf_group attribute mis-specified.")
-                gfsf_group_id = param.gfsf_group % len_params
-                if bs_gfsf_param_groups[gfsf_group_id] == 0:
-                    bs_gfsf_param_groups[gfsf_group_id] = param.shape[0]
+            if hasattr(param, 'ensemble_group'):
+                assert isinstance(
+                    param.ensemble_group,
+                    int), ("ensemble_group attribute mis-specified.")
+                ensemble_group_id = param.ensemble_group % len_params
+                if group_batch_sizes[ensemble_group_id] == 0:
+                    group_batch_sizes[ensemble_group_id] = param.shape[0]
                 else:
-                    assert param.shape[0] == bs_gfsf_param_groups[
-                        gfsf_group_id], (
-                            "batch_sizes does not match that of the gfsf "
-                            "param_group %d." % (gfsf_group_id))
-                gfsf_param_groups[gfsf_group_id].append(param)
+                    assert param.shape[0] == group_batch_sizes[
+                        ensemble_group_id], (
+                            "batch_size of params does not match that of the "
+                            "ensemble param_group %d." % (ensemble_group_id))
+                ensemble_param_groups[ensemble_group_id].append(param)
             else:
                 std_param_group.append(param)
 
         if len(std_param_group) > 0:
             super(NewCls, self).add_param_group({'params': std_param_group})
-        for gfsf_param_group in gfsf_param_groups:
-            if len(gfsf_param_group) > 0:
+        for ensemble_param_group in ensemble_param_groups:
+            if len(ensemble_param_group) > 0:
                 super(NewCls, self).add_param_group({
-                    'params': gfsf_param_group,
+                    'params': ensemble_param_group,
                     'gfsf_grad': True
                 })
 
