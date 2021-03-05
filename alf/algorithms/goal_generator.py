@@ -340,6 +340,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  vae=None,
                  vae_weight=0.,
                  vae_penalize_above=-1.e8,
+                 vae_bias=0.,
                  vae_samples=1,
                  vae_decoder=None,
                  plan_cost_ln_norm=1,
@@ -397,6 +398,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 VAE is trained with hindsight experience, using future state as goal.
             vae_weight (float): weight of vae cost in trajectory cost.
             vae_penalize_above (float): penalize vae_cost only if above this threshold.
+            vae_bias (float): additional penalty if cost above threshold.
             vae_samples (int): number of z samples to use in VAE.
             vae_decoder (nn.Module): decoder for the VAE.
             sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
@@ -530,6 +532,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._vae_weight = vae_weight
         self._vae_penalize_above = torch.tensor(
             vae_penalize_above, dtype=torch.float32)
+        self._vae_bias = vae_bias
         self._concat = alf.nest.utils.NestConcat()
         self._vae_samples = vae_samples
         self._vae_decoder = vae_decoder
@@ -562,24 +565,49 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def calc_loss(self, experience, info: GoalInfo):
         if self._vae is None:
             return LossInfo()
-        # Keep only HER data
-        her_exp = experience.observation
-        if hasattr(experience.batch_info, "her"):
-            her_exp = alf.nest.map_structure(
-                lambda x: x[:, experience.batch_info.her, ...], her_exp)
+        orig_exp = experience.observation
         # Flatten batch_length and batch_size into one dimension.
-        her_exp = alf.nest.map_structure(
+        exp = alf.nest.map_structure(
             lambda x: x.reshape((x.shape[0] * x.shape[1], x.shape[2])),
-            her_exp)
-        # Compute loss using one z sample
-        kld_loss, decode_loss, loss = self._vae_loss(her_exp)
-        return LossInfo(
-            loss=torch.mean(loss),
-            extra={
-                "vae_kld_loss": torch.mean(kld_loss),
-                "vae_decode_loss": torch.mean(decode_loss),
-                "vae_full_loss": torch.mean(loss)
-            })
+            orig_exp)
+        # Compute all losses using one z sample
+        kld_loss, decode_loss, loss = self._vae_loss(exp)
+        losses = {
+            "kld_loss": kld_loss,
+            "decode_loss": decode_loss,
+            "loss": loss
+        }
+        # extras are for tensorboard plotting.
+        extra = {
+            "vae_kld_loss": torch.mean(kld_loss),
+            "vae_decode_loss": torch.mean(decode_loss),
+            "vae_full_loss": torch.mean(loss)
+        }
+        her_cond = experience.batch_info.her
+        b_len = orig_exp["achieved_goal"].shape[0]
+        b_size = orig_exp["achieved_goal"].shape[1]
+        her_cond = her_cond.unsqueeze(0).expand(
+            (b_len, b_size)).reshape(b_len * b_size)
+        assert her_cond != (), "Only supports VAE training on HER experience."
+        unreal = self._unreal_batch(
+            torch.cat((exp["desired_goal"], exp["aux_desired"]), dim=1))
+        for nx, x in {"her": her_cond, "nonher": ~her_cond}.items():
+            if nx == "nonher":
+                for ny, y in {"real": ~unreal, "unreal": unreal}.items():
+                    for nl, l in losses.items():
+                        _loss = l[x][y[x]]
+                        if np.prod(_loss.size()) > 0:
+                            extra["{}_{}_{}".format(ny, nx,
+                                                    nl)] = torch.mean(_loss)
+            else:
+                for nl, l in losses.items():
+                    _loss = l[x]
+                    if np.prod(_loss.size()) > 0:
+                        extra[nx + "_" + nl] = torch.mean(_loss)
+        # Only use losses on HER exp to train the VAE
+        loss = loss[her_cond]
+        loss = torch.mean(loss) if np.prod(loss.size()) > 0 else ()
+        return LossInfo(loss=loss, extra=extra)
 
     def vae_cost(self, obs):
         """During rollout, sample ``z ~ q(z|x)`` and compute VAE log likelihood bound.
@@ -595,6 +623,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         """
         # Rollout using possibly multiple z samples
         _, _, loss = self._vae_loss(obs, n_samples=self._vae_samples)
+        loss += torch.where(loss > self._vae_penalize_above,
+                            torch.ones(1) * self._vae_bias, torch.zeros(1))
         loss = torch.max(self._vae_penalize_above, loss)
         return loss.unsqueeze(1) * self._vae_weight
 
