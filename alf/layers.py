@@ -435,6 +435,7 @@ class FC(nn.Module):
         return ParallelFC(n=n, **self._kwargs)
 
 
+@alf.configurable
 class FCBatchEnsemble(FC):
     r"""The BatchEnsemble for FC layer.
 
@@ -461,7 +462,8 @@ class FCBatchEnsemble(FC):
                  use_ln=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
-                 bias_init_range=0.):
+                 bias_init_range=0.,
+                 gfsf_group=None):
         """
         Args:
             input_size (int): input size
@@ -482,10 +484,22 @@ class FCBatchEnsemble(FC):
                 ``kernel_initializer`` is not None.
             bias_init_range (float): biases are initialized uniformly in
                 [-bias_init_range, bias_init_range]
+            gfsf_group (int): if not None, ``self._r`` and ``self._s`` will have an 
+                attribute ``gfsf_group``. For alf.optimizers with ``gfsf_grad=True``,
+                all parameters with the same ``gfsf_group`` attribute will be updated 
+                by the following GFSF particle-based VI algorithm,
+
+                Liu, Chang, et al. "Understanding and accelerating particle-based
+                variational inference." ICML, 2019.
         """
         nn.Module.__init__(self)
         self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
+        if gfsf_group is not None:
+            assert isinstance(gfsf_group,
+                              int), ("gfsf_group has to be an integer!")
+            self._r.gfsf_group = gfsf_group
+            self._s.gfsf_group = gfsf_group
         self._ensemble_bias = nn.Parameter(
             torch.Tensor(ensemble_size, output_size))
         self._use_ensemble_bias = use_bias
