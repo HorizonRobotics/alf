@@ -19,19 +19,34 @@ import torch.nn as nn
 import alf
 from alf.algorithms.hypernetwork_algorithm import regression_loss
 from alf.optimizers import Adam, AdamTF
-from alf.optimizers.optimizers import score_func
 from alf.tensor_specs import TensorSpec
 from alf.utils import tensor_utils
 
 
 class LRBatchEnsemble(nn.Module):
-    def __init__(self, input_size, ensemble_size, gfsf_group=None):
+    """A simple linear regressor with the parameter vector being a batch
+    ensemble, used for gfsf_batch_ensemble test. 
+    """
+
+    def __init__(self, input_size, ensemble_size, ensemble_group=0):
+        """
+        Args:
+            input_size (int): input size
+            ensemble_size (int): ensemble size
+            ensemble_group (int): the extra attribute ``ensemble_group`` added 
+                to ``self._r`` and ``self._s``, default value is 0. 
+                For alf.optimizers whose ``gfsf_grad_weight`` is not ``None``, 
+                all parameters with the same ``ensemble_group`` will be updated 
+                by the following ``GFSF`` particle-based VI algorithm,
+
+                Liu, Chang, et al. "Understanding and accelerating particle-based
+                variational inference." ICML, 2019.
+        """
         nn.Module.__init__(self)
         self._beta = nn.Parameter(torch.rand(ensemble_size, input_size))
-        if gfsf_group is not None:
-            assert isinstance(gfsf_group,
-                              int), ("gfsf_group has to be an integer!")
-            self._beta.gfsf_group = gfsf_group
+        assert isinstance(ensemble_group,
+                          int), ("ensemble_group has to be an integer!")
+        self._beta.ensemble_group = ensemble_group
         self._input_size = input_size
         self._ensemble_size = ensemble_size
 
@@ -110,30 +125,16 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         opt.step()
         self.assertTensorClose(_grad_norm(params), torch.as_tensor(clip_norm))
 
-    # def test_gfsf_grad(self):
-    #     ensemble_size = 4
-    #     input_size = 3
-    #     output_size = 2
-    #     batch_size = 2
-    #     W = torch.nn.Parameter(
-    #         torch.rand(ensemble_size, input_size, output_size))
-    #     W.gfsf_group = 0
-    #     x = torch.randn(batch_size, input_size)
-    #     y = torch.einsum('nij,bi->nbj', W, x)
-    #     loss = torch.sum(y**2)
-    #     opt = AdamTF(lr=0.1, gfsf_grad_weight=1.)
-    #     opt.add_param_group({'params': W})
-    #     opt.zero_grad()
-    #     loss.backward()
-    #     params = [W]
-    #     opt.step()
-    #     assertTensorClose(parms, W)
-
-    @parameterized.parameters(
-        dict(train_batch_size=100), dict(train_batch_size=10))
-    def test_batch_ensemble_gfsf_blr(self,
-                                     train_batch_size=10,
-                                     num_particles=100):
+    @parameterized.parameters(100, 10)
+    def test_gfsf_batch_ensemble(self, train_batch_size=10, num_particles=100):
+        r"""
+        Bayesian linear regression test for a linear regressor with BatchEnsemble
+        parameter vector and trained with ``GFSF`` optimizer.
+        The target linear regressor is :math:`y = X\beta + e`, where 
+        :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
+        and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
+        closed-form :math:`p(\beta|X,y)\sim N((X^TX)^{-1}X^Ty, X^TX)`.
+        """
         input_size = 3
         input_spec = TensorSpec((input_size, ), torch.float32)
         output_size = 1
@@ -143,14 +144,13 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         print("beta: {}".format(beta))
         noise = torch.randn(batch_size, output_size)
         targets = inputs @ beta + noise
-        true_cov = torch.inverse(
-            inputs.t() @ inputs)  # + torch.eye(input_size))
+        true_cov = torch.inverse(inputs.t() @ inputs)
         true_mean = true_cov @ inputs.t() @ targets
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))
         print("ground truth cov norm: {}".format(true_cov.norm()))
 
-        layer = LRBatchEnsemble(input_size, num_particles, gfsf_group=0)
+        layer = LRBatchEnsemble(input_size, num_particles)
         entropy_regularization = train_batch_size / batch_size
         optimizer = alf.optimizers.Adam(
             lr=1e-2, gfsf_grad_weight=entropy_regularization)
