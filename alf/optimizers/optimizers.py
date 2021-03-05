@@ -23,7 +23,7 @@ from alf.utils import tensor_utils
 from . import adam_tf
 
 
-def _score_func(x, alpha=1e-5):
+def score_func(x, alpha=1e-5):
     r"""
     Compute the stein estimator of the score function
     :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
@@ -135,7 +135,7 @@ def wrap_optimizer(cls):
                     params_tensor = torch.cat(
                         [p.view(batch_size, -1) for p in params],
                         dim=-1)  # [N, dim(params)]
-                    logq_grad = _score_func(params_tensor)  # [N, dim(param)]
+                    logq_grad = score_func(params_tensor)  # [N, dim(param)]
                     gfsf_grad = torch.split(
                         logq_grad,
                         [int(p.nelement() / batch_size) for p in params],
