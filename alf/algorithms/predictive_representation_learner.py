@@ -315,7 +315,7 @@ class PredictiveRepresentationLearner(Algorithm):
             self._postprocessor = postprocessor
         else:
             self._postprocessor = alf.math.identity
-        self._output_spec = wrap_as_network(postprocessor,
+        self._output_spec = wrap_as_network(self._postprocessor,
                                             repr_spec).output_spec
 
     @property
