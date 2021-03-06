@@ -200,8 +200,7 @@ class ParVIAlgorithm(Algorithm):
             h = h / max(np.log(Nx), 1.)
 
         kappa = torch.exp(-dist_sq / h)  # [Nx, Ny]
-        kappa_grad = torch.einsum('ij,ijk->ijk', kappa,
-                                  -2 * diff / h)  # [Nx, Ny, W]
+        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [Nx, Ny, W]
         return kappa, kappa_grad
 
     def _score_func(self, x, alpha=1e-5):
@@ -228,7 +227,8 @@ class ParVIAlgorithm(Algorithm):
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
+        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
+        kappa_grad = kappa_grad.sum(0)  # [N, D]
 
         return kappa_inv @ kappa_grad
 

@@ -66,7 +66,7 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         """
         logging.info("par_vi: %s" % (par_vi))
         dim = 2
-        num_particles = 512
+        num_particles = 128
         ParVI = ParVIAlgorithm(
             dim,
             num_particles=num_particles,
@@ -91,7 +91,7 @@ class ParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             if i % 500 == 0:
                 print(i, "learned var=", learned_var)
 
-        self.assertArrayEqual(torch.diag(var), learned_var, 0.2)
+        self.assertArrayEqual(torch.diag(var), learned_var, 0.4)
 
 
 if __name__ == '__main__':
