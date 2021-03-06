@@ -25,7 +25,7 @@ from alf.utils import tensor_utils
 
 class LRBatchEnsemble(nn.Module):
     """A simple linear regressor with the parameter vector being a batch
-    ensemble, used for gfsf_batch_ensemble test. 
+    ensemble, used for parvi_batch_ensemble test. 
     """
 
     def __init__(self, input_size, ensemble_size, ensemble_group=0):
@@ -35,12 +35,9 @@ class LRBatchEnsemble(nn.Module):
             ensemble_size (int): ensemble size
             ensemble_group (int): the extra attribute ``ensemble_group`` added 
                 to ``self._r`` and ``self._s``, default value is 0. 
-                For alf.optimizers whose ``gfsf_grad_weight`` is not ``None``, 
+                For alf.optimizers whose ``parvi`` is not ``None``, 
                 all parameters with the same ``ensemble_group`` will be updated 
-                by the following ``GFSF`` particle-based VI algorithm,
-
-                Liu, Chang, et al. "Understanding and accelerating particle-based
-                variational inference." ICML, 2019.
+                by the ``SVGD`` or ``GFSF`` particle-based VI algorithm.
         """
         nn.Module.__init__(self)
         self._beta = nn.Parameter(torch.rand(ensemble_size, input_size))
@@ -125,11 +122,14 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         opt.step()
         self.assertTensorClose(_grad_norm(params), torch.as_tensor(clip_norm))
 
-    @parameterized.parameters(100, 10)
-    def test_gfsf_batch_ensemble(self, train_batch_size=10, num_particles=100):
+    @parameterized.parameters('svgd', 'gfsf')
+    def test_parvi_batch_ensemble(self,
+                                  parvi='svgd',
+                                  train_batch_size=10,
+                                  num_particles=32):
         r"""
         Bayesian linear regression test for a linear regressor with BatchEnsemble
-        parameter vector and trained with ``GFSF`` optimizer.
+        parameter vector and trained with ``SVGD`` or ``GFSF`` optimizer.
         The target linear regressor is :math:`y = X\beta + e`, where 
         :math:`e\sim N(0, I)` is random noise, :math:`X` is the input data matrix, 
         and :math:`y` is target ouputs. The posterior of :math:`\beta` has a 
@@ -153,7 +153,7 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         layer = LRBatchEnsemble(input_size, num_particles)
         entropy_regularization = train_batch_size / batch_size
         optimizer = alf.optimizers.Adam(
-            lr=1e-2, gfsf_grad_weight=entropy_regularization)
+            lr=1e-2, parvi=parvi, repulsive_weight=entropy_regularization)
         optimizer.add_param_group({'params': layer._beta})
 
         def _train(train_batch=None):

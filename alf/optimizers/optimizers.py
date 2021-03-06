@@ -23,11 +23,39 @@ from alf.utils import tensor_utils
 from . import adam_tf
 
 
+def rbf_func(x):
+    r"""
+    Compute the rbf kernel and its gradient w.r.t. first entry 
+    :math:`K(x, x), \nabla_x K(x, x)`, for computing ``svgd``_grad.
+
+    Args:
+        x (Tensor): set of N particles, shape (N x D), where D is the 
+            dimenseion of each particle
+
+    Returns:
+        :math:`K(x, x)` (Tensor): the RBF kernel of shape (N x N)
+        :math:`\nabla_x K(x, x)` (Tensor): the derivative of RBF kernel of shape (N x N x D)
+        
+    """
+    N, D = x.shape
+    diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
+    dist_sq = torch.sum(diff**2, -1)  # [N, N]
+    h, _ = torch.median(dist_sq.view(-1), dim=0)
+    if h == 0.:
+        h = torch.ones_like(h)
+    else:
+        h = h / max(np.log(N), 1.)
+
+    kappa = torch.exp(-dist_sq / h)  # [N, N]
+    kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
+    return kappa, kappa_grad
+
+
 def score_func(x, alpha=1e-5):
     r"""
     Compute the stein estimator of the score function
     :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
-    used by gfsf_grad.
+    for computing ``gfsf``_grad.
 
     Args:
         x (Tensor): set of N particles, shape (N x D), where D is the
@@ -43,11 +71,15 @@ def score_func(x, alpha=1e-5):
     diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
     dist_sq = torch.sum(diff**2, -1)  # [N, N]
     h, _ = torch.median(dist_sq.view(-1), dim=0)
-    h = h / np.log(N)
+    if h == 0.:
+        h = torch.ones_like(h)
+    else:
+        h = h / max(np.log(N), 1.)
 
     kappa = torch.exp(-dist_sq / h)  # [N, N]
     kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-    kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
+    kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
+    kappa_grad = kappa_grad.sum(0)  # [N, D]
 
     return -kappa_inv @ kappa_grad
 
@@ -67,7 +99,8 @@ def wrap_optimizer(cls):
     def __init__(self,
                  gradient_clipping=None,
                  clip_by_global_norm=False,
-                 gfsf_grad_weight=None,
+                 parvi=None,
+                 repulsive_weight=1.,
                  name=None,
                  **kwargs):
         """
@@ -76,8 +109,11 @@ def wrap_optimizer(cls):
             clip_by_global_norm (bool): If True, use `tensor_utils.clip_by_global_norm`
                 to clip gradient. If False, use `tensor_utils.clip_by_norms` for
                 each grad.
-            gfsf_grad_weight (float): If not None, denotes the weight of the repulsive
-                gradient term for parameters with attribute ``ensemble_group``.
+            parvi (string): if not ``None``, paramters with attribute
+                ``ensemble_group`` will be updated by particle-based vi algorithm
+                specified by ``parvi``, options are [``svgd``, ``gfsf``].
+            repulsive_weight (float): the weight of the repulsive gradient term 
+                for parameters with attribute ``ensemble_group``.
             name (str): the name displayed when summarizing the gradient norm. If
                 None, then a global name in the format of "class_name_i" will be
                 created, where "i" is the global optimizer id.
@@ -97,7 +133,11 @@ def wrap_optimizer(cls):
         super(NewCls, self).__init__([{'params': []}], **kwargs)
         self._gradient_clipping = gradient_clipping
         self._clip_by_global_norm = clip_by_global_norm
-        self._gfsf_grad_weight = gfsf_grad_weight
+        self._parvi = parvi
+        if parvi is not None:
+            assert parvi in ['svgd', 'gfsf'
+                             ], ("parvi method %s is not supported." % (parvi))
+            self._repulsive_weight = repulsive_weight
         self.name = name
         if name is None:
             self.name = NewClsName + str(NewCls.counter)
@@ -127,22 +167,39 @@ def wrap_optimizer(cls):
                 tensor_utils.clip_by_norms(
                     grads, self._gradient_clipping, in_place=True)
 
-        if self._gfsf_grad_weight is not None:
+        if self._parvi is not None:
             for param_group in self.param_groups:
-                if "gfsf_grad" in param_group:
+                if "parvi_grad" in param_group:
                     params = param_group['params']
                     batch_size = params[0].shape[0]
                     params_tensor = torch.cat(
                         [p.view(batch_size, -1) for p in params],
-                        dim=-1)  # [N, dim(params)]
-                    logq_grad = score_func(params_tensor)  # [N, dim(param)]
-                    gfsf_grad = torch.split(
-                        logq_grad,
-                        [int(p.nelement() / batch_size) for p in params],
-                        dim=-1)
-                    for i in range(len(params)):
-                        grad = params[i].grad.view(batch_size, -1)
-                        grad.add_(self._gfsf_grad_weight * gfsf_grad[i])
+                        dim=-1)  # [N, D], D=dim(params)
+                    if self._parvi == 'svgd':
+                        # [N, N], [N, N, D]
+                        kappa, kappa_grad = rbf_func(params_tensor)
+                        grads_tensor = torch.cat(
+                            [p.grad.view(batch_size, -1) for p in params],
+                            dim=-1).detach()  # [N, D]
+                        kernel_logp = torch.matmul(kappa,
+                                                   grads_tensor) / batch_size
+                        svgd_grad = torch.split(
+                            kernel_logp -
+                            self._repulsive_weight * kappa_grad.mean(0),
+                            [int(p.nelement() / batch_size) for p in params],
+                            dim=-1)
+                        for i in range(len(params)):
+                            grad = params[i].grad.view(batch_size, -1).zero_()
+                            grad.add_(svgd_grad[i])
+                    else:
+                        logq_grad = score_func(params_tensor)  # [N, D]
+                        gfsf_grad = torch.split(
+                            logq_grad,
+                            [int(p.nelement() / batch_size) for p in params],
+                            dim=-1)
+                        for i in range(len(params)):
+                            grad = params[i].grad.view(batch_size, -1)
+                            grad.add_(self._repulsive_weight * gfsf_grad[i])
 
         super(NewCls, self).step(closure=closure)
 
@@ -194,7 +251,7 @@ def wrap_optimizer(cls):
             if len(ensemble_param_group) > 0:
                 super(NewCls, self).add_param_group({
                     'params': ensemble_param_group,
-                    'gfsf_grad': True
+                    'parvi_grad': True
                 })
 
     return NewCls
