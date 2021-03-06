@@ -73,7 +73,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             config (TrainerConfig): config for training. ``config`` only needs to
                 be provided to the algorithm which performs a training iteration
                 by itself.
-            K (int): the maiximal repeating times for an action.
+            K (int): the maximal repeating times for an action.
             rl_algorithm_cls (Callable): creates an RL algorithm to be augmented
                 by this dynamic action repeating ability.
             representation_learner_cls (type): The algorithm class for learning

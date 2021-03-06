@@ -157,7 +157,7 @@ class TimeLimit(AlfEnvironmentBaseWrapper):
 
 @alf.configurable
 class PerformanceProfiler(AlfEnvironmentBaseWrapper):
-    """End episodes after specified number of steps."""
+    """Use cProfile to profile env execution."""
 
     def __init__(self, env, process_profile_fn, process_steps):
         """Create a PerformanceProfiler that uses cProfile to profile env execution.
