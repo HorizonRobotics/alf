@@ -153,49 +153,55 @@ def wrap_optimizer(cls):
         calls the parent's ``add_param_group()`` function to add each of
         them to the optimizer.
         """
-        assert isinstance(param_group, dict), "param_group must be a dict"
+        if self._gfsf_grad_weight is not None:
+            assert isinstance(param_group, dict), "param_group must be a dict"
 
-        params = param_group["params"]
-        if isinstance(params, torch.Tensor):
-            param_group['params'] = [params]
-        elif isinstance(params, set):
-            raise TypeError('Please use a list instead.')
-        else:
-            param_group['params'] = list(params)
-
-        len_params = len(param_group['params'])
-        std_param_group = []
-        ensemble_param_groups = [[] for i in range(len_params)]
-        group_batch_sizes = torch.zeros(len_params)
-        for param in param_group['params']:
-            if not isinstance(param, torch.Tensor):
-                raise TypeError("optimizer can only optimize Tensors, "
-                                "but one of the params is " +
-                                torch.typename(param))
-            if hasattr(param, 'ensemble_group'):
-                assert isinstance(
-                    param.ensemble_group,
-                    int), ("ensemble_group attribute mis-specified.")
-                ensemble_group_id = param.ensemble_group % len_params
-                if group_batch_sizes[ensemble_group_id] == 0:
-                    group_batch_sizes[ensemble_group_id] = param.shape[0]
-                else:
-                    assert param.shape[0] == group_batch_sizes[
-                        ensemble_group_id], (
-                            "batch_size of params does not match that of the "
-                            "ensemble param_group %d." % (ensemble_group_id))
-                ensemble_param_groups[ensemble_group_id].append(param)
+            params = param_group["params"]
+            if isinstance(params, torch.Tensor):
+                param_group['params'] = [params]
+            elif isinstance(params, set):
+                raise TypeError('Please use a list instead.')
             else:
-                std_param_group.append(param)
+                param_group['params'] = list(params)
 
-        if len(std_param_group) > 0:
-            super(NewCls, self).add_param_group({'params': std_param_group})
-        for ensemble_param_group in ensemble_param_groups:
-            if len(ensemble_param_group) > 0:
+            len_params = len(param_group['params'])
+            std_param_group = []
+            ensemble_param_groups = [[] for i in range(len_params)]
+            group_batch_sizes = torch.zeros(len_params)
+            for param in param_group['params']:
+                if not isinstance(param, torch.Tensor):
+                    raise TypeError("optimizer can only optimize Tensors, "
+                                    "but one of the params is " +
+                                    torch.typename(param))
+                if hasattr(param, 'ensemble_group'):
+                    assert isinstance(
+                        param.ensemble_group,
+                        int), ("ensemble_group attribute mis-specified.")
+                    ensemble_group_id = param.ensemble_group % len_params
+                    if group_batch_sizes[ensemble_group_id] == 0:
+                        group_batch_sizes[ensemble_group_id] = param.shape[0]
+                    else:
+                        assert param.shape[0] == group_batch_sizes[
+                            ensemble_group_id], (
+                                "batch_size of params does not match that of the "
+                                "ensemble param_group %d." %
+                                (ensemble_group_id))
+                    ensemble_param_groups[ensemble_group_id].append(param)
+                else:
+                    std_param_group.append(param)
+
+            if len(std_param_group) > 0:
                 super(NewCls, self).add_param_group({
-                    'params': ensemble_param_group,
-                    'gfsf_grad': True
+                    'params': std_param_group
                 })
+            for ensemble_param_group in ensemble_param_groups:
+                if len(ensemble_param_group) > 0:
+                    super(NewCls, self).add_param_group({
+                        'params': ensemble_param_group,
+                        'gfsf_grad': True
+                    })
+        else:
+            super(NewCls, self).add_param_group(param_group)
 
     return NewCls
 
