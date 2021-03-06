@@ -139,6 +139,8 @@ class SimpleDecoder(Algorithm):
             target = self._target_normalizer.normalize(target)
             predicted = self._target_normalizer.normalize(predicted)
 
+        # self._loss() is not gauranteed to correctly handle more than one batch
+        # dimension (e.g. CrossEntropyLoss), so we need to do some reshaping here.
         b = predicted.shape[0] * predicted.shape[1]
         loss = self._loss(
             predicted.reshape(b, *predicted.shape[2:]),
@@ -209,6 +211,7 @@ class PredictiveRepresentationLearner(Algorithm):
                  postprocessor=None,
                  encoding_optimizer=None,
                  dynamics_optimizer=None,
+                 postprocessor_optimizer=None,
                  debug_summaries=False,
                  name="PredictiveRepresentationLearner"):
         """
@@ -216,7 +219,7 @@ class PredictiveRepresentationLearner(Algorithm):
             observation_spec (nested TensorSpec): describing the observation.
             action_spec (nested BoundedTensorSpec): describing the action.
             num_unroll_steps (int): the number of future steps to predict.
-                if ``num_unroll_steps`` of 0 means no future prediction and hence
+                ``num_unroll_steps`` of 0 means no future prediction and hence
                 ``dynamics_net_ctor`` is ignored.
             decoder_ctor (Callable|[Callable]): each individual constructor is
                 called as ``decoder_ctor(observation)`` to
@@ -245,6 +248,8 @@ class PredictiveRepresentationLearner(Algorithm):
                 the parameter for the encoding net.
             dynamics_optimizer (Optimizer|None): if provided, will be used to optimize
                 the parameter for the dynamics net.
+            postprocessor_optimizer (Optimizer|None): if provided, will be used
+                to optimize the parameter for the postprocessor.
             debug_summaries (bool): whether to generate debug summaries
             name (str): name of this instance.
         """
@@ -315,6 +320,8 @@ class PredictiveRepresentationLearner(Algorithm):
             self._postprocessor = postprocessor
         else:
             self._postprocessor = alf.math.identity
+        if postprocessor_optimizer is not None:
+            self.add_optimizer(postprocessor_optimizer, [postprocessor])
         self._output_spec = wrap_as_network(self._postprocessor,
                                             repr_spec).output_spec
 

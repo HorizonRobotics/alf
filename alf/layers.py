@@ -2176,7 +2176,7 @@ class Sequential(nn.Sequential):
         for m in self:
             if isinstance(m, alf.networks.Network):
                 assert not alf.nest.flatten(m.state_spec), (
-                    "Network element of layers.Sequential should stateless. "
+                    "Network element of layers.Sequential should be stateless. "
                     "Use networks.Sequential instead")
 
     def forward(self, input):

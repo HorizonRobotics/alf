@@ -49,7 +49,7 @@ def Sequential(*modules, input_tensor_spec=None, name="Sequential"):
     """
     # The reason that we use a wrapper function for _Sequential is that Network
     # does not allow *args for __init__() (see _NetworkMeta.__new__()). And we
-    # want to use *modules here to make the interface consistant with
+    # want to use *modules here to make the interface consistent with
     # torch.nn.Sequential and alf.layers.Sequential to avoid confusion.
     return _Sequential(modules, input_tensor_spec=input_tensor_spec, name=name)
 
@@ -122,7 +122,7 @@ class _Sequential(Network):
                 net = copy.deepcopy(n)
                 alf.layers.reset_parameters(net)
             new_networks.append(net)
-        return Sequential(new_networks, self._input_tensor_spec, name)
+        return _Sequential(new_networks, self._input_tensor_spec, name)
 
     def __getitem__(self, i):
         return self._networks[i]
@@ -367,7 +367,7 @@ class Echo(Network):
         Args:
             block (Network): the module for performing the actual computation
             input_tensor_spec (nested TensorSpec): If provided, it must match
-                the block.input_tensor_spec[0] or input_tensor_spec['input']
+                the ``block.input_tensor_spec[0]`` or ``block.input_tensor_spec['input']``
         """
         assert isinstance(
             block, Network), ("block must be an instance of "
