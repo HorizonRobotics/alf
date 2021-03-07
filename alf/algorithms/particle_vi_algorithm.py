@@ -223,7 +223,10 @@ class ParVIAlgorithm(Algorithm):
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
         dist_sq = torch.sum(diff**2, -1)  # [N, N]
         h, _ = torch.median(dist_sq.view(-1), dim=0)
-        h = h / np.log(N)
+        if h == 0.:
+            h = torch.ones_like(h)
+        else:
+            h = h / max(np.log(N), 1.)
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]

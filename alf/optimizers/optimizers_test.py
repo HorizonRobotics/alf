@@ -18,6 +18,7 @@ import torch.nn as nn
 
 import alf
 from alf.algorithms.hypernetwork_algorithm import regression_loss
+from alf.algorithms.particle_vi_algorithm import ParVIAlgorithm
 from alf.optimizers import Adam, AdamTF
 from alf.tensor_specs import TensorSpec
 from alf.utils import tensor_utils
@@ -121,6 +122,46 @@ class OptimizersTest(parameterized.TestCase, alf.test.TestCase):
         self.assertGreater(_grad_norm(params), clip_norm)
         opt.step()
         self.assertTensorClose(_grad_norm(params), torch.as_tensor(clip_norm))
+
+    @parameterized.parameters('svgd', 'gfsf')
+    def test_parvi_grad_step(self, parvi='svgd'):
+        """Check consistency of one step grad update with ParVIAlgorithm. """
+        param_dim = 3
+        ensemble_size = 4
+        batch_size = 2
+        init_w = torch.rand(ensemble_size, param_dim)
+        inputs = torch.randn(batch_size, param_dim)
+
+        def loss_func(w):
+            y = w @ inputs.t()
+            return torch.sum(y**2)
+
+        # Gradient update with parvi_optimizer
+        w1 = init_w.clone()
+        w1.requires_grad = True
+        w1 = torch.nn.Parameter(w1)
+        w1.ensemble_group = 0
+        loss = loss_func(w1)
+        opt = AdamTF(lr=0.1, parvi=parvi)
+        opt.add_param_group({'params': w1})
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+
+        # Gradient update with ParVIAlgorithm
+        alg = ParVIAlgorithm(
+            param_dim,
+            num_particles=ensemble_size,
+            par_vi=parvi,
+            optimizer=AdamTF(lr=0.1))
+        w2 = init_w.clone()
+        w2.requires_grad = True
+        w2 = torch.nn.Parameter(w2)
+        alg._particles = torch.nn.Parameter(w2)
+        alg_step = alg.train_step(loss_func)
+        alg.update_with_gradient(alg_step.info)
+
+        self.assertTensorClose(w1.data, alg.particles.data, 1e-4)
 
     @parameterized.parameters('svgd', 'gfsf')
     def test_parvi_batch_ensemble(self,
