@@ -245,14 +245,19 @@ def wrap_optimizer(cls):
             else:
                 std_param_group.append(param)
 
-        if len(std_param_group) > 0:
-            super(NewCls, self).add_param_group({'params': std_param_group})
-        for ensemble_param_group in ensemble_param_groups:
-            if len(ensemble_param_group) > 0:
+        if len(alf.nest.flatten(ensemble_param_groups)) > 0:
+            if len(std_param_group) > 0:
                 super(NewCls, self).add_param_group({
-                    'params': ensemble_param_group,
-                    'parvi_grad': True
+                    'params': std_param_group
                 })
+            for ensemble_param_group in ensemble_param_groups:
+                if len(ensemble_param_group) > 0:
+                    super(NewCls, self).add_param_group({
+                        'params': ensemble_param_group,
+                        'parvi_grad': True
+                    })
+        else:
+            super(NewCls, self).add_param_group(param_group)
 
     return NewCls
 
