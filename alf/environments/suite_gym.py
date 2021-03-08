@@ -17,10 +17,11 @@ import gin
 import gym
 import gym.spaces
 
+import alf
 from alf.environments import gym_wrappers, alf_wrappers, alf_gym_wrapper
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          discount=1.0,
@@ -69,7 +70,7 @@ def load(environment_name,
         image_channel_first=image_channel_first)
 
 
-@gin.configurable
+@alf.configurable
 def wrap_env(gym_env,
              env_id=None,
              discount=1.0,
