@@ -54,13 +54,18 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         self.assertEqual(x.shape, y.shape)
         self.assertGreater(float(torch.min(x - y)), eps)
 
-    @parameterized.parameters(('gfsf'), ('svgd2'), ('svgd3'), ('minmax'),
-                              ('gfsf', True), ('svgd2', True), ('svgd3', True))
+    @parameterized.parameters(
+        ('gfsf'),
+        ('svgd2'),
+        ('svgd3'),  #('minmax'),
+        ('gfsf', True),
+        ('svgd2', True),
+        ('svgd3', True))
     def test_bayesian_linear_regression(self,
                                         par_vi='minmax',
                                         function_vi=False,
                                         train_batch_size=10,
-                                        num_particles=128):
+                                        num_particles=64):
         r"""
         The hypernetwork is trained to generate the parameter vector for a linear
         regressor. The target linear regressor is :math:`y = X\beta + e`, where 
@@ -76,7 +81,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
         input_size = 3
         input_spec = TensorSpec((input_size, ), torch.float32)
         output_dim = 1
-        batch_size = 100
+        batch_size = 50
         hidden_size = output_dim * batch_size
         inputs = input_spec.randn(outer_dims=(batch_size, ))
         beta = torch.rand(input_size, output_dim) + 5.
@@ -98,7 +103,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
             function_vi=function_vi,
             function_bs=train_batch_size,
             critic_hidden_layers=(hidden_size, hidden_size),
-            optimizer=alf.optimizers.Adam(lr=1e-3),
+            optimizer=alf.optimizers.Adam(lr=2e-3),
             critic_optimizer=alf.optimizers.Adam(lr=1e-3))
         print("ground truth mean: {}".format(true_mean))
         print("ground truth cov: {}".format(true_cov))
@@ -161,7 +166,7 @@ class HyperNetworkTest(parameterized.TestCase, alf.test.TestCase):
                 scov_err = scov_err / torch.norm(true_cov)
                 print("train_iter {}: sampled cov err {}".format(i, scov_err))
 
-        train_iter = 5000
+        train_iter = 3000
         for i in range(train_iter):
             _train()
             if i % 1000 == 0:

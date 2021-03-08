@@ -61,7 +61,7 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
     def test_functional_par_vi_algorithm(self,
                                          par_vi='svgd',
                                          function_vi=False,
-                                         num_particles=256,
+                                         num_particles=32,
                                          batch_size=10):
         """
         The hypernetwork is trained to generate the parameter vector for a linear
@@ -77,7 +77,7 @@ class FuncParVIAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
         input_dim = 3
         input_spec = TensorSpec((input_dim, ), torch.float32)
         output_dim = 1
-        size = 150
+        size = 50
         beta = torch.rand(input_dim, output_dim) + 5.
         absl.logging.info("beta: {}".format(beta))
 

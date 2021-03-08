@@ -543,7 +543,8 @@ class Generator(Algorithm):
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]
-        kappa_grad = torch.einsum('ij,ijk->jk', kappa, -2 * diff / h)  # [N, D]
+        kappa_grad = -2 * kappa.unsqueeze(-1) * diff / h  # [N, N, D]
+        kappa_grad = kappa_grad.sum(0)  # [N, D]
 
         return -kappa_inv @ kappa_grad
 
