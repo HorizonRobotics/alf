@@ -38,8 +38,8 @@ class ParVIAlgorithm(Algorithm):
 
         1. Stein Variational Gradient Descent (SVGD):
 
-        Feng et al "Learning to Draw Samples with Amortized Stein Variational
-        Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+        Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+        A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
         2. Wasserstein Particle-based VI with Smooth Functions (GFSF):
 

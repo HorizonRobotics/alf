@@ -111,7 +111,22 @@ def wrap_optimizer(cls):
                 each grad.
             parvi (string): if not ``None``, paramters with attribute
                 ``ensemble_group`` will be updated by particle-based vi algorithm
-                specified by ``parvi``, options are [``svgd``, ``gfsf``].
+                specified by ``parvi``, options are [``svgd``, ``gfsf``],
+
+                * Stein Variational Gradient Descent (SVGD)
+
+                Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+                A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+
+                * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
+                
+                Liu, Chang, et al. "Understanding and accelerating particle-based 
+                variational inference." International Conference on Machine Learning. 2019.
+
+                To work with the ``parvi`` option, the parameters added to the 
+                optimizer (by ``add_param_group``) should have an (int) attribute
+                ``ensemble_group``. See ``FCBatchEnsemble`` as an example.
+
             repulsive_weight (float): the weight of the repulsive gradient term 
                 for parameters with attribute ``ensemble_group``.
             name (str): the name displayed when summarizing the gradient norm. If
@@ -168,40 +183,44 @@ def wrap_optimizer(cls):
                     grads, self._gradient_clipping, in_place=True)
 
         if self._parvi is not None:
-            for param_group in self.param_groups:
-                if "parvi_grad" in param_group:
-                    params = param_group['params']
-                    batch_size = params[0].shape[0]
-                    params_tensor = torch.cat(
-                        [p.view(batch_size, -1) for p in params],
-                        dim=-1)  # [N, D], D=dim(params)
-                    if self._parvi == 'svgd':
-                        # [N, N], [N, N, D]
-                        kappa, kappa_grad = rbf_func(params_tensor)
-                        grads_tensor = torch.cat(
-                            [p.grad.view(batch_size, -1) for p in params],
-                            dim=-1).detach()  # [N, D]
-                        kernel_logp = torch.matmul(kappa,
-                                                   grads_tensor) / batch_size
-                        svgd_grad = torch.split(
-                            kernel_logp -
-                            self._repulsive_weight * kappa_grad.mean(0),
-                            [int(p.nelement() / batch_size) for p in params],
-                            dim=-1)
-                        for i in range(len(params)):
-                            grad = params[i].grad.view(batch_size, -1).zero_()
-                            grad.add_(svgd_grad[i])
-                    else:
-                        logq_grad = score_func(params_tensor)  # [N, D]
-                        gfsf_grad = torch.split(
-                            logq_grad,
-                            [int(p.nelement() / batch_size) for p in params],
-                            dim=-1)
-                        for i in range(len(params)):
-                            grad = params[i].grad.view(batch_size, -1)
-                            grad.add_(self._repulsive_weight * gfsf_grad[i])
+            self._parvi_step()
 
         super(NewCls, self).step(closure=closure)
+
+    @common.add_method(NewCls)
+    def _parvi_step(self):
+        for param_group in self.param_groups:
+            if "parvi_grad" in param_group:
+                params = param_group['params']
+                batch_size = params[0].shape[0]
+                params_tensor = torch.cat(
+                    [p.view(batch_size, -1) for p in params],
+                    dim=-1)  # [N, D], D=dim(params)
+                if self._parvi == 'svgd':
+                    # [N, N], [N, N, D]
+                    kappa, kappa_grad = rbf_func(params_tensor)
+                    grads_tensor = torch.cat(
+                        [p.grad.view(batch_size, -1) for p in params],
+                        dim=-1).detach()  # [N, D]
+                    kernel_logp = torch.matmul(kappa,
+                                               grads_tensor) / batch_size
+                    svgd_grad = torch.split(
+                        kernel_logp -
+                        self._repulsive_weight * kappa_grad.mean(0),
+                        [int(p.nelement() / batch_size) for p in params],
+                        dim=-1)
+                    for i in range(len(params)):
+                        grad = params[i].grad.view(batch_size, -1).zero_()
+                        grad.add_(svgd_grad[i])
+                else:
+                    logq_grad = score_func(params_tensor)  # [N, D]
+                    gfsf_grad = torch.split(
+                        logq_grad,
+                        [int(p.nelement() / batch_size) for p in params],
+                        dim=-1)
+                    for i in range(len(params)):
+                        grad = params[i].grad.view(batch_size, -1)
+                        grad.add_(self._repulsive_weight * gfsf_grad[i])
 
     @common.add_method(NewCls)
     def add_param_group(self, param_group):
