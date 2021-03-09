@@ -494,13 +494,13 @@ class FCBatchEnsemble(FC):
 
                 * Stein Variational Gradient Descent (SVGD)
 
-                Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
-                A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+                  A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
                 * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
                 
-                Liu, Chang, et al. "Understanding and accelerating particle-based
-                variational inference." ICML, 2019.
+                  Liu, Chang, et al. "Understanding and accelerating particle-based
+                  variational inference." ICML, 2019.
         """
         nn.Module.__init__(self)
         self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
