@@ -38,13 +38,13 @@ class ParVIAlgorithm(Algorithm):
 
         1. Stein Variational Gradient Descent (SVGD):
 
-        Feng et al "Learning to Draw Samples with Amortized Stein Variational
-        Gradient Descent" https://arxiv.org/pdf/1707.06626.pdf
+           Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+           A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
         2. Wasserstein Particle-based VI with Smooth Functions (GFSF):
 
-        Liu, Chang, et al. "Understanding and accelerating particle-based 
-        variational inference." International Conference on Machine Learning. 2019.
+           Liu, Chang, et al. "Understanding and accelerating particle-based 
+           variational inference." International Conference on Machine Learning. 2019.
     """
 
     def __init__(self,
@@ -64,11 +64,11 @@ class ParVIAlgorithm(Algorithm):
             par_vi (string): par_vi methods, options are [``svgd``, ``gfsf``, ``None``],
 
                 * svgd: empirical expectation of SVGD is evaluated by reusing
-                    the same batch of particles.   
+                  the same batch of particles.   
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally more
-                    expensive, but in some cases the convergence seems faster 
-                    than svgd approaches.
+                  involves a kernel matrix inversion, so computationally more
+                  expensive, but in some cases the convergence seems faster 
+                  than svgd approaches.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -130,10 +130,11 @@ class ParVIAlgorithm(Algorithm):
                 function value based par_vi, where each particle represents 
                 parameters of a neural network function. It is call by
                 transform_func(particles) which returns the following,
-                - outputs: outputs of network parameterized by particles evaluated
-                    on predifined training batch.
-                - extra_outputs: outputs of network parameterized by particles
-                    evaluated on additional sampled data.
+
+                * outputs: outputs of network parameterized by particles evaluated
+                  on predifined training batch.
+                * extra_outputs: outputs of network parameterized by particles
+                  evaluated on additional sampled data.
             entropy_regularization (float): weight of the repulsive term in par_vi. 
                 If None, use self._entropy_regularization.
             loss_mask (Tensor): mask indicating which samples are valid for loss
@@ -223,7 +224,10 @@ class ParVIAlgorithm(Algorithm):
         diff = x.unsqueeze(1) - x.unsqueeze(0)  # [N, N, D]
         dist_sq = torch.sum(diff**2, -1)  # [N, N]
         h, _ = torch.median(dist_sq.view(-1), dim=0)
-        h = h / np.log(N)
+        if h == 0.:
+            h = torch.ones_like(h)
+        else:
+            h = h / max(np.log(N), 1.)
 
         kappa = torch.exp(-dist_sq / h)  # [N, N]
         kappa_inv = torch.inverse(kappa + alpha * torch.eye(N))  # [N, N]

@@ -435,6 +435,7 @@ class FC(nn.Module):
         return ParallelFC(n=n, **self._kwargs)
 
 
+@alf.configurable
 class FCBatchEnsemble(FC):
     r"""The BatchEnsemble for FC layer.
 
@@ -461,7 +462,8 @@ class FCBatchEnsemble(FC):
                  use_ln=False,
                  kernel_initializer=None,
                  kernel_init_gain=1.0,
-                 bias_init_range=0.):
+                 bias_init_range=0.,
+                 ensemble_group=0):
         """
         Args:
             input_size (int): input size
@@ -482,12 +484,34 @@ class FCBatchEnsemble(FC):
                 ``kernel_initializer`` is not None.
             bias_init_range (float): biases are initialized uniformly in
                 [-bias_init_range, bias_init_range]
+            ensemble_group (int): the extra attribute ``ensemble_group`` added 
+                to ``self._r``, ``self._s``, and ``self._ensemble_bias``, 
+                default value is 0. 
+                For alf.optimizers whose ``parvi`` is not ``None``, all parameters 
+                with the same ``ensemble_group`` will be updated by the 
+                particle-based VI algorithm specified by ``parvi``, options are
+                [``svgd``, ``gfsf``],
+
+                * Stein Variational Gradient Descent (SVGD)
+
+                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+                  A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+
+                * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
+                
+                  Liu, Chang, et al. "Understanding and accelerating particle-based
+                  variational inference." ICML, 2019.
         """
         nn.Module.__init__(self)
         self._r = nn.Parameter(torch.Tensor(ensemble_size, input_size))
         self._s = nn.Parameter(torch.Tensor(ensemble_size, output_size))
+        assert isinstance(ensemble_group,
+                          int), ("ensemble_group has to be an integer!")
         self._ensemble_bias = nn.Parameter(
             torch.Tensor(ensemble_size, output_size))
+        self._r.ensemble_group = ensemble_group
+        self._s.ensemble_group = ensemble_group
+        self._ensemble_bias.ensemble_group = ensemble_group
         self._use_ensemble_bias = use_bias
         self._ensemble_size = ensemble_size
         self._output_ensemble_ids = output_ensemble_ids

@@ -163,22 +163,22 @@ class HyperNetwork(Algorithm):
                 types are [``svgd``, ``svgd2``, ``svgd3``, ``gfsf``, ``minmax``],
 
                 * svgd: empirical expectation of SVGD is evaluated by a single 
-                    resampled particle. The main benefit of this choice is it 
-                    supports conditional case, while all other options do not.
+                  resampled particle. The main benefit of this choice is it 
+                  supports conditional case, while all other options do not.
                 * svgd2: empirical expectation of SVGD is evaluated by splitting
-                    half of the sampled batch. It is a trade-off between 
-                    computational efficiency and convergence speed.
+                  half of the sampled batch. It is a trade-off between 
+                  computational efficiency and convergence speed.
                 * svgd3: empirical expectation of SVGD is evaluated by 
-                    resampled particles of the same batch size. It has better
-                    convergence but involves resampling, so less efficient
-                    computaionally comparing with svgd2.
+                  resampled particles of the same batch size. It has better
+                  convergence but involves resampling, so less efficient
+                  computaionally comparing with svgd2.
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally most
-                    expensive, but in some case the convergence seems faster 
-                    than svgd approaches.
+                  involves a kernel matrix inversion, so computationally most
+                  expensive, but in some case the convergence seems faster 
+                  than svgd approaches.
                 * minmax: Fisher Neural Sampler, optimal descent direction of
-                    the Stein discrepancy is solved by an inner optimization
-                    procedure in the space of L2 neural networks.
+                  the Stein discrepancy is solved by an inner optimization
+                  procedure in the space of L2 neural networks.
             optimizer (torch.optim.Optimizer): The optimizer for training generator.
             logging_network (bool): whether logging the archetectures of networks.
             logging_training (bool): whether logging loss and acc during training.
