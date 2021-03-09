@@ -567,10 +567,14 @@ class CameraSensor(SensorBase):
             height, width = self._image.shape[1:3]
             image = np.transpose(self._image, (2, 1, 0))
             if width < MINIMUM_RENDER_WIDTH:
-                height = height * MINIMUM_RENDER_WIDTH // width
+                scaling_factor = max(
+                    float(MINIMUM_RENDER_HEIGHT) / height,
+                    float(MINIMUM_RENDER_WIDTH) / width)
+                height = int(height * scaling_factor)
+                width = int(width * scaling_factor)
                 image = cv2.resize(
                     image,
-                    dsize=(height, MINIMUM_RENDER_WIDTH),
+                    dsize=(height, width),
                     interpolation=cv2.INTER_NEAREST)
             surface = pygame.surfarray.make_surface(image)
             display.blit(surface, (0, 0))
