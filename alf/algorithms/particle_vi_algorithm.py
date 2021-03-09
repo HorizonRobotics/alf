@@ -38,13 +38,13 @@ class ParVIAlgorithm(Algorithm):
 
         1. Stein Variational Gradient Descent (SVGD):
 
-        Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
-        A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+           Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+           A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
         2. Wasserstein Particle-based VI with Smooth Functions (GFSF):
 
-        Liu, Chang, et al. "Understanding and accelerating particle-based 
-        variational inference." International Conference on Machine Learning. 2019.
+           Liu, Chang, et al. "Understanding and accelerating particle-based 
+           variational inference." International Conference on Machine Learning. 2019.
     """
 
     def __init__(self,
@@ -64,11 +64,11 @@ class ParVIAlgorithm(Algorithm):
             par_vi (string): par_vi methods, options are [``svgd``, ``gfsf``, ``None``],
 
                 * svgd: empirical expectation of SVGD is evaluated by reusing
-                    the same batch of particles.   
+                  the same batch of particles.   
                 * gfsf: wasserstein gradient flow with smoothed functions. It 
-                    involves a kernel matrix inversion, so computationally more
-                    expensive, but in some cases the convergence seems faster 
-                    than svgd approaches.
+                  involves a kernel matrix inversion, so computationally more
+                  expensive, but in some cases the convergence seems faster 
+                  than svgd approaches.
             optimizer (torch.optim.Optimizer): (optional) optimizer for training
             name (str): name of this generator
         """
@@ -130,10 +130,11 @@ class ParVIAlgorithm(Algorithm):
                 function value based par_vi, where each particle represents 
                 parameters of a neural network function. It is call by
                 transform_func(particles) which returns the following,
-                - outputs: outputs of network parameterized by particles evaluated
-                    on predifined training batch.
-                - extra_outputs: outputs of network parameterized by particles
-                    evaluated on additional sampled data.
+
+                * outputs: outputs of network parameterized by particles evaluated
+                  on predifined training batch.
+                * extra_outputs: outputs of network parameterized by particles
+                  evaluated on additional sampled data.
             entropy_regularization (float): weight of the repulsive term in par_vi. 
                 If None, use self._entropy_regularization.
             loss_mask (Tensor): mask indicating which samples are valid for loss

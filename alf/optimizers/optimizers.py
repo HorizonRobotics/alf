@@ -23,7 +23,7 @@ from alf.utils import tensor_utils
 from . import adam_tf
 
 
-def rbf_func(x):
+def _rbf_func(x):
     r"""
     Compute the rbf kernel and its gradient w.r.t. first entry 
     :math:`K(x, x), \nabla_x K(x, x)`, for computing ``svgd``_grad.
@@ -51,7 +51,7 @@ def rbf_func(x):
     return kappa, kappa_grad
 
 
-def score_func(x, alpha=1e-5):
+def _score_func(x, alpha=1e-5):
     r"""
     Compute the stein estimator of the score function
     :math:`\nabla\log q = -(K + \alpha I)^{-1}\nabla K`,
@@ -115,13 +115,13 @@ def wrap_optimizer(cls):
 
                 * Stein Variational Gradient Descent (SVGD)
 
-                Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
-                A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
+                  Liu, Qiang, and Dilin Wang. "Stein Variational Gradient Descent: 
+                  A General Purpose Bayesian Inference Algorithm." NIPS. 2016.
 
                 * Wasserstein Gradient Flow with Smoothed Functions (GFSF)
                 
-                Liu, Chang, et al. "Understanding and accelerating particle-based 
-                variational inference." International Conference on Machine Learning. 2019.
+                  Liu, Chang, et al. "Understanding and accelerating particle-based 
+                  variational inference." ICML. 2019.
 
                 To work with the ``parvi`` option, the parameters added to the 
                 optimizer (by ``add_param_group``) should have an (int) attribute
@@ -198,7 +198,7 @@ def wrap_optimizer(cls):
                     dim=-1)  # [N, D], D=dim(params)
                 if self._parvi == 'svgd':
                     # [N, N], [N, N, D]
-                    kappa, kappa_grad = rbf_func(params_tensor)
+                    kappa, kappa_grad = _rbf_func(params_tensor)
                     grads_tensor = torch.cat(
                         [p.grad.view(batch_size, -1) for p in params],
                         dim=-1).detach()  # [N, D]
@@ -207,16 +207,16 @@ def wrap_optimizer(cls):
                     svgd_grad = torch.split(
                         kernel_logp -
                         self._repulsive_weight * kappa_grad.mean(0),
-                        [int(p.nelement() / batch_size) for p in params],
+                        [p.nelement() // batch_size for p in params],
                         dim=-1)
                     for i in range(len(params)):
-                        grad = params[i].grad.view(batch_size, -1).zero_()
-                        grad.add_(svgd_grad[i])
+                        grad = params[i].grad.view(batch_size, -1)
+                        grad.copy_(svgd_grad[i])
                 else:
-                    logq_grad = score_func(params_tensor)  # [N, D]
+                    logq_grad = _score_func(params_tensor)  # [N, D]
                     gfsf_grad = torch.split(
                         logq_grad,
-                        [int(p.nelement() / batch_size) for p in params],
+                        [p.nelement() // batch_size for p in params],
                         dim=-1)
                     for i in range(len(params)):
                         grad = params[i].grad.view(batch_size, -1)
@@ -242,7 +242,7 @@ def wrap_optimizer(cls):
         len_params = len(param_group['params'])
         std_param_group = []
         ensemble_param_groups = [[] for i in range(len_params)]
-        group_batch_sizes = torch.zeros(len_params)
+        group_batch_sizes = [0] * len_params
         for param in param_group['params']:
             if not isinstance(param, torch.Tensor):
                 raise TypeError("optimizer can only optimize Tensors, "
@@ -252,7 +252,7 @@ def wrap_optimizer(cls):
                 assert isinstance(
                     param.ensemble_group,
                     int), ("ensemble_group attribute mis-specified.")
-                ensemble_group_id = param.ensemble_group % len_params
+                ensemble_group_id = param.ensemble_group
                 if group_batch_sizes[ensemble_group_id] == 0:
                     group_batch_sizes[ensemble_group_id] = param.shape[0]
                 else:
