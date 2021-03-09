@@ -799,11 +799,8 @@ class Player(object):
             if self._camera_sensor:
                 height, width = self._camera_sensor.observation_spec(
                 ).shape[1:3]
-                scaling_factor = max(
-                    float(MINIMUM_RENDER_HEIGHT) / height,
-                    float(MINIMUM_RENDER_WIDTH) / width)
-                height = int(height * scaling_factor)
-                width = int(width * scaling_factor)
+                height = max(height, MINIMUM_RENDER_HEIGHT)
+                width = max(width, MINIMUM_RENDER_WIDTH)
             else:
                 height = MINIMUM_RENDER_HEIGHT
                 width = MINIMUM_RENDER_WIDTH

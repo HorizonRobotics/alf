@@ -567,11 +567,8 @@ class CameraSensor(SensorBase):
             height, width = self._image.shape[1:3]
             image = np.transpose(self._image, (2, 1, 0))
             if width < MINIMUM_RENDER_WIDTH:
-                scaling_factor = max(
-                    float(MINIMUM_RENDER_HEIGHT) / height,
-                    float(MINIMUM_RENDER_WIDTH) / width)
-                height = int(height * scaling_factor)
-                width = int(width * scaling_factor)
+                height = max(height, MINIMUM_RENDER_HEIGHT)
+                width = max(width, MINIMUM_RENDER_WIDTH)
                 image = cv2.resize(
                     image,
                     dsize=(height, width),
