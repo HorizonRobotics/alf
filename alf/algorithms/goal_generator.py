@@ -539,6 +539,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._ou_process = common.create_ou_process(goal_spec, gou_stddev,
                                                     gou_damping)
         self._gou_stddev = gou_stddev
+        self._loss_iter = 0
 
     def _vae_loss(self, inputs, n_samples=1):
         assert self._vae
@@ -565,6 +566,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def calc_loss(self, experience, info: GoalInfo):
         if self._vae is None:
             return LossInfo()
+        self._loss_iter += 1
         orig_exp = experience.observation
         # Flatten batch_length and batch_size into one dimension.
         exp = alf.nest.map_structure(
@@ -597,13 +599,18 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                     for nl, l in losses.items():
                         _loss = l[x][y[x]]
                         if np.prod(_loss.size()) > 0:
-                            extra["{}_{}_{}".format(ny, nx,
-                                                    nl)] = torch.mean(_loss)
+                            name = "{}_{}_{}".format(ny, nx, nl)
+                            extra[name] = torch.mean(_loss)
+                            if self._loss_iter % 40 == 0:
+                                alf.summary.histogram("loss/" + name, _loss)
             else:
                 for nl, l in losses.items():
                     _loss = l[x]
                     if np.prod(_loss.size()) > 0:
-                        extra[nx + "_" + nl] = torch.mean(_loss)
+                        name = nx + "_" + nl
+                        extra[name] = torch.mean(_loss)
+                        if self._loss_iter % 40 == 0:
+                            alf.summary.histogram("loss/" + name, _loss)
         # Only use losses on HER exp to train the VAE
         loss = loss[her_cond]
         loss = torch.mean(loss) if np.prod(loss.size()) > 0 else ()
