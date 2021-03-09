@@ -399,8 +399,10 @@ class CurvesPlotter(object):
                 more axes or more ticklabels to be shown.
             dpi (int): Dots per inches. How many pixels each inch contains. A
                 ``figsize`` of ``(w,h)`` consists of ``w*h*dpi**2`` pixels.
-            linestyle (str): the line style to plot. Possible values:
+            linestyle (str|list[str]): the line style to plot. Possible values:
                 '-' ('solid'), '--' ('dashed'), '-.' (dashdot), and ':' ('dotted').
+                If a string, then all curves will have the same style; otherwise
+                each option will apply to the corresponding curve.
             linewidth (int): the thickness of lines to plot. Default: 2.
             std_alpha (float): the transparency value for plotting shaded area around
                 a curve.
@@ -434,6 +436,9 @@ class CurvesPlotter(object):
 
         if not isinstance(linestyle, list):
             linestyle = [linestyle] * len(mean_curves)
+        else:
+            assert len(linestyle) == len(mean_curves), (
+                "Didn't provide enough line styles!")
 
         for i, c in enumerate(mean_curves):
             if i < len(mean_curves) - 1:
