@@ -170,6 +170,8 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         if reward_weights:
             self._reward_weights = torch.tensor(
                 reward_weights, dtype=torch.float32)
+            assert torch.all(self._reward_weights >= 0.), (
+                "All reward weights must be non-negative!")
 
         self._target_actor_network = actor_network.copy(
             name='target_actor_networks')
@@ -276,18 +278,19 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
-        if q_values.ndim == 3:
-            # Multidimensional reward: [B, num_criric_replicas, reward_dim]
-            if self._reward_weights is None:
-                q_values = q_values.sum(dim=2)
-            else:
-                q_values = torch.tensordot(
-                    q_values, self._reward_weights, dims=1)
 
         if self._num_critic_replicas > 1:
             q_value = q_values.min(dim=1)[0]
         else:
             q_value = q_values.squeeze(dim=1)
+
+        if q_value.ndim == 2:
+            # Multidimensional reward: [B, reward_dim]
+            if self._reward_weights is None:
+                q_value = q_value.sum(dim=-1)
+            else:
+                q_value = torch.tensordot(
+                    q_value, self._reward_weights, dims=1)
 
         dqda = nest_utils.grad(action, q_value.sum())
 

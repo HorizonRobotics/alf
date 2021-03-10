@@ -259,6 +259,8 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 (len(reward_weights), reward_dim))
             self._reward_weights = torch.tensor(
                 reward_weights, dtype=torch.float32)
+            assert torch.all(self._reward_weights >= 0.), (
+                "All reward weights must be non-negative!")
 
         def _init_log_alpha():
             return nn.Parameter(torch.tensor(float(initial_log_alpha)))
@@ -580,14 +582,14 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
                 self._critic_networks, exp.observation, action, state)
-            critics = critics.min(dim=1)[0]
-            if critics.ndim == 2:
+            q_value = critics.min(dim=1)[0]
+            if q_value.ndim == 2:
                 # Multidimensional reward: [B, reward_dim]
                 if self._reward_weights is None:
-                    q_value = critics.sum(dim=-1)
+                    q_value = q_value.sum(dim=-1)
                 else:
                     q_value = torch.tensordot(
-                        critics, self._reward_weights, dims=1)
+                        q_value, self._reward_weights, dims=1)
 
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
