@@ -634,7 +634,7 @@ class CameraSensor(SensorBase):
         # For raw data from the semantic segmentation camera, the tag information
         # is encoded in the red channel.
         # For logarithmic depth from depth camera, the scalar depth is the same
-        # For all three channels and therefore we can do a similar slicing.
+        # for all three channels and therefore we can do a similar slicing.
         array = array[:, :, 0:self._observation_spec.shape[0]]
 
         array = np.transpose(array, (2, 0, 1))
