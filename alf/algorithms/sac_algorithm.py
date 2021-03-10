@@ -580,15 +580,15 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
                 self._critic_networks, exp.observation, action, state)
-            if critics.ndim == 3:
-                # Multidimensional reward: [B, num_criric_replicas, reward_dim]
+            critics = critics.min(dim=1)[0]
+            if critics.ndim == 2:
+                # Multidimensional reward: [B, reward_dim]
                 if self._reward_weights is None:
-                    critics = critics.sum(dim=2)
+                    q_value = critics.sum(dim=-1)
                 else:
-                    critics = torch.tensordot(
+                    q_value = torch.tensordot(
                         critics, self._reward_weights, dims=1)
 
-            q_value = critics.min(dim=1)[0]
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
         else:
