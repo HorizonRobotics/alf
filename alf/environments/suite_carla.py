@@ -61,8 +61,8 @@ from .suite_socialbot import _get_unused_port
 from .alf_environment import AlfEnvironment
 from .carla_sensors import (CameraSensor, CollisionSensor, GnssSensor,
                             IMUSensor, LaneInvasionSensor, NavigationSensor,
-                            RadarSensor, World, MINIMUM_RENDER_WIDTH,
-                            MINIMUM_RENDER_HEIGHT)
+                            RadarSensor, World, get_scaled_image_size,
+                            MINIMUM_RENDER_WIDTH, MINIMUM_RENDER_HEIGHT)
 
 
 def is_available():
@@ -799,8 +799,7 @@ class Player(object):
             if self._camera_sensor:
                 height, width = self._camera_sensor.observation_spec(
                 ).shape[1:3]
-                height = max(height, MINIMUM_RENDER_HEIGHT)
-                width = max(width, MINIMUM_RENDER_WIDTH)
+                height, width = get_scaled_image_size(height, width)
             else:
                 height = MINIMUM_RENDER_HEIGHT
                 width = MINIMUM_RENDER_WIDTH

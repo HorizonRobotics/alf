@@ -40,6 +40,42 @@ from alf.data_structures import namedtuple
 MINIMUM_RENDER_WIDTH = 640
 MINIMUM_RENDER_HEIGHT = 240
 
+MAXIMUM_RENDER_WIDTH = 1280
+MAXIMUM_RENDER_HEIGHT = 640
+
+
+def get_scaled_image_size(height, width):
+    """Compute properly scaled image size.
+
+    The scaled image height and width are calculated based on the minimum and
+    maximum allowed sizes for rendering, while keeping the aspect ratio of the
+    image unchanged.
+    If both the height and width are within the bound, no scaling is applied.
+
+    Returns:
+        tuple:
+        - scaled_height (int): scaled image height
+        - scaled_width (int): scaled image width
+    """
+    min_scaling_factor = max(
+        float(MINIMUM_RENDER_HEIGHT) / height,
+        float(MINIMUM_RENDER_WIDTH) / width)
+
+    max_scaling_factor = min(
+        float(MAXIMUM_RENDER_HEIGHT) / height,
+        float(MAXIMUM_RENDER_WIDTH) / width)
+
+    if min_scaling_factor > 1:
+        scaling_factor = min(min_scaling_factor, max_scaling_factor)
+    elif max_scaling_factor < 1:
+        scaling_factor = max(min_scaling_factor, max_scaling_factor)
+    else:
+        scaling_factor = 1
+
+    scaled_height = int(height * scaling_factor)
+    scaled_width = int(width * scaling_factor)
+    return scaled_height, scaled_width
+
 
 class SensorBase(abc.ABC):
     """Base class for sersors."""
@@ -566,13 +602,15 @@ class CameraSensor(SensorBase):
             import pygame
             height, width = self._image.shape[1:3]
             image = np.transpose(self._image, (2, 1, 0))
-            if width < MINIMUM_RENDER_WIDTH:
-                height = max(height, MINIMUM_RENDER_HEIGHT)
-                width = max(width, MINIMUM_RENDER_WIDTH)
+
+            scaled_height, scaled_width = get_scaled_image_size(height, width)
+
+            if scaled_height != height or scaled_width != width:
                 image = cv2.resize(
                     image,
-                    dsize=(height, width),
+                    dsize=(scaled_height, scaled_width),
                     interpolation=cv2.INTER_NEAREST)
+
             surface = pygame.surfarray.make_surface(image)
             display.blit(surface, (0, 0))
 
