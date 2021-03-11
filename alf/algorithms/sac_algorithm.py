@@ -259,8 +259,6 @@ class SacAlgorithm(OffPolicyAlgorithm):
                 (len(reward_weights), reward_dim))
             self._reward_weights = torch.tensor(
                 reward_weights, dtype=torch.float32)
-            assert torch.all(self._reward_weights >= 0.), (
-                "All reward weights must be non-negative!")
 
         def _init_log_alpha():
             return nn.Parameter(torch.tensor(float(initial_log_alpha)))
@@ -582,14 +580,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
                 self._critic_networks, exp.observation, action, state)
+            if critics.ndim == 3 and self._reward_weights is not None:
+                # Multidimensional reward: [B, replicas, reward_dim]
+                critics = critics * self._reward_weights
+            # min over replicas
             q_value = critics.min(dim=1)[0]
-            if q_value.ndim == 2:
-                # Multidimensional reward: [B, reward_dim]
-                if self._reward_weights is None:
-                    q_value = q_value.sum(dim=-1)
-                else:
-                    q_value = torch.tensordot(
-                        q_value, self._reward_weights, dims=1)
 
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
@@ -598,10 +593,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # ``critics``` is already after min over replicas
             critics_state = ()
             discrete_act_dist = action_distribution[0]
-            q_value = (discrete_act_dist.probs.detach() * critics).sum(-1)
+            q_value = discrete_act_dist.probs.detach() * critics
             action, continuous_log_pi = action[1], log_pi[1]
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
+        # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
