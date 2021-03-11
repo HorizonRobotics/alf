@@ -294,18 +294,49 @@ class RandomCategoricalGoalGenerator(ConditionalGoalGenerator):
         return new_goal_mask, state
 
 
-@gin.configurable
-def goal_gen_output_dims(observation_spec, aux_dim):
-    dims = [aux_dim]
-    dims += [x.numel for x in alf.nest.flatten(observation_spec)]
-    return sum(dims)
+def _remove_goal_keys(d):
+    d.pop('desired_goal', None)
+    d.pop('aux_desired', None)
+    return d
 
 
 @gin.configurable
-def goal_gen_output_spec(observation_spec, control_aux=0):
+def vae_output_dims(observation_spec, aux_dim, include_obs_dims=True):
+    if include_obs_dims:
+        dims = [aux_dim]
+        dims += [x.numel for x in alf.nest.flatten(observation_spec)]
+        return sum(dims)
+    else:
+        return observation_spec['desired_goal'].numel + aux_dim
+
+
+@gin.configurable
+def vae_output_spec(observation_spec, include_obs_dims=True):
     res = observation_spec.copy()
+    if not include_obs_dims:
+        res.clear()
+        res['desired_goal'] = observation_spec['desired_goal']
     res["aux_desired"] = observation_spec["aux_achieved"]
     return res
+
+
+@gin.configurable
+def cvae_prior_spec(observation_spec):
+    return _remove_goal_keys(observation_spec.copy())
+
+
+@gin.configurable
+def cvae_output_dims(encoding_dims):
+    return 2 * encoding_dims
+
+
+@gin.configurable
+def cvae_input_spec(observation_spec, z_prior_network):
+    return (
+        z_prior_network.input_tensor_spec,
+        vae_output_spec(observation_spec),
+        z_prior_network.output_spec,
+    )
 
 
 @gin.configurable
@@ -339,6 +370,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  plan_remaining_subgoals=True,
                  plan_after_goal_achieved=False,
                  vae=None,
+                 use_cvae=False,
                  vae_weight=0.,
                  vae_penalize_above=-1.e8,
                  vae_bias=0.,
@@ -398,6 +430,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             vae (Algorithm): if provided, use VAE to estimate whether observation has
                 been observed before, i.e. under current state, goal is reachable.
                 VAE is trained with hindsight experience, using future state as goal.
+            use_cvae (bool): whether to use conditional VAE to predict goal given obs.
             vae_weight (float): weight of vae cost in trajectory cost.
             vae_penalize_above (float): penalize vae_cost only if above this threshold.
             vae_bias (float): additional penalty if cost above threshold.
@@ -533,6 +566,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if bound_goals:
             assert normalize_goals
         self._vae = vae
+        self._use_cvae = use_cvae
         self._vae_weight = vae_weight
         self._vae_penalize_above = torch.tensor(
             vae_penalize_above, dtype=torch.float32)
@@ -558,7 +592,14 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 _inputs["aux_desired"] = _inputs["aux_desired"] - _inputs[
                     "aux_achieved"]
             inputs = _inputs
-
+        if self._use_cvae:
+            prior = inputs.copy()
+            goal = prior.copy()
+            goal.clear()
+            prior = _remove_goal_keys(prior)
+            goal['desired_goal'] = inputs['desired_goal']
+            goal['aux_desired'] = inputs['aux_desired']
+            inputs = (prior, goal)
         z, kld_loss = self._vae._sampling_forward(inputs, n_samples=n_samples)
         flat_z = z
         if n_samples > 1:
@@ -569,7 +610,10 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             outputs = flat_outputs.reshape(z.shape[0], z.shape[1], -1)
         flat_in = inputs
         if alf.nest.is_nested(inputs):
-            flat_in = self._concat(inputs)
+            truth = inputs
+            if self._use_cvae:
+                truth = inputs[1]
+            flat_in = self._concat(truth)
         # MSE reconstruction loss
         decode_loss = torch.mean(
             alf.utils.math_ops.square(flat_in - outputs), dim=-1)
