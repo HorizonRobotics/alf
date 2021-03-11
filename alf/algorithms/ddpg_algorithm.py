@@ -252,7 +252,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         target_q_values, target_critic_states = self._target_critic_networks(
             (exp.observation, target_action), state=state.target_critics)
 
-        target_q_values = target_q_values.min(dim=1)[0]
+        if target_q_values.ndim == 3 and self._reward_weights is not None:
+            sign = self._reward_weights.sign()
+            target_q_values = (target_q_values * sign).min(dim=1)[0] * sign
+        else:
+            target_q_values = target_q_values.min(dim=1)[0]
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)

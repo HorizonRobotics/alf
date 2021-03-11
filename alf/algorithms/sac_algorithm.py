@@ -636,7 +636,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         target_critics, target_critics_state = self._compute_critics(
             self._target_critic_networks, exp.observation, action,
             state.target_critics)
-        target_critics = target_critics.min(dim=1)[0]
+
+        if target_critics.ndim == 3 and self._reward_weights is not None:
+            sign = self._reward_weights.sign()
+            target_critics = (target_critics * sign).min(dim=1)[0] * sign
+        else:
+            target_critics = target_critics.min(dim=1)[0]
 
         if self._act_type == ActionType.Discrete:
             critics = self._select_q_value(exp.action, critics)
