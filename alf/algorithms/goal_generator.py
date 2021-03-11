@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from absl import logging
+import copy
 import gin
 import numpy as np
 import functools
@@ -343,6 +344,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  vae_bias=0.,
                  vae_samples=1,
                  vae_decoder=None,
+                 subtract_desired=False,
                  plan_cost_ln_norm=1,
                  sg_leng_penalty=0,
                  subgoal_cost_thd=0.5,
@@ -401,6 +403,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             vae_bias (float): additional penalty if cost above threshold.
             vae_samples (int): number of z samples to use in VAE.
             vae_decoder (nn.Module): decoder for the VAE.
+            subtract_desired (bool): whether to subtract desired state by achieved in vae
+                input.
             sg_leng_penalty (float): how much to penalize long distance subgoals in plan.
             subgoal_cost_thd (float): penalize subgoal if above this distance.
             infer_yaw (bool): infer yaw from speed, instead of sample using CEM.
@@ -536,6 +540,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         self._concat = alf.nest.utils.NestConcat()
         self._vae_samples = vae_samples
         self._vae_decoder = vae_decoder
+        self._subtract_desired = subtract_desired
         self._ou_process = common.create_ou_process(goal_spec, gou_stddev,
                                                     gou_damping)
         self._gou_stddev = gou_stddev
@@ -544,6 +549,16 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
     def _vae_loss(self, inputs, n_samples=1):
         assert self._vae
         assert self._vae_decoder
+        if self._subtract_desired:
+            _inputs = copy.deepcopy(inputs)
+            if "desired_goal" in _inputs:
+                _inputs["desired_goal"] = _inputs["desired_goal"] - _inputs[
+                    "achieved_goal"]
+            if "aux_desired" in _inputs:
+                _inputs["aux_desired"] = _inputs["aux_desired"] - _inputs[
+                    "aux_achieved"]
+            inputs = _inputs
+
         z, kld_loss = self._vae._sampling_forward(inputs, n_samples=n_samples)
         flat_z = z
         if n_samples > 1:
