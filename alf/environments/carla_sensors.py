@@ -603,6 +603,10 @@ class CameraSensor(SensorBase):
             height, width = self._image.shape[1:3]
             image = np.transpose(self._image, (2, 1, 0))
 
+            if self._sensor_type.startswith(
+                    'sensor.camera.semantic_segmentation'):
+                image = image * 10  # scale the label map for better viewing
+
             scaled_height, scaled_width = get_scaled_image_size(height, width)
 
             if scaled_height != height or scaled_width != width:
@@ -624,6 +628,15 @@ class CameraSensor(SensorBase):
         array = np.reshape(array, (image.height, image.width, 4))
         array = array[:, :, :3]
         array = array[:, :, ::-1]
+
+        # Need to slice the multi-channel image according to the number of
+        # channels specified in observation_spec.
+        # For raw data from the semantic segmentation camera, the tag information
+        # is encoded in the red channel.
+        # For logarithmic depth from depth camera, the scalar depth is the same
+        # for all three channels and therefore we can do a similar slicing.
+        array = array[:, :, 0:self._observation_spec.shape[0]]
+
         array = np.transpose(array, (2, 0, 1))
         self._image = array.copy()
 
