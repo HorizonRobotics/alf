@@ -580,15 +580,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         if self._act_type == ActionType.Continuous:
             critics, critics_state = self._compute_critics(
                 self._critic_networks, exp.observation, action, state)
-            if critics.ndim == 3:
-                # Multidimensional reward: [B, num_criric_replicas, reward_dim]
-                if self._reward_weights is None:
-                    critics = critics.sum(dim=2)
-                else:
-                    critics = torch.tensordot(
-                        critics, self._reward_weights, dims=1)
-
+            if critics.ndim == 3 and self._reward_weights is not None:
+                # Multidimensional reward: [B, replicas, reward_dim]
+                critics = critics * self._reward_weights
+            # min over replicas
             q_value = critics.min(dim=1)[0]
+
             continuous_log_pi = log_pi
             cont_alpha = torch.exp(self._log_alpha).detach()
         else:
@@ -596,10 +593,11 @@ class SacAlgorithm(OffPolicyAlgorithm):
             # ``critics``` is already after min over replicas
             critics_state = ()
             discrete_act_dist = action_distribution[0]
-            q_value = (discrete_act_dist.probs.detach() * critics).sum(-1)
+            q_value = discrete_act_dist.probs.detach() * critics
             action, continuous_log_pi = action[1], log_pi[1]
             cont_alpha = torch.exp(self._log_alpha[1]).detach()
 
+        # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
@@ -638,7 +636,12 @@ class SacAlgorithm(OffPolicyAlgorithm):
         target_critics, target_critics_state = self._compute_critics(
             self._target_critic_networks, exp.observation, action,
             state.target_critics)
-        target_critics = target_critics.min(dim=1)[0]
+
+        if target_critics.ndim == 3 and self._reward_weights is not None:
+            sign = self._reward_weights.sign()
+            target_critics = (target_critics * sign).min(dim=1)[0] * sign
+        else:
+            target_critics = target_critics.min(dim=1)[0]
 
         if self._act_type == ActionType.Discrete:
             critics = self._select_q_value(exp.action, critics)

@@ -252,10 +252,11 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
         target_q_values, target_critic_states = self._target_critic_networks(
             (exp.observation, target_action), state=state.target_critics)
 
-        if self._num_critic_replicas > 1:
-            target_q_values = target_q_values.min(dim=1)[0]
+        if target_q_values.ndim == 3 and self._reward_weights is not None:
+            sign = self._reward_weights.sign()
+            target_q_values = (target_q_values * sign).min(dim=1)[0] * sign
         else:
-            target_q_values = target_q_values.squeeze(dim=1)
+            target_q_values = target_q_values.min(dim=1)[0]
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, exp.action), state=state.critics)
@@ -276,19 +277,14 @@ class DdpgAlgorithm(OffPolicyAlgorithm):
 
         q_values, critic_states = self._critic_networks(
             (exp.observation, action), state=state.critics)
-        if q_values.ndim == 3:
-            # Multidimensional reward: [B, num_criric_replicas, reward_dim]
-            if self._reward_weights is None:
-                q_values = q_values.sum(dim=2)
-            else:
-                q_values = torch.tensordot(
-                    q_values, self._reward_weights, dims=1)
 
-        if self._num_critic_replicas > 1:
-            q_value = q_values.min(dim=1)[0]
-        else:
-            q_value = q_values.squeeze(dim=1)
+        if q_values.ndim == 3 and self._reward_weights is not None:
+            # Multidimensional reward: [B, replicas, reward_dim]
+            q_values = q_values * self._reward_weights
+        # min over replicas
+        q_value = q_values.min(dim=1)[0]
 
+        # This sum() will reduce all dims so q_value can be any rank
         dqda = nest_utils.grad(action, q_value.sum())
 
         def actor_loss_fn(dqda, action):
