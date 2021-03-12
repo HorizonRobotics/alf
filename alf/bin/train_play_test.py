@@ -226,6 +226,11 @@ class TrainPlayTest(alf.test.TestCase):
         except ImportError:
             self.skipTest("Atari env is not available.")
 
+    def _skip_if_safety_gym_unavailable(self):
+        from alf.environments import suite_safety_gym
+        if not suite_safety_gym.is_available():
+            self.skipTest("Safety Gym is not available.")
+
     def _test(self,
               gin_file,
               skip_checker=None,
@@ -486,6 +491,12 @@ class TrainPlayTest(alf.test.TestCase):
     def test_sac_cart_pole(self):
         self._test(
             gin_file='sac_cart_pole.gin',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_sac_lag_cargoal1(self):
+        self._test(
+            gin_file="sac_lag_cargoal1.gin",
+            skip_checker=self._skip_if_safety_gym_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)

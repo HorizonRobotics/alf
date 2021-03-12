@@ -110,6 +110,7 @@ def main(_):
     algorithm = algorithm_ctor(
         observation_spec=observation_spec,
         action_spec=env.action_spec(),
+        reward_spec=env.reward_spec(),
         config=config)
     try:
         policy_trainer.play(

@@ -34,7 +34,7 @@ from alf.nest.utils import NestConcat
 from alf.algorithms.ppo_algorithm_test import unroll
 from alf.utils import common, dist_utils, tensor_utils
 from alf.utils.math_ops import clipped_exp
-from alf.tensor_specs import BoundedTensorSpec
+from alf.tensor_specs import BoundedTensorSpec, TensorSpec
 
 
 class SACAlgorithmTestInit(alf.test.TestCase):
@@ -128,6 +128,7 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
 
         obs_spec = env._observation_spec
         action_spec = env._action_spec
+        reward_spec = env._reward_spec
 
         fc_layer_params = (10, 10)
 
@@ -143,13 +144,12 @@ class SACAlgorithmTest(parameterized.TestCase, alf.test.TestCase):
             continuous_projection_net_ctor=continuous_projection_net_ctor)
 
         critic_network = partial(
-            CriticNetwork,
-            output_tensor_spec=env.reward_spec(),
-            joint_fc_layer_params=fc_layer_params)
+            CriticNetwork, joint_fc_layer_params=fc_layer_params)
 
         alg = SacAlgorithm(
             observation_spec=obs_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             actor_network_cls=actor_network,
             critic_network_cls=critic_network,
             use_parallel_network=use_parallel_network,

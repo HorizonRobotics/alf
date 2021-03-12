@@ -76,10 +76,7 @@ class OffPolicyAlgorithm(RLAlgorithm):
         with record_time("time/after_train_iter"):
             train_info = experience.rollout_info
             experience = experience._replace(rollout_info=())
-            if config.unroll_with_grad:
-                self.after_train_iter(experience, train_info)
-            else:
-                self.after_train_iter(experience)  # only off-policy training
+            self.after_train_iter(experience, train_info)
 
         # For now, we only return the steps of the primary algorithm's training
         return steps

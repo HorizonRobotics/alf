@@ -1,0 +1,64 @@
+include 'sac.gin'
+
+# Needs to install safety gym first:
+# https://github.com/openai/safety-gym
+import alf.environments.suite_safety_gym
+import alf.utils.math_ops
+import alf.utils.dist_utils
+
+import alf.algorithms.lagrangian_algorithm
+
+create_environment.env_name="Safexp-CarGoal1-v0"
+create_environment.env_load_fn=@suite_safety_gym.load
+create_environment.num_parallel_environments=30
+suite_safety_gym.load.sparse_reward=False
+
+actor/ActorDistributionNetwork.fc_layer_params=(256, 256)
+actor/ActorDistributionNetwork.continuous_projection_net_ctor=@NormalProjectionNetwork
+NormalProjectionNetwork.state_dependent_std=True
+NormalProjectionNetwork.scale_distribution=True
+NormalProjectionNetwork.std_transform=@clipped_exp
+clipped_exp.clip_value_min=-10
+clipped_exp.clip_value_max=2
+
+critic/CriticNetwork.joint_fc_layer_params=(256, 256)
+critic/CriticNetwork.output_tensor_spec=@TensorSpec((%SafetyGym.REWARD_DIMENSION,))
+
+SacAlgorithm.actor_network_cls=@actor/ActorDistributionNetwork
+SacAlgorithm.critic_network_cls=@critic/CriticNetwork
+SacAlgorithm.target_update_tau=0.05
+SacAlgorithm.actor_optimizer=@AdamTF(lr=1e-3)
+SacAlgorithm.alpha_optimizer=@AdamTF(lr=1e-3)
+SacAlgorithm.critic_optimizer=@AdamTF(lr=1e-3)
+SacAlgorithm.use_parallel_network=True
+SacAlgorithm.use_entropy_reward=False
+SacAlgorithm.critic_loss_ctor=@TDLoss
+calc_default_target_entropy.min_prob=0.05
+
+LagrangianAlgorithm.init_weights=1. # utility and constraint reward/value should be normalized!
+LagrangianAlgorithm.reward_thresholds=[None, -0.025, None]
+LagrangianAlgorithm.optimizer=@AdamTF(lr=1e-3)
+
+Agent.rl_algorithm_cls=@SacAlgorithm
+Agent.reward_weight_algorithm_cls=@LagrangianAlgorithm
+
+# training config
+TrainerConfig.temporally_independent_train_step=True
+RewardNormalizer.clip_value=10.
+#RewardNormalizer.zero_mean=False
+TrainerConfig.data_transformer_ctor=[@RewardNormalizer]
+TrainerConfig.initial_collect_steps=50000
+TrainerConfig.mini_batch_length=20
+TrainerConfig.unroll_length=10
+TrainerConfig.mini_batch_size=2000
+TrainerConfig.num_updates_per_train_iter=10
+TrainerConfig.num_iterations=0
+TrainerConfig.num_env_steps=1e7
+TrainerConfig.num_checkpoints=5
+TrainerConfig.evaluate=0
+TrainerConfig.eval_interval=10000
+TrainerConfig.num_eval_episodes=50
+TrainerConfig.debug_summaries=1
+TrainerConfig.summarize_grads_and_vars=0
+TrainerConfig.summary_interval=10
+TrainerConfig.replay_buffer_length=100000
