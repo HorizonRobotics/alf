@@ -22,12 +22,14 @@ from alf.utils import common, dist_utils, tensor_utils
 from alf.data_structures import AlgStep, Experience, LossInfo, StepType, TimeStep
 from alf.algorithms.on_policy_algorithm import OnPolicyAlgorithm
 from alf.algorithms.config import TrainerConfig
+from alf.tensor_specs import TensorSpec
 
 
 class MyAlg(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 reward_spec=TensorSpec(()),
                  env=None,
                  config=None,
                  on_policy=True,
@@ -36,6 +38,7 @@ class MyAlg(OnPolicyAlgorithm):
         super().__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             train_state_spec=observation_spec,
             env=env,
             config=config,

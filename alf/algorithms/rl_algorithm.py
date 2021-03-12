@@ -126,6 +126,7 @@ class RLAlgorithm(Algorithm):
         self._env = env
         self._observation_spec = observation_spec
         self._action_spec = action_spec
+        assert reward_spec.ndim <= 1, "reward_spec must be rank-0 or rank-1!"
         self._reward_spec = reward_spec
 
         self._reward_weights = None
