@@ -18,12 +18,12 @@ import torch
 
 import alf
 import alf.data_structures as ds
-from alf.algorithms.lagrangian_algorithm import LagrangianAlgorithm
+from alf.algorithms.lagrangian_algorithm import LagrangianRewardWeightAlgorithm
 from alf.utils import common, dist_utils
 from alf.optimizers import Adam
 
 
-class LagrangianAlgorithmTest(alf.test.TestCase):
+class LagrangianRewardWeightAlgorithmTest(alf.test.TestCase):
     def test_lagrangian_algorithm(self):
         batch_size = 2
         obs_dim = 3
@@ -36,7 +36,7 @@ class LagrangianAlgorithmTest(alf.test.TestCase):
         time_step_spec = ds.time_step_spec(observation_spec, action_spec,
                                            reward_spec)
 
-        alg = LagrangianAlgorithm(
+        alg = LagrangianRewardWeightAlgorithm(
             reward_spec,
             reward_thresholds=[None, 0.1, -0.1, None],
             optimizer=Adam(lr=1.),

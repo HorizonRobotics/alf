@@ -493,12 +493,6 @@ class TrainPlayTest(alf.test.TestCase):
             gin_file='sac_cart_pole.gin',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_lag_cargoal1(self):
-        self._test(
-            gin_file="sac_lag_cargoal1.gin",
-            skip_checker=self._skip_if_safety_gym_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_humanoid(self):
         self._test(

@@ -40,6 +40,9 @@ You can visualize playing of the trained model by running:
     --root_dir=~/tmp/cart_pole \
     --gin_file=ac_cart_pole.gin \
     --alsologtostderr
+
+If instead of Gin configuration file, you want to use ALF python conf file, then
+replace the "--gin_file" option with "--conf".
 """
 
 from absl import app

@@ -86,7 +86,9 @@ class Agent(OnPolicyAlgorithm):
                 itself.
             rl_algorithm_cls (type): The algorithm class for learning the policy.
             reward_weight_algorithm_cls (type): The algorithm class for adjusting
-                reward weights when multi-dim rewards are used.
+                reward weights when multi-dim rewards are used. If provided, the
+                the default ``reward_weights`` of ``rl_algorithm`` will be
+                overwritten by this algorithm.
             representation_learner_cls (type): The algorithm class for learning
                 the representation. If provided, the constructed learner will
                 calculate the representation from the original observation as

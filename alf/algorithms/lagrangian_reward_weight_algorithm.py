@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Lagrangian Algorithm."""
+"""LagrangianRewardWeightAlgorithm."""
 
 import numpy as np
 import gin
@@ -31,21 +31,19 @@ LagInfo = namedtuple("LagInfo", ["rollout_reward"], default_value=())
 
 
 @alf.configurable(blacklist=["reward_spec"])
-class LagrangianAlgorithm(Algorithm):
+class LagrangianRewardWeightAlgorithm(Algorithm):
     """An algorithm that adjusts reward weights according to untransformed
     rollout rewards. The adjustment is expected to be performed after every
     training iteration.
 
-    Generally speaking, for each reward dimension, the algorithm compares the
-    expected undiscounted episodic return to a predefined threshold, and if the
-    return is greater than the threshold (requirement satisfied) then it decreases
-    the weight; otherwise it increases the weight.
+    Generally speaking, for each reward dimension, the algorithm compares an
+    individual reward per step to an average expected threshold, and if the
+    reward is greater than the threshold (requirement satisfied) then it decreases
+    the reward weight; otherwise it increases the weight.
 
-    Usually the threshold is defined for a fixed time length, so equivalently,
-    for simplicity, the algorithm can instead compares individual rewards per
-    step to an averaged threshold.
-
-    Note that a reward is always the higher the better.
+    Note that this algorithm doesn't put a constraint on per-step basis since it
+    only learns a single weight for each reward dim. A reward is always the higher
+    the better.
     """
 
     def __init__(self,
@@ -54,21 +52,21 @@ class LagrangianAlgorithm(Algorithm):
                  optimizer,
                  init_weights=1.,
                  debug_summaries=False,
-                 name="LagrangianAlgorithm"):
+                 name="LagrangianRewardWeightAlgorithm"):
         """
         Args:
             reward_spec (TensorSpec): a rank-1 tensor spec representing multi-dim
                 rewards.
             reward_thresholds (list[float|None]): a list of floating numbers,
-                each representing a desired minimum reward threshold. If any entry
-                is None, then that reward weight won't be tuned and its init value
-                is always used.
+                each representing a desired minimum reward threshold in expectation.
+                If any entry is None, then that reward weight won't be tuned and
+                its init value is always used.
             optimizer (optimizer): optimizer for learning the reward weights.
             init_weights (float|list[float]): the initial reward weights.
             debug_summaries (bool):
             name (str):
         """
-        super(LagrangianAlgorithm, self).__init__(
+        super(LagrangianRewardWeightAlgorithm, self).__init__(
             debug_summaries=debug_summaries, name=name)
 
         self._reward_spec = reward_spec
