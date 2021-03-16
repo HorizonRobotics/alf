@@ -33,8 +33,9 @@ class TransformerNetwork(PreprocessorNetwork):
         for i in range(num_prememory_layers):
             core, inputs = T_i([core, inputs], [core, inputs])
         for j in range(num_memory_layers):
-            core, inputs = TM_j([memory_j, core, inputs], [core, inputs])
+            new_core, inputs = TM_j([memory_j, core, inputs], [core, inputs])
             memory_j.write(core)
+            core = new_core
         return core, new_memory_state
 
     where T_i denotes the ``TransformerBlock``  for the i-th prememory layers
@@ -195,10 +196,11 @@ class TransformerNetwork(PreprocessorNetwork):
                 memory.from_states(state[i])
                 transformer = self._transformers[self._num_prememory_layers +
                                                  i]
-                query = transformer.forward(
+                new_query = transformer.forward(
                     memory=torch.cat([memory.memory(), query], dim=-2),
                     query=query)
                 memory.write(query[:, :self._core_size, :])
+                query = new_query
 
         new_state = [mem.states for mem in self._memories]
 
