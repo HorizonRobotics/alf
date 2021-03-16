@@ -117,8 +117,7 @@ critic_network_cls = partial(
     alf.networks.CriticNetwork,
     joint_fc_layer_params=fc_layers_params,
     activation=activation,
-    use_fc_bn=use_batch_normalization,
-    output_tensor_spec=env.reward_spec())
+    use_fc_bn=use_batch_normalization)
 
 from alf.utils.dist_utils import calc_default_target_entropy
 

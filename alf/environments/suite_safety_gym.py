@@ -49,6 +49,7 @@ import copy
 import gym
 
 import gin
+import alf
 from alf.environments import suite_gym
 
 
@@ -158,7 +159,7 @@ class VectorReward(gym.Wrapper):
         return self._reward_space
 
 
-@gin.configurable(blacklist=['env'])
+@alf.configurable(blacklist=['env'])
 class RGBRenderWrapper(gym.Wrapper):
     """A ``metadata`` field should've been defined in the original safety gym env;
     otherwise video recording will be disabled. See
@@ -197,7 +198,7 @@ class RGBRenderWrapper(gym.Wrapper):
 gin.constant('SafetyGym.REWARD_DIMENSION', VectorReward.REWARD_DIMENSION)
 
 
-@gin.configurable
+@alf.configurable
 def load(environment_name,
          env_id=None,
          discount=1.0,

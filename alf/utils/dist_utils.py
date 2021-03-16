@@ -58,7 +58,7 @@ SigmoidTransform = get_invertable(td.SigmoidTransform)
 SoftmaxTransform = get_invertable(td.SoftmaxTransform)
 
 
-@gin.configurable
+@alf.configurable
 class Softsign(td.Transform):
     domain = constraints.real
     codomain = constraints.interval(-1.0, 1.0)
@@ -97,7 +97,7 @@ class Softsign(td.Transform):
         return -2. * torch.log(1 + x.abs())
 
 
-@gin.configurable
+@alf.configurable
 class StableTanh(td.Transform):
     r"""Invertable transformation (bijector) that computes :math:`Y = tanh(X)`,
     therefore :math:`Y \in (-1, 1)`.
@@ -602,7 +602,7 @@ def get_base_dist(dist):
             "Distribution type %s is not supported" % type(dist))
 
 
-@gin.configurable
+@alf.configurable
 def estimated_entropy(dist, num_samples=1, check_numerics=False):
     r"""Estimate entropy by sampling.
 
@@ -711,7 +711,7 @@ def entropy_with_fallback(distributions, return_sum=True):
                 nest.pack_sequence_as(distributions, entropies_for_gradient))
 
 
-@gin.configurable
+@alf.configurable
 def calc_default_target_entropy(spec, min_prob=0.1):
     """Calc default target entropy.
     Args:
@@ -738,7 +738,7 @@ def calc_default_target_entropy(spec, min_prob=0.1):
     return e
 
 
-@gin.configurable
+@alf.configurable
 def calc_default_target_entropy_quantized(spec,
                                           num_bins,
                                           ent_per_action_dim=-1.0):

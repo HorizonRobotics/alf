@@ -336,6 +336,7 @@ class RLTrainer(Trainer):
         self._algorithm = self._algorithm_ctor(
             observation_spec=observation_spec,
             action_spec=env.action_spec(),
+            reward_spec=env.reward_spec(),
             env=env,
             config=self._config,
             debug_summaries=self._debug_summaries)

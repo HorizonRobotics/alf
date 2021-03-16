@@ -21,7 +21,6 @@ actor/ActorDistributionNetwork.continuous_projection_net_ctor=@actor/StableNorma
 critic/CriticNetwork.joint_fc_layer_params=%fc_layers_params
 critic/CriticNetwork.activation=%activation
 critic/CriticNetwork.use_fc_bn=%use_batch_normalization
-critic/CriticNetwork.output_tensor_spec=@TensorSpec((%CarlaEnvironment.REWARD_DIMENSION,))
 
 Adam.lr=1e-4
 

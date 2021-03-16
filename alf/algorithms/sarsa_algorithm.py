@@ -32,6 +32,7 @@ from alf.networks import Network
 from alf.utils import common, dist_utils, losses, math_ops, spec_utils, tensor_utils
 from alf.utils.summary_utils import safe_mean_hist_summary
 import alf.nest.utils as nest_utils
+from alf.tensor_specs import TensorSpec
 
 SarsaState = namedtuple(
     'SarsaState', [
@@ -73,6 +74,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                  action_spec,
                  actor_network_ctor,
                  critic_network_ctor,
+                 reward_spec=TensorSpec(()),
                  use_parallel_network=False,
                  num_critic_replicas=2,
                  env=None,
@@ -106,6 +108,8 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
                 which is a tuple of ``(observation_spec, action_spec)``. The
                 constructed network will be called with
                 ``forward((observation, action), state)``.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             use_parallel_network (bool): whether to use parallel network for
                 calculating critics. This can be useful when
                 ``mini_batch_size * mini_batch_length`` (when ``temporally_independent_train_step``
@@ -185,6 +189,7 @@ class SarsaAlgorithm(OnPolicyAlgorithm):
         super().__init__(
             observation_spec,
             action_spec,
+            reward_spec=reward_spec,
             env=env,
             config=config,
             predict_state_spec=SarsaState(

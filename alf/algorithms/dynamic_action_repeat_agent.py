@@ -51,6 +51,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 reward_spec=TensorSpec(()),
                  env=None,
                  config: TrainerConfig = None,
                  K=5,
@@ -66,6 +67,8 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions; can
                 only be continuous actions for now.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             env (Environment): The environment to interact with. ``env`` is a
                 batched environment, which means that it runs multiple simulations
                 simultateously. ``env` only needs to be provided to the root
@@ -142,6 +145,7 @@ class DynamicActionRepeatAgent(OffPolicyAlgorithm):
         super().__init__(
             observation_spec,
             action_spec,
+            reward_spec=reward_spec,
             train_state_spec=train_state_spec,
             rollout_state_spec=rollout_state_spec,
             predict_state_spec=predict_state_spec,

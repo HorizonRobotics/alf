@@ -21,6 +21,7 @@ from alf.networks import ActorDistributionNetwork, ValueNetwork
 from alf.algorithms.actor_critic_loss import ActorCriticLoss
 from alf.data_structures import TimeStep, AlgStep, namedtuple
 from alf.utils import common, dist_utils
+from alf.tensor_specs import TensorSpec
 from .config import TrainerConfig
 
 ActorCriticState = namedtuple(
@@ -37,6 +38,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
     def __init__(self,
                  observation_spec,
                  action_spec,
+                 reward_spec=TensorSpec(()),
                  actor_network_ctor=ActorDistributionNetwork,
                  value_network_ctor=ValueNetwork,
                  env=None,
@@ -50,6 +52,8 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         Args:
             observation_spec (nested TensorSpec): representing the observations.
             action_spec (nested BoundedTensorSpec): representing the actions.
+            reward_spec (TensorSpec): a rank-1 or rank-0 tensor spec representing
+                the reward(s).
             env (Environment): The environment to interact with. env is a batched
                 environment, which means that it runs multiple simulations
                 simultateously. env only needs to be provided to the root
@@ -82,6 +86,7 @@ class ActorCriticAlgorithm(OnPolicyAlgorithm):
         super(ActorCriticAlgorithm, self).__init__(
             observation_spec=observation_spec,
             action_spec=action_spec,
+            reward_spec=reward_spec,
             predict_state_spec=ActorCriticState(
                 actor=actor_network.state_spec),
             train_state_spec=ActorCriticState(
