@@ -168,7 +168,8 @@ class TransformerNetwork(PreprocessorNetwork):
         Returns:
             - Tensor: shape is [B, core_size * d_model] if ``return_core_only``,
                     and [B, core_size + input_size, d_model] if not ``return_core_only``,
-                    where input_size is the number of embeddings from (processed) input
+                    where ``input_size`` is the number of embeddings from the
+                    (processed) input.
             - nested Tensor: network states.
         """
         z, _ = super().forward(inputs, state)
@@ -194,11 +195,10 @@ class TransformerNetwork(PreprocessorNetwork):
                 memory.from_states(state[i])
                 transformer = self._transformers[self._num_prememory_layers +
                                                  i]
-                new_query = transformer.forward(
+                query = transformer.forward(
                     memory=torch.cat([memory.memory(), query], dim=-2),
                     query=query)
                 memory.write(query[:, :self._core_size, :])
-                query = new_query
 
         new_state = [mem.states for mem in self._memories]
 
