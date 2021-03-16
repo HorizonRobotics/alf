@@ -70,7 +70,6 @@ function test() {
         alf.algorithms.trac_algorithm_test \
         alf.algorithms.vae_test \
         alf.bin.train_play_test \
-        alf.bin.train_play_test_alfconf.py \
         alf.data_structures_test \
         alf.device_ctx_test \
         alf.environments.gym_wrappers_test \
