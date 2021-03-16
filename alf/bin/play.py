@@ -86,7 +86,7 @@ FLAGS = flags.FLAGS
 def main(_):
     seed = common.set_random_seed(FLAGS.random_seed)
     alf.config('create_environment', nonparallel=True)
-    alf.config('TrainerConfig', mutable=False, random_seed=seed)
+    alf.config('TrainerConfig', random_seed=seed)
     conf_file = common.get_conf_file()
     try:
         common.parse_conf_file(conf_file)

@@ -1,4 +1,4 @@
-# Copyright (c) 2019 Horizon Robotics. All Rights Reserved.
+# Copyright (c) 2021 Horizon Robotics. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Test the training and playing of the gin files under alf/examples."""
+"""Test the training and playing of the alf conf files under alf/examples."""
 
 from absl import logging
 import os
@@ -26,7 +26,7 @@ from unittest import SkipTest
 
 import alf
 
-SKIP_TODO_MESSAGE = "TODO: convert and test this gin file to pytorch version"
+SKIP_TODO_MESSAGE = "TODO: convert and test this case from gin to alf conf!"
 
 
 def run_cmd(cmd, cwd=None):
@@ -91,9 +91,9 @@ def get_examples_dir():
     return examples_dir
 
 
-def _to_gin_params(parameters):
-    """A helper function that convert key-value parameters to gin parameters"""
-    return ['--gin_param=%s' % e for e in parameters]
+def _to_alf_conf_params(parameters):
+    """A helper function that convert key-value parameters to alf conf parameters"""
+    return ['--conf_param=%s' % e for e in parameters]
 
 
 COMMON_TRAIN_CONF = [
@@ -111,12 +111,12 @@ COMMON_TRAIN_CONF = [
     # disable evaluate
     'TrainerConfig.evaluate=False',
 ]
-COMMON_TRAIN_PARAMS = _to_gin_params(COMMON_TRAIN_CONF)
+COMMON_TRAIN_PARAMS = _to_alf_conf_params(COMMON_TRAIN_CONF)
 
 ON_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.unroll_length=4',
 ]
-ON_POLICY_TRAIN_PARAMS = _to_gin_params(ON_POLICY_TRAIN_CONF)
+ON_POLICY_TRAIN_PARAMS = _to_alf_conf_params(ON_POLICY_TRAIN_CONF)
 
 OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.unroll_length=1',
@@ -127,34 +127,34 @@ OFF_POLICY_TRAIN_CONF = COMMON_TRAIN_CONF + [
     'TrainerConfig.num_envs=2',
     'TrainerConfig.replay_buffer_length=64',
 ]
-OFF_POLICY_TRAIN_PARAMS = _to_gin_params(OFF_POLICY_TRAIN_CONF)
+OFF_POLICY_TRAIN_PARAMS = _to_alf_conf_params(OFF_POLICY_TRAIN_CONF)
 
 ON_POLICY_ALG_OFF_POLICY_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=2',
     'TrainerConfig.initial_collect_steps=0',
 ]
-ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS = _to_gin_params(
+ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS = _to_alf_conf_params(
     ON_POLICY_ALG_OFF_POLICY_TRAIN_CONF)
 
 PPO_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=2', 'TrainerConfig.initial_collect_steps=0',
     'TrainerConfig.num_updates_per_train_iter=2'
 ]
-PPO_TRAIN_PARAMS = _to_gin_params(PPO_TRAIN_CONF)
+PPO_TRAIN_PARAMS = _to_alf_conf_params(PPO_TRAIN_CONF)
 
 MBRL_TRAIN_CONF = OFF_POLICY_TRAIN_CONF + [
     'TrainerConfig.unroll_length=4',
     'TrainerConfig.whole_replay_buffer_training=True',
     'TrainerConfig.clear_replay_buffer=False',
 ]
-MBRL_TRAIN_PARAMS = _to_gin_params(MBRL_TRAIN_CONF)
+MBRL_TRAIN_PARAMS = _to_alf_conf_params(MBRL_TRAIN_CONF)
 
 # Run COMMAND in a virtual X server environment
 XVFB_RUN = ['xvfb-run', '-a', '-e', '/dev/stderr']
 
 
 class TrainPlayTest(alf.test.TestCase):
-    """Train and play test for examples located in directory
+    """Train and play test for alf conf examples located in directory
     `$PROJECT_ROOT/alf/examples`
 
     NOTE: It's not reasonable to train all the examples until they reaches
@@ -165,11 +165,11 @@ class TrainPlayTest(alf.test.TestCase):
 
     # They are common configuration files, not complete test, exclude them
     _excluded_ = {
-        'atari.gin',
-        'ppo.gin',
+        'carla_conf.py',
+        'sac_conf.py',
     }
 
-    # All gin files list in directory `$PROJECT_ROOT/alf/examples`
+    # All alf conf files list in directory `$PROJECT_ROOT/alf/examples`
     _all_ = set()
 
     _tested_ = set()
@@ -182,7 +182,7 @@ class TrainPlayTest(alf.test.TestCase):
         examples_dir = get_examples_dir()
         for root, dirs, files in os.walk(examples_dir):
             for filename in files:
-                if filename.endswith('.gin'):
+                if filename.endswith('_conf.py'):
                     cls._all_.add(filename)
 
     @classmethod
@@ -226,13 +226,18 @@ class TrainPlayTest(alf.test.TestCase):
         except ImportError:
             self.skipTest("Atari env is not available.")
 
+    def _skip_if_carla_unavailable(self):
+        from alf.environments import suite_carla
+        if not suite_carla.is_available():
+            self.skipTest("Carla is not available.")
+
     def _skip_if_safety_gym_unavailable(self):
         from alf.environments import suite_safety_gym
         if not suite_safety_gym.is_available():
             self.skipTest("Safety Gym is not available.")
 
     def _test(self,
-              gin_file,
+              alf_conf_file,
               skip_checker=None,
               extra_train_params=None,
               test_play=True,
@@ -243,7 +248,7 @@ class TrainPlayTest(alf.test.TestCase):
         """Test train, play and check performance
 
         Args:
-            gin_file (str): Path to the gin-config file.
+            alf_conf_file (str): Path to the alf conf file.
             skip_checker (Callable|list[Callable]): callables that will raise a `SkipTest`
                 exception when the test is not available.
             extra_train_params (list[str]): extra params used for training.
@@ -262,24 +267,24 @@ class TrainPlayTest(alf.test.TestCase):
             for checker in skip_checker:
                 checker()
         except SkipTest:
-            self.markSkipped(gin_file)
+            self.markSkipped(alf_conf_file)
             raise
 
-        self.markTested(gin_file)
+        self.markTested(alf_conf_file)
         with tempfile.TemporaryDirectory() as root_dir:
-            self._test_train(gin_file, extra_train_params, root_dir)
+            self._test_train(alf_conf_file, extra_train_params, root_dir)
             if test_play:
                 self._test_play(root_dir, extra_play_params,
                                 test_video_recording)
             if test_perf and test_perf_func:
                 self._test_performance(root_dir, test_perf_func)
 
-    def _test_train(self, gin_file, extra_params, root_dir):
-        """Test if the training configured by gin_file and extra_params can run
-        successfully.
+    def _test_train(self, alf_conf_file, extra_params, root_dir):
+        """Test if the training configured by ``alf_conf_file`` and ``extra_params``
+        can run successfully.
 
         Args:
-            gin_file (str): Path to the gin-config file.
+            alf_conf_file (str): Path to the alf conf file.
             extra_params (list[str]): extra parameters used for training
             root_dir (str): Root directory for writing logs/summaries/checkpoints.
         """
@@ -289,8 +294,8 @@ class TrainPlayTest(alf.test.TestCase):
             '-m',
             'alf.bin.train',
             '--root_dir=%s' % root_dir,
-            '--gin_file=%s' % gin_file,
-            '--gin_param=TrainerConfig.random_seed=1',
+            '--conf=%s' % alf_conf_file,
+            '--conf_param=TrainerConfig.random_seed=1',
         ]
         if 'DISPLAY' not in os.environ:
             cmd = XVFB_RUN + cmd
@@ -299,7 +304,7 @@ class TrainPlayTest(alf.test.TestCase):
 
     def _test_play(self, root_dir, extra_params, test_video_recording):
         """Test if it can play successfully using configuration and checkpoints
-        saved in root_dir.
+        saved in ``root_dir``.
 
         Args:
             root_dir (str): Root directory where configuration and checkpoints are saved
@@ -333,9 +338,10 @@ class TrainPlayTest(alf.test.TestCase):
             eval_dir)
         test_func(episode_returns, episode_lengths)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ac_breakout(self):
         self._test(
-            gin_file='ac_breakout.gin',
+            alf_conf_file='ac_breakout_conf.py',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
@@ -345,13 +351,14 @@ class TrainPlayTest(alf.test.TestCase):
             self.assertGreater(lengths[-1], 195)
 
         self._test(
-            gin_file='ac_cart_pole.gin',
+            alf_conf_file='ac_cart_pole_conf.py',
             test_perf_func=_test_func,
             test_video_recording=True)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ac_simple_navigation(self):
         self._test(
-            gin_file='ac_simple_navigation.gin',
+            alf_conf_file='ac_simple_navigation_conf.py',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
@@ -360,66 +367,118 @@ class TrainPlayTest(alf.test.TestCase):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], -200)
 
-        self._test(gin_file='ddpg_pendulum.gin', test_perf_func=_test_func)
+        self._test(
+            alf_conf_file='ddpg_pendulum_conf.py', test_perf_func=_test_func)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ddpg_fetchslide(self):
         self._test(
-            gin_file="ddpg_fetchslide.gin",
+            alf_conf_file="ddpg_fetchslide_conf.py",
             skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_diayn_pendulum(self):
         self._test(
-            gin_file='diayn_pendulum.gin',
+            alf_conf_file='diayn_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_dyna_actrepeat_sac_bipedal_walker(self):
+        self._test(
+            alf_conf_file='dyna_actrepeat_sac_bipedalwalker_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_dyna_actrepeat_sac_pickplace(self):
+        self._test(
+            alf_conf_file="dyna_actrepeat_sac_pickplace_conf.py",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_mountain_car(self):
         self._test(
-            gin_file='icm_mountain_car.gin',
+            alf_conf_file='icm_mountain_car_conf.py',
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_playground(self):
         self._test(
-            gin_file='icm_playground.gin',
+            alf_conf_file='icm_playground_conf.py',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_super_mario(self):
         self._test(
-            gin_file='icm_super_mario.gin',
+            alf_conf_file='icm_super_mario_conf.py',
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_icm_super_mario_intrinsic_only(self):
         self._test(
-            gin_file="icm_super_mario_intrinsic_only.gin",
+            alf_conf_file="icm_super_mario_intrinsic_only_conf.py",
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_mbrl_pendulum(self):
+        self._test(
+            alf_conf_file='mbrl_pendulum_conf.py',
+            extra_train_params=MBRL_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_mbrl_latent_pendulum(self):
+        self._test(
+            alf_conf_file='mbrl_latent_pendulum_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_mdq_pendulum(self):
+        self._test(
+            alf_conf_file='mdq_pendulum_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_mdq_halfcheetah(self):
+        self._test(
+            alf_conf_file="mdq_halfcheetah_conf.py",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_merlin_dmlab_collect_good_objects(self):
         self._test(
-            gin_file='merlin_dmlab_collect_good_objects.gin',
+            alf_conf_file='merlin_dmlab_collect_good_objects_conf.py',
             skip_checker=self._skip_if_dmlab_unavailable,
             test_play=False,  # render mode 'human' is not implemented
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_muzero_tic_tac_toe(self):
+        self._test(
+            alf_conf_file='muzero_tic_tac_toe_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_off_policy_ac_breakout(self):
         self._test(
-            gin_file='off_policy_ac_breakout.gin',
+            alf_conf_file='off_policy_ac_breakout_conf.py',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_off_policy_ac_cart_pole(self):
         self._test(
-            gin_file='off_policy_ac_cart_pole.gin',
+            alf_conf_file='off_policy_ac_cart_pole_conf.py',
             extra_train_params=ON_POLICY_ALG_OFF_POLICY_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_bullet_humanoid(self):
         self._test(
-            gin_file='ppo_bullet_humanoid.gin',
+            alf_conf_file='ppo_bullet_humanoid_conf.py',
             skip_checker=self._skip_if_bullet_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
@@ -428,77 +487,86 @@ class TrainPlayTest(alf.test.TestCase):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], 195)
 
-        self._test(gin_file='ppo_cart_pole.gin', test_perf_func=_test_func)
+        self._test(
+            alf_conf_file='ppo_cart_pole_conf.py', test_perf_func=_test_func)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_icm_super_mario_intrinsic_only(self):
         self._test(
-            gin_file='ppo_icm_super_mario_intrinsic_only.gin',
+            alf_conf_file='ppo_icm_super_mario_intrinsic_only_conf.py',
             skip_checker=self._skip_if_mario_unavailable(),
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_icubwalk(self):
         self._test(
-            gin_file='ppo_icubwalk.gin',
+            alf_conf_file='ppo_icubwalk_conf.py',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_ppo_pr2(self):
         self._test(
-            gin_file='ppo_pr2.gin',
+            alf_conf_file='ppo_pr2_conf.py',
             skip_checker=self._skip_if_socialbot_unavailable,
+            extra_train_params=PPO_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_ppo_rnd_mrevenge(self):
+        self._test(
+            alf_conf_file='ppo_rnd_mrevenge_conf.py',
             extra_train_params=PPO_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_rnd_super_mario(self):
         self._test(
-            gin_file='rnd_super_mario.gin',
+            alf_conf_file='rnd_super_mario_conf.py',
             skip_checker=self._skip_if_mario_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_ppo_rnd_mrevenge(self):
-        self._test(
-            gin_file='ppo_rnd_mrevenge.gin',
-            extra_train_params=PPO_TRAIN_PARAMS)
-
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_bipedal_walker(self):
         self._test(
-            gin_file='sac_bipedal_walker.gin',
+            alf_conf_file='sac_bipedal_walker_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_dyna_actrepeat_sac_bipedal_walker(self):
+    def test_sac_carla(self):
         self._test(
-            gin_file='dyna_actrepeat_sac_bipedalwalker.gin',
+            alf_conf_file="sac_carla_conf.py",
+            skip_checker=self._skip_if_carla_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
-    def test_sac_fetchreach(self):
-        self._test(
-            gin_file="sac_fetchreach.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
-    def test_sac_fetchslide(self):
-        self._test(
-            gin_file="sac_fetchslide.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
-    def test_dyna_actrepeat_sac_pickplace(self):
-        self._test(
-            gin_file="dyna_actrepeat_sac_pickplace.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_cart_pole(self):
         self._test(
-            gin_file='sac_cart_pole.gin',
+            alf_conf_file='sac_cart_pole_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_sac_fetchreach(self):
+        self._test(
+            alf_conf_file="sac_fetchreach_conf.py",
+            skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_sac_fetchslide(self):
+        self._test(
+            alf_conf_file="sac_fetchslide_conf.py",
+            skip_checker=self._skip_if_mujoco_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sac_humanoid(self):
         self._test(
-            gin_file='sac_humanoid.gin',
+            alf_conf_file='sac_humanoid_conf.py',
             skip_checker=self._skip_if_mujoco_unavailable,
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    def test_sac_lagrw_cargoal1(self):
+        self._test(
+            alf_conf_file='sac_lagrw_cargoal1_conf.py',
+            skip_checker=self._skip_if_safety_gym_unavailable,
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
@@ -506,78 +574,57 @@ class TrainPlayTest(alf.test.TestCase):
         def _test_func(returns, lengths):
             self.assertGreater(returns[-1], -200)
 
-        self._test(gin_file='sac_pendulum.gin', test_perf_func=_test_func)
-
-    def test_mdq_pendulum(self):
         self._test(
-            gin_file='mdq_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+            alf_conf_file='sac_pendulum_conf.py', test_perf_func=_test_func)
 
-    def test_mdq_halfcheetah(self):
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_sarsa_ddpg_pendulum(self):
         self._test(
-            gin_file="mdq_halfcheetah.gin",
-            skip_checker=self._skip_if_mujoco_unavailable,
+            alf_conf_file='sarsa_ddpg_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sarsa_pendulum(self):
         self._test(
-            gin_file='sarsa_pendulum.gin',
+            alf_conf_file='sarsa_pendulum_conf.py',
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
-    def test_sarsa_ddpg_pendulum(self):
-        self._test(
-            gin_file='sarsa_ddpg_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
-    def test_sarsa_sac_pendulum(self):
-        self._test(
-            gin_file='sarsa_sac_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
+    @unittest.skip(SKIP_TODO_MESSAGE)
     def test_sarsa_sac_bipedal_walker(self):
         self._test(
-            gin_file='sarsa_sac_bipedal_walker.gin',
+            alf_conf_file='sarsa_sac_bipedal_walker_conf.py',
+            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
+
+    @unittest.skip(SKIP_TODO_MESSAGE)
+    def test_sarsa_sac_pendulum(self):
+        self._test(
+            alf_conf_file='sarsa_sac_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_breakout(self):
         self._test(
-            gin_file='trac_breakout.gin',
+            alf_conf_file='trac_breakout_conf.py',
             skip_checker=self._skip_if_atari_unavailable,
             extra_train_params=ON_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_ddpg_pendulum(self):
         self._test(
-            gin_file='trac_ddpg_pendulum.gin',
+            alf_conf_file='trac_ddpg_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_ppo_pr2(self):
         self._test(
-            gin_file='trac_ppo_pr2.gin',
+            alf_conf_file='trac_ppo_pr2_conf.py',
             skip_checker=self._skip_if_socialbot_unavailable,
             extra_train_params=PPO_TRAIN_PARAMS)
 
     @unittest.skip(SKIP_TODO_MESSAGE)
     def test_trac_sac_pendulum(self):
         self._test(
-            gin_file='trac_sac_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
-    def test_mbrl_pendulum(self):
-        self._test(
-            gin_file='mbrl_pendulum.gin', extra_train_params=MBRL_TRAIN_PARAMS)
-
-    def test_mbrl_latent_pendulum(self):
-        self._test(
-            gin_file='mbrl_latent_pendulum.gin',
-            extra_train_params=OFF_POLICY_TRAIN_PARAMS)
-
-    def test_muzero_tic_tac_toe(self):
-        self._test(
-            gin_file='muzero_tic_tac_toe.gin',
+            alf_conf_file='trac_sac_pendulum_conf.py',
             extra_train_params=OFF_POLICY_TRAIN_PARAMS)
 
     @classmethod
