@@ -886,7 +886,7 @@ def hindsight_relabel_fn(buffer,
         # in HER.
         step_type = result.step_type
         step_type[:, 1:] = torch.where(
-            switched_goal[:, 1:].bool() & ~her_cond.unsqueeze(1),
+            switched_goal[:, 1:] & ~her_cond.unsqueeze(1),
             torch.tensor(ds.StepType.LAST), step_type[:, 1:])
         result = result._replace(step_type=step_type)
 
