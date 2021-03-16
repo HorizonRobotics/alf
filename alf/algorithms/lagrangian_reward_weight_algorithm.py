@@ -92,6 +92,7 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
 
         # convert to softplus space
         self._lambdas = nn.Parameter(self._inv_softplus(lambda_init))
+        self._reward_weights = F.softplus(self._lambdas)
         self._optimizer = optimizer
         self._optimizer.add_param_group({'params': self._lambdas})
 
@@ -100,8 +101,9 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
 
     @property
     def reward_weights(self):
-        """Return the reward weights."""
-        return F.softplus(self._lambdas)
+        """Return the detached reward weights. These weights are expected not to
+        be changed by external code."""
+        return self._reward_weights.detach()
 
     def _trainable_attributes_to_ignore(self):
         return ["_lambdas"]
@@ -116,12 +118,14 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
         """
         # [T, B, reward_dim]
         loss = ((train_info.rollout_reward - self._reward_thresholds).detach()
-                * (self.reward_weights * self._reward_training_mask))
+                * (self._reward_weights * self._reward_training_mask))
         loss = loss.sum(dim=-1).mean()
 
         self._optimizer.zero_grad()
         loss.backward()
         self._optimizer.step()
+
+        self._reward_weights = F.softplus(self._lambdas)
 
         if self._debug_summaries:
             with alf.summary.scope(self._name):
@@ -129,4 +133,5 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
                 for i in range(len(self._reward_thresholds)):
                     alf.summary.scalar("reward_threshold/%d" % i,
                                        self._reward_thresholds[i])
-                    alf.summary.scalar("lambda/%d" % i, self.reward_weights[i])
+                    alf.summary.scalar("lambda/%d" % i,
+                                       self._reward_weights[i])
