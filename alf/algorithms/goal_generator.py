@@ -26,6 +26,7 @@ from alf.data_structures import (TimeStep, Experience, LossInfo, namedtuple,
                                  AlgStep, StepType)
 from alf.experience_replayers.replay_buffer import l2_dist_close_reward_fn
 from alf.optimizers.traj_optimizers import CEMOptimizer
+from alf.networks.projection_networks import StableNormalProjectionNetwork
 from alf.tensor_specs import TensorSpec, BoundedTensorSpec
 import alf.utils.common as common
 
@@ -297,17 +298,24 @@ class RandomCategoricalGoalGenerator(ConditionalGoalGenerator):
 def _remove_goal_keys(d):
     d.pop('desired_goal', None)
     d.pop('aux_desired', None)
+    # d.pop('observation', None)  # ignore obs in cvae output to maybe generalize better
     return d
 
 
 @gin.configurable
-def vae_output_dims(observation_spec, aux_dim, include_obs_dims=True):
+def vae_output_dims(observation_spec,
+                    aux_dim,
+                    include_obs_dims=True,
+                    use_projection_net=False):
     if include_obs_dims:
         dims = [aux_dim]
         dims += [x.numel for x in alf.nest.flatten(observation_spec)]
-        return sum(dims)
+        dim = sum(dims)
     else:
-        return observation_spec['desired_goal'].numel + aux_dim
+        dim = observation_spec['desired_goal'].numel + aux_dim
+    if use_projection_net:
+        dim *= 2  # mean and std
+    return dim
 
 
 @gin.configurable
@@ -371,6 +379,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                  plan_after_goal_achieved=False,
                  vae=None,
                  use_cvae=False,
+                 use_projection_net=False,
                  vae_weight=0.,
                  vae_penalize_above=-1.e8,
                  vae_bias=0.,
@@ -431,6 +440,7 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
                 been observed before, i.e. under current state, goal is reachable.
                 VAE is trained with hindsight experience, using future state as goal.
             use_cvae (bool): whether to use conditional VAE to predict goal given obs.
+            use_projection_net (bool): whether to use projection network after VAE.
             vae_weight (float): weight of vae cost in trajectory cost.
             vae_penalize_above (float): penalize vae_cost only if above this threshold.
             vae_bias (float): additional penalty if cost above threshold.
@@ -567,6 +577,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             assert normalize_goals
         self._vae = vae
         self._use_cvae = use_cvae
+        self._use_projection_net = use_projection_net
+        self._projection_net = None
+        if use_projection_net:
+            input_dims = vae_output_dims(observation_spec, aux_dim)
+            self._projection_net = StableNormalProjectionNetwork(
+                input_dims, TensorSpec((input_dims // 2, )), squash_mean=False)
         self._vae_weight = vae_weight
         self._vae_penalize_above = torch.tensor(
             vae_penalize_above, dtype=torch.float32)
@@ -605,6 +621,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         if n_samples > 1:
             flat_z = z.reshape(-1, self._vae._z_dim)
         flat_outputs, _ = self._vae_decoder(flat_z)
+        if self._projection_net:
+            dist, _ = self._projection_net(flat_outputs)
         outputs = flat_outputs
         if n_samples > 1:
             outputs = flat_outputs.reshape(z.shape[0], z.shape[1], -1)
@@ -614,9 +632,12 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
             if self._use_cvae:
                 truth = inputs[1]
             flat_in = self._concat(truth)
-        # MSE reconstruction loss
-        decode_loss = torch.mean(
-            alf.utils.math_ops.square(flat_in - outputs), dim=-1)
+        if self._projection_net:
+            decode_loss = -dist.log_prob(flat_in)
+        else:
+            # MSE reconstruction loss
+            decode_loss = torch.mean(
+                alf.utils.math_ops.square(flat_in - outputs), dim=-1)
         if n_samples > 1:
             decode_loss = torch.mean(decode_loss, dim=0)
         loss = decode_loss + kld_loss
@@ -692,6 +713,8 @@ class SubgoalPlanningGoalGenerator(ConditionalGoalGenerator):
         loss += torch.where(loss > self._vae_penalize_above,
                             torch.ones(1) * self._vae_bias, torch.zeros(1))
         loss = torch.max(self._vae_penalize_above, loss)
+        loss = torch.min(torch.tensor(1.e8), loss)
+        loss = torch.where(torch.isnan(loss), torch.tensor(1.e8), loss)
         return loss.unsqueeze(1) * self._vae_weight
 
     def goal_dim(self):
