@@ -103,7 +103,7 @@ class LagrangianRewardWeightAlgorithm(Algorithm):
     def reward_weights(self):
         """Return the detached reward weights. These weights are expected not to
         be changed by external code."""
-        return self._reward_weights.detach()
+        return self._reward_weights.detach().clone()
 
     def _trainable_attributes_to_ignore(self):
         return ["_lambdas"]
